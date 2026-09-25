@@ -114,7 +114,7 @@ Tamanhos e hashes vêm dos arquivos extraídos do ZIP, sob `.local-preview/v1-re
 | `logo_administrativo.png`, `apps/eventos/logo_administrativo.png` | 2 idênticas / `37161B245958` | 1.678.070 | Não localizado em `public/` nem referido por `src/`; não há tela administrativa correspondente no ZIP para justificar descarte. |
 | `logo_equipe.png`, `apps/eventos/logo_equipe.png` | 2 idênticas / `0C244033F8F2` | 1.652.293 | Não localizado em `public/` nem referido por `src/`; uso no fluxo de equipe precisa ser comparado antes da decisão de paridade. |
 | `logo_gestao.png`, `apps/eventos/logo_gestao.png` | 2 idênticas / `C087DA4D07FD` | 1.639.702 | Não localizado em `public/` nem referido por `src/`; contexto de Gestão requer comparação visual. |
-| `apps/gestao/assets/selo-qga-accredited-qmentum-diamond.png` | 1 / `8D3D12A48448` | 129.040 | Não localizado na V2; referência estática do cabeçalho do subapp Gestão, sem tela V2 comparada ainda. |
+| `apps/gestao/assets/selo-qga-accredited-qmentum-diamond.png` | 1 / `8D3D12A48448` | 129.040 | Reutilizado sem alteração em `public/assets/selo-qga-accredited-qmentum-diamond.png`, exibido no cabeçalho “Segmento de Gestão · SAHMT”; comparação visual completa da tela ainda pendente. |
 | `escala-imagens/ferias-2026.jpg` | 1 / `574CE1B9F35A` | 455.035 | Copiado para `public/assets/offline-schedule/`; permanece estático e só é preparado no cache local após ação explícita online. |
 | `escala-imagens/segunda-2026.jpg` | 1 / `F47F9AE80332` | 589.219 | Copiado para `public/assets/offline-schedule/`; permanece estático e só é preparado no cache local após ação explícita online. |
 | `escala-imagens/terca-2026.jpg` | 1 / `8A31E3CF9120` | 588.703 | Copiado para `public/assets/offline-schedule/`; permanece estático e só é preparado no cache local após ação explícita online. |
@@ -126,6 +126,6 @@ Tamanhos e hashes vêm dos arquivos extraídos do ZIP, sob `.local-preview/v1-re
 | `apps/gestao/assets/icon-512.svg` | 1 / `A15C6B178FB4` | 825 | Ícone do subapp Gestão; V2 usa ícone PWA PNG global, sem comparação visual completa do módulo. |
 | `apps/checklist/icons/icon.svg` | 1 / `B24D1A91B8B1` | 499 | Ícone específico do subapp; V2 não o referencia, destino da navegação unificada pendente de comparação. |
 
-O inventário registra assets não encontrados na V2 como pendências de comparação, não como remoções aprovadas. A conversão da imagem do carrinho e a reamostragem do logo são as únicas alterações de imagem explicitamente justificadas e medidas até esta revisão.
+O inventário registra assets não encontrados na V2 como pendências de comparação, não como remoções aprovadas. A conversão da imagem do carrinho e a reamostragem do logo são as únicas transformações de imagem; o selo QGA foi copiado sem alteração e os assets não usados da V1 seguem pendentes de revisão visual.
 
 Template Eventos mantém uma tela de credenciais local além do auth shell. No backend V1, no entanto, `dispatch_` valida Firebase ID token para cada chamada protegida e `authorizeFirebase_` liga UID a usuário por email na planilha. A V2 remove ambos os padrões inadequados: uma sessão Firebase Auth e UID→`users/{uid}` para o PWA inteiro, com Rules por operação.
