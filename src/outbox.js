@@ -182,22 +182,26 @@ export async function listUnsettledOperations(uid) {
   return transactAcross(OUTBOX, 'readonly', (tx) => {
     let queued = [];
     let failed = [];
+    let conflict = [];
     const index = tx.objectStore(OUTBOX).index('uidStatus');
     const queuedRequest = index.getAll(IDBKeyRange.only([uid, 'queued']));
     const failedRequest = index.getAll(IDBKeyRange.only([uid, 'failed']));
+    const conflictRequest = index.getAll(IDBKeyRange.only([uid, 'conflict']));
     queuedRequest.onsuccess = () => { queued = queuedRequest.result || []; };
     failedRequest.onsuccess = () => { failed = failedRequest.result || []; };
-    return () => [...queued, ...failed].sort((a, b) => a.createdAt - b.createdAt);
+    conflictRequest.onsuccess = () => { conflict = conflictRequest.result || []; };
+    return () => [...queued, ...failed, ...conflict].sort((a, b) => a.createdAt - b.createdAt);
   });
 }
 
 export async function updateQueuedOperation(uid, requestId, update) {
   if (!uid || !requestId || !update || typeof update !== 'object') return false;
   const changes = {};
-  if (update.status === 'queued' || update.status === 'failed') changes.status = update.status;
+  if (update.status === 'queued' || update.status === 'failed' || update.status === 'conflict') changes.status = update.status;
   if (Number.isInteger(update.attempts) && update.attempts >= 0) changes.attempts = update.attempts;
   if (Number.isFinite(update.nextAttemptAt) && update.nextAttemptAt >= 0) changes.nextAttemptAt = update.nextAttemptAt;
   if (typeof update.lastError === 'string') changes.lastError = update.lastError.slice(0, 300);
+  if (typeof update.lastErrorCode === 'string') changes.lastErrorCode = update.lastErrorCode.slice(0, 80);
   if (Object.keys(changes).length === 0) return false;
   return transactAcross(OUTBOX, 'readwrite', (tx) => {
     let updated = false;
@@ -227,8 +231,8 @@ export async function removeQueuedOperation(uid, requestId) {
 }
 
 export async function pendingOperationCount(uid) {
-  const {queued, failed} = await operationCounts(uid);
-  return queued + failed;
+  const {queued, failed, conflict} = await operationCounts(uid);
+  return queued + failed + conflict;
 }
 
 export async function operationCounts(uid) {
@@ -236,12 +240,15 @@ export async function operationCounts(uid) {
   return transactAcross(OUTBOX, 'readonly', (tx) => {
     let queued = 0;
     let failed = 0;
+    let conflict = 0;
     const index = tx.objectStore(OUTBOX).index('uidStatus');
     const queuedRequest = index.count(IDBKeyRange.only([uid, 'queued']));
     const failedRequest = index.count(IDBKeyRange.only([uid, 'failed']));
+    const conflictRequest = index.count(IDBKeyRange.only([uid, 'conflict']));
     queuedRequest.onsuccess = () => { queued = queuedRequest.result; };
     failedRequest.onsuccess = () => { failed = failedRequest.result; };
-    return () => ({queued, failed});
+    conflictRequest.onsuccess = () => { conflict = conflictRequest.result; };
+    return () => ({queued, failed, conflict});
   });
 }
 
@@ -253,7 +260,7 @@ export async function retryFailedOperations(uid) {
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) return;
-      cursor.update({...cursor.value, status: 'queued', nextAttemptAt: 0, lastError: ''});
+      cursor.update({...cursor.value, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
       retried++;
       cursor.continue();
     };
@@ -270,7 +277,7 @@ export async function retryFailedOperation(uid, requestId) {
     request.onsuccess = () => {
       const item = request.result;
       if (!item || item.uid !== uid || item.status !== 'failed') return;
-      store.put({...item, status: 'queued', nextAttemptAt: 0, lastError: ''});
+      store.put({...item, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
       retried = true;
     };
     return () => retried;

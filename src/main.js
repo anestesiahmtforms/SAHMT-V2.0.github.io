@@ -204,7 +204,7 @@ function actionForm(route) {
     <label data-event-field="description">Descrição do evento<textarea name="description" rows="3" maxlength="1000"></textarea></label>
     <p id="event-catalog-missing" class="empty-state" hidden>O catálogo de pagadores e credores ainda precisa ser configurado pela Administração de Eventos.</p>
     <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
-    <input name="editEventId" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></details>`;
+    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></details>`;
   }
   if (route === 'training' && can('trainingsManage')) return `<details class="quick-form"><summary>Gerenciar catálogo de treinamentos</summary><form id="training-catalog-form">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Link do YouTube<input name="videoUrl" type="url" required maxlength="600" placeholder="https://youtu.be/…"></label>
@@ -690,20 +690,25 @@ async function loadOfflineView(target) {
       listUnsettledOperations(uid),
       listPendingTrainingProgress(uid)
     ]);
-    const labelsByType = {events: 'Evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
+    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
     const today = todayInputValue();
     const retryableFailed = counts.failed;
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
-      const resolution = item.status === 'failed'
+      const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
+      const resolution = item.status !== 'queued'
         ? `${dateDiffers
           ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
-          : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+          : versionConflict
+            ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
+            : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : '';
       const description = item.type === 'scheduleReleases'
         ? `${item.payload.sigla} · ${formatRecordDate(item.payload.day)}`
+        : item.type === 'eventEdits'
+          ? `Evento ${item.resourceId} · versão base ${Number(item.payload.expectedVersion)}`
         : `ID ${item.resourceId}`;
-      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${item.status === 'failed' ? 'Revisar' : 'Aguardando conexão'}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${resolution}</li>`;
+      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${item.status === 'conflict' ? 'Conflito para comparar' : item.status === 'failed' ? 'Revisar' : 'Aguardando conexão'}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${resolution}</li>`;
     }).join('');
     const trainingRows = pendingProgress.map((item) => {
       const percent = item.duration ? Math.min(100, Math.round((item.lastPosition / item.duration) * 100)) : 0;
@@ -721,7 +726,7 @@ async function loadOfflineView(target) {
     }).join('');
     const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
     target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
-      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) foram recusadas e precisam de revisão.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
+      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) foram recusadas e precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
       ${retryableFailed ? `<button class="primary-button" type="button" id="offline-retry" ${navigator.onLine ? '' : 'disabled'}>Tentar sincronizar novamente</button>` : ''}
       ${unsettled.length ? `<ul class="record-list">${rows}</ul>` : ''}${trainingRows ? `<h4>Progresso de treinamento</h4><ul class="record-list">${trainingRows}</ul>` : ''}${!unsettled.length && !trainingRows ? '<p class="empty-state">As gravações online são confirmadas diretamente pelo Firestore.</p>' : ''}
       <p class="offline-footnote">Ações pendentes só ficam confirmadas depois que o Firestore aceitar a sincronização. O perfil em cache permite abrir o shell temporariamente; as Rules do Firestore continuam sendo a autorização efetiva.</p></section></section>${offlineScheduleGalleryMarkup(import.meta.env.BASE_URL)}`;
@@ -1329,7 +1334,7 @@ function renderEventReportRecords() {
       ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
       : '';
   const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : term ? 'Nenhum evento corresponde à busca.' : 'Nenhum evento neste período.';
-  target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && !item.pendingFirestore && !item.syncFailed && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
+  target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && !item.pendingFirestore && !item.syncFailed && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
   target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
     event.currentTarget.disabled = true;
@@ -1355,6 +1360,7 @@ function beginEventEdit(item) {
     }
   }
   form.elements.editEventId.value = item.id;
+  form.elements.editEventVersion.value = Number(item.version) || 1;
   for (const [name, value] of Object.entries({eventDate: item.date, memberStatus: item.memberStatus, eventType: item.eventType, delayMultiple: item.delayMultiple ?? '', substitute: item.substitute, shift: item.shift, payer: item.payer, creditor: item.creditor, amountToPay: item.amountToPay, description: item.description})) {
     if (form.elements[name]) form.elements[name].value = value ?? '';
   }
@@ -1375,6 +1381,7 @@ function resetEventEditor() {
   if (conflictRefresh) conflictRefresh.hidden = true;
   form.reset();
   form.elements.editEventId.value = '';
+  form.elements.editEventVersion.value = '';
   form.querySelector('[type="submit"]').textContent = 'Salvar evento';
   form.querySelector('#event-edit-cancel').hidden = true;
   updateEventEntryFields(form);
@@ -2109,8 +2116,10 @@ async function bindModuleForm(route) {
         const eventRecord = {date: values.eventDate || today, memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
-          await updateEventRecord(values.editEventId, eventRecord, session.user.uid);
-          notice = 'Evento atualizado no Firestore.';
+          const result = await updateEventRecord(values.editEventId, eventRecord, session.user.uid, Number(values.editEventVersion));
+          notice = result.pendingFirestore
+            ? 'Edição salva neste aparelho com a versão base. Será enviada quando a conexão voltar; se o registro mudar, o rascunho ficará para comparação.'
+            : 'Evento atualizado no Firestore.';
           await render();
           return;
         }
@@ -2648,8 +2657,8 @@ async function updateOutboxStatus() {
     operationCounts(session.user.uid),
     pendingTrainingProgressCount(session.user.uid)
   ]);
-  const count = counts.queued + counts.failed;
-  const details = [count ? `${count} ação(ões) ${counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
+  const count = counts.queued + counts.failed + counts.conflict;
+  const details = [count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button" aria-label="Abrir estado de sincronização">${!navigator.onLine ? 'Offline · ' : ''}${details || (session.offline ? 'Perfil local' : 'Sincronizado')}</button>${counts.failed ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {

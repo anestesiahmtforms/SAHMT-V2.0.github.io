@@ -28,7 +28,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   seed.objectStore('outbox').put({requestId: 'a-queued', uid: 'uid-a', type: 'events', resourceId: 'a-queued', payload: {}, createdAt: 1, attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''});
   seed.objectStore('outbox').put({requestId: 'a-failed', uid: 'uid-a', type: 'events', resourceId: 'a-failed', payload: {}, createdAt: 2, attempts: 1, status: 'failed', nextAttemptAt: 0, lastError: 'permission-denied'});
   seed.objectStore('outbox').put({requestId: 'a-expired-checklist', uid: 'uid-a', type: 'checklists', resourceId: 'station-a', payload: {data: {date: shiftDateKey(localDateKey(), -1)}}, createdAt: 3, attempts: 1, status: 'failed', nextAttemptAt: 0, lastError: 'permission-denied'});
-  seed.objectStore('outbox').put({requestId: 'b-queued', uid: 'uid-b', type: 'events', resourceId: 'b-queued', payload: {}, createdAt: 4, attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''});
+  seed.objectStore('outbox').put({requestId: 'a-event-conflict', uid: 'uid-a', type: 'eventEdits', resourceId: 'event-a', payload: {eventId: 'event-a', expectedVersion: 2}, createdAt: 4, attempts: 1, status: 'conflict', nextAttemptAt: 0, lastErrorCode: 'stale-version'});
+  seed.objectStore('outbox').put({requestId: 'b-queued', uid: 'uid-b', type: 'events', resourceId: 'b-queued', payload: {}, createdAt: 5, attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''});
   await new Promise((resolve, reject) => {
     seed.oncomplete = resolve;
     seed.onerror = () => reject(seed.error);
@@ -38,11 +39,12 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
 
   const outbox = await import('../src/outbox.js');
   assert.deepEqual((await outbox.listQueuedOperations('uid-a')).map((item) => item.requestId), ['a-queued']);
-  assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).map((item) => item.requestId), ['a-queued', 'a-failed', 'a-expired-checklist']);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2});
-  assert.equal(await outbox.pendingOperationCount('uid-a'), 3);
+  assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).map((item) => item.requestId), ['a-queued', 'a-failed', 'a-expired-checklist', 'a-event-conflict']);
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1});
+  assert.equal(await outbox.pendingOperationCount('uid-a'), 4);
   assert.equal(await outbox.retryFailedOperations('uid-a'), 2);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 3, failed: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 3, failed: 0, conflict: 1});
+  assert.equal((await outbox.listUnsettledOperations('uid-a')).some((item) => item.requestId === 'a-event-conflict'), true);
   assert.deepEqual(await outbox.readCachedSchedule('uid-a', '2026-09-25'), {id: '2026-09-25', positions: [{sigla: 'AB'}], stale: true});
   assert.equal(await outbox.readCachedSchedule('uid-b', '2026-09-25'), null);
   assert.equal(await outbox.readCachedSchedule('uid-a', 'invalid'), null);
@@ -75,8 +77,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal(coalescedRelease.payload.marked, false);
   assert.equal((await outbox.listQueuedOperations('uid-a')).filter((item) => item.type === 'scheduleReleases').length, 1);
   await outbox.clearUserLocalData('uid-a', {clearOutbox: true});
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0});
-  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0, conflict: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0, conflict: 0});
   assert.equal(await outbox.readCachedProfile('uid-a'), null);
   assert.equal((await outbox.readCachedProfile('uid-b')).displayName, 'Pessoa B');
   assert.deepEqual((await outbox.readSafeCache('uid-b', 'events', 'active')).data, []);

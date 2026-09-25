@@ -922,8 +922,29 @@ export async function listEventRecords({from, to, uid, pageSize = 100, cursor = 
         syncFailed: item.status === 'failed',
         syncError: item.lastError || ''
       }));
+    const eventEdits = unsettled
+      .filter((item) => item.type === 'eventEdits' && item.payload?.collectionName === 'events' && item.payload.eventId &&
+        (records.some((record) => record.id === item.payload.eventId) ||
+          (typeof item.payload.data?.date === 'string' && item.payload.data.date >= from && item.payload.data.date <= to)))
+      .map((item) => ({
+        id: item.status === 'conflict' ? `${item.payload.eventId}::draft::${item.requestId}` : item.payload.eventId,
+        sourceEventId: item.payload.eventId,
+        ...item.payload.data,
+        version: item.payload.expectedVersion + 1,
+        createdAt: new Date(item.createdAt),
+        pendingFirestore: item.status === 'queued',
+        syncFailed: item.status === 'failed',
+        syncError: item.lastError || '',
+        pendingEdit: true
+      }));
     const seen = new Set(records.map((item) => item.id));
     records.push(...pending.filter((item) => !seen.has(item.id)));
+    for (const edit of eventEdits) {
+      const existing = records.findIndex((item) => item.id === edit.sourceEventId);
+      if (existing >= 0 && edit.syncFailed) records.push(edit);
+      else if (existing >= 0) records[existing] = edit;
+      else records.push(edit);
+    }
   }
   records.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt));
   return {records, stale, nextCursor: stale ? null : nextCursor || null};
@@ -970,36 +991,53 @@ export async function saveEventCatalog(input, uid) {
   return saved;
 }
 
-export async function updateEventRecord(eventId, input, uid) {
+async function confirmCommittedEventEdit(eventId, updates, uid, requestId, version) {
+  const snapshot = await getDocFromServer(doc(db, 'events', eventId));
+  if (!snapshot.exists()) return false;
+  const saved = snapshot.data();
+  return saved.id === eventId && saved.updatedByUid === uid && saved.syncJobId === requestId && saved.version === version &&
+    Object.entries(updates).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
+}
+
+export async function updateEventRecord(eventId, input, uid, expectedVersion, requestId = crypto.randomUUID(), {queueOffline = true} = {}) {
   if (!eventId || !uid) throw new Error('A sessão expirou. Entre novamente.');
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão deste evento não está disponível. Atualize o relatório antes de editar.');
   const ref = doc(db, 'events', eventId);
-  const current = await getDocFromServer(ref);
-  if (!current.exists()) throw new Error('Este evento não está mais disponível. Atualize o relatório.');
-  const event = current.data();
   const fields = ['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
-  if (event.status !== 'OPEN' || event.active !== true) {
-    throw Object.assign(new Error('Este evento foi fechado ou desativado desde que o relatório foi aberto.'), {code: 'stale-version'});
-  }
   if (typeof updates.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) throw new Error('A data do evento é inválida.');
-  const version = Math.max(1, Number(event.version) || 1) + 1;
-  const syncJobId = crypto.randomUUID();
-  const batch = writeBatch(db);
-  batch.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version, syncJobId});
-  addSheetSyncJob(batch, {collectionName: 'events', resourceId: eventId, version, uid, jobId: syncJobId});
+  const queueOfflineEdit = async () => {
+    await enqueueOperation({uid, type: 'eventEdits', resourceId: eventId, requestId, payload: {collectionName: 'events', eventId, expectedVersion, data: updates}});
+    return {id: eventId, pendingFirestore: true};
+  };
+  if (!navigator.onLine) {
+    if (queueOffline) return queueOfflineEdit();
+    throw Object.assign(new Error('A conexão caiu durante a sincronização desta edição.'), {code: 'unavailable'});
+  }
   try {
-    await batch.commit();
-  } catch (error) {
-    try {
-      const latest = await getDocFromServer(ref);
-      if (latest.exists() && Number(latest.data().version || 1) > version - 1) {
+    await runTransaction(db, async (transaction) => {
+      const current = await transaction.get(ref);
+      if (!current.exists()) throw Object.assign(new Error('Este evento não está mais disponível. Atualize o relatório.'), {code: 'stale-version'});
+      const event = current.data();
+      if (event.status !== 'OPEN' || event.active !== true || Number(event.version || 1) !== expectedVersion) {
         throw Object.assign(new Error('Outra pessoa atualizou este evento enquanto você editava.'), {code: 'stale-version'});
       }
-    } catch (checkError) {
-      if (checkError.code === 'stale-version') throw checkError;
-    }
-    throw error;
+      const version = expectedVersion + 1;
+      transaction.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version, syncJobId: requestId});
+      transaction.set(doc(db, 'syncQueue', requestId), createReportSyncJob({
+        resourceType: 'events', resourceId: eventId, version, uid, jobId: requestId, now: serverTimestamp()
+      }));
+    });
+  } catch (error) {
+    if (error.code === 'stale-version') throw error;
+    try {
+      if (await confirmCommittedEventEdit(eventId, updates, uid, requestId, expectedVersion + 1)) return {id: eventId, pendingFirestore: false, alreadyCommitted: true};
+    } catch {}
+    if (!['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code) && navigator.onLine) throw error;
+    if (!queueOffline) throw error;
+    return queueOfflineEdit();
   }
+  return {id: eventId, pendingFirestore: false};
 }
 
 export async function listLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 100, cursor = null} = {}) {
@@ -1574,6 +1612,8 @@ export async function flushOutbox(uid, {requestId} = {}) {
       try {
         if (operation.type === 'scheduleReleases') {
           await applyScheduleSiglaRelease(operation.payload, uid);
+        } else if (operation.type === 'eventEdits') {
+          await updateEventRecord(operation.payload.eventId, operation.payload.data, uid, operation.payload.expectedVersion, operation.requestId, {queueOffline: false});
         } else {
           const batch = writeBatch(db);
           buildRecordBatch(batch, {
@@ -1590,12 +1630,9 @@ export async function flushOutbox(uid, {requestId} = {}) {
       } catch (error) {
         try {
           if (operation.type === 'scheduleReleases') throw error;
-          const committed = await confirmCommittedMutation({
-            collectionName: operation.payload.collectionName,
-            data: operation.payload.data,
-            uid,
-            requestId: operation.requestId,
-          });
+          const committed = operation.type === 'eventEdits'
+            ? await confirmCommittedEventEdit(operation.payload.eventId, operation.payload.data, uid, operation.requestId, operation.payload.expectedVersion + 1)
+            : await confirmCommittedMutation({collectionName: operation.payload.collectionName, data: operation.payload.data, uid, requestId: operation.requestId});
           if (committed) {
             await removeQueuedOperation(uid, operation.requestId);
             synced++;
@@ -1604,13 +1641,15 @@ export async function flushOutbox(uid, {requestId} = {}) {
           }
         } catch {}
         const attempts = operation.attempts + 1;
+        const conflict = error.code === 'stale-version' && operation.type === 'eventEdits';
         const permanent = ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(error.code);
         const delay = Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10));
         await updateQueuedOperation(uid, operation.requestId, {
-          status: permanent ? 'failed' : 'queued',
+          status: conflict ? 'conflict' : permanent ? 'failed' : 'queued',
           attempts,
           nextAttemptAt: Date.now() + delay,
-          lastError: String(error.message || error).slice(0, 300)
+          lastError: String(error.message || error).slice(0, 300),
+          lastErrorCode: error.code || ''
         });
         if (permanent) window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {message: 'Uma ação offline foi recusada pelo Firestore. Verifique suas permissões.'}}));
         if (!navigator.onLine || !permanent) break;
