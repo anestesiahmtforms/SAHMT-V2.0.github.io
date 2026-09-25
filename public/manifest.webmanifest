@@ -1,0 +1,15 @@
+{
+  "id": "/SAHMT-V2.0.github.io/",
+  "name": "SAHMT V2.0",
+  "short_name": "SAHMT",
+  "lang": "pt-BR",
+  "start_url": "/SAHMT-V2.0.github.io/",
+  "scope": "/SAHMT-V2.0.github.io/",
+  "display": "standalone",
+  "background_color": "#0d3257",
+  "theme_color": "#0d3257",
+  "icons": [
+    {"src": "/SAHMT-V2.0.github.io/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/SAHMT-V2.0.github.io/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

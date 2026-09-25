@@ -1,0 +1,40 @@
+# Auditoria de consultas e índices Firestore
+
+## Escopo e limite
+
+Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js` e `firestore.indexes.json`, atualizada em 25/09/2026. Ela confere as consultas do cliente e das callables contra os índices manuais declarados e os índices automáticos por campo. Não comprova que os índices foram publicados ou terminaram de construir em `sahmt-17a16`; essa conferência continua pendente no Console/CLI autenticado.
+
+O Firestore cria índices automáticos por campo e pode mesclar índices para filtros compostos só de igualdade, com `orderBy` opcional. Consultas com faixa ou combinações de faixa/ordenação podem exigir índice manual. Consulte a [visão geral oficial de índices](https://firebase.google.com/docs/firestore/query-data/index-overview) e a [referência oficial para administrar índices](https://firebase.google.com/docs/firestore/query-data/indexing).
+
+## Consultas que usam índices manuais
+
+| Coleção | Consulta observada | Índice em `firestore.indexes.json` |
+|---|---|---|
+| `events` | `active == true`, intervalo de `date`, `date DESC` | `active ASC, date DESC` |
+| `labels` | Administrador: `active == true`, intervalo de `date`, `date DESC`; pessoa: a mesma janela combinada com `createdByUid == UID` ou `staffSiglas ARRAY_CONTAINS sigla` | `active ASC, date DESC`; `active ASC, createdByUid ASC, date DESC`; `active ASC, staffSiglas ARRAY_CONTAINS, date DESC` |
+| `vacations` | `active == true`, `start <= dia`, `end >= dia`, `start ASC` | `active ASC, start ASC, end ASC` |
+| Coleções dos módulos listados em `moduleCollections` | `active == true`, ordenação própria | `active ASC` + `order`/data configurada para Eventos, Contatos, Gestão, Checklist, Treinamentos e Notificações |
+| `checklists` | período/dia e `createdAt DESC` | Índices `date ASC, createdAt DESC` e `date DESC, createdAt DESC` |
+| `checklists` | `stationId ==`, data anterior e data/criação descendentes | `stationId ASC, date DESC, createdAt DESC` |
+| `indicators` | `managementAreaId ==`, `active == true`, `name ASC` | `managementAreaId ASC, active ASC, name ASC` |
+| `indicatorMeasurements` | `indicatorId ==`, `period DESC` | `indicatorId ASC, period DESC` |
+| `actionPlans` | `managementAreaId ==`, `openedAt DESC` | `managementAreaId ASC, openedAt DESC` |
+| `equipmentEvents` | `managementAreaId ==`, `createdAt DESC` | `managementAreaId ASC, createdAt DESC` |
+| `maintenanceRecords` | `managementAreaId ==`, `updatedAt DESC` | `managementAreaId ASC, updatedAt DESC` |
+| `documents` | `managementAreaId ==`, `publishedAt DESC`; consulta de ativos acrescenta `active == true` | `managementAreaId ASC, publishedAt DESC` e `managementAreaId ASC, active ASC, publishedAt DESC` |
+| `equipment` | `managementAreaId ==`, `tag ASC` | `managementAreaId ASC, tag ASC` |
+| `trainings` | `order ASC, title ASC` (catálogo administrativo, incluindo inativos) | `order ASC, title ASC` |
+| `activities` | `managementAreaId ==`, `dueAt` preenchido ascendente e `createdAt DESC`; atividades sem prazo são consultadas em seguida por `createdAt DESC` | `managementAreaId ASC, dueAt ASC, createdAt DESC` |
+| `syncQueue` | `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC` | `status ASC, nextAttemptAt ASC` |
+| `activityInteractions` | `activityId ==`, `createdAt DESC`; variante também filtra `uid ==` | Índices por `activityId, createdAt` e `activityId, uid, createdAt` |
+| `notifications` | ativo, combinação OR de público e `priority DESC` | `active, audienceType, audienceValue, priority` |
+| `managementAreas` | ativo e `memberUids` ou `managerUids` contém UID | Dois índices `active ASC` + campo `CONTAINS` correspondente |
+| `notificationGroups` | ativo e `memberUids` contém UID | `active ASC, memberUids CONTAINS` |
+
+## Consultas cobertas por índices automáticos
+
+A inspeção também encontrou consultas simples por documento e consultas sem combinação de faixa/ordenação: `users` por UID/sigla e lista ordenada por nome, `contacts` ativos, `stations` por QR, histórico `labels/{labelId}/history` ordenado por `version DESC`, `trainingProgress` por UID, `actionPlanItems` por `planId in` e recibos por `notificationId in`. A callable de assinatura também usa `stations(active, order)`, `vacations(active, start, end)`, `events(active, date)`, `contacts(active)`, `checklists(date, createdAt)` e `users(sigla)`; as consultas com composição/ordenação correspondem aos índices manuais já listados acima, e as demais são cobertas pelos índices automáticos. As listas limitadas de documentos, equipamentos, treinamentos e atividades agora ordenam no servidor antes de aplicar o limite, com índices explícitos para as consultas compostas. Atividades com prazo aparecem primeiro; as sem prazo são acrescentadas por data de criação quando houver espaço.
+
+## Segurança e homologação
+
+Índice disponível não concede acesso; cada consulta continua sujeita às Firestore Rules. A suíte do Emulator testa autorização, mas não prova que os índices manuais acima estão publicados no projeto real. Antes da homologação autenticada, conferir a configuração de índices no `(default)` `sahmt-17a16` e observar erros de índice gerados por consultas reais autorizadas.

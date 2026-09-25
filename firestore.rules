@@ -1,0 +1,866 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profilePath()); }
+    function profile() { return get(profilePath()).data; }
+    function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
+    function isAdmin() {
+      return activeUser() && ((profile().role == 'administrador_app') ||
+        (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
+    }
+    function can(permission) {
+      return activeUser() && (isAdmin() ||
+        (profile().permissions.keys().hasAny([permission]) && profile().permissions[permission] == true));
+    }
+    function managementAccess() {
+      return can('managementRead') || can('managementManage') || can('managementActivityWrite') ||
+        can('managementIndicatorsRead') || can('managementIndicatorsWrite') || can('managementPlansManage');
+    }
+    function activityAccess() { return can('managementRead') || can('managementActivityWrite'); }
+    function indicatorAccess() { return can('managementRead') || can('managementIndicatorsRead') || can('managementIndicatorsWrite'); }
+    function actionPlanAccess() { return can('managementRead') || can('managementPlansManage'); }
+    function notificationAudienceMatches(data) {
+      let areaPath = /databases/$(database)/documents/managementAreas/$(data.audienceValue);
+      let groupPath = /databases/$(database)/documents/notificationGroups/$(data.audienceValue);
+      return (data.audienceType == 'ALL' && data.audienceValue == '') ||
+        (data.audienceType == 'USER' && data.audienceValue == request.auth.uid) ||
+        (data.audienceType == 'ROLE' && data.audienceValue == profile().role) ||
+        (data.audienceType == 'SIGLA' && data.audienceValue == profile().sigla) ||
+        (data.audienceType == 'MANAGEMENT_AREA' && exists(areaPath) && get(areaPath).data.active == true &&
+          ((get(areaPath).data.memberUids is list && get(areaPath).data.memberUids.hasAny([request.auth.uid])) ||
+           (get(areaPath).data.managerUids is list && get(areaPath).data.managerUids.hasAny([request.auth.uid])))) ||
+        (data.audienceType == 'GROUP' && exists(groupPath) && get(groupPath).data.active == true &&
+          get(groupPath).data.memberUids is list && get(groupPath).data.memberUids.hasAny([request.auth.uid]));
+    }
+    function validNotification(data, notificationId) {
+      return data.keys().hasAll(['id', 'title', 'message', 'type', 'audienceType', 'audienceValue', 'createdAt', 'createdByUid', 'updatedByUid', 'updatedAt', 'startAt', 'endAt', 'active', 'priority', 'actionRoute', 'version']) &&
+        data.keys().hasOnly(['id', 'title', 'message', 'type', 'audienceType', 'audienceValue', 'createdAt', 'createdByUid', 'updatedByUid', 'updatedAt', 'startAt', 'endAt', 'active', 'priority', 'actionRoute', 'version']) &&
+        data.id == notificationId && data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+        data.message is string && data.message.size() > 0 && data.message.size() <= 1200 && data.type is string && data.type.size() > 0 && data.type.size() <= 40 &&
+        data.audienceType in ['ALL', 'ROLE', 'USER', 'SIGLA', 'MANAGEMENT_AREA', 'GROUP'] && data.audienceValue is string && data.audienceValue.size() <= 128 &&
+        ((data.audienceType == 'ALL' && data.audienceValue == '') ||
+         (data.audienceType == 'ROLE' && data.audienceValue in ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app']) ||
+         (data.audienceType == 'USER' && data.audienceValue.size() > 0) ||
+         (data.audienceType == 'SIGLA' && (data.audienceValue.matches('^[A-Z]{2}$') || data.audienceValue == 'L2')) ||
+         (data.audienceType == 'MANAGEMENT_AREA' && activeManagementArea(data.audienceValue)) ||
+         (data.audienceType == 'GROUP' && exists(/databases/$(database)/documents/notificationGroups/$(data.audienceValue)) && get(/databases/$(database)/documents/notificationGroups/$(data.audienceValue)).data.active == true)) &&
+        data.createdAt is timestamp && data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid && data.updatedAt is timestamp &&
+        data.startAt is timestamp && data.endAt is timestamp && data.endAt >= data.startAt && data.active is bool &&
+        data.priority is int && data.priority >= 0 && data.priority <= 5 && data.actionRoute in ['', 'home', 'events', 'labels', 'management', 'checklist', 'training', 'people', 'admin'] &&
+        data.version is int && data.version > 0;
+    }
+    function validNotificationRead(data, uid, notificationId) {
+      let noticePath = /databases/$(database)/documents/notifications/$(notificationId);
+      let notice = get(noticePath).data;
+      return data.keys().hasAll(['id', 'notificationId', 'uid', 'readAt']) &&
+        data.keys().hasOnly(['id', 'notificationId', 'uid', 'readAt']) &&
+        data.id == notificationId && data.notificationId == notificationId && data.uid == uid &&
+        data.readAt == request.time && exists(noticePath) && notice.active == true && notificationAudienceMatches(notice);
+    }
+    function validNotificationGroup(data, groupId) {
+      return data.keys().hasAll(['id', 'name', 'memberUids', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'name', 'memberUids', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == groupId && data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.memberUids is list && data.memberUids.size() <= 500 && data.active is bool &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+    function checklistAccess() {
+      return can('checklistRead') || can('checklistWrite') || can('checklistSign') || can('checklistManage');
+    }
+    function validIsoDay(value) {
+      return value is string && (
+        value.matches('^\\d{4}-(01|03|05|07|08|10|12)-(0[1-9]|[12][0-9]|3[01])$') ||
+        value.matches('^\\d{4}-(04|06|09|11)-(0[1-9]|[12][0-9]|30)$') ||
+        value.matches('^\\d{4}-02-(0[1-9]|1[0-9]|2[0-9])$'));
+    }
+    function validIndicatorPeriod(period, frequency) {
+      return (frequency == 'YEARLY' && period.matches('^\\d{4}$')) ||
+        (frequency == 'QUARTERLY' && period.matches('^\\d{4}-Q[1-4]$')) ||
+        (frequency == 'MONTHLY' && period.matches('^\\d{4}-(0[1-9]|1[0-2])$')) ||
+        (frequency == 'WEEKLY' && period.matches('^\\d{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$'));
+    }
+    function paddedDayPart(value) {
+      return value < 10 ? '0' + string(value) : string(value);
+    }
+    function serverSaoPauloDay() {
+      let localTime = request.time - duration.value(3, 'h');
+      return string(localTime.year()) + '-' + paddedDayPart(localTime.month()) + '-' + paddedDayPart(localTime.day());
+    }
+    function stationValidForChecklist(stationId, day) {
+      let path = /databases/$(database)/documents/stations/$(stationId);
+      let station = get(path).data;
+      return stationId is string && stationId.matches('^[^/]{1,128}$') && validIsoDay(day) && exists(path) &&
+        station.active == true &&
+        (!station.keys().hasAny(['start']) || (validIsoDay(station.start) && station.start <= day)) &&
+        (!station.keys().hasAny(['end']) || (validIsoDay(station.end) && station.end >= day)) &&
+        (!(station.keys().hasAny(['start']) && station.keys().hasAny(['end'])) || station.start <= station.end);
+    }
+    function validStation(data, stationId) {
+      return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'name', 'qrCode', 'start', 'end', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == stationId && data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.qrCode is string && data.qrCode.size() > 0 && data.qrCode.size() <= 300 &&
+        (!data.keys().hasAny(['start']) || validIsoDay(data.start)) &&
+        (!data.keys().hasAny(['end']) || validIsoDay(data.end)) &&
+        (!(data.keys().hasAny(['start']) && data.keys().hasAny(['end'])) || data.start <= data.end) &&
+        data.order is int && data.order >= 0 && data.order <= 9999 && data.active is bool &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;
+    }
+    function validTraining(data, trainingId) {
+      return data.keys().hasAll(['id', 'title', 'description', 'videoId', 'videoUrl', 'accessPoints', 'completionPoints', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'title', 'description', 'videoId', 'videoUrl', 'accessPoints', 'completionPoints', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == trainingId && data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+        data.description is string && data.description.size() <= 500 && data.videoId is string && data.videoId.matches('^[A-Za-z0-9_-]{11}$') &&
+        data.videoUrl is string && data.videoUrl.size() > 0 && data.videoUrl.size() <= 600 &&
+        data.accessPoints is number && data.accessPoints >= 0 && data.accessPoints <= 1000 &&
+        data.completionPoints is number && data.completionPoints >= 0 && data.completionPoints <= 1000 &&
+        data.order is int && data.order >= 0 && data.order <= 9999 && data.active is bool &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;
+    }
+    function validManagementDocument(data, documentId) {
+      return data.keys().hasAll(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == documentId && data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 160 && data.description is string && data.description.size() <= 1200 &&
+        data.driveFileId is string && data.driveFileId.matches('^[A-Za-z0-9_-]{10,200}$') &&
+        data.driveUrl == 'https://drive.google.com/file/d/' + data.driveFileId + '/view' &&
+        data.category is string && data.category.size() > 0 && data.category.size() <= 80 && data.active is bool && data.requiredReading is bool &&
+        data.publishedAt is timestamp && data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version is int && data.version >= 1;
+    }
+    function validEquipment(data, equipmentId) {
+      return data.keys().hasAll(['id', 'tag', 'managementAreaId', 'name', 'category', 'serialNumber', 'location', 'responsibleUid', 'status', 'active', 'lastEventId', 'lastEventAt', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'tag', 'managementAreaId', 'name', 'category', 'serialNumber', 'location', 'responsibleUid', 'status', 'active', 'lastEventId', 'lastEventAt', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == equipmentId && data.tag == equipmentId && data.tag.matches('^[A-Z0-9_-]{2,40}$') &&
+        data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 160 && data.category is string && data.category.size() > 0 && data.category.size() <= 80 &&
+        data.serialNumber is string && data.serialNumber.size() <= 120 && data.location is string && data.location.size() > 0 && data.location.size() <= 160 &&
+        data.responsibleUid is string && data.responsibleUid.size() > 0 && data.responsibleUid.size() <= 128 &&
+        data.status in ['OPERATIONAL', 'MAINTENANCE', 'OUT_OF_SERVICE', 'RETIRED'] && data.active is bool && (data.status != 'RETIRED' || data.active == false) &&
+        (data.lastEventId == null || (data.lastEventId is string && data.lastEventId.size() >= 10 && data.lastEventId.size() <= 200)) &&
+        (data.lastEventAt == null || data.lastEventAt is timestamp) && data.version is int && data.version >= 1 &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+    }
+    function validEquipmentEvent(data, eventId) {
+      return data.keys().hasAll(['id', 'equipmentId', 'managementAreaId', 'type', 'description', 'fromStatus', 'toStatus', 'createdByUid', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'equipmentId', 'managementAreaId', 'type', 'description', 'fromStatus', 'toStatus', 'createdByUid', 'createdAt']) &&
+        data.id == eventId && data.equipmentId is string && data.equipmentId.size() >= 2 && data.equipmentId.size() <= 40 &&
+        data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
+        data.type in ['INCIDENT', 'STATUS_CHANGE'] && data.description is string && data.description.size() > 0 && data.description.size() <= 1000 &&
+        data.fromStatus in ['OPERATIONAL', 'MAINTENANCE', 'OUT_OF_SERVICE', 'RETIRED'] && data.toStatus in ['OPERATIONAL', 'MAINTENANCE', 'OUT_OF_SERVICE', 'RETIRED'] &&
+        data.createdByUid == request.auth.uid && data.createdAt == request.time;
+    }
+    function validMaintenanceRecord(data, recordId) {
+      return data.keys().hasAll(['id', 'equipmentId', 'managementAreaId', 'type', 'description', 'responsibleUid', 'dueAt', 'status', 'completedAt', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'equipmentId', 'managementAreaId', 'type', 'description', 'responsibleUid', 'dueAt', 'status', 'completedAt', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == recordId && data.equipmentId is string && data.equipmentId.size() >= 2 && data.equipmentId.size() <= 40 &&
+        data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
+        data.type in ['PREVENTIVE', 'CORRECTIVE', 'CALIBRATION', 'INSPECTION'] && data.description is string && data.description.size() > 0 && data.description.size() <= 1000 &&
+        data.responsibleUid is string && data.responsibleUid.size() > 0 && data.responsibleUid.size() <= 128 && (data.dueAt == null || validIsoDay(data.dueAt)) &&
+        data.status in ['OPEN', 'IN_PROGRESS', 'COMPLETED'] && (data.completedAt == null || data.completedAt is timestamp) &&
+        data.version is int && data.version >= 1 && data.createdByUid == request.auth.uid && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+    }
+    function validEquipmentUpdate(equipmentId) {
+      let data = request.resource.data;
+      let changed = data.diff(resource.data).affectedKeys();
+      let eventPath = /databases/$(database)/documents/equipmentEvents/$(data.lastEventId);
+      return validEquipment(data, equipmentId) && data.managementAreaId == resource.data.managementAreaId &&
+        data.createdByUid == resource.data.createdByUid && data.createdAt == resource.data.createdAt && data.version == resource.data.version + 1 &&
+        changed.hasOnly(['name', 'category', 'serialNumber', 'location', 'responsibleUid', 'status', 'active', 'lastEventId', 'lastEventAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        (!changed.hasAny(['status', 'lastEventId', 'lastEventAt']) ||
+          (data.lastEventId is string && data.lastEventAt == request.time && existsAfter(eventPath) &&
+           getAfter(eventPath).data.equipmentId == equipmentId && getAfter(eventPath).data.managementAreaId == data.managementAreaId &&
+           getAfter(eventPath).data.fromStatus == resource.data.status && getAfter(eventPath).data.toStatus == data.status &&
+           getAfter(eventPath).data.createdAt == request.time));
+    }
+    function validEquipmentEventCreate(eventId) {
+      let data = request.resource.data;
+      let equipmentPath = /databases/$(database)/documents/equipment/$(data.equipmentId);
+      let before = get(equipmentPath).data;
+      let after = getAfter(equipmentPath).data;
+      return can('equipmentManage') && validEquipmentEvent(data, eventId) && exists(equipmentPath) && existsAfter(equipmentPath) &&
+        before.active == true && before.managementAreaId == data.managementAreaId && after.lastEventId == eventId &&
+        after.lastEventAt == request.time && after.version == before.version + 1 && after.status == data.toStatus &&
+        ((data.type == 'STATUS_CHANGE' && data.toStatus != data.fromStatus) || (data.type == 'INCIDENT' && data.toStatus == data.fromStatus));
+    }
+    function validMaintenanceTransition(recordId) {
+      let data = request.resource.data;
+      return validMaintenanceRecord(data, recordId) && data.equipmentId == resource.data.equipmentId &&
+        data.managementAreaId == resource.data.managementAreaId && data.type == resource.data.type &&
+        data.description == resource.data.description && data.responsibleUid == resource.data.responsibleUid && data.dueAt == resource.data.dueAt &&
+        data.createdByUid == resource.data.createdByUid && data.createdAt == resource.data.createdAt && data.version == resource.data.version + 1 &&
+        data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        ((resource.data.status == 'OPEN' && data.status == 'IN_PROGRESS' && data.completedAt == null) ||
+         (resource.data.status == 'IN_PROGRESS' && data.status == 'COMPLETED' && data.completedAt == request.time));
+    }
+    function validChecklistRecord(data, checklistId) {
+      return data.keys().hasAll(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.id == checklistId && data.clientMutationId == checklistId && data.active == true && data.version == 1 &&
+        data.syncJobId is string && data.syncJobId.size() > 0 && data.syncJobId.size() <= 160 &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt == request.time && data.updatedAt == request.time &&
+        data.stationId is string && stationValidForChecklist(data.stationId, data.date) &&
+        validIsoDay(data.date) && data.date == serverSaoPauloDay() && data.condition in ['SIM', 'NAO'] &&
+        ((data.condition == 'SIM' && data.status == 'COMPLETED' && data.occurrence == '') ||
+         (data.condition == 'NAO' && data.status == 'MAINTENANCE' && data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 500)) &&
+        data.responsibleUid == null && data.responsibleName == null && data.responsibleEmail == null;
+    }
+    function validUserProfile(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
+        data.uid == uid && data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+        data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
+        data.sigla is string && data.sigla.size() <= 20 && data.phone is string && data.phone.size() <= 40 &&
+        data.active is bool && data.access is bool && data.role in ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'] &&
+        data.permissions is map && data.permissions.keys().hasOnly(['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+    function hasUserManagementPrivilege(data) {
+      return data.role == 'administrador_app' ||
+        (data.permissions.keys().hasAny(['admin']) && data.permissions.admin == true) ||
+        (data.permissions.keys().hasAny(['usersManage']) && data.permissions.usersManage == true);
+    }
+    function mayManageUser(uid) {
+      return request.auth.uid != uid && can('usersManage') && validUserProfile(request.resource.data, uid) &&
+        (!hasUserManagementPrivilege(request.resource.data) || isAdmin());
+    }
+    function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
+    function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    function validManagementAssignmentUpdate(areaId) {
+      let currentVersion = resource.data.get('version', 0);
+      return request.resource.data.keys().hasAll(['id', 'managerUids', 'memberUids', 'version', 'updatedByUid', 'updatedAt']) &&
+        currentVersion is int && currentVersion >= 0 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerUids', 'memberUids', 'version', 'updatedByUid', 'updatedAt']) &&
+        request.resource.data.id == areaId &&
+        request.resource.data.managerUids is list && request.resource.data.managerUids.size() <= 100 &&
+        request.resource.data.memberUids is list && request.resource.data.memberUids.size() <= 100 &&
+        request.resource.data.version == currentVersion + 1 &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time;
+    }
+    function validScheduleHighlightUpdate(scheduleId) {
+      let oldHighlights = resource.data.get('highlights', {});
+      let newHighlights = request.resource.data.get('highlights', {});
+      return can('scheduleWrite') && updateActorIsSelf() &&
+        scheduleId.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['highlights', 'updatedByUid', 'updatedAt', 'version']) &&
+        request.resource.data.id == resource.data.id && request.resource.data.date == resource.data.date &&
+        request.resource.data.positions == resource.data.positions &&
+        oldHighlights is map && newHighlights is map &&
+        newHighlights.keys().hasOnly(['siglas', 'events']) &&
+        newHighlights.get('events', []) == oldHighlights.get('events', []) &&
+        newHighlights.get('siglas', []) is list && newHighlights.get('siglas', []).size() <= 30 &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.version == resource.data.get('version', 0) + 1;
+    }
+    function validLabelRecord(data, labelId) {
+      return data.keys().hasAll(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.id == labelId && data.clientMutationId == labelId && data.active == true && data.version is int && data.version > 0 &&
+        data.syncJobId is string && data.syncJobId.size() > 0 && data.syncJobId.size() <= 160 &&
+        data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
+        data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 160 &&
+        data.procedureCode is string && data.encounterCode is string && data.encounterCode.size() > 0 &&
+        data.type in ['Particular', 'Complementação', 'Convênio', 'Consulta Pré-anestésica', 'SADT'] &&
+        (data.amount == null || (data.amount is number && data.amount >= 0)) &&
+        data.insurance is string && data.creditor in ['Caixa', 'Plantão', 'Plantão/Caixa'] &&
+        data.staffSiglas is list && data.staffSiglas.size() <= 20 &&
+        ((data.creditor == 'Caixa' && data.staffSiglas.size() == 0) ||
+         (data.creditor != 'Caixa' && data.staffSiglas.size() > 0 && labelStaffAllowed(data.staffSiglas, labelId))) &&
+        data.consultation == (data.type == 'Consulta Pré-anestésica') && data.status == 'CONFIRMED';
+    }
+    function labelRecordAccess() {
+      return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) &&
+        (resource.data.createdByUid == request.auth.uid ||
+         (profile().sigla is string && profile().sigla != '' && resource.data.staffSiglas is list && resource.data.staffSiglas.hasAny([profile().sigla]))));
+    }
+    function labelHistoryAccess(labelId) {
+      let parent = get(/databases/$(database)/documents/labels/$(labelId)).data;
+      return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) &&
+        (parent.createdByUid == request.auth.uid ||
+         (profile().sigla is string && profile().sigla != '' && parent.staffSiglas is list && parent.staffSiglas.hasAny([profile().sigla]))));
+    }
+    function labelHistoryFieldMatches(labelId, fields, before, after, field) {
+      let parentPath = /databases/$(database)/documents/labels/$(labelId);
+      let oldValue = get(parentPath).data[field];
+      let newValue = getAfter(parentPath).data[field];
+      return fields.hasAny([field])
+        ? (before[field] == oldValue && after[field] == newValue && before[field] != after[field])
+        : oldValue == newValue;
+    }
+    function validLabelHistoryEntry(data, labelId, version) {
+      let parentPath = /databases/$(database)/documents/labels/$(labelId);
+      let before = data.before;
+      let after = data.after;
+      let fields = data.changedFields;
+      return exists(parentPath) && existsAfter(parentPath) &&
+        (can('labelsManage') || get(parentPath).data.createdByUid == request.auth.uid) &&
+        fields is list && fields.size() > 0 && fields.size() <= 10 &&
+        fields.hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation']) &&
+        before is map && after is map && before.keys().hasOnly(fields) && after.keys().hasOnly(fields) &&
+        before.keys().size() == fields.size() && after.keys().size() == fields.size() &&
+        data.keys().hasAll(['id', 'labelId', 'version', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'labelId', 'version', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+        version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.labelId == labelId &&
+        data.version is int && int(version) == data.version &&
+        data.actorUid == request.auth.uid && data.createdAt == request.time &&
+        getAfter(parentPath).data.version == data.version && getAfter(parentPath).data.updatedByUid == request.auth.uid &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'date') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'patientName') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'procedureCode') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'encounterCode') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'type') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'amount') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'insurance') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'creditor') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'staffSiglas') &&
+        labelHistoryFieldMatches(labelId, fields, before, after, 'consultation');
+    }
+    function labelStaffAllowed(siglas, labelId) {
+      let catalogPath = /databases/$(database)/documents/appConfig/labelStaff;
+      let existingPath = /databases/$(database)/documents/labels/$(labelId);
+      return (exists(catalogPath) && get(catalogPath).data.active == true && siglas.hasOnly(get(catalogPath).data.siglas)) ||
+        (exists(existingPath) && siglas == get(existingPath).data.staffSiglas);
+    }
+    function validLabelStaffCatalog(data) {
+      return data.keys().hasAll(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == 'labelStaff' && data.siglas is list && data.siglas.size() <= 80 && data.active == true &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 &&
+        data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt == request.time &&
+        data.version is int && data.version > 0;
+    }
+    function eventCatalogContains(field, value) {
+      let path = /databases/$(database)/documents/eventCatalogs/operational;
+      return exists(path) && get(path).data.keys().hasAny([field]) && get(path).data[field] is list && get(path).data[field].hasAny([value]);
+    }
+    function eventCatalogContainsOrUnchanged(field, value, eventId, allowHistorical) {
+      let existing = /databases/$(database)/documents/events/$(eventId);
+      return eventCatalogContains(field, value) ||
+        (allowHistorical && exists(existing) && get(existing).data[field] == value);
+    }
+    function validEventCatalog(data, catalogId) {
+      return catalogId == 'operational' &&
+        data.keys().hasAll(['id', 'payers', 'creditors', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'payers', 'creditors', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == catalogId && data.payers is list && data.payers.size() <= 100 &&
+        data.creditors is list && data.creditors.size() <= 100 &&
+        data.createdByUid is string && data.updatedByUid == request.auth.uid &&
+        data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
+    }
+    function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
+      return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.id == eventId && data.clientMutationId == eventId && data.active == true && data.version is int && data.version > 0 &&
+        data.syncJobId is string && data.syncJobId.size() > 0 && data.syncJobId.size() <= 160 &&
+        data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
+        data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.eventType in ['Pessoal', 'Férias', 'Ferias', 'ATRASO', 'Suporte', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia', 'Outros'] &&
+        data.memberStatus is string && data.memberStatus.size() <= 160 && data.description is string && data.description.size() <= 1000 &&
+        data.delayMultiple in [null, 0, 1, 2, 3, 4, 5, 6] && data.substitute is string && data.substitute.size() <= 120 &&
+        data.shift in ['', 'Manhã', 'Manha', 'Tarde', 'Integral'] &&
+        data.payer is string && data.payer.size() > 0 && data.payer.size() <= 120 && eventCatalogContainsOrUnchanged('payers', data.payer, eventId, allowHistoricalCatalogValues) &&
+        data.creditor is string && data.creditor.size() > 0 && data.creditor.size() <= 120 && eventCatalogContainsOrUnchanged('creditors', data.creditor, eventId, allowHistoricalCatalogValues) &&
+        data.amountToPay is number && data.amountToPay >= 0 && data.status == 'OPEN' &&
+        ((data.eventType == 'ATRASO' && data.memberStatus.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.description == '' && data.substitute == '' && data.shift == '') ||
+         (data.eventType == 'Suporte' && data.memberStatus == 'SUPORTE' && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
+         (data.eventType in ['Pessoal', 'Férias', 'Ferias', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
+         (data.eventType == 'Outros' && data.memberStatus.size() > 0 && data.description.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']));
+    }
+    function activeManagementArea(areaId) {
+      let path = /databases/$(database)/documents/managementAreas/$(areaId);
+      return areaId is string && areaId.matches('^[^/]{1,128}$') && exists(path) && get(path).data.active == true;
+    }
+    function validManagementScoringRule(data, ruleId) {
+      return data.keys().hasAll(['id', 'name', 'description', 'sourceType', 'points', 'active', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'name', 'description', 'sourceType', 'points', 'active', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == ruleId && ruleId == 'management-task-completion-v1' &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.description is string && data.description.size() <= 500 &&
+        data.sourceType == 'MANAGEMENT_TASK_COMPLETION' && data.points is int && data.points >= 1 && data.points <= 1000 && data.active is bool &&
+        data.version is int && data.version >= 1 && data.createdByUid is string && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+    }
+    function validScoredManagementActivity(data) {
+      let rulePath = /databases/$(database)/documents/scoringRules/management-task-completion-v1;
+      let rule = get(rulePath).data;
+      return can('managementManage') && data.responsibleUids.size() == 1 && data.responsibleUids[0] != request.auth.uid &&
+        data.scoringRuleId == 'management-task-completion-v1' && data.scoringRuleVersion is int &&
+        exists(rulePath) && rule.active == true && rule.sourceType == 'MANAGEMENT_TASK_COMPLETION' &&
+        rule.version == data.scoringRuleVersion && rule.points == data.points;
+    }
+    function validManagementActivity(data, activityId) {
+      let areaPath = /databases/$(database)/documents/managementAreas/$(data.managementAreaId);
+      let area = get(areaPath).data;
+      return data.keys().hasAll(['title', 'description', 'contextType', 'contextId', 'managementAreaId', 'type', 'status', 'priority', 'responsibleUids', 'participantUids', 'createdByUid', 'createdAt', 'dueAt', 'completedAt', 'evidenceRequired', 'pointsEnabled', 'points', 'scoringRuleId', 'scoringRuleVersion', 'visibility', 'active', 'id', 'clientMutationId', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['title', 'description', 'contextType', 'contextId', 'managementAreaId', 'type', 'status', 'priority', 'responsibleUids', 'participantUids', 'createdByUid', 'createdAt', 'dueAt', 'completedAt', 'evidenceRequired', 'pointsEnabled', 'points', 'scoringRuleId', 'scoringRuleVersion', 'visibility', 'active', 'id', 'clientMutationId', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == activityId && data.clientMutationId == activityId && data.active == true && data.version == 1 &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt == request.time && data.updatedAt == request.time &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 160 &&
+        data.description is string && data.description.size() <= 1200 &&
+        data.contextType == 'MANAGEMENT_AREA' && data.contextId == data.managementAreaId && activeManagementArea(data.managementAreaId) &&
+        data.type == 'TASK' && data.status == 'OPEN' && data.priority in ['Normal', 'Alta', 'Urgente'] &&
+        data.responsibleUids is list && data.responsibleUids.size() >= 1 && data.responsibleUids.size() <= 20 &&
+        ((data.responsibleUids == [request.auth.uid]) || (can('managementManage') && area.memberUids is list && area.memberUids.hasAll(data.responsibleUids))) &&
+        data.participantUids is list && data.participantUids.size() <= 100 &&
+        (data.participantUids.size() == 0 || (can('managementManage') && area.memberUids is list && area.memberUids.hasAll(data.participantUids))) &&
+        (data.dueAt == null || (data.dueAt is string && validIsoDay(data.dueAt))) && data.completedAt == null &&
+        data.evidenceRequired == false && data.visibility == 'AREA' &&
+        ((data.pointsEnabled == false && data.points == 0 && data.scoringRuleId == '' && data.scoringRuleVersion == 0) ||
+         (data.pointsEnabled == true && validScoredManagementActivity(data)));
+    }
+    function validManagementActivityTransition(activityId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return resource.data.id == activityId && request.resource.data.id == resource.data.id &&
+        request.resource.data.clientMutationId == resource.data.clientMutationId &&
+        resource.data.createdByUid == request.resource.data.createdByUid && resource.data.createdAt == request.resource.data.createdAt &&
+        resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]) &&
+        changed.hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt']) &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
+        (resource.data.status == 'OPEN' && request.resource.data.status == 'IN_PROGRESS' && request.resource.data.completedAt == null);
+    }
+    function validActivityInteraction(data, interactionId) {
+      let activityPath = /databases/$(database)/documents/activities/$(data.activityId);
+      let activity = get(activityPath).data;
+      return data.keys().hasAll(['id', 'activityId', 'uid', 'type', 'content', 'createdAt', 'evidence', 'pointsGenerated']) &&
+        data.keys().hasOnly(['id', 'activityId', 'uid', 'type', 'content', 'createdAt', 'evidence', 'pointsGenerated']) &&
+        data.id == interactionId && data.activityId is string && exists(activityPath) && activity.active == true &&
+        data.uid == request.auth.uid && data.type == 'COMMENT' && data.content is string && data.content.size() > 0 && data.content.size() <= 1000 &&
+        data.createdAt == request.time && data.evidence == null && data.pointsGenerated == 0 &&
+        (can('managementRead') || activity.createdByUid == request.auth.uid ||
+         (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
+         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])));
+    }
+    function activityInteractionAccess(activityId, interactionUid) {
+      let activityPath = /databases/$(database)/documents/activities/$(activityId);
+      let activity = get(activityPath).data;
+      return activeUser() && exists(activityPath) && activity.active == true &&
+        (interactionUid == request.auth.uid || can('managementRead') || activity.createdByUid == request.auth.uid ||
+         (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
+         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])));
+    }
+    function validManagementIndicator(data, indicatorId) {
+      return data.keys().hasAll(['id', 'managementAreaId', 'name', 'description', 'unit', 'target', 'direction', 'frequency', 'ownerUid', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'managementAreaId', 'name', 'description', 'unit', 'target', 'direction', 'frequency', 'ownerUid', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == indicatorId && data.managementAreaId is string && activeManagementArea(data.managementAreaId) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.description is string && data.description.size() <= 500 && data.unit is string && data.unit.size() <= 40 &&
+        data.target is number && data.direction in ['MIN', 'MAX', 'TARGET'] && data.frequency in ['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'] &&
+        data.ownerUid is string && data.ownerUid.size() > 0 && data.active == true &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt == request.time && data.updatedAt == request.time;
+    }
+    function validIndicatorMeasurement(data, measurementId) {
+      let indicatorPath = /databases/$(database)/documents/indicators/$(data.indicatorId);
+      let indicator = get(indicatorPath).data;
+      return data.keys().hasAll(['id', 'indicatorId', 'period', 'value', 'target', 'status', 'notes', 'createdByUid', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'indicatorId', 'period', 'value', 'target', 'status', 'notes', 'createdByUid', 'createdAt']) &&
+        data.id == measurementId && data.indicatorId is string && exists(indicatorPath) && indicator.active == true &&
+        data.period is string && validIndicatorPeriod(data.period, indicator.frequency) &&
+        data.value is number && data.target == indicator.target &&
+        data.status == ((indicator.direction == 'MAX' && data.value <= data.target) || (indicator.direction == 'TARGET' && data.value == data.target) || (indicator.direction == 'MIN' && data.value >= data.target) ? 'MET' : 'NOT_MET') &&
+        data.notes is string && data.notes.size() <= 800 && data.createdByUid == request.auth.uid && data.createdAt == request.time;
+    }
+    function validActionPlan(data, planId) {
+      return data.keys().hasAll(['id', 'managementAreaId', 'origin', 'title', 'description', 'responsibleUid', 'participantUids', 'status', 'priority', 'openedAt', 'dueAt', 'completedAt', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'managementAreaId', 'origin', 'title', 'description', 'responsibleUid', 'participantUids', 'status', 'priority', 'openedAt', 'dueAt', 'completedAt', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == planId && data.managementAreaId is string && activeManagementArea(data.managementAreaId) && data.origin == 'MANAGEMENT_AREA' &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 160 && data.description is string && data.description.size() <= 1200 &&
+        data.responsibleUid == request.auth.uid && data.participantUids is list && data.participantUids.size() == 0 &&
+        data.status == 'OPEN' && data.priority in ['Normal', 'Alta', 'Urgente'] &&
+        (data.dueAt == null || (data.dueAt is string && validIsoDay(data.dueAt))) && data.completedAt == null &&
+        data.openedAt == request.time && data.createdByUid == request.auth.uid && data.createdAt == request.time &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version == 1;
+    }
+    function validActionPlanTransition(planId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return resource.data.id == planId && resource.data.responsibleUid == request.auth.uid &&
+        request.resource.data.responsibleUid == resource.data.responsibleUid &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.openedAt == resource.data.openedAt && request.resource.data.version == resource.data.version &&
+        changed.hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt']) && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.updatedAt == request.time &&
+        ((resource.data.status == 'OPEN' && request.resource.data.status == 'IN_PROGRESS' && request.resource.data.completedAt == null) ||
+         (resource.data.status == 'IN_PROGRESS' && request.resource.data.status == 'COMPLETED' && request.resource.data.completedAt == request.time));
+    }
+    function validActionPlanItem(data, itemId) {
+      let planPath = /databases/$(database)/documents/actionPlans/$(data.planId);
+      let plan = get(planPath).data;
+      let areaPath = /databases/$(database)/documents/managementAreas/$(plan.managementAreaId);
+      let area = get(areaPath).data;
+      return data.keys().hasAll(['id', 'planId', 'description', 'responsibleUids', 'dueAt', 'status', 'evidence', 'completedAt', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'planId', 'description', 'responsibleUids', 'dueAt', 'status', 'evidence', 'completedAt', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == itemId && data.planId is string && exists(planPath) && exists(areaPath) && plan.responsibleUid == request.auth.uid &&
+        plan.status in ['OPEN', 'IN_PROGRESS'] && data.description is string && data.description.size() > 0 && data.description.size() <= 500 &&
+        data.responsibleUids is list && data.responsibleUids.size() >= 1 && data.responsibleUids.size() <= 20 &&
+        ((data.responsibleUids == [request.auth.uid]) || (area.memberUids is list && area.memberUids.hasAll(data.responsibleUids))) &&
+        (data.dueAt == null || validIsoDay(data.dueAt)) &&
+        data.status == 'OPEN' && data.evidence == null && data.completedAt == null &&
+        data.createdByUid == request.auth.uid && data.createdAt == request.time && data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version == 1;
+    }
+    function validActionPlanItemTransition(itemId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let planPath = /databases/$(database)/documents/actionPlans/$(resource.data.planId);
+      return resource.data.id == itemId && exists(planPath) && get(planPath).data.status in ['OPEN', 'IN_PROGRESS'] &&
+        resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]) && resource.data.status == 'OPEN' &&
+        changed.hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        request.resource.data.status == 'COMPLETED' && request.resource.data.completedAt == request.time &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.description == resource.data.description && request.resource.data.dueAt == resource.data.dueAt &&
+        request.resource.data.evidence == null && request.resource.data.planId == resource.data.planId &&
+        request.resource.data.responsibleUids == resource.data.responsibleUids && request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+    function validTrainingProgress(data, uid) {
+      return data.keys().hasOnly(['uid', 'trainingId', 'startedAt', 'lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt']) &&
+        data.uid == uid && data.trainingId is string && data.trainingId.size() > 0 &&
+        data.startedAt is timestamp && data.updatedAt is timestamp &&
+        data.duration is number && data.duration > 0 && data.duration <= 86400 &&
+        data.lastPosition is number && data.lastPosition >= 0 && data.lastPosition <= data.duration + 2 &&
+        data.watchedRanges is list && data.watchedRanges.size() <= 500 &&
+        data.status in ['STARTED', 'IN_PROGRESS'];
+    }
+    function validContact(data, sigla) {
+      return data.keys().hasAll(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.sigla == sigla && (data.sigla.matches('^[A-Z]{2}$') || data.sigla == 'L2') &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.role is string && data.role.size() <= 80 && data.phone is string && data.phone.size() <= 40 &&
+        data.email is string && data.email.size() <= 200 && data.whatsAppLink is string && data.whatsAppLink.size() <= 250 &&
+        (data.whatsAppLink == '' || data.whatsAppLink.matches('^https://wa[.]me/[0-9]+$') || data.whatsAppLink.matches('^https://api[.]whatsapp[.]com/send[?]phone=[0-9]+$')) &&
+        data.crm is string && data.crm.size() <= 40 &&
+        data.entryDate is string && data.entryDate.size() <= 32 && data.active is bool &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+    function validVacation(data, vacationId) {
+      return data.keys().hasAll(['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == vacationId && data.start is string && data.start.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.end is string && data.end.matches('^\\d{4}-\\d{2}-\\d{2}$') && data.start <= data.end &&
+        data.siglas is list && data.siglas.size() <= 30 && data.label is string && data.label.size() <= 240 &&
+        data.notes is string && data.notes.size() <= 1000 && data.active is bool &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || can('usersManage'));
+      allow create: if can('usersManage') && validUserProfile(request.resource.data, uid) &&
+        (!hasUserManagementPrivilege(request.resource.data) || isAdmin());
+      allow update: if mayManageUser(uid) || (activeUser() && request.auth.uid == uid && request.resource.data.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'updatedAt']));
+      allow delete: if false;
+
+      match /notificationReads/{notificationId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create: if can('notificationsRead') && request.auth.uid == uid &&
+          validNotificationRead(request.resource.data, uid, notificationId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /roles/{roleId} {
+      allow read: if activeUser();
+      allow write: if can('usersManage');
+    }
+    match /appConfig/{configId} {
+      allow read: if activeUser() && configId != 'labelStaff';
+      allow write: if isAdmin();
+    }
+    match /appConfig/labelStaff {
+      allow read: if can('labelsRead') || can('labelsWrite') || can('labelsManage');
+      allow create: if can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1;
+      allow update: if can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['siglas', 'active', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
+    }
+    match /eventCatalogs/{catalogId} {
+      allow read: if can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage');
+      allow create: if can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+        request.resource.data.version == 1;
+      allow update: if can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payers', 'creditors', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
+    }
+    match /managementAreas/{areaId} {
+      allow read: if can('documentsManage') || can('equipmentManage') || managementAccess() || can('notificationsManage') || (can('notificationsRead') && resource.data.active == true &&
+        ((resource.data.memberUids is list && resource.data.memberUids.hasAny([request.auth.uid])) ||
+         (resource.data.managerUids is list && resource.data.managerUids.hasAny([request.auth.uid]))));
+      allow create: if can('managementManage') && actorIsSelf();
+      allow update: if can('managementManage') && updateActorIsSelf() && validManagementAssignmentUpdate(areaId);
+      allow delete: if false;
+    }
+    match /scheduleDays/{scheduleId} {
+      allow read: if can('scheduleRead');
+      allow create: if can('scheduleWrite') && actorIsSelf();
+      allow update: if validScheduleHighlightUpdate(scheduleId);
+      allow delete: if can('scheduleWrite');
+    }
+    match /contacts/{sigla} {
+      allow read: if (can('scheduleRead') && resource.data.active == true) || can('peopleManage');
+      allow create: if can('peopleManage') && validContact(request.resource.data, sigla);
+      allow update: if can('peopleManage') && resource.data.sigla == sigla &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        validContact(request.resource.data, sigla);
+      allow delete: if false;
+    }
+    match /vacations/{vacationId} {
+      allow read: if (can('scheduleRead') && resource.data.active == true) || can('scheduleWrite');
+      allow create: if can('scheduleWrite') && validVacation(request.resource.data, vacationId);
+      allow update: if can('scheduleWrite') && resource.data.id == vacationId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt && validVacation(request.resource.data, vacationId);
+      allow delete: if false;
+    }
+    function sheetSyncJobMatches(resourceType, resourceId, record) {
+      let jobPath = /databases/$(database)/documents/syncQueue/$(record.syncJobId);
+      return record.syncJobId is string && record.syncJobId.size() > 0 && existsAfter(jobPath) &&
+        getAfter(jobPath).data.resourceType == resourceType && getAfter(jobPath).data.resourceId == resourceId &&
+        getAfter(jobPath).data.version == record.version && getAfter(jobPath).data.createdByUid == request.auth.uid;
+    }
+    function validSheetSyncJob(data, jobId) {
+      let resourcePath = /databases/$(database)/documents/$(data.resourceType)/$(data.resourceId);
+      let permitted = (data.resourceType == 'events' && can('eventsWrite')) ||
+        (data.resourceType == 'labels' && (can('labelsWrite') || can('labelsManage'))) ||
+        (data.resourceType == 'checklists' && can('checklistWrite'));
+      return permitted &&
+        data.keys().hasAll(['id', 'resourceType', 'resourceId', 'operation', 'version', 'status', 'attempts', 'createdByUid', 'createdAt', 'updatedAt', 'nextAttemptAt', 'lastError', 'clientMutationId']) &&
+        data.keys().hasOnly(['id', 'resourceType', 'resourceId', 'operation', 'version', 'status', 'attempts', 'createdByUid', 'createdAt', 'updatedAt', 'nextAttemptAt', 'lastError', 'clientMutationId']) &&
+        data.id == jobId && data.clientMutationId == jobId && jobId is string && jobId.size() <= 160 &&
+        data.resourceType in ['events', 'labels', 'checklists'] && data.resourceId is string && data.resourceId.size() > 0 && data.resourceId.size() <= 128 &&
+        data.operation == 'upsert' && data.version is int && data.version >= 1 && data.status == 'pending' &&
+        data.attempts == 0 && data.lastError == '' && data.createdByUid == request.auth.uid &&
+        data.createdAt == request.time && data.updatedAt == request.time && data.nextAttemptAt == request.time &&
+        existsAfter(resourcePath) && getAfter(resourcePath).data.id == data.resourceId &&
+        getAfter(resourcePath).data.syncJobId == jobId &&
+        getAfter(resourcePath).data.updatedByUid == request.auth.uid && getAfter(resourcePath).data.updatedAt == request.time &&
+        getAfter(resourcePath).data.version == data.version;
+    }
+    match /events/{eventId} {
+      allow read: if can('eventsRead') || can('eventsWrite');
+      allow create: if can('eventsWrite') && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
+        validEventRecord(request.resource.data, eventId, false) && sheetSyncJobMatches('events', eventId, request.resource.data);
+      allow update: if can('eventsWrite') && updateActorIsSelf() &&
+        (resource.data.createdByUid == request.auth.uid || can('admin')) &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByUid', 'updatedAt', 'version', 'syncJobId']) &&
+        validEventRecord(request.resource.data, eventId, true) && sheetSyncJobMatches('events', eventId, request.resource.data);
+      allow delete: if false;
+    }
+    match /labels/{labelId} {
+      allow read: if labelRecordAccess();
+      allow create: if (can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId) &&
+        sheetSyncJobMatches('labels', labelId, request.resource.data);
+      allow update: if (can('labelsWrite') || can('labelsManage')) && updateActorIsSelf() &&
+        (resource.data.createdByUid == request.auth.uid || can('labelsManage')) &&
+        request.resource.data.id == resource.data.id && request.resource.data.clientMutationId == resource.data.clientMutationId &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'updatedByUid', 'updatedAt', 'version', 'syncJobId']) &&
+        validLabelRecord(request.resource.data, labelId) && sheetSyncJobMatches('labels', labelId, request.resource.data);
+      allow delete: if false;
+      match /history/{version} {
+        allow read: if exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId);
+        allow create: if (can('labelsWrite') || can('labelsManage')) && validLabelHistoryEntry(request.resource.data, labelId, version);
+        allow update, delete: if false;
+      }
+    }
+    match /labelTemplates/{templateId} {
+      allow read: if can('labelsRead');
+      allow write: if can('labelsManage');
+    }
+    match /stations/{stationId} {
+      allow read: if checklistAccess();
+      allow create: if can('checklistManage') && validStation(request.resource.data, stationId) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1;
+      allow update: if can('checklistManage') && validStation(request.resource.data, stationId) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'qrCode', 'start', 'end', 'order', 'active', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
+    }
+    match /checklists/{checklistId} {
+      allow read: if checklistAccess();
+      allow create: if can('checklistWrite') && validChecklistRecord(request.resource.data, checklistId) &&
+        sheetSyncJobMatches('checklists', checklistId, request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+    match /syncQueue/{jobId} {
+      allow read: if false;
+      allow create: if validSheetSyncJob(request.resource.data, jobId);
+      allow update, delete: if false;
+    }
+    match /checklistSignatures/{signatureId} {
+      allow read: if can('checklistRead');
+      allow write: if false;
+    }
+    match /trainings/{trainingId} {
+      allow read: if can('trainingsRead') || can('trainingsManage');
+      allow create: if can('trainingsManage') && validTraining(request.resource.data, trainingId) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1;
+      allow update: if can('trainingsManage') && validTraining(request.resource.data, trainingId) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'videoId', 'videoUrl', 'accessPoints', 'completionPoints', 'order', 'active', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
+    }
+    match /trainingProgress/{progressId} {
+      allow read: if (can('trainingsRead') || can('trainingsManage')) && (resource.data.uid == request.auth.uid || can('trainingsManage'));
+      allow create: if (can('trainingsRead') || can('trainingsManage')) && progressId == request.auth.uid + '_' + request.resource.data.trainingId &&
+        exists(/databases/$(database)/documents/trainings/$(request.resource.data.trainingId)) &&
+        get(/databases/$(database)/documents/trainings/$(request.resource.data.trainingId)).data.active == true &&
+        validTrainingProgress(request.resource.data, request.auth.uid);
+      allow update: if (can('trainingsRead') || can('trainingsManage')) && resource.data.uid == request.auth.uid &&
+        progressId == request.auth.uid + '_' + resource.data.trainingId &&
+        resource.data.status in ['STARTED', 'IN_PROGRESS'] &&
+        request.resource.data.uid == resource.data.uid && request.resource.data.trainingId == resource.data.trainingId &&
+        request.resource.data.startedAt == resource.data.startedAt &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt']) &&
+        request.resource.data.status == 'IN_PROGRESS' && validTrainingProgress(request.resource.data, request.auth.uid);
+      allow delete: if false;
+    }
+
+    match /trainingReceipts/{receiptId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    match /trainingCompletions/{completionId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    match /activities/{activityId} {
+      allow read: if activityAccess();
+      allow create: if can('managementActivityWrite') && validManagementActivity(request.resource.data, activityId);
+      allow update: if can('managementActivityWrite') && validManagementActivityTransition(activityId);
+      allow delete: if false;
+    }
+    match /activityInteractions/{interactionId} {
+      allow read: if activityInteractionAccess(resource.data.activityId, resource.data.uid);
+      allow create: if activityAccess() && validActivityInteraction(request.resource.data, interactionId);
+      allow update, delete: if false;
+    }
+    match /scores/{scoreId} {
+      allow read: if activeUser() && (resource.data.uid == request.auth.uid || can('managementIndicatorsRead'));
+      allow write: if false;
+    }
+    match /scoringRules/{ruleId} {
+      allow read: if activeUser();
+      allow create: if can('managementManage') && validManagementScoringRule(request.resource.data, ruleId) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time;
+      allow update: if can('managementManage') && validManagementScoringRule(request.resource.data, ruleId) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1;
+      allow delete: if false;
+    }
+    match /indicators/{indicatorId} {
+      allow read: if indicatorAccess();
+      allow create: if can('managementIndicatorsWrite') && validManagementIndicator(request.resource.data, indicatorId);
+      allow update, delete: if false;
+    }
+    match /indicatorMeasurements/{measurementId} {
+      allow read: if indicatorAccess();
+      allow create: if can('managementIndicatorsWrite') && validIndicatorMeasurement(request.resource.data, measurementId);
+      allow update, delete: if false;
+    }
+    match /actionPlans/{planId} {
+      allow read: if actionPlanAccess();
+      allow create: if can('managementPlansManage') && validActionPlan(request.resource.data, planId);
+      allow update: if can('managementPlansManage') && validActionPlanTransition(planId);
+      allow delete: if false;
+    }
+    match /actionPlanItems/{itemId} {
+      allow read: if actionPlanAccess() || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]));
+      allow create: if can('managementPlansManage') && validActionPlanItem(request.resource.data, itemId);
+      allow update: if can('managementPlansManage') && validActionPlanItemTransition(itemId);
+      allow delete: if false;
+    }
+    match /documents/{documentId} {
+      allow read: if can('documentsManage') || can('managementRead');
+      allow create: if can('documentsManage') && activeManagementArea(request.resource.data.managementAreaId) &&
+        validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
+        request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
+        request.resource.data.createdByUid == request.auth.uid;
+      allow update: if can('documentsManage') && validManagementDocument(request.resource.data, documentId) &&
+        request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
+        request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
+    }
+    match /equipment/{equipmentId} {
+      allow read: if can('equipmentManage');
+      allow create: if can('equipmentManage') && validEquipment(request.resource.data, equipmentId) &&
+        activeManagementArea(request.resource.data.managementAreaId) && request.resource.data.status == 'OPERATIONAL' &&
+        request.resource.data.active == true && request.resource.data.lastEventId == null && request.resource.data.lastEventAt == null &&
+        request.resource.data.version == 1 && request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if can('equipmentManage') && validEquipmentUpdate(equipmentId);
+      allow delete: if false;
+    }
+    match /equipmentEvents/{eventId} {
+      allow read: if can('equipmentManage');
+      allow create: if validEquipmentEventCreate(eventId);
+      allow update, delete: if false;
+    }
+    match /maintenanceRecords/{recordId} {
+      allow read: if can('equipmentManage');
+      allow create: if can('equipmentManage') && validMaintenanceRecord(request.resource.data, recordId) &&
+        request.resource.data.status == 'OPEN' && request.resource.data.completedAt == null && request.resource.data.version == 1 &&
+        request.resource.data.createdAt == request.time && request.resource.data.equipmentId is string &&
+        exists(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)) &&
+        get(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.active == true &&
+        request.resource.data.managementAreaId == get(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.managementAreaId;
+      allow update: if can('equipmentManage') && validMaintenanceTransition(recordId);
+      allow delete: if false;
+    }
+    match /notifications/{notificationId} {
+      allow read: if can('notificationsManage') || (can('notificationsRead') && resource.data.active == true && notificationAudienceMatches(resource.data));
+      allow create: if can('notificationsManage') && validNotification(request.resource.data, notificationId) && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if can('notificationsManage') && validNotification(request.resource.data, notificationId) && updateActorIsSelf() &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedAt == request.time && request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'message', 'type', 'audienceType', 'audienceValue', 'updatedByUid', 'updatedAt', 'startAt', 'endAt', 'active', 'priority', 'actionRoute', 'version']);
+      allow delete: if false;
+    }
+    match /notificationGroups/{groupId} {
+      allow read: if can('notificationsManage') || (can('notificationsRead') && resource.data.active == true && resource.data.memberUids is list && resource.data.memberUids.hasAny([request.auth.uid]));
+      allow create: if can('notificationsManage') && validNotificationGroup(request.resource.data, groupId);
+      allow update: if can('notificationsManage') && validNotificationGroup(request.resource.data, groupId) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+    match /auditLogs/{auditId} {
+      allow read: if can('admin');
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
