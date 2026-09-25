@@ -2,14 +2,14 @@
 
 ## Alvo
 
-Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch `main`; GitHub Pages em `https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/`. `origin` está configurado neste checkout. Em 25/09/2026, o estado local de `main` não foi enviado; `git ls-remote --heads origin` não listou refs. O push para `main` dispara o workflow que publica automaticamente no Pages, e revisão de catálogo/homologação ainda estão pendentes.
+Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch `main`; URL prevista do GitHub Pages: `https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/`. `origin` está configurado neste checkout. Em 25/09/2026, commit `4cedec7870575d1755331485b4178659bbc4755c` foi enviado para `main`. O workflow `Build and deploy SAHMT V2` passou nos testes de domínio, Firestore Rules e Functions Emulator, compilou a PWA e carregou o artefato; o job de deploy falhou porque GitHub Pages ainda está desabilitado. Settings → Pages confirmou `Source: Deploy from a branch` e `Branch: None`. A ativação com origem `GitHub Actions` aguarda confirmação do proprietário, pois tornará o site estático acessível publicamente. A revisão do catálogo, homologação autenticada e validação em dispositivo continuam pendentes.
 
 ## Caminho de release
 
 1. Revisar diff e paridade visual.
 2. Fixar base path `/SAHMT-V2.0.github.io/`, manifest e um service worker com cache versionado.
 3. Validar bundle, Rules e índices sem tocar dados produtivos.
-4. Publicar branch `main` no repositório V2 e, em Settings → Pages, selecionar `GitHub Actions` como origem.
+4. [x] Publicar branch `main` no repositório V2. [ ] Após confirmação do proprietário, em Settings → Pages, habilitar o site e selecionar `GitHub Actions` como origem; não considerar a PWA publicada até confirmar URL e assets servidos.
 5. O workflow `.github/workflows/pages.yml` instala os pacotes da raiz e de `functions/`, configura Java 21, executa suítes de domínio, Firestore Rules e Functions Emulator, constrói a PWA e publica `dist` em pushes de `main`; pull requests compilam e testam sem publicar.
 6. Confirmar URL, assets, rotas internas, Auth autorizada e instalação PWA.
 7. As callables `checklistSignature`, `trainingStart`, `completeTraining`, `completeManagementActivity` e `cancelManagementActivity` passaram quinze casos no Functions Emulator local (oito de assinatura, quatro de treinamentos, dois de conclusão de tarefa — pontuada individual e compartilhada sem pontos — e um de cancelamento idempotente); antes do deploy, revisar segurança/índices no projeto real e homologar no navegador com uma conta autorizada.
@@ -18,7 +18,7 @@ Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch
 ## Bloqueios externos conhecidos
 
 - O pacote legado `validacao.json` registra um deployment Apps Script que aguarda login Google. Esse estado não integra nem bloqueia a autenticação V2, que usa Firebase Auth e perfil UID no Firestore.
-- Firebase Console foi acessado em sessão autenticada apenas para leitura; o Firestore `(default)` do projeto `sahmt-17a16` estava vazio. GitHub: `gh` CLI não está instalado, `git ls-remote --heads origin` respondeu sem refs e a identidade Git local segue sem nome/e-mail. Firebase: `firebase login:list` confirmou que não há conta autorizada e `firebase projects:list --json` falhou por falta de autenticação. Em 25/09/2026, o Google Drive connector conseguiu ler metadados de `SAHMT_DATABASE` e intervalos agregados delimitados; nenhuma célula foi alterada e nenhum valor pessoal foi copiado.
+- Firebase Console foi acessado em sessão autenticada apenas para leitura; o Firestore `(default)` do projeto `sahmt-17a16` estava vazio. Firebase: `firebase login:list` confirmou que não há conta autorizada e `firebase projects:list --json` falhou por falta de autenticação. GitHub Pages permanece desabilitado até a confirmação acima. Em 25/09/2026, o Google Drive connector conseguiu ler metadados de `SAHMT_DATABASE` e intervalos agregados delimitados; nenhuma célula foi alterada e nenhum valor pessoal foi copiado.
 - O Console Firebase consultado em 25/09/2026 mostrou o Firestore `(default)` do projeto `sahmt-17a16` vazio e Google como provedor de Auth ativado; Email/Senha não apareceu como ativado. A consulta foi somente leitura e nenhuma configuração mudou. Na rechecagem local, `firebase login:list` não encontrou contas autorizadas e `firebase projects:list --json` falhou por falta de autenticação. Rules/índices publicados ainda não foram confirmados.
 - Não declarar publicado, autenticado, migrado ou validado em dispositivo antes da confirmação correspondente.
 - Cloud Functions for Firebase exige plano Blaze, vinculado a faturamento. O código da assinatura é local e não foi implantado; o proprietário deve confirmar conta de billing e controles de orçamento antes de qualquer deploy. A callable fica na região `southamerica-east1` e usa o projeto Firebase existente, sem criar outro.
@@ -61,3 +61,4 @@ Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch
 
 - Build de produção reexecutado após o commit ae39d92: 334 módulos transformados; shell principal 266,95 kB (76,45 kB gzip), repositório Firestore 56,59 kB (16,58 kB gzip), PDF 419,34 kB (136,88 kB gzip), SDK Firestore 550,77 kB (162,80 kB gzip). Build aprovado; o aviso de chunk grande continua restrito a dependência Firestore carregada sob demanda.
 - Paridade de Gestão: o selo QGA Accredited Qmentum Diamond que aparecia no cabeçalho V1 foi reutilizado sem transformação no banner “Segmento de Gestão · SAHMT” do shell unificado. O asset só é solicitado ao renderizar a rota de Gestão e usa carregamento lazy. `npm run build` passou novamente com 334 módulos; shell principal 267,30 kB (76,56 kB gzip). A inspeção visual da tela Gestão no navegador continua pendente.
+
