@@ -1,4 +1,4 @@
-import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, sum, updateDoc, where, writeBatch} from 'firebase/firestore';
+import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db} from './firebase.js';
 import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
@@ -880,10 +880,11 @@ export async function transitionManagementActionPlan(planId, nextStatus, uid) {
   });
 }
 
-export async function listEventRecords({from, to, uid, pageSize = 100} = {}) {
+export async function listEventRecords({from, to, uid, pageSize = 100, cursor = null, includePending = true} = {}) {
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar os eventos.');
   let records = [];
   let stale = navigator.onLine === false;
+  let nextCursor = null;
   if (!stale) {
     try {
       const result = await getDocsFromServer(query(
@@ -892,15 +893,17 @@ export async function listEventRecords({from, to, uid, pageSize = 100} = {}) {
         where('date', '>=', from),
         where('date', '<=', to),
         orderBy('date', 'desc'),
+        ...(cursor ? [startAfter(cursor)] : []),
         limit(Math.min(100, Math.max(1, pageSize)))
       ));
       records = result.docs.map((item) => ({id: item.id, ...item.data()}));
+      nextCursor = result.docs.length === Math.min(100, Math.max(1, pageSize)) ? result.docs[result.docs.length - 1] : null;
     } catch (error) {
       if (!mayUseOfflineCache(error)) throw error;
       stale = true;
     }
   }
-  if (uid) {
+  if (uid && includePending) {
     const unsettled = await listUnsettledOperations(uid);
     const pending = unsettled
       .filter((item) => item.type === 'events' && item.payload?.collectionName === 'events' &&
@@ -917,7 +920,7 @@ export async function listEventRecords({from, to, uid, pageSize = 100} = {}) {
     records.push(...pending.filter((item) => !seen.has(item.id)));
   }
   records.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt));
-  return {records, stale};
+  return {records, stale, nextCursor: stale ? null : nextCursor || null};
 }
 
 export async function getEventCatalog(uid) {
