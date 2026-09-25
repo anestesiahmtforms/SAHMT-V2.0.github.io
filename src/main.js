@@ -1267,9 +1267,10 @@ async function loadEventReport() {
     const {listEventRecords} = await import('./data.js');
     const report = await listEventRecords({from, to, uid: session.user.uid, cursor: append ? eventReportCursor : null, includePending: !append});
     if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
-    eventReportSourceRecords = append
-      ? [...eventReportSourceRecords, ...report.records.filter((item) => !eventReportSourceRecords.some((existing) => existing.id === item.id))]
-      : report.records;
+    if (append) {
+      const existingIds = new Set(eventReportSourceRecords.map((item) => item.id));
+      eventReportSourceRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
+    } else eventReportSourceRecords = report.records;
     eventReportSourceRecords.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || eventCreatedAtValue(right.createdAt) - eventCreatedAtValue(left.createdAt));
     eventReportStale = eventReportStale || report.stale;
     eventReportCursor = report.nextCursor;
