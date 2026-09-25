@@ -54,10 +54,11 @@ Em 25/09/2026, `qualityManage` passou a abrir a área Gestão da Qualidade no me
 
 - [ ] Diferencial visual tela a tela em celular e desktop; preencher `UI_PARITY.md`.
 - [x] Build/checagens automatizadas e verificação local (35/35 Rules, 62/62 domínio, 15/15 callables no Emulator e build de produção; portões de login V1/V2 comparados por árvore de acessibilidade e capturas em 402 × 662 e 1280 × 720; sem alegar autenticação ou visual QA completo em dispositivo). Os assets OCR foram reduzidos de 27,9 MB para 13,19 MiB ao retirar os três motores de compatibilidade legados que não são usados pelo modo LSTM-only configurado.
-- [ ] Criar/confirmar repositório remoto, Pages e base path; publicar apenas a V2.
+- [x] Confirmar o repositório oficial, branch `main`, base path e publicação do código da V2 (`4cedec7`). O workflow remoto passou nos testes e build e carregou o artefato; [ ] ativar GitHub Pages com origem Actions após confirmação para exposição pública do site e validar a URL servida.
 - [ ] Homologar login Firebase autorizado, Firestore online, offline/retry e escrita real controlada.
 - [ ] Entregar relatório com limites observados e link/artefato de pacote.
 
 ## Critério de avanço
 
 Não cortar funcionalidades para atingir data ou reduzir código. Não mudar a V1. Não migrar dados, publicar rules ou operar Drive/Apps Script até haver checagem no serviço autenticado e plano reversível.
+
