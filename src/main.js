@@ -54,6 +54,8 @@ let eventReportLoadingMore = false;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
 let loadedLabelRecords = [];
+let labelReportCursor = null;
+let labelReportLoadingMore = false;
 let loadedLabelStaffSiglas = [];
 let reportPdfPromise = null;
 let checklistReportMode = 'daily';
@@ -1371,9 +1373,10 @@ function resetEventEditor() {
   updateEventEntryFields(form);
 }
 
-async function loadLabelReport() {
+async function loadLabelReport(options = {}) {
   const target = document.querySelector('#label-report-results');
   if (!target) return false;
+  const append = options?.append === true;
   const loadId = ++labelReportLoad;
   const day = document.querySelector('#label-report-day')?.value || todayInputValue();
   const month = document.querySelector('#label-report-month')?.value || todayInputValue().slice(0, 7);
@@ -1387,20 +1390,31 @@ async function loadLabelReport() {
     from = `${month}-01`;
     to = `${year}-${String(monthNumber).padStart(2, '0')}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
   }
-  target.innerHTML = '<p class="loading">Carregando registros…</p>';
-  loadedLabelRecords = [];
+  if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
+  if (append) labelReportLoadingMore = true;
+  else {
+    target.innerHTML = '<p class="loading">Carregando registros…</p>';
+    loadedLabelRecords = [];
+    labelReportCursor = null;
+  }
   const exportButton = document.querySelector('#export-labels');
-  if (exportButton) exportButton.disabled = true;
+  if (exportButton && !append) exportButton.disabled = true;
   const pdfButton = document.querySelector('#share-labels-pdf');
-  if (pdfButton) pdfButton.disabled = true;
+  if (pdfButton && !append) pdfButton.disabled = true;
   try {
     const {listLabelRecords} = await import('./data.js');
-    const records = await listLabelRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla || '', canManage: can('labelsManage')});
+    const report = await listLabelRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), cursor: append ? labelReportCursor : null});
     if (loadId !== labelReportLoad || !document.querySelector('#label-report-results')) return false;
-    loadedLabelRecords = records;
+    if (append) {
+      const existingIds = new Set(loadedLabelRecords.map((item) => item.id));
+      loadedLabelRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
+    } else loadedLabelRecords = report.records;
+    loadedLabelRecords.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || reportTimestamp(right.createdAt) - reportTimestamp(left.createdAt));
+    labelReportCursor = report.nextCursor;
+    const records = loadedLabelRecords;
     if (exportButton) exportButton.disabled = records.length === 0;
     if (pdfButton) pdfButton.disabled = records.length === 0;
-    target.innerHTML = records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${(can('labelsWrite') || can('labelsManage')) && (item.createdByUid === session.user.uid || can('labelsManage')) ? `<button class="secondary-button" type="button" data-label-edit="${escapeHtml(item.id)}">Editar</button>` : ''}<button class="secondary-button" type="button" data-label-history="${escapeHtml(item.id)}" aria-expanded="false" aria-controls="label-history-${escapeHtml(item.id)}">Histórico</button></span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}<div id="label-history-${escapeHtml(item.id)}" class="label-history" data-label-history-content="${escapeHtml(item.id)}" hidden></div></li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>';
+    target.innerHTML = `${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${(can('labelsWrite') || can('labelsManage')) && (item.createdByUid === session.user.uid || can('labelsManage')) ? `<button class="secondary-button" type="button" data-label-edit="${escapeHtml(item.id)}">Editar</button>` : ''}<button class="secondary-button" type="button" data-label-history="${escapeHtml(item.id)}" aria-expanded="false" aria-controls="label-history-${escapeHtml(item.id)}">Histórico</button></span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}<div id="label-history-${escapeHtml(item.id)}" class="label-history" data-label-history-content="${escapeHtml(item.id)}" hidden></div></li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
     target.querySelectorAll('[data-label-edit]').forEach((button) => button.addEventListener('click', () => beginLabelEdit(records.find((item) => item.id === button.dataset.labelEdit))));
     target.querySelectorAll('[data-label-history]').forEach((button) => button.addEventListener('click', async () => {
       const historyTarget = target.querySelector(`[data-label-history-content="${CSS.escape(button.dataset.labelHistory)}"]`);
@@ -1433,10 +1447,25 @@ async function loadLabelReport() {
         historyTarget.innerHTML = `<small>Não foi possível carregar o histórico. ${escapeHtml(error.message || '')}</small>`;
       }
     }));
+    target.querySelector('#label-report-more')?.addEventListener('click', (event) => {
+      event.currentTarget.disabled = true;
+      loadLabelReport({append: true});
+    });
     return true;
   } catch (error) {
-    if (loadId === labelReportLoad) target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
+    if (loadId === labelReportLoad) {
+      if (append) {
+        target.insertAdjacentHTML('afterbegin', `<p class="empty-state">Não foi possível carregar mais etiquetas. ${escapeHtml(error.message || '')}</p>`);
+        const moreButton = target.querySelector('#label-report-more');
+        if (moreButton) {
+          moreButton.disabled = !navigator.onLine;
+          moreButton.textContent = navigator.onLine ? 'Tentar carregar mais' : 'Conecte-se para carregar mais';
+        }
+      } else target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
+    }
     return false;
+  } finally {
+    if (append) labelReportLoadingMore = false;
   }
 }
 

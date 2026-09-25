@@ -996,27 +996,52 @@ export async function updateEventRecord(eventId, input, uid) {
   }
 }
 
-export async function listLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 100} = {}) {
+export async function listLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 100, cursor = null} = {}) {
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar as etiquetas.');
   if (!uid) throw new Error('A sessão expirou. Entre novamente para consultar etiquetas.');
   const currentLimit = Math.min(100, Math.max(1, pageSize));
   const base = [where('active', '==', true), where('date', '>=', from), where('date', '<=', to)];
-  const list = async (extra = []) => getDocsFromServer(query(
-    collection(db, 'labels'), ...base, ...extra, orderBy('date', 'desc'), limit(currentLimit)
+  const cursorMode = canManage ? 'admin' : 'staff';
+  if (cursor && cursor.mode !== cursorMode) cursor = null;
+  const list = async (extra = [], after = null) => getDocsFromServer(query(
+    collection(db, 'labels'), ...base, ...extra, orderBy('date', 'desc'), ...(after ? [startAfter(after)] : []), limit(currentLimit)
   ));
-  let snapshots;
+  let snapshots = [];
+  let nextCursor = null;
   if (canManage) {
-    snapshots = [await list()];
+    const done = cursor?.adminDone === true;
+    const snapshot = done ? null : await list([], cursor?.admin || null);
+    if (snapshot) snapshots.push(snapshot);
+    nextCursor = snapshot && snapshot.docs.length === currentLimit
+      ? {mode: 'admin', admin: snapshot.docs[snapshot.docs.length - 1], adminDone: false}
+      : null;
   } else {
-    const own = list([where('createdByUid', '==', uid)]);
-    const staff = sigla ? list([where('staffSiglas', 'array-contains', sigla)]) : Promise.resolve(null);
-    snapshots = (await Promise.all([own, staff])).filter(Boolean);
+    const ownDone = cursor?.ownDone === true;
+    const staffDone = !sigla || cursor?.staffDone === true;
+    const [own, staff] = await Promise.all([
+      ownDone ? null : list([where('createdByUid', '==', uid)], cursor?.own || null),
+      staffDone ? null : list([where('staffSiglas', 'array-contains', sigla)], cursor?.staff || null)
+    ]);
+    if (own) snapshots.push(own);
+    if (staff) snapshots.push(staff);
+    const nextOwnDone = ownDone || !own || own.docs.length < currentLimit;
+    const nextStaffDone = staffDone || !staff || staff.docs.length < currentLimit;
+    nextCursor = nextOwnDone && nextStaffDone ? null : {
+      mode: 'staff',
+      own: own?.docs.length ? own.docs[own.docs.length - 1] : cursor?.own || null,
+      ownDone: nextOwnDone,
+      staff: staff?.docs.length ? staff.docs[staff.docs.length - 1] : cursor?.staff || null,
+      staffDone: nextStaffDone
+    };
   }
   const records = new Map();
   for (const snapshot of snapshots) {
     for (const item of snapshot.docs) records.set(item.id, {id: item.id, ...item.data()});
   }
-  return [...records.values()].sort((left, right) => String(right.date).localeCompare(String(left.date)) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt)).slice(0, currentLimit);
+  return {
+    records: [...records.values()].sort((left, right) => String(right.date).localeCompare(String(left.date)) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt)),
+    nextCursor
+  };
 }
 
 export async function updateLabelRecord(labelId, input, uid) {
