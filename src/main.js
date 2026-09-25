@@ -47,6 +47,8 @@ let managementActivityLoad = 0;
 let eventReportMode = 'daily';
 let eventReportLoad = 0;
 let loadedEventReportRecords = [];
+let eventReportSourceRecords = [];
+let eventReportStale = false;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
 let loadedLabelRecords = [];
@@ -233,7 +235,7 @@ function shellView() {
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="event-day-control" ${eventReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="event-report-day" value="${todayInputValue()}"></label><label id="event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-events" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
+  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="event-day-control" ${eventReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="event-report-day" value="${todayInputValue()}"></label><label id="event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><label>Filtrar por pessoa<input type="search" id="event-report-person" placeholder="Nome ou sigla" autocomplete="off"></label><button class="secondary-button" type="button" id="export-events" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><small class="record-meta">A busca considera os registros carregados para o período, até 100 por consulta.</small><div id="event-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const labelReport = route === 'labels' ? `<section class="event-report" aria-label="Relatórios de etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportMode === 'daily'}">RELATÓRIO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportMode === 'monthly'}">RELATÓRIO MENSAL - ETIQUETAS</button></div><div class="report-period"><label id="label-day-control" ${labelReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="label-report-day" value="${todayInputValue()}"></label><label id="label-month-control" ${labelReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-labels" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
@@ -477,6 +479,7 @@ async function loadModule(route) {
     }));
     document.querySelector('#event-report-day')?.addEventListener('change', loadEventReport);
     document.querySelector('#event-report-month')?.addEventListener('change', loadEventReport);
+    document.querySelector('#event-report-person')?.addEventListener('input', renderEventReportRecords);
     document.querySelector('#export-events')?.addEventListener('click', exportEventReport);
     document.querySelector('#share-events-pdf')?.addEventListener('click', () => shareReportPdf('events'));
     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
@@ -1247,6 +1250,7 @@ async function loadEventReport() {
   }
   target.innerHTML = '<p class="loading">Carregando registros…</p>';
   loadedEventReportRecords = [];
+  eventReportSourceRecords = [];
   const exportButton = document.querySelector('#export-events');
   if (exportButton) exportButton.disabled = true;
   const pdfButton = document.querySelector('#share-events-pdf');
@@ -1256,22 +1260,35 @@ async function loadEventReport() {
     const report = await listEventRecords({from, to, uid: session.user.uid});
     const records = report.records;
     if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
-    const hasPending = records.some((item) => item.pendingFirestore || item.syncFailed);
-    loadedEventReportRecords = records.filter((item) => !item.pendingFirestore && !item.syncFailed);
-    if (exportButton) exportButton.disabled = loadedEventReportRecords.length === 0;
-    if (pdfButton) pdfButton.disabled = loadedEventReportRecords.length === 0;
-    const syncNotice = report.stale
-      ? '<p class="sync-state">Sem conexão: esta lista mostra somente eventos locais que ainda aguardam confirmação. Registros confirmados anteriormente não ficam em cache.</p>'
-      : hasPending
-        ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
-        : '';
-    target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && !item.pendingFirestore && !item.syncFailed && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`).join('')}</ul>` : report.stale ? '<p class="empty-state">Não há eventos locais pendentes neste período.</p>' : '<p class="empty-state">Nenhum evento neste período.</p>'}`;
-    target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
+    eventReportSourceRecords = records;
+    eventReportStale = report.stale;
+    renderEventReportRecords();
     return true;
   } catch (error) {
     if (loadId === eventReportLoad) target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
     return false;
   }
+}
+
+function renderEventReportRecords() {
+  const target = document.querySelector('#event-report-results');
+  if (!target) return;
+  const term = (document.querySelector('#event-report-person')?.value || '').trim().toLocaleLowerCase('pt-BR');
+  const records = term ? eventReportSourceRecords.filter((item) => `${item.memberStatus || ''} ${item.substitute || ''}`.toLocaleLowerCase('pt-BR').includes(term)) : eventReportSourceRecords;
+  const hasPending = eventReportSourceRecords.some((item) => item.pendingFirestore || item.syncFailed);
+  loadedEventReportRecords = records.filter((item) => !item.pendingFirestore && !item.syncFailed);
+  const exportButton = document.querySelector('#export-events');
+  const pdfButton = document.querySelector('#share-events-pdf');
+  if (exportButton) exportButton.disabled = loadedEventReportRecords.length === 0;
+  if (pdfButton) pdfButton.disabled = loadedEventReportRecords.length === 0;
+  const syncNotice = eventReportStale
+    ? '<p class="sync-state">Sem conexão: esta lista mostra somente eventos locais que ainda aguardam confirmação. Registros confirmados anteriormente não ficam em cache.</p>'
+    : hasPending
+      ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
+      : '';
+  const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : term ? 'Nenhum evento corresponde à busca.' : 'Nenhum evento neste período.';
+  target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && !item.pendingFirestore && !item.syncFailed && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}`;
+  target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
 }
 
 function beginEventEdit(item) {
