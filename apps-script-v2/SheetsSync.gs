@@ -34,16 +34,31 @@ function setupSahmtV2Reporting() {
       sheet = spreadsheet.getSheets()[0].setName(config.name);
     }
     if (!sheet) sheet = spreadsheet.insertSheet(config.name);
-    const currentHeaders = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
     sheet.getRange(1, 1, 1, config.fields.length).setValues([config.fields]);
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, config.fields.length).setFontWeight('bold').setBackground('#0d3257').setFontColor('#ffffff');
-    if (!sheet.getFilter() && sheet.getLastRow() > 1) sheet.getRange(1, 1, sheet.getLastRow(), config.fields.length).createFilter();
+    if (!sheet.getFilter()) sheet.getRange(1, 1, sheet.getMaxRows(), config.fields.length).createFilter();
+    applyReportColumnFormats_(sheet, config);
   });
 
   properties.setProperty(SAHMT_V2_CONFIG.reportsSpreadsheetProperty, spreadsheetId);
 
   return {spreadsheetId: spreadsheetId, tabs: tabConfigs.map(function (config) { return config.name; })};
+}
+
+function applyReportColumnFormats_(sheet, config) {
+  const textFields = new Set(['syncKey', 'idRegistro', 'responsibleUid', 'createdByUid', 'updatedByUid']);
+  const timestampFields = new Set(['createdAt', 'updatedAt']);
+  const currencyFields = new Set(['amount', 'amountToPay']);
+  const integerFields = new Set(['delayMultiple', 'version']);
+  config.fields.forEach(function (field, index) {
+    const column = index + 1;
+    if (textFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('@');
+    else if (timestampFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+    else if (currencyFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('"R$" #,##0.00;[Red]-"R$" #,##0.00');
+    else if (integerFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('0');
+    else if (field === 'date') sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('yyyy-mm-dd');
+  });
 }
 
 function installSahmtV2SyncTrigger() {

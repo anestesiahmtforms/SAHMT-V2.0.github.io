@@ -42,7 +42,7 @@ Checklist agora permite a `checklistManage` cadastrar, corrigir, ordenar, defini
 - [ ] Publicar Firestore Rules e índices após Emulator e revisão de permissões.
 - [x] Conferir estaticamente as consultas do repositório contra os índices manuais; mapa em `QUERY_INDEX_AUDIT.md`. Publicação/construção e validação autenticada dos índices no projeto real continuam pendentes.
 - [x] Manter Apps Script/Sheets fora da autenticação, navegação e confirmação operacional; remover o rascunho de espelhamento amplo.
-- [x] Implementar localmente integração pequena e assíncrona Firestore→Sheets: fila idempotente obrigatória na mesma batch de eventos, etiquetas e checklists; exportação seletiva e worker com retry. Rules Emulator e build passaram. Confirmar IAM/escopos, destino, implantação e teste real continuam pendentes.
+- [x] Implementar localmente integração pequena e assíncrona Firestore→Sheets: fila idempotente obrigatória na mesma batch de eventos, etiquetas e checklists; exportação seletiva e worker com retry. Setup prepara abas, cabeçalhos, filtros e formatos sem executar alterações no Drive. Rules Emulator e build passaram. Confirmar IAM/escopos, destino, implantação e teste real continuam pendentes.
 - [ ] Reavaliar integração externa somente se surgir uma função concreta; definir finalidade e dados mínimos sem torná-la parte da autenticação ou do banco operacional.
 
 ## Fase 4 — Release
