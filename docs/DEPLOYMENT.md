@@ -29,6 +29,7 @@ Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch
 
 ## Validações locais
 
+- Conferência visual em 25/09/2026 do build servido por `vite preview`: o login renderizou no navegador em 402 × 662, com marca, título, orientação, botão e rodapé visíveis sem corte. Árvore de acessibilidade confirmou os textos e o botão. Não foi acionado o login. Captura desktop do Chrome expirou duas vezes no controlador; QA autenticado e visual desktop permanecem pendentes.
 - Em 25/09/2026, Eventos ganhou edição offline idempotente com versão-base e replay transacional. Rascunhos cuja versão mudou entram em conflito manual separado, preservados sem reenvio automático. `npm run test:domain` passou 62/62, `npm run test:rules` passou 35/35 no Firestore Emulator com Java 21 e `npm run build` passou com 334 módulos; shell 274,49 kB (78,58 kB gzip), dados 60,05 kB (17,56 kB gzip). Service worker avançado para `sahmt-v2-shell-v19`; nada publicado.
 - Revalidação em 25/09/2026 após habilitar `qualityManage` somente na área de Gestão da Qualidade: Rules Emulator 35/35, domínio 62/62 e Functions Emulator 15/15; build Vite passou com 334 módulos (shell 272,87 kB / 78,11 kB gzip; dados 58,22 kB / 17,07 kB gzip). Service worker avançado para `sahmt-v2-shell-v18`. Regras, índices e site continuam sem publicação.
 
