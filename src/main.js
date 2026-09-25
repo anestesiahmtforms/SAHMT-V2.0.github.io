@@ -2,7 +2,7 @@ import './styles.css';
 import {firebaseConfigured} from './firebase-app.js';
 import {signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations} from './outbox.js';
+import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations} from './outbox.js';
 import {eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -42,6 +42,9 @@ const userPermissions = [
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
 let notice = '';
+let outboxRetryTimer = null;
+let outboxRetryAt = 0;
+let outboxRetryUid = '';
 let selectedManagementAreaId = '';
 let managementActivityLoad = 0;
 let eventReportMode = 'daily';
@@ -696,6 +699,20 @@ async function loadOfflineView(target) {
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
       const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
+      const retryAt = Number(item.nextAttemptAt);
+      const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
+      const operationStatus = item.status === 'conflict'
+        ? 'Conflito para comparar'
+        : item.status === 'failed'
+          ? 'Revisar'
+          : !navigator.onLine
+            ? 'Aguardando conexão'
+            : retryScheduled
+              ? 'Nova tentativa agendada'
+              : 'Aguardando envio';
+      const retryInfo = retryScheduled
+        ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
+        : '';
       const resolution = item.status !== 'queued'
         ? `${dateDiffers
           ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
@@ -708,7 +725,7 @@ async function loadOfflineView(target) {
         : item.type === 'eventEdits'
           ? `Evento ${item.resourceId} · versão base ${Number(item.payload.expectedVersion)}`
         : `ID ${item.resourceId}`;
-      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${item.status === 'conflict' ? 'Conflito para comparar' : item.status === 'failed' ? 'Revisar' : 'Aguardando conexão'}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${resolution}</li>`;
+      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${operationStatus}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${retryInfo}${resolution}</li>`;
     }).join('');
     const trainingRows = pendingProgress.map((item) => {
       const percent = item.duration ? Math.min(100, Math.round((item.lastPosition / item.duration) * 100)) : 0;
@@ -787,6 +804,7 @@ async function loadOfflineView(target) {
           await flushOutbox(uid, {requestId: button.dataset.retryOperation});
         }
       } finally {
+        await scheduleNextOutboxRetry(uid);
         if (document.querySelector('#module-content') === target) await loadOfflineView(target);
         await updateOutboxStatus();
       }
@@ -2667,17 +2685,48 @@ async function updateOutboxStatus() {
   });
 }
 
+function scheduleOutboxRetry(uid, attemptAt) {
+  if (!uid || !Number.isFinite(attemptAt)) {
+    if (!uid || outboxRetryUid === uid) {
+      clearTimeout(outboxRetryTimer);
+      outboxRetryTimer = null;
+      outboxRetryAt = 0;
+      outboxRetryUid = '';
+    }
+    return;
+  }
+  if (outboxRetryTimer && outboxRetryUid === uid && outboxRetryAt <= attemptAt) return;
+  clearTimeout(outboxRetryTimer);
+  outboxRetryUid = uid;
+  outboxRetryAt = attemptAt;
+  outboxRetryTimer = window.setTimeout(() => {
+    outboxRetryTimer = null;
+    outboxRetryAt = 0;
+    outboxRetryUid = '';
+    if (session.status === 'signed-in' && session.user.uid === uid && navigator.onLine) void syncOutbox();
+  }, Math.max(0, attemptAt - Date.now()));
+}
+
+async function scheduleNextOutboxRetry(uid) {
+  try {
+    scheduleOutboxRetry(uid, await nextQueuedAttemptAt(uid));
+  } catch (error) {
+    console.warn('[SAHMT sync] Não foi possível agendar a próxima tentativa:', error.code || error.message);
+  }
+}
+
 async function syncOutbox() {
   if (!navigator.onLine || session.status !== 'signed-in') return;
+  const uid = session.user.uid;
   try {
     const [counts, pendingProgress] = await Promise.all([
-      operationCounts(session.user.uid),
-      pendingTrainingProgressCount(session.user.uid)
+      operationCounts(uid),
+      pendingTrainingProgressCount(uid)
     ]);
     if (!counts.queued && !pendingProgress) return;
     const {flushOutbox, syncPendingTrainingProgress} = await import('./data.js');
-    await flushOutbox(session.user.uid);
-    await syncPendingTrainingProgress(session.user.uid);
+    await flushOutbox(uid);
+    await syncPendingTrainingProgress(uid);
     await updateOutboxStatus();
     if (currentRoute() === 'offline') {
       const content = document.querySelector('#module-content');
@@ -2685,6 +2734,8 @@ async function syncOutbox() {
     }
   } catch (error) {
     console.warn('[SAHMT sync] Outbox indisponível:', error.code || error.message);
+  } finally {
+    if (session.status === 'signed-in' && session.user.uid === uid) await scheduleNextOutboxRetry(uid);
   }
 }
 
@@ -2705,7 +2756,12 @@ function bindLogin() {
   });
 }
 
-function sessionChanged(next) { session = next; notice = ''; void render(); }
+function sessionChanged(next) {
+  if (next.status !== 'signed-in' || session.user?.uid !== next.user?.uid) scheduleOutboxRetry('', null);
+  session = next;
+  notice = '';
+  void render();
+}
 window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
 window.addEventListener('online', () => { if (session.status === 'signed-in') void syncOutbox(); });
 window.addEventListener('offline', () => { void updateOutboxStatus(); });
@@ -2713,7 +2769,10 @@ window.addEventListener('sahmt-write-synced', (event) => {
   void updateOutboxStatus();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
-window.addEventListener('sahmt-write-queued', () => { void updateOutboxStatus(); });
+window.addEventListener('sahmt-write-queued', () => {
+  void updateOutboxStatus();
+  if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
+});
 window.addEventListener('sahmt-write-rejected', (event) => {
   notice = `O Firestore recusou a gravação sincronizada; ela não foi confirmada. ${event.detail?.message || ''}`;
   void render();

@@ -39,6 +39,29 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
 
   const outbox = await import('../src/outbox.js');
   assert.deepEqual((await outbox.listQueuedOperations('uid-a')).map((item) => item.requestId), ['a-queued']);
+  const stablePayload = {data: {first: 1, second: 2}};
+  await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload});
+  await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: {data: {second: 2, first: 1}}});
+  await assert.rejects(
+    outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: {data: {first: 9}}}),
+    /outro conteúdo/
+  );
+  await assert.rejects(
+    outbox.enqueueOperation({uid: 'uid-b', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload}),
+    /outra ação ou sessão/
+  );
+  assert.deepEqual((await outbox.listQueuedOperations('uid-a')).find((item) => item.requestId === 'stable-event').payload, stablePayload);
+  assert.equal(await outbox.removeQueuedOperation('uid-a', 'stable-event'), true);
+  assert.equal(await outbox.nextQueuedAttemptAt('uid-a'), 0);
+  assert.equal(await outbox.nextQueuedAttemptAt('uid-without-operations'), null);
+  const laterAttempt = Date.now() + 30_000;
+  const earliestAttempt = Date.now() + 10_000;
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
+  assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-later', {nextAttemptAt: laterAttempt}), true);
+  assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-earlier', {nextAttemptAt: earliestAttempt}), true);
+  assert.equal(await outbox.nextQueuedAttemptAt('retry-user'), earliestAttempt);
+  await outbox.clearUserLocalData('retry-user', {clearOutbox: true});
   assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).map((item) => item.requestId), ['a-queued', 'a-failed', 'a-expired-checklist', 'a-event-conflict']);
   assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1});
   assert.equal(await outbox.pendingOperationCount('uid-a'), 4);
@@ -71,8 +94,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal((await outbox.readSafeCache('uid-a', 'trainingProgress', 'mine')).data.records.some((item) => item.trainingId === 'video-c'), true);
 
   await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'new-a', payload: {data: {}}, requestId: 'new-a'});
-  await outbox.enqueueOperation({uid: 'uid-a', type: 'scheduleReleases', resourceId: '2026-09-25:AB', payload: {day: '2026-09-25', sigla: 'AB', marked: true}, requestId: 'schedule-release::uid-a::2026-09-25::AB'});
-  await outbox.enqueueOperation({uid: 'uid-a', type: 'scheduleReleases', resourceId: '2026-09-25:AB', payload: {day: '2026-09-25', sigla: 'AB', marked: false}, requestId: 'schedule-release::uid-a::2026-09-25::AB'});
+  await outbox.enqueueOperation({uid: 'uid-a', type: 'scheduleReleases', resourceId: '2026-09-25:AB', payload: {day: '2026-09-25', sigla: 'AB', marked: true}, requestId: 'schedule-release::uid-a::2026-09-25::AB', coalesce: true});
+  await outbox.enqueueOperation({uid: 'uid-a', type: 'scheduleReleases', resourceId: '2026-09-25:AB', payload: {day: '2026-09-25', sigla: 'AB', marked: false}, requestId: 'schedule-release::uid-a::2026-09-25::AB', coalesce: true});
   const coalescedRelease = (await outbox.listQueuedOperations('uid-a')).find((item) => item.type === 'scheduleReleases');
   assert.equal(coalescedRelease.payload.marked, false);
   assert.equal((await outbox.listQueuedOperations('uid-a')).filter((item) => item.type === 'scheduleReleases').length, 1);

@@ -97,6 +97,15 @@ function getUserOperations(uid, status) {
   return transact(OUTBOX, 'readonly', (store) => store.index('uidStatus').getAll(IDBKeyRange.only([uid, status])));
 }
 
+function stableSerialize(value) {
+  if (value instanceof Date) return JSON.stringify({$date: value.toISOString()});
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 export async function writeSafeCache(uid, kind, id, data) {
   await transact(CACHE, 'readwrite', (store) => store.put({key: cacheKey(uid, kind, id), uid, kind, id, data: structuredClone(data), cachedAt: Date.now()}));
 }
@@ -165,16 +174,62 @@ export async function readCachedSchedule(uid, day) {
   return cached?.data ? {...cached.data, stale: true} : null;
 }
 
-export async function enqueueOperation({uid, type, resourceId, payload, requestId = crypto.randomUUID()}) {
+export async function enqueueOperation({uid, type, resourceId, payload, requestId = crypto.randomUUID(), coalesce = false}) {
   if (!uid || !type || !resourceId) throw new Error('A operação offline precisa de usuário, tipo e ID estável.');
+  if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
   const item = {requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''};
-  await transact(OUTBOX, 'readwrite', (store) => store.put(item));
+  const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
+    const store = tx.objectStore(OUTBOX);
+    let outcome = 'pending';
+    let status = 'queued';
+    const request = store.get(requestId);
+    request.onsuccess = () => {
+      const existing = request.result;
+      if (!existing) {
+        store.add(item);
+        outcome = 'created';
+        return;
+      }
+      if (existing.uid !== uid || existing.type !== type || existing.resourceId !== resourceId) {
+        outcome = 'id-collision';
+        status = existing.status;
+        return;
+      }
+      if (coalesce) {
+        store.put({...existing, payload: item.payload, status: 'queued', attempts: 0, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+        outcome = 'coalesced';
+        status = 'queued';
+        return;
+      }
+      if (stableSerialize(existing.payload) !== stableSerialize(item.payload)) {
+        outcome = 'payload-conflict';
+        status = existing.status;
+        return;
+      }
+      outcome = 'existing';
+      status = existing.status;
+    };
+    return () => ({outcome, status});
+  });
+  if (result.outcome === 'id-collision') throw new Error('O ID desta operação já pertence a outra ação ou sessão.');
+  if (result.outcome === 'payload-conflict') throw new Error('O ID desta operação já foi usado com outro conteúdo; a ação existente foi preservada.');
+  if (result.outcome === 'existing' && result.status !== 'queued') throw new Error('Esta operação já está em revisão e precisa ser tratada na área Offline.');
+  if (result.status === 'queued' && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId, type}}));
+  }
   return requestId;
 }
 
 export async function listQueuedOperations(uid) {
   const values = await getUserOperations(uid, 'queued');
   return (values || []).filter((item) => item.nextAttemptAt <= Date.now()).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function nextQueuedAttemptAt(uid) {
+  if (!uid) return null;
+  const values = await getUserOperations(uid, 'queued');
+  if (!values?.length) return null;
+  return Math.min(...values.map((item) => Number.isFinite(item.nextAttemptAt) ? item.nextAttemptAt : 0));
 }
 
 export async function listUnsettledOperations(uid) {

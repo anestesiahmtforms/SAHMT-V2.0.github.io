@@ -85,14 +85,13 @@ async function queueScheduleSiglaRelease(operation, {uid, currentSiglas = []}) {
   if (result.changed) {
     await enqueueOperation({
       uid, type: 'scheduleReleases', resourceId: `${operation.day}:${operation.sigla}`, requestId,
-      payload: operation
+      payload: operation, coalesce: true
     });
     const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
     const schedule = cached?.data || {id: operation.day, date: operation.day, positions: [], highlights: {siglas: [], events: []}, version: 0};
     await writeSafeCache(uid, 'scheduleDays', operation.day, {
       ...schedule, stale: true, highlights: {...schedule.highlights, siglas: result.siglas}
     }).catch(() => {});
-    window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId, type: 'scheduleReleases'}}));
     return {...schedule, stale: true, pendingFirestore: true, highlights: {...schedule.highlights, siglas: result.siglas}};
   }
   const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
