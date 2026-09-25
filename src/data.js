@@ -880,17 +880,44 @@ export async function transitionManagementActionPlan(planId, nextStatus, uid) {
   });
 }
 
-export async function listEventRecords({from, to, pageSize = 100} = {}) {
+export async function listEventRecords({from, to, uid, pageSize = 100} = {}) {
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar os eventos.');
-  const result = await getDocsFromServer(query(
-    collection(db, 'events'),
-    where('active', '==', true),
-    where('date', '>=', from),
-    where('date', '<=', to),
-    orderBy('date', 'desc'),
-    limit(Math.min(100, Math.max(1, pageSize)))
-  ));
-  return result.docs.map((item) => ({id: item.id, ...item.data()}));
+  let records = [];
+  let stale = navigator.onLine === false;
+  if (!stale) {
+    try {
+      const result = await getDocsFromServer(query(
+        collection(db, 'events'),
+        where('active', '==', true),
+        where('date', '>=', from),
+        where('date', '<=', to),
+        orderBy('date', 'desc'),
+        limit(Math.min(100, Math.max(1, pageSize)))
+      ));
+      records = result.docs.map((item) => ({id: item.id, ...item.data()}));
+    } catch (error) {
+      if (!mayUseOfflineCache(error)) throw error;
+      stale = true;
+    }
+  }
+  if (uid) {
+    const unsettled = await listUnsettledOperations(uid);
+    const pending = unsettled
+      .filter((item) => item.type === 'events' && item.payload?.collectionName === 'events' &&
+        typeof item.payload.data?.date === 'string' && item.payload.data.date >= from && item.payload.data.date <= to)
+      .map((item) => ({
+        id: item.requestId,
+        ...item.payload.data,
+        createdAt: new Date(item.createdAt),
+        pendingFirestore: item.status === 'queued',
+        syncFailed: item.status === 'failed',
+        syncError: item.lastError || ''
+      }));
+    const seen = new Set(records.map((item) => item.id));
+    records.push(...pending.filter((item) => !seen.has(item.id)));
+  }
+  records.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt));
+  return {records, stale};
 }
 
 export async function getEventCatalog(uid) {

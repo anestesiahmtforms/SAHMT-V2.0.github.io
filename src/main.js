@@ -1241,12 +1241,19 @@ async function loadEventReport() {
   if (pdfButton) pdfButton.disabled = true;
   try {
     const {listEventRecords} = await import('./data.js');
-    const records = await listEventRecords({from, to});
+    const report = await listEventRecords({from, to, uid: session.user.uid});
+    const records = report.records;
     if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
-    loadedEventReportRecords = records;
-    if (exportButton) exportButton.disabled = records.length === 0;
-    if (pdfButton) pdfButton.disabled = records.length === 0;
-    target.innerHTML = records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`).join('')}</ul>` : '<p class="empty-state">Nenhum evento neste período.</p>';
+    const hasPending = records.some((item) => item.pendingFirestore || item.syncFailed);
+    loadedEventReportRecords = records.filter((item) => !item.pendingFirestore && !item.syncFailed);
+    if (exportButton) exportButton.disabled = loadedEventReportRecords.length === 0;
+    if (pdfButton) pdfButton.disabled = loadedEventReportRecords.length === 0;
+    const syncNotice = report.stale
+      ? '<p class="sync-state">Sem conexão: esta lista mostra somente eventos locais que ainda aguardam confirmação. Registros confirmados anteriormente não ficam em cache.</p>'
+      : hasPending
+        ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
+        : '';
+    target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && !item.pendingFirestore && !item.syncFailed && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`).join('')}</ul>` : report.stale ? '<p class="empty-state">Não há eventos locais pendentes neste período.</p>' : '<p class="empty-state">Nenhum evento neste período.</p>'}`;
     target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
     return true;
   } catch (error) {
