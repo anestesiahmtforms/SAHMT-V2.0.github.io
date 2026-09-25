@@ -2,7 +2,7 @@ import './styles.css';
 import {firebaseConfigured} from './firebase-app.js';
 import {signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperations} from './outbox.js';
+import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations} from './outbox.js';
 import {eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -684,7 +684,7 @@ async function loadOfflineView(target) {
       const resolution = item.status === 'failed'
         ? `${dateDiffers
           ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
-          : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+          : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : '';
       const description = item.type === 'scheduleReleases'
         ? `${item.payload.sigla} · ${formatRecordDate(item.payload.day)}`
@@ -760,6 +760,18 @@ async function loadOfflineView(target) {
       if (document.querySelector('#module-content') === target) await loadOfflineView(target);
     });
     target.querySelectorAll('[data-open-current-checklist]').forEach((button) => button.addEventListener('click', () => navigate('checklist')));
+    target.querySelectorAll('[data-retry-operation]').forEach((button) => button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        if (await retryFailedOperation(uid, button.dataset.retryOperation)) {
+          const {flushOutbox} = await import('./data.js');
+          await flushOutbox(uid, {requestId: button.dataset.retryOperation});
+        }
+      } finally {
+        if (document.querySelector('#module-content') === target) await loadOfflineView(target);
+        await updateOutboxStatus();
+      }
+    }));
     target.querySelectorAll('[data-discard-operation]').forEach((button) => button.addEventListener('click', async () => {
       if (!window.confirm('Esta ação não foi confirmada pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
       await removeQueuedOperation(uid, button.dataset.discardOperation);

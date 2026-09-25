@@ -1530,11 +1530,12 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
 }
 
 const flushPromises = new Map();
-export async function flushOutbox(uid) {
+export async function flushOutbox(uid, {requestId} = {}) {
   if (!uid || !navigator.onLine) return {synced: 0, pending: 0};
   return runKeyedTask(flushPromises, uid, async () => {
     let synced = 0;
-    const operations = await listQueuedOperations(uid);
+    const queued = await listQueuedOperations(uid);
+    const operations = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
     for (const operation of operations) {
       try {
         if (operation.type === 'scheduleReleases') {

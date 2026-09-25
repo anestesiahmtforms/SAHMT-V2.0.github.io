@@ -261,6 +261,22 @@ export async function retryFailedOperations(uid) {
   });
 }
 
+export async function retryFailedOperation(uid, requestId) {
+  if (!uid || !requestId) return false;
+  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+    let retried = false;
+    const store = tx.objectStore(OUTBOX);
+    const request = store.get(requestId);
+    request.onsuccess = () => {
+      const item = request.result;
+      if (!item || item.uid !== uid || item.status !== 'failed') return;
+      store.put({...item, status: 'queued', nextAttemptAt: 0, lastError: ''});
+      retried = true;
+    };
+    return () => retried;
+  });
+}
+
 export async function clearUserLocalData(uid, {clearOutbox = false} = {}) {
   const stores = clearOutbox ? [CACHE, PROFILES, OUTBOX] : [CACHE, PROFILES];
   await transactAcross(stores, 'readwrite', (tx) => {
