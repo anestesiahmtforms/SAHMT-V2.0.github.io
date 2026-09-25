@@ -29,6 +29,8 @@ Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch
 
 ## Validações locais
 
+- Revalidação em 25/09/2026 após habilitar `qualityManage` somente na área de Gestão da Qualidade: Rules Emulator 35/35, domínio 62/62 e Functions Emulator 15/15; build Vite passou com 334 módulos (shell 272,87 kB / 78,11 kB gzip; dados 58,22 kB / 17,07 kB gzip). Service worker avançado para `sahmt-v2-shell-v18`. Regras, índices e site continuam sem publicação.
+
 - Revalidação em 25/09/2026: `npm run test:domain` passou 62/62; `npm run test:rules` passou 34/34 com Java 21 do Android Studio JBR no processo; Functions Emulator passou 15/15 callables com Auth/Firestore. O host é Node 24 apesar do runtime declarado Node 22; a descoberta local de Functions exigiu `FUNCTIONS_DISCOVERY_TIMEOUT=60` por causa do tempo de carregamento. `npm run build` passou com 334 módulos; chunk principal 272,18 kB (77,91 kB gzip), dados 57,99 kB (17,02 kB gzip), Firestore 550,77 kB (162,80 kB gzip) e PDF 419,34 kB (136,88 kB gzip). Nenhuma conta Firebase produtiva, regra, índice ou serviço externo foi usado nestas execuções.
 
 - `Firebase Auth` foi conferido no Chrome headless em perfil isolado após o login global resolver para estado deslogado: o texto de login apareceu, não havia iframes de autenticação e a captura de rede mostrou apenas arquivos do próprio `localhost` até o botão ser acionado. Nenhuma conta foi autenticada. Isso confirma que a inicialização atual não faz o pré-carregamento do iframe OAuth; não mede latência em dispositivo real.

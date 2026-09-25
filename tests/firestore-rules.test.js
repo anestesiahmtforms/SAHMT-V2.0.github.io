@@ -151,6 +151,43 @@ test('áreas de Gestão não podem ser apagadas e continuam disponíveis após r
   await assert.equal((await assertSucceeds(getDoc(areaRef))).exists(), true);
 });
 
+test('qualityManage abre somente a área de Qualidade e permite seus indicadores e documentos', async () => {
+  await seedProfiles([accessProfile('quality-manager', {qualityManage: true})]);
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'managementAreas', 'area-gestao-da-qualidade'), {id: 'area-gestao-da-qualidade', active: true, name: 'Gestão da Qualidade'});
+    await setDoc(doc(db, 'managementAreas', 'area-gestao-financeira'), {id: 'area-gestao-financeira', active: true, name: 'Gestão Financeira'});
+  });
+  const manager = testEnvironment.authenticatedContext('quality-manager').firestore();
+  await assertSucceeds(getDoc(doc(manager, 'managementAreas', 'area-gestao-da-qualidade')));
+  await assertFails(getDoc(doc(manager, 'managementAreas', 'area-gestao-financeira')));
+  await assertFails(getDocs(query(collection(manager, 'managementAreas'), where('active', '==', true))));
+
+  await assertSucceeds(setDoc(doc(manager, 'indicators', 'quality-indicator'), {
+    id: 'quality-indicator', managementAreaId: 'area-gestao-da-qualidade', name: 'Aderência a protocolos', description: '', unit: '%',
+    target: 95, direction: 'MIN', frequency: 'MONTHLY', ownerUid: 'quality-manager', active: true,
+    createdByUid: 'quality-manager', createdAt: serverTimestamp(), updatedByUid: 'quality-manager', updatedAt: serverTimestamp()
+  }));
+  await assertFails(setDoc(doc(manager, 'indicators', 'finance-indicator'), {
+    id: 'finance-indicator', managementAreaId: 'area-gestao-financeira', name: 'Indicador financeiro', description: '', unit: 'R$',
+    target: 100, direction: 'MAX', frequency: 'MONTHLY', ownerUid: 'quality-manager', active: true,
+    createdByUid: 'quality-manager', createdAt: serverTimestamp(), updatedByUid: 'quality-manager', updatedAt: serverTimestamp()
+  }));
+
+  await assertSucceeds(setDoc(doc(manager, 'documents', 'quality-protocol-1'), {
+    id: 'quality-protocol-1', managementAreaId: 'area-gestao-da-qualidade', title: 'Protocolo institucional', description: '',
+    driveFileId: 'abcdefghij', driveUrl: 'https://drive.google.com/file/d/abcdefghij/view', version: 1, category: 'Protocolo',
+    active: true, publishedAt: serverTimestamp(), requiredReading: false, createdByUid: 'quality-manager', createdAt: serverTimestamp(),
+    updatedByUid: 'quality-manager', updatedAt: serverTimestamp()
+  }));
+  await assertFails(setDoc(doc(manager, 'documents', 'finance-document-1'), {
+    id: 'finance-document-1', managementAreaId: 'area-gestao-financeira', title: 'Documento financeiro', description: '',
+    driveFileId: 'abcdefghijk', driveUrl: 'https://drive.google.com/file/d/abcdefghijk/view', version: 1, category: 'Financeiro',
+    active: true, publishedAt: serverTimestamp(), requiredReading: false, createdByUid: 'quality-manager', createdAt: serverTimestamp(),
+    updatedByUid: 'quality-manager', updatedAt: serverTimestamp()
+  }));
+});
+
 test('gestor autorizado atualiza vínculos de gestores/equipe com versão e escopo de campos', async () => {
   await seedProfiles([
     accessProfile('area-owner', {managementManage: true}),

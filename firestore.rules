@@ -18,9 +18,23 @@ service cloud.firestore {
       return can('managementRead') || can('managementManage') || can('managementActivityWrite') ||
         can('managementIndicatorsRead') || can('managementIndicatorsWrite') || can('managementPlansManage');
     }
-    function activityAccess() { return can('managementRead') || can('managementActivityWrite'); }
-    function indicatorAccess() { return can('managementRead') || can('managementIndicatorsRead') || can('managementIndicatorsWrite'); }
-    function actionPlanAccess() { return can('managementRead') || can('managementPlansManage'); }
+    function qualityManageArea(areaId) { return can('qualityManage') && areaId == 'area-gestao-da-qualidade'; }
+    function activityAccess(areaId) { return can('managementRead') || can('managementActivityWrite') || qualityManageArea(areaId); }
+    function indicatorAccess(areaId) { return can('managementRead') || can('managementIndicatorsRead') || can('managementIndicatorsWrite') || qualityManageArea(areaId); }
+    function actionPlanAccess(areaId) { return can('managementRead') || can('managementPlansManage') || qualityManageArea(areaId); }
+    function qualityPlanManage(planId) {
+      let planPath = /databases/$(database)/documents/actionPlans/$(planId);
+      return exists(planPath) && qualityManageArea(get(planPath).data.managementAreaId);
+    }
+    function activityInteractionCreateAccess(activityId) {
+      let activityPath = /databases/$(database)/documents/activities/$(activityId);
+      return exists(activityPath) && activityAccess(get(activityPath).data.managementAreaId);
+    }
+    function notificationManagementAreaAccess(area) {
+      return can('notificationsManage') || (can('notificationsRead') && area.active == true &&
+        ((area.memberUids is list && area.memberUids.hasAny([request.auth.uid])) ||
+         (area.managerUids is list && area.managerUids.hasAny([request.auth.uid]))));
+    }
     function notificationAudienceMatches(data) {
       let areaPath = /databases/$(database)/documents/managementAreas/$(data.audienceValue);
       let groupPath = /databases/$(database)/documents/notificationGroups/$(data.audienceValue);
@@ -446,7 +460,7 @@ service cloud.firestore {
       return activeUser() && exists(activityPath) && activity.active == true &&
         (interactionUid == request.auth.uid || can('managementRead') || activity.createdByUid == request.auth.uid ||
          (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
-         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])));
+         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || qualityManageArea(activity.managementAreaId));
     }
     function validManagementIndicator(data, indicatorId) {
       return data.keys().hasAll(['id', 'managementAreaId', 'name', 'description', 'unit', 'target', 'direction', 'frequency', 'ownerUid', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
@@ -601,9 +615,8 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /managementAreas/{areaId} {
-      allow read: if can('documentsManage') || can('equipmentManage') || managementAccess() || can('notificationsManage') || (can('notificationsRead') && resource.data.active == true &&
-        ((resource.data.memberUids is list && resource.data.memberUids.hasAny([request.auth.uid])) ||
-         (resource.data.managerUids is list && resource.data.managerUids.hasAny([request.auth.uid]))));
+      allow get: if qualityManageArea(areaId) && resource.data.active == true;
+      allow read: if can('documentsManage') || can('equipmentManage') || managementAccess() || notificationManagementAreaAccess(resource.data);
       allow create: if can('managementManage') && actorIsSelf();
       allow update: if can('managementManage') && updateActorIsSelf() && validManagementAssignmentUpdate(areaId);
       allow delete: if false;
@@ -755,14 +768,14 @@ service cloud.firestore {
       allow write: if false;
     }
     match /activities/{activityId} {
-      allow read: if activityAccess();
-      allow create: if can('managementActivityWrite') && validManagementActivity(request.resource.data, activityId);
-      allow update: if can('managementActivityWrite') && validManagementActivityTransition(activityId);
+      allow read: if activityAccess(resource.data.managementAreaId);
+      allow create: if (can('managementActivityWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementActivity(request.resource.data, activityId);
+      allow update: if (can('managementActivityWrite') || qualityManageArea(resource.data.managementAreaId)) && validManagementActivityTransition(activityId);
       allow delete: if false;
     }
     match /activityInteractions/{interactionId} {
       allow read: if activityInteractionAccess(resource.data.activityId, resource.data.uid);
-      allow create: if activityAccess() && validActivityInteraction(request.resource.data, interactionId);
+      allow create: if activityInteractionCreateAccess(request.resource.data.activityId) && validActivityInteraction(request.resource.data, interactionId);
       allow update, delete: if false;
     }
     match /scores/{scoreId} {
@@ -779,34 +792,34 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /indicators/{indicatorId} {
-      allow read: if indicatorAccess();
-      allow create: if can('managementIndicatorsWrite') && validManagementIndicator(request.resource.data, indicatorId);
+      allow read: if indicatorAccess(resource.data.managementAreaId);
+      allow create: if (can('managementIndicatorsWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementIndicator(request.resource.data, indicatorId);
       allow update, delete: if false;
     }
     match /indicatorMeasurements/{measurementId} {
-      allow read: if indicatorAccess();
-      allow create: if can('managementIndicatorsWrite') && validIndicatorMeasurement(request.resource.data, measurementId);
+      allow read: if indicatorAccess(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId);
+      allow create: if (can('managementIndicatorsWrite') || qualityManageArea(get(/databases/$(database)/documents/indicators/$(request.resource.data.indicatorId)).data.managementAreaId)) && validIndicatorMeasurement(request.resource.data, measurementId);
       allow update, delete: if false;
     }
     match /actionPlans/{planId} {
-      allow read: if actionPlanAccess();
-      allow create: if can('managementPlansManage') && validActionPlan(request.resource.data, planId);
-      allow update: if can('managementPlansManage') && validActionPlanTransition(planId);
+      allow read: if actionPlanAccess(resource.data.managementAreaId);
+      allow create: if (can('managementPlansManage') || qualityManageArea(request.resource.data.managementAreaId)) && validActionPlan(request.resource.data, planId);
+      allow update: if (can('managementPlansManage') || qualityManageArea(resource.data.managementAreaId)) && validActionPlanTransition(planId);
       allow delete: if false;
     }
     match /actionPlanItems/{itemId} {
-      allow read: if actionPlanAccess() || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]));
-      allow create: if can('managementPlansManage') && validActionPlanItem(request.resource.data, itemId);
-      allow update: if can('managementPlansManage') && validActionPlanItemTransition(itemId);
+      allow read: if actionPlanAccess(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]));
+      allow create: if (can('managementPlansManage') || qualityPlanManage(request.resource.data.planId)) && validActionPlanItem(request.resource.data, itemId);
+      allow update: if (can('managementPlansManage') || qualityPlanManage(resource.data.planId)) && validActionPlanItemTransition(itemId);
       allow delete: if false;
     }
     match /documents/{documentId} {
-      allow read: if can('documentsManage') || can('managementRead');
-      allow create: if can('documentsManage') && activeManagementArea(request.resource.data.managementAreaId) &&
+      allow read: if can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId);
+      allow create: if (can('documentsManage') || qualityManageArea(request.resource.data.managementAreaId)) && activeManagementArea(request.resource.data.managementAreaId) &&
         validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
         request.resource.data.createdByUid == request.auth.uid;
-      allow update: if can('documentsManage') && validManagementDocument(request.resource.data, documentId) &&
+      allow update: if (can('documentsManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementDocument(request.resource.data, documentId) &&
         request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
         request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.version == resource.data.version + 1 &&

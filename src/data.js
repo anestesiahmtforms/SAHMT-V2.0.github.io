@@ -136,6 +136,12 @@ export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} 
   }
 }
 
+export async function getManagementArea(areaId) {
+  if (!['area-gestao-da-qualidade', 'area-gestao-financeira'].includes(areaId)) return null;
+  const snapshot = await getDocFromServer(doc(db, 'managementAreas', areaId));
+  return snapshot.exists() && snapshot.data().active === true ? {id: snapshot.id, ...snapshot.data()} : null;
+}
+
 export async function listNotifications(profile, {pageSize = 100, canManage = false} = {}) {
   const uid = profile?.uid;
   if (!uid) return [];
