@@ -495,32 +495,78 @@ export async function saveManagementTaskScoringRule(input, uid) {
   });
 }
 
-export async function completeManagementActivity(activityId) {
-  if (!activityId || activityId.length > 128) throw new Error('Não foi possível identificar esta atividade.');
-  const {getFunctions, httpsCallable, connectFunctionsEmulator} = await import('firebase/functions');
-  const {app} = await import('./firebase-app.js');
-  if (!app) throw new Error('O Firebase ainda não está configurado neste ambiente.');
-  const functions = getFunctions(app, 'southamerica-east1');
-  if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
-    try { connectFunctionsEmulator(functions, '127.0.0.1', 5001); }
-    catch (error) { if (error.code !== 'functions/emulator-config-failed') throw error; }
-  }
-  const result = await httpsCallable(functions, 'completeManagementActivity')({activityId});
-  return result.data;
+export async function completeManagementActivity(activityId, uid) {
+  if (!activityId || activityId.length > 128 || !uid) throw new Error('Não foi possível identificar esta atividade ou sessão.');
+  const activityRef = doc(db, 'activities', activityId);
+  const interactionId = `completion-${activityId}`;
+  const interactionRef = doc(db, 'activityInteractions', interactionId);
+  return runTransaction(db, async (transaction) => {
+    const [activitySnapshot, interactionSnapshot] = await Promise.all([
+      transaction.get(activityRef), transaction.get(interactionRef)
+    ]);
+    if (!activitySnapshot.exists()) throw new Error('A atividade não está disponível. Atualize a lista.');
+    const activity = activitySnapshot.data();
+    if (activity.status === 'COMPLETED') {
+      if (!interactionSnapshot.exists() || interactionSnapshot.data().type !== 'COMPLETION' || interactionSnapshot.data().activityId !== activityId) {
+        throw new Error('A conclusão não tem registro de auditoria consistente. Solicite revisão da Gestão.');
+      }
+      return {completed: true, alreadyCompleted: true, pointsPending: interactionSnapshot.data().pointsStatus === 'PENDING_VALIDATION'};
+    }
+    if (activity.status !== 'IN_PROGRESS' || !Array.isArray(activity.responsibleUids) || !activity.responsibleUids.includes(uid)) {
+      throw new Error('Inicie a atividade e confirme se ela está atribuída a você.');
+    }
+    if (activity.evidenceRequired === true) throw new Error('Esta atividade exige evidência e ainda não possui validação segura.');
+    if (interactionSnapshot.exists()) throw new Error('Já existe um registro de conclusão para esta atividade. Atualize a lista.');
+    const pointsPending = activity.pointsEnabled === true && Number.isInteger(activity.points) && activity.points > 0;
+    transaction.update(activityRef, {
+      status: 'COMPLETED', completedAt: serverTimestamp(), updatedByUid: uid,
+      updatedAt: serverTimestamp(), version: (Number(activity.version) || 0) + 1
+    });
+    transaction.set(interactionRef, {
+      id: interactionId, activityId, uid, type: 'COMPLETION',
+      content: 'Atividade concluída pelo responsável.', evidence: null, pointsGenerated: 0,
+      ...(pointsPending ? {pointsClaimed: activity.points, pointsStatus: 'PENDING_VALIDATION'} : {pointsClaimed: 0, pointsStatus: 'NOT_APPLICABLE'}),
+      createdAt: serverTimestamp()
+    });
+    return {completed: true, alreadyCompleted: false, pointsAwarded: 0, pointsPending};
+  });
 }
 
-export async function cancelManagementActivity(activityId) {
-  if (!activityId || activityId.length > 128) throw new Error('Não foi possível identificar esta atividade.');
-  const {getFunctions, httpsCallable, connectFunctionsEmulator} = await import('firebase/functions');
-  const {app} = await import('./firebase-app.js');
-  if (!app) throw new Error('O Firebase ainda não está configurado neste ambiente.');
-  const functions = getFunctions(app, 'southamerica-east1');
-  if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
-    try { connectFunctionsEmulator(functions, '127.0.0.1', 5001); }
-    catch (error) { if (error.code !== 'functions/emulator-config-failed') throw error; }
-  }
-  const result = await httpsCallable(functions, 'cancelManagementActivity')({activityId});
-  return result.data;
+export async function cancelManagementActivity(activityId, uid) {
+  if (!activityId || activityId.length > 128 || !uid) throw new Error('Não foi possível identificar esta atividade ou sessão.');
+  const activityRef = doc(db, 'activities', activityId);
+  const profileRef = doc(db, 'users', uid);
+  const interactionId = `cancellation-${activityId}`;
+  const interactionRef = doc(db, 'activityInteractions', interactionId);
+  return runTransaction(db, async (transaction) => {
+    const [activitySnapshot, interactionSnapshot, profileSnapshot] = await Promise.all([
+      transaction.get(activityRef), transaction.get(interactionRef), transaction.get(profileRef)
+    ]);
+    if (!activitySnapshot.exists()) throw new Error('A atividade não está disponível. Atualize a lista.');
+    const activity = activitySnapshot.data();
+    if (activity.status === 'CANCELLED') {
+      if (!interactionSnapshot.exists() || interactionSnapshot.data().type !== 'CANCELLATION' || interactionSnapshot.data().activityId !== activityId) {
+        throw new Error('O cancelamento não tem registro de auditoria consistente. Solicite revisão da Gestão.');
+      }
+      return {cancelled: true, alreadyCancelled: true};
+    }
+    const profile = profileSnapshot.exists() ? profileSnapshot.data() : {};
+    const isManager = profile.active === true && profile.access === true && (profile.role === 'administrador_app' || profile.permissions?.admin === true || profile.permissions?.managementManage === true);
+    if (!['OPEN', 'IN_PROGRESS'].includes(activity.status) || (activity.createdByUid !== uid && !isManager)) {
+      throw new Error('Somente quem criou a atividade ou a Gestão pode cancelá-la.');
+    }
+    if (interactionSnapshot.exists()) throw new Error('Já existe um registro de cancelamento. Atualize a lista.');
+    transaction.update(activityRef, {
+      status: 'CANCELLED', completedAt: null, updatedByUid: uid,
+      updatedAt: serverTimestamp(), version: (Number(activity.version) || 0) + 1
+    });
+    transaction.set(interactionRef, {
+      id: interactionId, activityId, uid, type: 'CANCELLATION',
+      content: 'Atividade cancelada pela pessoa criadora ou pela Gestão.', evidence: null,
+      pointsGenerated: 0, createdAt: serverTimestamp()
+    });
+    return {cancelled: true, alreadyCancelled: false};
+  });
 }
 
 export async function listManagementDocuments(managementAreaId, {includeInactive = false, pageSize = 50} = {}) {

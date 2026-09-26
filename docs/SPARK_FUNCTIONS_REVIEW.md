@@ -68,6 +68,8 @@ A regra atual para atividade pontuada permite apenas responsável único e defin
 
 ## Alterações futuras necessárias (não realizadas nesta etapa)
 
+**Progresso posterior à revisão:** conclusão e cancelamento de tarefas de Gestão já foram movidos no PWA para transações diretas Firestore. As Rules exigem evento determinístico append-only no mesmo commit via `getAfter()`, status/ator permitidos e incremento de versão. Para tarefas pontuadas, `pointsClaimed` fica pendente, corresponde à configuração da tarefa e `pointsGenerated` permanece zero; nenhuma pontuação entra no saldo. As callables antigas permanecem no repositório, mas o PWA não as chama nesses dois fluxos. Ainda falta cobertura Emulator específica dessas novas transações; itens abaixo permanecem pendentes.
+
 1. Especificar e implementar esquema de claims pendentes, validação e ledger definitivo sem escrita de score pelo cliente.
 2. Atualizar Security Rules e transações para assinatura solicitada, conclusão/cancelamento de Gestão e outbox; cobrir fraude de UID, alterações de campos, corrida, replay e repetição.
 3. Implementar Apps Script periódico com OAuth/IAM mínimo, cursores, retry/backoff, idempotência e reconciliação; nenhum Apps Script deve responder a cada ação do PWA.
@@ -81,4 +83,3 @@ A regra atual para atividade pontuada permite apenas responsável único e defin
 - `firestore.rules`: validações atuais de Checklist, treinamento, atividades, ledger e fila.
 - `src/checklist-signature.js`, `src/training-start.js`, `src/data.js`: chamadas atuais do PWA às callables e gravação de progresso.
 - `docs/FIRESTORE_SCHEMA.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`: modelo de confiança e estado de implantação previamente registrado.
-

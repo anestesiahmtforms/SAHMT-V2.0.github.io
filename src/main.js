@@ -1755,7 +1755,7 @@ async function loadManagementAreaActivities(area) {
     detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
       const responsible = item.responsibleUids?.includes(session.user.uid);
       const action = responsible && item.status === 'OPEN' ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="IN_PROGRESS">Iniciar</button>` :
-        responsible && item.status === 'IN_PROGRESS' && !item.evidenceRequired ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="COMPLETED">Concluir${item.pointsEnabled ? ` · ${escapeHtml(item.points)} pts` : ''}</button>` : '';
+        responsible && item.status === 'IN_PROGRESS' && !item.evidenceRequired ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="COMPLETED">Concluir${item.pointsEnabled ? ` · ${escapeHtml(item.points)} pts a validar` : ''}</button>` : '';
       const canCancel = (item.createdByUid === session.user.uid || can('managementManage')) && ['OPEN', 'IN_PROGRESS'].includes(item.status);
       const cancelAction = canCancel ? `<button class="text-button" type="button" data-cancel-activity="${escapeHtml(item.id)}">Cancelar</button>` : '';
       const overdue = item.dueAt && item.dueAt < todayInputValue() && ['OPEN', 'IN_PROGRESS'].includes(item.status);
@@ -2003,8 +2003,8 @@ async function loadManagementAreaActivities(area) {
       try {
         const data = await import('./data.js');
         if (button.dataset.nextStatus === 'COMPLETED') {
-          const result = await data.completeManagementActivity(button.dataset.activityId);
-          notice = result.pointsAwarded > 0 ? `Ação concluída. ${result.pointsAwarded} pontos adicionados ao seu total.` : 'Ação concluída.';
+          const result = await data.completeManagementActivity(button.dataset.activityId, session.user.uid);
+          notice = result.pointsPending ? 'Ação concluída. A pontuação ficou pendente de validação.' : 'Ação concluída.';
         } else {
           await data.transitionManagementActivity(button.dataset.activityId, button.dataset.nextStatus, session.user.uid);
         }
@@ -2022,7 +2022,7 @@ async function loadManagementAreaActivities(area) {
       button.disabled = true;
       try {
         const {cancelManagementActivity} = await import('./data.js');
-        await cancelManagementActivity(button.dataset.cancelActivity);
+        await cancelManagementActivity(button.dataset.cancelActivity, session.user.uid);
         notice = 'Atividade cancelada.';
         await loadManagementAreaActivities(area);
       } catch (error) {
@@ -2048,7 +2048,7 @@ async function loadActivityInteractions(panel, activityId) {
     const items = await listActivityInteractions(activityId, session.user.uid, {canReadAll: panel.dataset.readAll === 'true', pageSize: 20});
     if (!panel.isConnected) return;
     panel.dataset.loaded = 'true';
-    list.innerHTML = items.length ? items.map((item) => `<li><small class="record-meta">${escapeHtml(interactionDateTime(item.createdAt))} · ${item.uid === session.user.uid ? 'Você' : 'Equipe'}</small><p>${escapeHtml(item.content)}</p></li>`).join('') : '<li class="empty-state">Nenhum comentário ainda.</li>';
+    list.innerHTML = items.length ? items.map((item) => `<li><small class="record-meta">${escapeHtml(interactionDateTime(item.createdAt))} · ${item.uid === session.user.uid ? 'Você' : 'Equipe'}${item.pointsStatus === 'PENDING_VALIDATION' ? ' · Pontuação pendente de validação' : ''}</small><p>${escapeHtml(item.content)}</p></li>`).join('') : '<li class="empty-state">Nenhum comentário ainda.</li>';
   } catch (error) {
     if (!panel.isConnected) return;
     panel.dataset.loaded = 'false';

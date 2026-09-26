@@ -446,25 +446,61 @@ service cloud.firestore {
     }
     function validManagementActivityTransition(activityId) {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
-      return resource.data.id == activityId && request.resource.data.id == resource.data.id &&
+      let base = resource.data.id == activityId && request.resource.data.id == resource.data.id &&
         request.resource.data.clientMutationId == resource.data.clientMutationId &&
         resource.data.createdByUid == request.resource.data.createdByUid && resource.data.createdAt == request.resource.data.createdAt &&
-        resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]) &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time;
+      let started = resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]) &&
         changed.hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt']) &&
-        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
-        (resource.data.status == 'OPEN' && request.resource.data.status == 'IN_PROGRESS' && request.resource.data.completedAt == null);
+        resource.data.status == 'OPEN' && request.resource.data.status == 'IN_PROGRESS' && request.resource.data.completedAt == null;
+      let completed = resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]) &&
+        resource.data.evidenceRequired == false &&
+        changed.hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        resource.data.status == 'IN_PROGRESS' && request.resource.data.status == 'COMPLETED' &&
+        request.resource.data.completedAt == request.time && request.resource.data.version == resource.data.version + 1 &&
+        hasActivityActionAfter(activityId, 'completion', 'COMPLETION');
+      let cancelled = (resource.data.createdByUid == request.auth.uid || can('managementManage')) &&
+        changed.hasOnly(['status', 'completedAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        resource.data.status in ['OPEN', 'IN_PROGRESS'] && request.resource.data.status == 'CANCELLED' &&
+        request.resource.data.completedAt == null && request.resource.data.version == resource.data.version + 1 &&
+        hasActivityActionAfter(activityId, 'cancellation', 'CANCELLATION');
+      return base && (started || completed || cancelled);
+    }
+    function hasActivityActionAfter(activityId, action, actionType) {
+      let interactionPath = /databases/$(database)/documents/activityInteractions/$(action + '-' + activityId);
+      let activityPath = /databases/$(database)/documents/activities/$(activityId);
+      return existsAfter(interactionPath) && getAfter(interactionPath).data.id == action + '-' + activityId &&
+        getAfter(interactionPath).data.activityId == activityId && getAfter(interactionPath).data.uid == request.auth.uid && getAfter(interactionPath).data.type == actionType &&
+        getAfter(interactionPath).data.createdAt == request.time && getAfter(interactionPath).data.evidence == null && getAfter(interactionPath).data.pointsGenerated == 0 &&
+        getAfter(interactionPath).data.content is string && getAfter(interactionPath).data.content.size() > 0 && getAfter(interactionPath).data.content.size() <= 1000 &&
+        (actionType == 'COMPLETION'
+          ? getAfter(interactionPath).data.pointsClaimed is int &&
+            (get(activityPath).data.pointsEnabled == true
+              ? getAfter(interactionPath).data.pointsStatus == 'PENDING_VALIDATION' && getAfter(interactionPath).data.pointsClaimed == get(activityPath).data.points
+              : getAfter(interactionPath).data.pointsStatus == 'NOT_APPLICABLE' && getAfter(interactionPath).data.pointsClaimed == 0)
+          : !getAfter(interactionPath).data.keys().hasAny(['pointsStatus', 'pointsClaimed']));
     }
     function validActivityInteraction(data, interactionId) {
       let activityPath = /databases/$(database)/documents/activities/$(data.activityId);
       let activity = get(activityPath).data;
       return data.keys().hasAll(['id', 'activityId', 'uid', 'type', 'content', 'createdAt', 'evidence', 'pointsGenerated']) &&
-        data.keys().hasOnly(['id', 'activityId', 'uid', 'type', 'content', 'createdAt', 'evidence', 'pointsGenerated']) &&
+        data.keys().hasOnly(['id', 'activityId', 'uid', 'type', 'content', 'createdAt', 'evidence', 'pointsGenerated', 'pointsClaimed', 'pointsStatus']) &&
         data.id == interactionId && data.activityId is string && exists(activityPath) && activity.active == true &&
-        data.uid == request.auth.uid && data.type == 'COMMENT' && data.content is string && data.content.size() > 0 && data.content.size() <= 1000 &&
+        data.uid == request.auth.uid && data.content is string && data.content.size() > 0 && data.content.size() <= 1000 &&
         data.createdAt == request.time && data.evidence == null && data.pointsGenerated == 0 &&
         (can('managementRead') || activity.createdByUid == request.auth.uid ||
          (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
-         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])));
+         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || can('managementManage')) &&
+        ((data.type == 'COMMENT' && interactionId != 'completion-' + data.activityId && interactionId != 'cancellation-' + data.activityId &&
+          !data.keys().hasAny(['pointsClaimed', 'pointsStatus'])) ||
+         (data.type == 'COMPLETION' && interactionId == 'completion-' + data.activityId &&
+          existsAfter(activityPath) && getAfter(activityPath).data.status == 'COMPLETED' &&
+          getAfter(activityPath).data.updatedByUid == request.auth.uid &&
+          hasActivityActionAfter(data.activityId, 'completion', 'COMPLETION')) ||
+         (data.type == 'CANCELLATION' && interactionId == 'cancellation-' + data.activityId &&
+          existsAfter(activityPath) && getAfter(activityPath).data.status == 'CANCELLED' &&
+          getAfter(activityPath).data.updatedByUid == request.auth.uid &&
+          hasActivityActionAfter(data.activityId, 'cancellation', 'CANCELLATION')));
     }
     function activityInteractionAccess(activityId, interactionUid) {
       let activityPath = /databases/$(database)/documents/activities/$(activityId);
@@ -754,7 +790,7 @@ service cloud.firestore {
     match /activities/{activityId} {
       allow read: if activityAccess(resource.data.managementAreaId);
       allow create: if (can('managementActivityWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementActivity(request.resource.data, activityId);
-      allow update: if (can('managementActivityWrite') || qualityManageArea(resource.data.managementAreaId)) && validManagementActivityTransition(activityId);
+      allow update: if (can('managementActivityWrite') || can('managementManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementActivityTransition(activityId);
       allow delete: if false;
     }
     match /activityInteractions/{interactionId} {
