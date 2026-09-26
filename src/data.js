@@ -1870,6 +1870,10 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
           return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
         }
       } catch {}
+      if (mayUseOfflineCache(error)) {
+        await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
+        return {id: requestId, pendingFirestore: true};
+      }
       throw error;
     }
   }
