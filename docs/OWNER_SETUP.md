@@ -8,7 +8,7 @@ A PWA e as Rules já estão publicadas. O que ainda depende de configuração do
 
 ## 1. Restringir pasta e planilha
 
-Na leitura de metadados de 26/09/2026, a pasta `APP SAHMT-V2.0` e a planilha `SAHMT V2.0 - BASE DE RELATÓRIOS` estavam com `anyone: reader`. O setup do Apps Script bloqueia enquanto qualquer uma estiver pública.
+Na leitura inicial de metadados de 26/09/2026, a pasta `APP SAHMT-V2.0` e a planilha `SAHMT V2.0 - BASE DE RELATÓRIOS` estavam com `anyone: reader`. O proprietário restringiu ambas depois; uma leitura posterior confirmou acesso apenas por contas nomeadas. O setup do Apps Script bloqueia enquanto qualquer uma estiver pública.
 
 **Estado atual verificado em 26/09/2026:** o proprietário restringiu a pasta e a planilha. Uma nova leitura confirmou que ambas só têm acesso de contas nomeadas; não há permissão geral ou “qualquer pessoa”. Esta etapa está concluída e não precisa ser repetida antes de criar o projeto Apps Script, a menos que as permissões mudem.
 
@@ -51,5 +51,5 @@ Após IAM e homologação, instale apenas os gatilhos Spark necessários: `insta
 - A PWA publicada usa o Firebase `sahmt-17a16` e o Firestore `(default)`.
 - Rules e 32 índices estão publicados; o primeiro perfil foi provisionado pelo proprietário.
 - A planilha existe e suas oito abas/cabeçalhos V2 foram conferidos.
-- O código dos quatro consumidores Apps Script está versionado; nenhum foi copiado, autorizado ou ativado no projeto real.
+- O projeto `SAHMT V2.0 – Integração Spark` foi criado na pasta oficial e recebeu o manifesto e sete arquivos fonte via `clasp` em 26/09/2026; uma leitura posterior confirmou hashes SHA-256 iguais aos do checkout. O envio não executou código. IAM, autorização de runtime, propriedades do script, homologação fictícia e instalação de gatilhos continuam pendentes.
 - A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`. Isso é intencional para esta arquitetura Spark.
