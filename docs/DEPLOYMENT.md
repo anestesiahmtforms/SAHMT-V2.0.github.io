@@ -15,6 +15,10 @@ Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch
 7. As callables `checklistSignature`, `trainingStart`, `completeTraining`, `completeManagementActivity` e `cancelManagementActivity` passaram quinze casos no Functions Emulator local (oito de assinatura, quatro de treinamentos, dois de conclusão de tarefa — pontuada individual e compartilhada sem pontos — e um de cancelamento idempotente); antes do deploy, revisar segurança/índices no projeto real e homologar no navegador com uma conta autorizada.
 8. Rules e os 29 índices manuais foram publicados em 25/09/2026 no projeto `sahmt-17a16`; a CLI confirmou todos `READY`. Em 26/09/2026, a Cloud Billing API confirmou `billingEnabled=false` e nenhuma conta vinculada. Functions não foram implantadas. Implantar `functions:checklistSignature`, `functions:trainingStart`, `functions:completeTraining`, `functions:completeManagementActivity` e `functions:cancelManagementActivity` somente após o proprietário vincular faturamento e autorizar o deploy.
 
+## App Check (preparado, ainda sem enforcement)
+
+O cliente inicializa reCAPTCHA v3 somente quando `VITE_APP_CHECK_SITE_KEY` contém a chave pública registrada para o domínio publicado. `.env.example` documenta a variável sem incluir uma chave real; emuladores locais ignoram App Check. Cadastre o app/domínio no Firebase, injete a site key no ambiente de build do Pages, publique e confirme métricas de tráfego legítimo antes de exigir tokens em qualquer produto Firebase. A ativação de enforcement é uma etapa separada no Console e permanece pendente; não adicione chave secreta ou token de debug ao repositório.
+
 ## Bloqueios externos conhecidos
 
 - O pacote legado `validacao.json` registra um deployment Apps Script que aguarda login Google. Esse estado não integra nem bloqueia a autenticação V2, que usa Firebase Auth e perfil UID no Firestore.
