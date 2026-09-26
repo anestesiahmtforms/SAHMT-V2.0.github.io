@@ -11,10 +11,17 @@ function setupSahmtV2Reporting() {
     sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
     spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   } else {
-    spreadsheet = SpreadsheetApp.create('SAHMT V2.0 - BASE DE RELATÓRIOS');
-    DriveApp.getFileById(spreadsheet.getId()).moveTo(folder);
-    spreadsheetId = spreadsheet.getId();
-    sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
+    const existingFile = sahmtV2FindExistingReportsSpreadsheet_(folder);
+    if (existingFile) {
+      spreadsheetId = existingFile.getId();
+      sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
+      spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    } else {
+      spreadsheet = SpreadsheetApp.create('SAHMT V2.0 - BASE DE RELATÓRIOS');
+      DriveApp.getFileById(spreadsheet.getId()).moveTo(folder);
+      spreadsheetId = spreadsheet.getId();
+      sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
+    }
   }
 
   const tabConfigs = Object.keys(SAHMT_V2_REPORT_TABS).map(function (name) {
@@ -46,6 +53,19 @@ function setupSahmtV2Reporting() {
   properties.setProperty(SAHMT_V2_CONFIG.reportsSpreadsheetProperty, spreadsheetId);
 
   return {spreadsheetId: spreadsheetId, tabs: tabConfigs.map(function (config) { return config.name; })};
+}
+
+function sahmtV2FindExistingReportsSpreadsheet_(folder) {
+  const files = folder.getFilesByName('SAHMT V2.0 - BASE DE RELATÓRIOS');
+  const matches = [];
+  while (files.hasNext()) {
+    const file = files.next();
+    if (file.getMimeType() === MimeType.GOOGLE_SHEETS) matches.push(file);
+  }
+  if (matches.length > 1) {
+    throw new Error('Há mais de uma planilha SAHMT V2.0 - BASE DE RELATÓRIOS na pasta oficial; resolva a duplicidade antes do setup.');
+  }
+  return matches[0] || null;
 }
 
 function applyReportColumnFormats_(sheet, config) {

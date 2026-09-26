@@ -76,7 +76,16 @@ function sahmtV2RequirePrivateFolder_() {
 
 function sahmtV2RequirePrivateSpreadsheet_(spreadsheetId) {
   sahmtV2RequirePrivateFolder_();
-  const access = DriveApp.getFileById(spreadsheetId).getSharingAccess();
+  const file = DriveApp.getFileById(spreadsheetId);
+  const parents = file.getParents();
+  let inReportsFolder = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === SAHMT_V2_CONFIG.reportsFolderId) inReportsFolder = true;
+  }
+  if (!inReportsFolder) {
+    throw new Error('Sincronização bloqueada: a planilha de relatórios não está na pasta oficial SAHMT V2.0.');
+  }
+  const access = file.getSharingAccess();
   if (access !== DriveApp.Access.PRIVATE) {
     throw new Error('Sincronização bloqueada: a planilha de relatórios não está privada (acesso atual: ' + access + '). Restrinja o acesso no Drive e revise o destino antes de reativar.');
   }
