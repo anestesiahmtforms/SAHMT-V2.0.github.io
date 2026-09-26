@@ -76,3 +76,6 @@ O cliente inicializa reCAPTCHA v3 somente quando `VITE_APP_CHECK_SITE_KEY` cont�
 - Build de produção reexecutado após o commit ae39d92: 334 módulos transformados; shell principal 266,95 kB (76,45 kB gzip), repositório Firestore 56,59 kB (16,58 kB gzip), PDF 419,34 kB (136,88 kB gzip), SDK Firestore 550,77 kB (162,80 kB gzip). Build aprovado; o aviso de chunk grande continua restrito a dependência Firestore carregada sob demanda.
 - Paridade de Gestão: o selo QGA Accredited Qmentum Diamond que aparecia no cabeçalho V1 foi reutilizado sem transformação no banner “Segmento de Gestão · SAHMT” do shell unificado. O asset só é solicitado ao renderizar a rota de Gestão e usa carregamento lazy. `npm run build` passou novamente com 334 módulos; shell principal 267,30 kB (76,56 kB gzip). A inspeção visual da tela Gestão no navegador continua pendente.
 
+
+- 26/09/2026: commit 7fd567c migrou início/conclusão de Treinamentos no PWA para transações Firestore compatíveis com Spark; workflow GitHub 36258100988 concluiu build e deploy com sucesso. Firestore Rules foram compiladas e publicadas por 
+px.cmd firebase deploy --only firestore:rules --project sahmt-17a16. Nenhuma Cloud Function foi implantada e billing permaneceu inalterado. Os claims de pontos ficam pendentes; não houve teste autenticado real em aparelho nem validação independente de reprodução do vídeo.
