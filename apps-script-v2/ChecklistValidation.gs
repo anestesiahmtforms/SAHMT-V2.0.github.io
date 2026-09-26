@@ -42,6 +42,9 @@ function listPendingChecklistSignatureRequests_() {
   const body = {structuredQuery: {
     from: [{collectionId: 'checklistSignatureRequests'}],
     where: {fieldFilter: {field: {fieldPath: 'status'}, op: 'EQUAL', value: {stringValue: 'PENDING_VALIDATION'}}},
+    select: {fields: ['id', 'day', 'revision', 'signerUid', 'declaration', 'status', 'justification'].map(function (fieldPath) {
+      return {fieldPath: fieldPath};
+    })},
     limit: SAHMT_V2_CHECKLIST_VALIDATION.maxPendingPerRun
   }};
   const response = firestoreRequest_(firestoreDocumentsUrl_(':runQuery'), {
@@ -60,7 +63,9 @@ function validateChecklistSignatureRequest_(request) {
       request.status !== 'PENDING_VALIDATION' || String(request.justification || '').trim().length < 8) {
     return updateChecklistRequestStatus_(request, 'REJECTED', {validationMessage: 'Solicitação fora do contrato.'});
   }
-  const signer = getFirestoreDocument_('users', request.signerUid);
+  const signer = getFirestoreDocument_('users', request.signerUid, [
+    'uid', 'active', 'access', 'role', 'permissions.admin', 'permissions.checklistSign', 'displayName', 'email'
+  ]);
   if (!signer || signer.uid !== request.signerUid || signer.active !== true || signer.access !== true || !hasChecklistSignPermission_(signer)) {
     return updateChecklistRequestStatus_(request, 'REJECTED', {validationMessage: 'Perfil do solicitante inativo ou sem permissão atual.'});
   }
@@ -77,7 +82,7 @@ function validateChecklistSignatureRequest_(request) {
     return updateChecklistRequestStatus_(request, 'STALE', {validationMessage: 'O Checklist mudou depois do pedido. Atualize e solicite nova revisão.'});
   }
   const signatureId = request.day + '_' + snapshot.revision;
-  const existingSignature = getFirestoreDocument_('checklistSignatures', signatureId);
+  const existingSignature = getFirestoreDocument_('checklistSignatures', signatureId, ['id']);
   if (existingSignature) {
     return updateChecklistRequestStatus_(request, 'DUPLICATE', {
       finalSignatureId: signatureId, validatedAt: new Date(), pointsAwarded: 0, responsibleAdjustment: 0,
@@ -128,7 +133,7 @@ function validateChecklistSignatureRequest_(request) {
     });
     return 'VALIDATED';
   } catch (error) {
-    const latest = getFirestoreDocument_('checklistSignatures', signatureId);
+    const latest = getFirestoreDocument_('checklistSignatures', signatureId, ['id']);
     if (latest) return updateChecklistRequestStatus_(request, 'DUPLICATE', {
       finalSignatureId: signatureId, validatedAt: new Date(), pointsAwarded: 0, responsibleAdjustment: 0,
       validationMessage: 'Esta revisão já possui assinatura válida.'
@@ -139,26 +144,28 @@ function validateChecklistSignatureRequest_(request) {
 
 function readTrustedChecklistSnapshot_(day) {
   if (day !== checklistSaoPauloDay_()) throw new Error('O pedido não corresponde ao dia atual em São Paulo.');
-  const schedule = getFirestoreDocument_('scheduleDays', day);
+  const schedule = getFirestoreDocument_('scheduleDays', day, ['positions', 'vacationLabel']);
   if (!schedule) throw new Error('Escala do dia indisponível.');
   const stations = queryFirestore_('stations', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
-  ], [{fieldPath: 'order', direction: 'ASCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxStations + 1);
+  ], [{fieldPath: 'order', direction: 'ASCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxStations + 1,
+  ['active', 'start', 'end', 'order', 'name']);
   const vacations = queryFirestore_('vacations', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
     firestoreFilter_('start', 'LESS_THAN_OR_EQUAL', {stringValue: day}),
     firestoreFilter_('end', 'GREATER_THAN_OR_EQUAL', {stringValue: day})
-  ], [{fieldPath: 'start', direction: 'ASCENDING'}], 101);
+  ], [{fieldPath: 'start', direction: 'ASCENDING'}], 101, ['active', 'start', 'end', 'siglas', 'label']);
   const events = queryFirestore_('events', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
     firestoreFilter_('date', 'EQUAL', {stringValue: day})
-  ], [], 201);
+  ], [], 201, ['active', 'date', 'eventType', 'memberStatus', 'substitute']);
   const contacts = queryFirestore_('contacts', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
-  ], [], 201);
+  ], [], 201, ['active', 'sigla', 'name']);
   const records = queryFirestore_('checklists', [
     firestoreFilter_('date', 'EQUAL', {stringValue: day})
-  ], [{fieldPath: 'createdAt', direction: 'DESCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords + 1);
+  ], [{fieldPath: 'createdAt', direction: 'DESCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords + 1,
+  ['date', 'createdAt', 'stationId', 'condition', 'occurrence']);
   if (stations.length > SAHMT_V2_CHECKLIST_VALIDATION.maxStations || vacations.length > 100 || events.length > 200 ||
       contacts.length > 200 || records.length > SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords) {
     throw new Error('O volume excede os limites seguros de validação.');
@@ -184,15 +191,19 @@ function readTrustedChecklistSnapshot_(day) {
   })}));
   const selection = selectChecklistResponsible_({schedule: schedule, day: day, vacations: vacations, events: events, contacts: contacts});
   if (!selection.ok) throw new Error(selection.reason);
-  const matchedProfiles = queryFirestore_('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2);
+  const matchedProfiles = queryFirestore_('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
+    ['uid', 'active', 'access', 'displayName', 'email']);
   if (matchedProfiles.length !== 1 || matchedProfiles[0].active !== true || matchedProfiles[0].access !== true || !matchedProfiles[0].uid) {
     throw new Error('Não há perfil ativo e único para a sigla responsável ' + selection.sigla + '.');
   }
   const contactMatches = contacts.filter(function (contact) { return normalizeChecklistText_(contact.sigla) === selection.sigla; });
+  const responsibleContact = contactMatches.length === 1
+    ? getFirestoreDocument_('contacts', contactMatches[0].id, ['name', 'email'])
+    : null;
   const responsible = {
     responsibleUid: matchedProfiles[0].uid,
-    responsibleName: contactMatches.length === 1 ? contactMatches[0].name : matchedProfiles[0].displayName,
-    responsibleEmail: contactMatches.length === 1 ? contactMatches[0].email || '' : matchedProfiles[0].email || '',
+    responsibleName: responsibleContact ? responsibleContact.name : matchedProfiles[0].displayName,
+    responsibleEmail: responsibleContact ? responsibleContact.email || '' : matchedProfiles[0].email || '',
     position: selection.position, sigla: selection.sigla
   };
   const trustedSnapshot = {date: day, responsibleUid: responsible.responsibleUid,
@@ -262,11 +273,14 @@ function sha256Hex_(value) {
     .map(function (byte) { return ('0' + ((byte + 256) % 256).toString(16)).slice(-2); }).join('');
 }
 
-function queryFirestore_(collectionId, filters, orderBy, limit) {
+function queryFirestore_(collectionId, filters, orderBy, limit, fieldPaths) {
   const structured = {from: [{collectionId: collectionId}], limit: limit};
   if (filters.length === 1) structured.where = {fieldFilter: filters[0]};
   else if (filters.length > 1) structured.where = {compositeFilter: {op: 'AND', filters: filters.map(function (filter) { return {fieldFilter: filter}; })}};
   if (orderBy.length) structured.orderBy = orderBy.map(function (item) { return {field: {fieldPath: item.fieldPath}, direction: item.direction}; });
+  if (Array.isArray(fieldPaths) && fieldPaths.length) {
+    structured.select = {fields: fieldPaths.map(function (fieldPath) { return {fieldPath: fieldPath}; })};
+  }
   const response = firestoreRequest_(firestoreDocumentsUrl_(':runQuery'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({structuredQuery: structured})
   });
@@ -279,10 +293,14 @@ function queryFirestore_(collectionId, filters, orderBy, limit) {
 }
 
 function firestoreFilter_(fieldPath, op, value) { return {field: {fieldPath: fieldPath}, op: op, value: value}; }
-function getFirestoreDocument_(collectionId, documentId) {
+function getFirestoreDocument_(collectionId, documentId, fieldPaths) {
   try {
     const path = '/' + encodeURIComponent(collectionId) + '/' + encodeURIComponent(documentId);
-    const document = firestoreRequest_(firestoreDocumentsUrl_(path), {method: 'get'});
+    const mask = Array.isArray(fieldPaths) ? fieldPaths.map(function (fieldPath) {
+      return 'mask.fieldPaths=' + encodeURIComponent(fieldPath);
+    }).join('&') : '';
+    const url = firestoreDocumentsUrl_(path) + (mask ? '?' + mask : '');
+    const document = firestoreRequest_(url, {method: 'get'});
     return Object.assign(firestoreFieldsToJs_(document.fields || {}), {id: documentId, _documentName: document.name, _updateTime: document.updateTime});
   } catch (error) {
     if (error.status === 404) return null;

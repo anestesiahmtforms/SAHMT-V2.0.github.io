@@ -47,6 +47,10 @@ function listPendingManagementScoreReviews_() {
   const structured = {
     from: [{collectionId: 'activityScoreReviews'}],
     where: {fieldFilter: {field: {fieldPath: 'status'}, op: 'EQUAL', value: {stringValue: 'PENDING_VALIDATION'}}},
+    select: {fields: ['id', 'activityId', 'managementAreaId', 'status', 'reviewerUid', 'decision', 'createdAt',
+      'points', 'scoringRuleId', 'scoringRuleVersion', 'note'].map(function (fieldPath) {
+      return {fieldPath: fieldPath};
+    })},
     orderBy: [{field: {fieldPath: '__name__'}, direction: 'ASCENDING'}],
     limit: SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.pageSize
   };
@@ -73,11 +77,18 @@ function validateManagementScoreReview_(review) {
       !(review.createdAt instanceof Date) || !managementScoreValidPoints_(review.points)) {
     return updateManagementScoreReview_(review, 'NEEDS_REVIEW', 'Solicitação de revisão fora do contrato.');
   }
-  const activity = getFirestoreDocument_('activities', review.activityId);
+  const activity = getFirestoreDocument_('activities', review.activityId, [
+    'id', 'managementAreaId', 'status', 'active', 'evidenceRequired', 'pointsEnabled', 'responsibleUids',
+    'points', 'scoringRuleId', 'scoringRuleVersion'
+  ]);
   const completionId = 'completion-' + review.activityId;
-  const completion = getFirestoreDocument_('activityInteractions', completionId);
-  const reviewer = getFirestoreDocument_('users', review.reviewerUid);
-  const area = getFirestoreDocument_('managementAreas', review.managementAreaId);
+  const completion = getFirestoreDocument_('activityInteractions', completionId,
+    ['activityId', 'type', 'uid', 'pointsClaimed', 'pointsStatus']);
+  const reviewer = getFirestoreDocument_('users', review.reviewerUid, [
+    'uid', 'active', 'access', 'role', 'permissions.admin', 'permissions.managementManage',
+    'permissions.qualityManage', 'permissions.managementRead'
+  ]);
+  const area = getFirestoreDocument_('managementAreas', review.managementAreaId, ['managerUids']);
   if (!activity || !completion || !reviewer || !area) {
     return updateManagementScoreReview_(review, 'NEEDS_REVIEW', 'Atividade, conclusão, perfil ou área não está disponível.');
   }
@@ -108,7 +119,8 @@ function validateManagementScoreReview_(review) {
       ruleId: activity.scoringRuleId, ruleVersion: activity.scoringRuleVersion,
       points: activity.points, createdByUid: review.reviewerUid, approvedByUid: review.reviewerUid, createdAt: new Date()
     };
-    const existing = getFirestoreDocument_('scores', scoreId);
+    const existing = getFirestoreDocument_('scores', scoreId,
+      ['id', 'uid', 'sourceType', 'sourceId', 'ruleId', 'ruleVersion', 'points']);
     if (existing && !managementScoreMatches_(existing, expected)) {
       return updateManagementScoreReview_(review, 'NEEDS_REVIEW', 'Já existe um lançamento divergente para esta atividade.');
     }
