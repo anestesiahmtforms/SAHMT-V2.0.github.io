@@ -11,7 +11,8 @@ function validatePendingManagementScoreReviews() {
     const page = listPendingManagementScoreReviews_();
     const properties = PropertiesService.getScriptProperties();
     const result = {scanned: page.documents.length, processed: 0, approved: 0, rejected: 0, needsReview: 0, retried: 0};
-    page.documents.slice(0, SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.maxProcessedPerRun).forEach(function (review) {
+    const batch = page.documents.slice(0, SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.maxProcessedPerRun);
+    batch.forEach(function (review) {
       try {
         const outcome = validateManagementScoreReview_(review);
         result.processed++;
@@ -23,7 +24,7 @@ function validatePendingManagementScoreReviews() {
         console.error('Falha ao validar pontuação da atividade ' + review.activityId + ': ' + String(error && error.message || error).slice(0, 300));
       }
     });
-    if (page.documents.length) properties.setProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty, page.documents[page.documents.length - 1]._documentName);
+    if (batch.length) properties.setProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty, batch[batch.length - 1]._documentName);
     else properties.deleteProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty);
     return result;
   } finally {

@@ -11,7 +11,8 @@ function validatePendingTrainingCompletions() {
     const page = listPendingTrainingCompletions_();
     const properties = PropertiesService.getScriptProperties();
     const result = {scanned: page.documents.length, processed: 0, validated: 0, rejected: 0, needsReview: 0, waiting: 0, retried: 0};
-    page.documents.slice(0, SAHMT_V2_TRAINING_VALIDATION.maxProcessedPerRun).forEach(function (claim) {
+    const batch = page.documents.slice(0, SAHMT_V2_TRAINING_VALIDATION.maxProcessedPerRun);
+    batch.forEach(function (claim) {
       try {
         const outcome = validateTrainingCompletionClaim_(claim);
         if (outcome === 'WAITING') result.waiting++;
@@ -26,8 +27,8 @@ function validatePendingTrainingCompletions() {
         console.error('Falha ao validar conclusão de treinamento ' + claim.trainingId + ': ' + String(error && error.message || error).slice(0, 300));
       }
     });
-    if (page.documents.length) {
-      properties.setProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty, page.documents[page.documents.length - 1]._documentName);
+    if (batch.length) {
+      properties.setProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty, batch[batch.length - 1]._documentName);
     } else {
       properties.deleteProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty);
     }
