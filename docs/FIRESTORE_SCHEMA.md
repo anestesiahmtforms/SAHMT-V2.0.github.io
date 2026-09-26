@@ -1,6 +1,6 @@
 # Modelo Firestore
 
-Projeto fixo `sahmt-17a16`; database `(default)`. É o modelo-alvo da V2, não uma afirmação de que essas coleções já existem. O prompt exige verificar Rules, índices, providers e estado do banco antes de qualquer implantação/carga.
+Projeto fixo `sahmt-17a16`; database `(default)`. Este é o modelo-alvo da V2. Estado confirmado em 26/09/2026: existem o perfil `users/{uid}` provisionado, o catálogo `appConfig/labelStaff` (30 siglas) e 28 documentos em `stations` (23 ativos, 5 inativos). A presença de qualquer outra coleção depende de implantação/carga e deve ser verificada antes de ser tratada como dado existente. O prompt exige verificar Rules, índices, providers e estado do banco antes de qualquer implantação/carga.
 
 | Coleção | ID sugerido | Campos e uso principal |
 |---|---|---|
