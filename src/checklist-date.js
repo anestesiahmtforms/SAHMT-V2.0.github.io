@@ -31,7 +31,7 @@ export function summarizeChecklistDay(day, today, stations, records) {
   const inherited = values.filter((record) => record.inherited === true).length;
   const text = !total
     ? 'Sem estações aplicáveis'
-    : `${recorded}/${total} estação(ões) · ${conforming} conforme(s) · ${nonconforming} não conforme(s)${inherited ? ` · ${inherited} falha(s) herdada(s)` : ''}${recorded === total ? ' · assinatura não habilitada' : ''}`;
+    : `${recorded}/${total} estação(ões) · ${conforming} conforme(s) · ${nonconforming} não conforme(s)${inherited ? ` · ${inherited} falha(s) herdada(s)` : ''}`;
   return {mode, text, total, recorded, conforming, nonconforming, inherited, pendingSync: values.some((record) => record.pendingSync || record.syncFailed)};
 }
 
