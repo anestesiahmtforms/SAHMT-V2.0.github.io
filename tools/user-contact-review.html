@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Revisão local de usuários e contatos SAHMT</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#133453;background:#eef3f6;font-synthesis:none;text-rendering:optimizeLegibility}
+    *{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px)}main{max-width:1050px;margin:auto}h1{font-size:clamp(1.35rem,3vw,2rem);margin:.25rem 0}.card,.toolbar,.record{background:#fff;border:1px solid #cfdae3;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #1735500c}.card p{line-height:1.5}.notice{border-left:4px solid #df9a18;background:#fff8e8;padding:10px 12px;border-radius:5px}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar label{flex:1 1 240px}.toolbar input[type=file]{display:block;max-width:100%;margin-top:5px}.toolbar button,button{border:1px solid #aac0d1;border-radius:9px;padding:10px 14px;background:#fff;color:#075ca3;font:inherit;font-weight:650;cursor:pointer}.primary{background:#1268ae!important;color:#fff!important;border-color:#1268ae!important}button:disabled{opacity:.5;cursor:not-allowed}.status{flex-basis:100%;margin:0;min-height:1.5em;color:#294a65;overflow-wrap:anywhere}.progress{font-weight:700}.filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.filters input[type=search]{min-width:min(280px,100%);padding:9px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.record summary{cursor:pointer;font-weight:700;line-height:1.5}.record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;margin:14px 0}.field{background:#f4f7f9;border-radius:8px;padding:10px;overflow-wrap:anywhere}.field strong{display:block;font-size:.82rem;color:#526a7b;margin-bottom:3px}.record label{display:block;margin:10px 0}.record input[type=text],.record select{width:100%;max-width:520px;padding:10px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.record .confirm{display:flex;gap:9px;align-items:flex-start;max-width:760px}.record .confirm input{margin-top:.25rem}.record .legacy{color:#526a7b;font-size:.9rem}.record[hidden]{display:none}.empty{padding:20px;border:1px dashed #aabcc9;border-radius:10px;text-align:center;color:#49677f}.footer{color:#526a7b;font-size:.9rem;line-height:1.5;margin:18px 2px}@media(max-width:600px){.toolbar{align-items:stretch}.toolbar label,.toolbar button{width:100%}.toolbar button{min-height:44px}.card,.toolbar,.record{padding:12px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="card">
+    <p><strong>SAHMT V2 · conferência local</strong></p>
+    <h1>Usuários e contatos</h1>
+    <p>Abra somente o arquivo <code>.local-preview/user-contact-import-preview.json</code> deste checkout. Confira cada pessoa e associe um UID copiado da sessão Google correspondente. A associação de UID não concede acesso.</p>
+    <p class="notice"><strong>Privacidade e autorização:</strong> esta página não tem conexão com Firebase, Google Sheets ou GitHub. Os dados importados são lidos apenas pelo navegador. O progresso local guarda os UIDs digitados e decisões, mas não copia nomes, e-mails ou telefones; use em aparelho confiável e apague as decisões quando terminar. A exportação contém sourceRow + UID + confirmações, sem dados de contato, role ou permissões. `active` legado é apenas informativo. Esta ferramenta não cria perfil nem autoriza ninguém.</p>
+  </header>
+  <section class="toolbar" aria-label="Arquivo e decisões locais">
+    <label>Prévia local <input id="preview-file" type="file" accept="application/json,.json"></label>
+    <button id="download-decisions" class="primary" type="button" disabled>Baixar decisões</button>
+    <button id="clear-decisions" type="button" disabled>Apagar decisões locais</button>
+    <p id="status" class="status" role="status" aria-live="polite">Selecione a prévia local para começar.</p>
+  </section>
+  <p id="progress" class="progress" aria-live="polite"></p>
+  <div class="filters" id="filters" hidden>
+    <label>Buscar <input id="search" type="search" autocomplete="off"></label>
+    <label><input id="pending-only" type="checkbox"> Mostrar somente revisões pendentes</label>
+    <span id="visible-count"></span>
+  </div>
+  <section id="records" aria-label="Cadastros para revisão"></section>
+  <p class="footer">O arquivo exportado é uma proposta local para reconciliação posterior. Não o envie ao GitHub. Nenhuma autorização V1 vira autorização V2; permissões e estado de acesso devem ser decididos separadamente por um administrador a partir do esquema V2.</p>
+</main>
+<script>
+(() => {
+  const input = document.querySelector('#preview-file');
+  const download = document.querySelector('#download-decisions');
+  const clear = document.querySelector('#clear-decisions');
+  const status = document.querySelector('#status');
+  const progress = document.querySelector('#progress');
+  const records = document.querySelector('#records');
+  const filters = document.querySelector('#filters');
+  const search = document.querySelector('#search');
+  const pendingOnly = document.querySelector('#pending-only');
+  const visibleCount = document.querySelector('#visible-count');
+  let preview;
+  let fingerprint = '';
+  let state = {};
+  let storageKey = '';
+
+  const text = (value) => String(value ?? '');
+  const make = (tag, className, value) => {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (value !== undefined) element.textContent = text(value);
+    return element;
+  };
+  const recordKey = (entry) => String(entry.sourceRow);
+  const personState = (entry) => {
+    const key = recordKey(entry);
+    const saved = state[key];
+    const allowed = ['PENDING', 'CONFIRMED', 'CHANGES_REQUIRED', 'NOT_A_CONTACT'];
+    state[key] = saved && typeof saved === 'object' && !Array.isArray(saved)
+      ? {uid: typeof saved.uid === 'string' ? saved.uid.slice(0, 128) : '', identityConfirmed: saved.identityConfirmed === true, contactDecision: allowed.includes(saved.contactDecision) ? saved.contactDecision : 'PENDING'}
+      : {uid: '', identityConfirmed: false, contactDecision: 'PENDING'};
+    return state[key];
+  };
+  const save = () => {
+    if (!storageKey) return;
+    try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
+  };
+  const makeFingerprint = async (raw) => {
+    try {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw)));
+      return `sha256-${[...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+    } catch {
+      let hash = 14695981039346656037n;
+      for (let index = 0; index < raw.length; index++) hash = BigInt.asUintN(64, (hash ^ BigInt(raw.charCodeAt(index))) * 1099511628211n);
+      return `fnv1a64-${hash.toString(16)}-${raw.length}`;
+    }
+  };
+  const updateProgress = () => {
+    if (!preview) return;
+    const identity = preview.records.filter((entry) => personState(entry).identityConfirmed && /^[A-Za-z0-9_-]{1,128}$/.test(personState(entry).uid)).length;
+    const contacts = preview.records.filter((entry) => personState(entry).contactDecision !== 'PENDING').length;
+    progress.textContent = `${identity}/${preview.records.length} identidades confirmadas · ${contacts}/${preview.records.length} decisões de contato`;
+    save();
+  };
+  const field = (label, value) => {
+    const box = make('div', 'field');
+    box.append(make('strong', '', label), make('span', '', value || 'Não informado'));
+    return box;
+  };
+  const render = () => {
+    records.replaceChildren();
+    const needle = search.value.trim().toLocaleLowerCase('pt-BR');
+    let shown = 0;
+    for (const entry of preview.records) {
+      const current = personState(entry);
+      const candidate = entry;
+      const searchable = `${entry.sourceRow} ${entry.displayName} ${entry.email} ${entry.sigla}`.toLocaleLowerCase('pt-BR');
+      const complete = current.identityConfirmed && /^[A-Za-z0-9_-]{1,128}$/.test(current.uid) && current.contactDecision !== 'PENDING';
+      if (needle && !searchable.includes(needle)) continue;
+      if (pendingOnly.checked && complete) continue;
+      shown++;
+
+      const card = make('details', 'record');
+      card.dataset.sourceRow = recordKey(entry);
+      const heading = `${entry.sourceRow}. ${entry.displayName || 'Nome não informado'} · ${entry.sigla || 'sem sigla'} · ${complete ? 'revisado' : 'pendente'}`;
+      card.append(make('summary', '', heading));
+      const fields = make('div', 'record-grid');
+      fields.append(field('E-mail candidato (V1)', candidate.email), field('Nome candidato (V1)', candidate.displayName), field('Sigla candidata (V1)', candidate.sigla), field('Telefone candidato (V1)', candidate.phone));
+      card.append(fields);
+      card.append(make('p', 'legacy', `Estado legado: ${candidate.legacyActive === true ? 'ativo' : 'inativo'}. Este valor não preenche active/access/permissões da V2.`));
+
+      const uidLabel = make('label', '', 'UID Firebase Authentication correspondente');
+      const uidInput = make('input');
+      uidInput.type = 'text';
+      uidInput.autocomplete = 'off';
+      uidInput.spellcheck = false;
+      uidInput.maxLength = 128;
+      uidInput.value = current.uid;
+      uidInput.placeholder = 'Cole o UID obtido na sessão desta pessoa';
+      uidInput.addEventListener('input', () => { current.uid = uidInput.value.trim(); updateProgress(); updateCardSummary(card, entry); });
+      uidLabel.append(uidInput);
+
+      const confirmLabel = make('label', 'confirm');
+      const confirmInput = make('input');
+      confirmInput.type = 'checkbox';
+      confirmInput.checked = current.identityConfirmed;
+      confirmInput.addEventListener('change', () => { current.identityConfirmed = confirmInput.checked; updateProgress(); updateCardSummary(card, entry); });
+      confirmLabel.append(confirmInput, document.createTextNode('Conferi que este UID pertence à identidade Google da pessoa deste cadastro. O e-mail legado, sozinho, não confirma a identidade.'));
+
+      const contactLabel = make('label', '', 'Decisão de revisão do contato');
+      const contactSelect = make('select');
+      for (const [value, label] of [['PENDING', 'Pendente'], ['CONFIRMED', 'Contato conferido'], ['CHANGES_REQUIRED', 'Corrigir antes de qualquer migração'], ['NOT_A_CONTACT', 'Não migrar como contato']]) {
+        const option = make('option', '', label);
+        option.value = value;
+        option.disabled = value === 'CONFIRMED' && !candidate.sigla;
+        contactSelect.append(option);
+      }
+      contactSelect.value = current.contactDecision;
+      contactSelect.addEventListener('change', () => { current.contactDecision = contactSelect.value; updateProgress(); updateCardSummary(card, entry); });
+      contactLabel.append(contactSelect);
+      card.append(uidLabel, confirmLabel, contactLabel);
+      records.append(card);
+    }
+    visibleCount.textContent = `${shown} de ${preview.records.length} cadastros exibidos`;
+    updateProgress();
+  };
+  const updateCardSummary = (card, entry) => {
+    const current = personState(entry);
+    const complete = current.identityConfirmed && /^[A-Za-z0-9_-]{1,128}$/.test(current.uid) && current.contactDecision !== 'PENDING';
+    card.querySelector('summary').textContent = `${entry.sourceRow}. ${entry.displayName || 'Nome não informado'} · ${entry.sigla || 'sem sigla'} · ${complete ? 'revisado' : 'pendente'}`;
+  };
+
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const data = JSON.parse(raw);
+      if (data.previewOnly !== true || data.writeEnabled !== false || !Array.isArray(data.records) || !data.source || !Array.isArray(data.source.includedColumns)) throw new Error('O arquivo não é uma prévia de usuários/contatos somente leitura.');
+      for (const fieldName of ['email', 'name', 'sigla', 'phone', 'active']) if (!data.source.includedColumns.includes(fieldName)) throw new Error('A prévia não contém os campos delimitados esperados.');
+      const rows = new Set();
+      for (const entry of data.records) {
+        if (!Number.isInteger(entry.sourceRow) || entry.sourceRow < 2 || rows.has(entry.sourceRow)) throw new Error('A prévia contém uma linha V1 inválida ou duplicada.');
+        if (typeof entry.email !== 'string' || typeof entry.displayName !== 'string' || typeof entry.sigla !== 'string' || typeof entry.phone !== 'string' || typeof entry.legacyActive !== 'boolean') throw new Error(`A linha V1 ${entry.sourceRow} tem campos inválidos.`);
+        rows.add(entry.sourceRow);
+      }
+      preview = data;
+      fingerprint = await makeFingerprint(raw);
+      storageKey = `sahmt-user-contact-review:${fingerprint}`;
+      try {
+        const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        if (stored && typeof stored === 'object' && !Array.isArray(stored)) state = stored;
+      } catch { state = {}; }
+      filters.hidden = false;
+      download.disabled = false;
+      clear.disabled = false;
+      status.textContent = `Prévia carregada: ${data.records.length} linhas. Nada será enviado nem gravado no Firebase.`;
+      render();
+    } catch (error) {
+      preview = null;
+      fingerprint = '';
+      storageKey = '';
+      state = {};
+      filters.hidden = true;
+      download.disabled = true;
+      clear.disabled = true;
+      progress.textContent = '';
+      visibleCount.textContent = '';
+      records.replaceChildren(make('p', 'empty', `Não foi possível abrir a prévia: ${error.message}`));
+      status.textContent = 'Selecione a prévia local correta para começar.';
+    }
+  });
+  search.addEventListener('input', render);
+  pendingOnly.addEventListener('change', render);
+  clear.addEventListener('click', () => {
+    if (!storageKey) return;
+    localStorage.removeItem(storageKey);
+    state = {};
+    render();
+    status.textContent = 'Decisões e UIDs locais apagados deste navegador.';
+  });
+  download.addEventListener('click', () => {
+    if (!preview) return;
+    const decisions = preview.records.map((entry) => {
+      const current = personState(entry);
+      const validUid = /^[A-Za-z0-9_-]{1,128}$/.test(current.uid);
+      return {
+        sourceRow: entry.sourceRow,
+        identity: {firebaseUid: current.identityConfirmed && validUid ? current.uid : '', confirmed: current.identityConfirmed && validUid},
+        contactDecision: current.contactDecision,
+        legacyActiveObserved: entry.legacyActive
+      };
+    });
+    const output = {schemaVersion: 1, previewFingerprint: fingerprint, targetDatabase: preview.source?.targetDatabase || 'sahmt-17a16/(default)', exportedAt: new Date().toISOString(), previewOnly: true, writeEnabled: false, records: decisions, note: 'Conferência local somente. Não contém nomes, e-mails ou telefones; não importa perfis, contatos, roles ou permissões.'};
+    const url = URL.createObjectURL(new Blob([JSON.stringify(output, null, 2)], {type: 'application/json'}));
+    const link = make('a');
+    link.href = url;
+    link.download = 'user-contact-review-decisions.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+})();
+</script>
+</body>
+</html>

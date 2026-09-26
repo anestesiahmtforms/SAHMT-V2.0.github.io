@@ -40,6 +40,8 @@ As ações do proprietário necessárias para liberar Functions e o consumidor s
 
 Para conferir manualmente a prévia sem importar nada, abra [`tools/catalog-review.html`](tools/catalog-review.html) no navegador, selecione `.local-preview/catalog-import-preview.json`, revise os itens e baixe `catalog-review-decisions.json`. A ferramenta mantém os dados da prévia no navegador e exporta somente as marcações de revisão; o arquivo de decisões não importa nem aprova automaticamente registros.
 
+Para conferir a prévia privada de usuários/contatos, abra [`tools/user-contact-review.html`](tools/user-contact-review.html) localmente e selecione `.local-preview/user-contact-import-preview.json`. Ela guarda somente UIDs e decisões no armazenamento local do navegador e exporta referências por linha sem nomes, e-mails ou telefones. Não usa permissões V1, não define role/acesso V2 e não grava em Firebase; apague as decisões locais ao terminar.
+
 ## Validação pendente
 
 Login confirma Auth → perfil UID → Home. Consultas e gravações autenticadas por módulo, fluxos offline em dispositivo, conferência da ordem das estações e comparação visual interna em Android/iPhone ainda precisam de homologação.
