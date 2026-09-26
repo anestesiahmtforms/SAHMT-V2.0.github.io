@@ -1,4 +1,4 @@
-import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, updateDoc, where, writeBatch} from 'firebase/firestore';
+import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db} from './firebase.js';
 import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
@@ -144,13 +144,14 @@ export async function getManagementArea(areaId) {
 export async function listNotifications(profile, {pageSize = 100, canManage = false} = {}) {
   const uid = profile?.uid;
   if (!uid) return [];
+  const now = Timestamp.now();
   if (canManage) {
-    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), where('active', '==', true), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
-    const now = Date.now();
+    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
+    const nowMs = now.toMillis();
     return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).filter((item) => {
       const start = typeof item.startAt?.toMillis === 'function' ? item.startAt.toMillis() : new Date(item.startAt).getTime();
       const end = typeof item.endAt?.toMillis === 'function' ? item.endAt.toMillis() : new Date(item.endAt).getTime();
-      return start <= now && end >= now;
+      return start <= nowMs && end >= nowMs;
     });
   }
   const [memberAreas, managedAreas, groups] = await Promise.all([
@@ -175,11 +176,11 @@ export async function listNotifications(profile, {pageSize = 100, canManage = fa
     ));
     const audienceFilter = audienceFilters.length === 1 ? audienceFilters[0] : or(...audienceFilters);
     return getDocsFromServer(query(
-      collection(db, 'notifications'), and(where('active', '==', true), audienceFilter),
+      collection(db, 'notifications'), and(where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), audienceFilter),
       orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))
     ));
   }));
-  const nowMs = Date.now();
+  const nowMs = now.toMillis();
   const byId = new Map();
   for (const snapshot of snapshots) for (const item of snapshot.docs) {
     const notification = {id: item.id, ...item.data()};

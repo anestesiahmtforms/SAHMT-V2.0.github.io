@@ -13,7 +13,7 @@ Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Aut
 - GitHub Pages está publicado em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/); o último workflow de documentação concluiu com sucesso.
 - O primeiro perfil administrador foi provisionado e o proprietário confirmou entrada na Home autenticada.
 - Firestore contém o catálogo de Etiquetas com 30 siglas ativas e o catálogo Checklist com 28 estações (23 ativas, 5 inativas). A ordem das estações segue a posição sugerida pela planilha V1 e ainda precisa de conferência visual.
-- Rules estão publicadas e os 29 índices aparecem como prontos. Cloud Functions de produção não estão implantadas; dependem de revisão de faturamento e autorização do proprietário.
+- Rules estão publicadas e os 32 índices aparecem como prontos em 26/09/2026. Cloud Functions de produção não estão implantadas; dependem de revisão de faturamento e autorização do proprietário.
 - Não foram importados escala, férias, contatos pessoais, treinamentos, respostas ou assinaturas do Checklist. A Home pode continuar sem escala publicada até a revisão e migração desses dados.
 
 A carga inicial de catálogos foi feita por API administrativa do Firebase, que não executa Security Rules do cliente; a autoria lógica e o limite desse procedimento estão registrados em [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md). As gravações normais devem ocorrer pela sessão do PWA.
