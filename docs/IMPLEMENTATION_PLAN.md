@@ -56,7 +56,7 @@ Em 25/09/2026, `qualityManage` passou a abrir a área Gestão da Qualidade no me
 
 - [ ] Diferencial visual tela a tela em celular e desktop; preencher `UI_PARITY.md`.
 - [x] Build/checagens automatizadas e verificação local (35/35 Rules, 62/62 domínio, 15/15 callables no Emulator e build de produção; portões de login V1/V2 comparados por árvore de acessibilidade e capturas em 402 × 662 e 1280 × 720; sem alegar autenticação ou visual QA completo em dispositivo). Os assets OCR foram reduzidos de 27,9 MB para 13,19 MiB ao retirar os três motores de compatibilidade legados que não são usados pelo modo LSTM-only configurado.
-- [x] Confirmar o repositório oficial, branch `main`, base path e publicação do código da V2 (`4cedec7`). O workflow remoto passou nos testes e build e carregou o artefato; [ ] ativar GitHub Pages com origem Actions após confirmação para exposição pública do site e validar a URL servida.
+- [x] Confirmar o repositório oficial, branch `main`, base path e publicar o código V2. Em 26/09/2026, após autorização do proprietário, GitHub Pages foi ativado com origem Actions; o workflow do commit `e9666fd` passou testes de domínio, Rules, callables, build e deploy. A URL `https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/` foi aberta e exibiu a tela de login.
 - [ ] Homologar login Firebase autorizado, Firestore online, offline/retry e escrita real controlada.
 - [ ] Entregar relatório com limites observados e link/artefato de pacote.
 
