@@ -25,7 +25,6 @@ O Firestore cria índices automáticos por campo e pode mesclar índices para fi
 | `equipment` | `managementAreaId ==`, `tag ASC` | `managementAreaId ASC, tag ASC` |
 | `trainings` | `order ASC, title ASC` (catálogo administrativo, incluindo inativos) | `order ASC, title ASC` |
 | `activities` | `managementAreaId ==`, `dueAt` preenchido ascendente e `createdAt DESC`; atividades sem prazo são consultadas em seguida por `createdAt DESC` | `managementAreaId ASC, dueAt ASC, createdAt DESC` |
-| `syncQueue` | `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC` | `status ASC, nextAttemptAt ASC` |
 | `activityInteractions` | `activityId ==`, `createdAt DESC`; variante também filtra `uid ==` | Índices por `activityId, createdAt` e `activityId, uid, createdAt` |
 | `notifications` | ativo, combinação OR de público e `priority DESC` | `active, audienceType, audienceValue, priority` |
 | `managementAreas` | ativo e `memberUids` ou `managerUids` contém UID | Dois índices `active ASC` + campo `CONTAINS` correspondente |

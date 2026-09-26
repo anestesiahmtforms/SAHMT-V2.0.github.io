@@ -5,7 +5,7 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
-import {createReportSyncJob, mayQueueOffline, requiresReportSync, stageOperationalWrite} from './record-write.js';
+import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
 import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 
@@ -994,7 +994,7 @@ async function confirmCommittedEventEdit(eventId, updates, uid, requestId, versi
   const snapshot = await getDocFromServer(doc(db, 'events', eventId));
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
-  return saved.id === eventId && saved.updatedByUid === uid && saved.syncJobId === requestId && saved.version === version &&
+  return saved.id === eventId && saved.updatedByUid === uid && saved.version === version &&
     Object.entries(updates).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
 }
 
@@ -1022,10 +1022,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
         throw Object.assign(new Error('Outra pessoa atualizou este evento enquanto você editava.'), {code: 'stale-version'});
       }
       const version = expectedVersion + 1;
-      transaction.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version, syncJobId: requestId});
-      transaction.set(doc(db, 'syncQueue', requestId), createReportSyncJob({
-        resourceType: 'events', resourceId: eventId, version, uid, jobId: requestId, now: serverTimestamp()
-      }));
+      transaction.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version});
     });
   } catch (error) {
     if (error.code === 'stale-version') throw error;
@@ -1099,7 +1096,6 @@ export async function updateLabelRecord(labelId, input, uid) {
   const fields = ['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
   const version = Math.max(1, Number(label.version) || 1) + 1;
-  const syncJobId = crypto.randomUUID();
   const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(label[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
   if (!changedFields.length) throw new Error('Nenhuma alteração foi feita nesta etiqueta.');
   const historyRef = doc(db, 'labels', labelId, 'history', String(version));
@@ -1111,9 +1107,8 @@ export async function updateLabelRecord(labelId, input, uid) {
     createdAt: serverTimestamp()
   };
   const batch = writeBatch(db);
-  batch.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version, syncJobId});
+  batch.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version});
   batch.set(historyRef, historyEntry);
-  addSheetSyncJob(batch, {collectionName: 'labels', resourceId: labelId, version, uid, jobId: syncJobId});
   try {
     await batch.commit();
   } catch (error) {
@@ -1545,13 +1540,8 @@ function dateSortValue(value) {
 function buildRecordBatch(batch, {collectionName, data, uid, requestId}) {
   stageOperationalWrite(batch, {
     collectionName, data, uid, requestId, now: serverTimestamp(),
-    recordRef: doc(db, collectionName, requestId),
-    syncJobRef: (jobId) => doc(db, 'syncQueue', jobId)
+    recordRef: doc(db, collectionName, requestId)
   });
-}
-
-function addSheetSyncJob(batch, {collectionName, resourceId, version, uid, jobId = crypto.randomUUID(), now = serverTimestamp()}) {
-  batch.set(doc(db, 'syncQueue', jobId), createReportSyncJob({resourceType: collectionName, resourceId, version, uid, jobId, now}));
 }
 
 function canonicalValue(value) {
@@ -1569,7 +1559,6 @@ async function confirmCommittedMutation({collectionName, data, uid, requestId}) 
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
   if (saved.id !== requestId || saved.clientMutationId !== requestId || saved.createdByUid !== uid) return false;
-  if (requiresReportSync(collectionName) && saved.syncJobId !== requestId) return false;
   return Object.entries(data).every(([key, value]) =>
     JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
 }

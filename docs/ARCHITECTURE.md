@@ -19,7 +19,7 @@
 4. **Domínios:** escala, eventos/férias, catálogo de pagadores e credores de Eventos, labels, management/activities/scoring, documentos do Drive por área, inventário/eventos/manutenção de equipamentos dentro de Gestão, checklist, training, notifications e audit. Documentos guardam metadados versionados no Firestore e mantêm o arquivo no Drive; cada fluxo fica dentro do mesmo módulo e usa a mesma sessão.
 5. **Data:** adaptadores Firestore com limites/paginação e conversão de Timestamp.
 6. **Offline:** IndexedDB com schema versionado, cache de leitura com TTL, outbox, política de conflito e sincronização explícita.
-7. **Integrações externas:** a implementação local tem uma fila idempotente para espelhar somente `events`, `labels` e `checklists` para relatórios em Sheets, em segundo plano. Jobs não copiam payloads; `users` e credenciais nunca são exportados. A integração não participa da autenticação, navegação, consultas do usuário nem confirmação de ações. Worker, Rules e índice ainda não foram implantados; OAuth IAM da REST ignora Rules e depende da revisão da identidade, escopo e destino.
+7. **Integrações externas:** não há integração Apps Script/Sheets no fluxo V2. A PWA consulta e grava no Firestore diretamente sob Rules e gera relatórios no dispositivo; qualquer integração futura exige requisito concreto e não poderá substituir a fonte operacional ou a autorização Firebase.
 8. **Deploy:** build estático, base `/SAHMT-V2.0.github.io/`, rules/indexes versionados, um service worker no escopo V2.
 
 ## Fluxo de escrita

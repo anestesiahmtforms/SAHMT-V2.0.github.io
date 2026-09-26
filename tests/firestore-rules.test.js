@@ -55,37 +55,19 @@ async function seedEventCatalog(payers = ['Membro'], creditors = ['Equipe']) {
   });
 }
 
-function sheetSyncJob(id, resourceType, resourceId, uid, version = 1) {
-  return {
-    id, resourceType, resourceId, operation: 'upsert', version, status: 'pending', attempts: 0,
-    createdByUid: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), nextAttemptAt: serverTimestamp(),
-    lastError: '', clientMutationId: id
-  };
+async function setFirestoreRecord(db, resourceType, resourceId, record) {
+  return setDoc(doc(db, resourceType, resourceId), record);
 }
 
-async function setSyncedRecord(db, resourceType, resourceId, record, uid) {
-  const jobId = `sync-${resourceType}-${resourceId}`;
-  const batch = writeBatch(db);
-  batch.set(doc(db, resourceType, resourceId), {...record, syncJobId: jobId});
-  batch.set(doc(db, 'syncQueue', jobId), sheetSyncJob(jobId, resourceType, resourceId, uid, record.version || 1));
-  return batch.commit();
-}
-
-async function updateSyncedRecord(db, resourceType, resourceId, updates, uid) {
-  const version = updates.version;
-  const jobId = `sync-${resourceType}-${resourceId}-v${version}`;
-  const batch = writeBatch(db);
-  batch.update(doc(db, resourceType, resourceId), {...updates, syncJobId: jobId});
-  batch.set(doc(db, 'syncQueue', jobId), sheetSyncJob(jobId, resourceType, resourceId, uid, version));
-  return batch.commit();
+async function updateFirestoreRecord(db, resourceType, resourceId, updates) {
+  return updateDoc(doc(db, resourceType, resourceId), updates);
 }
 
 async function updateLabelWithHistory(db, {labelId, label, uid, updates, changedFields, historyId}) {
   const version = label.version + 1;
-  const jobId = `sync-labels-${labelId}-v${version}`;
   const batch = writeBatch(db);
   batch.update(doc(db, 'labels', labelId), {
-    ...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version, syncJobId: jobId
+    ...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version
   });
   batch.set(doc(db, 'labels', labelId, 'history', historyId || String(version)), {
     id: historyId || String(version), labelId, version, actorUid: uid, changedFields,
@@ -93,7 +75,6 @@ async function updateLabelWithHistory(db, {labelId, label, uid, updates, changed
     after: Object.fromEntries(changedFields.map((field) => [field, updates[field]])),
     createdAt: serverTimestamp()
   });
-  batch.set(doc(db, 'syncQueue', jobId), sheetSyncJob(jobId, 'labels', labelId, uid, version));
   return batch.commit();
 }
 
@@ -334,7 +315,7 @@ test('atividade de Gestão tem responsável próprio e ciclo de estado validado 
       points: activity.points, scoringRuleId: activity.scoringRuleId, scoringRuleVersion: activity.scoringRuleVersion, visibility: activity.visibility
     },
     uid: 'activity-owner', requestId: 'task-1', now: serverTimestamp(),
-    recordRef: activityRef, syncJobRef: (jobId) => doc(owner, 'syncQueue', jobId)
+    recordRef: activityRef
   });
   await assertSucceeds(activityBatch.commit());
   await assertSucceeds(getDocs(collection(owner, 'activities')));
@@ -360,8 +341,7 @@ test('atividade de Gestão tem responsável próprio e ciclo de estado validado 
       participantUids: teamActivity.participantUids, dueAt: teamActivity.dueAt, completedAt: teamActivity.completedAt,
       evidenceRequired: teamActivity.evidenceRequired, pointsEnabled: teamActivity.pointsEnabled,
       points: teamActivity.points, scoringRuleId: teamActivity.scoringRuleId, scoringRuleVersion: teamActivity.scoringRuleVersion, visibility: teamActivity.visibility
-    }, uid: 'activity-manager', requestId: teamActivity.id, now: serverTimestamp(), recordRef: teamRef,
-    syncJobRef: (jobId) => doc(manager, 'syncQueue', jobId)
+    }, uid: 'activity-manager', requestId: teamActivity.id, now: serverTimestamp(), recordRef: teamRef
   });
   await assertSucceeds(teamBatch.commit());
   await assertSucceeds(updateDoc(doc(peer, 'activities', teamActivity.id), {status: 'IN_PROGRESS', updatedByUid: 'activity-peer', updatedAt: serverTimestamp()}));
@@ -388,8 +368,7 @@ test('atividade de Gestão tem responsável próprio e ciclo de estado validado 
       participantUids: outsiderTeamActivity.participantUids, dueAt: outsiderTeamActivity.dueAt, completedAt: outsiderTeamActivity.completedAt,
       evidenceRequired: outsiderTeamActivity.evidenceRequired, pointsEnabled: outsiderTeamActivity.pointsEnabled,
       points: outsiderTeamActivity.points, scoringRuleId: outsiderTeamActivity.scoringRuleId, scoringRuleVersion: outsiderTeamActivity.scoringRuleVersion, visibility: outsiderTeamActivity.visibility
-    }, uid: 'activity-manager', requestId: outsiderTeamActivity.id, now: serverTimestamp(), recordRef: doc(manager, 'activities', outsiderTeamActivity.id),
-    syncJobRef: (jobId) => doc(manager, 'syncQueue', jobId)
+    }, uid: 'activity-manager', requestId: outsiderTeamActivity.id, now: serverTimestamp(), recordRef: doc(manager, 'activities', outsiderTeamActivity.id)
   });
   await assertFails(outsiderBatch.commit());
 });
@@ -744,25 +723,23 @@ test('catálogo de Eventos é global, administrável por permissão própria e o
   await assertFails(setDoc(doc(manager, 'eventCatalogs', 'invalid'), {...catalog, id: 'invalid', legacySheetRow: 2}));
 });
 
-test('permissão de escrita cria evento próprio no Firestore e exige job seletivo na mesma batch', async () => {
+test('permissão de escrita cria evento próprio diretamente no Firestore', async () => {
   await seedProfiles([accessProfile('writer', {eventsRead: true, eventsWrite: true}), accessProfile('other-writer', {eventsRead: true, eventsWrite: true})]);
   await seedEventCatalog();
   const user = testEnvironment.authenticatedContext('writer').firestore();
   const other = testEnvironment.authenticatedContext('other-writer').firestore();
   const now = new Date();
   const event = {date: '2026-09-24', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 400, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
-  await assertFails(setDoc(doc(user, 'events', 'without-report-job'), {...event, id: 'without-report-job', clientMutationId: 'without-report-job', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}));
-  await assertSucceeds(setSyncedRecord(user, 'events', 'standalone', {...event, id: 'standalone', clientMutationId: 'standalone', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
-  await assertSucceeds(setSyncedRecord(user, 'events', 'request-1', {...event, createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
-  await assertSucceeds(updateSyncedRecord(user, 'events', 'request-1', {amountToPay: 420, updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 2}, 'writer'));
-  await assertFails(setDoc(doc(user, 'syncQueue', 'request-1'), {resourceType: 'events', resourceId: 'request-1', operation: 'create', status: 'pending', createdByUid: 'writer'}));
-  await assertFails(setSyncedRecord(user, 'events', 'missing-member', {...event, id: 'missing-member', clientMutationId: 'missing-member', memberStatus: ''}, 'writer'));
-  await assertFails(setSyncedRecord(user, 'events', 'invalid-delay', {...event, id: 'invalid-delay', clientMutationId: 'invalid-delay', delayMultiple: 8}, 'writer'));
-  await assertFails(setSyncedRecord(user, 'events', 'unknown-payer', {...event, id: 'unknown-payer', clientMutationId: 'unknown-payer', payer: 'Não catalogado'}, 'writer'));
-  await assertFails(setSyncedRecord(user, 'events', 'bad-other', {...event, id: 'bad-other', clientMutationId: 'bad-other', eventType: 'Outros', description: ''}, 'writer'));
-  await assertSucceeds(updateSyncedRecord(user, 'events', 'request-1', {memberStatus: 'CD — Atrasado', updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 3}, 'writer'));
-  await assertFails(updateSyncedRecord(user, 'events', 'request-1', {memberStatus: 'EF — Atrasado', updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 3}, 'writer'));
-  await assertFails(updateSyncedRecord(other, 'events', 'request-1', {memberStatus: 'EF — Atrasado', updatedByUid: 'other-writer', updatedAt: serverTimestamp(), version: 4}, 'other-writer'));
+  await assertSucceeds(setFirestoreRecord(user, 'events', 'standalone', {...event, id: 'standalone', clientMutationId: 'standalone', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
+  await assertSucceeds(setFirestoreRecord(user, 'events', 'request-1', {...event, createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
+  await assertSucceeds(updateFirestoreRecord(user, 'events', 'request-1', {amountToPay: 420, updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 2}, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'missing-member', {...event, id: 'missing-member', clientMutationId: 'missing-member', memberStatus: ''}, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'invalid-delay', {...event, id: 'invalid-delay', clientMutationId: 'invalid-delay', delayMultiple: 8}, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'unknown-payer', {...event, id: 'unknown-payer', clientMutationId: 'unknown-payer', payer: 'Não catalogado'}, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'bad-other', {...event, id: 'bad-other', clientMutationId: 'bad-other', eventType: 'Outros', description: ''}, 'writer'));
+  await assertSucceeds(updateFirestoreRecord(user, 'events', 'request-1', {memberStatus: 'CD — Atrasado', updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 3}, 'writer'));
+  await assertFails(updateFirestoreRecord(user, 'events', 'request-1', {memberStatus: 'EF — Atrasado', updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 3}, 'writer'));
+  await assertFails(updateFirestoreRecord(other, 'events', 'request-1', {memberStatus: 'EF — Atrasado', updatedByUid: 'other-writer', updatedAt: serverTimestamp(), version: 4}, 'other-writer'));
   await assertFails(deleteDoc(doc(user, 'events', 'request-1')));
 });
 
@@ -799,7 +776,7 @@ test('checklist aceita resposta própria e exige ocorrência em não conformidad
   const writer = testEnvironment.authenticatedContext('writer-only').firestore();
   const signer = testEnvironment.authenticatedContext('signer-only').firestore();
   const record = {id: 'check-1', clientMutationId: 'check-1', stationId: 'station-1', date: today, condition: 'SIM', status: 'COMPLETED', occurrence: '', responsibleUid: null, responsibleName: null, responsibleEmail: null, active: true, createdByUid: 'checker', updatedByUid: 'checker', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1};
-  await assertSucceeds(setSyncedRecord(user, 'checklists', 'check-1', record, 'checker'));
+  await assertSucceeds(setFirestoreRecord(user, 'checklists', 'check-1', record, 'checker'));
   await assertSucceeds(getDoc(doc(writer, 'stations', 'station-1')));
   await assertFails(getDoc(doc(writer, 'scheduleDays', today)));
   await assertSucceeds(getDoc(doc(writer, 'checklists', 'check-1')));
@@ -812,28 +789,28 @@ test('checklist aceita resposta própria e exige ocorrência em não conformidad
   assert.equal(monthRecords.docs.some((item) => item.id === 'check-1'), true);
   const todayRecords = await getDocs(query(collection(user, 'checklists'), where('date', '==', record.date), orderBy('createdAt', 'desc'), limit(200)));
   assert.equal(todayRecords.docs.some((item) => item.id === 'check-1'), true);
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-1', {...record, occurrence: 'Alteração após envio', updatedAt: new Date(), updatedByUid: 'checker'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'wrong-document-id', {...record, id: 'check-1', clientMutationId: 'check-1'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-extra-field', {...record, id: 'check-extra-field', clientMutationId: 'check-extra-field', legacySheetRow: 15}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-forged-responsible', {...record, id: 'check-forged-responsible', clientMutationId: 'check-forged-responsible', responsibleUid: 'checker', responsibleName: 'Outra pessoa', responsibleEmail: 'other@example.invalid'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-forged-time', {...record, id: 'check-forged-time', clientMutationId: 'check-forged-time', createdAt: new Date('2020-01-01T00:00:00Z'), updatedAt: new Date('2020-01-01T00:00:00Z')}, 'checker'));
-  await assertSucceeds(setSyncedRecord(writer, 'checklists', 'check-writer-with-different-sigla', {...record, id: 'check-writer-with-different-sigla', clientMutationId: 'check-writer-with-different-sigla', createdByUid: 'writer-only', updatedByUid: 'writer-only'}, 'writer-only'));
-  await assertFails(setSyncedRecord(signer, 'checklists', 'check-signer-without-write', {...record, id: 'check-signer-without-write', clientMutationId: 'check-signer-without-write'}, 'signer-only'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-2', {...record, id: 'check-2', clientMutationId: 'check-2', condition: 'NAO', status: 'MAINTENANCE'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-3', {...record, id: 'check-3', clientMutationId: 'check-3', responsibleUid: 'other'}, 'checker'));
-  await assertSucceeds(setSyncedRecord(user, 'checklists', 'check-4', {...record, id: 'check-4', clientMutationId: 'check-4', condition: 'NAO', status: 'MAINTENANCE', occurrence: 'Equipamento indisponível'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-missing-station', {...record, id: 'check-missing-station', clientMutationId: 'check-missing-station', stationId: 'missing'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-inactive-station', {...record, id: 'check-inactive-station', clientMutationId: 'check-inactive-station', stationId: 'station-inactive'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-future-station', {...record, id: 'check-future-station', clientMutationId: 'check-future-station', stationId: 'station-future'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-malformed-station', {...record, id: 'check-malformed-station', clientMutationId: 'check-malformed-station', stationId: 'station-malformed'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-outside-period', {...record, id: 'check-outside-period', clientMutationId: 'check-outside-period', date: '2026-10-01'}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-past-day', {...record, id: 'check-past-day', clientMutationId: 'check-past-day', date: shiftDay(today, -1)}, 'checker'));
-  await assertFails(setSyncedRecord(user, 'checklists', 'check-future-day', {...record, id: 'check-future-day', clientMutationId: 'check-future-day', date: shiftDay(today, 1)}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-1', {...record, occurrence: 'Alteração após envio', updatedAt: new Date(), updatedByUid: 'checker'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'wrong-document-id', {...record, id: 'check-1', clientMutationId: 'check-1'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-extra-field', {...record, id: 'check-extra-field', clientMutationId: 'check-extra-field', legacySheetRow: 15}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-forged-responsible', {...record, id: 'check-forged-responsible', clientMutationId: 'check-forged-responsible', responsibleUid: 'checker', responsibleName: 'Outra pessoa', responsibleEmail: 'other@example.invalid'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-forged-time', {...record, id: 'check-forged-time', clientMutationId: 'check-forged-time', createdAt: new Date('2020-01-01T00:00:00Z'), updatedAt: new Date('2020-01-01T00:00:00Z')}, 'checker'));
+  await assertSucceeds(setFirestoreRecord(writer, 'checklists', 'check-writer-with-different-sigla', {...record, id: 'check-writer-with-different-sigla', clientMutationId: 'check-writer-with-different-sigla', createdByUid: 'writer-only', updatedByUid: 'writer-only'}, 'writer-only'));
+  await assertFails(setFirestoreRecord(signer, 'checklists', 'check-signer-without-write', {...record, id: 'check-signer-without-write', clientMutationId: 'check-signer-without-write'}, 'signer-only'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-2', {...record, id: 'check-2', clientMutationId: 'check-2', condition: 'NAO', status: 'MAINTENANCE'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-3', {...record, id: 'check-3', clientMutationId: 'check-3', responsibleUid: 'other'}, 'checker'));
+  await assertSucceeds(setFirestoreRecord(user, 'checklists', 'check-4', {...record, id: 'check-4', clientMutationId: 'check-4', condition: 'NAO', status: 'MAINTENANCE', occurrence: 'Equipamento indisponível'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-missing-station', {...record, id: 'check-missing-station', clientMutationId: 'check-missing-station', stationId: 'missing'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-inactive-station', {...record, id: 'check-inactive-station', clientMutationId: 'check-inactive-station', stationId: 'station-inactive'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-future-station', {...record, id: 'check-future-station', clientMutationId: 'check-future-station', stationId: 'station-future'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-malformed-station', {...record, id: 'check-malformed-station', clientMutationId: 'check-malformed-station', stationId: 'station-malformed'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-outside-period', {...record, id: 'check-outside-period', clientMutationId: 'check-outside-period', date: '2026-10-01'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-past-day', {...record, id: 'check-past-day', clientMutationId: 'check-past-day', date: shiftDay(today, -1)}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-future-day', {...record, id: 'check-future-day', clientMutationId: 'check-future-day', date: shiftDay(today, 1)}, 'checker'));
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     await deleteDoc(doc(context.firestore(), 'scheduleDays', today));
   });
   const unscheduledRecord = {...record, id: 'check-no-schedule', clientMutationId: 'check-no-schedule', createdByUid: 'writer-only', updatedByUid: 'writer-only'};
-  await assertSucceeds(setSyncedRecord(writer, 'checklists', 'check-no-schedule', unscheduledRecord, 'writer-only'));
+  await assertSucceeds(setFirestoreRecord(writer, 'checklists', 'check-no-schedule', unscheduledRecord, 'writer-only'));
 });
 
 test('etiqueta preserva campos validados e recusa tipo/estrutura inválidos', async () => {
@@ -841,17 +818,16 @@ test('etiqueta preserva campos validados e recusa tipo/estrutura inválidos', as
   const user = testEnvironment.authenticatedContext('label-writer').firestore();
   const other = testEnvironment.authenticatedContext('other-label-writer').firestore();
   const label = {id: 'label-1', clientMutationId: 'label-1', date: '2026-09-24', patientName: 'Paciente Teste', procedureCode: '123', encounterCode: '456', type: 'Convênio', amount: null, insurance: 'Teste', creditor: 'Caixa', staffSiglas: [], consultation: false, status: 'CONFIRMED', active: true, createdByUid: 'label-writer', updatedByUid: 'label-writer', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1};
-  await assertSucceeds(setSyncedRecord(user, 'labels', 'label-1', label, 'label-writer'));
-  await assertFails(setSyncedRecord(user, 'labels', 'wrong-document', {...label, id: 'wrong-document'}, 'label-writer'));
-  await assertFails(setDoc(doc(user, 'syncQueue', 'label-1'), {resourceType: 'labels', resourceId: 'label-1', operation: 'create', status: 'pending', createdByUid: 'label-writer'}));
-  await assertFails(setSyncedRecord(user, 'labels', 'label-2', {...label, id: 'label-2', clientMutationId: 'label-2', type: 'Outro'}, 'label-writer'));
-  await assertFails(setSyncedRecord(user, 'labels', 'label-3', {...label, id: 'label-3', clientMutationId: 'label-3', legacySheetRow: 14}, 'label-writer'));
-  await assertSucceeds(updateSyncedRecord(user, 'labels', 'label-1', {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
-  await assertFails(updateSyncedRecord(other, 'labels', 'label-1', {patientName: 'Alteração indevida', updatedByUid: 'other-label-writer', updatedAt: serverTimestamp(), version: 3}, 'other-label-writer'));
+  await assertSucceeds(setFirestoreRecord(user, 'labels', 'label-1', label, 'label-writer'));
+  await assertFails(setFirestoreRecord(user, 'labels', 'wrong-document', {...label, id: 'wrong-document'}, 'label-writer'));
+  await assertFails(setFirestoreRecord(user, 'labels', 'label-2', {...label, id: 'label-2', clientMutationId: 'label-2', type: 'Outro'}, 'label-writer'));
+  await assertFails(setFirestoreRecord(user, 'labels', 'label-3', {...label, id: 'label-3', clientMutationId: 'label-3', legacySheetRow: 14}, 'label-writer'));
+  await assertSucceeds(updateFirestoreRecord(user, 'labels', 'label-1', {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
+  await assertFails(updateFirestoreRecord(other, 'labels', 'label-1', {patientName: 'Alteração indevida', updatedByUid: 'other-label-writer', updatedAt: serverTimestamp(), version: 3}, 'other-label-writer'));
   await assertFails(deleteDoc(doc(user, 'labels', 'label-1')));
   const queuedLabel = {...label, id: 'label-queue', clientMutationId: 'label-queue'};
-  await assertSucceeds(setSyncedRecord(user, 'labels', 'label-queue', queuedLabel, 'label-writer'));
-  await assertSucceeds(updateSyncedRecord(user, 'labels', 'label-queue', {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
+  await assertSucceeds(setFirestoreRecord(user, 'labels', 'label-queue', queuedLabel, 'label-writer'));
+  await assertSucceeds(updateFirestoreRecord(user, 'labels', 'label-queue', {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
 });
 
 test('histórico de Etiquetas registra todas as alterações em batch e conserva a privacidade', async () => {
@@ -865,7 +841,7 @@ test('histórico de Etiquetas registra todas as alterações em batch e conserva
   const manager = testEnvironment.authenticatedContext('label-manager').firestore();
   const labelId = 'label-history';
   const label = {id: labelId, clientMutationId: labelId, date: '2026-09-24', patientName: 'Paciente Teste', procedureCode: '123', encounterCode: '456', type: 'Convênio', amount: null, insurance: 'Teste', creditor: 'Caixa', staffSiglas: [], consultation: false, status: 'CONFIRMED', active: true, createdByUid: 'label-owner', updatedByUid: 'label-owner', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1};
-  await assertSucceeds(setSyncedRecord(owner, 'labels', labelId, label, 'label-owner'));
+  await assertSucceeds(setFirestoreRecord(owner, 'labels', labelId, label, 'label-owner'));
 
   await assertSucceeds(updateLabelWithHistory(owner, {
     labelId, label, uid: 'label-owner',
@@ -911,16 +887,16 @@ test('catálogo de plantonistas de Etiquetas é restrito e validado pelas Rules'
   await assertFails(setDoc(doc(writer, 'appConfig', 'labelStaff'), catalog));
 
   const label = {id: 'label-roster-valid', clientMutationId: 'label-roster-valid', date: '2026-09-24', patientName: 'Paciente Teste', procedureCode: '123', encounterCode: '456', type: 'Convênio', amount: null, insurance: 'Teste', creditor: 'Plantão', staffSiglas: ['AB'], consultation: false, status: 'CONFIRMED', active: true, createdByUid: 'label-writer', updatedByUid: 'label-writer', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1};
-  await assertSucceeds(setSyncedRecord(writer, 'labels', label.id, label, 'label-writer'));
+  await assertSucceeds(setFirestoreRecord(writer, 'labels', label.id, label, 'label-writer'));
   const invalid = {...label, id: 'label-roster-invalid', clientMutationId: 'label-roster-invalid', staffSiglas: ['ZZ']};
-  await assertFails(setSyncedRecord(writer, 'labels', invalid.id, invalid, 'label-writer'));
+  await assertFails(setFirestoreRecord(writer, 'labels', invalid.id, invalid, 'label-writer'));
   await assertSucceeds(getDoc(doc(reader, 'appConfig', 'labelStaff')));
   await assertFails(getDoc(doc(unrelated, 'appConfig', 'labelStaff')));
 
   await assertSucceeds(updateDoc(doc(manager, 'appConfig', 'labelStaff'), {siglas: ['CD'], updatedByUid: 'label-manager', updatedAt: serverTimestamp(), version: 2}));
-  await assertSucceeds(updateSyncedRecord(writer, 'labels', label.id, {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
+  await assertSucceeds(updateFirestoreRecord(writer, 'labels', label.id, {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
   const changedHistoricalSigla = {...label, id: 'label-old-sigla', clientMutationId: 'label-old-sigla', staffSiglas: ['AB']};
-  await assertFails(setSyncedRecord(writer, 'labels', changedHistoricalSigla.id, changedHistoricalSigla, 'label-writer'));
+  await assertFails(setFirestoreRecord(writer, 'labels', changedHistoricalSigla.id, changedHistoricalSigla, 'label-writer'));
 });
 
 test('administrador gerencia perfis e perfil comum não consegue se promover', async () => {

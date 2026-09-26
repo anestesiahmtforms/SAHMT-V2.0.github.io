@@ -215,10 +215,9 @@ service cloud.firestore {
          (resource.data.status == 'IN_PROGRESS' && data.status == 'COMPLETED' && data.completedAt == request.time));
     }
     function validChecklistRecord(data, checklistId) {
-      return data.keys().hasAll(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+      return data.keys().hasAll(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.id == checklistId && data.clientMutationId == checklistId && data.active == true && data.version == 1 &&
-        data.syncJobId is string && data.syncJobId.size() > 0 && data.syncJobId.size() <= 160 &&
         data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
         data.createdAt == request.time && data.updatedAt == request.time &&
         data.stationId is string && stationValidForChecklist(data.stationId, data.date) &&
@@ -275,10 +274,9 @@ service cloud.firestore {
         request.resource.data.version == resource.data.get('version', 0) + 1;
     }
     function validLabelRecord(data, labelId) {
-      return data.keys().hasAll(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+      return data.keys().hasAll(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.id == labelId && data.clientMutationId == labelId && data.active == true && data.version is int && data.version > 0 &&
-        data.syncJobId is string && data.syncJobId.size() > 0 && data.syncJobId.size() <= 160 &&
         data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 160 &&
@@ -371,10 +369,9 @@ service cloud.firestore {
         data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
     }
     function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
-      return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'syncJobId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+      return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.id == eventId && data.clientMutationId == eventId && data.active == true && data.version is int && data.version > 0 &&
-        data.syncJobId is string && data.syncJobId.size() > 0 && data.syncJobId.size() <= 160 &&
         data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.eventType in ['Pessoal', 'Férias', 'Ferias', 'ATRASO', 'Suporte', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia', 'Outros'] &&
@@ -644,54 +641,29 @@ service cloud.firestore {
         request.resource.data.createdAt == resource.data.createdAt && validVacation(request.resource.data, vacationId);
       allow delete: if false;
     }
-    function sheetSyncJobMatches(resourceType, resourceId, record) {
-      let jobPath = /databases/$(database)/documents/syncQueue/$(record.syncJobId);
-      return record.syncJobId is string && record.syncJobId.size() > 0 && existsAfter(jobPath) &&
-        getAfter(jobPath).data.resourceType == resourceType && getAfter(jobPath).data.resourceId == resourceId &&
-        getAfter(jobPath).data.version == record.version && getAfter(jobPath).data.createdByUid == request.auth.uid;
-    }
-    function validSheetSyncJob(data, jobId) {
-      let resourcePath = /databases/$(database)/documents/$(data.resourceType)/$(data.resourceId);
-      let permitted = (data.resourceType == 'events' && can('eventsWrite')) ||
-        (data.resourceType == 'labels' && (can('labelsWrite') || can('labelsManage'))) ||
-        (data.resourceType == 'checklists' && can('checklistWrite'));
-      return permitted &&
-        data.keys().hasAll(['id', 'resourceType', 'resourceId', 'operation', 'version', 'status', 'attempts', 'createdByUid', 'createdAt', 'updatedAt', 'nextAttemptAt', 'lastError', 'clientMutationId']) &&
-        data.keys().hasOnly(['id', 'resourceType', 'resourceId', 'operation', 'version', 'status', 'attempts', 'createdByUid', 'createdAt', 'updatedAt', 'nextAttemptAt', 'lastError', 'clientMutationId']) &&
-        data.id == jobId && data.clientMutationId == jobId && jobId is string && jobId.size() <= 160 &&
-        data.resourceType in ['events', 'labels', 'checklists'] && data.resourceId is string && data.resourceId.size() > 0 && data.resourceId.size() <= 128 &&
-        data.operation == 'upsert' && data.version is int && data.version >= 1 && data.status == 'pending' &&
-        data.attempts == 0 && data.lastError == '' && data.createdByUid == request.auth.uid &&
-        data.createdAt == request.time && data.updatedAt == request.time && data.nextAttemptAt == request.time &&
-        existsAfter(resourcePath) && getAfter(resourcePath).data.id == data.resourceId &&
-        getAfter(resourcePath).data.syncJobId == jobId &&
-        getAfter(resourcePath).data.updatedByUid == request.auth.uid && getAfter(resourcePath).data.updatedAt == request.time &&
-        getAfter(resourcePath).data.version == data.version;
-    }
     match /events/{eventId} {
       allow read: if can('eventsRead') || can('eventsWrite');
       allow create: if can('eventsWrite') && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
-        validEventRecord(request.resource.data, eventId, false) && sheetSyncJobMatches('events', eventId, request.resource.data);
+        validEventRecord(request.resource.data, eventId, false);
       allow update: if can('eventsWrite') && updateActorIsSelf() &&
         (resource.data.createdByUid == request.auth.uid || can('admin')) &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByUid', 'updatedAt', 'version', 'syncJobId']) &&
-        validEventRecord(request.resource.data, eventId, true) && sheetSyncJobMatches('events', eventId, request.resource.data);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByUid', 'updatedAt', 'version']) &&
+        validEventRecord(request.resource.data, eventId, true);
       allow delete: if false;
     }
     match /labels/{labelId} {
       allow read: if labelRecordAccess();
-      allow create: if (can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId) &&
-        sheetSyncJobMatches('labels', labelId, request.resource.data);
+      allow create: if (can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId);
       allow update: if (can('labelsWrite') || can('labelsManage')) && updateActorIsSelf() &&
         (resource.data.createdByUid == request.auth.uid || can('labelsManage')) &&
         request.resource.data.id == resource.data.id && request.resource.data.clientMutationId == resource.data.clientMutationId &&
         request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'updatedByUid', 'updatedAt', 'version', 'syncJobId']) &&
-        validLabelRecord(request.resource.data, labelId) && sheetSyncJobMatches('labels', labelId, request.resource.data);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'updatedByUid', 'updatedAt', 'version']) &&
+        validLabelRecord(request.resource.data, labelId);
       allow delete: if false;
       match /history/{version} {
         allow read: if exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId);
@@ -717,15 +689,9 @@ service cloud.firestore {
     }
     match /checklists/{checklistId} {
       allow read: if checklistAccess();
-      allow create: if can('checklistWrite') && validChecklistRecord(request.resource.data, checklistId) &&
-        sheetSyncJobMatches('checklists', checklistId, request.resource.data);
+      allow create: if can('checklistWrite') && validChecklistRecord(request.resource.data, checklistId);
       allow update: if false;
       allow delete: if false;
-    }
-    match /syncQueue/{jobId} {
-      allow read: if false;
-      allow create: if validSheetSyncJob(request.resource.data, jobId);
-      allow update, delete: if false;
     }
     match /checklistSignatures/{signatureId} {
       allow read: if can('checklistRead');

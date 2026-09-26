@@ -23,7 +23,6 @@
     {"collectionGroup":"documents","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]},
     {"collectionGroup":"equipment","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"tag","order":"ASCENDING"}]},
     {"collectionGroup":"trainings","queryScope":"COLLECTION","fields":[{"fieldPath":"order","order":"ASCENDING"},{"fieldPath":"title","order":"ASCENDING"}]},
-    {"collectionGroup":"syncQueue","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"nextAttemptAt","order":"ASCENDING"}]},
     {"collectionGroup":"activities","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"dueAt","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
     {"collectionGroup":"activityInteractions","queryScope":"COLLECTION","fields":[{"fieldPath":"activityId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
     {"collectionGroup":"activityInteractions","queryScope":"COLLECTION","fields":[{"fieldPath":"activityId","order":"ASCENDING"},{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
