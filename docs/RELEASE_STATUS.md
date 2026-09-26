@@ -36,4 +36,4 @@ O inventário de V1 e os documentos de arquitetura, esquema, sincronização, se
 - **UI e dispositivos:** comparação interna tela a tela, câmera OCR/QR e layout PDF em Android/iPhone continuam pendentes.
 - **Templates:** a V1 inspecionada não contém uma coleção de modelos reutilizáveis; não se afirma paridade de tal catálogo.
 
-Não considerar o release homologado para uso operacional até que o novo índice de fila chegue a `READY`, Functions necessárias sejam avaliadas/publicadas e os fluxos sejam testados com uma conta autorizada. O provisionamento do primeiro perfil e o acesso ao shell já foram confirmados.
+Não considerar o release homologado para uso operacional até que as Functions necessárias sejam avaliadas/publicadas e os fluxos sejam testados com uma conta autorizada. Os 30 índices do manifesto estão `READY`; o provisionamento do primeiro perfil e o acesso ao shell já foram confirmados.
