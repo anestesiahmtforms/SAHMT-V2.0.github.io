@@ -20,6 +20,7 @@ O script prepara as abas `CHECKLIST`, `EVENTOS`, `TREINAMENTOS`, `GESTAO_ATIVIDA
 - `syncPendingReports` lê até 40 jobs pendentes vencidos a cada execução do trigger de cinco minutos, sob `ScriptLock`.
 - `syncKey = tipo/ID` torna upsert repetido idempotente. O script relê o estado atual do Firestore, então um job atrasado não deve aplicar um snapshot antigo. Exclusão só remove a linha se o documento realmente não existir; se ele foi recriado, a linha atual é atualizada.
 - A leitura `get` usa `mask.fieldPaths` com somente os campos da aba de destino, mais `id` e `version` necessários para validar o job. Campos fora da projeção da planilha não são retornados ao Apps Script; isso reduz exposição acidental, mas não limita a permissão IAM do executor.
+- Colunas numéricas com medidas ou frações (`value`, posição/duração assistida, percentuais e pontos configuráveis) usam máscara que exibe casas decimais sem zeros finais; contadores e versões mantêm formato inteiro.
 - Falhas usam backoff exponencial; depois de oito tentativas o job fica `error` para inspeção. O script não altera nem remove registros operacionais.
 - A IAM usada por Firestore REST contorna Rules. A verificação de pasta/planilha privada protege o destino, mas não restringe o alcance da leitura IAM; trate o proprietário do script como operador privilegiado do projeto.
 - O código local ainda não foi copiado para um projeto Apps Script, autorizado ou implantado. A planilha e o worker não estão ativos.

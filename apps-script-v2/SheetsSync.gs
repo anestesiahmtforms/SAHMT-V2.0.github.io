@@ -72,13 +72,15 @@ function applyReportColumnFormats_(sheet, config) {
   const textFields = new Set(['syncKey', 'resourceType', 'idRegistro', 'uid', 'responsibleUid', 'responsibleUids', 'participantUids', 'createdByUid', 'updatedByUid', 'actorUid', 'resourceId', 'requestId', 'sourceId', 'trainingId', 'activityId', 'indicatorId', 'planId']);
   const timestampFields = new Set(['createdAt', 'updatedAt', 'startedAt', 'completedAt', 'dueAt', 'openedAt', 'timestamp']);
   const currencyFields = new Set(['amount', 'amountToPay']);
-  const integerFields = new Set(['delayMultiple', 'version', 'lastPosition', 'duration', 'watchedPercent', 'points', 'pointsGenerated', 'completionPoints', 'ruleVersion', 'value']);
+  const integerFields = new Set(['delayMultiple', 'version', 'ruleVersion']);
+  const decimalFields = new Set(['lastPosition', 'duration', 'watchedPercent', 'points', 'pointsGenerated', 'completionPoints', 'value']);
   config.fields.forEach(function (field, index) {
     const column = index + 1;
     if (textFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('@');
     else if (timestampFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
     else if (currencyFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('"R$" #,##0.00;[Red]-"R$" #,##0.00');
     else if (integerFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('0');
+    else if (decimalFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('0.############');
     else if (field === 'date') sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('yyyy-mm-dd');
   });
 }
