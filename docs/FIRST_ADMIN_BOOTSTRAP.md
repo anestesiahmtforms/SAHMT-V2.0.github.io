@@ -33,7 +33,7 @@ O Firebase Authentication comprova a identidade; o UID é a chave do documento. 
 | `updatedAt` | timestamp | A mesma data/hora do provisionamento |
 
 6. Confira que não há campos extras, salve o documento e volte à V2. Atualize a página ou entre novamente. O PWA deve carregar `users/{uid}` e liberar o shell como administrador.
-7. Abra Administração e crie os demais perfis com os UIDs que cada pessoa obtiver ao autenticar. Atribua somente as permissões necessárias.
+7. Para as demais pessoas, não peça que copiem nem enviem a UID. Oriente cada pessoa a entrar uma vez com a própria conta Google no PWA e tocar em **Solicitar acesso ao SAHMT**. Em Administração, abra a solicitação pendente; o app preenche UID, e-mail e nome exibido. Confira os dados, escolha a função e conceda somente as permissões necessárias antes de salvar. A pessoa poderá verificar a aprovação na própria tela de login. Esse pedido não concede acesso até você salvar o perfil.
 
 ## Checagens antes de concluir
 
