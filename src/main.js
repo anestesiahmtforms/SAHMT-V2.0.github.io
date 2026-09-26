@@ -978,7 +978,14 @@ async function loadDailyChecklist(stations, suppliedDay) {
     }).join('');
     const summaryCards = applicableStations.length ? `<section class="checklist-summary-grid" aria-label="Resumo do checklist diário"><article><strong>${summary.recorded || 0}/${summary.total || 0}</strong><small>Estações concluídas</small></article><article><strong>${Math.max(0, (summary.total || 0) - (summary.recorded || 0))}</strong><small>Pendentes</small></article><article><strong>${summary.nonconforming || 0}</strong><small>Ocorrências</small></article></section>` : '';
     const pendingChecklistWrites = records.some((record) => record.pendingSync || record.syncFailed);
-    const signatureMarkup = dayMode === 'today' && can('checklistSign') ? `<section class="checklist-signature panel" aria-label="Assinatura interna do Checklist"><p>Assinatura do relatório diário</p><button class="secondary-button" id="checklist-signature-prepare" type="button" ${!navigator.onLine || result.stale || pendingChecklistWrites ? 'disabled' : ''}>Revisar e assinar</button><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${pendingChecklistWrites ? 'Resolva as respostas locais pendentes antes da assinatura.' : result.stale ? 'Assinaturas exigem conferência online do relatório.' : ''}</p><div id="checklist-signature-preview"></div></section>` : '';
+    const signatureUnavailableReason = pendingChecklistWrites
+      ? 'Resolva as respostas locais pendentes antes da assinatura.'
+      : result.stale
+        ? 'Assinaturas exigem conferência online do relatório.'
+        : !applicableStations.length
+          ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
+          : '';
+    const signatureMarkup = dayMode === 'today' && can('checklistSign') ? `<section class="checklist-signature panel" aria-label="Assinatura interna do Checklist"><p>Assinatura do relatório diário</p><button class="secondary-button" id="checklist-signature-prepare" type="button" ${!navigator.onLine || result.stale || pendingChecklistWrites || !applicableStations.length ? 'disabled' : ''}>Revisar e assinar</button><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></section>` : '';
     content.innerHTML = `${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${signatureMarkup}${summaryCards}${cards || '<p class="empty-state">Nenhuma estação vigente está cadastrada para esta data.</p>'}`;
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
     prepareSignature?.addEventListener('click', async () => {

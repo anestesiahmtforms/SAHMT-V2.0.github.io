@@ -82,7 +82,7 @@ function createWorker({offline = false} = {}) {
   return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
-test('instala o shell V22 com os símbolos da Home e os imports estáticos do Vite', async () => {
+test('instala o shell V23 com os símbolos da Home e os imports estáticos do Vite', async () => {
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
