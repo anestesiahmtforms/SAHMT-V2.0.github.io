@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v21';
+const CACHE = 'sahmt-v2-shell-v22';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -36,7 +36,7 @@ self.addEventListener('install', (event) => {
       for (const imported of entry.imports || []) visitEntry(imported);
     };
     visitEntry(entryKey);
-    await Promise.all(assets.map(async (assetUrl) => {
+    await Promise.all([...assets].map(async (assetUrl) => {
       const response = await fetch(assetUrl, {cache: 'reload'});
       if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);
       await cache.put(assetUrl, response);
