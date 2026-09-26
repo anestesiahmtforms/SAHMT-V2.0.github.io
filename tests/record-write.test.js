@@ -24,5 +24,8 @@ test('outbox local preserva políticas próprias e rejeita coleções desconheci
   assert.equal(mayQueueOffline('events'), true);
   assert.equal(mayQueueOffline('checklists'), true);
   assert.equal(mayQueueOffline('activities'), true);
+  for (const collectionName of ['trainingProgress', 'indicatorMeasurements', 'actionPlans', 'equipment']) {
+    assert.equal(mayQueueOffline(collectionName), false, collectionName);
+  }
   assert.throws(() => buildOperationalWrite({collectionName: 'vacations', data: {}, uid: 'u', requestId: 'r', now: {}}), /não permitida/);
 });

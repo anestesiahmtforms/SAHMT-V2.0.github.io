@@ -41,6 +41,11 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.deepEqual((await outbox.listQueuedOperations('uid-a')).map((item) => item.requestId), ['a-queued']);
   const stablePayload = {data: {first: 1, second: 2}};
   await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload});
+  await assert.rejects(
+    outbox.enqueueOperation({uid: 'uid-a', type: 'users', resourceId: 'user-profile', requestId: 'user-profile', payload: {email: 'private@example.com'}}),
+    /não está habilitada/
+  );
+  assert.equal((await outbox.listUnsettledOperations('uid-a')).some((item) => item.type === 'users'), false);
   await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: {data: {second: 2, first: 1}}});
   await assert.rejects(
     outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: {data: {first: 9}}}),

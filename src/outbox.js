@@ -3,6 +3,7 @@ const DB_VERSION = 3;
 const PROFILES = 'profiles';
 const CACHE = 'cache';
 const OUTBOX = 'outbox';
+const ALLOWED_OUTBOX_TYPES = new Set(['events', 'checklists', 'activities', 'eventEdits', 'scheduleReleases']);
 let dbPromise;
 
 function openDb() {
@@ -176,6 +177,7 @@ export async function readCachedSchedule(uid, day) {
 
 export async function enqueueOperation({uid, type, resourceId, payload, requestId = crypto.randomUUID(), coalesce = false}) {
   if (!uid || !type || !resourceId) throw new Error('A operação offline precisa de usuário, tipo e ID estável.');
+  if (!ALLOWED_OUTBOX_TYPES.has(type)) throw new Error('Esta ação não está habilitada para sincronização offline.');
   if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
   const item = {requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''};
   const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
