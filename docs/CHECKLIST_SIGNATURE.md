@@ -9,7 +9,7 @@
 
 ## Validação pendente
 
-O Apps Script V2 atual consome apenas `syncQueue` para relatórios e ainda **não** lê nem valida `checklistSignatureRequests`. Enquanto esse consumidor não for implementado, autorizado e ativado, os pedidos permanecem pendentes. Não implantar Cloud Functions nem habilitar Blaze para contornar essa pendência.
+`apps-script-v2/ChecklistValidation.gs` implementa agora a rotina periódica que lê e valida `checklistSignatureRequests`, recalcula escala/snapshot e grava assinatura/pontos em commit REST idempotente. Ela não está copiada/autorizada no projeto Apps Script real e ainda não foi validada com Firestore IAM; por isso os pedidos em produção permanecem pendentes até essa ativação controlada. Não implantar Cloud Functions nem habilitar Blaze para contornar essa dependência.
 
 O consumidor futuro deve reler os documentos operacionais pelo Firestore REST usando identidade IAM privilegiada, reproduzir a escolha da primeira posição disponível, confirmar UID ativo e único, férias, substituições, estações e a resposta mais recente, recalcular o fingerprint e verificar declaração/justificativa. Só então poderá criar `checklistSignatures/{day}_{trustedRevision}` e os lançamentos de pontos em um único commit REST com precondições idempotentes, além de atualizar o pedido. Assinatura incompleta não pontua. Pedido divergente deve permanecer auditável como recusado/necessitando revisão, sem escrita em `scores`.
 
@@ -24,4 +24,4 @@ A conta que executará o Apps Script contorna Firestore Rules por IAM e deve ser
 
 ## Homologação ainda necessária
 
-O workflow GitHub precisa compilar a regra nova e um operador precisa validar o consumer Apps Script com dados fictícios/emulador e, depois, com uma ação produtiva controlada. A homologação de navegador/aparelho, leitura IAM, corrida de pedidos, replay, revisão alterada, responsável substituto, relatório incompleto e pontuação idempotente ainda não foi concluída. A carga V1 de escala permanece sujeita às revisões de dados já registradas em `RELEASE_STATUS.md`.
+O workflow GitHub compilará as regras/client; ainda é necessário validar o consumer Apps Script com dados fictícios/emulador e, depois, com uma ação produtiva controlada. A homologação de navegador/aparelho, leitura IAM, corrida de pedidos, replay, revisão alterada, responsável substituto, relatório incompleto e pontuação idempotente ainda não foi concluída. A carga V1 de escala permanece sujeita às revisões de dados já registradas em `RELEASE_STATUS.md`.

@@ -150,6 +150,8 @@ function firestoreValueFromJs_(value) {
   if (value instanceof Date) return {timestampValue: value.toISOString()};
   if (typeof value === 'boolean') return {booleanValue: value};
   if (typeof value === 'number') return Number.isInteger(value) ? {integerValue: String(value)} : {doubleValue: value};
+  if (Array.isArray(value)) return {arrayValue: {values: value.map(firestoreValueFromJs_)}};
+  if (typeof value === 'object') return {mapValue: {fields: firestoreFieldsFromJs_(value)}};
   return {stringValue: String(value)};
 }
 

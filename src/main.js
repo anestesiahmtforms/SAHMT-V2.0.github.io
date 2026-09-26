@@ -1005,7 +1005,7 @@ async function loadDailyChecklist(stations, suppliedDay) {
   content.innerHTML = '<p class="loading">Carregando registros do dia…</p>';
   try {
     const {listChecklistRecords} = await import('./data.js');
-    const result = await listChecklistRecords(day, session.user.uid, {stationIds: applicableStations.map((station) => station.id)});
+    const result = await listChecklistRecords(day, session.user.uid, {pageSize: 1000, stationIds: applicableStations.map((station) => station.id)});
     const records = result.records;
     const latestByStation = new Map();
     for (const record of records) if (!latestByStation.has(record.stationId)) latestByStation.set(record.stationId, record);
@@ -1047,15 +1047,16 @@ async function loadDailyChecklist(stations, suppliedDay) {
           prepareSignature.disabled = true;
           return;
         }
-        if (preview.requestStatus === 'VALIDATED') {
-          previewTarget.innerHTML = '<p class="sync-state">Esta revisão foi validada e assinada.</p>';
+        if (['VALIDATED', 'DUPLICATE'].includes(preview.requestStatus)) {
+          previewTarget.innerHTML = '<p class="sync-state">Esta revisão já foi validada e assinada.</p>';
           status.textContent = 'Assinatura validada.';
           prepareSignature.disabled = true;
           return;
         }
-        if (preview.requestStatus === 'REJECTED') {
-          previewTarget.innerHTML = '<p class="sync-state">O pedido anterior foi recusado. Atualize o relatório e solicite uma nova validação.</p>';
-          status.textContent = 'Pedido anterior recusado.';
+        if (['REJECTED', 'STALE', 'NEEDS_REVIEW'].includes(preview.requestStatus)) {
+          previewTarget.innerHTML = `<p class="sync-state">O pedido anterior não foi validado. ${escapeHtml(preview.validationMessage || 'Confira o relatório e os dados atuais.')} Atualize antes de criar outro pedido.</p>`;
+          status.textContent = 'Pedido anterior requer revisão.';
+          prepareSignature.disabled = true;
           return;
         }
         previewTarget.innerHTML = `<div class="checklist-signature-review"><p>Relatório: ${preview.total - preview.missing}/${preview.total} estações respondidas.${preview.missing ? ` ${preview.missing} pendente(s).` : ''}</p><p>O responsável da primeira posição, as substituições e a revisão final serão conferidos pelo validador. Este envio ainda não é uma assinatura validada e não concede pontos.</p><label>Justificativa ou contexto para auditoria<textarea id="checklist-signature-justification" rows="3" maxlength="500" required></textarea></label><label class="checklist-declaration"><input type="checkbox" id="checklist-signature-declaration"> ${escapeHtml(preview.declaration)}</label><button class="primary-button" type="button" id="checklist-signature-confirm" disabled>Enviar para validação</button></div>`;

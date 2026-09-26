@@ -78,3 +78,5 @@ O cliente inicializa reCAPTCHA v3 somente quando `VITE_APP_CHECK_SITE_KEY` cont�
 
 
 - 26/09/2026: commit 7fd567c migrou início/conclusão de Treinamentos no PWA para transações Firestore compatíveis com Spark; workflow GitHub 36258100988 concluiu build e deploy com sucesso. Firestore Rules foram compiladas e publicadas pelo comando `npx.cmd firebase deploy --only firestore:rules --project sahmt-17a16`. Nenhuma Cloud Function foi implantada e billing permaneceu inalterado. Os claims de pontos ficam pendentes; não houve teste autenticado real em aparelho nem validação independente de reprodução do vídeo.
+
+- 26/09/2026: pps-script-v2/ChecklistValidation.gs adiciona validador Spark periódico para pedidos do Checklist; o PWA envia apenas solicitação pendente e o validador recalcula dados e grava assinatura/ledger no mesmo commit REST com precondições. Código ainda não foi copiado/ativado no projeto Apps Script real, não recebeu IAM e não foi homologado. O consumidor de relatórios ainda usa syncQueue legado dependente de Cloud Functions e precisa ser migrado para varredura periódica Spark.

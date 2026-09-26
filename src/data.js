@@ -1313,7 +1313,7 @@ export async function saveChecklistStation(input, uid) {
 
 export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds = []} = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Informe uma data válida para o checklist.');
-  const currentLimit = Math.min(200, Math.max(1, pageSize));
+  const currentLimit = Math.min(1000, Math.max(1, pageSize));
   const requestedStationIds = [...new Set(stationIds.map((id) => String(id || '').trim()).filter(Boolean))].sort();
   let records; let priorRecords = []; let historyIncomplete = false; let stale = false;
   try {
@@ -1438,7 +1438,7 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
     day, revision, total: entries.length, missing: entries.filter((entry) => !entry.condition).length,
     responsible: null,
     declaration: 'Confirmo que revisei o relatório do Checklist e solicito a validação da assinatura.',
-    requestStatus: request?.status || '', requestId: request?.id || ''
+    requestStatus: request?.status || '', requestId: request?.id || '', validationMessage: request?.validationMessage || ''
   };
 }
 
