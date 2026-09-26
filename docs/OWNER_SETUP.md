@@ -1,40 +1,51 @@
-# Ações do proprietário para concluir a ativação
+# Ações do proprietário para ativar integrações no Spark
 
-Este guia cobre somente os passos que dependem do proprietário do projeto. **Não envie senhas, códigos de login, tokens, chaves de API nem arquivos JSON de conta de serviço.** A sessão Firebase CLI já está autenticada localmente.
+## Decisão operacional
 
-## Firebase Functions
+O SAHMT V2 usa Firebase Authentication + Firestore no plano Spark. **Não vincule faturamento, não mude para Blaze e não implante Cloud Functions.** As callables e triggers em `functions/` são legado/testes de Emulator; não fazem parte do runtime publicado.
 
-Estado conferido em 26/09/2026: o projeto é `sahmt-17a16`; Firestore, Rules e índices existem. A Cloud Functions API retorna `403 SERVICE_DISABLED` e o projeto ainda não tem uma conta Cloud Billing vinculada. O deploy de Functions exige o plano Blaze; vincular a conta muda o projeto para cobrança conforme uso. A documentação oficial informa que Functions usa serviços pagos e recomenda acompanhar custos; alertas de orçamento notificam, mas não limitam automaticamente a cobrança. [Requisitos de deploy](https://firebase.google.com/docs/functions/get-started), [planos Firebase](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans) e [alertas/controles](https://firebase.google.com/docs/projects/billing/advanced-billing-alerts-logic).
+A PWA e as Rules já estão publicadas. O que ainda depende de configuração do proprietário é o Apps Script V2 assíncrono. Sem essa integração, o PWA continua registrando dados operacionais no Firestore; validações confiáveis de assinatura do Checklist e pontos de Treinamentos/Gestão ficam pendentes, e relatórios não são sincronizados com Sheets.
 
-1. Abra [Firebase Console do SAHMT](https://console.firebase.google.com/project/sahmt-17a16/overview) e confirme que o projeto selecionado é `sahmt-17a16`.
-2. Em **Configurações do projeto → Uso e faturamento**, revise a opção de mudar para **Blaze**. A tela pedirá uma conta de faturamento Google Cloud. Confira os dados e as condições de cobrança antes de concluir; essa vinculação é uma decisão financeira do proprietário.
-3. Configure alertas de orçamento e, se disponíveis para Cloud Functions no Console, revise também os limites de gasto. Alertas comuns não são teto de cobrança.
-4. Habilite a [Cloud Functions API para `sahmt-17a16`](https://console.developers.google.com/apis/api/cloudfunctions.googleapis.com/overview?project=sahmt-17a16). Confira novamente o ID do projeto antes de habilitar.
-5. Quando terminar, basta avisar: **“Blaze vinculado e Cloud Functions API habilitada”**. Não envie recibos, números de cartão nem credenciais.
+## 1. Restringir pasta e planilha
 
-Depois dessa confirmação, eu verifico a propagação, reviso os serviços que o CLI solicitar (como Cloud Build e Artifact Registry) e, com a autorização de publicação já dada, implanto somente as Cloud Functions V2 neste projeto e valido o estado implantado. Não é necessário executar comandos nem copiar chaves.
-
-## Pasta e planilha de relatórios no Drive
-
-Leitura de metadados do Drive em 26/09/2026 confirmou `anyone: reader` tanto na pasta `APP SAHMT-V2.0` quanto em `SAHMT V2.0 - BASE DE RELATÓRIOS`. O consumidor Apps Script bloqueia a ativação quando qualquer uma delas está pública.
+Na leitura de metadados de 26/09/2026, a pasta `APP SAHMT-V2.0` e a planilha `SAHMT V2.0 - BASE DE RELATÓRIOS` estavam com `anyone: reader`. O setup do Apps Script bloqueia enquanto qualquer uma estiver pública.
 
 1. Abra a [pasta oficial no Drive](https://drive.google.com/drive/u/0/folders/1sL1NPK-CkZHmWJO_39MLajU-VpJIOZ74).
-2. Selecione **Compartilhar → Acesso geral → Restrito**. Mantenha apenas os colaboradores explicitamente autorizados.
-3. Abra a [planilha de relatórios](https://docs.google.com/spreadsheets/d/1I4FO9iNIFXot8O2p4GI6St76Qu_pznO8iSdyzt65E64/edit) e aplique a mesma configuração: **Compartilhar → Acesso geral → Restrito**.
-4. Avise quando concluir. Eu releio os metadados para confirmar a restrição antes de configurar o Apps Script.
+2. Em **Compartilhar → Acesso geral**, selecione **Restrito**. Preserve ou adicione somente os colaboradores que precisam de acesso nominal.
+3. Abra a [planilha de relatórios](https://docs.google.com/spreadsheets/d/1I4FO9iNIFXot8O2p4GI6St76Qu_pznO8iSdyzt65E64/edit) e também selecione **Restrito**.
+4. Confirme que a planilha está dentro da pasta oficial. O setup valida a localização e recusa duplicatas.
 
-Essa alteração pode retirar o acesso de quem dependia somente do link público; adicione previamente as pessoas que ainda precisam acessar. A aba `Etiquetas Resumo` continua sem integração, e nenhum dado de Etiquetas será espelhado.
+Restringir remove o acesso de quem dependia apenas do link público. Confirme os usuários legítimos antes da mudança. Não coloque dados de Etiquetas nessa planilha.
 
-## O que já está pronto
+## 2. Preparar o projeto Apps Script
 
-- A PWA está publicada em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
-- O projeto Firebase existente e o Firestore `(default)` são usados; não foi criado projeto ou banco alternativo.
-- O primeiro perfil foi provisionado pelo proprietário e o login até a Home foi confirmado.
-- As Rules e os 32 índices foram publicados; os catálogos iniciais de 30 siglas e 28 estações foram semeados.
-- A planilha de relatórios já existe, suas oito abas V2 e cabeçalhos foram conferidos, e o setup Apps Script recusa uma planilha pública ou fora da pasta oficial.
+1. Crie um projeto Apps Script V2 dentro da pasta oficial.
+2. Copie os arquivos de `apps-script-v2/`, inclusive `appsscript.json` e os validadores `ChecklistValidation.gs`, `TrainingValidation.gs`, `ManagementScoreValidation.gs` e `SparkReportSync.gs`.
+3. O projeto usa os escopos OAuth declarados no manifesto: Firestore REST (`datastore`), Sheets, Drive, requisições externas e gatilhos. Revise o manifesto antes de autorizar.
+4. Nas **Propriedades do script**, defina `SAHMT_V2_REPORTS_DESTINATION_APPROVED` como `YES` somente depois de confirmar que pasta e planilha estão restritas.
+5. Execute `setupSahmtV2Reporting`. Ele verifica a privacidade/localização, valida cabeçalhos antes de alterar abas e guarda o ID da planilha nas propriedades do script. O setup não instala gatilhos.
 
-## Fontes oficiais
+## 3. Revisar acesso Firestore/IAM
 
-- [Implantar Cloud Functions for Firebase](https://firebase.google.com/docs/functions/get-started)
-- [Planos de preços Firebase](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)
-- [Alertas e controles de gasto](https://firebase.google.com/docs/projects/billing/advanced-billing-alerts-logic)
+Os gatilhos executam como a conta que os instalou. Ela precisa consultar e atualizar somente os dados usados pelos validadores e consultar os dados projetados para relatórios. OAuth/IAM do Apps Script acessa o projeto Firestore fora das Rules do cliente; a permissão IAM vale no escopo do projeto e **não fica limitada por coleção pelas Firestore Rules**.
+
+Antes de conceder acesso, um administrador do Google Cloud deve revisar principal, escopos e menor papel IAM viável. Não usar chave de service account, não enviar credenciais aqui e não instalar gatilhos até essa revisão e a autorização da conta executora.
+
+## 4. Homologar antes dos gatilhos
+
+Use dados fictícios e confira idempotência/replay, conflito e falha para cada fluxo:
+
+- Checklist: pedido incompleto/completo, substituto, alteração da revisão e repetição.
+- Treinamentos: abaixo/acima de 95%, intervalos inconsistentes, tempo insuficiente, perfil inválido e lançamento repetido. O navegador controla faixas e sinal de encerramento; a validação não prova que o vídeo foi assistido.
+- Gestão: aprovação por gestor autorizado, tentativa de autoaprovação, recusa justificada, claim divergente e repetição.
+- Relatórios: projeção de campos aprovada, upsert repetido, cursor, atraso e revarredura.
+
+Após IAM e homologação, instale apenas os gatilhos Spark necessários: `installChecklistValidationTrigger`, `installTrainingValidationTrigger`, `installManagementScoreValidationTrigger` e `installSahmtV2SparkReportTrigger`. Eles varrem o Firestore periodicamente; o PWA não espera por eles. **Não instale `installSahmtV2SyncTrigger`**, que pertence à fila legada `syncQueue`.
+
+## Estado já preparado
+
+- A PWA publicada usa o Firebase `sahmt-17a16` e o Firestore `(default)`.
+- Rules e 32 índices estão publicados; o primeiro perfil foi provisionado pelo proprietário.
+- A planilha existe e suas oito abas/cabeçalhos V2 foram conferidos.
+- O código dos quatro consumidores Apps Script está versionado; nenhum foi copiado, autorizado ou ativado no projeto real.
+- A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`. Isso é intencional para esta arquitetura Spark.
