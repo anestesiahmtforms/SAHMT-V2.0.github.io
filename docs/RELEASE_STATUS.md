@@ -3,9 +3,9 @@
 ## Artefato publicado
 
 - Repositório oficial: [SAHMT-V2.0.github.io](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io), branch `main`.
-- Commit verificado: `e144b73025f6afefc7403547cc2d6887b67e0f09`.
+- Commit do código e do relatório publicado: `9c934bf3271b994aa1f483aa400441eadaca5d54`.
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
-- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36206679079): build e deploy concluídos com sucesso para o commit acima. A página e o manifesto foram consultados; a página respondeu HTTP 200 e aponta para os assets do build publicado.
+- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36207328563): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200 e o HTML servido coincidiu com `dist/index.html`, incluindo os mesmos assets JS/CSS.
 
 ## O que foi validado
 
