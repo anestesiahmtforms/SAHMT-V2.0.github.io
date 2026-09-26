@@ -82,8 +82,8 @@ function createWorker({offline = false} = {}) {
   return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
-test('instala o shell V26 com os símbolos da Home e os imports estáticos do Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v26';/);
+test('instala o shell V27 com os símbolos da Home e os imports estáticos do Vite', async () => {
+  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v27';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
@@ -122,5 +122,17 @@ test('serve o shell salvo quando a navegação ocorre sem rede', async () => {
   });
 
   assert.equal(await response, savedIndex);
+  assert.equal(worker.fetched.length, 0);
+});
+
+test('deixa páginas auxiliares fora do cache do shell para não substituir o HTML offline', async () => {
+  const worker = createWorker();
+  let intercepted = false;
+  worker.handlers.get('fetch')({
+    request: {method: 'GET', mode: 'navigate', url: `https://sahmt.example${BASE}tools/catalog-review.html`},
+    respondWith() { intercepted = true; }
+  });
+
+  assert.equal(intercepted, false);
   assert.equal(worker.fetched.length, 0);
 });

@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v26';
+const CACHE = 'sahmt-v2-shell-v27';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -53,6 +53,7 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`)) return;
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       try {
@@ -68,7 +69,6 @@ self.addEventListener('fetch', (event) => {
     })());
     return;
   }
-  if (!url.pathname.startsWith(BASE)) return;
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then(async (response) => {
     if (response.ok && response.type === 'basic') {
       const cache = await caches.open(CACHE);
