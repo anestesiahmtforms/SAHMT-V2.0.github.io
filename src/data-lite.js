@@ -2,9 +2,24 @@ import {collection, doc, getDoc, getDocs, limit, orderBy, query, where} from 'fi
 import {db} from './firebase-lite.js';
 import {readSafeCache, writeSafeCache} from './outbox.js';
 import {readThroughSafeCache} from './offline-cache.js';
+import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 
 function mayUseOfflineCache(error) {
   return ['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error?.code) || (navigator.onLine === false && !error?.code);
+}
+
+export async function readAppFeatures(uid) {
+  try {
+    const snapshot = await getDoc(doc(db, 'appConfig', 'app'));
+    const features = normalizeAppFeatures(snapshot.exists() ? snapshot.data().features : DEFAULT_APP_FEATURES);
+    if (uid) await writeSafeCache(uid, 'appConfig', 'app', {features});
+    return features;
+  } catch (error) {
+    if (!uid || !mayUseOfflineCache(error)) throw error;
+    const cached = await readSafeCache(uid, 'appConfig', 'app');
+    if (cached?.data?.features) return normalizeAppFeatures(cached.data.features);
+    throw error;
+  }
 }
 
 export async function readSchedule(day, uid) {

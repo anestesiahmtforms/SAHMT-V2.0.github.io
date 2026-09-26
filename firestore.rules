@@ -350,6 +350,21 @@ service cloud.firestore {
         data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt == request.time &&
         data.version is int && data.version > 0;
     }
+    function validAppFeatures(features) {
+      return features is map &&
+        features.keys().hasAll(['checklist', 'labels', 'trainings', 'management', 'notifications', 'esg', 'innovation']) &&
+        features.keys().hasOnly(['checklist', 'labels', 'trainings', 'management', 'notifications', 'esg', 'innovation']) &&
+        features.checklist is bool && features.labels is bool && features.trainings is bool &&
+        features.management is bool && features.notifications is bool && features.esg is bool && features.innovation is bool;
+    }
+    function validAppConfig(data) {
+      return data.keys().hasAll(['id', 'features', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'features', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == 'app' && validAppFeatures(data.features) &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 &&
+        data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt == request.time &&
+        data.version is int && data.version > 0;
+    }
     function eventCatalogContains(field, value) {
       let path = /databases/$(database)/documents/eventCatalogs/operational;
       return exists(path) && get(path).data.keys().hasAny([field]) && get(path).data[field] is list && get(path).data[field].hasAny([value]);
@@ -587,7 +602,14 @@ service cloud.firestore {
     }
     match /appConfig/{configId} {
       allow read: if activeUser() && configId != 'labelStaff';
-      allow write: if isAdmin();
+      allow create: if configId == 'app' && isAdmin() && validAppConfig(request.resource.data) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+        request.resource.data.version == 1;
+      allow update: if configId == 'app' && isAdmin() && validAppConfig(request.resource.data) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['features', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
     }
     match /appConfig/labelStaff {
       allow read: if can('labelsRead') || can('labelsWrite') || can('labelsManage');

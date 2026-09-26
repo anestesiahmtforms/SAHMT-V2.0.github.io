@@ -10,6 +10,7 @@ import {decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsVali
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
+import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 
 const app = document.querySelector('#app');
 const labels = {
@@ -69,6 +70,9 @@ let cleanupCurrentModule = null;
 let cleanupLabelOcr = null;
 let loadedTrainingCatalog = [];
 let offlineViewMode = 'sync';
+let appFeatures = {...DEFAULT_APP_FEATURES};
+let appFeaturesUid = '';
+let appFeaturesLoadSequence = 0;
 const preloadedDataUsers = new Set();
 const scheduledDataPreloads = new Set();
 
@@ -177,7 +181,7 @@ function loginView() {
 function moduleCards() {
   const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg'};
-  return Object.entries(labels).filter(([route]) => permissionFor[route]?.some(can)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
+  return Object.entries(labels).filter(([route]) => permissionFor[route]?.some(can) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'TR',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
@@ -474,6 +478,10 @@ function bindOfflineScheduleLauncher(root) {
 async function loadModule(route) {
   const content = document.querySelector('#module-content');
   if (!content) return;
+  if (!featureEnabledForRoute(route, appFeatures)) {
+    navigate('home');
+    return;
+  }
   if (route === 'offline') {
     await loadOfflineView(content);
     return;
@@ -863,7 +871,16 @@ async function loadAdminModule(content) {
   try {
     const {listUserProfiles} = await import('./data.js');
     const profiles = await listUserProfiles();
+    let configuredFeatures = appFeatures;
+    if (can('admin')) {
+      try { configuredFeatures = normalizeAppFeatures(await (await import('./data-lite.js')).readAppFeatures(session.user.uid)); }
+      catch { configuredFeatures = appFeatures; }
+    }
     const permissions = userPermissions.map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="permission" value="${id}" ${['admin', 'usersManage'].includes(id) && !can('admin') ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('');
+    const featureSettings = can('admin') ? `<section class="admin-user-form panel"><h3>Disponibilidade dos módulos</h3><p>Ative ou oculte áreas na Home sem editar o código. As regras de acesso do Firestore continuam valendo mesmo para uma área oculta.</p><form id="app-feature-form"><fieldset><legend>Módulos do SAHMT</legend><div class="permission-grid">${[
+      ['checklist', 'Checklist'], ['labels', 'Etiquetas'], ['trainings', 'Treinamentos'], ['management', 'Gestão'], ['notifications', 'Notificações'],
+      ['esg', 'ESG · preparado'], ['innovation', 'Inovação · preparada']
+    ].map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="feature" value="${id}" ${configuredFeatures[id] ? 'checked' : ''} ${['esg', 'innovation'].includes(id) ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('')}</div></fieldset><p class="record-meta">ESG e Inovação ficam desativadas enquanto não houver uma área publicada. Eventos, Pessoas, Administração, Home e Sincronização permanecem disponíveis conforme as permissões.</p><div class="admin-user-actions"><button class="secondary-button" type="submit">Salvar disponibilidade</button></div><p id="app-feature-status" class="record-meta" role="status" aria-live="polite"></p></form></section>` : '';
     const entries = profiles.map((profile) => {
       const active = profile.active === true && profile.access === true;
       const self = profile.uid === session.user.uid;
@@ -872,7 +889,8 @@ async function loadAdminModule(content) {
       const editControl = self ? '<span class="record-meta">Perfil atual</span>' : privileged && !can('admin') ? '<span class="record-meta">Edição restrita a administrador</span>' : `<button type="button" class="secondary-button" data-edit-user="${escapeHtml(profile.uid)}">Editar</button>`;
       return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><code>${escapeHtml(profile.uid || '')}</code></div>${editControl}</article>`;
     }).join('');
-    content.innerHTML = `<p class="admin-auth-note">Este painel gerencia somente perfis e permissões SAHMT em <code>users/{uid}</code>. A pessoa precisa entrar com Google uma vez antes do provisionamento para obter o próprio UID. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
+    content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. A pessoa precisa entrar com Google uma vez antes do provisionamento para obter o próprio UID. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
+      ${featureSettings}
       <section class="admin-user-form panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Use o UID copiado pela pessoa na tela de acesso pendente. O UID é a chave; e-mail e nome são dados do perfil. Permissões só autorizam operações cobertas pelas Rules e módulos V2 ativos.</p>
         <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Cole o UID recebido"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
           <fieldset><legend>Permissões SAHMT</legend><div class="permission-grid">${permissions}</div></fieldset>
@@ -881,6 +899,27 @@ async function loadAdminModule(content) {
         </form>
       </section>
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Perfis V2</h3><label>Filtrar perfis<input id="admin-user-search" type="search" placeholder="Nome, sigla, e-mail ou UID"></label></div><p class="record-meta">Exibindo até 200 perfis, ordenados por nome. Para remover acesso, desative o perfil; o registro não é apagado.</p>${entries || '<p class="empty-state">Nenhum perfil provisionado foi encontrado.</p>'}</section>`;
+    const featureForm = content.querySelector('#app-feature-form');
+    featureForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = featureForm.querySelector('[type="submit"]');
+      const status = featureForm.querySelector('#app-feature-status');
+      submit.disabled = true;
+      if (status) status.textContent = 'Salvando configurações…';
+      const nextFeatures = {...configuredFeatures};
+      featureForm.querySelectorAll('input[name="feature"]:not(:disabled)').forEach((input) => { nextFeatures[input.value] = input.checked; });
+      try {
+        const {saveAppFeatures} = await import('./data.js');
+        appFeatures = await saveAppFeatures(nextFeatures, session.user.uid);
+        notice = 'Disponibilidade dos módulos atualizada.';
+        await render();
+      } catch (error) {
+        if (status) status.textContent = error.code === 'permission-denied'
+          ? 'O Firestore recusou a alteração. Somente uma conta administradora pode mudar a disponibilidade.'
+          : `Não foi possível salvar as configurações: ${error.message || error}`;
+        submit.disabled = false;
+      }
+    });
     const form = content.querySelector('#admin-user-form');
     const status = content.querySelector('#admin-user-status');
     const resetForm = () => {
@@ -2664,6 +2703,12 @@ async function render() {
     bindLogin();
     return;
   }
+  const requestedRoute = currentRoute();
+  if (!featureEnabledForRoute(requestedRoute, appFeatures)) {
+    notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
+    navigate('home');
+    return;
+  }
   app.innerHTML = shellView();
   preloadOperationalDataWhenIdle(session.user);
   document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
@@ -2769,13 +2814,44 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
-  if (next.status !== 'signed-in' || session.user?.uid !== next.user?.uid) scheduleOutboxRetry('', null);
+  const userChanged = session.user?.uid !== next.user?.uid;
+  if (next.status !== 'signed-in' || userChanged) scheduleOutboxRetry('', null);
+  if (next.status !== 'signed-in') {
+    appFeatures = {...DEFAULT_APP_FEATURES};
+    appFeaturesUid = '';
+    appFeaturesLoadSequence++;
+  } else if (userChanged) {
+    appFeatures = {...DEFAULT_APP_FEATURES};
+    appFeaturesUid = '';
+  }
   session = next;
   notice = '';
   void render();
+  if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
+}
+async function refreshAppFeatures(uid, force = false) {
+  if (!uid || (!force && appFeaturesUid === uid)) return;
+  const sequence = ++appFeaturesLoadSequence;
+  appFeaturesUid = uid;
+  try {
+    const {readAppFeatures} = await import('./data-lite.js');
+    const features = normalizeAppFeatures(await readAppFeatures(uid));
+    if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    appFeatures = features;
+    await render();
+  } catch (error) {
+    if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    appFeatures = {...DEFAULT_APP_FEATURES};
+    console.warn('[SAHMT] Configuração de módulos indisponível; usando padrões locais:', error.code || error.message);
+  }
 }
 window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
-window.addEventListener('online', () => { if (session.status === 'signed-in') void syncOutbox(); });
+window.addEventListener('online', () => {
+  if (session.status === 'signed-in') {
+    void refreshAppFeatures(session.user.uid, true);
+    void syncOutbox();
+  }
+});
 window.addEventListener('offline', () => { void updateOutboxStatus(); });
 window.addEventListener('sahmt-write-synced', (event) => {
   void updateOutboxStatus();

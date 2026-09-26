@@ -8,6 +8,7 @@ import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
 import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
+import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
@@ -139,6 +140,40 @@ export async function getManagementArea(areaId) {
   if (!['area-gestao-da-qualidade', 'area-gestao-financeira'].includes(areaId)) return null;
   const snapshot = await getDocFromServer(doc(db, 'managementAreas', areaId));
   return snapshot.exists() && snapshot.data().active === true ? {id: snapshot.id, ...snapshot.data()} : null;
+}
+
+export async function saveAppFeatures(input, actorUid) {
+  const featureKeys = Object.keys(DEFAULT_APP_FEATURES);
+  if (!actorUid || !input || typeof input !== 'object' || Array.isArray(input) ||
+      Object.keys(input).some((key) => !featureKeys.includes(key)) ||
+      featureKeys.some((key) => typeof input[key] !== 'boolean')) {
+    throw new Error('As configurações de módulos estão inválidas.');
+  }
+  const features = normalizeAppFeatures(input);
+  const reference = doc(db, 'appConfig', 'app');
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    if (snapshot.exists()) {
+      const current = snapshot.data();
+      transaction.update(reference, {
+        features,
+        updatedByUid: actorUid,
+        updatedAt: serverTimestamp(),
+        version: current.version + 1
+      });
+    } else {
+      transaction.set(reference, {
+        id: 'app',
+        features,
+        createdByUid: actorUid,
+        createdAt: serverTimestamp(),
+        updatedByUid: actorUid,
+        updatedAt: serverTimestamp(),
+        version: 1
+      });
+    }
+  });
+  return features;
 }
 
 export async function listNotifications(profile, {pageSize = 100, canManage = false} = {}) {

@@ -5,7 +5,7 @@ Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Aut
 ## Modelo
 
 - O UID do Firebase Authentication identifica o perfil mínimo em `users/{uid}`; as Firestore Rules conferem perfil e permissão a cada acesso do cliente.
-- Home, Eventos, Etiquetas, Gestão, Checklist, Treinamentos, Administração e sincronização offline permanecem dentro do mesmo PWA.
+- Home, Eventos, Etiquetas, Gestão, Checklist, Treinamentos, Administração e sincronização offline permanecem dentro do mesmo PWA. Administradores também controlam sem código a visibilidade dos módulos configuráveis.
 - A V2 não usa Sheets ou Apps Script para autenticar nem para gravar operações. Uma integração assíncrona de relatórios está preparada no código, mas não implantada.
 
 ## Estado atual — 26/09/2026

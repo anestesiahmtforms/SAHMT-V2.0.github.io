@@ -40,6 +40,8 @@ Auditoria funcional do Checklist V1 no ZIP original (`core/views/checklist.js`, 
 
 Em 25/09/2026, `qualityManage` passou a abrir a área Gestão da Qualidade no mesmo módulo Gestão, com acesso por leitura direta ao documento ativo daquela área e operações de atividades, indicadores, planos e documentos limitadas ao seu ID nas Rules. A permissão não libera a Gestão Financeira. Perfis com `financeRead`, `financeWrite` ou `financeManage` agora conseguem abrir a área restrita no módulo Gestão; até que campos e fluxo de trabalho sejam definidos, a tela não consulta dados nem oferece operações financeiras.
 
+A Administração agora edita as feature flags sem código em `appConfig/app`, com gravação transacional versionada, Rules restritas a `admin` e bloqueio de navegação para módulos desativados. ESG e Inovação permanecem somente como flags preparadas, desativadas e sem rota publicada. Homologar as alternâncias pela sessão administradora após a implantação das Rules.
+
 ## Fase 3 — Migração e integração
 
 - [ ] Confirmar origem autoritativa e backup; auditar export e esquema.
