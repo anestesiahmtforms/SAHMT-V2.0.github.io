@@ -1438,6 +1438,89 @@ function mergeWatchedRanges(ranges, duration) {
 
 function trainingProgressId(uid, trainingId) { return `${uid}_${trainingId}`; }
 
+export async function startTrainingInFirestore(uid, trainingId) {
+  if (!uid || !trainingId || trainingId.length > 128) throw new Error('Não foi possível identificar o treinamento ou a sessão.');
+  const receiptId = trainingProgressId(uid, trainingId);
+  const receiptRef = doc(db, 'trainingReceipts', receiptId);
+  const trainingRef = doc(db, 'trainings', trainingId);
+  return runTransaction(db, async (transaction) => {
+    const [receiptSnapshot, trainingSnapshot] = await Promise.all([
+      transaction.get(receiptRef), transaction.get(trainingRef)
+    ]);
+    if (receiptSnapshot.exists()) {
+      const receipt = receiptSnapshot.data();
+      if (receipt.uid !== uid || receipt.trainingId !== trainingId || receipt.sourceType !== 'trainingStart') {
+        throw new Error('O recibo de início do treinamento está inconsistente.');
+      }
+      return {started: true, alreadyStarted: true, pointsPending: receipt.accessPointsStatus === 'PENDING_VALIDATION'};
+    }
+    if (!trainingSnapshot.exists() || trainingSnapshot.data().active !== true) throw new Error('Este treinamento não está ativo.');
+    const training = trainingSnapshot.data();
+    const accessPoints = Number(training.accessPoints);
+    const completionPoints = Number(training.completionPoints);
+    if (!Number.isFinite(accessPoints) || accessPoints < 0 || accessPoints > 1000 ||
+        !Number.isFinite(completionPoints) || completionPoints < 0 || completionPoints > 1000 || !Number.isInteger(training.version)) {
+      throw new Error('A configuração deste treinamento não pode ser registrada com segurança.');
+    }
+    transaction.set(receiptRef, {
+      id: receiptId, uid, trainingId, trainingVersion: training.version,
+      accessPointsClaimed: accessPoints, completionPointsClaimed: completionPoints,
+      accessPointsStatus: accessPoints > 0 ? 'PENDING_VALIDATION' : 'NOT_APPLICABLE',
+      sourceType: 'trainingStart', startedAt: serverTimestamp()
+    });
+    return {started: true, alreadyStarted: false, pointsPending: accessPoints > 0};
+  });
+}
+
+export async function completeTrainingInFirestore(uid, trainingId, {ended = false} = {}) {
+  if (!uid || !trainingId || trainingId.length > 128) throw new Error('Não foi possível identificar o treinamento ou a sessão.');
+  if (ended !== true) throw new Error('O player ainda não sinalizou o encerramento do vídeo.');
+  const progressId = trainingProgressId(uid, trainingId);
+  const progressRef = doc(db, 'trainingProgress', progressId);
+  const receiptRef = doc(db, 'trainingReceipts', progressId);
+  const completionId = `complete-${progressId}`;
+  const completionRef = doc(db, 'trainingCompletions', completionId);
+  return runTransaction(db, async (transaction) => {
+    const [progressSnapshot, receiptSnapshot, completionSnapshot] = await Promise.all([
+      transaction.get(progressRef), transaction.get(receiptRef), transaction.get(completionRef)
+    ]);
+    if (!progressSnapshot.exists() || !receiptSnapshot.exists()) throw new Error('Inicie e sincronize o treinamento antes de concluir.');
+    const progress = progressSnapshot.data();
+    const receipt = receiptSnapshot.data();
+    if (progress.uid !== uid || progress.trainingId !== trainingId || receipt.uid !== uid || receipt.trainingId !== trainingId) {
+      throw new Error('O progresso ou o recibo deste treinamento não pertence à sessão atual.');
+    }
+    if (completionSnapshot.exists()) {
+      const completion = completionSnapshot.data();
+      if (completion.uid !== uid || completion.trainingId !== trainingId || completion.sourceType !== 'trainingCompletion' || progress.status !== 'COMPLETED') {
+        throw new Error('O recibo de conclusão está inconsistente. Solicite revisão da Administração.');
+      }
+      return {completed: true, alreadyCompleted: true, pointsAwarded: 0, pointsPending: completion.pointsStatus === 'PENDING_VALIDATION', watchedPercent: completion.watchedPercent};
+    }
+    if (!['STARTED', 'IN_PROGRESS'].includes(progress.status)) throw new Error('Este progresso já foi concluído ou não pode ser alterado.');
+    const duration = Number(progress.duration);
+    const ranges = mergeWatchedRanges(progress.watchedRanges || [], duration);
+    const watchedSeconds = ranges.reduce((total, range) => total + range.end - range.start, 0);
+    const watchedPercent = duration > 0 ? Math.min(100, Math.round(watchedSeconds / duration * 1000) / 10) : 0;
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 86400 || watchedSeconds / duration < 0.95) {
+      throw new Error(`O vídeo precisa registrar pelo menos 95% de reprodução; o progresso atual é ${watchedPercent}%.`);
+    }
+    const points = Number(receipt.completionPointsClaimed);
+    if (!Number.isFinite(points) || points < 0 || points > 1000) throw new Error('O snapshot de pontos deste treinamento está inválido.');
+    const completedAt = serverTimestamp();
+    transaction.update(progressRef, {
+      status: 'COMPLETED', completedAt, completionStatus: 'PENDING_VALIDATION', updatedAt: serverTimestamp()
+    });
+    transaction.set(completionRef, {
+      id: completionId, uid, trainingId, trainingVersion: receipt.trainingVersion,
+      sourceType: 'trainingCompletion', duration, watchedSeconds, watchedPercent, ended: true,
+      points, pointsStatus: points > 0 ? 'PENDING_VALIDATION' : 'NOT_APPLICABLE',
+      validationStatus: 'PENDING_VALIDATION', completedAt
+    });
+    return {completed: true, alreadyCompleted: false, pointsAwarded: 0, pointsPending: points > 0, watchedPercent};
+  });
+}
+
 export async function getMyScoreTotal(uid) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const cache = await readSafeCache(uid, 'scores', 'total');
@@ -1575,12 +1658,13 @@ export async function syncPendingTrainingProgress(uid, {trainingId} = {}) {
       if (!result.syncPending) synced++;
       else break;
       if (item.completionRequested === true && !result.syncPending) {
-        const {completeTraining} = await import('./training-start.js');
-        const completion = await completeTraining(item.trainingId, {ended: true});
+        const {startTraining, completeTraining} = await import('./training-start.js');
+        await startTraining(item.trainingId, uid);
+        const completion = await completeTraining(item.trainingId, {ended: true, uid});
         await updateCachedTrainingProgress(uid, item.trainingId, {
           status: 'COMPLETED', completedAt: new Date().toISOString(), completionRequested: false,
           syncPending: false, syncError: '', syncAttempts: item.syncAttempts || 0,
-          completionPointsAwarded: completion.pointsAwarded
+          completionPointsAwarded: 0, completionPointsPending: completion.pointsPending
         }, {requirePending: false});
       }
     } catch (error) {

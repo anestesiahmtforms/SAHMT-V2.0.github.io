@@ -584,13 +584,58 @@ service cloud.firestore {
         request.resource.data.createdAt == resource.data.createdAt;
     }
     function validTrainingProgress(data, uid) {
-      return data.keys().hasOnly(['uid', 'trainingId', 'startedAt', 'lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt']) &&
+      return data.keys().hasAll(['uid', 'trainingId', 'startedAt', 'lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'trainingId', 'startedAt', 'lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt', 'completedAt', 'completionStatus']) &&
         data.uid == uid && data.trainingId is string && data.trainingId.size() > 0 &&
         data.startedAt is timestamp && data.updatedAt is timestamp &&
         data.duration is number && data.duration > 0 && data.duration <= 86400 &&
         data.lastPosition is number && data.lastPosition >= 0 && data.lastPosition <= data.duration + 2 &&
         data.watchedRanges is list && data.watchedRanges.size() <= 500 &&
-        data.status in ['STARTED', 'IN_PROGRESS'];
+        ((data.status in ['STARTED', 'IN_PROGRESS'] &&
+          (!data.keys().hasAny(['completedAt']) || data.completedAt == null) &&
+          (!data.keys().hasAny(['completionStatus']) || data.completionStatus == 'NOT_COMPLETED')) ||
+         (data.status == 'COMPLETED' && data.completedAt is timestamp && data.completionStatus == 'PENDING_VALIDATION'));
+    }
+    function validTrainingReceipt(data, receiptId) {
+      let trainingPath = /databases/$(database)/documents/trainings/$(data.trainingId);
+      let training = get(trainingPath).data;
+      return data.keys().hasAll(['id', 'uid', 'trainingId', 'trainingVersion', 'accessPointsClaimed', 'completionPointsClaimed', 'accessPointsStatus', 'sourceType', 'startedAt']) &&
+        data.keys().hasOnly(['id', 'uid', 'trainingId', 'trainingVersion', 'accessPointsClaimed', 'completionPointsClaimed', 'accessPointsStatus', 'sourceType', 'startedAt']) &&
+        data.id == receiptId && receiptId == request.auth.uid + '_' + data.trainingId && data.uid == request.auth.uid &&
+        data.trainingId is string && data.trainingId.size() > 0 && exists(trainingPath) && training.active == true &&
+        data.trainingVersion == training.version && data.accessPointsClaimed == training.accessPoints &&
+        data.completionPointsClaimed == training.completionPoints &&
+        data.accessPointsStatus == (training.accessPoints > 0 ? 'PENDING_VALIDATION' : 'NOT_APPLICABLE') &&
+        data.sourceType == 'trainingStart' && data.startedAt == request.time;
+    }
+    function hasTrainingCompletionAfter(uid, trainingId) {
+      let completionPath = /databases/$(database)/documents/trainingCompletions/$('complete-' + uid + '_' + trainingId);
+      return existsAfter(completionPath) && getAfter(completionPath).data.id == 'complete-' + uid + '_' + trainingId &&
+        getAfter(completionPath).data.uid == uid &&
+        getAfter(completionPath).data.trainingId == trainingId && getAfter(completionPath).data.sourceType == 'trainingCompletion' &&
+        getAfter(completionPath).data.pointsStatus in ['PENDING_VALIDATION', 'NOT_APPLICABLE'] &&
+        getAfter(completionPath).data.validationStatus == 'PENDING_VALIDATION' &&
+        getAfter(completionPath).data.completedAt == request.time;
+    }
+    function validTrainingCompletionClaim(data, completionId) {
+      let receiptPath = /databases/$(database)/documents/trainingReceipts/$(data.uid + '_' + data.trainingId);
+      let progressPath = /databases/$(database)/documents/trainingProgress/$(data.uid + '_' + data.trainingId);
+      let receipt = get(receiptPath).data;
+      let progress = get(progressPath).data;
+      return data.keys().hasAll(['id', 'uid', 'trainingId', 'trainingVersion', 'sourceType', 'duration', 'watchedSeconds', 'watchedPercent', 'ended', 'points', 'pointsStatus', 'validationStatus', 'completedAt']) &&
+        data.keys().hasOnly(['id', 'uid', 'trainingId', 'trainingVersion', 'sourceType', 'duration', 'watchedSeconds', 'watchedPercent', 'ended', 'points', 'pointsStatus', 'validationStatus', 'completedAt']) &&
+        data.id == completionId && completionId == 'complete-' + request.auth.uid + '_' + data.trainingId && data.uid == request.auth.uid &&
+        data.trainingId is string && exists(receiptPath) && exists(progressPath) &&
+        receipt.uid == request.auth.uid && receipt.trainingId == data.trainingId &&
+        data.trainingVersion == receipt.trainingVersion && data.sourceType == 'trainingCompletion' &&
+        data.duration is number && data.duration > 0 && data.duration <= 86400 && data.duration == progress.duration &&
+        data.watchedSeconds is number && data.watchedSeconds >= 0 && data.watchedSeconds <= data.duration &&
+        data.watchedPercent is number && data.watchedPercent >= 95 && data.watchedPercent <= 100 && data.ended == true &&
+        data.points == receipt.completionPointsClaimed &&
+        data.pointsStatus == (receipt.completionPointsClaimed > 0 ? 'PENDING_VALIDATION' : 'NOT_APPLICABLE') && data.validationStatus == 'PENDING_VALIDATION' &&
+        progress.status in ['STARTED', 'IN_PROGRESS'] && existsAfter(progressPath) &&
+        getAfter(progressPath).data.status == 'COMPLETED' && getAfter(progressPath).data.completionStatus == 'PENDING_VALIDATION' &&
+        getAfter(progressPath).data.completedAt == request.time && data.completedAt == request.time;
     }
     function validContact(data, sigla) {
       return data.keys().hasAll(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
@@ -770,22 +815,29 @@ service cloud.firestore {
         get(/databases/$(database)/documents/trainings/$(request.resource.data.trainingId)).data.active == true &&
         validTrainingProgress(request.resource.data, request.auth.uid);
       allow update: if (can('trainingsRead') || can('trainingsManage')) && resource.data.uid == request.auth.uid &&
-        progressId == request.auth.uid + '_' + resource.data.trainingId &&
-        resource.data.status in ['STARTED', 'IN_PROGRESS'] &&
+        progressId == request.auth.uid + '_' + resource.data.trainingId && resource.data.status in ['STARTED', 'IN_PROGRESS'] &&
         request.resource.data.uid == resource.data.uid && request.resource.data.trainingId == resource.data.trainingId &&
-        request.resource.data.startedAt == resource.data.startedAt &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt']) &&
-        request.resource.data.status == 'IN_PROGRESS' && validTrainingProgress(request.resource.data, request.auth.uid);
+        request.resource.data.startedAt == resource.data.startedAt && validTrainingProgress(request.resource.data, request.auth.uid) &&
+        ((request.resource.data.status == 'IN_PROGRESS' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt'])) ||
+         (request.resource.data.status == 'COMPLETED' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPosition', 'watchedRanges', 'duration', 'status', 'updatedAt', 'completedAt', 'completionStatus']) &&
+          request.resource.data.completedAt == request.time && request.resource.data.completionStatus == 'PENDING_VALIDATION' &&
+          hasTrainingCompletionAfter(request.auth.uid, resource.data.trainingId)));
       allow delete: if false;
     }
 
     match /trainingReceipts/{receiptId} {
-      allow read: if signedIn() && resource.data.uid == request.auth.uid;
-      allow write: if false;
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/trainingReceipts/$(receiptId)) || resource.data.uid == request.auth.uid);
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if (can('trainingsRead') || can('trainingsManage')) && validTrainingReceipt(request.resource.data, receiptId);
+      allow update, delete: if false;
     }
     match /trainingCompletions/{completionId} {
-      allow read: if signedIn() && resource.data.uid == request.auth.uid;
-      allow write: if false;
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/trainingCompletions/$(completionId)) || resource.data.uid == request.auth.uid);
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if (can('trainingsRead') || can('trainingsManage')) && validTrainingCompletionClaim(request.resource.data, completionId);
+      allow update, delete: if false;
     }
     match /activities/{activityId} {
       allow read: if activityAccess(resource.data.managementAreaId);

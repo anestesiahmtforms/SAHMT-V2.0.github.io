@@ -68,7 +68,7 @@ A regra atual para atividade pontuada permite apenas responsável único e defin
 
 ## Alterações futuras necessárias (não realizadas nesta etapa)
 
-**Progresso posterior à revisão:** conclusão e cancelamento de tarefas de Gestão já foram movidos no PWA para transações diretas Firestore. As Rules exigem evento determinístico append-only no mesmo commit via `getAfter()`, status/ator permitidos e incremento de versão. Para tarefas pontuadas, `pointsClaimed` fica pendente, corresponde à configuração da tarefa e `pointsGenerated` permanece zero; nenhuma pontuação entra no saldo. As callables antigas permanecem no repositório, mas o PWA não as chama nesses dois fluxos. Ainda falta cobertura Emulator específica dessas novas transações; itens abaixo permanecem pendentes.
+**Progresso posterior à revisão:** conclusão/cancelamento de Gestão e início/conclusão de Treinamentos já foram movidos no PWA para transações diretas Firestore. Rules exigem recibo determinístico de treinamento, claim de conclusão e progresso `COMPLETED` atômicos; no Gestão exigem evento determinístico append-only na mesma transação. Os valores de pontos precisam corresponder ao snapshot, ficam pendentes e não entram no saldo. As callables antigas permanecem no repositório, mas o PWA não as chama nesses fluxos. Ainda falta cobertura Emulator específica dessas novas transações; itens abaixo permanecem pendentes.
 
 1. Especificar e implementar esquema de claims pendentes, validação e ledger definitivo sem escrita de score pelo cliente.
 2. Atualizar Security Rules e transações para assinatura solicitada, conclusão/cancelamento de Gestão e outbox; cobrir fraude de UID, alterações de campos, corrida, replay e repetição.

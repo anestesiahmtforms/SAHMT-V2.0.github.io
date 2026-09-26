@@ -67,13 +67,13 @@ export async function mountTrainingModule(content, {uid, trainings}) {
     const accessPoints = Math.max(0, Number(training.accessPoints) || 0);
     const completionPoints = Math.max(0, Number(training.completionPoints) || 0);
     const pointsLabel = accessPoints || completionPoints
-      ? `<small>Pontos: ${accessPoints.toLocaleString('pt-BR')} ao abrir · ${completionPoints.toLocaleString('pt-BR')} após conclusão validada</small>`
+      ? `<small>Pontos: ${accessPoints.toLocaleString('pt-BR')} após validação do início · ${completionPoints.toLocaleString('pt-BR')} após validação da conclusão</small>`
       : '';
     const completed = progress?.status === 'COMPLETED';
-    const progressLabel = completed ? `Concluído · ${percent}% assistido` : progress?.syncConflict ? 'O vídeo mudou; progresso anterior preservado para revisão na área Offline' : progress?.syncPending ? 'Progresso salvo neste aparelho; aguardando conexão' : progress?.stale ? 'Progresso salvo neste aparelho' : progress ? `${percent}% assistido · posição ${Math.floor(progress.lastPosition || 0)} s` : 'Ainda não iniciado';
+    const progressLabel = completed ? `Concluído · ${percent}% registrado${progress?.completionStatus === 'PENDING_VALIDATION' ? ' · validação pendente' : ''}` : progress?.syncConflict ? 'O vídeo mudou; progresso anterior preservado para revisão na área Offline' : progress?.syncPending ? 'Progresso salvo neste aparelho; aguardando conexão' : progress?.stale ? 'Progresso salvo neste aparelho' : progress ? `${percent}% assistido · posição ${Math.floor(progress.lastPosition || 0)} s` : 'Ainda não iniciado';
     return `<article class="training-card"><div class="training-card-copy"><p class="eyebrow">TREINAMENTO</p><h3>${escapeHtml(training.title || training.name || training.id)}</h3>${training.description ? `<p>${escapeHtml(training.description)}</p>` : ''}${pointsLabel}<small data-training-progress-label="${escapeHtml(training.id)}">${escapeHtml(progressLabel)}</small>${progress ? `<progress max="100" value="${percent}" aria-label="${percent}% assistido"></progress>` : ''}</div><button type="button" class="primary-button" data-training-open="${escapeHtml(training.id)}" ${hasVideo ? '' : 'disabled'}>${hasVideo ? completed ? 'Rever vídeo' : progress ? 'Continuar' : 'Assistir' : 'Vídeo indisponível'}</button></article>`;
   }).join('');
-  content.innerHTML = `<section class="training-score" aria-label="Pontuação SAHMT"><div><p class="eyebrow">PONTUAÇÃO SAHMT</p><strong id="training-score-total" aria-live="polite">…</strong><small id="training-score-status" role="status"></small></div></section>${progressResult.stale ? '<p class="sync-state">Sem conexão: exibindo catálogo e progresso salvos neste aparelho.</p>' : ''}${cards || '<p class="empty-state">Nenhum treinamento ativo foi publicado.</p>'}<dialog class="training-dialog" aria-labelledby="training-dialog-title"><header><div><p class="eyebrow">TREINAMENTO</p><h3 id="training-dialog-title"></h3></div><button type="button" class="secondary-button" data-training-close>Voltar</button></header><div class="training-player" id="training-player"></div><button type="button" class="primary-button training-play" data-training-toggle disabled>REPRODUZIR</button><p class="training-player-status" role="status" aria-live="polite"></p><section class="training-understanding" hidden><strong>Está entendendo o conteúdo?</strong><div><button type="button" class="secondary-button" data-training-answer="yes">Sim</button><button type="button" class="secondary-button" data-training-answer="no">Não</button></div></section><p class="training-server-note">Ao encerrar o vídeo, o servidor valida o progresso salvo, registra a conclusão e lança os pontos uma única vez. Intervalos e sinal de encerramento vêm do player do navegador; não são atestado antifraude do YouTube.</p></dialog>`;
+  content.innerHTML = `<section class="training-score" aria-label="Pontuação SAHMT"><div><p class="eyebrow">PONTUAÇÃO SAHMT</p><strong id="training-score-total" aria-live="polite">…</strong><small id="training-score-status" role="status"></small></div></section>${progressResult.stale ? '<p class="sync-state">Sem conexão: exibindo catálogo e progresso salvos neste aparelho.</p>' : ''}${cards || '<p class="empty-state">Nenhum treinamento ativo foi publicado.</p>'}<dialog class="training-dialog" aria-labelledby="training-dialog-title"><header><div><p class="eyebrow">TREINAMENTO</p><h3 id="training-dialog-title"></h3></div><button type="button" class="secondary-button" data-training-close>Voltar</button></header><div class="training-player" id="training-player"></div><button type="button" class="primary-button training-play" data-training-toggle disabled>REPRODUZIR</button><p class="training-player-status" role="status" aria-live="polite"></p><section class="training-understanding" hidden><strong>Está entendendo o conteúdo?</strong><div><button type="button" class="secondary-button" data-training-answer="yes">Sim</button><button type="button" class="secondary-button" data-training-answer="no">Não</button></div></section><p class="training-server-note">Ao encerrar o vídeo com pelo menos 95% registrado, a conclusão é salva no Firestore e os pontos ficam pendentes de validação. O navegador informa os intervalos assistidos e o encerramento; esses dados não comprovam, por si só, a reprodução real.</p></dialog>`;
   const renderScoreTotal = (result) => {
     const total = content.querySelector('#training-score-total');
     const status = content.querySelector('#training-score-status');
@@ -137,22 +137,21 @@ export async function mountTrainingModule(content, {uid, trainings}) {
     if (!training) return;
     if (active) await close();
     const previousProgress = progressByTraining.get(training.id);
-    active = {training, player: null, duration: Number(previousProgress?.duration) || 0, ranges: previousProgress?.watchedRanges || [], lastPosition: Number(previousProgress?.lastPosition) || 0, lastTickPosition: null, lastSavedAt: 0, halfwayAsked: false, tick: null, progress: previousProgress, startMessage: previousProgress?.status === 'COMPLETED' ? 'Este treinamento já foi concluído; você pode rever o conteúdo.' : 'Confirmando o início no servidor…'};
+    active = {training, player: null, duration: Number(previousProgress?.duration) || 0, ranges: previousProgress?.watchedRanges || [], lastPosition: Number(previousProgress?.lastPosition) || 0, lastTickPosition: null, lastSavedAt: 0, halfwayAsked: false, tick: null, progress: previousProgress, startMessage: previousProgress?.status === 'COMPLETED' ? 'Este treinamento já foi concluído; você pode rever o conteúdo.' : 'Registrando o início do treinamento…'};
     content.querySelector('#training-dialog-title').textContent = training.title || training.name || training.id;
     content.querySelector('#training-player').innerHTML = '<div id="training-youtube"></div>';
     status.textContent = 'Abrindo vídeo…';
     dialog.showModal();
-    void startTraining(training.id).then(async (result) => {
-      if (result.pointsAwarded > 0) renderScoreTotal(await getMyScoreTotal(uid).catch(() => null));
+    void startTraining(training.id, uid).then((result) => {
       if (active?.training === training) {
-        active.startMessage = result.pointsAwarded > 0
-          ? `Início confirmado. ${result.pointsAwarded} ponto(s) de acesso foram lançados.`
-          : result.alreadyStarted ? 'Treinamento aberto; pontuação de acesso já lançada anteriormente.' : 'Início confirmado pelo servidor.';
+        active.startMessage = result.pointsPending
+          ? 'Início registrado. A pontuação de acesso aguarda validação.'
+          : result.alreadyStarted ? 'Início já registrado anteriormente.' : 'Início registrado.';
         status.textContent = active.startMessage;
       }
     }).catch(() => {
       if (active?.training === training) {
-        active.startMessage = 'O vídeo abrirá normalmente, mas a pontuação de acesso não pôde ser confirmada agora.';
+        active.startMessage = 'O vídeo abrirá, mas o início ainda não foi registrado. Conecte-se para sincronizar o progresso.';
         status.textContent = active.startMessage;
       }
       return null;
@@ -213,21 +212,21 @@ export async function mountTrainingModule(content, {uid, trainings}) {
                     return;
                   }
                   if (!navigator.onLine || !saved || saved.syncPending) {
-                    status.textContent = '95% de progresso foram registrados neste aparelho. Conecte-se para validar e confirmar a conclusão.';
+                    status.textContent = '95% de progresso foram registrados neste aparelho. Conecte-se para salvar a conclusão; os pontos aguardam validação.';
                     return;
                   }
                   try {
-                    const result = await completeTraining(training.id, {ended: true});
-                    active.progress = {...saved, status: 'COMPLETED', completedAt: new Date().toISOString()};
+                    const result = await completeTraining(training.id, {ended: true, uid});
+                    active.progress = {...saved, status: 'COMPLETED', completedAt: new Date().toISOString(), completionStatus: 'PENDING_VALIDATION'};
                     progressByTraining.set(training.id, active.progress);
                     const progressLabel = content.querySelector(`[data-training-progress-label="${CSS.escape(training.id)}"]`);
-                    if (progressLabel) progressLabel.textContent = `Concluído · ${result.watchedPercent}% assistido`;
+                    if (progressLabel) progressLabel.textContent = `Concluído · ${result.watchedPercent}% registrado · validação pendente`;
                     const openButton = content.querySelector(`[data-training-open="${CSS.escape(training.id)}"]`);
                     if (openButton) openButton.textContent = 'Rever vídeo';
-                    status.textContent = result.pointsAwarded > 0
-                      ? `Conclusão confirmada pelo servidor. ${result.pointsAwarded} ponto(s) lançados.`
-                      : result.alreadyCompleted ? 'Este treinamento já estava concluído.' : 'Conclusão confirmada pelo servidor.';
-                    if (result.pointsAwarded > 0) renderScoreTotal(await getMyScoreTotal(uid).catch(() => null));
+                    status.textContent = result.alreadyCompleted
+                      ? 'Este treinamento já estava concluído; a pontuação segue aguardando validação.'
+                      : result.pointsPending ? `Conclusão registrada · ${result.watchedPercent}% assistido. Pontuação pendente de validação.`
+                        : `Conclusão registrada · ${result.watchedPercent}% assistido.`;
                   } catch (error) {
                     status.textContent = `95% registrados, mas a conclusão não foi confirmada: ${error.message || error}. Reabra o vídeo para tentar novamente.`;
                   }
