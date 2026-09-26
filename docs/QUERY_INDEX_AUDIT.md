@@ -2,7 +2,7 @@
 
 ## Escopo e limite
 
-Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js`, `apps-script-v2/FirestoreSync.gs` e `firestore.indexes.json`, atualizada em 26/09/2026. Ela confere as consultas do cliente, callables e consumidor de relatórios contra os índices manuais declarados e os índices automáticos por campo. Rules e os 29 índices iniciais foram publicados no projeto autenticado `sahmt-17a16`; em 26/09/2026, o índice 30 de `syncQueue` e os dois índices novos de vigência de notificações foram confirmados `READY`. A auditoria estática não substitui a homologação de consultas reais com perfil autorizado.
+Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js`, `apps-script-v2/SparkReportSync.gs` e `firestore.indexes.json`, atualizada em 26/09/2026. Ela confere as consultas do cliente, callables e consumidor Spark de relatórios contra os índices manuais declarados e os índices automáticos por campo. Rules e os 29 índices iniciais foram publicados no projeto autenticado `sahmt-17a16`; em 26/09/2026, o índice 30 legado de `syncQueue` e os dois índices novos de vigência de notificações foram confirmados `READY`. `syncQueue` não tem produtor/consumidor implantado na V2 e sua linha abaixo é somente registro histórico. A auditoria estática não substitui a homologação de consultas reais com perfil autorizado.
 
 O Firestore cria índices automáticos por campo e pode mesclar índices para filtros compostos só de igualdade, com `orderBy` opcional. Consultas com faixa ou combinações de faixa/ordenação podem exigir índice manual. Consulte a [visão geral oficial de índices](https://firebase.google.com/docs/firestore/query-data/index-overview) e a [referência oficial para administrar índices](https://firebase.google.com/docs/firestore/query-data/indexing).
 
@@ -29,7 +29,7 @@ O Firestore cria índices automáticos por campo e pode mesclar índices para fi
 | `notifications` | gestor: ativo e `startAt <= agora`, `endAt >= agora`, `priority DESC`; destinatário: os mesmos filtros junto a combinação OR de público | `active, startAt, endAt, priority`; `active, audienceType, audienceValue, startAt, endAt, priority` |
 | `managementAreas` | ativo e `memberUids` ou `managerUids` contém UID | Dois índices `active ASC` + campo `CONTAINS` correspondente |
 | `notificationGroups` | ativo e `memberUids` contém UID | `active ASC, memberUids CONTAINS` |
-| `syncQueue` | consumidor Apps Script: `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC`, limite 40 | `status ASC, nextAttemptAt ASC` (implantado e `READY` em 26/09/2026) |
+| `syncQueue` (legado, sem consumidor V2) | Consulta do consumidor antigo `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC`, limite 40 | `status ASC, nextAttemptAt ASC` (índice histórico implantado e `READY` em 26/09/2026; sem uso no runtime V2) |
 
 ## Consultas cobertas por índices automáticos
 

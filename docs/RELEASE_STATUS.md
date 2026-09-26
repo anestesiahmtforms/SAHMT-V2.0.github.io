@@ -2,6 +2,7 @@
 
 ## Artefato publicado
 
+- Em 26/09/2026, o proprietário habilitou Apps Script API e o pacote do projeto `SAHMT V2.0 – Integração Spark` foi enxugado para excluir o worker legado `syncQueue`. `clasp push` enviou o manifesto e seis fontes V2; um `clasp pull` isolado conferiu os sete hashes SHA-256 e confirmou que `FirestoreSync`/`SheetsSync` e os handlers `syncPendingReports`/`installSahmtV2SyncTrigger` não estão no projeto. Nenhuma função foi executada nem gatilho instalado; revisão IAM, principal executor sem papéis amplos, autorização de runtime e homologação fictícia seguem pendentes.
 - Repositório oficial: [SAHMT-V2.0.github.io](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io), branch `main`.
 - Código publicado na branch `main`; o histórico integral está no [repositório oficial](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commits/main).
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).

@@ -3,11 +3,7 @@ const SAHMT_V2_CONFIG = Object.freeze({
   databaseId: '(default)',
   reportsFolderId: '1sL1NPK-CkZHmWJO_39MLajU-VpJIOZ74',
   reportsSpreadsheetProperty: 'SAHMT_V2_REPORTS_SPREADSHEET_ID',
-  destinationApprovalProperty: 'SAHMT_V2_REPORTS_DESTINATION_APPROVED',
-  maxJobsPerRun: 40,
-  maxAttempts: 8,
-  retryBaseMs: 5 * 60 * 1000,
-  retryMaxMs: 6 * 60 * 60 * 1000
+  destinationApprovalProperty: 'SAHMT_V2_REPORTS_DESTINATION_APPROVED'
 });
 
 const SAHMT_V2_REPORT_TABS = Object.freeze({
@@ -94,21 +90,6 @@ function sahmtV2RequirePrivateSpreadsheet_(spreadsheetId) {
 function firestoreDocumentsUrl_(path) {
   return 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(SAHMT_V2_CONFIG.projectId) +
     '/databases/' + encodeURIComponent(SAHMT_V2_CONFIG.databaseId) + '/documents' + path;
-}
-
-function firestoreDocumentReadUrl_(resourceType, resourceId) {
-  const tabName = SAHMT_V2_RESOURCE_TABS[resourceType];
-  const report = tabName && SAHMT_V2_REPORT_TABS[tabName];
-  if (!report || !resourceId) throw new Error('Tipo de recurso não habilitado para leitura de relatório.');
-  const syntheticFields = new Set(['syncKey', 'resourceType', 'idRegistro']);
-  const fieldPaths = Array.from(new Set(['id', 'version'].concat(report.fields.filter(function (field) {
-    return !syntheticFields.has(field);
-  }))));
-  const mask = fieldPaths.map(function (field) {
-    return 'mask.fieldPaths=' + encodeURIComponent(field);
-  }).join('&');
-  const resourcePath = '/' + encodeURIComponent(resourceType) + '/' + encodeURIComponent(resourceId);
-  return firestoreDocumentsUrl_(resourcePath) + '?' + mask;
 }
 
 function firestoreRequest_(url, options) {

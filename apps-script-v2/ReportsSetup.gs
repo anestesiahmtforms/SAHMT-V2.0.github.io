@@ -54,7 +54,6 @@ function setupSahmtV2Reporting() {
 
   return {spreadsheetId: spreadsheetId, tabs: tabConfigs.map(function (config) { return config.name; })};
 }
-
 function sahmtV2FindExistingReportsSpreadsheet_(folder) {
   const files = folder.getFilesByName('SAHMT V2.0 - BASE DE RELATÓRIOS');
   const matches = [];
@@ -83,48 +82,4 @@ function applyReportColumnFormats_(sheet, config) {
     else if (decimalFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('0.############');
     else if (field === 'date') sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('yyyy-mm-dd');
   });
-}
-
-function installSahmtV2SyncTrigger() {
-  const spreadsheetId = sahmtV2SpreadsheetId_();
-  sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
-  // Probe Rules, IAM, and the composite index before scheduling recurring access.
-  listDueSyncJobs_();
-  const existing = ScriptApp.getProjectTriggers().filter(function (trigger) { return trigger.getHandlerFunction() === 'syncPendingReports'; });
-  if (!existing.length) ScriptApp.newTrigger('syncPendingReports').timeBased().everyMinutes(5).create();
-  return {installed: true, existing: existing.length > 0};
-}
-
-function upsertReportRow_(spreadsheet, job, record) {
-  const tabName = SAHMT_V2_RESOURCE_TABS[job.resourceType];
-  const config = tabName && SAHMT_V2_REPORT_TABS[tabName];
-  if (!config) throw new Error('Tipo de recurso não habilitado para exportação.');
-  const sheet = spreadsheet.getSheetByName(tabName);
-  if (!sheet) throw new Error('Aba de relatório ausente: ' + tabName + '.');
-
-  const syncKey = job.resourceType + '/' + job.resourceId;
-  const keyCell = sheet.getRange('A:A').createTextFinder(syncKey).matchEntireCell(true).matchCase(true).findNext();
-  const rowNumber = keyCell ? keyCell.getRow() : sheet.getLastRow() + 1;
-  const row = config.fields.map(function (field) {
-    let value;
-    if (field === 'syncKey') value = syncKey;
-    else if (field === 'resourceType') value = job.resourceType;
-    else if (field === 'idRegistro') value = job.resourceId;
-    else value = record[field];
-    if (Array.isArray(value)) value = value.join(', ');
-    if (value instanceof Date) return value;
-    if (typeof value === 'string' && /^[=+@\-]/.test(value)) return "'" + value;
-    return value === undefined || value === null ? '' : value;
-  });
-  sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
-}
-
-function removeReportRow_(spreadsheet, job) {
-  const tabName = SAHMT_V2_RESOURCE_TABS[job.resourceType];
-  if (!tabName) throw new Error('Tipo de recurso não habilitado para exportação.');
-  const sheet = spreadsheet.getSheetByName(tabName);
-  if (!sheet) throw new Error('Aba de relatório ausente: ' + tabName + '.');
-  const syncKey = job.resourceType + '/' + job.resourceId;
-  const keyCell = sheet.getRange('A:A').createTextFinder(syncKey).matchEntireCell(true).matchCase(true).findNext();
-  if (keyCell && keyCell.getRow() > 1) sheet.deleteRow(keyCell.getRow());
 }

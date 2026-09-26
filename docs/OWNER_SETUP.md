@@ -24,16 +24,18 @@ Restringir remove o acesso de quem dependia apenas do link público. Confirme os
 1. Crie um projeto Apps Script V2 dentro da pasta oficial.
 2. Para enviar os arquivos deste checkout pelo `clasp`, abra as [configurações do Apps Script](https://script.google.com/home/usersettings), clique em **Configurações → Google Apps Script API** e ative a chave. Essa permissão da conta permite que aplicativos que você autorizou gerenciem projetos e implantações Apps Script; ela é distinta dos escopos de execução do script e pode ser revogada nas mesmas configurações.
 3. No PowerShell, entre no diretório local `apps-script-v2/` e execute `npm.cmd exec --yes --package @google/clasp -- clasp login`; autentique com a conta proprietária. Confirme que `.clasp.json` aponta para o ID do projeto V2 e execute `npm.cmd exec --yes --package @google/clasp -- clasp push`. O envio substitui os arquivos no editor; confirme antes que o projeto remoto é o projeto V2 criado na pasta oficial. O `clasp` não executa as funções nem instala gatilhos.
-4. Como alternativa ao `clasp`, copie os arquivos de `apps-script-v2/` manualmente, inclusive `appsscript.json` e os validadores `ChecklistValidation.gs`, `TrainingValidation.gs`, `ManagementScoreValidation.gs` e `SparkReportSync.gs`.
+4. Como alternativa ao `clasp`, copie os arquivos de `apps-script-v2/` manualmente, inclusive `appsscript.json`, `ReportsSetup.gs`, os validadores `ChecklistValidation.gs`, `TrainingValidation.gs`, `ManagementScoreValidation.gs` e `SparkReportSync.gs`. O pacote não contém o consumidor legado `syncQueue`.
 5. O projeto usa os escopos OAuth declarados no manifesto: Firestore REST (`datastore`), Sheets, Drive, requisições externas e gatilhos. Revise o manifesto antes de autorizar.
 6. Nas **Propriedades do script**, defina `SAHMT_V2_REPORTS_DESTINATION_APPROVED` como `YES` somente depois de confirmar que pasta e planilha estão restritas.
 7. Execute `setupSahmtV2Reporting`. Ele verifica a privacidade/localização, valida cabeçalhos antes de alterar abas e guarda o ID da planilha nas propriedades do script. O setup não instala gatilhos.
 
 ## 3. Revisar acesso Firestore/IAM
 
-Os gatilhos executam como a conta que os instalou. Ela precisa consultar e atualizar somente os dados usados pelos validadores e consultar os dados projetados para relatórios. OAuth/IAM do Apps Script acessa o projeto Firestore fora das Rules do cliente; a permissão IAM vale no escopo do projeto e **não fica limitada por coleção pelas Firestore Rules**.
+Os gatilhos executam como a conta que os instalou. Ela precisa consultar e atualizar os dados usados pelos validadores e consultar os dados projetados para relatórios. OAuth/IAM do Apps Script acessa Firestore fora das Rules do cliente.
 
-Antes de conceder acesso, um administrador do Google Cloud deve revisar principal, escopos e menor papel IAM viável. Não usar chave de service account, não enviar credenciais aqui e não instalar gatilhos até essa revisão e a autorização da conta executora.
+O worker usa `runQuery`/`get` e commits de criação/atualização. Como base para um papel customizado, a documentação Firestore mapeia esses métodos a `datastore.entities.get`, `datastore.entities.list`, `datastore.entities.create` e `datastore.entities.update`; o código atual não chama endpoints de exclusão. Pode-se vincular esse papel no projeto com a condição `resource.name == "projects/sahmt-17a16/databases/(default)"`, que limita o acesso ao banco `(default)`. A condição e o papel **não limitam coleções ou documentos**: a conta ainda poderia ler/alterar qualquer dado desse banco pela API REST, fora das Rules. Não tratar projeções/máscaras no código como barreira IAM.
+
+Antes de conceder acesso, o administrador do Google Cloud deve conferir as permissões efetivas e os vínculos herdados do principal: um papel `Owner`, `Editor` ou outro papel amplo não é reduzido pela adição de um papel customizado. Preferir uma conta executora dedicada, sem esses vínculos amplos, com acesso de edição somente à pasta/planilha necessárias e o papel Firestore customizado condicionado ao `(default)`. Se essa separação ou o limite de acesso a todo o banco não forem aceitáveis, manter os gatilhos desativados. Não usar chave de service account, não enviar credenciais aqui e não instalar gatilhos até a revisão e a autorização da conta executora.
 
 ## 4. Homologar antes dos gatilhos
 
@@ -44,12 +46,12 @@ Use dados fictícios e confira idempotência/replay, conflito e falha para cada 
 - Gestão: aprovação por gestor autorizado, tentativa de autoaprovação, recusa justificada, claim divergente e repetição.
 - Relatórios: projeção de campos aprovada, upsert repetido, cursor, atraso e revarredura.
 
-Após IAM e homologação, instale apenas os gatilhos Spark necessários: `installChecklistValidationTrigger`, `installTrainingValidationTrigger`, `installManagementScoreValidationTrigger` e `installSahmtV2SparkReportTrigger`. Eles varrem o Firestore periodicamente; o PWA não espera por eles. **Não instale `installSahmtV2SyncTrigger`**, que pertence à fila legada `syncQueue`.
+Após IAM e homologação, instale apenas os gatilhos Spark necessários: `installChecklistValidationTrigger`, `installTrainingValidationTrigger`, `installManagementScoreValidationTrigger` e `installSahmtV2SparkReportTrigger`. Eles varrem o Firestore periodicamente; o PWA não espera por eles. O handler/instalador legado `syncQueue` foi removido do pacote V2 e não deve ser recriado.
 
 ## Estado já preparado
 
 - A PWA publicada usa o Firebase `sahmt-17a16` e o Firestore `(default)`.
 - Rules e 32 índices estão publicados; o primeiro perfil foi provisionado pelo proprietário.
 - A planilha existe e suas oito abas/cabeçalhos V2 foram conferidos.
-- O projeto `SAHMT V2.0 – Integração Spark` foi criado na pasta oficial e recebeu o manifesto e sete arquivos fonte via `clasp` em 26/09/2026; uma leitura posterior confirmou hashes SHA-256 iguais aos do checkout. O envio não executou código. IAM, autorização de runtime, propriedades do script, homologação fictícia e instalação de gatilhos continuam pendentes.
+- O projeto `SAHMT V2.0 – Integração Spark` foi criado na pasta oficial. Em 26/09/2026, o pacote limpo (manifesto e seis fontes Spark) foi enviado via `clasp`; um `clasp pull` isolado confirmou os sete hashes SHA-256 e a ausência dos arquivos/handlers `syncQueue`. Nenhuma função foi executada. IAM, autorização de runtime, propriedades do script, homologação fictícia e instalação de gatilhos continuam pendentes.
 - A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`. Isso é intencional para esta arquitetura Spark.
