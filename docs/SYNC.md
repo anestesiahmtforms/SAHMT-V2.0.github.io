@@ -2,7 +2,16 @@
 
 ## Fontes
 
-Firestore é a única fonte operacional online. IndexedDB sustenta cache e outbox local por UID. A PWA grava e consulta os módulos diretamente no Firebase; não depende de espelhamento Apps Script/Sheets.
+Firestore é a fonte operacional online. IndexedDB sustenta cache e outbox local por UID. A PWA grava e consulta os módulos diretamente no Firebase. Em paralelo, Apps Script V2 e uma planilha nova devem receber um espelhamento assíncrono para relatório e auditoria; essa cópia nunca participa do login, da autorização, da tela nem da confirmação da ação.
+
+## Espelhamento Firestore → Apps Script → Sheets
+
+- Uma Cloud Function deve criar `syncQueue/{jobId}` após cada mutação operacional elegível. O ID do job é determinístico para recurso/operação/versão, o documento contém metadados de controle e não copia o payload operacional.
+- Apps Script V2 consome jobs pendentes, busca a versão atual do recurso, converte-a por uma projeção permitida e faz upsert por tipo e ID do recurso. Reentrega do mesmo job não duplica linhas; jobs antigos não podem sobrescrever uma versão mais nova já exportada.
+- Estados planejados: `pending`, `processing`, `synced` e `error`; tentativas usam `nextAttemptAt` e a falha guarda apenas mensagem técnica limitada, sem dados do registro.
+- A conclusão da ação na PWA ocorre quando Firestore confirma. Indisponibilidade da planilha mantém job para retry, sem travar gravações nem criar dependência no caminho operacional.
+- `users`, `permissions`, tokens e credenciais nunca são lidos nem exportados. O esquema das abas operacionais e a projeção de campos — sobretudo para Etiquetas, que pode conter dados assistenciais — precisam de aprovação e minimização antes de ativar o espelhamento.
+- A fila, o consumidor Apps Script, a planilha e a política de IAM ainda não estão implantados. O desenho de acesso de Apps Script ao Firestore deve ser revisado antes de conceder privilégios amplos; Rules de cliente não são controle de acesso para chamadas servidoras com IAM.
 
 ## Offline
 
@@ -33,7 +42,7 @@ Usar `version`/`updatedAt` e snapshot anterior. Dados de catálogo podem adotar 
 
 ## Limite do sistema
 
-O núcleo V2 não envia operações a Sheets nem requer worker externo. Relatórios são consultados e exportados pela própria PWA a partir do Firestore, com CSV/PDF gerados no dispositivo.
+Sheets é destino secundário para relatórios/auditoria, nunca fonte operacional. A PWA continua consultando e exportando relatórios no dispositivo diretamente do Firestore; o espelhamento não precisa estar disponível para o aplicativo operar.
 
 ## Recuperação
 

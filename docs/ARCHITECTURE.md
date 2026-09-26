@@ -19,7 +19,7 @@
 4. **Domínios:** escala, eventos/férias, catálogo de pagadores e credores de Eventos, labels, management/activities/scoring, documentos do Drive por área, inventário/eventos/manutenção de equipamentos dentro de Gestão, checklist, training, notifications e audit. Documentos guardam metadados versionados no Firestore e mantêm o arquivo no Drive; cada fluxo fica dentro do mesmo módulo e usa a mesma sessão.
 5. **Data:** adaptadores Firestore com limites/paginação e conversão de Timestamp.
 6. **Offline:** IndexedDB com schema versionado, cache de leitura com TTL, outbox, política de conflito e sincronização explícita.
-7. **Integrações externas:** não há integração Apps Script/Sheets no fluxo V2. A PWA consulta e grava no Firestore diretamente sob Rules e gera relatórios no dispositivo; qualquer integração futura exige requisito concreto e não poderá substituir a fonte operacional ou a autorização Firebase.
+7. **Integrações externas:** Apps Script V2 e uma nova planilha são uma camada assíncrona de relatório/auditoria alimentada pelo Firestore. Uma fila `syncQueue` deve ser criada no servidor após gravações autorizadas; Apps Script aplica upserts idempotentes nas abas aprovadas. O PWA nunca espera por Sheets e não chama Apps Script por ação. Apps Script não autentica pessoas, não lê `users`/permissões e não participa da autorização Firebase. O espelhamento ainda não está implantado: planilha, projeção de campos, identidade de integração e acesso seguro precisam ser configurados e validados.
 8. **Deploy:** build estático, base `/SAHMT-V2.0.github.io/`, rules/indexes versionados, um service worker no escopo V2.
 
 ## Fluxo de escrita
@@ -32,4 +32,4 @@ Hash routes para evitar fallback rewrite do Pages. `#/`, `#/eventos`, `#/etiquet
 
 ## Dependências externas
 
-O repositório já identifica `sahmt-17a16`; esta construção não cria Firebase. A existência do Firestore `(default)`, provedores Auth, rules, índices e autorizações de conta precisa ser verificada antes de ligar operações de produção. Integrações Google só serão ativadas depois de confirmar endpoint/deployment e propriedades no projeto correto.
+O repositório já identifica `sahmt-17a16`; esta construção não cria Firebase. A existência do Firestore `(default)`, provedores Auth, rules, índices e autorizações de conta precisa ser verificada antes de ligar operações de produção. O espelhamento para Sheets depende de preparar a planilha nova na pasta oficial, decidir a lista de campos por aba, provisionar o acesso da integração e implantar as Functions de fila; nada disso pode atrasar ou substituir a confirmação operacional no Firestore.
