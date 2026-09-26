@@ -2,7 +2,7 @@
 
 ## Escopo e limite
 
-Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js`, `apps-script-v2/FirestoreSync.gs` e `firestore.indexes.json`, atualizada em 26/09/2026. Ela confere as consultas do cliente, callables e consumidor de relatórios contra os índices manuais declarados e os índices automáticos por campo. Rules e os 29 índices iniciais foram publicados no projeto autenticado `sahmt-17a16`; em 26/09/2026, o 30º índice de `syncQueue` foi implantado separadamente e a CLI confirmou estado `CREATING`. A auditoria estática não substitui a homologação de consultas reais com perfil autorizado; confirmar o novo índice em `READY` após a construção.
+Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js`, `apps-script-v2/FirestoreSync.gs` e `firestore.indexes.json`, atualizada em 26/09/2026. Ela confere as consultas do cliente, callables e consumidor de relatórios contra os índices manuais declarados e os índices automáticos por campo. Rules e os 29 índices iniciais foram publicados no projeto autenticado `sahmt-17a16`; em 26/09/2026, o 30º índice de `syncQueue` foi implantado separadamente e a CLI confirmou estado `READY`. A auditoria estática não substitui a homologação de consultas reais com perfil autorizado.
 
 O Firestore cria índices automáticos por campo e pode mesclar índices para filtros compostos só de igualdade, com `orderBy` opcional. Consultas com faixa ou combinações de faixa/ordenação podem exigir índice manual. Consulte a [visão geral oficial de índices](https://firebase.google.com/docs/firestore/query-data/index-overview) e a [referência oficial para administrar índices](https://firebase.google.com/docs/firestore/query-data/indexing).
 
@@ -29,7 +29,7 @@ O Firestore cria índices automáticos por campo e pode mesclar índices para fi
 | `notifications` | ativo, combinação OR de público e `priority DESC` | `active, audienceType, audienceValue, priority` |
 | `managementAreas` | ativo e `memberUids` ou `managerUids` contém UID | Dois índices `active ASC` + campo `CONTAINS` correspondente |
 | `notificationGroups` | ativo e `memberUids` contém UID | `active ASC, memberUids CONTAINS` |
-| `syncQueue` | consumidor Apps Script: `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC`, limite 40 | `status ASC, nextAttemptAt ASC` (implantado em 26/09/2026; construção em andamento na última consulta) |
+| `syncQueue` | consumidor Apps Script: `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC`, limite 40 | `status ASC, nextAttemptAt ASC` (implantado e `READY` em 26/09/2026) |
 
 ## Consultas cobertas por índices automáticos
 
@@ -37,4 +37,4 @@ A inspeção também encontrou consultas simples por documento e consultas sem c
 
 ## Segurança e homologação
 
-Índice disponível não concede acesso; cada consulta continua sujeita às Firestore Rules já publicadas. A suíte do Emulator testa autorização, mas não prova que consultas reais foram executadas no app. Os 29 índices anteriores do `(default)` `sahmt-17a16` estavam `READY`; o índice novo apareceu como `CREATING` após o deploy. Observar erros em consultas autenticadas e confirmar `READY` depois da construção.
+Índice disponível não concede acesso; cada consulta continua sujeita às Firestore Rules já publicadas. A suíte do Emulator testa autorização, mas não prova que consultas reais foram executadas no app. A CLI confirmou `READY` para os 30 índices do `(default)` `sahmt-17a16`. Observar erros em consultas autenticadas do app quando houver homologação de módulos.
