@@ -1,7 +1,17 @@
-const CACHE = 'sahmt-v2-shell-v20';
+const CACHE = 'sahmt-v2-shell-v21';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
-const PRECACHE = [BASE, `${BASE}manifest.webmanifest`, `${BASE}assets-manifest.json`, `${BASE}assets/icon-192.png`, `${BASE}assets/icon-512.png`];
+const PRECACHE = [
+  BASE,
+  `${BASE}manifest.webmanifest`,
+  `${BASE}assets-manifest.json`,
+  `${BASE}assets/icon-192.png`,
+  `${BASE}assets/icon-512.png`,
+  `${BASE}assets/sahmt-logo.png`,
+  `${BASE}assets/selo-qga-accredited-qmentum-diamond.png`,
+  `${BASE}assets/modules/operacional.jpg`,
+  `${BASE}assets/modules/checklist.svg`
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
