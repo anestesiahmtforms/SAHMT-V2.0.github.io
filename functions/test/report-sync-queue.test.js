@@ -39,6 +39,7 @@ describe('report sync queue job builder', () => {
 
   it('rejects non-report collections and invalid event metadata', () => {
     assert.throws(() => buildReportSyncJob({...common, collectionName: 'users'}), /fora da integração/);
+    assert.throws(() => buildReportSyncJob({...common, collectionName: 'labels'}), /fora da integração/);
     assert.throws(() => buildReportSyncJob({...common, resourceId: ''}), /inválidos/);
     assert.throws(() => buildReportSyncJob({...common, version: 0}), /inválidos/);
     assert.throws(() => buildReportSyncJob({...common, beforeExists: false, afterExists: false}), /não contém registro/);

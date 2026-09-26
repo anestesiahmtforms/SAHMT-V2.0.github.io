@@ -14,9 +14,6 @@ const SAHMT_V2_REPORT_TABS = Object.freeze({
   CHECKLIST: Object.freeze({
     fields: ['syncKey', 'resourceType', 'idRegistro', 'date', 'stationId', 'condition', 'status', 'occurrence', 'createdByUid', 'createdAt', 'updatedAt', 'version']
   }),
-  ETIQUETAS: Object.freeze({
-    fields: ['syncKey', 'resourceType', 'idRegistro', 'date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'createdByUid', 'createdAt', 'updatedAt', 'version']
-  }),
   EVENTOS: Object.freeze({
     fields: ['syncKey', 'resourceType', 'idRegistro', 'date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']
   }),
@@ -42,7 +39,6 @@ const SAHMT_V2_REPORT_TABS = Object.freeze({
 
 const SAHMT_V2_RESOURCE_TABS = Object.freeze({
   checklists: 'CHECKLIST',
-  labels: 'ETIQUETAS',
   events: 'EVENTOS',
   trainings: 'TREINAMENTOS',
   trainingReceipts: 'TREINAMENTOS',

@@ -2,7 +2,6 @@ import {createHash} from 'node:crypto';
 
 export const REPORT_SYNC_COLLECTIONS = Object.freeze([
   'events',
-  'labels',
   'checklists',
   'trainings',
   'trainingReceipts',

@@ -612,7 +612,6 @@ function createReportSyncTrigger(collectionName) {
 }
 
 export const queueEventsReportSync = createReportSyncTrigger('events');
-export const queueLabelsReportSync = createReportSyncTrigger('labels');
 export const queueChecklistsReportSync = createReportSyncTrigger('checklists');
 export const queueTrainingsReportSync = createReportSyncTrigger('trainings');
 export const queueTrainingReceiptsReportSync = createReportSyncTrigger('trainingReceipts');
