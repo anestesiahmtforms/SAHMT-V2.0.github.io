@@ -3,13 +3,13 @@
 ## Artefato publicado
 
 - Repositório oficial: [SAHMT-V2.0.github.io](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io), branch `main`.
-- Commit do código publicado: `17320fa030ab819843334cb9c8d5cc905930986f`.
+- Commit do código publicado: `24aeeeb7f37c211b68cb1b08ed030b0e63d2466e`.
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
-- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36208734098): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200 e o HTML servido coincidiu com `dist/index.html`. O service worker `v21` e os quatro símbolos do shell retornaram HTTP 200; o símbolo Operacional tem 7.983 bytes.
+- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36209596068): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200; o service worker `v22` e os quatro símbolos do shell retornaram HTTP 200. O teste de instalação offline também confirmou o precache dos imports estáticos e símbolos e a preservação do cache de férias.
 
 ## O que foi validado
 
-- `npm run test:domain`: 61/61 testes passaram.
+- `npm run test:domain`: 64/64 testes passaram.
 - `npm run test:rules`: 35/35 casos passaram no Firestore Emulator.
 - Testes das Cloud Functions: 15/15 passaram no Emulator, incluindo assinatura do Checklist, treinamento e operações de Gestão.
 - `npm run build`: build Vite concluído com 334 módulos transformados. O SDK completo do Firestore (550,77 kB bruto) e o PDF (419,34 kB) são carregados em chunks dinâmicos; o Vite mantém o aviso para o chunk Firestore acima de 500 kB.
