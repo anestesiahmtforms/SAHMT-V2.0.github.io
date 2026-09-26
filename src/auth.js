@@ -9,6 +9,8 @@ import {auth} from './firebase-auth.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
 
+let retryCurrentProfile = null;
+
 async function showCachedSession(user, onState) {
   const profile = await readCachedProfile(user.uid);
   if (!profile) {
@@ -25,28 +27,30 @@ export function watchSession(onState) {
   }
   let profileUnsubscribe = null;
   let generation = 0;
-  const unsubscribe = onAuthStateChanged(auth, async (user) => {
+  let onlineHandler = null;
+  const clearOnlineHandler = () => {
+    if (onlineHandler) window.removeEventListener('online', onlineHandler);
+    onlineHandler = null;
+  };
+  const scheduleReconnect = (user, currentGeneration) => {
+    if (currentGeneration !== generation) return;
+    onlineHandler = () => {
+      onlineHandler = null;
+      if (currentGeneration === generation) void loadProfile(user);
+    };
+    window.addEventListener('online', onlineHandler, {once: true});
+  };
+  const loadProfile = async (user) => {
+    if (!user) return;
     const currentGeneration = ++generation;
+    clearOnlineHandler();
     profileUnsubscribe?.();
     profileUnsubscribe = null;
-    if (!user) {
-      onState({status: 'signed-out'});
-      return;
-    }
     onState({status: 'loading-profile', user});
     try {
       if (!navigator.onLine) {
         await showCachedSession(user, onState);
-        if (currentGeneration === generation) {
-          const refreshProfile = () => {
-            if (currentGeneration !== generation) return;
-            onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; })
-              .catch((error) => {
-                if (currentGeneration === generation) onState({status: 'profile-error', user, error});
-              });
-          };
-          window.addEventListener('online', refreshProfile, {once: true});
-        }
+        scheduleReconnect(user, currentGeneration);
         return;
       }
       await onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
@@ -55,11 +59,34 @@ export function watchSession(onState) {
       if (!navigator.onLine) await showCachedSession(user, onState);
       else onState({status: 'profile-error', user, error});
     }
+    scheduleReconnect(user, currentGeneration);
+  };
+  retryCurrentProfile = () => {
+    const user = auth?.currentUser;
+    if (!user) return Promise.resolve(false);
+    return loadProfile(user);
+  };
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      generation++;
+      clearOnlineHandler();
+      profileUnsubscribe?.();
+      profileUnsubscribe = null;
+      onState({status: 'signed-out'});
+      return;
+    }
+    await loadProfile(user);
   }, (error) => onState({status: 'auth-error', error}));
   return () => {
+    clearOnlineHandler();
     unsubscribe();
     profileUnsubscribe?.();
+    if (retryCurrentProfile) retryCurrentProfile = null;
   };
+}
+
+export function retryAuthenticatedProfile() {
+  return retryCurrentProfile ? retryCurrentProfile() : Promise.resolve(false);
 }
 
 async function onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe) {

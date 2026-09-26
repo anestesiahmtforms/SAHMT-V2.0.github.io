@@ -1,6 +1,6 @@
 import './styles.css';
 import {firebaseConfigured} from './firebase-app.js';
-import {signInGoogle, signOutGlobal, watchSession} from './auth.js';
+import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
 import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations} from './outbox.js';
 import {eventFieldRules, validateEventForm} from './event-form.js';
@@ -165,12 +165,14 @@ function loginView() {
   }[session.status];
   const resultMessage = notice || statusMessage ? `<p class="notice" role="alert">${escapeHtml(notice || statusMessage)}</p>` : '';
   const missingProfile = session.status === 'profile-missing' && session.user ? `<section class="identity-card"><p>Para solicitar acesso, envie ao administrador o UID da sua identidade Google:</p><code id="missing-profile-uid">${escapeHtml(session.user.uid)}</code><button type="button" class="secondary-button" id="copy-missing-profile-uid">Copiar UID</button></section>` : '';
+  const profileRetry = session.status === 'profile-error' && session.user ? '<button class="primary-button" id="profile-retry" type="button">Tentar carregar perfil novamente</button>' : '';
   return `<main class="login-gate">
     <section class="login-card" aria-labelledby="login-title">
       <img class="brand-logo" src="${import.meta.env.BASE_URL}assets/icon-192.png" alt="SAHMT">
       <h1 id="login-title">SAHMT</h1>
       <p class="login-message">Entre com sua conta Google autorizada.</p>
       ${configMessage}${resultMessage}${missingProfile}
+      ${profileRetry}
       <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
       ${session.user ? '<button class="text-button" id="blocked-signout" type="button">Sair ou trocar conta</button>' : ''}
       <small>Uma única conta para acessar as áreas do SAHMT, conforme suas permissões.</small>
@@ -2797,6 +2799,11 @@ async function syncOutbox() {
 }
 
 function bindLogin() {
+  document.querySelector('#profile-retry')?.addEventListener('click', async (event) => {
+    event.currentTarget.disabled = true;
+    notice = '';
+    await retryAuthenticatedProfile();
+  });
   document.querySelector('#google-login')?.addEventListener('click', async () => {
     try { notice = ''; await signInGoogle(); }
     catch { notice = 'Não foi possível entrar com Google. Verifique a conta e tente novamente.'; await render(); }
