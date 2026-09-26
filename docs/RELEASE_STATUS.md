@@ -3,9 +3,9 @@
 ## Artefato publicado
 
 - Repositório oficial: [SAHMT-V2.0.github.io](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io), branch `main`.
-- Commit do código e do relatório publicado: `9c934bf3271b994aa1f483aa400441eadaca5d54`.
+- Commit do código publicado: `17320fa030ab819843334cb9c8d5cc905930986f`.
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
-- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36207328563): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200 e o HTML servido coincidiu com `dist/index.html`, incluindo os mesmos assets JS/CSS.
+- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36208734098): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200 e o HTML servido coincidiu com `dist/index.html`. O service worker `v21` e os quatro símbolos do shell retornaram HTTP 200; o símbolo Operacional tem 7.983 bytes.
 
 ## O que foi validado
 
