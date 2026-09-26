@@ -1,15 +1,41 @@
 # SAHMT V2.0
 
-Reconstrução técnica do PWA SAHMT, preservando a experiência visual e funcional da V1.
+Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Authentication como sessão única e Firestore como fonte operacional V2. A V1 permanece intacta.
 
-O projeto já contém o shell PWA, sessão global Firebase, perfil por UID, base Firestore/Rules, outbox local para ações offline e os primeiros fluxos operacionais de Eventos, Etiquetas, Gestão e Checklist. Etiquetas oferece OCR português local sob demanda, sem enviar a imagem nem gravar campos sugeridos automaticamente. A V2 acessa Firestore diretamente como fonte operacional única; não integra Apps Script/Sheets. O inventário, o mapa de migração, a paridade, a arquitetura, o esquema Firestore, segurança, sincronização, implantação e plano estão em [`docs/`](docs/).
+## Modelo
 
-O relatório de release, validações e portões pendentes está em [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md).
+- O UID do Firebase Authentication identifica o perfil mínimo em `users/{uid}`; as Firestore Rules conferem perfil e permissão a cada acesso do cliente.
+- Home, Eventos, Etiquetas, Gestão, Checklist, Treinamentos, Administração e sincronização offline permanecem dentro do mesmo PWA.
+- A V2 não usa Sheets ou Apps Script para autenticar nem para gravar operações. Uma integração assíncrona de relatórios está preparada no código, mas não implantada.
 
-**Estado:** implementação em andamento; paridade funcional/visual e integração de conta ainda não homologadas. Em 26/09/2026, o commit `d36cc99` passou no workflow [Build and deploy SAHMT V2](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36206414672): testes de domínio, Firestore Rules e Functions Emulator, build com 334 módulos e deploy Pages concluídos. A URL pública foi aberta e mostrou a tela de login SAHMT; nenhum login real foi feito. OCR é local e sob demanda. A callable de treinamento verifica 95% dos intervalos salvos e sinal ended do player; ambos vêm do cliente e não são atestado antifraude independente. O Java padrão deste terminal ainda resolve Oracle Java 8; o JBR 21 atualizado do Android Studio foi usado pelo Emulator no CI/local. Os serviços emulados usam o projeto fictício `demo-sahmt-v2`, sem acesso à produção. O SDK completo do Firestore tem cerca de 551 KB bruto e é carregado sob demanda/idle depois da leitura inicial do perfil pelo Lite. Os recursos locais OCR ocupam 13,19 MiB; worker e modelo só são carregados ao pedir leitura. A tela de login foi conferida em viewport 402 × 662; fluxos autenticados e validação visual interna seguem pendentes. As Rules cobrem UID/perfil V2: e-mail coincidente não transfere permissões, usuário sem perfil não acessa coleções nem se provisiona, e o titular não pode mudar sua autorização. Home, Eventos, Gestão de Equipamentos, Administração e Treinamentos têm os fluxos descritos no mapa de paridade; sincronização offline e leitura QR do Checklist estão no mesmo shell. No Checklist, `checklistManage` gerencia estações dentro do módulo. A assinatura e sua regra de pontos foram validadas no Emulator; o primeiro administrador ainda requer provisionamento controlado. GitHub Pages está ativo com origem Actions; Rules, índices e Functions de produção ainda não foram publicados. A integração Apps Script/Sheets e a coleção sem uso `labelTemplates` foram removidas do V2; respostas de operação usam o Firestore como fonte única. Firebase alvo: `sahmt-17a16`, Firestore `(default)`. A V1 permanece sem alterações.
+## Estado atual — 26/09/2026
 
-O SDK modular Firebase está instalado via npm, como recomendado na documentação oficial. A configuração Web pública reaproveitada aponta para o projeto existente; nenhuma credencial administrativa foi copiada.
+- GitHub Pages está publicado em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/); o último workflow de documentação concluiu com sucesso.
+- O primeiro perfil administrador foi provisionado e o proprietário confirmou entrada na Home autenticada.
+- Firestore contém o catálogo de Etiquetas com 30 siglas ativas e o catálogo Checklist com 28 estações (23 ativas, 5 inativas). A ordem das estações segue a posição sugerida pela planilha V1 e ainda precisa de conferência visual.
+- Rules estão publicadas e os 29 índices aparecem como prontos. Cloud Functions de produção não estão implantadas; dependem de revisão de faturamento e autorização do proprietário.
+- Não foram importados escala, férias, contatos pessoais, treinamentos, respostas ou assinaturas do Checklist. A Home pode continuar sem escala publicada até a revisão e migração desses dados.
 
-**Autenticação V2:** Firebase Authentication comprova a identidade uma vez; o UID identifica `users/{uid}`, perfil mínimo de acesso ao SAHMT. Firestore Rules revalida cada operação. O fluxo não consulta planilhas, não usa Apps Script, não importa o cadastro operacional legado e não cria uma sessão por módulo. O primeiro administrador exige provisionamento manual controlado; o procedimento está em [`docs/FIRST_ADMIN_BOOTSTRAP.md`](docs/FIRST_ADMIN_BOOTSTRAP.md).
+A carga inicial de catálogos foi feita por API administrativa do Firebase, que não executa Security Rules do cliente; a autoria lógica e o limite desse procedimento estão registrados em [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md). As gravações normais devem ocorrer pela sessão do PWA.
 
-`npm run validate:catalog-preview` audita `.local-preview/catalog-import-preview.json` (estações, treinamentos, escala e férias), que fica fora do Git. Confirma IDs/ordem, vigência, posições, destaques, QR ativo, contagens, destino SAHMT e presença das listas de revisão; nunca grava no Firestore e não substitui a aprovação manual antes de importar.
+## Documentação
+
+Inventário V1, paridade, arquitetura, esquema, segurança, sincronização, implantação e plano estão em [`docs/`](docs/).
+
+## Desenvolvimento local
+
+`npm ci`
+
+`npm run dev`
+
+`npm run build`
+
+`npm run test:domain`
+
+`npm run test:rules`
+
+`npm run validate:catalog-preview` valida somente a prévia local ignorada pelo Git; não escreve dados no Firebase.
+
+## Validação pendente
+
+Login confirma Auth → perfil UID → Home. Consultas e gravações autenticadas por módulo, fluxos offline em dispositivo, conferência da ordem das estações e comparação visual interna em Android/iPhone ainda precisam de homologação.

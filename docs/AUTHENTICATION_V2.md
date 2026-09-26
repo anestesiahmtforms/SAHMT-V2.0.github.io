@@ -16,7 +16,7 @@ Na inicialização online, a leitura de `users/{uid}` usa Firestore Lite, que bu
 
 Firebase Auth é inicializado com persistência local em IndexedDB e fallback de persistência do navegador. A configuração usa `initializeAuth` sem preparar o resolvedor de pop-up na abertura; `browserPopupRedirectResolver` só é passado ao fluxo quando a pessoa toca no botão. Isso evita o pré-carregamento do iframe de autenticação em dispositivos móveis. O login continua em pop-up; redirect exigiria as opções de domínio/hosting descritas pelo Firebase para funcionar de forma confiável em navegadores com bloqueio de cookies de terceiros.
 
-Perfil ausente, inativo ou sem acesso bloqueia a área protegida. E-mail coincidente não substitui UID. O cliente não pode se provisionar, mudar as próprias permissões ou conceder privilégio. O primeiro administrador precisa de um provisionamento manual e controlado no Console; depois disso, Administração da V2 gerencia os demais perfis. Consulte [`FIRST_ADMIN_BOOTSTRAP.md`](FIRST_ADMIN_BOOTSTRAP.md) para o procedimento e o esquema exato.
+Perfil ausente, inativo ou sem acesso bloqueia a área protegida. E-mail coincidente não substitui UID. O cliente não pode se provisionar, mudar as próprias permissões ou conceder privilégio. O primeiro administrador foi provisionado manualmente pelo proprietário no Console em 26/09/2026; UID, e-mail e nome de exibição conferem com Firebase Auth. Administração da V2 gerencia os demais perfis. Consulte [`FIRST_ADMIN_BOOTSTRAP.md`](FIRST_ADMIN_BOOTSTRAP.md) para o procedimento e o esquema exato.
 
 ## Fora do propósito da autenticação
 

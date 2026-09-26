@@ -20,6 +20,6 @@
 ## Gaps que bloqueiam migração automática
 
 - A entrega atesta que o script ainda aguarda implantação Google; endpoints e propriedades precisam ser verificados na conta autorizada.
-- Leitura somente consultiva do Console em 25/09/2026 confirmou o projeto `sahmt-17a16`, o Firestore `(default)` vazio e o provedor Google ativo; Email/Senha não apareceu como ativo. Isso não confirma os usuários V1, a migração, nem quais Rules e índices locais estão publicados. A V2 usa os contratos locais versionados em `firestore.rules` e `firestore.indexes.json`; estado produtivo e login autorizado ainda requerem verificação própria.
+- Leitura consultiva em 25/09/2026 confirmou o projeto `sahmt-17a16`, Firestore `(default)` vazio e Google ativo; Email/Senha não apareceu como ativo. Em 26/09, o proprietário provisionou o perfil inicial, confirmou login até Home, e os catálogos de siglas e estações receberam a carga inicial limitada. O estado de Rules e índices foi verificado separadamente via CLI; as demais entidades V1 permanecem sem migração.
 - A enumeração oficial das 12 áreas, owners, permissões, listas de usuários e IDs de planilha devem vir da fonte vigente e ser validados antes do seed.
 - A saída do migrador legado para Firestore deve ser revisada para evitar expor dados, duplicar registros ou sobrescrever produção.

@@ -2,7 +2,7 @@
 
 ## Alvo
 
-Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch `main`; URL do GitHub Pages: `https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/`. Em 26/09/2026, após autorização do proprietário, Pages foi ativado em Settings → Pages com `Source: GitHub Actions`. O commit `e9666fd178bdd880aabb45f0c18bd3faa192647c` concluiu com sucesso o workflow [Build and deploy SAHMT V2](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36204484543): testes de domínio, Rules, Functions, build e deploy. A URL pública foi aberta e mostrou a tela de login SAHMT. Isso confirma publicação do shell estático, não homologação de login Google ou acesso aos dados produtivos. Revisão do catálogo, homologação autenticada e validação em dispositivo continuam pendentes.
+Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch `main`; URL do GitHub Pages: `https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/`. Em 26/09/2026, após autorização do proprietário, Pages foi ativado em Settings → Pages com `Source: GitHub Actions`. O commit `e9666fd178bdd880aabb45f0c18bd3faa192647c` concluiu com sucesso o workflow [Build and deploy SAHMT V2](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36204484543): testes de domínio, Rules, Functions, build e deploy. A URL pública foi aberta e mostrou a tela de login SAHMT. Isso confirma publicação do shell estático, não homologação de login Google ou acesso aos dados produtivos. A carga inicial de estações e siglas foi confirmada em 26/09/2026; permanecem pendentes revisão visual da ordem das estações, importação das demais entidades, homologação operacional e validação em dispositivo.
 
 ## Caminho de release
 
@@ -19,11 +19,11 @@ Repositório `https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io`, branch
 
 - O pacote legado `validacao.json` registra um deployment Apps Script que aguarda login Google. Esse estado não integra nem bloqueia a autenticação V2, que usa Firebase Auth e perfil UID no Firestore.
 - Firebase CLI autenticada em 25/09/2026; `firebase projects:list` mostra somente SAHMT `sahmt-17a16`. Foi confirmado o Firestore `(default)`, Standard, Native. `firestore.rules` foi compilado e liberado, e consulta autenticada confirmou os 29 índices do manifesto em `READY`. O deploy não incluiu Functions nem migração de dados. Google Drive leu metadados de `SAHMT_DATABASE` e intervalos agregados delimitados; nenhuma célula foi alterada e nenhum valor pessoal foi copiado.
-- O Console Firebase consultado em 25/09/2026 mostrou o Firestore `(default)` do projeto `sahmt-17a16` vazio e Google como provedor de Auth ativado; Email/Senha não apareceu como ativado. A implantação posterior de Rules/índices foi confirmada pela CLI; índices seguem em criação. Nenhum dado foi migrado nem configuração de provedor Auth alterada.
+- O Console consultado em 25/09/2026 mostrou o Firestore `(default)` vazio, Google ativo e Email/Senha não ativo. Em 26/09, o proprietário provisionou o primeiro perfil e foram semeados os catálogos limitados de siglas e estações; Rules/índices foram publicados e os 29 índices confirmados `READY`. Nenhuma configuração de provedor Auth foi alterada.
 - Consultas e gravações operacionais ainda precisam de homologação no app com conta autorizada; não declarar migrado ou validado em dispositivo antes da confirmação correspondente.
 - Cloud Functions for Firebase exige plano Blaze, vinculado a faturamento. O código da assinatura é local e não foi implantado; o proprietário deve confirmar conta de billing e controles de orçamento antes de qualquer deploy. A callable fica na região `southamerica-east1` e usa o projeto Firebase existente, sem criar outro.
 - A auditoria estática das consultas/índices está em [`QUERY_INDEX_AUDIT.md`](QUERY_INDEX_AUDIT.md); ela não substitui a verificação de estado dos índices no Firestore de produção.
-- O primeiro perfil administrador é criado manualmente pelo proprietário no Console Firebase, no formato de [`FIRST_ADMIN_BOOTSTRAP.md`](FIRST_ADMIN_BOOTSTRAP.md). Rules e índices estão preparados; o bootstrap continua necessário para liberar o shell protegido. Não é um bootstrap automático do app.
+- O primeiro perfil administrador foi criado manualmente pelo proprietário no Console Firebase e o login até a Home foi confirmado em 26/09/2026. O bootstrap não é automático no app; o procedimento de [`FIRST_ADMIN_BOOTSTRAP.md`](FIRST_ADMIN_BOOTSTRAP.md) serve como referência controlada.
 
 ## Validações locais
 

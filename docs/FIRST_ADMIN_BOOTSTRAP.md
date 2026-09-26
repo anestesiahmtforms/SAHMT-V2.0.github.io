@@ -1,5 +1,9 @@
 # Primeiro administrador SAHMT V2
 
+## Estado atual
+
+Em 26/09/2026, o proprietário concluiu o provisionamento do primeiro perfil e confirmou a entrada na Home do PWA. Uma conferência de Firebase Auth confirmou que UID, e-mail e nome de exibição do perfil correspondem à identidade autenticada. O procedimento abaixo fica como referência para recuperação controlada, não como etapa ainda pendente.
+
 ## Por que esta etapa é manual
 
 O PWA não pode criar o próprio perfil administrador: antes do primeiro administrador não existe uma identidade autorizada a provisionar usuários. A conta proprietária cria uma única vez o perfil em `users/{uid}` pelo Console Firebase. Depois disso, novos perfis são administrados no módulo Administração da V2.
