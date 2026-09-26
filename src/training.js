@@ -1,4 +1,4 @@
-import {getMyScoreTotal, listTrainingProgress, saveTrainingProgress} from './data.js';
+import {acknowledgeLearningActivity, getMyScoreTotal, listTrainingProgress, saveTrainingProgress} from './data.js';
 import {completeTraining, startTraining} from './training-start.js';
 
 let playerApiPromise;
@@ -57,7 +57,26 @@ function loadYouTubeApi() {
   return playerApiPromise;
 }
 
-export async function mountTrainingModule(content, {uid, trainings}) {
+function learningActivityFeed(activities, receipts, errorMessage = '') {
+  if (errorMessage) return `<section class="learning-activity-feed" aria-labelledby="learning-activities-title"><h3 id="learning-activities-title">Atividades de aprendizagem</h3><p class="empty-state">Não foi possível carregar as atividades. ${escapeHtml(errorMessage)}</p></section>`;
+  const cards = activities.map((activity) => {
+    const receipt = receipts.find((item) => item.activityId === activity.id &&
+      (activity.recurrenceMode === 'ONCE' || item.activityVersion === activity.version));
+    const resource = activity.resourceUrl
+      ? `<a class="secondary-button learning-activity-link" href="${escapeHtml(activity.resourceUrl)}" target="_blank" rel="noopener noreferrer">Abrir material</a>`
+      : '';
+    const acknowledgement = activity.completionKind === 'ACKNOWLEDGEMENT'
+      ? `<button class="primary-button" type="button" data-learning-activity-ack="${escapeHtml(activity.id)}" ${receipt ? 'disabled' : ''}>${receipt ? 'Ciência registrada' : 'Confirmar ciência'}</button>`
+      : '';
+    const evidenceNote = activity.completionKind === 'NONE'
+      ? '<small>Abrir o material não registra conclusão nem gera pontos.</small>'
+      : '<small>A confirmação fica vinculada à sua conta; não há pontuação nesta atividade.</small>';
+    return `<article class="learning-activity-card"><div><p class="eyebrow">${escapeHtml(activity.category || 'APRENDIZAGEM')}</p><h4>${escapeHtml(activity.title)}</h4>${activity.description ? `<p>${escapeHtml(activity.description)}</p>` : ''}${evidenceNote}</div><div class="learning-activity-actions">${resource}${acknowledgement}</div></article>`;
+  }).join('');
+  return `<section class="learning-activity-feed" aria-labelledby="learning-activities-title"><header><div><p class="eyebrow">COMUNICADOS E ORIENTAÇÕES</p><h3 id="learning-activities-title">Atividades de aprendizagem</h3></div></header><p class="record-meta">Links externos não confirmam conclusão. Use “Confirmar ciência” somente quando a atividade pedir essa confirmação.</p>${cards || '<p class="empty-state">Não há atividades publicadas para você neste período.</p>'}</section>`;
+}
+
+export async function mountTrainingModule(content, {uid, trainings, learningActivities = [], learningReceipts = [], learningError = ''}) {
   content.innerHTML = '<p class="loading">Carregando seu progresso…</p>';
   const scorePromise = getMyScoreTotal(uid).catch(() => null);
   let progressResult;
@@ -89,7 +108,7 @@ export async function mountTrainingModule(content, {uid, trainings}) {
       ? `<small class="sync-error">${escapeHtml(progress.completionValidationMessage)}</small>` : '';
     return `<article class="training-card"><div class="training-card-copy"><p class="eyebrow">TREINAMENTO</p><h3>${escapeHtml(training.title || training.name || training.id)}</h3>${training.description ? `<p>${escapeHtml(training.description)}</p>` : ''}${pointsLabel}<small data-training-progress-label="${escapeHtml(training.id)}">${escapeHtml(progressLabel)}</small>${completionValidationNote}${progress ? `<progress max="100" value="${percent}" aria-label="${percent}% assistido"></progress>` : ''}</div><button type="button" class="primary-button" data-training-open="${escapeHtml(training.id)}" ${hasVideo ? '' : 'disabled'}>${hasVideo ? completed ? 'Rever vídeo' : progress ? 'Continuar' : 'Assistir' : 'Vídeo indisponível'}</button></article>`;
   }).join('');
-  content.innerHTML = `<section class="training-score" aria-label="Pontuação SAHMT"><div><p class="eyebrow">PONTUAÇÃO SAHMT</p><strong id="training-score-total" aria-live="polite">…</strong><small id="training-score-status" role="status"></small></div></section>${progressResult.stale ? '<p class="sync-state">Sem conexão: exibindo catálogo e progresso salvos neste aparelho.</p>' : ''}${cards || '<p class="empty-state">Nenhum treinamento ativo foi publicado.</p>'}<dialog class="training-dialog" aria-labelledby="training-dialog-title"><header><div><p class="eyebrow">TREINAMENTO</p><h3 id="training-dialog-title"></h3></div><button type="button" class="secondary-button" data-training-close>Voltar</button></header><div class="training-player" id="training-player"></div><button type="button" class="primary-button training-play" data-training-toggle disabled>REPRODUZIR</button><p class="training-player-status" role="status" aria-live="polite"></p><section class="training-understanding" hidden><strong>Está entendendo o conteúdo?</strong><div><button type="button" class="secondary-button" data-training-answer="yes">Sim</button><button type="button" class="secondary-button" data-training-answer="no">Não</button></div></section><p class="training-server-note">Ao encerrar o vídeo com pelo menos 95% registrado, a conclusão é salva no Firestore e os pontos ficam pendentes de validação. O navegador informa os intervalos assistidos e o encerramento; esses dados não comprovam, por si só, a reprodução real.</p></dialog>`;
+  content.innerHTML = `<section class="training-score" aria-label="Pontuação SAHMT"><div><p class="eyebrow">PONTUAÇÃO SAHMT</p><strong id="training-score-total" aria-live="polite">…</strong><small id="training-score-status" role="status"></small></div></section>${learningActivityFeed(learningActivities, learningReceipts, learningError)}${progressResult.stale ? '<p class="sync-state">Sem conexão: exibindo catálogo e progresso salvos neste aparelho.</p>' : ''}${cards || '<p class="empty-state">Nenhum treinamento ativo foi publicado.</p>'}<dialog class="training-dialog" aria-labelledby="training-dialog-title"><header><div><p class="eyebrow">TREINAMENTO</p><h3 id="training-dialog-title"></h3></div><button type="button" class="secondary-button" data-training-close>Voltar</button></header><div class="training-player" id="training-player"></div><button type="button" class="primary-button training-play" data-training-toggle disabled>REPRODUZIR</button><p class="training-player-status" role="status" aria-live="polite"></p><section class="training-understanding" hidden><strong>Está entendendo o conteúdo?</strong><div><button type="button" class="secondary-button" data-training-answer="yes">Sim</button><button type="button" class="secondary-button" data-training-answer="no">Não</button></div></section><p class="training-server-note">Ao encerrar o vídeo com pelo menos 95% registrado, a conclusão é salva no Firestore e os pontos ficam pendentes de validação. O navegador informa os intervalos assistidos e o encerramento; esses dados não comprovam, por si só, a reprodução real.</p></dialog>`;
   const renderScoreTotal = (result) => {
     const total = content.querySelector('#training-score-total');
     const status = content.querySelector('#training-score-status');
@@ -105,6 +124,33 @@ export async function mountTrainingModule(content, {uid, trainings}) {
   const playButton = content.querySelector('[data-training-toggle]');
   let active = null;
   let savePromise = null;
+
+  content.querySelectorAll('[data-learning-activity-ack]').forEach((button) => button.addEventListener('click', async () => {
+    const activity = learningActivities.find((item) => item.id === button.dataset.learningActivityAck);
+    if (!activity || button.disabled) return;
+    button.disabled = true;
+    const previousText = button.textContent;
+    button.textContent = 'Registrando…';
+    const error = button.parentElement.querySelector('[role="status"]');
+    error?.remove();
+    try {
+      await acknowledgeLearningActivity(activity, uid);
+      button.textContent = 'Ciência registrada';
+      const note = document.createElement('small');
+      note.className = 'record-meta';
+      note.setAttribute('role', 'status');
+      note.textContent = 'Confirmação salva no Firestore. Esta atividade não concede pontos.';
+      button.after(note);
+    } catch (reason) {
+      button.disabled = false;
+      button.textContent = previousText;
+      const note = document.createElement('small');
+      note.className = 'sync-error';
+      note.setAttribute('role', 'status');
+      note.textContent = reason.message || 'Não foi possível confirmar a ciência.';
+      button.after(note);
+    }
+  }));
 
   const save = async (force = false, completionRequested = false) => {
     if (!active?.player || !active.duration) return;
@@ -258,8 +304,8 @@ export async function mountTrainingModule(content, {uid, trainings}) {
     }
   }));
   return async () => {
-    if (!active) return;
     document.removeEventListener('visibilitychange', pauseWhenHidden);
+    if (!active) return;
     active.player?.pauseVideo?.();
     if (active.tick) window.clearInterval(active.tick);
     await save(true);

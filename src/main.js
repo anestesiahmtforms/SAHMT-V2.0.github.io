@@ -71,6 +71,7 @@ let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
 let cleanupLabelOcr = null;
 let loadedTrainingCatalog = [];
+let loadedLearningActivityCatalog = [];
 let offlineViewMode = 'sync';
 let appFeatures = {...DEFAULT_APP_FEATURES};
 let appFeaturesUid = '';
@@ -228,7 +229,16 @@ function actionForm(route) {
     <label>Pontos de conclusão<input name="completionPoints" type="number" min="0" max="1000" step="0.01" value="0" required></label><label>Ordem<input name="order" type="number" min="0" max="9999" step="1" value="0" required></label>
     <label class="contact-active-field"><input name="active" type="checkbox" checked> Treinamento ativo</label></div><input name="trainingId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar treinamento</button><button class="secondary-button" id="training-edit-cancel" type="button">Novo treinamento</button></div><p id="training-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form>
-    <div id="training-admin-list" class="module-content"><p class="loading">Carregando catálogo…</p></div></details>`;
+    <div id="training-admin-list" class="module-content"><p class="loading">Carregando catálogo…</p></div></details><details class="quick-form"><summary>Gerenciar atividades de aprendizagem</summary><form id="learning-activity-form">
+    <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Categoria<input name="category" maxlength="60" placeholder="Comunicado, orientação…"></label>
+    <label class="form-span">Descrição<textarea name="description" rows="3" maxlength="500"></textarea></label><label>Link HTTPS (opcional)<input name="resourceUrl" type="url" maxlength="600" placeholder="https://…"></label>
+    <label>Conclusão<select name="completionKind"><option value="NONE">Somente abrir o link</option><option value="ACKNOWLEDGEMENT">Confirmar ciência</option></select></label>
+    <label>Público<select name="audienceType"><option value="ALL">Todos</option><option value="ROLE">Função</option><option value="USER">UID específico</option></select></label>
+    <label class="learning-audience-value" hidden>Função ou UID<input name="audienceValue" maxlength="128"></label><label>Começa<input name="startAt" type="date" required value="${todayInputValue()}"></label><label>Termina<input name="endAt" type="date" required value="${todayInputValue()}"></label>
+    <label>Recorrência<select name="recurrenceMode"><option value="ONCE">Uma vez</option><option value="ONCE_PER_VERSION">Uma vez por versão</option></select></label><label>Ordem<input name="order" type="number" min="0" max="9999" step="1" value="0" required></label>
+    <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
+    <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
+    <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
   if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<details class="quick-form" open><summary>Registrar etiqueta</summary><form data-module-form="labels">
     <section class="label-capture-panel" aria-label="Leitura assistida da etiqueta"><label>Foto ou arquivo da etiqueta<input id="label-ocr-file" name="ocrImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"></label><button class="secondary-button" id="label-camera-open" type="button">Abrir câmera</button><div class="label-crop-frame" id="label-crop-frame" hidden><canvas id="label-ocr-preview" class="label-ocr-preview" aria-label="Prévia da etiqueta. Arraste para marcar a área de leitura." tabindex="0"></canvas><div class="label-crop-selection" id="label-crop-selection" hidden></div></div><div class="admin-user-actions"><button class="secondary-button" id="label-crop-toggle" type="button" hidden>Marcar área para recortar</button><button class="secondary-button" id="label-crop-reset" type="button" hidden>Usar foto inteira</button><button class="secondary-button" id="label-ocr-run" type="button" disabled>Ler dados da foto neste aparelho</button></div><p class="record-meta">A leitura local serve como rascunho. Confira os campos antes de salvar; a imagem não é enviada nem gravada. Para recortar, toque em “Marcar área” e arraste sobre a foto.</p><p id="label-ocr-status" class="record-meta" role="status" aria-live="polite"></p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><p class="eyebrow">ETIQUETAS</p><h3 id="label-camera-title">Capturar etiqueta</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">A imagem permanece neste aparelho até você revisar o formulário.</p><video id="label-camera-video" playsinline muted></video><button class="primary-button" id="label-camera-capture" type="button" disabled>Capturar foto</button></dialog></section>
     <div class="form-grid"><label>Data<input name="date" type="date" value="${todayInputValue()}" required></label><label>Nome do Paciente<input name="patientName" autocomplete="off" required maxlength="160"></label>
@@ -678,8 +688,29 @@ async function loadModule(route) {
       items = await data.listModuleRecords(route, session.user.uid, {pageSize: route === 'checklist' ? 200 : 50});
     }
     if (route === 'training') {
+      let learningActivities = [];
+      let learningReceipts = [];
+      let learningError = '';
+      try {
+        learningActivities = await data.listLearningActivities(session.profile, session.user.uid);
+        learningReceipts = await data.listLearningActivityReceipts(session.user.uid, learningActivities);
+      } catch (error) {
+        learningError = error.message || 'Verifique a conexão e as permissões Firestore.';
+      }
+      if (can('trainingsManage')) {
+        try {
+          loadedLearningActivityCatalog = await data.listLearningActivitiesForAdmin();
+          renderLearningActivityAdminList(loadedLearningActivityCatalog);
+        } catch (error) {
+          loadedLearningActivityCatalog = [];
+          const target = document.querySelector('#learning-activity-admin-list');
+          if (target) target.innerHTML = `<p class="empty-state">Não foi possível carregar o catálogo. ${escapeHtml(error.message || '')}</p>`;
+        }
+      } else {
+        loadedLearningActivityCatalog = [];
+      }
       const {mountTrainingModule} = await import('./training.js');
-      cleanupCurrentModule = await mountTrainingModule(content, {uid: session.user.uid, trainings: items});
+      cleanupCurrentModule = await mountTrainingModule(content, {uid: session.user.uid, trainings: items, learningActivities, learningReceipts, learningError});
       return;
     }
     if (route === 'checklist') {
@@ -2286,6 +2317,87 @@ async function bindModuleForm(route) {
       form.scrollIntoView({behavior: 'smooth', block: 'center'});
       form.elements.title.focus({preventScroll: true});
     }));
+    const activityForm = document.querySelector('#learning-activity-form');
+    const activityStatus = document.querySelector('#learning-activity-status');
+    const activitySubmit = activityForm?.querySelector('[type="submit"]');
+    const setAudienceValue = () => {
+      const wrapper = activityForm?.querySelector('.learning-audience-value');
+      if (wrapper && activityForm) wrapper.hidden = activityForm.elements.audienceType.value === 'ALL';
+    };
+    const resetActivity = () => {
+      activityForm?.reset();
+      if (activityForm) {
+        activityForm.elements.activityId.value = '';
+        activityForm.elements.startAt.value = todayInputValue();
+        activityForm.elements.endAt.value = todayInputValue();
+        activityForm.elements.order.value = '0';
+        activityForm.elements.showInTraining.checked = true;
+        activityForm.elements.active.checked = true;
+        activityForm.elements.audienceType.value = 'ALL';
+      }
+      setAudienceValue();
+      if (activitySubmit) activitySubmit.textContent = 'Salvar atividade';
+      if (activityStatus) activityStatus.textContent = '';
+    };
+    document.querySelector('#learning-activity-reset')?.addEventListener('click', resetActivity);
+    activityForm?.elements.audienceType.addEventListener('change', setAudienceValue);
+    setAudienceValue();
+    activityForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!activityForm || !activitySubmit) return;
+      activitySubmit.disabled = true;
+      if (activityStatus) activityStatus.textContent = 'Salvando atividade…';
+      try {
+        const {saveLearningActivity} = await import('./data.js');
+        await saveLearningActivity({
+          id: activityForm.elements.activityId.value,
+          title: activityForm.elements.title.value,
+          description: activityForm.elements.description.value,
+          category: activityForm.elements.category.value,
+          resourceUrl: activityForm.elements.resourceUrl.value,
+          completionKind: activityForm.elements.completionKind.value,
+          audienceType: activityForm.elements.audienceType.value,
+          audienceValue: activityForm.elements.audienceValue.value,
+          startAt: activityForm.elements.startAt.value,
+          endAt: activityForm.elements.endAt.value,
+          recurrenceMode: activityForm.elements.recurrenceMode.value,
+          order: activityForm.elements.order.value,
+          showInTraining: activityForm.elements.showInTraining.checked,
+          active: activityForm.elements.active.checked
+        }, session.user.uid);
+        notice = 'Atividade de aprendizagem salva no Firestore.';
+        await render();
+      } catch (error) {
+        if (activityStatus) activityStatus.textContent = error.code === 'permission-denied'
+          ? 'Seu perfil não tem permissão para gerenciar atividades de aprendizagem.'
+          : `Não foi possível salvar a atividade. ${error.message || ''}`;
+        activitySubmit.disabled = false;
+      }
+    });
+    document.querySelectorAll('[data-learning-activity-edit]').forEach((button) => button.addEventListener('click', () => {
+      const item = loadedLearningActivityCatalog.find((record) => record.id === button.dataset.learningActivityEdit);
+      if (!item || !activityForm) return;
+      activityForm.elements.activityId.value = item.id;
+      activityForm.elements.title.value = item.title || '';
+      activityForm.elements.description.value = item.description || '';
+      activityForm.elements.category.value = item.category || '';
+      activityForm.elements.resourceUrl.value = item.resourceUrl || '';
+      activityForm.elements.completionKind.value = item.completionKind || 'NONE';
+      activityForm.elements.audienceType.value = item.audienceType || 'ALL';
+      activityForm.elements.audienceValue.value = item.audienceValue || '';
+      activityForm.elements.startAt.value = timestampInputDate(item.startAt);
+      activityForm.elements.endAt.value = timestampInputDate(item.endAt);
+      activityForm.elements.recurrenceMode.value = item.recurrenceMode || 'ONCE';
+      activityForm.elements.order.value = String(item.order ?? 0);
+      activityForm.elements.showInTraining.checked = item.showInTraining === true;
+      activityForm.elements.active.checked = item.status === 'ACTIVE';
+      setAudienceValue();
+      if (activitySubmit) activitySubmit.textContent = 'Atualizar atividade';
+      if (activityStatus) activityStatus.textContent = '';
+      activityForm.closest('details').open = true;
+      activityForm.scrollIntoView({behavior: 'smooth', block: 'center'});
+      activityForm.elements.title.focus({preventScroll: true});
+    }));
     return;
   }
   document.querySelector('[data-module-form]')?.addEventListener('submit', async (event) => {
@@ -2739,6 +2851,20 @@ function renderTrainingAdminList(items) {
   const target = document.querySelector('#training-admin-list');
   if (!target) return;
   target.innerHTML = items.length ? `<ul class="record-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title || 'Treinamento')}</strong><button class="secondary-button" type="button" data-training-edit="${escapeHtml(item.id)}">Editar</button></div><small>${item.active === true ? 'Ativo' : 'Inativo'} · ordem ${escapeHtml(item.order ?? '—')} · ${escapeHtml(item.videoId || 'vídeo sem ID reconhecido')}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum treinamento cadastrado. Use o formulário para publicar o primeiro.</p>';
+}
+
+function renderLearningActivityAdminList(items) {
+  const target = document.querySelector('#learning-activity-admin-list');
+  if (!target) return;
+  target.innerHTML = items.length ? `<ul class="record-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title || 'Atividade')}</strong><button class="secondary-button" type="button" data-learning-activity-edit="${escapeHtml(item.id)}">Editar</button></div><small>${item.status === 'ACTIVE' ? 'Publicada' : 'Inativa'} · ${escapeHtml(item.audienceType || '')}${item.audienceValue ? ` (${escapeHtml(item.audienceValue)})` : ''} · versão ${escapeHtml(item.version ?? '—')}</small><small class="record-meta">${escapeHtml(item.category || 'Sem categoria')} · ordem ${escapeHtml(item.order ?? '—')}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma atividade cadastrada. Use o formulário para publicar a primeira.</p>';
+}
+
+function timestampInputDate(value) {
+  const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'}).formatToParts(date);
+  const fields = Object.fromEntries(parts.map(({type, value: part}) => [type, part]));
+  return `${fields.year}-${fields.month}-${fields.day}`;
 }
 
 async function loadChecklistStationAdmin() {

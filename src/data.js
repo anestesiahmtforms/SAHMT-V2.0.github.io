@@ -1395,6 +1395,137 @@ export async function saveTrainingCatalogRecord(input, uid) {
   });
 }
 
+function learningReceiptId(uid, activityId, recurrenceMode, version) {
+  return recurrenceMode === 'ONCE'
+    ? `${uid}_${activityId}_once`
+    : `${uid}_${activityId}_v${version}`;
+}
+
+function learningAudienceMatches(activity, profile, uid) {
+  if (activity.audienceType === 'ALL') return activity.audienceValue === '';
+  if (activity.audienceType === 'ROLE') return Boolean(profile?.role) && activity.audienceValue === profile.role;
+  return activity.audienceType === 'USER' && activity.audienceValue === uid;
+}
+
+function learningActivityInWindow(activity, now = Date.now()) {
+  return activity.startAt?.toMillis?.() <= now && activity.endAt?.toMillis?.() >= now;
+}
+
+export async function listLearningActivities(profile, uid, {pageSize = 100} = {}) {
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  const take = Math.min(100, Math.max(1, pageSize));
+  const base = [where('status', '==', 'ACTIVE'), where('showInTraining', '==', true)];
+  const requests = [query(collection(db, 'learningActivities'), ...base, where('audienceType', '==', 'ALL'), orderBy('order', 'asc'), limit(take))];
+  if (profile?.role) requests.push(query(collection(db, 'learningActivities'), ...base, where('audienceType', '==', 'ROLE'), where('audienceValue', '==', profile.role), orderBy('order', 'asc'), limit(take)));
+  requests.push(query(collection(db, 'learningActivities'), ...base, where('audienceType', '==', 'USER'), where('audienceValue', '==', uid), orderBy('order', 'asc'), limit(take)));
+  const snapshots = await Promise.all(requests.map((request) => getDocsFromServer(request)));
+  const records = new Map();
+  snapshots.forEach((snapshot) => snapshot.docs.forEach((item) => records.set(item.id, {id: item.id, ...item.data()})));
+  const now = Date.now();
+  return [...records.values()].filter((activity) => activity.status === 'ACTIVE' && activity.showInTraining === true && learningActivityInWindow(activity, now) && learningAudienceMatches(activity, profile, uid))
+    .sort((left, right) => (left.order - right.order) || left.title.localeCompare(right.title, 'pt-BR'));
+}
+
+export async function listLearningActivitiesForAdmin({pageSize = 100} = {}) {
+  const result = await getDocsFromServer(query(
+    collection(db, 'learningActivities'),
+    orderBy('order', 'asc'),
+    limit(Math.min(100, Math.max(1, pageSize)))
+  ));
+  return result.docs.map((item) => ({id: item.id, ...item.data()}));
+}
+
+export async function listLearningActivityReceipts(uid, activities) {
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  const activityIds = [...new Set((activities || []).map((activity) => activity.id).filter(Boolean))];
+  const snapshots = await Promise.all(Array.from({length: Math.ceil(activityIds.length / 30)}, (_, index) => {
+    const ids = activityIds.slice(index * 30, index * 30 + 30);
+    return getDocsFromServer(query(collection(db, 'learningActivityReceipts'), where('uid', '==', uid), where('activityId', 'in', ids), limit(100)));
+  }));
+  return snapshots.flatMap((snapshot) => snapshot.docs.map((item) => ({id: item.id, ...item.data()})));
+}
+
+export async function saveLearningActivity(input, uid) {
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  if (!navigator.onLine) throw new Error('Conecte-se para atualizar as atividades de aprendizagem.');
+  const id = String(input.id || crypto.randomUUID().replaceAll('-', '')).trim();
+  const title = String(input.title || '').trim().replace(/\s+/g, ' ');
+  const description = String(input.description || '').trim();
+  const category = String(input.category || '').trim().replace(/\s+/g, ' ');
+  const audienceType = String(input.audienceType || 'ALL');
+  const audienceValue = audienceType === 'ALL' ? '' : String(input.audienceValue || '').trim();
+  const completionKind = String(input.completionKind || 'NONE');
+  const recurrenceMode = String(input.recurrenceMode || 'ONCE');
+  const startValue = String(input.startAt || '');
+  const endValue = String(input.endAt || '');
+  let resourceUrl = '';
+  try {
+    if (String(input.resourceUrl || '').trim()) {
+      const url = new URL(String(input.resourceUrl).trim());
+      if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) throw new Error();
+      resourceUrl = url.toString();
+    }
+  } catch { throw new Error('O recurso precisa usar um link HTTPS válido, sem credenciais.'); }
+  const sourceKind = resourceUrl ? 'EXTERNAL_LINK' : 'ACKNOWLEDGEMENT';
+  const order = Number(input.order);
+  const startAt = new Date(`${startValue}T00:00:00`);
+  const endAt = new Date(`${endValue}T23:59:59.999`);
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !title || title.length > 120 || description.length > 500 || category.length > 60 ||
+      !['ALL', 'ROLE', 'USER'].includes(audienceType) || audienceValue.length > 128 || (audienceType !== 'ALL' && !audienceValue) ||
+      !['NONE', 'ACKNOWLEDGEMENT'].includes(completionKind) || (!resourceUrl && completionKind !== 'ACKNOWLEDGEMENT') ||
+      resourceUrl.length > 600 ||
+      !['ONCE', 'ONCE_PER_VERSION'].includes(recurrenceMode) || !/^\d{4}-\d{2}-\d{2}$/.test(startValue) || !/^\d{4}-\d{2}-\d{2}$/.test(endValue) ||
+      !Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || startAt > endAt ||
+      !Number.isInteger(order) || order < 0 || order > 9999) {
+    throw new Error('Confira título, categoria, público, janela, ação, recorrência e ordem.');
+  }
+  if (completionKind === 'ACKNOWLEDGEMENT' && sourceKind !== 'EXTERNAL_LINK' && !description) {
+    throw new Error('Descreva a ciência que será solicitada ao usuário.');
+  }
+  const activityRef = doc(db, 'learningActivities', id);
+  return runTransaction(db, async (transaction) => {
+    const current = await transaction.get(activityRef);
+    const old = current.exists() ? current.data() : null;
+    const record = {
+      id, version: old ? Math.max(1, Number(old.version) || 1) + 1 : 1,
+      title, description, category, sourceKind, resourceUrl,
+      showInTraining: input.showInTraining === true,
+      audienceType, audienceValue,
+      startAt: Timestamp.fromDate(startAt), endAt: Timestamp.fromDate(endAt),
+      status: input.active === true ? 'ACTIVE' : 'INACTIVE', completionKind, recurrenceMode, order,
+      createdByUid: old?.createdByUid || uid, createdAt: old?.createdAt || serverTimestamp(),
+      updatedByUid: uid, updatedAt: serverTimestamp()
+    };
+    transaction.set(activityRef, record);
+    return record;
+  });
+}
+
+export async function acknowledgeLearningActivity(activity, uid) {
+  if (!uid || !activity?.id) throw new Error('Não foi possível identificar a atividade ou a sessão.');
+  if (activity.completionKind !== 'ACKNOWLEDGEMENT' || !['ONCE', 'ONCE_PER_VERSION'].includes(activity.recurrenceMode)) {
+    throw new Error('Esta atividade não aceita confirmação de ciência.');
+  }
+  if (!navigator.onLine) throw new Error('Conecte-se para confirmar a ciência desta atividade.');
+  const receiptId = learningReceiptId(uid, activity.id, activity.recurrenceMode, activity.version);
+  const receiptRef = doc(db, 'learningActivityReceipts', receiptId);
+  const activityRef = doc(db, 'learningActivities', activity.id);
+  return runTransaction(db, async (transaction) => {
+    const [existing, current] = await Promise.all([transaction.get(receiptRef), transaction.get(activityRef)]);
+    if (existing.exists()) return {alreadyAcknowledged: true};
+    if (!current.exists()) throw new Error('Esta atividade não está mais disponível. Atualize a tela.');
+    const published = current.data();
+    if (published.status !== 'ACTIVE' || published.showInTraining !== true || published.version !== activity.version || published.completionKind !== 'ACKNOWLEDGEMENT') {
+      throw new Error('A atividade foi alterada ou encerrada. Atualize a tela antes de confirmar.');
+    }
+    transaction.set(receiptRef, {
+      id: receiptId, activityId: activity.id, activityVersion: published.version,
+      uid, evidenceKind: 'ACKNOWLEDGEMENT', status: 'CONFIRMED', createdAt: serverTimestamp()
+    });
+    return {alreadyAcknowledged: false};
+  });
+}
+
 export async function saveChecklistStation(input, uid) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar o catálogo do Checklist.');

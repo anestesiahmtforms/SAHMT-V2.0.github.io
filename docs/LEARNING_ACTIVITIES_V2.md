@@ -2,7 +2,7 @@
 
 ## Estado e origem
 
-Esta especificação fecha o destino arquitetural da lacuna registrada em [`UI_PARITY.md`](UI_PARITY.md); não afirma que a coleção ou as telas já existam. A V1 coloca atividades elegíveis no contêiner `training-activities` por `core/views/treinamentos.js` e as apresenta com `core/activity-ui.js`. O fluxo inclui abrir um recurso externo, registrar ciência e exibir estados/resultado de evidência. A aba dinâmica `ATIVIDADES` tinha zero IDs em `A2:A1000` no snapshot delimitado descrito em [`V1_INVENTORY.md`](V1_INVENTORY.md), portanto não há catálogo dinâmico desse snapshot para migrar. A capacidade de cadastrar e usar atividades continua sendo requisito funcional, mesmo com a fonte vazia.
+Esta especificação registra o destino arquitetural e a implementação inicial local da lacuna descrita em [`UI_PARITY.md`](UI_PARITY.md). O código local acrescenta CRUD versionado, feed no shell Treinamentos, link HTTPS e ciência explícita imutável sem pontos; ainda não foi publicado em Rules/índices nem homologado. A V1 coloca atividades elegíveis no contêiner `training-activities` por `core/views/treinamentos.js` e as apresenta com `core/activity-ui.js`. A aba dinâmica `ATIVIDADES` tinha zero IDs em `A2:A1000` no snapshot delimitado descrito em [`V1_INVENTORY.md`](V1_INVENTORY.md), portanto não há catálogo dinâmico desse snapshot para migrar. A capacidade de cadastrar e usar atividades continua sendo requisito funcional, mesmo com a fonte vazia.
 
 As tarefas V2 existentes em `activities` pertencem a áreas de Gestão: atribuem responsáveis/participantes, registram interações e podem gerar claims de pontos. Elas não serão reaproveitadas como catálogo de aprendizagem. Vídeos de treinamento continuam em `trainings`, com seu próprio recibo, progresso e validação.
 
@@ -17,7 +17,7 @@ As tarefas V2 existentes em `activities` pertencem a áreas de Gestão: atribuem
 
 ## Modelo Firestore-alvo
 
-Coleções novas, ainda não implantadas:
+Coleções novas, ainda não implantadas no Firebase do projeto:
 
 ### `learningActivities/{activityId}`
 
@@ -59,11 +59,11 @@ As recorrências V1 `PER_EVENT`, `PER_VALIDATED_RENEWAL`, `DAILY`, `WEEKLY`, `MO
 
 ## Sequência de implementação e aceitação
 
-1. Criar coleções, índices, validação de documento e Firestore Rules; cobrir allow/deny por identidade, público, estado, vigência, versão, autoria e imutabilidade.
-2. Adicionar CRUD versionado somente no painel `trainingsManage`; valores fora dos tipos/recorrências suportados ficam indisponíveis, sem fallback confirmável.
-3. Renderizar cards do feed junto do catálogo de Treinamentos, com estado vazio, carregamento, erro, janela e botões de ação direta no mesmo shell.
-4. Liberar apenas link externo sem conclusão e ciência imutável sem pontos. Repetição não duplica recibos; perfil sem `trainingsRead`, usuário fora do público e conta sem perfil não lê nem grava.
-5. Implementar adaptadores de evidência e pontuação um a um, depois de fonte e critérios verificados. Não habilitar um tipo só porque aparece no enum importado da V1.
-6. Não migrar linhas de atividades até uma leitura delimitada confirmar novos registros e seu proprietário aprovar origem, mapeamento e destino. O snapshot consultado tinha zero IDs.
+1. **Implementado localmente:** coleções, validadores, Rules e índices para catálogo/recibos; validar allow/deny por identidade, público, estado, janela, versão, autoria e imutabilidade no Emulator e depois publicar Rules/índices.
+2. **Implementado localmente:** CRUD versionado somente no painel `trainingsManage`; valores fora dos tipos/recorrências suportados permanecem indisponíveis.
+3. **Implementado localmente:** cards junto aos treinamentos com estados vazio/erro, janela filtrada e ações diretas; revisão responsiva e navegação autenticada ainda pendentes.
+4. **Implementado localmente:** link externo sem conclusão e ciência imutável sem pontos. Repetição usa recibo determinístico; homologar que perfil sem permissão, usuário fora do público e conta sem perfil não leem nem gravam.
+5. Adaptadores de evidência e pontuação continuam pendentes; implementá-los um a um depois de fonte e critérios verificados. Não habilitar tipo só porque aparece no enum V1.
+6. Não migrar linhas de atividades até leitura delimitada confirmar novos registros e o proprietário aprovar origem, mapeamento e destino. O snapshot consultado tinha zero IDs.
 
 Critério de aceite de paridade: o feed aparece na mesma página de Treinamentos, as atividades elegíveis têm título/descrição/recurso e ação correspondente à sua evidência; a decisão sobre atividades vazias, links e ciência não replica Apps Script, planilhas, login secundário nem conclusões não verificadas.
