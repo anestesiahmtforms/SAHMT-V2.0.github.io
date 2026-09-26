@@ -30,23 +30,93 @@ function syncSparkReportsPeriodically() {
     const configs = SAHMT_V2_SPARK_REPORT_SCAN.resources;
     const start = Number(properties.getProperty(SAHMT_V2_SPARK_REPORT_SCAN.rotationProperty) || 0) % configs.length;
     const result = {processed: 0, resourcesScanned: 0};
+    const pending = [];
     for (let offset = 0; offset < SAHMT_V2_SPARK_REPORT_SCAN.resourcesPerRun; offset++) {
       const config = configs[(start + offset) % configs.length];
       const documents = listSparkReportChanges_(config, SAHMT_V2_SPARK_REPORT_SCAN.recordsPerResource);
       result.resourcesScanned++;
       for (const document of documents) {
-        const id = document.id;
-        const job = {resourceType: config.type, resourceId: id, operation: 'upsert', version: Number(document.version) || 1};
-        upsertReportRow_(spreadsheet, job, document);
-        saveSparkReportCursor_(config, document);
+        pending.push({config: config, document: document, job: {
+          resourceType: config.type,
+          resourceId: document.id,
+          operation: 'upsert',
+          version: Number(document.version) || 1
+        }});
         result.processed++;
       }
     }
+    upsertSparkReportRows_(spreadsheet, pending);
+    // Advance cursors only after every report row has been written successfully.
+    // A retry after a partial cursor save is safe because row keys are idempotent.
+    pending.forEach(function (item) { saveSparkReportCursor_(item.config, item.document); });
     properties.setProperty(SAHMT_V2_SPARK_REPORT_SCAN.rotationProperty, String((start + SAHMT_V2_SPARK_REPORT_SCAN.resourcesPerRun) % configs.length));
     return result;
   } finally {
     lock.releaseLock();
   }
+}
+
+function upsertSparkReportRows_(spreadsheet, pending) {
+  const batches = new Map();
+  pending.forEach(function (item) {
+    const tabName = SAHMT_V2_RESOURCE_TABS[item.job.resourceType];
+    const config = tabName && SAHMT_V2_REPORT_TABS[tabName];
+    if (!config) throw new Error('Tipo de recurso não habilitado para exportação.');
+    if (!batches.has(tabName)) batches.set(tabName, {config: config, rows: []});
+    batches.get(tabName).rows.push({job: item.job, record: item.document});
+  });
+
+  batches.forEach(function (batch, tabName) {
+    const sheet = spreadsheet.getSheetByName(tabName);
+    if (!sheet) throw new Error('Aba de relatório ausente: ' + tabName + '.');
+    const lastRow = sheet.getLastRow();
+    const keys = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues().flat() : [];
+    const rowByKey = new Map();
+    keys.forEach(function (key, index) {
+      if (key && !rowByKey.has(key)) rowByKey.set(key, index + 2);
+    });
+
+    const updates = [];
+    const additions = [];
+    batch.rows.forEach(function (entry) {
+      const syncKey = entry.job.resourceType + '/' + entry.job.resourceId;
+      const row = reportValuesForSpark_(batch.config, entry.job, entry.record);
+      const existingRow = rowByKey.get(syncKey);
+      if (existingRow) updates.push({rowNumber: existingRow, values: row});
+      else {
+        additions.push(row);
+        rowByKey.set(syncKey, lastRow + additions.length);
+      }
+    });
+
+    updates.sort(function (a, b) { return a.rowNumber - b.rowNumber; });
+    let index = 0;
+    while (index < updates.length) {
+      let end = index + 1;
+      while (end < updates.length && updates[end].rowNumber === updates[end - 1].rowNumber + 1) end++;
+      sheet.getRange(updates[index].rowNumber, 1, end - index, batch.config.fields.length)
+        .setValues(updates.slice(index, end).map(function (entry) { return entry.values; }));
+      index = end;
+    }
+    if (additions.length) {
+      sheet.getRange(lastRow + 1, 1, additions.length, batch.config.fields.length).setValues(additions);
+    }
+  });
+}
+
+function reportValuesForSpark_(config, job, record) {
+  const syncKey = job.resourceType + '/' + job.resourceId;
+  return config.fields.map(function (field) {
+    let value;
+    if (field === 'syncKey') value = syncKey;
+    else if (field === 'resourceType') value = job.resourceType;
+    else if (field === 'idRegistro') value = job.resourceId;
+    else value = record[field];
+    if (Array.isArray(value)) value = value.join(', ');
+    if (value instanceof Date) return value;
+    if (typeof value === 'string' && /^[=+@\-]/.test(value)) return "'" + value;
+    return value === undefined || value === null ? '' : value;
+  });
 }
 
 function installSahmtV2SparkReportTrigger() {
