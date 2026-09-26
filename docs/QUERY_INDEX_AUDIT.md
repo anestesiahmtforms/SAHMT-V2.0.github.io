@@ -2,7 +2,7 @@
 
 ## Escopo e limite
 
-Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js` e `firestore.indexes.json`, atualizada em 25/09/2026. Ela confere as consultas do cliente e das callables contra os índices manuais declarados e os índices automáticos por campo. Não comprova que os índices foram publicados ou terminaram de construir em `sahmt-17a16`; essa conferência continua pendente no Console/CLI autenticado.
+Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js` e `firestore.indexes.json`, atualizada em 25/09/2026. Ela confere as consultas do cliente e das callables contra os índices manuais declarados e os índices automáticos por campo. Em 25/09/2026, Rules e os 29 índices manuais foram publicados no projeto autenticado `sahmt-17a16`; a consulta posterior mostrou os 29 índices como `CREATING`, portanto sua prontidão e as consultas reais ainda não foram homologadas.
 
 O Firestore cria índices automáticos por campo e pode mesclar índices para filtros compostos só de igualdade, com `orderBy` opcional. Consultas com faixa ou combinações de faixa/ordenação podem exigir índice manual. Consulte a [visão geral oficial de índices](https://firebase.google.com/docs/firestore/query-data/index-overview) e a [referência oficial para administrar índices](https://firebase.google.com/docs/firestore/query-data/indexing).
 
@@ -36,4 +36,4 @@ A inspeção também encontrou consultas simples por documento e consultas sem c
 
 ## Segurança e homologação
 
-Índice disponível não concede acesso; cada consulta continua sujeita às Firestore Rules. A suíte do Emulator testa autorização, mas não prova que os índices manuais acima estão publicados no projeto real. Antes da homologação autenticada, conferir a configuração de índices no `(default)` `sahmt-17a16` e observar erros de índice gerados por consultas reais autorizadas.
+Índice disponível não concede acesso; cada consulta continua sujeita às Firestore Rules já publicadas. A suíte do Emulator testa autorização, mas não prova que os índices estão prontos no projeto real. Aguardar `READY` no `(default)` `sahmt-17a16` e observar erros de índice em consultas reais autorizadas antes de homologar.

@@ -24,11 +24,11 @@ O inventário de V1 e os documentos de arquitetura, esquema, sincronização, se
 
 ## Limites e próximos portões
 
-- **Conta Firebase:** verificação local atual com `firebase login:list` não encontrou conta autorizada; `firebase projects:list --json` falhou por autenticação. Não foi possível conferir ou operar o projeto real nesta sessão.
-- **Rules, índices e Functions de produção:** ainda não publicados. Sucesso no Emulator/Pages não os publica nem valida.
+- **Conta Firebase:** em 25/09/2026, `firebase login:list` confirmou a sessão e `firebase projects:list` listou SAHMT `sahmt-17a16`; a CLI confirmou o Firestore `(default)`, Standard/Native.
+- **Rules, índices e Functions de produção:** `firestore.rules` foi compilado e liberado; os 29 índices do manifesto foram implantados, mas a consulta posterior ainda os mostrou `CREATING`. Functions não foram implantadas: permanecem dependentes da confirmação de Blaze/billing e autorização correspondente.
 - **Homologação real:** login Google autorizado, perfil inicial por UID, Firestore online, offline/retry e escrita controlada continuam pendentes.
 - **Migração:** o preview local é somente leitura e exige conferência manual de 423 registros e 8 itens globais. Origem/destino, ordem, autoria, UIDs e totais precisam de aprovação antes de importar.
 - **UI e dispositivos:** comparação interna tela a tela, câmera OCR/QR e layout PDF em Android/iPhone continuam pendentes.
 - **Templates:** a V1 inspecionada não contém uma coleção de modelos reutilizáveis; não se afirma paridade de tal catálogo.
 
-Não considerar o release homologado para uso operacional até que Rules/índices sejam revisados e publicados no Firebase correto e os fluxos sejam testados com uma conta autorizada.
+Não considerar o release homologado para uso operacional até que os índices cheguem a `READY`, o perfil de primeiro administrador seja provisionado, Functions necessárias sejam avaliadas/publicadas e os fluxos sejam testados com uma conta autorizada.
