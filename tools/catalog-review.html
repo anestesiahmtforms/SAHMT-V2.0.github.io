@@ -6,7 +6,7 @@
   <title>Conferência local dos catálogos SAHMT V2</title>
   <style>
     :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#133453;background:#eef3f6;font-synthesis:none;text-rendering:optimizeLegibility}
-    *{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px)}main{max-width:1100px;margin:auto}h1{font-size:clamp(1.35rem,3vw,2rem);margin:.25rem 0}.intro,.toolbar,.tabs,.review-card,.global{background:#fff;border:1px solid #cfdae3;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #1735500c}.intro p{line-height:1.5;margin:.6rem 0}.notice{border-left:4px solid #df9a18;background:#fff8e8;padding:10px 12px;border-radius:5px}.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.toolbar input[type=file]{max-width:100%}button,.button{border:1px solid #aac0d1;border-radius:9px;padding:10px 14px;background:#fff;color:#075ca3;font:inherit;font-weight:650;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1268ae;color:#fff;border-color:#1268ae}.status{margin:0;min-height:1.5em;color:#294a65}.tabs{display:flex;gap:8px;overflow:auto}.tabs button[aria-selected=true]{background:#1268ae;color:#fff}.progress{font-weight:650;margin-left:auto}.panel[hidden]{display:none}.filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0}.filters input[type=search]{min-width:min(300px,100%);padding:9px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.review-card summary{cursor:pointer;font-weight:700;line-height:1.5}.review-card pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f7f9;padding:12px;border-radius:8px;font: .84rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;max-height:440px;overflow:auto}.check-list{display:grid;gap:8px;margin:14px 0}.check-list label,.global label{display:flex;gap:10px;align-items:flex-start;line-height:1.45}.check-list input,.global input{margin-top:.22rem;accent-color:#1372b8;flex:0 0 auto}.global-list{display:grid;gap:12px}.empty{padding:20px;border:1px dashed #aabcc9;border-radius:10px;text-align:center;color:#49677f}.footer{color:#526a7b;font-size:.9rem;line-height:1.5;margin:18px 2px}@media(max-width:600px){.tabs button{white-space:nowrap}.progress{width:100%;margin-left:0}.review-card,.global,.intro,.toolbar,.tabs{padding:12px}}
+    *{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px)}main{max-width:1100px;margin:auto}h1{font-size:clamp(1.35rem,3vw,2rem);margin:.25rem 0}.intro,.toolbar,.tabs,.review-card,.global{background:#fff;border:1px solid #cfdae3;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #1735500c}.intro p{line-height:1.5;margin:.6rem 0}.notice{border-left:4px solid #df9a18;background:#fff8e8;padding:10px 12px;border-radius:5px}.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.toolbar>label{min-width:0;max-width:100%}.toolbar input[type=file]{display:block;max-width:100%;min-width:0}button,.button{border:1px solid #aac0d1;border-radius:9px;padding:10px 14px;background:#fff;color:#075ca3;font:inherit;font-weight:650;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1268ae;color:#fff;border-color:#1268ae}.status{margin:0;min-height:1.5em;color:#294a65;overflow-wrap:anywhere}.tabs{display:flex;gap:8px;overflow:auto}.tabs button[aria-selected=true]{background:#1268ae;color:#fff}.progress{font-weight:650;margin-left:auto}.panel[hidden],.tabs[hidden]{display:none}.filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0}.filters input[type=search]{min-width:min(300px,100%);padding:9px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.review-card summary{cursor:pointer;font-weight:700;line-height:1.5}.review-card pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f7f9;padding:12px;border-radius:8px;font: .84rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;max-height:440px;overflow:auto}.check-list{display:grid;gap:8px;margin:14px 0}.check-list label,.global label{display:flex;gap:10px;align-items:flex-start;line-height:1.45}.check-list input,.global input{margin-top:.22rem;accent-color:#1372b8;flex:0 0 auto}.global-list{display:grid;gap:12px}.empty{padding:20px;border:1px dashed #aabcc9;border-radius:10px;text-align:center;color:#49677f}.footer{color:#526a7b;font-size:.9rem;line-height:1.5;margin:18px 2px}@media(max-width:600px){.tabs button{white-space:nowrap}.progress{width:100%;margin-left:0}.toolbar{align-items:stretch}.toolbar>label{display:flex;flex-direction:column;align-items:flex-start;width:100%}.toolbar input[type=file],.toolbar button{width:100%}.review-card,.global,.intro,.toolbar,.tabs{padding:12px}}
   </style>
 </head>
 <body>
@@ -50,6 +50,7 @@
   let activeCategory = 'stations';
   let state = {records: {}, global: {}};
   let storageKey = '';
+  let previewFingerprint = '';
   const escapeText = (value) => String(value ?? '');
   const recordKey = (category, entry) => `${category}:${entry.sourceRow}`;
   const saveState = () => {
@@ -60,7 +61,7 @@
     try {
       if (globalThis.crypto?.subtle) {
         const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
-        return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+        return `sha256-${[...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
       }
     } catch {}
     let value = 2166136261;
@@ -68,7 +69,7 @@
       value ^= text.charCodeAt(index);
       value = Math.imul(value, 16777619);
     }
-    return (value >>> 0).toString(16);
+    return `fnv1a32-${(value >>> 0).toString(16)}`;
   };
   const make = (tag, className, text) => {
     const element = document.createElement(tag);
@@ -246,7 +247,8 @@
       }
       if (!Array.isArray(data.globalManualChecks) || data.globalManualChecks.length === 0 || data.globalManualChecks.some((check) => typeof check !== 'string' || !check.trim())) throw new Error('As revisões globais não estão presentes ou são inválidas.');
       preview = data;
-      storageKey = `sahmt-catalog-review:${await fingerprint(raw)}`;
+      previewFingerprint = await fingerprint(raw);
+      storageKey = `sahmt-catalog-review:${previewFingerprint}`;
       state = {records: {}, global: {}};
       try {
         const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -257,6 +259,7 @@
       status.textContent = `Prévia carregada: ${categories.map(([name]) => `${data[name].length} ${name}`).join(', ')}. Nenhuma gravação será feita.`;
     } catch (error) {
       preview = null;
+      previewFingerprint = '';
       download.disabled = true;
       tabs.hidden = true;
       globalReview.hidden = true;
@@ -278,6 +281,7 @@
     }
     const output = {
       schemaVersion: 1,
+      previewFingerprint,
       previewGeneratedAt: preview.generatedAt,
       targetDatabase: preview.targetDatabase,
       exportedAt: new Date().toISOString(),
