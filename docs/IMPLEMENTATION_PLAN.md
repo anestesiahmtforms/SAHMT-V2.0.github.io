@@ -64,5 +64,5 @@ Em 25/09/2026, `qualityManage` passou a abrir a área Gestão da Qualidade no me
 
 ## Critério de avanço
 
-Não cortar funcionalidades para atingir data ou reduzir código. Não mudar a V1. Não migrar dados, publicar rules ou operar Drive/Apps Script até haver checagem no serviço autenticado e plano reversível.
+Não cortar funcionalidades para atingir data ou reduzir código. Não mudar a V1. Rules e índices já publicados permanecem sujeitos à homologação por fluxo. Antes de cada nova migração ou ativação Drive/Apps Script, confirmar a fonte autenticada, backup, destino, compartilhamento privado e plano reversível; não importar registros operacionais enquanto as conferências humanas estiverem pendentes.
 

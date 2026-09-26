@@ -7,6 +7,7 @@
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
 - [Workflow de build e publicação do código V2](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36209596068): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200; o service worker `v22` e os quatro símbolos do shell retornaram HTTP 200. O teste de instalação offline confirmou o precache dos imports estáticos e símbolos e a preservação do cache de férias.
 - O workflow do commit mais recente [concluiu build e deploy](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36213411544) em 26/09/2026; GitHub Pages respondeu HTTP 200.
+- Em 26/09/2026, o commit [`c8af7d1`](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commit/c8af7d16532c17af4d5ad87707041e0416e32976) removeu registros individuais de Etiquetas da sincronização; o [workflow 36220887194](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36220887194) concluiu build e deploy com sucesso, e GitHub Pages respondeu HTTP 200.
 - A correção que desabilita assinatura do Checklist sem estações foi publicada em `ffbbe1a7ba37852a0af94621fc5ce22b44c52f43`; o [workflow correspondente](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36214300637) concluiu com sucesso.
 
 ## O que foi validado
