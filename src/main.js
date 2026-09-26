@@ -7,7 +7,7 @@ import {eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
-import {parseManagementUids} from './management-access.js';
+import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 
@@ -175,7 +175,7 @@ function loginView() {
 }
 
 function moduleCards() {
-  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
+  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg'};
   return Object.entries(labels).filter(([route]) => permissionFor[route]?.some(can)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'TR',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
@@ -476,6 +476,10 @@ async function loadModule(route) {
   if (!content) return;
   if (route === 'offline') {
     await loadOfflineView(content);
+    return;
+  }
+  if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {
+    content.innerHTML = '<section class="management-area-detail"><header class="management-detail-heading"><div><p class="eyebrow">ACESSO RESTRITO</p><h3>Gestão Financeira</h3></div></header><p>Seu perfil tem acesso à área financeira. Os campos, relatórios e operações ainda não foram configurados; nenhum dado financeiro está disponível nesta versão.</p></section>';
     return;
   }
   if (route === 'events') {

@@ -38,7 +38,7 @@ Checklist agora permite a `checklistManage` cadastrar, corrigir, ordenar, defini
 
 Auditoria funcional do Checklist V1 no ZIP original (`core/views/checklist.js`, SHA-256 do ZIP registrado em `V1_INVENTORY.md`): “Checar”, “Liberar”, “Inativar” e “Resetar” usam a permissão separada `checklistDirect`; os três estados de manutenção são `Set`s locais e reiniciam quando muda o dia, sem ação correspondente no dispatcher. Decisão V2: o registro direto fica nas ações exibidas junto à estação sob `checklistWrite`; não recriar os três controles voláteis. A disponibilidade operacional usa o estado persistente `active` e a vigência da estação sob `checklistManage`; respostas e assinaturas continuam sujeitas aos contratos imutáveis existentes. Ver `UI_PARITY.md`.
 
-Em 25/09/2026, `qualityManage` passou a abrir a área Gestão da Qualidade no mesmo módulo Gestão, com acesso por leitura direta ao documento ativo daquela área e operações de atividades, indicadores, planos e documentos limitadas ao seu ID nas Rules. A permissão não libera a Gestão Financeira. O perfil e a rota financeira permanecem sem operações próprias até que campos e fluxo de trabalho sejam definidos; nenhuma permissão genérica foi presumida.
+Em 25/09/2026, `qualityManage` passou a abrir a área Gestão da Qualidade no mesmo módulo Gestão, com acesso por leitura direta ao documento ativo daquela área e operações de atividades, indicadores, planos e documentos limitadas ao seu ID nas Rules. A permissão não libera a Gestão Financeira. Perfis com `financeRead`, `financeWrite` ou `financeManage` agora conseguem abrir a área restrita no módulo Gestão; até que campos e fluxo de trabalho sejam definidos, a tela não consulta dados nem oferece operações financeiras.
 
 ## Fase 3 — Migração e integração
 

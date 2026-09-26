@@ -14,3 +14,18 @@ export function parseManagementUids(value, {maxItems = 100} = {}) {
   }
   return unique;
 }
+
+const managementSectionPermissions = [
+  'managementRead', 'managementManage', 'managementActivityWrite',
+  'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
+  'documentsManage', 'equipmentManage', 'qualityManage'
+];
+const financePermissions = ['financeRead', 'financeWrite', 'financeManage'];
+
+export function hasFinanceOnlyManagementAccess(profile) {
+  const permissions = profile?.permissions || {};
+  if (profile?.role === 'administrador_app' || permissions.admin === true) return false;
+  const canAccessFinance = financePermissions.some((permission) => permissions[permission] === true);
+  const canAccessGeneralManagement = managementSectionPermissions.some((permission) => permissions[permission] === true);
+  return canAccessFinance && !canAccessGeneralManagement;
+}
