@@ -537,6 +537,14 @@ service cloud.firestore {
         data.decision in ['APPROVE', 'REJECT'] && data.note is string && data.note.size() <= 500 &&
         (data.decision != 'REJECT' || data.note.size() >= 8) && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
     }
+    function activityParticipantAccess(activityId) {
+      let activityPath = /databases/$(database)/documents/activities/$(activityId);
+      let activity = get(activityPath).data;
+      return activeUser() && exists(activityPath) && activity.active == true &&
+        (can('managementRead') || activityPointsReviewer(activity.managementAreaId) || activity.createdByUid == request.auth.uid ||
+         (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
+         (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || qualityManageArea(activity.managementAreaId));
+    }
     function activityInteractionAccess(activityId, interactionUid) {
       let activityPath = /databases/$(database)/documents/activities/$(activityId);
       let activity = get(activityPath).data;
@@ -893,9 +901,9 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /activityScoreReviews/{reviewId} {
-      allow get: if activeUser() && (exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
-        ? activityInteractionAccess(resource.data.activityId, request.auth.uid)
-        : activityInteractionAccess(reviewId, request.auth.uid));
+      allow get: if exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
+        ? activityParticipantAccess(resource.data.activityId)
+        : activityParticipantAccess(reviewId);
       allow list: if activeUser() && activityPointsReviewer(resource.data.managementAreaId);
       allow create: if activeUser() && validActivityScoreReview(request.resource.data, reviewId);
       allow update, delete: if false;
