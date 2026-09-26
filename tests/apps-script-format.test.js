@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../apps-script-v2/SheetsSync.gs', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../apps-script-v2/ReportsSetup.gs', import.meta.url), 'utf8');
 const context = vm.createContext({});
 vm.runInContext(source, context);
 
@@ -30,4 +30,3 @@ test('Apps Script preserves integer display for counters and versions', () => {
   const formats = formatsFor(fields);
   for (const field of fields) assert.equal(formats.get(field), '0', field);
 });
-
