@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conferência local dos catálogos SAHMT V2</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#133453;background:#eef3f6;font-synthesis:none;text-rendering:optimizeLegibility}
+    *{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px)}main{max-width:1100px;margin:auto}h1{font-size:clamp(1.35rem,3vw,2rem);margin:.25rem 0}.intro,.toolbar,.tabs,.review-card,.global{background:#fff;border:1px solid #cfdae3;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #1735500c}.intro p{line-height:1.5;margin:.6rem 0}.notice{border-left:4px solid #df9a18;background:#fff8e8;padding:10px 12px;border-radius:5px}.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.toolbar input[type=file]{max-width:100%}button,.button{border:1px solid #aac0d1;border-radius:9px;padding:10px 14px;background:#fff;color:#075ca3;font:inherit;font-weight:650;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1268ae;color:#fff;border-color:#1268ae}.status{margin:0;min-height:1.5em;color:#294a65}.tabs{display:flex;gap:8px;overflow:auto}.tabs button[aria-selected=true]{background:#1268ae;color:#fff}.progress{font-weight:650;margin-left:auto}.panel[hidden]{display:none}.filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0}.filters input[type=search]{min-width:min(300px,100%);padding:9px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.review-card summary{cursor:pointer;font-weight:700;line-height:1.5}.review-card pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f7f9;padding:12px;border-radius:8px;font: .84rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;max-height:440px;overflow:auto}.check-list{display:grid;gap:8px;margin:14px 0}.check-list label,.global label{display:flex;gap:10px;align-items:flex-start;line-height:1.45}.check-list input,.global input{margin-top:.22rem;accent-color:#1372b8;flex:0 0 auto}.global-list{display:grid;gap:12px}.empty{padding:20px;border:1px dashed #aabcc9;border-radius:10px;text-align:center;color:#49677f}.footer{color:#526a7b;font-size:.9rem;line-height:1.5;margin:18px 2px}@media(max-width:600px){.tabs button{white-space:nowrap}.progress{width:100%;margin-left:0}.review-card,.global,.intro,.toolbar,.tabs{padding:12px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="intro">
+    <p><strong>SAHMT V2 · revisão local</strong></p>
+    <h1>Conferência da prévia de catálogos</h1>
+    <p>Selecione o arquivo <code>catalog-import-preview.json</code> da pasta local <code>.local-preview</code>. A tela ajuda a conferir as estações, treinamentos, dias de escala e períodos de férias antes de qualquer migração.</p>
+    <p class="notice"><strong>Somente conferência:</strong> esta página não envia dados ao Firebase nem grava no GitHub. Ela tenta guardar as marcações neste navegador e exporta apenas as decisões, sem copiar os dados completos da prévia. Baixe o resultado para preservar o progresso.</p>
+  </header>
+  <section class="toolbar" aria-label="Abrir prévia">
+    <label>Arquivo da prévia <input id="preview-file" type="file" accept="application/json,.json"></label>
+    <button id="download-decisions" class="primary" type="button" disabled>Baixar decisões da revisão</button>
+    <p id="status" class="status" role="status" aria-live="polite">Escolha o arquivo da prévia local para começar.</p>
+  </section>
+  <section id="global-review" class="global" hidden>
+    <h2>Revisões globais</h2>
+    <p>Estas decisões se aplicam ao conjunto inteiro da prévia. Marque uma instrução somente depois de conferir o aspecto descrito.</p>
+    <div id="global-list" class="global-list"></div>
+  </section>
+  <nav id="tabs" class="tabs" aria-label="Categorias da prévia" hidden></nav>
+  <p id="overall-progress" class="progress" aria-live="polite"></p>
+  <section id="review-panels"></section>
+  <p class="footer">Os registros continuam em modo de prévia. Marcar uma conferência aqui não aprova automaticamente a importação nem altera Firestore. Guarde o arquivo de decisões para reconciliar e autorizar as próximas etapas com o administrador.</p>
+</main>
+<script>
+(() => {
+  const categories = [
+    ['stations', 'Estações'], ['trainings', 'Treinamentos'],
+    ['scheduleDays', 'Escala'], ['vacations', 'Férias']
+  ];
+  const fileInput = document.querySelector('#preview-file');
+  const status = document.querySelector('#status');
+  const tabs = document.querySelector('#tabs');
+  const panels = document.querySelector('#review-panels');
+  const globalReview = document.querySelector('#global-review');
+  const globalList = document.querySelector('#global-list');
+  const overallProgress = document.querySelector('#overall-progress');
+  const download = document.querySelector('#download-decisions');
+  let preview = null;
+  let activeCategory = 'stations';
+  let state = {records: {}, global: {}};
+  let storageKey = '';
+  const escapeText = (value) => String(value ?? '');
+  const recordKey = (category, entry) => `${category}:${entry.sourceRow}`;
+  const saveState = () => {
+    if (!storageKey) return;
+    try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
+  };
+  const fingerprint = async (text) => {
+    try {
+      if (globalThis.crypto?.subtle) {
+        const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+        return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      }
+    } catch {}
+    let value = 2166136261;
+    for (let index = 0; index < text.length; index++) {
+      value ^= text.charCodeAt(index);
+      value = Math.imul(value, 16777619);
+    }
+    return (value >>> 0).toString(16);
+  };
+  const make = (tag, className, text) => {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = escapeText(text);
+    return element;
+  };
+  const formatCandidate = (category, candidate) => {
+    if (category === 'stations') return `${candidate.name || '(sem nome)'} · QR ${candidate.qrCode || '(vazio)'} · ${candidate.active ? 'ativa' : 'inativa'} · ordem ${candidate.order}`;
+    if (category === 'trainings') return `${candidate.title || '(sem título)'} · ${candidate.active ? 'ativo' : 'inativo'} · ordem ${candidate.order}`;
+    if (category === 'scheduleDays') return `${candidate.date || '(sem data)'} · ${candidate.positions?.length || 0} posições · ${(candidate.highlights?.siglas?.length || 0) + (candidate.highlights?.events?.length || 0)} destaques`;
+    return `${candidate.start || '?'} a ${candidate.end || '?'} · ${candidate.label || '(sem rótulo)'} · ${candidate.siglas?.length || 0} siglas`;
+  };
+  const getRecordState = (category, entry) => {
+    const key = recordKey(category, entry);
+    if (!state.records[key]) {
+      const verified = new Set(entry.verifiedChecks || []);
+      state.records[key] = Object.fromEntries((entry.manualChecks || []).map((check) => [check, verified.has(check)]));
+    }
+    return state.records[key];
+  };
+  const recordProgress = (category) => {
+    const entries = preview?.[category] || [];
+    let total = 0;
+    let done = 0;
+    for (const entry of entries) for (const check of entry.manualChecks || []) {
+      total++;
+      if (getRecordState(category, entry)[check]) done++;
+    }
+    return {done, total, entries: entries.length};
+  };
+  const updateProgress = () => {
+    if (!preview) return;
+    let done = 0;
+    let total = 0;
+    for (const [category] of categories) {
+      const progress = recordProgress(category);
+      done += progress.done;
+      total += progress.total;
+    }
+    for (let i = 0; i < (preview.globalManualChecks || []).length; i++) {
+      total++;
+      if (state.global[i] === true) done++;
+    }
+    overallProgress.textContent = `${done} de ${total} conferências marcadas`;
+    download.disabled = false;
+    saveState();
+  };
+  const renderGlobal = () => {
+    globalList.replaceChildren();
+    (preview.globalManualChecks || []).forEach((instruction, index) => {
+      const label = make('label');
+      const input = make('input');
+      input.type = 'checkbox';
+      input.checked = state.global[index] === true;
+      input.addEventListener('change', () => { state.global[index] = input.checked; updateProgress(); });
+      label.append(input, document.createTextNode(escapeText(instruction)));
+      globalList.append(label);
+    });
+    globalReview.hidden = !(preview.globalManualChecks || []).length;
+  };
+  const renderCategory = (category) => {
+    const panel = panels.querySelector(`[data-panel="${category}"]`);
+    if (!panel) return;
+    const list = panel.querySelector('.record-list');
+    const search = panel.querySelector('input[type="search"]');
+    const pendingOnly = panel.querySelector('input[type="checkbox"]');
+    const entries = preview[category] || [];
+    list.replaceChildren();
+    const needle = search.value.trim().toLocaleLowerCase('pt-BR');
+    for (const entry of entries) {
+      const candidate = entry.candidate || {};
+      const key = recordKey(category, entry);
+      const decision = getRecordState(category, entry);
+      const checks = entry.manualChecks || [];
+      const completed = checks.filter((check) => decision[check]).length;
+      if (pendingOnly.checked && completed === checks.length) continue;
+      const searchText = `${entry.sourceRow} ${JSON.stringify(candidate)} ${checks.join(' ')}`.toLocaleLowerCase('pt-BR');
+      if (needle && !searchText.includes(needle)) continue;
+      const card = make('details', 'review-card');
+      card.dataset.recordKey = key;
+      const summary = make('summary', '', `Linha V1 ${entry.sourceRow} · ${formatCandidate(category, candidate)} · ${completed}/${checks.length} conferências`);
+      const raw = make('details');
+      const rawSummary = make('summary', '', 'Ver dados candidatos desta prévia');
+      const pre = make('pre');
+      pre.textContent = JSON.stringify(candidate, null, 2);
+      raw.append(rawSummary, pre);
+      const checkList = make('div', 'check-list');
+      checks.forEach((instruction) => {
+        const label = make('label');
+        const input = make('input');
+        input.type = 'checkbox';
+        input.checked = decision[instruction] === true;
+        input.addEventListener('change', () => {
+          decision[instruction] = input.checked;
+          summary.textContent = `Linha V1 ${entry.sourceRow} · ${formatCandidate(category, candidate)} · ${checks.filter((check) => decision[check]).length}/${checks.length} conferências`;
+          updateProgress();
+        });
+        label.append(input, document.createTextNode(escapeText(instruction)));
+        checkList.append(label);
+      });
+      card.append(summary, raw, checkList);
+      list.append(card);
+    }
+    const progress = recordProgress(category);
+    panel.querySelector('.category-progress').textContent = `${progress.entries} registros · ${progress.done}/${progress.total} conferências marcadas`;
+    panel.querySelector('.visible-count').textContent = `${list.children.length} exibidos`;
+  };
+  const render = () => {
+    tabs.replaceChildren();
+    tabs.setAttribute('role', 'tablist');
+    panels.replaceChildren();
+    for (const [category, labelText] of categories) {
+      const tab = make('button', '', labelText);
+      tab.type = 'button';
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(category === activeCategory));
+      tab.id = `tab-${category}`;
+      tab.setAttribute('aria-controls', `panel-${category}`);
+      tab.addEventListener('click', () => {
+        activeCategory = category;
+        for (const item of tabs.children) item.setAttribute('aria-selected', String(item.dataset.category === activeCategory));
+        for (const item of panels.children) item.hidden = item.dataset.panel !== activeCategory;
+        renderCategory(activeCategory);
+      });
+      tab.dataset.category = category;
+      tabs.append(tab);
+
+      const panel = make('section', 'panel');
+      panel.dataset.panel = category;
+      panel.id = `panel-${category}`;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+      panel.hidden = category !== activeCategory;
+      const header = make('h2', '', labelText);
+      const progress = make('p', 'category-progress');
+      const filters = make('div', 'filters');
+      const searchLabel = make('label', '', 'Buscar neste grupo ');
+      const search = make('input');
+      search.type = 'search';
+      search.setAttribute('aria-label', `Buscar em ${labelText}`);
+      search.addEventListener('input', () => renderCategory(category));
+      searchLabel.append(search);
+      const pendingLabel = make('label');
+      const pending = make('input');
+      pending.type = 'checkbox';
+      pending.addEventListener('change', () => renderCategory(category));
+      pendingLabel.append(pending, document.createTextNode('Mostrar somente registros pendentes'));
+      const count = make('span', 'visible-count');
+      filters.append(searchLabel, pendingLabel, count);
+      const list = make('div', 'record-list');
+      panel.append(header, progress, filters, list);
+      panels.append(panel);
+    }
+    tabs.hidden = false;
+    renderGlobal();
+    for (const [category] of categories) renderCategory(category);
+    updateProgress();
+  };
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const data = JSON.parse(raw);
+      if (data.previewOnly !== true || data.writeEnabled !== false || data.targetDatabase !== 'sahmt-17a16/(default)') throw new Error('O arquivo não corresponde a uma prévia somente leitura do destino esperado.');
+      for (const [category] of categories) {
+        if (!Array.isArray(data[category])) throw new Error(`A lista ${category} não está presente no arquivo.`);
+        const sourceRows = new Set();
+        for (const entry of data[category]) {
+          if (!Number.isInteger(entry?.sourceRow) || entry.sourceRow < 1 || sourceRows.has(entry.sourceRow)) throw new Error(`${category} contém uma sourceRow ausente ou duplicada.`);
+          if (!entry.candidate || typeof entry.candidate !== 'object' || Array.isArray(entry.candidate) || !Array.isArray(entry.manualChecks) || entry.manualChecks.length === 0 || entry.manualChecks.some((check) => typeof check !== 'string' || !check.trim()) || new Set(entry.manualChecks).size !== entry.manualChecks.length) throw new Error(`${category} contém candidate ou manualChecks inválido.`);
+          sourceRows.add(entry.sourceRow);
+        }
+      }
+      if (!Array.isArray(data.globalManualChecks) || data.globalManualChecks.length === 0 || data.globalManualChecks.some((check) => typeof check !== 'string' || !check.trim())) throw new Error('As revisões globais não estão presentes ou são inválidas.');
+      preview = data;
+      storageKey = `sahmt-catalog-review:${await fingerprint(raw)}`;
+      state = {records: {}, global: {}};
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        if (saved.records && typeof saved.records === 'object' && saved.global && typeof saved.global === 'object') state = saved;
+      } catch {}
+      activeCategory = 'stations';
+      render();
+      status.textContent = `Prévia carregada: ${categories.map(([name]) => `${data[name].length} ${name}`).join(', ')}. Nenhuma gravação será feita.`;
+    } catch (error) {
+      preview = null;
+      download.disabled = true;
+      tabs.hidden = true;
+      globalReview.hidden = true;
+      tabs.replaceChildren();
+      panels.replaceChildren();
+      globalList.replaceChildren();
+      overallProgress.textContent = '';
+      status.textContent = `Não foi possível abrir a prévia: ${error.message}`;
+    }
+  });
+  download.addEventListener('click', () => {
+    if (!preview) return;
+    const decisions = [];
+    for (const [category] of categories) for (const entry of preview[category]) {
+      const checked = [];
+      const unchecked = [];
+      for (const instruction of entry.manualChecks || []) (getRecordState(category, entry)[instruction] ? checked : unchecked).push(instruction);
+      decisions.push({category, sourceRow: entry.sourceRow, checked, unchecked});
+    }
+    const output = {
+      schemaVersion: 1,
+      previewGeneratedAt: preview.generatedAt,
+      targetDatabase: preview.targetDatabase,
+      exportedAt: new Date().toISOString(),
+      globalChecks: (preview.globalManualChecks || []).map((instruction, index) => ({instruction, checked: state.global[index] === true})),
+      recordChecks: decisions,
+      allChecksMarked: decisions.every((item) => item.unchecked.length === 0) && (preview.globalManualChecks || []).every((_, index) => state.global[index] === true),
+      note: 'Decisões de revisão apenas; nenhuma importação ou gravação foi executada.'
+    };
+    const blob = new Blob([JSON.stringify(output, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const link = make('a');
+    link.href = url;
+    link.download = 'catalog-review-decisions.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+})();
+</script>
+</body>
+</html>

@@ -36,6 +36,8 @@ Inventário V1, paridade, arquitetura, esquema, segurança, sincronização, imp
 
 `npm run validate:catalog-preview` valida somente a prévia local ignorada pelo Git; não escreve dados no Firebase.
 
+Para conferir manualmente a prévia sem importar nada, abra [`tools/catalog-review.html`](tools/catalog-review.html) no navegador, selecione `.local-preview/catalog-import-preview.json`, revise os itens e baixe `catalog-review-decisions.json`. A ferramenta mantém os dados da prévia no navegador e exporta somente as marcações de revisão; o arquivo de decisões não importa nem aprova automaticamente registros.
+
 ## Validação pendente
 
 Login confirma Auth → perfil UID → Home. Consultas e gravações autenticadas por módulo, fluxos offline em dispositivo, conferência da ordem das estações e comparação visual interna em Android/iPhone ainda precisam de homologação.
