@@ -6,7 +6,7 @@
 - Uma instância Firebase Web (`sahmt-17a16`), um Firebase Auth e um Firestore `(default)`.
 - Firestore é a fonte operacional online; IndexedDB guarda projeções locais e outbox para trabalho offline permitido.
 - Módulos de UI chamam serviços de domínio. Nenhuma view fala diretamente com Sheets ou duplica autenticação.
-- Firestore Rules verificam UID, status, papel e permissões por operação. Funções server-side são usadas apenas para chaves privadas, validações privilegiadas, integrações Google e tarefas que não podem ser confiadas ao cliente.
+- Firestore Rules verificam UID, status, papel e permissões por operação. O runtime principal não usa Cloud Functions. Ações que podem ser verificadas com segurança são transações diretas Firestore + Rules; validações privilegiadas e integrações Google não bloqueantes usam Apps Script periódico com IAM mínimo e continuam fora da confirmação da ação no PWA.
 - A UI permanece fiel à V1; refatoração de arquitetura não autoriza remoção de função ou redesenho.
 - Velocidade do usuário vem de ações curtas no shell único, consultas delimitadas, cache de tela e confirmação de gravação Firestore; não de vários apps, logins, iframes ou idas ao Sheets.
 - Módulos são domínios internos do mesmo PWA e da mesma sessão, sem instalações, serviços de autenticação ou service workers por módulo.
@@ -19,7 +19,7 @@
 4. **Domínios:** escala, eventos/férias, catálogo de pagadores e credores de Eventos, labels, management/activities/scoring, documentos do Drive por área, inventário/eventos/manutenção de equipamentos dentro de Gestão, checklist, training, notifications e audit. Documentos guardam metadados versionados no Firestore e mantêm o arquivo no Drive; cada fluxo fica dentro do mesmo módulo e usa a mesma sessão.
 5. **Data:** adaptadores Firestore com limites/paginação e conversão de Timestamp.
 6. **Offline:** IndexedDB com schema versionado, cache de leitura com TTL, outbox, política de conflito e sincronização explícita.
-7. **Integrações externas:** Apps Script V2 e uma nova planilha são uma camada assíncrona de relatório/auditoria alimentada pelo Firestore. Uma fila `syncQueue` deve ser criada no servidor após gravações autorizadas; Apps Script aplica upserts idempotentes nas abas aprovadas. O PWA nunca espera por Sheets e não chama Apps Script por ação. Apps Script não autentica pessoas, não lê `users`/permissões e não participa da autorização Firebase. O espelhamento ainda não está implantado: planilha, projeção de campos, identidade de integração e acesso seguro precisam ser configurados e validados.
+7. **Integrações externas:** Apps Script V2 e a planilha de relatórios são consumidores assíncronos do Firestore, acionados por gatilhos periódicos. `SparkReportSync.gs` varre diretamente coleções e campos aprovados com cursores e upserts idempotentes; não precisa de produtor `syncQueue` nem de Cloud Functions. Validadores periódicos também processam pedidos de Checklist, claims de Treinamentos e decisões de pontuação de Gestão. O PWA confirma somente a transação Firestore e nunca espera por Apps Script/Sheets. Apps Script não autentica pessoas, não lê permissões para liberar sessão e não participa da autorização do cliente; como OAuth/IAM contorna Firestore Rules, o principal precisa de acesso mínimo e revisão independente. Código preparado; Drive privado, IAM, cópia, autorização e homologação ainda precisam ser concluídos antes dos gatilhos.
 8. **Deploy:** build estático, base `/SAHMT-V2.0.github.io/`, rules/indexes versionados, um service worker no escopo V2.
 
 ## Fluxo de escrita
@@ -32,4 +32,4 @@ Hash routes para evitar fallback rewrite do Pages. `#/`, `#/eventos`, `#/etiquet
 
 ## Dependências externas
 
-O repositório já identifica `sahmt-17a16`; esta construção não cria Firebase. A existência do Firestore `(default)`, provedores Auth, rules, índices e autorizações de conta precisa ser verificada antes de ligar operações de produção. O espelhamento para Sheets depende de preparar a planilha nova na pasta oficial, decidir a lista de campos por aba, provisionar o acesso da integração e implantar as Functions de fila; nada disso pode atrasar ou substituir a confirmação operacional no Firestore.
+O repositório usa `sahmt-17a16` e o Firestore `(default)` existente; não cria Firebase, database alternativo, não implanta Cloud Functions e não exige Blaze. Rules e índices estão publicados; os módulos ainda precisam de homologação autenticada. A integração Sheets depende de restringir pasta/planilha, aprovar a projeção, revisar IAM, copiar e autorizar o Apps Script e homologar com dados fictícios. O trigger periódico de varredura direta só deve ser instalado após esses gates; nada disso pode atrasar ou substituir a confirmação operacional no Firestore.
