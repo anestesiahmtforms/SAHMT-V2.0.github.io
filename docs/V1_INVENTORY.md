@@ -125,7 +125,7 @@ Tamanhos e hashes vêm dos arquivos extraídos do ZIP, sob `.local-preview/v1-re
 | `escala-imagens/sabado-2026.jpg` | 1 / `EA774CD9E79C` | 514.727 | Copiado para `public/assets/offline-schedule/`; permanece estático e só é preparado no cache local após ação explícita online. |
 | `apps/gestao/assets/icon-192.svg` | 1 / `9F112333FF91` | 812 | Ícone do subapp Gestão; V2 usa ícone PWA PNG global, sem comparação visual completa do módulo. |
 | `apps/gestao/assets/icon-512.svg` | 1 / `A15C6B178FB4` | 825 | Ícone do subapp Gestão; V2 usa ícone PWA PNG global, sem comparação visual completa do módulo. |
-| `apps/checklist/icons/icon.svg` | 1 / `B24D1A91B8B1` | 499 | Ícone específico do subapp; V2 não o referencia, destino da navegação unificada pendente de comparação. |
+| `apps/checklist/icons/icon.svg` | 1 / `B24D1A91B8B1` | 499 | Ícone do Checklist reutilizado no cartão da área unificada; os cartões sem símbolo equivalente na navegação principal V1 mantêm iniciais discretas. |
 
 O inventário registra assets não encontrados na V2 como pendências de comparação, não como remoções aprovadas. A conversão da imagem do carrinho e a reamostragem do logo são as únicas transformações de imagem; o selo QGA foi copiado sem alteração e os assets não usados da V1 seguem pendentes de revisão visual.
 
