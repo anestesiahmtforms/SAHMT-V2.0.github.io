@@ -899,6 +899,42 @@ test('catálogo de plantonistas de Etiquetas é restrito e validado pelas Rules'
   await assertFails(setFirestoreRecord(writer, 'labels', changedHistoricalSigla.id, changedHistoricalSigla, 'label-writer'));
 });
 
+test('feature flags da aplicação exigem administrador, campos válidos e versão crescente', async () => {
+  await seedProfiles([
+    accessProfile('feature-admin', {admin: true}, {role: 'administrador_app'}),
+    accessProfile('feature-user', {eventsRead: true}),
+    accessProfile('feature-access-manager', {usersManage: true})
+  ]);
+  const admin = testEnvironment.authenticatedContext('feature-admin').firestore();
+  const user = testEnvironment.authenticatedContext('feature-user').firestore();
+  const accessManager = testEnvironment.authenticatedContext('feature-access-manager').firestore();
+  const configRef = doc(admin, 'appConfig', 'app');
+  const features = {checklist: true, labels: true, trainings: true, management: true, notifications: true, esg: false, innovation: false};
+  const config = {
+    id: 'app', features, createdByUid: 'feature-admin', createdAt: serverTimestamp(),
+    updatedByUid: 'feature-admin', updatedAt: serverTimestamp(), version: 1
+  };
+
+  await assertSucceeds(setDoc(configRef, config));
+  await assertSucceeds(getDoc(doc(user, 'appConfig', 'app')));
+  await assertFails(setDoc(doc(user, 'appConfig', 'app'), config));
+  await assertFails(setDoc(doc(accessManager, 'appConfig', 'app'), config));
+
+  await assertSucceeds(updateDoc(configRef, {
+    features: {...features, checklist: false}, updatedByUid: 'feature-admin',
+    updatedAt: serverTimestamp(), version: 2
+  }));
+  await assertFails(updateDoc(configRef, {
+    features: {...features, labels: false}, updatedByUid: 'feature-admin',
+    updatedAt: serverTimestamp(), version: 4
+  }));
+  await assertFails(updateDoc(configRef, {
+    features: {...features, unknown: true}, updatedByUid: 'feature-admin',
+    updatedAt: serverTimestamp(), version: 3
+  }));
+  await assertFails(deleteDoc(configRef));
+});
+
 test('administrador gerencia perfis e perfil comum não consegue se promover', async () => {
   await seedProfiles([accessProfile('admin', {admin: true}, {role: 'administrador_app'}), accessProfile('user')]);
   const admin = testEnvironment.authenticatedContext('admin').firestore();
