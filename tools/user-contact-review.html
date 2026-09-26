@@ -6,7 +6,7 @@
   <title>Revisão local de usuários e contatos SAHMT</title>
   <style>
     :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#133453;background:#eef3f6;font-synthesis:none;text-rendering:optimizeLegibility}
-    *{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px)}main{max-width:1050px;margin:auto}h1{font-size:clamp(1.35rem,3vw,2rem);margin:.25rem 0}.card,.toolbar,.record{background:#fff;border:1px solid #cfdae3;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #1735500c}.card p{line-height:1.5}.notice{border-left:4px solid #df9a18;background:#fff8e8;padding:10px 12px;border-radius:5px}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar label{flex:1 1 240px}.toolbar input[type=file]{display:block;max-width:100%;margin-top:5px}.toolbar button,button{border:1px solid #aac0d1;border-radius:9px;padding:10px 14px;background:#fff;color:#075ca3;font:inherit;font-weight:650;cursor:pointer}.primary{background:#1268ae!important;color:#fff!important;border-color:#1268ae!important}button:disabled{opacity:.5;cursor:not-allowed}.status{flex-basis:100%;margin:0;min-height:1.5em;color:#294a65;overflow-wrap:anywhere}.progress{font-weight:700}.filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.filters input[type=search]{min-width:min(280px,100%);padding:9px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.record summary{cursor:pointer;font-weight:700;line-height:1.5}.record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;margin:14px 0}.field{background:#f4f7f9;border-radius:8px;padding:10px;overflow-wrap:anywhere}.field strong{display:block;font-size:.82rem;color:#526a7b;margin-bottom:3px}.record label{display:block;margin:10px 0}.record input[type=text],.record select{width:100%;max-width:520px;padding:10px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.record .confirm{display:flex;gap:9px;align-items:flex-start;max-width:760px}.record .confirm input{margin-top:.25rem}.record .legacy{color:#526a7b;font-size:.9rem}.record[hidden]{display:none}.empty{padding:20px;border:1px dashed #aabcc9;border-radius:10px;text-align:center;color:#49677f}.footer{color:#526a7b;font-size:.9rem;line-height:1.5;margin:18px 2px}@media(max-width:600px){.toolbar{align-items:stretch}.toolbar label,.toolbar button{width:100%}.toolbar button{min-height:44px}.card,.toolbar,.record{padding:12px}}
+    *{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px)}main{max-width:1050px;margin:auto}h1{font-size:clamp(1.35rem,3vw,2rem);margin:.25rem 0}.card,.toolbar,.record{background:#fff;border:1px solid #cfdae3;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #1735500c}.card p{line-height:1.5}.notice{border-left:4px solid #df9a18;background:#fff8e8;padding:10px 12px;border-radius:5px}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar label{flex:1 1 240px}.toolbar input[type=file]{display:block;max-width:100%;margin-top:5px}.toolbar button,button{border:1px solid #aac0d1;border-radius:9px;padding:10px 14px;background:#fff;color:#075ca3;font:inherit;font-weight:650;cursor:pointer}.primary{background:#1268ae!important;color:#fff!important;border-color:#1268ae!important}button:disabled{opacity:.5;cursor:not-allowed}.status{flex-basis:100%;margin:0;min-height:1.5em;color:#294a65;overflow-wrap:anywhere}.progress{font-weight:700}.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:8px}.summary-item{background:#f4f7f9;border-radius:8px;padding:10px}.summary-item strong{display:block;font-size:.82rem;color:#526a7b;margin-bottom:3px}.filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.filters input[type=search]{min-width:min(280px,100%);padding:9px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.record summary{cursor:pointer;font-weight:700;line-height:1.5}.record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;margin:14px 0}.field{background:#f4f7f9;border-radius:8px;padding:10px;overflow-wrap:anywhere}.field strong{display:block;font-size:.82rem;color:#526a7b;margin-bottom:3px}.record label{display:block;margin:10px 0}.record input[type=text],.record select{width:100%;max-width:520px;padding:10px;border:1px solid #b9cad7;border-radius:8px;font:inherit}.record .confirm{display:flex;gap:9px;align-items:flex-start;max-width:760px}.record .confirm input{margin-top:.25rem}.record .legacy{color:#526a7b;font-size:.9rem}.record[hidden]{display:none}.empty{padding:20px;border:1px dashed #aabcc9;border-radius:10px;text-align:center;color:#49677f}.footer{color:#526a7b;font-size:.9rem;line-height:1.5;margin:18px 2px}@media(max-width:600px){.toolbar{align-items:stretch}.toolbar label,.toolbar button{width:100%}.toolbar button{min-height:44px}.card,.toolbar,.record{padding:12px}}
   </style>
 </head>
 <body>
@@ -24,6 +24,11 @@
     <p id="status" class="status" role="status" aria-live="polite">Selecione a prévia local para começar.</p>
   </section>
   <p id="progress" class="progress" aria-live="polite"></p>
+  <section class="card" id="source-summary" aria-labelledby="source-summary-title" hidden>
+    <h2 id="source-summary-title">Resumo da prévia</h2>
+    <p>Totais agregados para orientar a conferência. Nenhuma sigla ou dado pessoal é exibido aqui.</p>
+    <div class="summary-grid" id="summary-grid"></div>
+  </section>
   <div class="filters" id="filters" hidden>
     <label>Buscar <input id="search" type="search" autocomplete="off"></label>
     <label><input id="pending-only" type="checkbox"> Mostrar somente revisões pendentes</label>
@@ -44,6 +49,8 @@
   const search = document.querySelector('#search');
   const pendingOnly = document.querySelector('#pending-only');
   const visibleCount = document.querySelector('#visible-count');
+  const sourceSummary = document.querySelector('#source-summary');
+  const summaryGrid = document.querySelector('#summary-grid');
   let preview;
   let fingerprint = '';
   let state = {};
@@ -86,6 +93,45 @@
     const contacts = preview.records.filter((entry) => personState(entry).contactDecision !== 'PENDING').length;
     progress.textContent = `${identity}/${preview.records.length} identidades confirmadas · ${contacts}/${preview.records.length} decisões de contato`;
     save();
+  };
+  const updateSourceSummary = () => {
+    if (!preview) return;
+    const entries = preview.records;
+    const siglaGroups = new Map();
+    let withSigla = 0;
+    let active = 0;
+    let activeWithSigla = 0;
+    let inactiveWithSigla = 0;
+    let pendingContacts = 0;
+    for (const entry of entries) {
+      const sigla = entry.sigla.trim().toLocaleUpperCase('pt-BR');
+      if (entry.legacyActive) active++;
+      if (sigla) {
+        withSigla++;
+        siglaGroups.set(sigla, (siglaGroups.get(sigla) || 0) + 1);
+        if (entry.legacyActive) activeWithSigla++;
+        else inactiveWithSigla++;
+      }
+      if (personState(entry).contactDecision === 'PENDING') pendingContacts++;
+    }
+    const duplicateGroups = [...siglaGroups.values()].filter((count) => count > 1).length;
+    const summary = [
+      ['Candidatos no total', entries.length],
+      ['Ativos no cadastro legado', active],
+      ['Inativos no cadastro legado', entries.length - active],
+      ['Ativos com sigla', activeWithSigla],
+      ['Inativos com sigla', inactiveWithSigla],
+      ['Sem sigla', entries.length - withSigla],
+      ['Siglas distintas', siglaGroups.size],
+      ['Grupos de sigla repetida', duplicateGroups],
+      ['Decisões de contato pendentes', pendingContacts]
+    ];
+    summaryGrid.replaceChildren(...summary.map(([label, value]) => {
+      const item = make('div', 'summary-item');
+      item.append(make('strong', '', label), make('span', '', value));
+      return item;
+    }));
+    sourceSummary.hidden = false;
   };
   const field = (label, value) => {
     const box = make('div', 'field');
@@ -147,6 +193,7 @@
       records.append(card);
     }
     visibleCount.textContent = `${shown} de ${preview.records.length} cadastros exibidos`;
+    updateSourceSummary();
     updateProgress();
   };
   const updateCardSummary = (card, entry) => {
@@ -187,6 +234,8 @@
       storageKey = '';
       state = {};
       filters.hidden = true;
+      sourceSummary.hidden = true;
+      summaryGrid.replaceChildren();
       download.disabled = true;
       clear.disabled = true;
       progress.textContent = '';
