@@ -301,20 +301,6 @@ export async function saveContact(input, actorUid) {
   return {id: sigla, ...record};
 }
 
-export async function listTemplates(uid) {
-  try {
-    const result = await getDocsFromServer(query(collection(db, 'labelTemplates'), where('active', '==', true), orderBy('order', 'asc'), limit(MAX_PAGE_SIZE)));
-    const items = result.docs.map((item) => ({id: item.id, ...item.data()}));
-    if (uid) await writeSafeCache(uid, 'labelTemplates', 'active', items);
-    return items;
-  } catch (error) {
-    if (!mayUseOfflineCache(error)) throw error;
-    const cached = uid ? await readSafeCache(uid, 'labelTemplates', 'active') : null;
-    if (Array.isArray(cached?.data)) return cached.data.map((item) => ({...item, stale: true}));
-    throw error;
-  }
-}
-
 export async function listUserProfiles({pageSize = 200} = {}) {
   const result = await getDocsFromServer(query(
     collection(db, 'users'),
