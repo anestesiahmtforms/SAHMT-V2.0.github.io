@@ -1898,7 +1898,10 @@ async function createScheduledEvent(data, {uid, requestId}) {
   const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${requestId}`;
   const result = await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(scheduleRef);
-    if (!snapshot.exists()) throw new Error('A escala deste dia não está publicada; o evento não foi registrado.');
+    if (!snapshot.exists()) {
+      buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
+      return {id: requestId, pendingFirestore: false, schedule: null};
+    }
     const schedule = snapshot.data();
     const events = Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : [];
     if (events.some((value) => String(value).endsWith(`:${requestId}`))) {
@@ -1918,7 +1921,7 @@ async function createScheduledEvent(data, {uid, requestId}) {
       schedule: {...schedule, id: day, highlights: {...schedule.highlights, events: [...events, marker]}, version}
     };
   });
-  await writeSafeCache(uid, 'scheduleDays', day, result.schedule).catch(() => {});
+  if (result.schedule) await writeSafeCache(uid, 'scheduleDays', day, result.schedule).catch(() => {});
   return {id: result.id, pendingFirestore: result.pendingFirestore};
 }
 
