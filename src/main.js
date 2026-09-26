@@ -1037,35 +1037,42 @@ async function loadDailyChecklist(stations, suppliedDay) {
       const status = content.querySelector('#checklist-signature-status');
       const previewTarget = content.querySelector('#checklist-signature-preview');
       prepareSignature.disabled = true;
-      status.textContent = 'Conferindo revisão e responsável no Firestore…';
+      status.textContent = 'Preparando o pedido de validação do relatório…';
       try {
         const {getChecklistSignaturePreview} = await import('./checklist-signature.js');
-        const preview = await getChecklistSignaturePreview(day);
-        if (preview.signed) {
-          previewTarget.innerHTML = `<p class="sync-state">Esta revisão já foi assinada por ${escapeHtml(preview.signedBy?.name || 'outro usuário')}.</p>`;
-          status.textContent = 'Assinatura confirmada no Firestore.';
+        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid: session.user.uid});
+        if (preview.requestStatus === 'PENDING_VALIDATION') {
+          previewTarget.innerHTML = '<p class="sync-state">Este pedido já está registrado e aguarda validação. O responsável, a assinatura e os pontos ainda não foram confirmados.</p>';
+          status.textContent = 'Pedido de validação pendente.';
+          prepareSignature.disabled = true;
           return;
         }
-        const reasonRequired = preview.missing > 0 || preview.responsible.uid !== session.user.uid;
-        previewTarget.innerHTML = `<div class="checklist-signature-review"><p><strong>Responsável:</strong> ${escapeHtml(preview.responsible.name || preview.responsible.sigla)} · ${escapeHtml(preview.responsible.sigla)} · posição ${preview.responsible.position}</p><p>${preview.total - preview.missing}/${preview.total} estações respondidas.${preview.missing ? ` ${preview.missing} pendente(s).` : ''}</p>${reasonRequired ? '<label>Justificativa para assinatura incompleta ou por substituto<textarea id="checklist-signature-justification" rows="3" maxlength="500" required></textarea></label>' : ''}<label class="checklist-declaration"><input type="checkbox" id="checklist-signature-declaration"> ${escapeHtml(preview.declaration)}</label><button class="primary-button" type="button" id="checklist-signature-confirm" disabled>Confirmar assinatura</button></div>`;
-        status.textContent = 'Confira o resumo. A assinatura fica vinculada a esta revisão do relatório.';
+        if (preview.requestStatus === 'VALIDATED') {
+          previewTarget.innerHTML = '<p class="sync-state">Esta revisão foi validada e assinada.</p>';
+          status.textContent = 'Assinatura validada.';
+          prepareSignature.disabled = true;
+          return;
+        }
+        if (preview.requestStatus === 'REJECTED') {
+          previewTarget.innerHTML = '<p class="sync-state">O pedido anterior foi recusado. Atualize o relatório e solicite uma nova validação.</p>';
+          status.textContent = 'Pedido anterior recusado.';
+          return;
+        }
+        previewTarget.innerHTML = `<div class="checklist-signature-review"><p>Relatório: ${preview.total - preview.missing}/${preview.total} estações respondidas.${preview.missing ? ` ${preview.missing} pendente(s).` : ''}</p><p>O responsável da primeira posição, as substituições e a revisão final serão conferidos pelo validador. Este envio ainda não é uma assinatura validada e não concede pontos.</p><label>Justificativa ou contexto para auditoria<textarea id="checklist-signature-justification" rows="3" maxlength="500" required></textarea></label><label class="checklist-declaration"><input type="checkbox" id="checklist-signature-declaration"> ${escapeHtml(preview.declaration)}</label><button class="primary-button" type="button" id="checklist-signature-confirm" disabled>Enviar para validação</button></div>`;
+        status.textContent = 'Confira o relatório e registre o pedido. A validação será assíncrona.';
         const declaration = previewTarget.querySelector('#checklist-signature-declaration');
         const justification = previewTarget.querySelector('#checklist-signature-justification');
         const confirm = previewTarget.querySelector('#checklist-signature-confirm');
-        const updateEnabled = () => { confirm.disabled = !declaration.checked || (reasonRequired && justification.value.trim().length < 8) || !navigator.onLine; };
+        const updateEnabled = () => { confirm.disabled = !declaration.checked || justification.value.trim().length < 8 || !navigator.onLine; };
         declaration.addEventListener('change', updateEnabled);
         justification?.addEventListener('input', updateEnabled);
         confirm.addEventListener('click', async () => {
           confirm.disabled = true;
-          status.textContent = 'Gravando assinatura vinculada à revisão no Firebase…';
+          status.textContent = 'Registrando o pedido de validação no Firestore…';
           try {
             const {signChecklistReport} = await import('./checklist-signature.js');
-            const result = await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification?.value || ''});
-            status.textContent = result.pointsAwarded
-              ? `Assinatura registrada no Firestore. Pontuação lançada: +${result.pointsAwarded}${result.responsibleAdjustment ? '; ajuste do responsável registrado.' : '.'}`
-              : result.pointsPending
-                ? 'Assinatura registrada no Firestore. Não houve pontuação porque o relatório está incompleto.'
-                : 'Assinatura registrada no Firestore.';
+            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid: session.user.uid});
+            status.textContent = 'Pedido registrado. Assinatura e pontuação aguardam validação.';
             await loadDailyChecklist(stations, day);
           } catch (error) {
             status.textContent = error.message || 'Não foi possível assinar. Atualize o relatório e tente novamente.';

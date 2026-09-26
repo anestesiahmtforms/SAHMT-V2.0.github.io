@@ -226,6 +226,17 @@ service cloud.firestore {
          (data.condition == 'NAO' && data.status == 'MAINTENANCE' && data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 500)) &&
         data.responsibleUid == null && data.responsibleName == null && data.responsibleEmail == null;
     }
+    function validChecklistSignatureRequest(data, requestId) {
+      return data.keys().hasAll(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt']) &&
+        data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt']) &&
+        data.id == requestId && requestId == data.day + '_' + data.revision + '_' + request.auth.uid &&
+        validIsoDay(data.day) && data.day == serverSaoPauloDay() &&
+        data.revision is string && data.revision.matches('^[a-f0-9]{64}$') &&
+        data.signerUid == request.auth.uid && data.declaration == true &&
+        data.justification is string && data.justification.size() >= 8 && data.justification.size() <= 500 &&
+        data.status == 'PENDING_VALIDATION' && data.requestedAt == request.time &&
+        request.auth.token.email_verified == true && can('checklistSign');
+    }
     function validUserProfile(data, uid) {
       return data.keys().hasAll(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
         data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
@@ -795,6 +806,13 @@ service cloud.firestore {
     match /checklistSignatures/{signatureId} {
       allow read: if can('checklistRead');
       allow write: if false;
+    }
+    match /checklistSignatureRequests/{requestId} {
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
+        resource.data.signerUid == request.auth.uid || can('checklistManage'));
+      allow list: if can('checklistManage');
+      allow create: if validChecklistSignatureRequest(request.resource.data, requestId);
+      allow update, delete: if false;
     }
     match /trainings/{trainingId} {
       allow read: if can('trainingsRead') || can('trainingsManage');
