@@ -20,7 +20,7 @@
 ## O que foi validado
 
 - `npm run test:domain`: 64/64 testes passaram.
-- `npm run test:rules`: 35/35 casos passaram no Firestore Emulator.
+- `npm run test:rules`: 36/36 casos passaram no Firestore Emulator, incluindo leitura pública de configurações de módulo, escrita restrita ao administrador, validação de campos/versão e bloqueio de exclusão em `appConfig/app`.
 - Testes das Cloud Functions: 15/15 passaram no Emulator, incluindo assinatura do Checklist, treinamento e operações de Gestão.
 - `npm run build`: build Vite concluído com 334 módulos transformados. O SDK completo do Firestore (550,77 kB bruto) e o PDF (419,34 kB) são carregados em chunks dinâmicos; o Vite mantém o aviso para o chunk Firestore acima de 500 kB.
 - Os testes usaram o projeto fictício `demo-sahmt-v2`; não leram nem gravaram dados do projeto Firebase real.
