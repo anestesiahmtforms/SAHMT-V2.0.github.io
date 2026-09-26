@@ -401,14 +401,14 @@ service cloud.firestore {
         data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
     }
     function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
-      return data.keys().hasAll(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+      return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.id == eventId && data.clientMutationId == eventId && data.active == true && data.version is int && data.version > 0 &&
         data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.eventType in ['Pessoal', 'Férias', 'Ferias', 'ATRASO', 'Suporte', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia', 'Outros'] &&
-        data.memberSigla is string && data.memberSigla.size() <= 2 && (data.memberSigla == '' || data.memberSigla.matches('^[A-Z]{2}$') || data.memberSigla == 'L2') &&
-        data.scheduleSigla is string && data.scheduleSigla.size() <= 30 && (data.scheduleSigla == '' || data.scheduleSigla.matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')) &&
+        data.get('memberSigla', '') is string && data.get('memberSigla', '').size() <= 2 && (data.get('memberSigla', '') == '' || data.get('memberSigla', '').matches('^[A-Z]{2}$') || data.get('memberSigla', '') == 'L2') &&
+        data.get('scheduleSigla', '') is string && data.get('scheduleSigla', '').size() <= 30 && (data.get('scheduleSigla', '') == '' || data.get('scheduleSigla', '').matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')) &&
         data.memberStatus is string && data.memberStatus.size() <= 160 && data.description is string && data.description.size() <= 1000 &&
         data.delayMultiple in [null, 0, 1, 2, 3, 4, 5, 6] && data.substitute is string && data.substitute.size() <= 120 &&
         data.shift in ['', 'Manhã', 'Manha', 'Tarde', 'Integral'] &&
