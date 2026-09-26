@@ -19,6 +19,12 @@ service cloud.firestore {
         can('managementIndicatorsRead') || can('managementIndicatorsWrite') || can('managementPlansManage');
     }
     function qualityManageArea(areaId) { return can('qualityManage') && areaId == 'area-gestao-da-qualidade'; }
+    function activityPointsReviewer(areaId) {
+      let areaPath = /databases/$(database)/documents/managementAreas/$(areaId);
+      return can('managementManage') || qualityManageArea(areaId) ||
+        (can('managementRead') && exists(areaPath) && get(areaPath).data.managerUids is list &&
+          get(areaPath).data.managerUids.hasAny([request.auth.uid]));
+    }
     function activityAccess(areaId) { return can('managementRead') || can('managementActivityWrite') || qualityManageArea(areaId); }
     function indicatorAccess(areaId) { return can('managementRead') || can('managementIndicatorsRead') || can('managementIndicatorsWrite') || qualityManageArea(areaId); }
     function actionPlanAccess(areaId) { return can('managementRead') || can('managementPlansManage') || qualityManageArea(areaId); }
@@ -513,6 +519,24 @@ service cloud.firestore {
           getAfter(activityPath).data.updatedByUid == request.auth.uid &&
           hasActivityActionAfter(data.activityId, 'cancellation', 'CANCELLATION')));
     }
+    function validActivityScoreReview(data, reviewId) {
+      let activityPath = /databases/$(database)/documents/activities/$(data.activityId);
+      let completionPath = /databases/$(database)/documents/activityInteractions/$('completion-' + data.activityId);
+      let activity = get(activityPath).data;
+      let completion = get(completionPath).data;
+      return data.keys().hasAll(['id', 'activityId', 'managementAreaId', 'reviewerUid', 'decision', 'points', 'scoringRuleId', 'scoringRuleVersion', 'note', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'activityId', 'managementAreaId', 'reviewerUid', 'decision', 'points', 'scoringRuleId', 'scoringRuleVersion', 'note', 'status', 'createdAt']) &&
+        data.id == reviewId && reviewId == data.activityId && data.activityId is string && exists(activityPath) && exists(completionPath) &&
+        activityPointsReviewer(activity.managementAreaId) && data.managementAreaId == activity.managementAreaId &&
+        data.reviewerUid == request.auth.uid && !activity.responsibleUids.hasAny([request.auth.uid]) &&
+        activity.active == true && activity.status == 'COMPLETED' && activity.evidenceRequired == false &&
+        activity.pointsEnabled == true && activity.responsibleUids is list && activity.responsibleUids.size() == 1 &&
+        data.points == activity.points && data.scoringRuleId == activity.scoringRuleId && data.scoringRuleVersion == activity.scoringRuleVersion &&
+        completion.id == 'completion-' + data.activityId && completion.activityId == data.activityId && completion.type == 'COMPLETION' &&
+        completion.uid == activity.responsibleUids[0] && completion.pointsClaimed == activity.points && completion.pointsStatus == 'PENDING_VALIDATION' &&
+        data.decision in ['APPROVE', 'REJECT'] && data.note is string && data.note.size() <= 500 &&
+        (data.decision != 'REJECT' || data.note.size() >= 8) && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
+    }
     function activityInteractionAccess(activityId, interactionUid) {
       let activityPath = /databases/$(database)/documents/activities/$(activityId);
       let activity = get(activityPath).data;
@@ -866,6 +890,14 @@ service cloud.firestore {
     match /activityInteractions/{interactionId} {
       allow read: if activityInteractionAccess(resource.data.activityId, resource.data.uid);
       allow create: if activityInteractionCreateAccess(request.resource.data.activityId) && validActivityInteraction(request.resource.data, interactionId);
+      allow update, delete: if false;
+    }
+    match /activityScoreReviews/{reviewId} {
+      allow get: if activeUser() && (exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
+        ? activityInteractionAccess(resource.data.activityId, request.auth.uid)
+        : activityInteractionAccess(reviewId, request.auth.uid));
+      allow list: if activeUser() && activityPointsReviewer(resource.data.managementAreaId);
+      allow create: if activeUser() && validActivityScoreReview(request.resource.data, reviewId);
       allow update, delete: if false;
     }
     match /scores/{scoreId} {

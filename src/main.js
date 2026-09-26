@@ -1717,14 +1717,18 @@ async function loadManagementAreaActivities(area) {
     document.querySelector('[data-module-form] input[name="title"]')?.focus({preventScroll: true});
   });
   try {
-    const {listManagementActivities, listManagementIndicators, listIndicatorMeasurements, listManagementActionPlans, listManagementActionPlanItems, listManagementDocuments, getManagementTaskScoringRule} = await import('./data.js');
-    const [activities, indicators, plans, documents, scoringRule] = await Promise.all([
+    const {listManagementActivities, listManagementIndicators, listIndicatorMeasurements, listManagementActionPlans, listManagementActionPlanItems, listManagementDocuments, getManagementTaskScoringRule, listManagementActivityScoreReviews} = await import('./data.js');
+    const canReviewActivityPoints = can('managementManage') || (can('qualityManage') && area.id === 'area-gestao-da-qualidade') ||
+      (can('managementRead') && Array.isArray(area.managerUids) && area.managerUids.includes(session.user.uid));
+    const [activities, indicators, plans, documents, scoringRule, scoreReviews] = await Promise.all([
       ['managementRead', 'managementActivityWrite'].some(can) ? listManagementActivities(area.id) : Promise.resolve([]),
       ['managementRead', 'managementIndicatorsRead', 'managementIndicatorsWrite'].some(can) ? listManagementIndicators(area.id, {pageSize: 12}) : Promise.resolve([]),
       ['managementRead', 'managementPlansManage'].some(can) ? listManagementActionPlans(area.id, {pageSize: 20}) : Promise.resolve([]),
       ['managementRead', 'documentsManage'].some(can) ? listManagementDocuments(area.id, {includeInactive: can('documentsManage'), pageSize: 100}) : Promise.resolve([]),
-      can('managementManage') ? getManagementTaskScoringRule() : Promise.resolve(null)
+      can('managementManage') ? getManagementTaskScoringRule() : Promise.resolve(null),
+      canReviewActivityPoints ? listManagementActivityScoreReviews(area.id, {pageSize: 50}) : Promise.resolve([])
     ]);
+    const scoreReviewByActivity = new Map(scoreReviews.map((review) => [review.activityId, review]));
     const measurements = await Promise.all(indicators.map((indicator) => listIndicatorMeasurements(indicator.id, {pageSize: 6})));
     const planItems = plans.length ? await listManagementActionPlanItems(plans.map((plan) => plan.id)) : [];
     const itemsByPlan = new Map();
@@ -1743,7 +1747,7 @@ async function loadManagementAreaActivities(area) {
     const indicatorForm = can('managementIndicatorsWrite') ? `<details class="quick-form indicator-create"><summary>Novo indicador</summary><form id="indicator-create-form"><input type="hidden" name="managementAreaId" value="${escapeHtml(area.id)}"><div class="form-grid"><label>Nome<input name="name" required maxlength="120"></label><label>Unidade<input name="unit" maxlength="40" placeholder="%, dias, unidades"></label><label>Meta<input name="target" type="number" step="any" required></label><label>Direção da meta<select name="direction"><option value="MIN">Atingir ou superar</option><option value="MAX">Manter até o limite</option><option value="TARGET">Atingir valor exato</option></select></label><label>Frequência<select name="frequency"><option value="MONTHLY">Mensal</option><option value="WEEKLY">Semanal</option><option value="QUARTERLY">Trimestral</option><option value="YEARLY">Anual</option></select></label></div><label>Descrição<textarea name="description" rows="2" maxlength="500"></textarea></label><button class="primary-button" type="submit">Criar indicador</button></form></details>` : '';
     const planForm = can('managementPlansManage') ? `<details class="quick-form"><summary>Novo plano de ação</summary><form id="action-plan-create-form"><input type="hidden" name="managementAreaId" value="${escapeHtml(area.id)}"><div class="form-grid"><label>Título<input name="title" required maxlength="160"></label><label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label></div><label>Descrição<textarea name="description" rows="2" maxlength="1200"></textarea></label><button class="primary-button" type="submit">Criar plano</button></form></details>` : '';
     const assignmentEditor = can('managementManage') ? `<details class="quick-form management-assignment-editor"><summary>Gestores e equipe</summary><p>Vincule contas pelos UIDs Firebase copiados na Administração. Use um UID por linha; nomes e e-mails não são armazenados aqui.</p><form id="management-assignment-form"><input type="hidden" name="version" value="${Number.isInteger(area.version) && area.version >= 0 ? area.version : 0}"><div class="form-grid"><label>UIDs de gestores<textarea name="managerUids" rows="3" maxlength="12999" placeholder="UID Firebase, um por linha">${escapeHtml((Array.isArray(area.managerUids) ? area.managerUids : []).join('\n'))}</textarea></label><label>UIDs da equipe<textarea name="memberUids" rows="3" maxlength="12999" placeholder="UID Firebase, um por linha">${escapeHtml((Array.isArray(area.memberUids) ? area.memberUids : []).join('\n'))}</textarea></label></div><button class="secondary-button" type="submit">Salvar vínculos</button><p class="record-meta" id="management-assignment-status" role="status" aria-live="polite"></p></form></details>` : '';
-    const scoringRuleForm = can('managementManage') ? `<details class="quick-form" id="management-task-scoring"><summary>Pontuação por conclusão</summary><p>Os pontos são concedidos pelo servidor ao concluir uma tarefa atribuída à equipe. Alterar a regra afeta tarefas novas; cada tarefa mantém a versão usada quando foi criada.</p><form id="management-task-scoring-form"><input type="hidden" name="version" value="${Number.isInteger(scoringRule?.version) ? scoringRule.version : 0}"><div class="form-grid"><label>Nome da regra<input name="name" required maxlength="120" value="${escapeHtml(scoringRule?.name || 'Conclusão de tarefa')}"></label><label>Pontos inteiros<input name="points" type="number" min="1" max="1000" step="1" required value="${escapeHtml(scoringRule?.points ?? 10)}"></label><label class="contact-active-field"><input name="active" type="checkbox" ${scoringRule?.active !== false ? 'checked' : ''}> Regra ativa</label></div><label>Descrição<textarea name="description" rows="2" maxlength="500">${escapeHtml(scoringRule?.description || 'Pontos concedidos ao concluir a tarefa.')}</textarea></label><button class="secondary-button" type="submit">Salvar regra</button><p class="record-meta" id="management-task-scoring-status" role="status" aria-live="polite"></p></form></details>` : '';
+    const scoringRuleForm = can('managementManage') ? `<details class="quick-form" id="management-task-scoring"><summary>Pontuação por conclusão</summary><p>Concluir a tarefa não credita pontos automaticamente. Um gestor autorizado revisa cada solicitação; a alteração da regra afeta somente tarefas novas.</p><form id="management-task-scoring-form"><input type="hidden" name="version" value="${Number.isInteger(scoringRule?.version) ? scoringRule.version : 0}"><div class="form-grid"><label>Nome da regra<input name="name" required maxlength="120" value="${escapeHtml(scoringRule?.name || 'Conclusão de tarefa')}"></label><label>Pontos inteiros<input name="points" type="number" min="1" max="1000" step="1" required value="${escapeHtml(scoringRule?.points ?? 10)}"></label><label class="contact-active-field"><input name="active" type="checkbox" ${scoringRule?.active !== false ? 'checked' : ''}> Regra ativa</label></div><label>Descrição<textarea name="description" rows="2" maxlength="500">${escapeHtml(scoringRule?.description || 'Pontos concedidos após revisão independente da conclusão.')}</textarea></label><button class="secondary-button" type="submit">Salvar regra</button><p class="record-meta" id="management-task-scoring-status" role="status" aria-live="polite"></p></form></details>` : '';
     const plansView = `<section class="management-plans"><h4>Planos de ação · ${plans.length}</h4>${planItems.length >= 200 ? '<p class="sync-state">Exibindo até 200 ações detalhadas. Os planos continuam disponíveis.</p>' : ''}${plans.length ? `<ul class="record-list">${plans.map((plan) => {
       const items = itemsByPlan.get(plan.id) || [];
       const action = plan.responsibleUid === session.user.uid && plan.status === 'OPEN' ? `<button class="secondary-button" type="button" data-plan-id="${escapeHtml(plan.id)}" data-next-status="IN_PROGRESS">Iniciar plano</button>` : plan.responsibleUid === session.user.uid && plan.status === 'IN_PROGRESS' ? `<button class="secondary-button" type="button" data-plan-id="${escapeHtml(plan.id)}" data-next-status="COMPLETED">Concluir plano</button>` : '';
@@ -1762,8 +1766,13 @@ async function loadManagementAreaActivities(area) {
       : '';
     detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
       const responsible = item.responsibleUids?.includes(session.user.uid);
+      const scoreReview = scoreReviewByActivity.get(item.id);
       const action = responsible && item.status === 'OPEN' ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="IN_PROGRESS">Iniciar</button>` :
         responsible && item.status === 'IN_PROGRESS' && !item.evidenceRequired ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="COMPLETED">Concluir${item.pointsEnabled ? ` · ${escapeHtml(item.points)} pts a validar` : ''}</button>` : '';
+      const scoreReviewLabel = ({PENDING_VALIDATION: 'Revisão de pontos aguardando processamento.', APPROVED: 'Pontuação aprovada e creditada.', REJECTED: 'Pontuação recusada.', NEEDS_REVIEW: 'Dados divergentes; solicite reconciliação da Administração.'})[scoreReview?.status] || '';
+      const reviewAction = canReviewActivityPoints && !responsible && item.status === 'COMPLETED' && item.pointsEnabled === true && !scoreReview
+        ? `<div class="activity-score-review-actions"><small>Pontos aguardam aprovação independente.</small><button class="secondary-button" type="button" data-activity-score-review="${escapeHtml(item.id)}" data-review-decision="APPROVE">Aprovar ${escapeHtml(item.points)} pts</button><button class="text-button" type="button" data-activity-score-review="${escapeHtml(item.id)}" data-review-decision="REJECT">Recusar</button></div>` : '';
+      const scoreReviewNote = scoreReview?.validationMessage || scoreReview?.note ? `<small>${escapeHtml(scoreReview.validationMessage || scoreReview.note)}</small>` : '';
       const canCancel = (item.createdByUid === session.user.uid || can('managementManage')) && ['OPEN', 'IN_PROGRESS'].includes(item.status);
       const cancelAction = canCancel ? `<button class="text-button" type="button" data-cancel-activity="${escapeHtml(item.id)}">Cancelar</button>` : '';
       const overdue = item.dueAt && item.dueAt < todayInputValue() && ['OPEN', 'IN_PROGRESS'].includes(item.status);
@@ -1773,7 +1782,7 @@ async function loadManagementAreaActivities(area) {
       const interactions = canReadConversation ? `<details class="activity-interactions" data-activity-interactions="${escapeHtml(item.id)}" data-read-all="${canReadConversation}"><summary>Interações${participant && !responsible ? ' · Participante' : ''} · Ver ou comentar</summary><ul class="activity-interaction-list"><li class="loading">Carregando quando abrir…</li></ul><form class="activity-interaction-form"><label>Comentário<textarea name="content" rows="2" maxlength="1000" required></textarea></label><button class="secondary-button" type="submit">Enviar comentário</button></form></details>` : '';
       const assigneeCount = Array.isArray(item.responsibleUids) ? item.responsibleUids.length : 0;
       const participantCount = Array.isArray(item.participantUids) ? item.participantUids.length : 0;
-      return `<li><strong>${escapeHtml(item.title || 'Atividade')}</strong>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}<small class="record-meta">${overdue ? 'Atrasada' : escapeHtml(item.status || 'OPEN')}${item.priority ? ` · ${escapeHtml(item.priority)}` : ''}${item.dueAt ? ` · Prazo ${escapeHtml(formatRecordDate(item.dueAt))}` : ''}${assigneeCount > 1 ? ` · Equipe responsável: ${assigneeCount}` : ''}${participantCount ? ` · Participantes: ${participantCount}` : ''}</small>${evidenceNote}${action}${cancelAction}${interactions}</li>`;
+      return `<li><strong>${escapeHtml(item.title || 'Atividade')}</strong>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}<small class="record-meta">${overdue ? 'Atrasada' : escapeHtml(item.status || 'OPEN')}${item.priority ? ` · ${escapeHtml(item.priority)}` : ''}${item.dueAt ? ` · Prazo ${escapeHtml(formatRecordDate(item.dueAt))}` : ''}${assigneeCount > 1 ? ` · Equipe responsável: ${assigneeCount}` : ''}${participantCount ? ` · Participantes: ${participantCount}` : ''}</small>${evidenceNote}${scoreReviewLabel ? `<small class="record-meta">${scoreReviewLabel}</small>${scoreReviewNote}` : ''}${action}${reviewAction}${cancelAction}${interactions}</li>`;
     }).join('')}</ul>` : '<p class="empty-state">Nenhuma atividade nesta área.</p>'}`;
     if (area.id === 'area-gestao-de-equipamentos' && can('equipmentManage')) {
       const {mountEquipmentManager} = await import('./equipment.js');
@@ -2025,6 +2034,28 @@ async function loadManagementAreaActivities(area) {
         button.after(notice);
       }
     }));
+    detail.querySelectorAll('[data-activity-score-review]').forEach((button) => button.addEventListener('click', async () => {
+      const decision = button.dataset.reviewDecision;
+      const promptText = decision === 'APPROVE'
+        ? 'Observação da aprovação (opcional):'
+        : 'Explique por que a pontuação foi recusada:';
+      const note = window.prompt(promptText, decision === 'APPROVE' ? '' : '');
+      if (note === null) return;
+      if (decision === 'APPROVE' && !window.confirm(`Aprovar ${button.textContent.match(/\d+/)?.[0] || 'a'} pontos? O lançamento não pode ser revertido automaticamente.`)) return;
+      button.disabled = true;
+      try {
+        const {submitManagementActivityScoreReview} = await import('./data.js');
+        await submitManagementActivityScoreReview(button.dataset.activityScoreReview, session.user.uid, decision, note);
+        notice = 'Decisão registrada. O Apps Script processará o ledger de pontos periodicamente.';
+        await loadManagementAreaActivities(area);
+      } catch (error) {
+        button.disabled = false;
+        const message = document.createElement('small');
+        message.className = 'form-error';
+        message.textContent = error.message || 'Não foi possível registrar a revisão dos pontos.';
+        button.after(message);
+      }
+    }));
     detail.querySelectorAll('[data-cancel-activity]').forEach((button) => button.addEventListener('click', async () => {
       if (!window.confirm('Cancelar esta atividade? O cancelamento ficará registrado no histórico.')) return;
       button.disabled = true;
@@ -2052,11 +2083,22 @@ async function loadActivityInteractions(panel, activityId) {
   if (!list) return;
   list.innerHTML = '<li class="loading">Carregando interações…</li>';
   try {
-    const {listActivityInteractions} = await import('./data.js');
-    const items = await listActivityInteractions(activityId, session.user.uid, {canReadAll: panel.dataset.readAll === 'true', pageSize: 20});
+    const {listActivityInteractions, getActivityScoreReview} = await import('./data.js');
+    const [items, scoreReview] = await Promise.all([
+      listActivityInteractions(activityId, session.user.uid, {canReadAll: panel.dataset.readAll === 'true', pageSize: 20}),
+      getActivityScoreReview(activityId)
+    ]);
     if (!panel.isConnected) return;
     panel.dataset.loaded = 'true';
-    list.innerHTML = items.length ? items.map((item) => `<li><small class="record-meta">${escapeHtml(interactionDateTime(item.createdAt))} · ${item.uid === session.user.uid ? 'Você' : 'Equipe'}${item.pointsStatus === 'PENDING_VALIDATION' ? ' · Pontuação pendente de validação' : ''}</small><p>${escapeHtml(item.content)}</p></li>`).join('') : '<li class="empty-state">Nenhum comentário ainda.</li>';
+    const reviewState = ({PENDING_VALIDATION: 'Solicitação de pontuação aguardando processamento.', APPROVED: 'Pontuação aprovada e creditada.', REJECTED: 'Pontuação recusada.', NEEDS_REVIEW: 'Dados divergentes; solicite reconciliação da Administração.'})[scoreReview?.status];
+    const reviewNote = scoreReview?.validationMessage || scoreReview?.note ? ` ${escapeHtml(scoreReview.validationMessage || scoreReview.note)}` : '';
+    const reviewMarkup = reviewState ? `<li><small class="record-meta">${reviewState}${reviewNote}</small></li>` : '';
+    list.innerHTML = `${reviewMarkup}${items.length ? items.map((item) => {
+      const pointStatus = item.pointsStatus === 'PENDING_VALIDATION'
+        ? scoreReview?.status === 'APPROVED' ? ' · Pontuação aprovada e creditada' : scoreReview?.status === 'REJECTED' ? ' · Pontuação recusada pela Gestão' : ' · Pontuação pendente de aprovação'
+        : '';
+      return `<li><small class="record-meta">${escapeHtml(interactionDateTime(item.createdAt))} · ${item.uid === session.user.uid ? 'Você' : 'Equipe'}${pointStatus}</small><p>${escapeHtml(item.content)}</p></li>`;
+    }).join('') : '<li class="empty-state">Nenhum comentário ainda.</li>'}`;
   } catch (error) {
     if (!panel.isConnected) return;
     panel.dataset.loaded = 'false';

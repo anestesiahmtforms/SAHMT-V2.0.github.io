@@ -775,6 +775,62 @@ export async function listActivityInteractions(activityId, uid, {canReadAll = fa
   return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
+export async function getActivityScoreReview(activityId) {
+  if (!activityId) return null;
+  const snapshot = await getDocFromServer(doc(db, 'activityScoreReviews', activityId));
+  return snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
+}
+
+export async function listManagementActivityScoreReviews(managementAreaId, {pageSize = 50} = {}) {
+  if (!managementAreaId) return [];
+  const snapshot = await getDocsFromServer(query(
+    collection(db, 'activityScoreReviews'),
+    where('managementAreaId', '==', managementAreaId),
+    limit(Math.min(100, Math.max(1, pageSize)))
+  ));
+  return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
+}
+
+export async function submitManagementActivityScoreReview(activityId, uid, decision, note = '') {
+  const cleanNote = String(note || '').trim().slice(0, 500);
+  if (!activityId || activityId.length > 128 || !uid || !['APPROVE', 'REJECT'].includes(decision) ||
+      (decision === 'REJECT' && cleanNote.length < 8)) {
+    throw new Error('Informe uma decisão válida; para recusar, descreva o motivo com pelo menos 8 caracteres.');
+  }
+  const activityRef = doc(db, 'activities', activityId);
+  const completionRef = doc(db, 'activityInteractions', `completion-${activityId}`);
+  const reviewRef = doc(db, 'activityScoreReviews', activityId);
+  return runTransaction(db, async (transaction) => {
+    const [activitySnapshot, completionSnapshot, reviewSnapshot] = await Promise.all([
+      transaction.get(activityRef), transaction.get(completionRef), transaction.get(reviewRef)
+    ]);
+    if (reviewSnapshot.exists()) {
+      const previous = reviewSnapshot.data();
+      if (previous.reviewerUid === uid && previous.decision === decision && previous.note === cleanNote) {
+        return {id: reviewSnapshot.id, status: previous.status, alreadySubmitted: true};
+      }
+      throw new Error('Esta pontuação já recebeu uma decisão. Atualize a atividade para conferir o resultado.');
+    }
+    if (!activitySnapshot.exists() || !completionSnapshot.exists()) throw new Error('A atividade não tem conclusão pontuada disponível para revisão.');
+    const activity = activitySnapshot.data();
+    const completion = completionSnapshot.data();
+    if (activity.status !== 'COMPLETED' || activity.active !== true || activity.evidenceRequired === true ||
+        activity.pointsEnabled !== true || !Array.isArray(activity.responsibleUids) || activity.responsibleUids.length !== 1 ||
+        activity.responsibleUids[0] === uid || completion.type !== 'COMPLETION' || completion.uid !== activity.responsibleUids[0] ||
+        completion.pointsStatus !== 'PENDING_VALIDATION' || completion.pointsClaimed !== activity.points) {
+      throw new Error('A tarefa não está elegível para revisão independente de pontos.');
+    }
+    const id = activityId;
+    transaction.set(reviewRef, {
+      id, activityId, managementAreaId: activity.managementAreaId, reviewerUid: uid,
+      decision, points: activity.points, scoringRuleId: activity.scoringRuleId,
+      scoringRuleVersion: activity.scoringRuleVersion, note: cleanNote,
+      status: 'PENDING_VALIDATION', createdAt: serverTimestamp()
+    });
+    return {id, status: 'PENDING_VALIDATION', alreadySubmitted: false};
+  });
+}
+
 export async function addActivityInteraction(activityId, content, uid) {
   const cleanContent = String(content || '').trim();
   if (!activityId || !uid || !cleanContent || cleanContent.length > 1000) throw new Error('Escreva um comentário de até 1.000 caracteres.');
