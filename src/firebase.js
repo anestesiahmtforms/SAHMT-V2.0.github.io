@@ -1,5 +1,7 @@
 import {getFirestore, initializeFirestore, memoryLocalCache, connectFirestoreEmulator} from 'firebase/firestore';
-import {app} from './firebase-app.js';
+import {app, appCheckReady} from './firebase-app.js';
+
+await appCheckReady;
 
 let db = null;
 if (app) {

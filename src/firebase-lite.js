@@ -1,5 +1,7 @@
 import {getFirestore, connectFirestoreEmulator} from 'firebase/firestore/lite';
-import {app} from './firebase-app.js';
+import {app, appCheckReady} from './firebase-app.js';
+
+await appCheckReady;
 
 export const db = app ? getFirestore(app) : null;
 if (db && import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {

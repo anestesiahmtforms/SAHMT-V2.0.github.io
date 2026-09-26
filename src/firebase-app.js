@@ -1,5 +1,4 @@
 import {getApps, initializeApp} from 'firebase/app';
-import {initializeAppCheck, ReCaptchaV3Provider} from 'firebase/app-check';
 import {firebaseConfig} from './firebase-config.js';
 
 export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId === 'sahmt-17a16' && firebaseConfig.appId);
@@ -13,9 +12,9 @@ export const app = firebaseConfigured
 
 const appCheckSiteKey = import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim();
 const useEmulators = import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
-export const appCheck = app && appCheckSiteKey && !useEmulators
-  ? initializeAppCheck(app, {
+export const appCheckReady = app && appCheckSiteKey && !useEmulators
+  ? import('firebase/app-check').then(({initializeAppCheck, ReCaptchaV3Provider}) => initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider(appCheckSiteKey),
     isTokenAutoRefreshEnabled: true
-  })
-  : null;
+  }))
+  : Promise.resolve(null);
