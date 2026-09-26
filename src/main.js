@@ -160,20 +160,21 @@ function loginView() {
     ? '<p class="notice">Configure as variáveis públicas do Firebase do projeto SAHMT para habilitar o login.</p>'
     : '';
   const statusMessage = {
-    'profile-missing': 'Esta conta ainda não está provisionada em users/{uid}. Peça ao administrador do SAHMT para cadastrar o acesso.',
+    'profile-missing': 'Esta conta Google ainda não tem um perfil SAHMT. Solicite o acesso por aqui.',
+    'access-pending': 'Sua solicitação de acesso foi enviada. O administrador precisa revisar e configurar seu perfil.',
     blocked: 'Sua conta está autenticada, mas o perfil está inativo ou sem acesso ao SAHMT.',
     'profile-error': 'Não foi possível carregar o perfil e as permissões. Tente novamente quando houver conexão.',
     'auth-error': 'Não foi possível verificar sua sessão do Firebase.'
   }[session.status];
   const resultMessage = notice || statusMessage ? `<p class="notice" role="alert">${escapeHtml(notice || statusMessage)}</p>` : '';
-  const missingProfile = session.status === 'profile-missing' && session.user ? `<section class="identity-card"><p>Para solicitar acesso, envie ao administrador o UID da sua identidade Google:</p><code id="missing-profile-uid">${escapeHtml(session.user.uid)}</code><button type="button" class="secondary-button" id="copy-missing-profile-uid">Copiar UID</button></section>` : '';
-  const profileRetry = session.status === 'profile-error' && session.user ? '<button class="primary-button" id="profile-retry" type="button">Tentar carregar perfil novamente</button>' : '';
+  const accessRequest = session.status === 'profile-missing' && session.user ? '<button class="primary-button" id="request-access" type="button">Solicitar acesso ao SAHMT</button>' : '';
+  const profileRetry = ['profile-error', 'access-pending'].includes(session.status) && session.user ? `<button class="primary-button" id="profile-retry" type="button">${session.status === 'access-pending' ? 'Verificar aprovação' : 'Tentar carregar perfil novamente'}</button>` : '';
   return `<main class="login-gate">
     <section class="login-card" aria-labelledby="login-title">
       <img class="brand-logo" src="${import.meta.env.BASE_URL}assets/icon-192.png" alt="SAHMT">
       <h1 id="login-title">SAHMT</h1>
       <p class="login-message">Entre com sua conta Google autorizada.</p>
-      ${configMessage}${resultMessage}${missingProfile}
+      ${configMessage}${resultMessage}${accessRequest}
       ${profileRetry}
       <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
       ${session.user ? '<button class="text-button" id="blocked-signout" type="button">Sair ou trocar conta</button>' : ''}
@@ -930,8 +931,8 @@ async function loadAdminModule(content) {
   }
   content.innerHTML = '<p class="loading">Carregando perfis da V2…</p>';
   try {
-    const {listUserProfiles} = await import('./data.js');
-    const profiles = await listUserProfiles();
+    const {listUserProfiles, listAccessRequests} = await import('./data.js');
+    const [profiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
     let configuredFeatures = appFeatures;
     if (can('admin')) {
       try { configuredFeatures = normalizeAppFeatures(await (await import('./data-lite.js')).readAppFeatures(session.user.uid)); }
@@ -950,10 +951,12 @@ async function loadAdminModule(content) {
       const editControl = self ? '<span class="record-meta">Perfil atual</span>' : privileged && !can('admin') ? '<span class="record-meta">Edição restrita a administrador</span>' : `<button type="button" class="secondary-button" data-edit-user="${escapeHtml(profile.uid)}">Editar</button>`;
       return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><code>${escapeHtml(profile.uid || '')}</code></div>${editControl}</article>`;
     }).join('');
+    const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
     content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. A pessoa precisa entrar com Google uma vez antes do provisionamento para obter o próprio UID. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
+      <section class="admin-user-list"><div class="admin-list-heading"><h3>Solicitações de acesso</h3></div><p class="record-meta">Pedidos feitos no login aparecem aqui. Eles não concedem acesso automaticamente; escolha função e permissões antes de provisionar.</p>${requestEntries || '<p class="empty-state">Nenhuma solicitação pendente.</p>'}</section>
       ${featureSettings}
-      <section class="admin-user-form panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Use o UID copiado pela pessoa na tela de acesso pendente. O UID é a chave; e-mail e nome são dados do perfil. Permissões só autorizam operações cobertas pelas Rules e módulos V2 ativos.</p>
-        <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Cole o UID recebido"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
+      <section class="admin-user-form panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>O pedido aprovado preenche UID, e-mail e nome automaticamente. Você define função e permissões; isso não cria contas Google nem concede acesso antes de salvar o perfil.</p>
+        <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Preenchido pelo pedido ou manualmente"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'temporario' ? 'selected' : ''} ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
           <fieldset><legend>Permissões SAHMT</legend><div class="permission-grid">${permissions}</div></fieldset>
           <div class="admin-user-flags"><label><input type="checkbox" name="active" checked> Perfil ativo</label><label><input type="checkbox" name="access" checked> Acesso ao SAHMT</label></div>
           <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar perfil</button><button class="secondary-button" id="cancel-user-edit" type="button" hidden>Cancelar edição</button></div><p id="admin-user-status" class="record-meta" role="status" aria-live="polite"></p>
@@ -1012,6 +1015,17 @@ async function loadAdminModule(content) {
       content.querySelector('#user-form-title').textContent = `Editar perfil · ${profile.displayName || profile.uid}`;
       form.querySelector('[type="submit"]').textContent = 'Atualizar perfil';
       content.querySelector('#cancel-user-edit').hidden = false;
+      form.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }));
+    content.querySelectorAll('[data-review-access]').forEach((button) => button.addEventListener('click', () => {
+      const request = accessRequests.find((item) => item.uid === button.dataset.reviewAccess);
+      if (!request) return;
+      resetForm();
+      form.elements.uid.value = request.uid;
+      form.elements.email.value = request.email;
+      form.elements.displayName.value = request.displayName || '';
+      form.elements.role.value = 'temporario';
+      status.textContent = 'Escolha a função e marque somente as permissões necessárias antes de salvar.';
       form.scrollIntoView({behavior: 'smooth', block: 'start'});
     }));
     content.querySelector('#admin-user-search').addEventListener('input', (event) => {
@@ -2938,6 +2952,23 @@ async function syncOutbox() {
 }
 
 function bindLogin() {
+  document.querySelector('#request-access')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Enviando solicitação…';
+    notice = '';
+    try {
+      const {createAccessRequest} = await import('./data.js');
+      await createAccessRequest(session.user);
+      session = {...session, status: 'access-pending'};
+      notice = 'Solicitação enviada. O administrador verá o pedido na área Administração.';
+    } catch (error) {
+      notice = error.code === 'permission-denied'
+        ? 'O Firestore não autorizou o pedido. Entre com a conta Google correta e tente novamente.'
+        : `Não foi possível enviar a solicitação: ${error.message || error}`;
+    }
+    await render();
+  });
   document.querySelector('#profile-retry')?.addEventListener('click', async (event) => {
     event.currentTarget.disabled = true;
     notice = '';
@@ -2948,15 +2979,6 @@ function bindLogin() {
     catch { notice = 'Não foi possível entrar com Google. Verifique a conta e tente novamente.'; await render(); }
   });
   document.querySelector('#blocked-signout')?.addEventListener('click', () => signOutGlobal());
-  document.querySelector('#copy-missing-profile-uid')?.addEventListener('click', async (event) => {
-    const uid = session.user?.uid || '';
-    try {
-      await navigator.clipboard.writeText(uid);
-      event.currentTarget.textContent = 'UID copiado';
-    } catch {
-      event.currentTarget.textContent = 'Copie o UID acima';
-    }
-  });
 }
 
 function sessionChanged(next) {

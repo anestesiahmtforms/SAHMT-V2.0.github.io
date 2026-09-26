@@ -96,7 +96,12 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
   try {
     const snapshot = await getDoc(profileRef);
     if (currentGeneration !== getGeneration()) return;
-    if (!snapshot.exists()) { onState({status: 'profile-missing', user}); return; }
+    if (!snapshot.exists()) {
+      const requestSnapshot = await getDoc(doc(db, 'accessRequests', user.uid));
+      if (currentGeneration !== getGeneration()) return;
+      onState({status: requestSnapshot.exists() && requestSnapshot.data().status === 'PENDING' ? 'access-pending' : 'profile-missing', user});
+      return;
+    }
     const profile = snapshot.data();
     if (profile.uid !== user.uid) throw new Error('O UID do perfil não corresponde à identidade autenticada.');
     await cacheProfile(user.uid, profile);

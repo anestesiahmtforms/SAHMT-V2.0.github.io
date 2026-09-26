@@ -377,6 +377,35 @@ export async function listUserProfiles({pageSize = 200} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
+export async function listAccessRequests({pageSize = 100} = {}) {
+  const result = await getDocsFromServer(query(
+    collection(db, 'accessRequests'), where('status', '==', 'PENDING'), limit(Math.min(100, Math.max(1, pageSize)))
+  ));
+  return result.docs.map((item) => ({id: item.id, ...item.data()}))
+    .sort((left, right) => dateSortValue(left.createdAt) - dateSortValue(right.createdAt));
+}
+
+export async function createAccessRequest(user) {
+  const uid = String(user?.uid || '').trim();
+  const email = String(user?.email || '').trim().toLowerCase();
+  const displayName = String(user?.displayName || email.split('@')[0] || '').trim().slice(0, 120);
+  if (!uid || !email || !displayName) throw new Error('Entre com uma conta Google que tenha e-mail e nome disponíveis.');
+  const ref = doc(db, 'accessRequests', uid);
+  const existing = await getDocFromServer(ref);
+  if (existing.exists() && existing.data().status === 'PENDING') return {id: uid, alreadyPending: true};
+  if (existing.exists()) throw new Error('Já existe uma solicitação registrada para esta conta.');
+  try {
+    await setDoc(ref, {uid, email, displayName, status: 'PENDING', createdAt: serverTimestamp()});
+  } catch (error) {
+    try {
+      const committed = await getDocFromServer(ref);
+      if (committed.exists() && committed.data().status === 'PENDING') return {id: uid, alreadyPending: true};
+    } catch {}
+    throw error;
+  }
+  return {id: uid, alreadyPending: false};
+}
+
 export async function saveUserProfile(input, actorUid) {
   const uid = String(input.uid || '').trim();
   const email = String(input.email || '').trim().toLowerCase();
@@ -403,7 +432,16 @@ export async function saveUserProfile(input, actorUid) {
     createdAt: current.exists() ? current.data().createdAt : serverTimestamp(),
     updatedAt: serverTimestamp()
   };
-  await setDoc(ref, record);
+  const requestRef = doc(db, 'accessRequests', uid);
+  const accessRequest = await getDocFromServer(requestRef);
+  if (accessRequest.exists() && accessRequest.data().status === 'PENDING') {
+    const batch = writeBatch(db);
+    batch.set(ref, record);
+    batch.update(requestRef, {status: 'APPROVED', resolvedByUid: actorUid, resolvedAt: serverTimestamp()});
+    await batch.commit();
+  } else {
+    await setDoc(ref, record);
+  }
   return {id: uid, ...record};
 }
 

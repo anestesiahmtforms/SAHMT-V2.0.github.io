@@ -78,3 +78,4 @@ Não cortar funcionalidades para atingir data ou reduzir código. Não mudar a V
 
 - [ ] Rever módulo a módulo as páginas, botões, siglas, rotas internas e ações da V1 contra a implementação V2; preservar a hierarquia estrutural conhecida e redesenhar persistência/autorização para Firebase UID, Firestore e regras V2, sem replicar planilhas ou autenticação Apps Script.
 - [ ] Homologar em sessão real a operação atômica Evento + destaque compartilhado de sigla; publicar Rules e PWA após CI. A primeira carga de escala/férias segue sujeita à reconciliação documentada.
+- [x] Solicitação de primeiro acesso no próprio login: `accessRequests/{uid}` não concede acesso; `usersManage` configura explicitamente o perfil. Rules relacionam a aprovação à criação do perfil e à identidade Google, sem pedir que a pessoa copie o UID. A homologação com dois usuários reais permanece pendente.

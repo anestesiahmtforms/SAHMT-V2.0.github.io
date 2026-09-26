@@ -32,3 +32,7 @@ Não há modelo de dados de autenticação em planilha. A integração administr
 ## Estado de verificação
 
 O cliente V2 usa o Firebase existente `sahmt-17a16` e observa o documento de perfil durante a sessão. Em leitura somente de consulta ao Console Firebase em 25/09/2026, Google apareceu como provedor ativado; Email/Senha não apareceu como provedor ativado. Nenhuma configuração de provedor foi alterada. Em 25/09/2026, o login Google na V2 publicada chegou ao estado `profile-missing` e exibiu o UID com a ação “Copiar UID”. Em 26/09/2026, o proprietário salvou o primeiro documento `users/{uid}` no Console; a pessoa confirmou que entrou de imediato e a Home autenticada abriu. Isso valida identidade, correspondência do UID e acesso ao shell. Consultas por módulo, gravações controladas e sincronização offline ainda dependem de homologação separada.
+
+## Solicitação de primeiro acesso
+
+A nova experiência substitui a etapa manual de copiar UID: após o login Google, uma conta sem perfil pode criar `accessRequests/{uid}` para sua própria identidade. O pedido não tem permissões e a conta não pode consultar pedidos alheios. `usersManage` vê a fila e define sigla, função e permissões no painel. Ao salvar, a criação/atualização de `users/{uid}` e a aprovação `PENDING` → `APPROVED` são atômicas; Rules correlacionam o UID e o e-mail verificado. A pessoa permanece na tela de login até conferir novamente e o perfil estar ativo. A aprovação por segunda conta ainda precisa de homologação real.

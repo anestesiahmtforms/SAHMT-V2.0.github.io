@@ -253,6 +253,22 @@ service cloud.firestore {
         data.permissions is map && data.permissions.keys().hasOnly(['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) &&
         data.createdAt is timestamp && data.updatedAt is timestamp;
     }
+    function validAccessRequest(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'status', 'createdAt']) &&
+        data.uid == uid && data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+        data.email == request.auth.token.email && request.auth.token.email_verified == true &&
+        data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
+        data.status == 'PENDING' && data.createdAt == request.time;
+    }
+    function validAccessRequestApproval(uid) {
+      let profileAfter = getAfter(/databases/$(database)/documents/users/$(uid)).data;
+      return can('usersManage') && resource.data.uid == uid && resource.data.status == 'PENDING' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedByUid', 'resolvedAt']) &&
+        request.resource.data.status == 'APPROVED' && request.resource.data.resolvedByUid == request.auth.uid &&
+        request.resource.data.resolvedAt == request.time && profileAfter.get('uid', '') == uid &&
+        profileAfter.get('email', '') == resource.data.email;
+    }
     function hasUserManagementPrivilege(data) {
       return data.role == 'administrador_app' ||
         (data.permissions.keys().hasAny(['admin']) && data.permissions.admin == true) ||
@@ -753,6 +769,13 @@ service cloud.firestore {
           validNotificationRead(request.resource.data, uid, notificationId);
         allow update, delete: if false;
       }
+    }
+
+    match /accessRequests/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || can('usersManage'));
+      allow create: if signedIn() && request.auth.uid == uid && !hasProfile() && validAccessRequest(request.resource.data, uid);
+      allow update: if validAccessRequestApproval(uid);
+      allow delete: if false;
     }
 
     match /roles/{roleId} {
