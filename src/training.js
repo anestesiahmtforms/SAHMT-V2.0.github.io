@@ -21,9 +21,17 @@ function watchedPercent(progress) {
 }
 
 function addWatchedRange(ranges, start, end) {
-  const last = ranges.at(-1);
-  if (last && start <= last.end + 0.25) last.end = Math.max(last.end, end);
-  else ranges.push({start, end});
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+  const ordered = [...ranges, {start, end}]
+    .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start)
+    .sort((left, right) => left.start - right.start);
+  const merged = [];
+  for (const range of ordered) {
+    const previous = merged.at(-1);
+    if (previous && range.start <= previous.end + 0.25) previous.end = Math.max(previous.end, range.end);
+    else merged.push({start: range.start, end: range.end});
+  }
+  ranges.splice(0, ranges.length, ...merged);
 }
 
 function loadYouTubeApi() {
