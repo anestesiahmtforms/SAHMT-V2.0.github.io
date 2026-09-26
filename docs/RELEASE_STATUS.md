@@ -5,7 +5,7 @@
 - Repositório oficial: [SAHMT-V2.0.github.io](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io), branch `main`.
 - Commit do código publicado: `24aeeeb7f37c211b68cb1b08ed030b0e63d2466e`.
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
-- [Workflow de build e publicação](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36209596068): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200; o service worker `v22` e os quatro símbolos do shell retornaram HTTP 200. O teste de instalação offline também confirmou o precache dos imports estáticos e símbolos e a preservação do cache de férias.
+- [Workflow de build e publicação do código V2](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36209596068): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200; o service worker `v22` e os quatro símbolos do shell retornaram HTTP 200. O teste de instalação offline confirmou o precache dos imports estáticos e símbolos e a preservação do cache de férias.
 
 ## O que foi validado
 
@@ -25,8 +25,8 @@ O inventário de V1 e os documentos de arquitetura, esquema, sincronização, se
 ## Limites e próximos portões
 
 - **Conta Firebase:** em 25/09/2026, `firebase login:list` confirmou a sessão e `firebase projects:list` listou SAHMT `sahmt-17a16`; a CLI confirmou o Firestore `(default)`, Standard/Native.
-- **Rules, índices e Functions de produção:** `firestore.rules` foi compilado e liberado; os 29 índices do manifesto foram implantados, mas a consulta posterior ainda os mostrou `CREATING`. Functions não foram implantadas: permanecem dependentes da confirmação de Blaze/billing e autorização correspondente.
-- **Homologação real:** login Google autorizado, perfil inicial por UID, Firestore online, offline/retry e escrita controlada continuam pendentes.
+- **Rules, índices e Functions de produção:** `firestore.rules` foi compilado e liberado; os 29 índices do manifesto foram implantados e confirmados `READY`. Functions não foram implantadas: permanecem dependentes da confirmação de Blaze/billing e autorização correspondente.
+- **Homologação real:** o login Google na PWA publicada chegou a `profile-missing` e exibiu o UID; a identidade Auth foi resolvida, mas ainda falta provisionar `users/{uid}`. Shell protegido, consultas Firestore, offline/retry e escrita controlada continuam pendentes.
 - **Migração:** o preview local é somente leitura e exige conferência manual de 423 registros e 8 itens globais. Origem/destino, ordem, autoria, UIDs e totais precisam de aprovação antes de importar.
 - **UI e dispositivos:** comparação interna tela a tela, câmera OCR/QR e layout PDF em Android/iPhone continuam pendentes.
 - **Templates:** a V1 inspecionada não contém uma coleção de modelos reutilizáveis; não se afirma paridade de tal catálogo.
