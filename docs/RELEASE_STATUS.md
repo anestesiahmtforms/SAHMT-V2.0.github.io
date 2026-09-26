@@ -3,10 +3,11 @@
 ## Artefato publicado
 
 - Repositório oficial: [SAHMT-V2.0.github.io](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io), branch `main`.
-- Commit mais recente publicado: `c448286ca43887e4b0b2860e6d75e8b72aa61eb6` (inclui a integração de relatórios assíncronos preparada localmente).
+- Código publicado na branch `main`; o histórico integral está no [repositório oficial](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commits/main).
 - Aplicação pública: [abrir SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/).
 - [Workflow de build e publicação do código V2](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36209596068): build, testes e deploy concluídos com sucesso para o commit acima. Após o deploy, a página respondeu HTTP 200; o service worker `v22` e os quatro símbolos do shell retornaram HTTP 200. O teste de instalação offline confirmou o precache dos imports estáticos e símbolos e a preservação do cache de férias.
 - O workflow do commit mais recente [concluiu build e deploy](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36213411544) em 26/09/2026; GitHub Pages respondeu HTTP 200.
+- A correção que desabilita assinatura do Checklist sem estações foi publicada em `ffbbe1a7ba37852a0af94621fc5ce22b44c52f43`; o [workflow correspondente](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36214300637) concluiu com sucesso.
 
 ## O que foi validado
 
@@ -16,6 +17,8 @@
 - `npm run build`: build Vite concluído com 334 módulos transformados. O SDK completo do Firestore (550,77 kB bruto) e o PDF (419,34 kB) são carregados em chunks dinâmicos; o Vite mantém o aviso para o chunk Firestore acima de 500 kB.
 - Os testes usaram o projeto fictício `demo-sahmt-v2`; não leram nem gravaram dados do projeto Firebase real.
 - O proprietário provisionou `users/{uid}` no Console e confirmou login Google imediato no PWA publicado em 26/09/2026. A captura mostra a Home autenticada; o calendário informa que não há escala publicada na data consultada. Isso confirma Auth → perfil UID → shell, mas não prova disponibilidade de dados migrados nem operações do módulo.
+- Em 26/09/2026, os catálogos iniciais do Firestore foram gravados e relidos: `appConfig/labelStaff` contém 30 siglas de usuários V1 ativos; `stations` contém 28 estações da prévia V1 (23 ativas e 5 inativas), com QR, vigência e ordem sugerida pela linha de origem. Nenhum dado pessoal, escala, férias, treinamento ou resposta de Checklist foi importado nessa carga.
+- Essa carga administrativa foi feita pela API Firestore com a sessão OAuth da Firebase CLI, portanto as Security Rules do cliente não foram avaliadas. Os documentos registram o UID do único perfil V2 ativo como autoria. A conta Google da CLI não corresponde ao e-mail da identidade Firebase desse perfil; revisar essa atribuição de auditoria antes de usar os catálogos como histórico definitivo. Gravações futuras devem ocorrer pela sessão do PWA ou por processo administrativo de migração com autoria técnica explícita.
 
 ## Modelo V2 entregue
 
@@ -28,7 +31,7 @@ O inventário de V1 e os documentos de arquitetura, esquema, sincronização, se
 - **Conta Firebase:** em 25/09/2026, `firebase login:list` confirmou a sessão e `firebase projects:list` listou SAHMT `sahmt-17a16`; a CLI confirmou o Firestore `(default)`, Standard/Native.
 - **Rules, índices e Functions de produção:** `firestore.rules` foi compilado e liberado; os 29 índices do manifesto foram implantados e confirmados `READY`. Functions não foram implantadas: permanecem dependentes da confirmação de Blaze/billing e autorização correspondente.
 - **Homologação real:** login Google, perfil inicial e chegada à Home estão confirmados. Consultas por módulo, offline/retry, escrita controlada e validação em celular permanecem pendentes.
-- **Migração:** o preview local é somente leitura e exige conferência manual de 423 registros e 8 itens globais. Origem/destino, ordem, autoria, UIDs e totais precisam de aprovação antes de importar.
+- **Migração:** a carga de 28 estações e 30 siglas foi limitada aos catálogos indicados acima. O restante da prévia permanece somente leitura e exige conferência manual de origem/destino, ordem, autoria, UIDs e totais antes de qualquer importação.
 - **UI e dispositivos:** comparação interna tela a tela, câmera OCR/QR e layout PDF em Android/iPhone continuam pendentes.
 - **Templates:** a V1 inspecionada não contém uma coleção de modelos reutilizáveis; não se afirma paridade de tal catálogo.
 
