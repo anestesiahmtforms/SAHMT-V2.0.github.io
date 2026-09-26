@@ -729,7 +729,7 @@ test('permissão de escrita cria evento próprio diretamente no Firestore', asyn
   const user = testEnvironment.authenticatedContext('writer').firestore();
   const other = testEnvironment.authenticatedContext('other-writer').firestore();
   const now = new Date();
-  const event = {date: '2026-09-24', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 400, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
+  const event = {date: '2026-09-24', memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 400, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
   await assertSucceeds(setFirestoreRecord(user, 'events', 'standalone', {...event, id: 'standalone', clientMutationId: 'standalone', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
   await assertSucceeds(setFirestoreRecord(user, 'events', 'request-1', {...event, createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
   await assertSucceeds(updateFirestoreRecord(user, 'events', 'request-1', {amountToPay: 420, updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 2}, 'writer'));

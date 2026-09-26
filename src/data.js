@@ -283,6 +283,22 @@ export async function listContactCatalog({pageSize = 200} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
+export async function syncEventMemberDirectory(uid) {
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  const contacts = await listContactCatalog({pageSize: 200});
+  const batch = writeBatch(db);
+  for (const contact of contacts) {
+    const sigla = String(contact.sigla || '').trim().toUpperCase();
+    if (!/^(?:[A-Z]{2}|L2)$/.test(sigla) || !contact.name) continue;
+    batch.set(doc(db, 'eventMembers', sigla), {
+      id: sigla, sigla, name: String(contact.name).slice(0, 120), active: contact.active === true,
+      updatedByUid: uid, updatedAt: serverTimestamp()
+    });
+  }
+  if (contacts.length) await batch.commit();
+  return contacts.length;
+}
+
 export async function listLabelStaffSiglas() {
   const snapshot = await getDocFromServer(doc(db, 'appConfig', 'labelStaff'));
   if (!snapshot.exists() || snapshot.data().active !== true || !Array.isArray(snapshot.data().siglas)) return [];
@@ -334,8 +350,22 @@ export async function saveContact(input, actorUid) {
     updatedByUid: actorUid,
     updatedAt: serverTimestamp()
   };
-  await setDoc(ref, record);
+  const memberRef = doc(db, 'eventMembers', sigla);
+  const batch = writeBatch(db);
+  batch.set(ref, record);
+  batch.set(memberRef, {
+    id: sigla, sigla, name, active: record.active,
+    updatedByUid: actorUid, updatedAt: serverTimestamp()
+  });
+  await batch.commit();
   return {id: sigla, ...record};
+}
+
+export async function listEventMembers() {
+  const snapshot = await getDocsFromServer(query(
+    collection(db, 'eventMembers'), where('active', '==', true), limit(200)
+  ));
+  return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).sort((left, right) => String(left.sigla || '').localeCompare(String(right.sigla || '')));
 }
 
 export async function listUserProfiles({pageSize = 200} = {}) {
@@ -1127,7 +1157,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
   if (!eventId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão deste evento não está disponível. Atualize o relatório antes de editar.');
   const ref = doc(db, 'events', eventId);
-  const fields = ['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay'];
+  const fields = ['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
   if (typeof updates.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) throw new Error('A data do evento é inválida.');
   const queueOfflineEdit = async () => {

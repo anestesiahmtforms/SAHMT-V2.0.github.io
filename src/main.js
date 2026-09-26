@@ -55,6 +55,8 @@ let eventReportSourceRecords = [];
 let eventReportStale = false;
 let eventReportCursor = null;
 let eventReportLoadingMore = false;
+let loadedEventMembers = [];
+let pendingEventLaunch = null;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
 let loadedLabelRecords = [];
@@ -205,13 +207,16 @@ function actionForm(route) {
     if (!can('eventsWrite')) return catalogForm;
     return `${catalogForm}<details class="quick-form" open><summary>Lançamento do evento</summary><form data-module-form="events">
     <div class="form-grid"><label>Data do Evento<input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <label data-event-field="memberStatus">Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" placeholder="Nome e situação"></label>
+    <div data-event-field="memberStatus"><label>Sigla do membro<select name="memberSigla"><option value="">Carregando siglas…</option></select></label>
+    <label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" placeholder="Selecione a sigla para preencher o nome"></label></div>
+    <input name="scheduleSigla" type="hidden">
     <label>Tipo de Evento<select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="delayMultiple">Multiplo do atraso<select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
     <label data-event-field="substitute">Substituto<input name="substitute" maxlength="120"></label><label data-event-field="shift">Turno<select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
     <label>Pagador<select name="payer" required><option value="">Selecione</option></select></label><label>Credor<select name="creditor" required><option value="">Selecione</option></select></label>
     <label>Valor a pagar<input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <label data-event-field="description">Descrição do evento<textarea name="description" rows="3" maxlength="1000"></textarea></label>
+    <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Em Pessoas, atualize as siglas de Eventos a partir dos contatos ativos.</p>
     <p id="event-catalog-missing" class="empty-state" hidden>O catálogo de pagadores e credores ainda precisa ser configurado pela Administração de Eventos.</p>
     <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
     <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></details>`;
@@ -434,9 +439,15 @@ function showScheduleContacts(contacts, context = {}) {
     const actions = `${whatsAppLink ? `<a class="contact-action" href="${escapeHtml(whatsAppLink)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}${phoneDigits ? `<a class="contact-action" href="tel:${phoneDigits}">Ligar</a>` : ''}${contact.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(contact.email)}">Enviar e-mail</a>` : ''}`;
     const released = (context.highlightedSiglas || []).includes(String(contact.sigla || '').toUpperCase());
     const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}" aria-pressed="${released}" aria-label="Liberar ${escapeHtml(contact.name)}">LIBERAR</button>` : '';
-    return `<article class="schedule-contact-record"><h4>${escapeHtml(contact.name)} · ${escapeHtml(contact.sigla)}</h4>${fields.length ? `<dl class="contact-detail-list">${fields.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>` : '<p class="empty-state">Nenhum outro dado de contato cadastrado.</p>'}${actions || release ? `<div class="contact-detail-actions">${release}${actions}</div>` : ''}</article>`;
+    const eventLaunch = can('eventsWrite') ? `<button class="contact-action" type="button" data-launch-event-sigla="${escapeHtml(contact.sigla)}" data-launch-event-name="${escapeHtml(contact.name)}">Registrar evento</button>` : '';
+    return `<article class="schedule-contact-record"><h4>${escapeHtml(contact.name)} · ${escapeHtml(contact.sigla)}</h4>${fields.length ? `<dl class="contact-detail-list">${fields.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>` : '<p class="empty-state">Nenhum outro dado de contato cadastrado.</p>'}${actions || release || eventLaunch ? `<div class="contact-detail-actions">${release}${eventLaunch}${actions}</div>` : ''}</article>`;
   }).join('');
   content.innerHTML = `<p class="eyebrow">SIGLA ${escapeHtml(siglaLabel)}</p><h3 id="schedule-contact-heading">${records.length > 1 ? `Contatos vinculados a ${escapeHtml(siglaLabel)}` : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
+  content.querySelectorAll('[data-launch-event-sigla]').forEach((button) => button.addEventListener('click', () => {
+    pendingEventLaunch = {date: context.date || localDateKey(), memberSigla: button.dataset.launchEventSigla, scheduleSigla: context.sigla || button.dataset.launchEventSigla, name: button.dataset.launchEventName || ''};
+    dialog.close();
+    navigate('events');
+  }));
   content.querySelectorAll('[data-release-sigla]').forEach((button) => button.addEventListener('click', async () => {
     const status = content.querySelector('[data-release-status]');
     const marked = button.getAttribute('aria-pressed') !== 'true';
@@ -510,6 +521,21 @@ async function loadModule(route) {
     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
     await loadEventEntryCatalog();
     await loadEventReport();
+    if (pendingEventLaunch) {
+      const form = document.querySelector('[data-module-form="events"]');
+      if (form) {
+        form.elements.eventDate.value = pendingEventLaunch.date;
+        if (![...form.elements.memberSigla.options].some((option) => option.value === pendingEventLaunch.memberSigla)) {
+          form.elements.memberSigla.add(new Option(`${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`, pendingEventLaunch.memberSigla));
+        }
+        form.elements.memberSigla.value = pendingEventLaunch.memberSigla;
+        form.elements.memberStatus.value = `${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`;
+        form.elements.scheduleSigla.value = pendingEventLaunch.scheduleSigla;
+        form.querySelector('[data-event-field="memberStatus"]')?.scrollIntoView({block: 'nearest'});
+        form.closest('details').open = true;
+      }
+      pendingEventLaunch = null;
+    }
     return;
   }
   if (route === 'labels') {
@@ -556,7 +582,21 @@ async function loadModule(route) {
     try {
       const {listContactCatalog} = await import('./data.js');
       const contacts = await listContactCatalog();
-      content.innerHTML = contacts.length ? `<ul class="record-list">${contacts.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.sigla)} · ${escapeHtml(item.name)}</strong><button class="secondary-button" type="button" data-contact-edit="${escapeHtml(item.sigla)}">Editar</button></div><small>${escapeHtml(item.role || '')}${item.phone ? ` · ${escapeHtml(item.phone)}` : ''}</small><small class="record-meta">${item.active ? 'Ativo' : 'Inativo'}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum contato cadastrado. Use o formulário acima para criar o catálogo inicial.</p>';
+      content.innerHTML = `${contacts.length ? `<ul class="record-list">${contacts.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.sigla)} · ${escapeHtml(item.name)}</strong><button class="secondary-button" type="button" data-contact-edit="${escapeHtml(item.sigla)}">Editar</button></div><small>${escapeHtml(item.role || '')}${item.phone ? ` · ${escapeHtml(item.phone)}` : ''}</small><small class="record-meta">${item.active ? 'Ativo' : 'Inativo'}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum contato cadastrado. Use o formulário acima para criar o catálogo inicial.</p>'}<button class="secondary-button" type="button" id="sync-event-members">Atualizar siglas de Eventos</button><p id="event-members-sync-status" class="record-meta" role="status" aria-live="polite"></p>`;
+      content.querySelector('#sync-event-members')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const status = content.querySelector('#event-members-sync-status');
+        button.disabled = true;
+        if (status) status.textContent = 'Sincronizando somente sigla, nome e estado ativo…';
+        try {
+          const {syncEventMemberDirectory} = await import('./data.js');
+          const count = await syncEventMemberDirectory(session.user.uid);
+          if (status) status.textContent = `${count} contato(s) processado(s). O seletor de Eventos já pode usar as siglas ativas.`;
+        } catch (error) {
+          if (status) status.textContent = `Não foi possível atualizar o catálogo. ${error.message || ''}`;
+          button.disabled = false;
+        }
+      });
       content.querySelectorAll('[data-contact-edit]').forEach((button) => button.addEventListener('click', () => {
         const contact = contacts.find((item) => item.sigla === button.dataset.contactEdit);
         const form = document.querySelector('[data-module-form="people"]');
@@ -1398,7 +1438,7 @@ function renderEventReportRecords() {
   const target = document.querySelector('#event-report-results');
   if (!target) return;
   const term = (document.querySelector('#event-report-person')?.value || '').trim().toLocaleLowerCase('pt-BR');
-  const records = term ? eventReportSourceRecords.filter((item) => `${item.memberStatus || ''} ${item.substitute || ''}`.toLocaleLowerCase('pt-BR').includes(term)) : eventReportSourceRecords;
+  const records = term ? eventReportSourceRecords.filter((item) => `${item.memberSigla || ''} ${item.scheduleSigla || ''} ${item.memberStatus || ''} ${item.substitute || ''}`.toLocaleLowerCase('pt-BR').includes(term)) : eventReportSourceRecords;
   const hasPending = eventReportSourceRecords.some((item) => item.pendingFirestore || item.syncFailed);
   loadedEventReportRecords = records.filter((item) => !item.pendingFirestore && !item.syncFailed);
   const exportButton = document.querySelector('#export-events');
@@ -1438,9 +1478,13 @@ function beginEventEdit(item) {
       select.append(option);
     }
   }
+  const existingMemberSigla = String(item.memberSigla || '').trim().toUpperCase();
+  if (existingMemberSigla && ![...form.elements.memberSigla.options].some((option) => option.value === existingMemberSigla)) {
+    form.elements.memberSigla.add(new Option(`${existingMemberSigla} · sigla histórica`, existingMemberSigla));
+  }
   form.elements.editEventId.value = item.id;
   form.elements.editEventVersion.value = Number(item.version) || 1;
-  for (const [name, value] of Object.entries({eventDate: item.date, memberStatus: item.memberStatus, eventType: item.eventType, delayMultiple: item.delayMultiple ?? '', substitute: item.substitute, shift: item.shift, payer: item.payer, creditor: item.creditor, amountToPay: item.amountToPay, description: item.description})) {
+  for (const [name, value] of Object.entries({eventDate: item.date, memberSigla: item.memberSigla || '', scheduleSigla: item.scheduleSigla || '', memberStatus: item.memberStatus, eventType: item.eventType, delayMultiple: item.delayMultiple ?? '', substitute: item.substitute, shift: item.shift, payer: item.payer, creditor: item.creditor, amountToPay: item.amountToPay, description: item.description})) {
     if (form.elements[name]) form.elements[name].value = value ?? '';
   }
   form.elements.eventType.dispatchEvent(new Event('change', {bubbles: true}));
@@ -1594,13 +1638,13 @@ function resetLabelEditor() {
 }
 
 function exportEventReport() {
-  const columns = ['Data', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo do atraso', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor a pagar'];
+  const columns = ['Data', 'Sigla da escala', 'Sigla do membro', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo do atraso', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor a pagar'];
   const cell = (value) => {
     let text = String(value ?? '');
     if (/^[=+@\-]/.test(text)) text = `'${text}`;
     return `"${text.replaceAll('"', '""')}"`;
   };
-  const rows = [columns, ...loadedEventReportRecords.map((item) => [item.date, item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, Number(item.amountToPay || 0).toFixed(2)])];
+  const rows = [columns, ...loadedEventReportRecords.map((item) => [item.date, item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, Number(item.amountToPay || 0).toFixed(2)])];
   const blob = new Blob(['\ufeff', rows.map((row) => row.map(cell).join(';')).join('\r\n')], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -1675,10 +1719,10 @@ async function shareReportPdf(kind) {
   ].filter(([, getValue]) => pdfRecords.some((item) => String(getValue(item) ?? '').trim()));
   const columns = isLabel
     ? ['#', 'Data', 'Nome do Paciente', ...optionalLabelColumns.map(([label]) => label)]
-    : ['#', 'Data', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor (R$)'];
+    : ['#', 'Data', 'Sigla da escala', 'Sigla do membro', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor (R$)'];
   const rows = isLabel
     ? pdfRecords.map((item, index) => [index + 1, item.date, item.patientName, ...optionalLabelColumns.map(([, getValue]) => getValue(item) || '')])
-    : pdfRecords.map((item, index) => [index + 1, item.date, item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, Number(item.amountToPay || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})]);
+    : pdfRecords.map((item, index) => [index + 1, item.date, item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, Number(item.amountToPay || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})]);
   const alertRowIndexes = isLabel ? pdfRecords.flatMap((item, index) => ['Particular', 'Complementação'].includes(item.type) ? [index] : []) : [];
   const alertCount = alertRowIndexes.length;
   button.disabled = true;
@@ -2234,7 +2278,7 @@ async function bindModuleForm(route) {
       let collectionName; let record;
       if (route === 'events') {
         validateEventForm(values);
-        const eventRecord = {date: values.eventDate || today, memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), status: 'OPEN'};
+        const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
           const result = await updateEventRecord(values.editEventId, eventRecord, session.user.uid, Number(values.editEventVersion));
@@ -2345,6 +2389,10 @@ async function bindModuleForm(route) {
     const form = document.querySelector('[data-module-form="events"]');
     const eventType = form?.elements.eventType;
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
+    form?.elements.memberSigla?.addEventListener('change', () => {
+      const member = loadedEventMembers.find((item) => item.sigla === form.elements.memberSigla.value);
+      if (member) form.elements.memberStatus.value = `${member.sigla} · ${member.name}`;
+    });
     if (form) updateEventEntryFields(form);
     document.querySelector('#event-conflict-refresh')?.addEventListener('click', async (event) => {
       const button = event.currentTarget;
@@ -2432,6 +2480,21 @@ async function loadEventEntryCatalog() {
   try {
     const {getEventCatalog} = await import('./data.js');
     const catalog = await getEventCatalog(session.user.uid);
+    const {listEventMembers} = await import('./data.js');
+    const members = await listEventMembers();
+    loadedEventMembers = members;
+    const memberSelect = form?.elements.memberSigla;
+    if (memberSelect) {
+      const selected = memberSelect.value;
+      memberSelect.replaceChildren(new Option('Selecione uma sigla', ''));
+      for (const member of members) memberSelect.add(new Option(`${member.sigla} · ${member.name}`, member.sigla));
+      if (selected && !members.some((item) => item.sigla === selected)) memberSelect.add(new Option(`${selected} · sigla histórica`, selected));
+      memberSelect.value = selected;
+      memberSelect.disabled = members.length === 0;
+      memberSelect.title = members.length ? '' : 'Cadastre contatos ativos em Pessoas para usar siglas em Eventos.';
+    }
+    const membersMissing = document.querySelector('#event-members-missing');
+    if (membersMissing) membersMissing.hidden = members.length > 0;
     for (const [name, values] of [['payer', catalog.payers], ['creditor', catalog.creditors]]) {
       const select = form?.elements[name];
       if (!select) continue;
@@ -2723,6 +2786,13 @@ function updateEventEntryFields(form) {
       if (!visible) form.elements[name].value = '';
       form.elements[name].disabled = !visible && name === 'memberStatus';
     }
+  }
+  if (form.elements.memberSigla) {
+    form.elements.memberSigla.required = rules.memberStatus;
+    form.querySelector('[data-event-field="memberStatus"]')?.toggleAttribute('hidden', !rules.memberStatus);
+    form.elements.memberSigla.disabled = !rules.memberStatus || form.elements.memberSigla.options.length <= 1;
+    form.elements.memberStatus.required = rules.memberStatus;
+    form.elements.memberStatus.disabled = !rules.memberStatus;
   }
 }
 
