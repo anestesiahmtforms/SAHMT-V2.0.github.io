@@ -22,6 +22,8 @@ A carga inicial de catálogos foi feita por API administrativa do Firebase, que 
 
 Inventário V1, paridade, arquitetura, esquema, segurança, sincronização, implantação e plano estão em [`docs/`](docs/).
 
+As ações do proprietário necessárias para liberar Functions e o consumidor seguro do Drive estão descritas passo a passo em [`docs/OWNER_SETUP.md`](docs/OWNER_SETUP.md). Nenhuma credencial deve ser enviada.
+
 ## Desenvolvimento local
 
 `npm ci`
