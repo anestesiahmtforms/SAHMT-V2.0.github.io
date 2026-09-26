@@ -1033,4 +1033,8 @@ test('coleções não declaradas ficam fechadas por padrão', async () => {
   await seedProfiles([accessProfile('user')]);
   const user = testEnvironment.authenticatedContext('user').firestore();
   await assertFails(getDoc(doc(user, 'unlistedCollection', 'document')));
+  await assertFails(getDoc(doc(user, 'syncQueue', 'report-job')));
+  await assertFails(setDoc(doc(user, 'syncQueue', 'forged-report-job'), {
+    id: 'forged-report-job', resourceType: 'events', resourceId: 'event-1', status: 'pending'
+  }));
 });

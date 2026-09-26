@@ -6,9 +6,9 @@ Firestore é a fonte operacional online. IndexedDB sustenta cache e outbox local
 
 ## Espelhamento Firestore → Apps Script → Sheets
 
-- Uma Cloud Function deve criar `syncQueue/{jobId}` após cada mutação operacional elegível. O ID do job é determinístico para recurso/operação/versão, o documento contém metadados de controle e não copia o payload operacional.
+- Triggers Cloud Functions criam `syncQueue/{jobId}` após mutações em coleções operacionais elegíveis. O ID é SHA-256 determinístico do ID do evento Firestore, então reentrega do mesmo evento não duplica o job; o documento contém metadados de controle e não copia o payload operacional. O código já está no checkout, mas ainda não foi implantado.
 - Apps Script V2 consome jobs pendentes, busca a versão atual do recurso, converte-a por uma projeção permitida e faz upsert por tipo e ID do recurso. Reentrega do mesmo job não duplica linhas; jobs antigos não podem sobrescrever uma versão mais nova já exportada.
-- Estados planejados: `pending`, `processing`, `synced` e `error`; tentativas usam `nextAttemptAt` e a falha guarda apenas mensagem técnica limitada, sem dados do registro.
+- Estados implementados: `pending`, `synced` e `error`; o consumidor serializa execuções com `ScriptLock`, usa `nextAttemptAt` para retry e guarda somente mensagem técnica limitada, sem dados do registro. `processing` não é persistido.
 - A conclusão da ação na PWA ocorre quando Firestore confirma. Indisponibilidade da planilha mantém job para retry, sem travar gravações nem criar dependência no caminho operacional.
 - `users`, `permissions`, tokens e credenciais nunca são lidos nem exportados. O esquema das abas operacionais e a projeção de campos — sobretudo para Etiquetas, que pode conter dados assistenciais — precisam de aprovação e minimização antes de ativar o espelhamento.
 - A fila, o consumidor Apps Script, a planilha e a política de IAM ainda não estão implantados. O desenho de acesso de Apps Script ao Firestore deve ser revisado antes de conceder privilégios amplos; Rules de cliente não são controle de acesso para chamadas servidoras com IAM.

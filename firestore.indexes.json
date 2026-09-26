@@ -28,7 +28,8 @@
     {"collectionGroup":"notifications","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"audienceType","order":"ASCENDING"},{"fieldPath":"audienceValue","order":"ASCENDING"},{"fieldPath":"priority","order":"DESCENDING"}]},
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]},
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"managerUids","arrayConfig":"CONTAINS"}]},
-    {"collectionGroup":"notificationGroups","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]}
+    {"collectionGroup":"notificationGroups","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]},
+    {"collectionGroup":"syncQueue","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"nextAttemptAt","order":"ASCENDING"}]}
   ],
   "fieldOverrides": []
 }

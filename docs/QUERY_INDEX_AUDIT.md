@@ -2,7 +2,7 @@
 
 ## Escopo e limite
 
-Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js` e `firestore.indexes.json`, atualizada em 25/09/2026. Ela confere as consultas do cliente e das callables contra os índices manuais declarados e os índices automáticos por campo. Em 25/09/2026, Rules e os 29 índices manuais foram publicados no projeto autenticado `sahmt-17a16`; consulta autenticada confirmou todos `READY`. A auditoria estática não substitui a homologação de consultas reais com perfil autorizado.
+Auditoria estática de `src/data.js`, `src/main.js`, `functions/index.js`, `apps-script-v2/FirestoreSync.gs` e `firestore.indexes.json`, atualizada em 25/09/2026. Ela confere as consultas do cliente, callables e consumidor de relatórios contra os índices manuais declarados e os índices automáticos por campo. Em 25/09/2026, Rules e os 29 índices manuais então existentes foram publicados no projeto autenticado `sahmt-17a16`; consulta autenticada confirmou todos `READY`. O manifesto local agora contém um 30º índice para a fila de relatório, ainda não implantado. A auditoria estática não substitui a homologação de consultas reais com perfil autorizado.
 
 O Firestore cria índices automáticos por campo e pode mesclar índices para filtros compostos só de igualdade, com `orderBy` opcional. Consultas com faixa ou combinações de faixa/ordenação podem exigir índice manual. Consulte a [visão geral oficial de índices](https://firebase.google.com/docs/firestore/query-data/index-overview) e a [referência oficial para administrar índices](https://firebase.google.com/docs/firestore/query-data/indexing).
 
@@ -29,6 +29,7 @@ O Firestore cria índices automáticos por campo e pode mesclar índices para fi
 | `notifications` | ativo, combinação OR de público e `priority DESC` | `active, audienceType, audienceValue, priority` |
 | `managementAreas` | ativo e `memberUids` ou `managerUids` contém UID | Dois índices `active ASC` + campo `CONTAINS` correspondente |
 | `notificationGroups` | ativo e `memberUids` contém UID | `active ASC, memberUids CONTAINS` |
+| `syncQueue` | consumidor Apps Script: `status == pending`, `nextAttemptAt <= agora`, `nextAttemptAt ASC`, limite 40 | `status ASC, nextAttemptAt ASC` (adicionado localmente; deploy pendente) |
 
 ## Consultas cobertas por índices automáticos
 

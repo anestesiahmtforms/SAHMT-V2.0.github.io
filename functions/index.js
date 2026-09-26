@@ -1,7 +1,9 @@
 import {createHash} from 'node:crypto';
 import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
+import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
+import {buildReportSyncJob} from './report-sync-queue.js';
 
 initializeApp({projectId: process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT});
 const db = getFirestore();
@@ -582,3 +584,44 @@ export const cancelManagementActivity = onCall({region: REGION, enforceAppCheck:
     return {cancelled: true, alreadyCancelled: false};
   });
 });
+
+function createReportSyncTrigger(collectionName) {
+  return onDocumentWritten({document: `${collectionName}/{resourceId}`, region: REGION, retry: true}, async (event) => {
+    const change = event.data;
+    if (!change?.before || !change?.after || (!change.before.exists && !change.after.exists)) return;
+
+    const source = change.after.exists ? change.after : change.before;
+    const storedVersion = source.get('version');
+    const version = Number.isInteger(storedVersion) && storedVersion > 0 ? storedVersion : 1;
+    const job = buildReportSyncJob({
+      collectionName,
+      resourceId: event.params.resourceId,
+      eventId: event.id,
+      beforeExists: change.before.exists,
+      afterExists: change.after.exists,
+      version,
+      now: new Date()
+    });
+    const jobRef = db.collection('syncQueue').doc(job.id);
+
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(jobRef);
+      if (!existing.exists) transaction.create(jobRef, job);
+    });
+  });
+}
+
+export const queueEventsReportSync = createReportSyncTrigger('events');
+export const queueLabelsReportSync = createReportSyncTrigger('labels');
+export const queueChecklistsReportSync = createReportSyncTrigger('checklists');
+export const queueTrainingsReportSync = createReportSyncTrigger('trainings');
+export const queueTrainingReceiptsReportSync = createReportSyncTrigger('trainingReceipts');
+export const queueTrainingCompletionsReportSync = createReportSyncTrigger('trainingCompletions');
+export const queueActivitiesReportSync = createReportSyncTrigger('activities');
+export const queueActivityInteractionsReportSync = createReportSyncTrigger('activityInteractions');
+export const queueIndicatorsReportSync = createReportSyncTrigger('indicators');
+export const queueIndicatorMeasurementsReportSync = createReportSyncTrigger('indicatorMeasurements');
+export const queueActionPlansReportSync = createReportSyncTrigger('actionPlans');
+export const queueActionPlanItemsReportSync = createReportSyncTrigger('actionPlanItems');
+export const queueScoresReportSync = createReportSyncTrigger('scores');
+export const queueAuditLogsReportSync = createReportSyncTrigger('auditLogs');
