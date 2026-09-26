@@ -22,10 +22,12 @@ Restringir remove o acesso de quem dependia apenas do link público. Confirme os
 ## 2. Preparar o projeto Apps Script
 
 1. Crie um projeto Apps Script V2 dentro da pasta oficial.
-2. Copie os arquivos de `apps-script-v2/`, inclusive `appsscript.json` e os validadores `ChecklistValidation.gs`, `TrainingValidation.gs`, `ManagementScoreValidation.gs` e `SparkReportSync.gs`.
-3. O projeto usa os escopos OAuth declarados no manifesto: Firestore REST (`datastore`), Sheets, Drive, requisições externas e gatilhos. Revise o manifesto antes de autorizar.
-4. Nas **Propriedades do script**, defina `SAHMT_V2_REPORTS_DESTINATION_APPROVED` como `YES` somente depois de confirmar que pasta e planilha estão restritas.
-5. Execute `setupSahmtV2Reporting`. Ele verifica a privacidade/localização, valida cabeçalhos antes de alterar abas e guarda o ID da planilha nas propriedades do script. O setup não instala gatilhos.
+2. Para enviar os arquivos deste checkout pelo `clasp`, abra as [configurações do Apps Script](https://script.google.com/home/usersettings), clique em **Configurações → Google Apps Script API** e ative a chave. Essa permissão da conta permite que aplicativos que você autorizou gerenciem projetos e implantações Apps Script; ela é distinta dos escopos de execução do script e pode ser revogada nas mesmas configurações.
+3. No PowerShell, entre no diretório local `apps-script-v2/` e execute `npm.cmd exec --yes --package @google/clasp -- clasp login`; autentique com a conta proprietária. Confirme que `.clasp.json` aponta para o ID do projeto V2 e execute `npm.cmd exec --yes --package @google/clasp -- clasp push`. O envio substitui os arquivos no editor; confirme antes que o projeto remoto é o projeto V2 criado na pasta oficial. O `clasp` não executa as funções nem instala gatilhos.
+4. Como alternativa ao `clasp`, copie os arquivos de `apps-script-v2/` manualmente, inclusive `appsscript.json` e os validadores `ChecklistValidation.gs`, `TrainingValidation.gs`, `ManagementScoreValidation.gs` e `SparkReportSync.gs`.
+5. O projeto usa os escopos OAuth declarados no manifesto: Firestore REST (`datastore`), Sheets, Drive, requisições externas e gatilhos. Revise o manifesto antes de autorizar.
+6. Nas **Propriedades do script**, defina `SAHMT_V2_REPORTS_DESTINATION_APPROVED` como `YES` somente depois de confirmar que pasta e planilha estão restritas.
+7. Execute `setupSahmtV2Reporting`. Ele verifica a privacidade/localização, valida cabeçalhos antes de alterar abas e guarda o ID da planilha nas propriedades do script. O setup não instala gatilhos.
 
 ## 3. Revisar acesso Firestore/IAM
 
