@@ -290,6 +290,32 @@ service cloud.firestore {
         request.resource.data.updatedAt == request.time &&
         request.resource.data.version == resource.data.get('version', 0) + 1;
     }
+    function validScheduleEventHighlightUpdate(scheduleId) {
+      let oldHighlights = resource.data.get('highlights', {});
+      let newHighlights = request.resource.data.get('highlights', {});
+      let oldEvents = oldHighlights.get('events', []);
+      let newEvents = newHighlights.get('events', []);
+      let marker = newEvents[oldEvents.size()];
+      let markerParts = marker.split(':');
+      let eventId = markerParts[2];
+      let eventPath = /databases/$(database)/documents/events/$(eventId);
+      let eventAfter = getAfter(eventPath).data;
+      return can('eventsWrite') && updateActorIsSelf() &&
+        scheduleId.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['highlights', 'updatedByUid', 'updatedAt', 'version']) &&
+        request.resource.data.id == resource.data.id && request.resource.data.date == scheduleId &&
+        request.resource.data.positions == resource.data.positions &&
+        oldHighlights is map && newHighlights is map &&
+        newHighlights.keys().hasOnly(['siglas', 'events']) &&
+        newHighlights.get('siglas', []) == oldHighlights.get('siglas', []) &&
+        oldEvents is list && newEvents is list && oldEvents.size() < 100 && newEvents.size() == oldEvents.size() + 1 &&
+        newEvents.hasAll(oldEvents) && marker is string && markerParts.size() == 3 &&
+        markerParts[0] == 'EVENTO' && markerParts[1] == eventAfter.get('scheduleSigla', '') &&
+        markerParts[2].size() > 0 && eventAfter.get('id', '') == eventId &&
+        eventAfter.get('date', '') == scheduleId && eventAfter.get('createdByUid', '') == request.auth.uid &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.version == resource.data.get('version', 0) + 1;
+    }
     function validLabelRecord(data, labelId) {
       return data.keys().hasAll(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
@@ -408,7 +434,7 @@ service cloud.firestore {
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.eventType in ['Pessoal', 'Férias', 'Ferias', 'ATRASO', 'Suporte', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia', 'Outros'] &&
         data.get('memberSigla', '') is string && data.get('memberSigla', '').size() <= 2 && (data.get('memberSigla', '') == '' || data.get('memberSigla', '').matches('^[A-Z]{2}$') || data.get('memberSigla', '') == 'L2') &&
-        data.get('scheduleSigla', '') is string && data.get('scheduleSigla', '').size() <= 30 && (data.get('scheduleSigla', '') == '' || data.get('scheduleSigla', '').matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')) &&
+        data.get('scheduleSigla', '') is string && data.get('scheduleSigla', '').size() <= 30 && (data.get('scheduleSigla', '') == '' || data.get('scheduleSigla', '') == 'SUPORTE' || data.get('scheduleSigla', '').matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')) &&
         data.memberStatus is string && data.memberStatus.size() <= 160 && data.description is string && data.description.size() <= 1000 &&
         data.delayMultiple in [null, 0, 1, 2, 3, 4, 5, 6] && data.substitute is string && data.substitute.size() <= 120 &&
         data.shift in ['', 'Manhã', 'Manha', 'Tarde', 'Integral'] &&
@@ -776,7 +802,7 @@ service cloud.firestore {
     match /scheduleDays/{scheduleId} {
       allow read: if can('scheduleRead');
       allow create: if can('scheduleWrite') && actorIsSelf();
-      allow update: if validScheduleHighlightUpdate(scheduleId);
+      allow update: if validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
       allow delete: if can('scheduleWrite');
     }
     match /contacts/{sigla} {

@@ -287,23 +287,32 @@ async function loadHome() {
   const vacationsCache = new Map();
   const renderSchedule = (schedule, selectedDate, selectedVacations, selectedContacts, syncState = '') => {
     const offlineTile = (positionCount = 0) => `<div class="sigla-item sigla-item--offline"><button class="sigla-token sigla-button offline-sigla" type="button" data-open-offline-schedule aria-label="Abrir escala e férias 2026 para consulta offline" title="Abrir escala e férias offline">OFF LINE</button><div class="sigla-index">${positionCount + 1}</div></div>`;
+    const supportTile = (positionCount, marked = false) => can('eventsWrite') && featureEnabledForRoute('events', appFeatures)
+      ? `<div class="sigla-item sigla-item--support"><button class="sigla-token sigla-button sigla-token--support${marked ? ' sigla-token--event' : ''}" type="button" data-launch-support-event aria-label="Abrir lançamento de evento de Suporte" title="Abrir lançamento de evento de Suporte">Suporte</button><div class="sigla-index">${positionCount + 1}</div></div>`
+      : '';
     if (!schedule) {
-      content.innerHTML = `<p class="empty-state">Nenhuma escala publicada para esta data.</p><div class="siglas-grid">${offlineTile()}</div>`;
+      content.innerHTML = `<p class="empty-state">Nenhuma escala publicada para esta data.</p><div class="siglas-grid">${supportTile(0)}${offlineTile(can('eventsWrite') ? 1 : 0)}</div>`;
       bindOfflineScheduleLauncher(content);
+      bindScheduleEventLaunch(content, selectedDate);
       return;
     }
     const scheduleView = buildScheduleView(schedule, selectedDate, selectedVacations, selectedContacts);
     const highlightedSiglas = new Set(Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
+    const eventSiglas = new Set((Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : []).map((value) => String(value || '').trim().toUpperCase().replace(/^EVENTO:/, '').split(':', 1)[0]).filter(Boolean));
     const cards = scheduleView.positions.map((position, index) => {
       const hasContact = position.contacts.length > 0;
       const aliases = position.sigla === 'DC' && position.siglas.length ? `<small>${position.siglas.map((sigla) => `<span class="${highlightedSiglas.has(sigla) ? 'sigla-token__released-part--checked' : ''}">${escapeHtml(sigla)}</span>`).join(' · ')}</small>` : '';
       const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>' : `<strong>${String(position.sigla || '—').split(/([/-])/).map((part) => part === '/' || part === '-' ? escapeHtml(part) : `<span class="${position.siglas.includes(part) && highlightedSiglas.has(part) ? 'sigla-token__released-part--checked' : ''}">${escapeHtml(part)}</span>`).join('')}</strong>`;
       const vacationMarker = position.onVacation ? `<small>FÉRIAS${position.vacationPosition ? ` · ${position.vacationPosition}` : ''}</small>` : '';
       const marked = highlightedSiglas.has(position.sigla);
-      return `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}" type="button" data-contact-index="${index}" ${hasContact ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}" title="${hasContact ? 'Abrir contato' : 'Contato não cadastrado'}">${tokenLabel}${aliases}${vacationMarker}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+      const eventMarked = eventSiglas.has(position.sigla) || position.siglas.some((sigla) => eventSiglas.has(sigla));
+      return `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-contact-index="${index}" ${hasContact ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}" title="${hasContact ? 'Abrir contato' : 'Contato não cadastrado'}">${tokenLabel}${aliases}${vacationMarker}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
     }).join('');
-    content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${scheduleView.vacationLabel ? `<p class="schedule-vacation-label"><strong>FÉRIAS</strong> · ${escapeHtml(scheduleView.vacationLabel)}</p>` : ''}${cards ? `<div class="siglas-grid">${cards}${offlineTile(scheduleView.positions.length)}</div>` : `<p class="empty-state">A escala está publicada sem itens.</p><div class="siglas-grid">${offlineTile()}</div>`}`;
+    const supportMarked = eventSiglas.has('SUPORTE');
+    const nextIndex = scheduleView.positions.length + (can('eventsWrite') && featureEnabledForRoute('events', appFeatures) ? 1 : 0);
+    content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${scheduleView.vacationLabel ? `<p class="schedule-vacation-label"><strong>FÉRIAS</strong> · ${escapeHtml(scheduleView.vacationLabel)}</p>` : ''}${cards ? `<div class="siglas-grid">${cards}${supportTile(scheduleView.positions.length, supportMarked)}${offlineTile(nextIndex)}</div>` : `<p class="empty-state">A escala está publicada sem itens.</p><div class="siglas-grid">${supportTile(0, supportMarked)}${offlineTile(can('eventsWrite') ? 1 : 0)}</div>`}`;
     bindOfflineScheduleLauncher(content);
+    bindScheduleEventLaunch(content, selectedDate);
     content.querySelectorAll('[data-contact-index]').forEach((button) => button.addEventListener('click', () => {
       const position = scheduleView.positions[Number(button.dataset.contactIndex)];
       if (position?.contacts.length) showScheduleContacts(position.contacts, {
@@ -425,6 +434,13 @@ async function loadHome() {
   await render();
 }
 
+function bindScheduleEventLaunch(root, date) {
+  root.querySelectorAll('[data-launch-support-event]').forEach((button) => button.addEventListener('click', () => {
+    pendingEventLaunch = {date, memberSigla: '', scheduleSigla: 'SUPORTE', name: '', eventType: 'Suporte'};
+    navigate('events');
+  }));
+}
+
 function showScheduleContacts(contacts, context = {}) {
   const dialog = document.querySelector('#schedule-contact-dialog');
   const content = document.querySelector('#schedule-contact-details');
@@ -529,8 +545,11 @@ async function loadModule(route) {
           form.elements.memberSigla.add(new Option(`${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`, pendingEventLaunch.memberSigla));
         }
         form.elements.memberSigla.value = pendingEventLaunch.memberSigla;
-        form.elements.memberStatus.value = `${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`;
+        form.elements.memberStatus.value = pendingEventLaunch.eventType === 'Suporte'
+          ? 'SUPORTE'
+          : `${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`;
         form.elements.scheduleSigla.value = pendingEventLaunch.scheduleSigla;
+        if (pendingEventLaunch.eventType) form.elements.eventType.value = pendingEventLaunch.eventType;
         form.querySelector('[data-event-field="memberStatus"]')?.scrollIntoView({block: 'nearest'});
         form.closest('details').open = true;
       }

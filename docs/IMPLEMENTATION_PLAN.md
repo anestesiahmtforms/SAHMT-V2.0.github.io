@@ -73,3 +73,8 @@ A Administração agora edita as feature flags sem código em `appConfig/app`, c
 
 Não cortar funcionalidades para atingir data ou reduzir código. Não mudar a V1. Rules e índices já publicados permanecem sujeitos à homologação por fluxo. Antes de cada nova migração ou ativação Drive/Apps Script, confirmar a fonte autenticada, backup, destino, compartilhamento privado e plano reversível; não importar registros operacionais enquanto as conferências humanas estiverem pendentes.
 
+
+## Continuação da paridade estrutural V1 → V2
+
+- [ ] Rever módulo a módulo as páginas, botões, siglas, rotas internas e ações da V1 contra a implementação V2; preservar a hierarquia estrutural conhecida e redesenhar persistência/autorização para Firebase UID, Firestore e regras V2, sem replicar planilhas ou autenticação Apps Script.
+- [ ] Homologar em sessão real a operação atômica Evento + destaque compartilhado de sigla; publicar Rules e PWA após CI. A primeira carga de escala/férias segue sujeita à reconciliação documentada.

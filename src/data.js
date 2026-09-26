@@ -1861,6 +1861,18 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
     await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
     return {id: requestId, pendingFirestore: true};
   }
+  if (collectionName === 'events' && data.scheduleSigla) {
+    try {
+      return await createScheduledEvent(data, {uid, requestId});
+    } catch (error) {
+      try {
+        if (await confirmCommittedMutation({collectionName, data, uid, requestId})) {
+          return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
+        }
+      } catch {}
+      throw error;
+    }
+  }
   const batch = writeBatch(db);
   buildRecordBatch(batch, {collectionName, data, uid, requestId});
   try {
@@ -1879,6 +1891,37 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
   }
 }
 
+async function createScheduledEvent(data, {uid, requestId}) {
+  const day = data.date;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('A data da escala do evento é inválida.');
+  const scheduleRef = doc(db, 'scheduleDays', day);
+  const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${requestId}`;
+  const result = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(scheduleRef);
+    if (!snapshot.exists()) throw new Error('A escala deste dia não está publicada; o evento não foi registrado.');
+    const schedule = snapshot.data();
+    const events = Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : [];
+    if (events.some((value) => String(value).endsWith(`:${requestId}`))) {
+      throw new Error('Este ID de evento já está destacado na escala.');
+    }
+    const version = (Number.isInteger(schedule.version) && schedule.version >= 0 ? schedule.version : 0) + 1;
+    buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
+    transaction.update(scheduleRef, {
+      'highlights.events': [...events, marker],
+      updatedByUid: uid,
+      updatedAt: serverTimestamp(),
+      version
+    });
+    return {
+      id: requestId,
+      pendingFirestore: false,
+      schedule: {...schedule, id: day, highlights: {...schedule.highlights, events: [...events, marker]}, version}
+    };
+  });
+  await writeSafeCache(uid, 'scheduleDays', day, result.schedule).catch(() => {});
+  return {id: result.id, pendingFirestore: result.pendingFirestore};
+}
+
 const flushPromises = new Map();
 export async function flushOutbox(uid, {requestId} = {}) {
   if (!uid || !navigator.onLine) return {synced: 0, pending: 0};
@@ -1893,14 +1936,14 @@ export async function flushOutbox(uid, {requestId} = {}) {
         } else if (operation.type === 'eventEdits') {
           await updateEventRecord(operation.payload.eventId, operation.payload.data, uid, operation.payload.expectedVersion, operation.requestId, {queueOffline: false});
         } else {
-          const batch = writeBatch(db);
-          buildRecordBatch(batch, {
-            collectionName: operation.payload.collectionName,
-            data: operation.payload.data,
-            uid,
-            requestId: operation.requestId,
-          });
-          await batch.commit();
+          const {collectionName, data} = operation.payload;
+          if (collectionName === 'events' && data.scheduleSigla) {
+            await createScheduledEvent(data, {uid, requestId: operation.requestId});
+          } else {
+            const batch = writeBatch(db);
+            buildRecordBatch(batch, {collectionName, data, uid, requestId: operation.requestId});
+            await batch.commit();
+          }
         }
         await removeQueuedOperation(uid, operation.requestId);
         synced++;
