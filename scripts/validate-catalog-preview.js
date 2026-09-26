@@ -7,6 +7,7 @@ const defaultPath = path.resolve(scriptDirectory, '../.local-preview/catalog-imp
 const previewPath = path.resolve(process.argv[2] || defaultPath);
 const errors = [];
 let manualCheckCount = 0;
+let verifiedCheckCount = 0;
 const fail = (message) => errors.push(message);
 const nonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 const validateManualChecks = (entry, prefix) => {
@@ -16,6 +17,13 @@ const validateManualChecks = (entry, prefix) => {
   }
   manualCheckCount += entry.manualChecks.length;
   if (entry.manualChecks.some((check) => !nonEmptyString(check))) fail(`${prefix}.manualChecks contém uma conferência vazia.`);
+  if (entry.verifiedChecks !== undefined) {
+    if (!Array.isArray(entry.verifiedChecks) || entry.verifiedChecks.some((check) => !nonEmptyString(check))) {
+      fail(`${prefix}.verifiedChecks precisa ser uma lista de conferências concluídas não vazias.`);
+    } else {
+      verifiedCheckCount += entry.verifiedChecks.length;
+    }
+  }
 };
 const validDay = (value) => {
   if (value === undefined || value === null || value === '') return true;
@@ -194,6 +202,6 @@ if (preview) {
     process.exitCode = 1;
   } else {
     console.log(`Preview válido: ${preview.stations.length} estações, ${preview.trainings.length} treinamentos, ${preview.scheduleDays.length} dias de escala e ${preview.vacations.length} períodos de férias.`);
-    console.log(`Destino declarado: sahmt-17a16/(default). Modo somente leitura: nenhuma gravação foi feita. ${manualCheckCount} conferências por registro e ${preview.globalManualChecks.length} conferências globais continuam pendentes.`);
+    console.log(`Destino declarado: sahmt-17a16/(default). Modo somente leitura: nenhuma gravação foi feita. ${verifiedCheckCount} conferências por registro concluídas; ${manualCheckCount} por registro e ${preview.globalManualChecks.length} globais continuam pendentes.`);
   }
 }
