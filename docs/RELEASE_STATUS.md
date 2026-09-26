@@ -29,7 +29,7 @@ O inventário de V1 e os documentos de arquitetura, esquema, sincronização, se
 ## Limites e próximos portões
 
 - **Conta Firebase:** em 25/09/2026, `firebase login:list` confirmou a sessão e `firebase projects:list` listou SAHMT `sahmt-17a16`; a CLI confirmou o Firestore `(default)`, Standard/Native.
-- **Rules, índices e Functions de produção:** `firestore.rules` foi compilado e liberado; os 29 índices do manifesto foram implantados e confirmados `READY`. Functions não foram implantadas: permanecem dependentes da confirmação de Blaze/billing e autorização correspondente.
+- **Rules, índices e Functions de produção:** `firestore.rules` foi compilado e liberado; os 29 índices do manifesto foram implantados e confirmados `READY`. A consulta somente de leitura à Cloud Billing API em 26/09/2026 retornou `billingEnabled=false` e nenhuma conta vinculada ao projeto `sahmt-17a16`. Functions não foram implantadas; falta vincular faturamento (Blaze) e obter autorização do proprietário para qualquer deploy.
 - **Homologação real:** login Google, perfil inicial e chegada à Home estão confirmados. Consultas por módulo, offline/retry, escrita controlada e validação em celular permanecem pendentes.
 - **Migração:** a carga de 28 estações e 30 siglas foi limitada aos catálogos indicados acima. O restante da prévia permanece somente leitura e exige conferência manual de origem/destino, ordem, autoria, UIDs e totais antes de qualquer importação.
 - **UI e dispositivos:** comparação interna tela a tela, câmera OCR/QR e layout PDF em Android/iPhone continuam pendentes.
