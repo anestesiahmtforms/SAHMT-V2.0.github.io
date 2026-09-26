@@ -1,15 +1,17 @@
-import {
-  GoogleAuthProvider,
-  browserPopupRedirectResolver,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut
-} from 'firebase/auth';
-import {auth} from './firebase-auth.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
 
 let retryCurrentProfile = null;
+let authApiPromise = null;
+
+function loadAuthApi() {
+  if (!authApiPromise) {
+    authApiPromise = Promise.all([import('firebase/auth'), import('./firebase-auth.js')])
+      .then(([api, {auth}]) => ({...api, auth}))
+      .catch((error) => { authApiPromise = null; throw error; });
+  }
+  return authApiPromise;
+}
 
 async function showCachedSession(user, onState) {
   const profile = await readCachedProfile(user.uid);
@@ -25,6 +27,9 @@ export function watchSession(onState) {
     onState({status: 'unconfigured'});
     return () => {};
   }
+  let disposed = false;
+  let authUnsubscribe = null;
+  let auth = null;
   let profileUnsubscribe = null;
   let generation = 0;
   let onlineHandler = null;
@@ -66,22 +71,29 @@ export function watchSession(onState) {
     if (!user) return Promise.resolve(false);
     return loadProfile(user);
   };
-  const unsubscribe = onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      generation++;
-      clearOnlineHandler();
-      profileUnsubscribe?.();
-      profileUnsubscribe = null;
-      onState({status: 'signed-out'});
-      return;
-    }
-    await loadProfile(user);
-  }, (error) => onState({status: 'auth-error', error}));
+  onState({status: 'checking'});
+  loadAuthApi().then(({onAuthStateChanged, auth: initializedAuth}) => {
+    if (disposed) return;
+    auth = initializedAuth;
+    authUnsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (disposed) return;
+      if (!user) {
+        generation++;
+        clearOnlineHandler();
+        profileUnsubscribe?.();
+        profileUnsubscribe = null;
+        onState({status: 'signed-out'});
+        return;
+      }
+      await loadProfile(user);
+    }, (error) => { if (!disposed) onState({status: 'auth-error', error}); });
+  }).catch((error) => { if (!disposed) onState({status: 'auth-error', error}); });
   return () => {
+    disposed = true;
     clearOnlineHandler();
-    unsubscribe();
+    authUnsubscribe?.();
     profileUnsubscribe?.();
-    if (retryCurrentProfile) retryCurrentProfile = null;
+    retryCurrentProfile = null;
   };
 }
 
@@ -165,12 +177,15 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
 }
 
 export async function signInGoogle() {
+  const {GoogleAuthProvider, browserPopupRedirectResolver, signInWithPopup, auth} = await loadAuthApi();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({prompt: 'select_account'});
   return signInWithPopup(auth, provider, browserPopupRedirectResolver);
 }
 
 export async function signOutGlobal() {
+  if (!firebaseConfigured) return false;
+  const {signOut, auth} = await loadAuthApi();
   if (!auth) return;
   const user = auth.currentUser;
   if (user) {
