@@ -62,9 +62,8 @@ function processSyncJob_(spreadsheet, job) {
   if (!tabName || !['upsert', 'delete'].includes(job.operation) || !job.resourceId || !Number.isInteger(Number(job.version)) || Number(job.version) < 1) {
     throw new Error('Job fora do contrato de exportação.');
   }
-  const resourcePath = '/' + encodeURIComponent(job.resourceType) + '/' + encodeURIComponent(job.resourceId);
   try {
-    const recordDocument = firestoreRequest_(firestoreDocumentsUrl_(resourcePath), {method: 'get'});
+    const recordDocument = firestoreRequest_(firestoreDocumentReadUrl_(job.resourceType, job.resourceId), {method: 'get'});
     const record = firestoreFieldsToJs_(recordDocument.fields || {});
     if (record.id !== job.resourceId || (Number.isFinite(Number(record.version)) && Number(record.version) < Number(job.version))) {
       throw new Error('A versão do registro ainda não corresponde ao job.');

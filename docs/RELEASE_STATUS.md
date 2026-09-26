@@ -27,7 +27,7 @@
 
 ## O que foi validado
 
-- `npm run test:domain`: 68/68 testes passaram, incluindo defaults, normalização de payload e roteamento das feature flags.
+- `npm run test:domain`: 72/72 testes passaram localmente nesta revisão, incluindo defaults, normalização de payload, feature flags, service worker e três checagens da máscara de leitura do Apps Script. A suíte do commit publicado mais recente pode ter uma contagem anterior.
 - `npm run test:rules`: 36/36 casos passaram no Firestore Emulator, incluindo leitura pública de configurações de módulo, escrita restrita ao administrador, validação de campos/versão e bloqueio de exclusão em `appConfig/app`.
 - Testes das Cloud Functions: 15/15 passaram no Emulator, incluindo assinatura do Checklist, treinamento e operações de Gestão.
 - `npm run build`: build Vite concluído com 334 módulos transformados. O SDK completo do Firestore (550,77 kB bruto) e o PDF (419,34 kB) são carregados em chunks dinâmicos; o Vite mantém o aviso para o chunk Firestore acima de 500 kB.

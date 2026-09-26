@@ -96,6 +96,21 @@ function firestoreDocumentsUrl_(path) {
     '/databases/' + encodeURIComponent(SAHMT_V2_CONFIG.databaseId) + '/documents' + path;
 }
 
+function firestoreDocumentReadUrl_(resourceType, resourceId) {
+  const tabName = SAHMT_V2_RESOURCE_TABS[resourceType];
+  const report = tabName && SAHMT_V2_REPORT_TABS[tabName];
+  if (!report || !resourceId) throw new Error('Tipo de recurso não habilitado para leitura de relatório.');
+  const syntheticFields = new Set(['syncKey', 'resourceType', 'idRegistro']);
+  const fieldPaths = Array.from(new Set(['id', 'version'].concat(report.fields.filter(function (field) {
+    return !syntheticFields.has(field);
+  }))));
+  const mask = fieldPaths.map(function (field) {
+    return 'mask.fieldPaths=' + encodeURIComponent(field);
+  }).join('&');
+  const resourcePath = '/' + encodeURIComponent(resourceType) + '/' + encodeURIComponent(resourceId);
+  return firestoreDocumentsUrl_(resourcePath) + '?' + mask;
+}
+
 function firestoreRequest_(url, options) {
   const response = UrlFetchApp.fetch(url, Object.assign({
     muteHttpExceptions: true,
