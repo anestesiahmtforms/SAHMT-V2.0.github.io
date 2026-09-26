@@ -48,6 +48,18 @@ if (preview) {
   if (preview.targetDatabase !== 'sahmt-17a16/(default)') fail('O destino precisa ser sahmt-17a16/(default).');
   if (!validDay(preview.generatedAt)) fail('generatedAt precisa ser uma data ISO válida.');
   if (!Array.isArray(preview.globalManualChecks) || preview.globalManualChecks.length === 0 || preview.globalManualChecks.some((check) => !nonEmptyString(check))) fail('Inclua as conferências manuais globais como instruções não vazias.');
+  const sourceRevalidation = preview.source?.revalidation;
+  if (sourceRevalidation !== undefined) {
+    if (!validDay(sourceRevalidation.checkedAt)) fail('source.revalidation.checkedAt precisa ser uma data ISO válida.');
+    if (!nonEmptyString(sourceRevalidation.sourceModifiedTime) || !Number.isFinite(Date.parse(sourceRevalidation.sourceModifiedTime))) fail('source.revalidation.sourceModifiedTime precisa ser uma data válida.');
+    for (const name of ['stations', 'scheduleDays', 'vacations']) {
+      const result = sourceRevalidation[name];
+      const expectedRows = name === 'stations' ? preview.stations?.length : name === 'scheduleDays' ? preview.scheduleDays?.length : preview.vacations?.length;
+      if (!result || !nonEmptyString(result.range) || result.sourceRows !== expectedRows || result.previewRows !== expectedRows || result.exactMatches !== expectedRows || result.differences !== 0) {
+        fail(`source.revalidation.${name} não confirma correspondência integral com o preview.`);
+      }
+    }
+  }
 
   for (const [name, entries] of [['stations', preview.stations], ['trainings', preview.trainings]]) {
     if (!Array.isArray(entries)) {
@@ -203,5 +215,6 @@ if (preview) {
   } else {
     console.log(`Preview válido: ${preview.stations.length} estações, ${preview.trainings.length} treinamentos, ${preview.scheduleDays.length} dias de escala e ${preview.vacations.length} períodos de férias.`);
     console.log(`Destino declarado: sahmt-17a16/(default). Modo somente leitura: nenhuma gravação foi feita. ${verifiedCheckCount} conferências por registro concluídas; ${manualCheckCount} por registro e ${preview.globalManualChecks.length} globais continuam pendentes.`);
+    if (sourceRevalidation) console.log(`Fonte revalidada em ${sourceRevalidation.checkedAt}: estações, escala e férias correspondem integralmente nos intervalos conferidos; nenhuma gravação foi feita.`);
   }
 }
