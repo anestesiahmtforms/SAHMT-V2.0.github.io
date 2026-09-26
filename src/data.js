@@ -173,6 +173,7 @@ export async function saveAppFeatures(input, actorUid) {
       });
     }
   });
+  try { await writeSafeCache(actorUid, 'appConfig', 'app', {features}); } catch { /* Server save already succeeded; cache is best-effort. */ }
   return features;
 }
 
