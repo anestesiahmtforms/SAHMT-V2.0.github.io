@@ -10,6 +10,8 @@ A PWA e as Rules já estão publicadas. O que ainda depende de configuração do
 
 Na leitura de metadados de 26/09/2026, a pasta `APP SAHMT-V2.0` e a planilha `SAHMT V2.0 - BASE DE RELATÓRIOS` estavam com `anyone: reader`. O setup do Apps Script bloqueia enquanto qualquer uma estiver pública.
 
+**Estado atual verificado em 26/09/2026:** o proprietário restringiu a pasta e a planilha. Uma nova leitura confirmou que ambas só têm acesso de contas nomeadas; não há permissão geral ou “qualquer pessoa”. Esta etapa está concluída e não precisa ser repetida antes de criar o projeto Apps Script, a menos que as permissões mudem.
+
 1. Abra a [pasta oficial no Drive](https://drive.google.com/drive/u/0/folders/1sL1NPK-CkZHmWJO_39MLajU-VpJIOZ74).
 2. Em **Compartilhar → Acesso geral**, selecione **Restrito**. Preserve ou adicione somente os colaboradores que precisam de acesso nominal.
 3. Abra a [planilha de relatórios](https://docs.google.com/spreadsheets/d/1I4FO9iNIFXot8O2p4GI6St76Qu_pznO8iSdyzt65E64/edit) e também selecione **Restrito**.
