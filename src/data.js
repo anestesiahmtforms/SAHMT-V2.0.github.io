@@ -1247,10 +1247,11 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
         return;
       }
       const historyRef = doc(db, 'events', eventId, 'history', String(version));
+      const snapshotFields = [...fields, 'status'];
       const historyEntry = {
         id: String(version), eventId, version, requestId, actorUid: uid, changedFields,
-        before: Object.fromEntries(changedFields.map((field) => [field, event[field] ?? null])),
-        after: Object.fromEntries(changedFields.map((field) => [field, updates[field] ?? null])),
+        before: Object.fromEntries(snapshotFields.map((field) => [field, event[field] ?? null])),
+        after: Object.fromEntries(snapshotFields.map((field) => [field, (field in updates ? updates[field] : event[field]) ?? null])),
         createdAt: serverTimestamp()
       };
       transaction.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version});

@@ -93,14 +93,15 @@ async function updateLabelWithHistory(db, {labelId, label, uid, updates, changed
 async function updateEventWithHistory(db, {eventId, event, uid, updates, requestId}) {
   const version = event.version + 1;
   const changedFields = Object.keys(updates);
+  const snapshotFields = ['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status'];
   const batch = writeBatch(db);
   batch.update(doc(db, 'events', eventId), {
     ...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version
   });
   batch.set(doc(db, 'events', eventId, 'history', String(version)), {
     id: String(version), eventId, version, requestId, actorUid: uid, changedFields,
-    before: Object.fromEntries(changedFields.map((field) => [field, event[field] ?? null])),
-    after: Object.fromEntries(changedFields.map((field) => [field, updates[field] ?? null])),
+    before: Object.fromEntries(snapshotFields.map((field) => [field, event[field] ?? null])),
+    after: Object.fromEntries(snapshotFields.map((field) => [field, (field in updates ? updates[field] : event[field]) ?? null])),
     createdAt: serverTimestamp()
   });
   return batch.commit();
