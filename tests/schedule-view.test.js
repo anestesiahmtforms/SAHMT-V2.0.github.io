@@ -30,7 +30,7 @@ test('mantém posições, associa contatos por sigla e destaca férias em ordem'
   assert.deepEqual(view.positions[0].contacts.map((item) => item.sigla), ['AD', 'CR']);
   assert.deepEqual(view.positions[1].siglas, ['CR', 'LH', 'AD']);
   assert.equal(view.positions[0].onVacation, true);
-  assert.equal(view.positions[2].vacationPosition, 3);
+  assert.equal(view.positions[2].vacationPosition, 1);
   assert.equal(view.vacationLabel, 'CR, AD (período de férias)');
 });
 

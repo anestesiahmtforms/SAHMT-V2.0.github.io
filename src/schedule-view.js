@@ -50,19 +50,30 @@ export function buildScheduleView(schedule = {}, dateKey, vacations = [], contac
   const weekday = weekdayForDate(dateKey, schedule.weekdayLabel);
   const positions = schedulePositions(schedule);
   const vacationOrderFromSchedule = expandScheduleSiglas(String(schedule.vacationLabel || '').split('(')[0]);
-  const vacationOrder = [...vacationOrderFromSchedule];
-  const vacationSiglas = new Set(vacationOrderFromSchedule);
+  const vacationOrder = [];
+  const vacationSiglas = new Set();
+  const vacationPositions = {};
   const vacationLabels = [];
   for (const vacation of vacations) {
     if (vacation.label) vacationLabels.push(String(vacation.label));
-    const entries = Array.isArray(vacation.siglas) && vacation.siglas.length
-      ? vacation.siglas.flatMap((item) => expandScheduleSiglas(item))
-      : expandScheduleSiglas(vacation.label || '');
-    for (const sigla of entries.map((item) => String(item || '').toUpperCase())) {
-      if (!vacationSiglas.has(sigla)) vacationOrder.push(sigla);
-      vacationSiglas.add(sigla);
-    }
+    const columns = Array.isArray(vacation.siglas) && vacation.siglas.length ? vacation.siglas : [vacation.label || ''];
+    columns.forEach((item, columnIndex) => {
+      for (const sigla of expandScheduleSiglas(item).map((value) => String(value || '').toUpperCase())) {
+        if (!vacationSiglas.has(sigla)) vacationOrder.push(sigla);
+        vacationSiglas.add(sigla);
+        // Each ordered entry is a source vacation column (1–5), not a daily schedule position.
+        if (!vacationPositions[sigla]) vacationPositions[sigla] = columnIndex + 1;
+      }
+    });
   }
+  // Keep older schedule-level vacation labels usable when no explicit vacation row supplies a sigla.
+  vacationOrderFromSchedule.forEach((sigla, index) => {
+    if (!vacationSiglas.has(sigla)) {
+      vacationOrder.push(sigla);
+      vacationSiglas.add(sigla);
+      vacationPositions[sigla] = index + 1;
+    }
+  });
   if (!schedule.vacationLabel && !vacationLabels.length) vacationLabels.push('');
   const scheduledVacationSiglas = new Set();
   for (const position of positions) {
@@ -70,7 +81,6 @@ export function buildScheduleView(schedule = {}, dateKey, vacations = [], contac
       if (vacationSiglas.has(sigla)) scheduledVacationSiglas.add(sigla);
     }
   }
-  const vacationPositions = Object.fromEntries(vacationOrder.map((sigla, index) => [sigla, index + 1]));
   const entries = positions.map((position) => {
     const siglas = resolveScheduleSiglas(position.sigla, weekday);
     const vacationParts = siglas.filter((sigla) => vacationSiglas.has(sigla));
