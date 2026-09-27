@@ -1528,8 +1528,34 @@ function renderEventReportRecords() {
       ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
       : '';
   const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : term ? 'Nenhum evento corresponde à busca.' : 'Nenhum evento neste período.';
-  target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong>${can('eventsWrite') && !item.pendingFirestore && !item.syncFailed && (item.createdByUid === session.user.uid || can('admin')) ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
+  target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => {
+    const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
+    const showHistory = confirmed && Number(item.version) > 1;
+    const canEdit = can('eventsWrite') && confirmed && (item.createdByUid === session.user.uid || can('admin'));
+    return `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong><span class="event-record-actions">${showHistory ? `<button class="secondary-button" type="button" data-event-history="${escapeHtml(item.id)}" aria-expanded="false">Histórico</button>` : ''}${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</span></div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Histórico de alterações" hidden></section>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`;
+  }).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
+  target.querySelectorAll('[data-event-history]').forEach((button) => button.addEventListener('click', async () => {
+    const panel = button.closest('li')?.querySelector('[data-event-history-panel]');
+    if (!panel) return;
+    panel.hidden = !panel.hidden;
+    button.setAttribute('aria-expanded', String(!panel.hidden));
+    if (panel.hidden || panel.dataset.loaded === 'true') return;
+    button.disabled = true;
+    panel.innerHTML = '<p class="loading">Carregando histórico…</p>';
+    try {
+      const {listEventHistory} = await import('./data.js');
+      const history = await listEventHistory(button.dataset.eventHistory);
+      const labels = {date: 'Data', memberSigla: 'Sigla do membro', scheduleSigla: 'Sigla da escala', memberStatus: 'Membro / situação', eventType: 'Tipo de evento', description: 'Descrição', delayMultiple: 'Múltiplo do atraso', substitute: 'Substituto', shift: 'Turno', payer: 'Pagador', creditor: 'Credor', amountToPay: 'Valor', status: 'Status'};
+      const value = (item) => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
+      panel.innerHTML = history.length ? `<ol>${history.map((entry) => `<li><strong>Versão ${escapeHtml(entry.version)}</strong><small>${entry.createdAt?.toDate ? escapeHtml(entry.createdAt.toDate().toLocaleString('pt-BR')) : 'Data indisponível'}</small><ul>${entry.changedFields.map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before[field]))}</small><small>Depois: ${escapeHtml(value(entry.after[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<p class="empty-state">Nenhuma alteração histórica encontrada.</p>';
+      panel.dataset.loaded = 'true';
+    } catch (error) {
+      panel.innerHTML = `<p class="empty-state">Não foi possível carregar o histórico. ${escapeHtml(error.message || '')}</p>`;
+    } finally {
+      button.disabled = false;
+    }
+  }));
   target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
     event.currentTarget.disabled = true;
     loadEventReport({append: true});

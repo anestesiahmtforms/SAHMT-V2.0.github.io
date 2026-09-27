@@ -82,7 +82,7 @@ function createWorker({offline = false} = {}) {
   return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
-test('instala o shell V43 com os símbolos da Home e os imports estáticos do Vite', async () => {
+test('instala o shell V44 com os símbolos da Home e os imports estáticos do Vite', async () => {
   assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v43';/);
   const worker = createWorker();
   let install;

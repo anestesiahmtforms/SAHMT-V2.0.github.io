@@ -1194,11 +1194,26 @@ export async function saveEventCatalog(input, uid) {
 }
 
 async function confirmCommittedEventEdit(eventId, updates, uid, requestId, version) {
-  const snapshot = await getDocFromServer(doc(db, 'events', eventId));
-  if (!snapshot.exists()) return false;
+  const [snapshot, historySnapshot] = await Promise.all([
+    getDocFromServer(doc(db, 'events', eventId)),
+    getDocFromServer(doc(db, 'events', eventId, 'history', String(version)))
+  ]);
+  if (!snapshot.exists() || !historySnapshot.exists()) return false;
   const saved = snapshot.data();
+  const history = historySnapshot.data();
   return saved.id === eventId && saved.updatedByUid === uid && saved.version === version &&
+    history.eventId === eventId && history.version === version && history.actorUid === uid && history.requestId === requestId &&
     Object.entries(updates).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
+}
+
+export async function listEventHistory(eventId, {pageSize = 20} = {}) {
+  if (!eventId) throw new Error('Selecione um evento para consultar o histórico.');
+  const result = await getDocsFromServer(query(
+    collection(db, 'events', eventId, 'history'),
+    orderBy('version', 'desc'),
+    limit(Math.min(50, Math.max(1, pageSize)))
+  ));
+  return result.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
 export async function updateEventRecord(eventId, input, uid, expectedVersion, requestId = crypto.randomUUID(), {queueOffline = true} = {}) {
@@ -1216,6 +1231,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
     if (queueOffline) return queueOfflineEdit();
     throw Object.assign(new Error('A conexão caiu durante a sincronização desta edição.'), {code: 'unavailable'});
   }
+  let unchanged = false;
   try {
     await runTransaction(db, async (transaction) => {
       const current = await transaction.get(ref);
@@ -1225,7 +1241,20 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
         throw Object.assign(new Error('Outra pessoa atualizou este evento enquanto você editava.'), {code: 'stale-version'});
       }
       const version = expectedVersion + 1;
+      const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(event[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
+      if (!changedFields.length) {
+        unchanged = true;
+        return;
+      }
+      const historyRef = doc(db, 'events', eventId, 'history', String(version));
+      const historyEntry = {
+        id: String(version), eventId, version, requestId, actorUid: uid, changedFields,
+        before: Object.fromEntries(changedFields.map((field) => [field, event[field] ?? null])),
+        after: Object.fromEntries(changedFields.map((field) => [field, updates[field] ?? null])),
+        createdAt: serverTimestamp()
+      };
       transaction.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version});
+      transaction.set(historyRef, historyEntry);
     });
   } catch (error) {
     if (error.code === 'stale-version') throw error;
@@ -1236,7 +1265,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
     if (!queueOffline) throw error;
     return queueOfflineEdit();
   }
-  return {id: eventId, pendingFirestore: false};
+  return {id: eventId, pendingFirestore: false, unchanged};
 }
 
 export async function listLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 100, cursor = null} = {}) {

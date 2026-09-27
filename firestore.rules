@@ -565,6 +565,51 @@ service cloud.firestore {
          (data.eventType in ['Pessoal', 'Férias', 'Ferias', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
          (data.eventType == 'Outros' && data.memberStatus.size() > 0 && data.description.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']));
     }
+    function eventHistoryFieldMatches(eventId, fields, before, after, field) {
+      let parentPath = /databases/$(database)/documents/events/$(eventId);
+      let oldValue = get(parentPath).data.get(field, null);
+      let newValue = getAfter(parentPath).data.get(field, null);
+      return fields.hasAny([field])
+        ? (before[field] == oldValue && after[field] == newValue && before[field] != after[field])
+        : oldValue == newValue;
+    }
+    function validEventHistoryEntry(data, eventId, version) {
+      let parentPath = /databases/$(database)/documents/events/$(eventId);
+      let before = data.before;
+      let after = data.after;
+      let fields = data.changedFields;
+      return exists(parentPath) && existsAfter(parentPath) &&
+        (can('admin') || get(parentPath).data.createdByUid == request.auth.uid) &&
+        fields is list && fields.size() > 0 && fields.size() <= 13 &&
+        fields.hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
+        before is map && after is map && before.keys().hasOnly(fields) && after.keys().hasOnly(fields) &&
+        before.keys().size() == fields.size() && after.keys().size() == fields.size() &&
+        data.keys().hasAll(['id', 'eventId', 'version', 'requestId', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'eventId', 'version', 'requestId', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+        version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.eventId == eventId &&
+        data.version is int && int(version) == data.version &&
+        data.requestId is string && data.requestId.size() > 0 && data.requestId.size() <= 128 &&
+        data.actorUid == request.auth.uid && data.createdAt == request.time &&
+        get(parentPath).data.version == data.version - 1 &&
+        getAfter(parentPath).data.version == data.version && getAfter(parentPath).data.updatedByUid == request.auth.uid &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'date') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'memberSigla') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'scheduleSigla') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'memberStatus') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'eventType') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'description') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'delayMultiple') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'substitute') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'shift') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'payer') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'creditor') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'amountToPay') &&
+        eventHistoryFieldMatches(eventId, fields, before, after, 'status');
+    }
+    function eventHistoryExistsAfter(eventId, version) {
+      let historyPath = /databases/$(database)/documents/events/$(eventId)/history/$(string(version));
+      return existsAfter(historyPath);
+    }
     function activeManagementArea(areaId) {
       let path = /databases/$(database)/documents/managementAreas/$(areaId);
       return areaId is string && areaId.matches('^[^/]{1,128}$') && exists(path) && get(path).data.active == true;
@@ -964,9 +1009,15 @@ service cloud.firestore {
         request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
+        eventHistoryExistsAfter(eventId, request.resource.data.version) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByUid', 'updatedAt', 'version']) &&
         validEventRecord(request.resource.data, eventId, true);
       allow delete: if false;
+      match /history/{version} {
+        allow read: if exists(/databases/$(database)/documents/events/$(eventId)) && (can('eventsRead') || can('eventsWrite'));
+        allow create: if can('eventsWrite') && validEventHistoryEntry(request.resource.data, eventId, version);
+        allow update, delete: if false;
+      }
     }
     match /labels/{labelId} {
       allow read: if labelRecordAccess();
