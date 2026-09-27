@@ -231,8 +231,8 @@ function actionForm(route) {
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar treinamento</button><button class="secondary-button" id="training-edit-cancel" type="button">Novo treinamento</button></div><p id="training-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="training-admin-list" class="module-content"><p class="loading">Carregando catálogo…</p></div></details><details class="quick-form"><summary>Gerenciar atividades de aprendizagem</summary><form id="learning-activity-form">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Categoria<input name="category" maxlength="60" placeholder="Comunicado, orientação…"></label>
-    <label class="form-span">Descrição<textarea name="description" rows="3" maxlength="500"></textarea></label><label>Link HTTPS (opcional)<input name="resourceUrl" type="url" maxlength="600" placeholder="https://…"></label>
-    <label>Conclusão<select name="completionKind"><option value="NONE">Somente abrir o link</option><option value="ACKNOWLEDGEMENT">Confirmar ciência</option></select></label>
+    <label class="form-span">Descrição<textarea name="description" rows="3" maxlength="500"></textarea></label><label>Tipo de atividade<select name="sourceKind"><option value="EXTERNAL_LINK">Link externo</option><option value="GOOGLE_FORM">Formulário Google · sem validar envio</option><option value="SHEET">Planilha · somente abrir</option><option value="DOCUMENT">Documento do Drive · somente abrir</option><option value="PDF">PDF · somente abrir</option><option value="QUIZ">Quiz externo · sem validar resultado</option><option value="SURVEY">Pesquisa externa · sem validar resposta</option><option value="ACKNOWLEDGEMENT">Ciência SAHMT · sem link</option></select></label><label>Link HTTPS<input name="resourceUrl" type="url" maxlength="600" placeholder="https://…"></label>
+    <label>Conclusão<select name="completionKind"><option value="NONE">Sem conclusão rastreada</option><option value="ACKNOWLEDGEMENT">Confirmar ciência</option></select></label><small class="record-meta form-span">Formulários, documentos, quizzes e pesquisas abrem no serviço de origem; respostas e resultados não são verificados neste fluxo.</small>
     <label>Público<select name="audienceType"><option value="ALL">Todos</option><option value="ROLE">Função</option><option value="USER">UID específico</option></select></label>
     <label class="learning-audience-value" hidden>Função ou UID<input name="audienceValue" maxlength="128"></label><label>Começa<input name="startAt" type="date" required value="${todayInputValue()}"></label><label>Termina<input name="endAt" type="date" required value="${todayInputValue()}"></label>
     <label>Recorrência<select name="recurrenceMode"><option value="ONCE">Uma vez</option><option value="ONCE_PER_VERSION">Uma vez por versão</option></select></label><label>Ordem<input name="order" type="number" min="0" max="9999" step="1" value="0" required></label>
@@ -2324,6 +2324,18 @@ async function bindModuleForm(route) {
       const wrapper = activityForm?.querySelector('.learning-audience-value');
       if (wrapper && activityForm) wrapper.hidden = activityForm.elements.audienceType.value === 'ALL';
     };
+    const setLearningSource = () => {
+      if (!activityForm) return;
+      const kind = activityForm.elements.sourceKind.value;
+      const linked = kind !== 'ACKNOWLEDGEMENT';
+      const completion = activityForm.elements.completionKind;
+      activityForm.elements.resourceUrl.required = linked;
+      activityForm.elements.resourceUrl.disabled = !linked;
+      if (!linked) activityForm.elements.resourceUrl.value = '';
+      completion.querySelector('option[value="ACKNOWLEDGEMENT"]').disabled = kind !== 'EXTERNAL_LINK' && linked;
+      if (!linked) completion.value = 'ACKNOWLEDGEMENT';
+      else if (kind !== 'EXTERNAL_LINK') completion.value = 'NONE';
+    };
     const resetActivity = () => {
       activityForm?.reset();
       if (activityForm) {
@@ -2336,12 +2348,15 @@ async function bindModuleForm(route) {
         activityForm.elements.audienceType.value = 'ALL';
       }
       setAudienceValue();
+      setLearningSource();
       if (activitySubmit) activitySubmit.textContent = 'Salvar atividade';
       if (activityStatus) activityStatus.textContent = '';
     };
     document.querySelector('#learning-activity-reset')?.addEventListener('click', resetActivity);
     activityForm?.elements.audienceType.addEventListener('change', setAudienceValue);
+    activityForm?.elements.sourceKind.addEventListener('change', setLearningSource);
     setAudienceValue();
+    setLearningSource();
     activityForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!activityForm || !activitySubmit) return;
@@ -2354,6 +2369,7 @@ async function bindModuleForm(route) {
           title: activityForm.elements.title.value,
           description: activityForm.elements.description.value,
           category: activityForm.elements.category.value,
+          sourceKind: activityForm.elements.sourceKind.value,
           resourceUrl: activityForm.elements.resourceUrl.value,
           completionKind: activityForm.elements.completionKind.value,
           audienceType: activityForm.elements.audienceType.value,
@@ -2381,6 +2397,7 @@ async function bindModuleForm(route) {
       activityForm.elements.title.value = item.title || '';
       activityForm.elements.description.value = item.description || '';
       activityForm.elements.category.value = item.category || '';
+      activityForm.elements.sourceKind.value = item.sourceKind || 'EXTERNAL_LINK';
       activityForm.elements.resourceUrl.value = item.resourceUrl || '';
       activityForm.elements.completionKind.value = item.completionKind || 'NONE';
       activityForm.elements.audienceType.value = item.audienceType || 'ALL';
@@ -2392,6 +2409,7 @@ async function bindModuleForm(route) {
       activityForm.elements.showInTraining.checked = item.showInTraining === true;
       activityForm.elements.active.checked = item.status === 'ACTIVE';
       setAudienceValue();
+      setLearningSource();
       if (activitySubmit) activitySubmit.textContent = 'Atualizar atividade';
       if (activityStatus) activityStatus.textContent = '';
       activityForm.closest('details').open = true;
@@ -2856,7 +2874,7 @@ function renderTrainingAdminList(items) {
 function renderLearningActivityAdminList(items) {
   const target = document.querySelector('#learning-activity-admin-list');
   if (!target) return;
-  target.innerHTML = items.length ? `<ul class="record-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title || 'Atividade')}</strong><button class="secondary-button" type="button" data-learning-activity-edit="${escapeHtml(item.id)}">Editar</button></div><small>${item.status === 'ACTIVE' ? 'Publicada' : 'Inativa'} · ${escapeHtml(item.audienceType || '')}${item.audienceValue ? ` (${escapeHtml(item.audienceValue)})` : ''} · versão ${escapeHtml(item.version ?? '—')}</small><small class="record-meta">${escapeHtml(item.category || 'Sem categoria')} · ordem ${escapeHtml(item.order ?? '—')}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma atividade cadastrada. Use o formulário para publicar a primeira.</p>';
+  target.innerHTML = items.length ? `<ul class="record-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title || 'Atividade')}</strong><button class="secondary-button" type="button" data-learning-activity-edit="${escapeHtml(item.id)}">Editar</button></div><small>${item.status === 'ACTIVE' ? 'Publicada' : 'Inativa'} · ${escapeHtml(item.sourceKind || 'EXTERNAL_LINK')} · ${escapeHtml(item.audienceType || '')}${item.audienceValue ? ` (${escapeHtml(item.audienceValue)})` : ''} · versão ${escapeHtml(item.version ?? '—')}</small><small class="record-meta">${escapeHtml(item.category || 'Sem categoria')} · ordem ${escapeHtml(item.order ?? '—')}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma atividade cadastrada. Use o formulário para publicar a primeira.</p>';
 }
 
 function timestampInputDate(value) {

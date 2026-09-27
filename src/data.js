@@ -1455,6 +1455,7 @@ export async function saveLearningActivity(input, uid) {
   const audienceType = String(input.audienceType || 'ALL');
   const audienceValue = audienceType === 'ALL' ? '' : String(input.audienceValue || '').trim();
   const completionKind = String(input.completionKind || 'NONE');
+  const sourceKind = String(input.sourceKind || 'EXTERNAL_LINK');
   const recurrenceMode = String(input.recurrenceMode || 'ONCE');
   const startValue = String(input.startAt || '');
   const endValue = String(input.endAt || '');
@@ -1466,20 +1467,22 @@ export async function saveLearningActivity(input, uid) {
       resourceUrl = url.toString();
     }
   } catch { throw new Error('O recurso precisa usar um link HTTPS válido, sem credenciais.'); }
-  const sourceKind = resourceUrl ? 'EXTERNAL_LINK' : 'ACKNOWLEDGEMENT';
+  const linkedSourceKinds = ['EXTERNAL_LINK', 'GOOGLE_FORM', 'SHEET', 'DOCUMENT', 'PDF', 'QUIZ', 'SURVEY'];
   const order = Number(input.order);
   const startAt = new Date(`${startValue}T00:00:00`);
   const endAt = new Date(`${endValue}T23:59:59.999`);
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !title || title.length > 120 || description.length > 500 || category.length > 60 ||
       !['ALL', 'ROLE', 'USER'].includes(audienceType) || audienceValue.length > 128 || (audienceType !== 'ALL' && !audienceValue) ||
-      !['NONE', 'ACKNOWLEDGEMENT'].includes(completionKind) || (!resourceUrl && completionKind !== 'ACKNOWLEDGEMENT') ||
+      !['NONE', 'ACKNOWLEDGEMENT'].includes(completionKind) ||
+      (sourceKind === 'ACKNOWLEDGEMENT' ? Boolean(resourceUrl) || completionKind !== 'ACKNOWLEDGEMENT' :
+        !linkedSourceKinds.includes(sourceKind) || !resourceUrl || (sourceKind !== 'EXTERNAL_LINK' && completionKind !== 'NONE')) ||
       resourceUrl.length > 600 ||
       !['ONCE', 'ONCE_PER_VERSION'].includes(recurrenceMode) || !/^\d{4}-\d{2}-\d{2}$/.test(startValue) || !/^\d{4}-\d{2}-\d{2}$/.test(endValue) ||
       !Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || startAt > endAt ||
       !Number.isInteger(order) || order < 0 || order > 9999) {
     throw new Error('Confira título, categoria, público, janela, ação, recorrência e ordem.');
   }
-  if (completionKind === 'ACKNOWLEDGEMENT' && sourceKind !== 'EXTERNAL_LINK' && !description) {
+  if (completionKind === 'ACKNOWLEDGEMENT' && !description) {
     throw new Error('Descreva a ciência que será solicitada ao usuário.');
   }
   const activityRef = doc(db, 'learningActivities', id);

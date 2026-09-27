@@ -59,6 +59,7 @@ function loadYouTubeApi() {
 
 function learningActivityFeed(activities, receipts, errorMessage = '') {
   if (errorMessage) return `<section class="learning-activity-feed" aria-labelledby="learning-activities-title"><h3 id="learning-activities-title">Atividades de aprendizagem</h3><p class="empty-state">Não foi possível carregar as atividades. ${escapeHtml(errorMessage)}</p></section>`;
+  const sourceLabel = {EXTERNAL_LINK: 'LINK', GOOGLE_FORM: 'FORMULÁRIO', SHEET: 'PLANILHA', DOCUMENT: 'DOCUMENTO', PDF: 'PDF', QUIZ: 'QUIZ EXTERNO', SURVEY: 'PESQUISA EXTERNA', ACKNOWLEDGEMENT: 'CIÊNCIA'};
   const cards = activities.map((activity) => {
     const receipt = receipts.find((item) => item.activityId === activity.id &&
       (activity.recurrenceMode === 'ONCE' || item.activityVersion === activity.version));
@@ -71,7 +72,7 @@ function learningActivityFeed(activities, receipts, errorMessage = '') {
     const evidenceNote = activity.completionKind === 'NONE'
       ? '<small>Abrir o material não registra conclusão nem gera pontos.</small>'
       : '<small>A confirmação fica vinculada à sua conta; não há pontuação nesta atividade.</small>';
-    return `<article class="learning-activity-card"><div><p class="eyebrow">${escapeHtml(activity.category || 'APRENDIZAGEM')}</p><h4>${escapeHtml(activity.title)}</h4>${activity.description ? `<p>${escapeHtml(activity.description)}</p>` : ''}${evidenceNote}</div><div class="learning-activity-actions">${resource}${acknowledgement}</div></article>`;
+    return `<article class="learning-activity-card"><div><p class="eyebrow">${escapeHtml([activity.category || 'APRENDIZAGEM', sourceLabel[activity.sourceKind] || 'RECURSO'].join(' · '))}</p><h4>${escapeHtml(activity.title)}</h4>${activity.description ? `<p>${escapeHtml(activity.description)}</p>` : ''}${evidenceNote}</div><div class="learning-activity-actions">${resource}${acknowledgement}</div></article>`;
   }).join('');
   return `<section class="learning-activity-feed" aria-labelledby="learning-activities-title"><header><div><p class="eyebrow">COMUNICADOS E ORIENTAÇÕES</p><h3 id="learning-activities-title">Atividades de aprendizagem</h3></div></header><p class="record-meta">Links externos não confirmam conclusão. Use “Confirmar ciência” somente quando a atividade pedir essa confirmação.</p>${cards || '<p class="empty-state">Não há atividades publicadas para você neste período.</p>'}</section>`;
 }

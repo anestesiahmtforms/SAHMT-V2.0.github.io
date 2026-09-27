@@ -24,7 +24,7 @@ Coleções novas implantadas no Firebase do projeto:
 Documento versionado e publicado por `trainingsManage`, sem campos de usuário:
 
 - `id`, `version`, `title`, `description`, `category`;
-- `sourceKind` e `resourceUrl` (URL HTTPS validada; sem conteúdo HTML/script ou credenciais);
+- `sourceKind` e `resourceUrl` (URL HTTPS validada; sem conteúdo HTML/script ou credenciais). Fontes externas `EXTERNAL_LINK`, `GOOGLE_FORM`, `SHEET`, `DOCUMENT`, `PDF`, `QUIZ` e `SURVEY` abrem apenas o recurso; a conclusão dessas origens não é observada. `ACKNOWLEDGEMENT` não tem URL e exige ciência explícita. `TRAINING_VIDEO` continua na coleção/módulo próprios;
 - `showInTraining`;
 - `audienceType` (`ALL`, `ROLE` ou `USER`) e `audienceValue` (`''` para `ALL`);
 - `startAt`, `endAt`, `status` (`DRAFT`, `ACTIVE`, `INACTIVE`);
@@ -50,19 +50,21 @@ Não criar um `completionRule` genérico que marque qualquer atividade como conc
 | Fonte V1 | Tratamento V2 |
 |---|---|
 | `EXTERNAL_LINK` + `NONE` | Abrir URL HTTPS em aba externa; abertura não registra conclusão nem ponto. |
-| `ACKNOWLEDGEMENT` | Botão explícito de ciência; recibo idempotente sem pontos. |
+| `GOOGLE_FORM`, `SHEET`, `DOCUMENT`, `PDF`, `QUIZ`, `SURVEY` + `NONE` | Abrir URL HTTPS da origem. O V2 não lê respostas/resultados externos, não registra conclusão e não credita pontos. |
+| `ACKNOWLEDGEMENT` | Atividade interna sem URL; botão explícito de ciência cria recibo idempotente sem pontos. `EXTERNAL_LINK` também pode pedir ciência explícita, sem afirmar que o recurso foi concluído. |
 | `TRAINING_VIDEO` | Usar `trainings` e o validador de treinamento existentes; não duplicar neste feed. |
-| Google Form, Quiz, Survey, arquivo/documento/renovação, Checklist, Management | Bloqueados até cada adaptador validar origem, identidade, evento, versão e recorrência em serviço confiável. Reusar a tela/domain V2 correspondente quando existir; não aceitar declaração do navegador como prova. |
+| Google Form, Quiz, Survey, arquivo/documento | Abertura externa está suportada, sem validação do envio/resultado e sem recibo. Evidência validada permanece bloqueada até adaptador de origem, identidade, evento, versão e recorrência confiável. |
+| Renovação, Checklist, Management | Reusar a tela/domain V2 correspondente; não marcar como concluído no feed até adaptador validar evidência em serviço confiável. |
 | `INTERNAL_FORM`, `CUSTOM` ou tipos desconhecidos | Não publicar como confirmáveis até existir contrato e adaptador explícitos; falhar fechado. |
 
 As recorrências V1 `PER_EVENT`, `PER_VALIDATED_RENEWAL`, `DAILY`, `WEEKLY`, `MONTHLY`, `ANNUAL` e `CUSTOM` ficam indisponíveis no primeiro incremento. Cada uma precisa de chave de evento/janela estável, deduplicação e regras validadas. `ONCE` e `ONCE_PER_VERSION` são as únicas formas de recibo previstas inicialmente.
 
 ## Sequência de implementação e aceitação
 
-1. **Implementado e implantado:** coleções, validadores, Rules e índices para catálogo/recibos; confirmar estado `READY` dos índices e cobrir allow/deny por identidade, público, estado, janela, versão, autoria e imutabilidade no Emulator.
+1. **Implementado e implantado:** coleções, validadores, Rules e índices para catálogo/recibos; os 35 índices estão `READY`. Ainda falta cobrir allow/deny por identidade, público, estado, janela, versão, autoria e imutabilidade no Emulator.
 2. **Implementado e publicado:** CRUD versionado somente no painel `trainingsManage`; valores fora dos tipos/recorrências suportados permanecem indisponíveis.
 3. **Implementado e publicado:** cards junto aos treinamentos com estados vazio/erro, janela filtrada e ações diretas; revisão responsiva e navegação autenticada ainda pendentes.
-4. **Implementado e publicado:** link externo sem conclusão e ciência imutável sem pontos. Repetição usa recibo determinístico; homologar que perfil sem permissão, usuário fora do público e conta sem perfil não leem nem gravam.
+4. **Implementado e publicado:** links externos tipados sem conclusão rastreada e ciência imutável sem pontos. Repetição usa recibo determinístico; homologar que perfil sem permissão, usuário fora do público e conta sem perfil não leem nem gravam.
 5. Adaptadores de evidência e pontuação continuam pendentes; implementá-los um a um depois de fonte e critérios verificados. Não habilitar tipo só porque aparece no enum V1.
 6. Não migrar linhas de atividades até leitura delimitada confirmar novos registros e o proprietário aprovar origem, mapeamento e destino. O snapshot consultado tinha zero IDs.
 

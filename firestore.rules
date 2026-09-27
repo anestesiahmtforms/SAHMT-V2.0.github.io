@@ -155,14 +155,15 @@ service cloud.firestore {
         data.keys().hasOnly(['id', 'version', 'title', 'description', 'category', 'sourceKind', 'resourceUrl', 'showInTraining', 'audienceType', 'audienceValue', 'startAt', 'endAt', 'status', 'completionKind', 'recurrenceMode', 'order', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
         data.id == activityId && activityId.matches('^[A-Za-z0-9_-]{1,64}$') && data.version is int && data.version >= 1 &&
         data.title is string && data.title.size() > 0 && data.title.size() <= 120 && data.description is string && data.description.size() <= 500 &&
-        data.category is string && data.category.size() <= 60 && data.sourceKind in ['EXTERNAL_LINK', 'ACKNOWLEDGEMENT'] &&
+        data.category is string && data.category.size() <= 60 && data.sourceKind in ['EXTERNAL_LINK', 'GOOGLE_FORM', 'SHEET', 'DOCUMENT', 'PDF', 'QUIZ', 'SURVEY', 'ACKNOWLEDGEMENT'] &&
         data.resourceUrl is string && data.resourceUrl.size() <= 600 &&
-        ((data.sourceKind == 'EXTERNAL_LINK' && data.resourceUrl.matches('^https://[^ ]+$')) || (data.sourceKind == 'ACKNOWLEDGEMENT' && data.resourceUrl == '')) &&
+        ((data.sourceKind == 'ACKNOWLEDGEMENT' && data.resourceUrl == '' && data.completionKind == 'ACKNOWLEDGEMENT') ||
+         (data.sourceKind == 'EXTERNAL_LINK' && data.resourceUrl.matches('^https://[^ ]+$')) ||
+         (data.sourceKind in ['GOOGLE_FORM', 'SHEET', 'DOCUMENT', 'PDF', 'QUIZ', 'SURVEY'] && data.resourceUrl.matches('^https://[^ ]+$') && data.completionKind == 'NONE')) &&
         data.showInTraining is bool && data.audienceType in ['ALL', 'ROLE', 'USER'] && data.audienceValue is string && data.audienceValue.size() <= 128 &&
         ((data.audienceType == 'ALL' && data.audienceValue == '') || (data.audienceType in ['ROLE', 'USER'] && data.audienceValue.size() > 0)) &&
         data.startAt is timestamp && data.endAt is timestamp && data.endAt >= data.startAt &&
         data.status in ['ACTIVE', 'INACTIVE'] && data.completionKind in ['NONE', 'ACKNOWLEDGEMENT'] &&
-        (data.completionKind != 'NONE' || data.sourceKind == 'EXTERNAL_LINK') &&
         data.recurrenceMode in ['ONCE', 'ONCE_PER_VERSION'] && data.order is int && data.order >= 0 && data.order <= 9999 &&
         data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
         data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
