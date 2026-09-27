@@ -8,13 +8,13 @@ Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Aut
 - Home, Eventos, Etiquetas, Gestão, Checklist, Treinamentos, Administração e sincronização offline permanecem dentro do mesmo PWA. Administradores também controlam sem código a visibilidade dos módulos configuráveis.
 - Firebase Auth e Firestore Rules continuam autenticando e autorizando o PWA. ESCALA/FÉRIAS tem uma planilha privada como fonte de autoria; o Apps Script V2 publica manualmente snapshots validados no Firestore. O PWA não grava posições da escala nem acessa Sheets por chamadas de dados. Os demais registros operacionais seguem gravações diretas autorizadas no Firestore.
 
-## Estado atual — 26/09/2026
+## Estado atual — 27/09/2026
 
-- GitHub Pages está publicado em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/); o último workflow de documentação concluiu com sucesso.
+- GitHub Pages está publicado em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/); o commit `608aa35` atualizou a documentação da fonte ESCALA/FÉRIAS e o workflow [36328683306](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36328683306) concluiu com sucesso.
 - O primeiro perfil administrador foi provisionado e o proprietário confirmou entrada na Home autenticada.
-- Firestore contém o catálogo de Etiquetas com 30 siglas ativas e o catálogo Checklist com 28 estações (23 ativas, 5 inativas). A ordem das estações segue a posição sugerida pela planilha V1 e ainda precisa de conferência visual.
+- Firestore contém o catálogo de Etiquetas com 30 siglas ativas, o catálogo Checklist com 28 estações (23 ativas, 5 inativas), 31 contatos (30 ativos e um inativo), 31 projeções mínimas de membros para Eventos e 307 dias da escala V1. A ordem das estações segue a posição sugerida pela planilha V1 e ainda precisa de conferência visual.
 - Rules estão publicadas e os 32 índices aparecem como prontos em 26/09/2026. Cloud Functions de produção não estão implantadas; dependem de revisão de faturamento e autorização do proprietário.
-- Não foram importados escala, férias, contatos pessoais, treinamentos, respostas ou assinaturas do Checklist. A Home pode continuar sem escala publicada até a revisão e migração desses dados.
+- A planilha privada ESCALA/FÉRIAS é a fonte de autoria. A consulta de 27/09 confirmou que os 307 dias de escala no Firestore coincidem com a aba `ESCALA`. A aba `FÉRIAS` contém 51 períodos aprovados com siglas; `BA` na semana de 23–29/03 foi confirmado pelo proprietário, e a semana de `CONGRESSO` não tem férias por contingência. Esses períodos ainda não foram publicados no Firestore: a execução da prévia Apps Script foi recusada por permissão. Nenhum dado de treinamento, resposta ou assinatura do Checklist foi importado.
 
 A carga inicial de catálogos foi feita por API administrativa do Firebase, que não executa Security Rules do cliente; a autoria lógica e o limite desse procedimento estão registrados em [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md). As gravações normais devem ocorrer pela sessão do PWA.
 
