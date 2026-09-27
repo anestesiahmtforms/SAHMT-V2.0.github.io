@@ -1,35 +1,39 @@
-# Fonte e atualização da escala e das férias
+# Fonte e sincronização de escala e férias
 
-## Direção recomendada — aguarda validação do PDF
+## Decisão de arquitetura
 
-O Firestore é a fonte operacional única consultada pelo SAHMT V2. A planilha V1 não é uma dependência de execução, destino de sincronização ou arquivo de backup adicional do V2. A V1 permanece sem alterações; o fluxo de atualização proposto usa o PDF offline que a equipe já mantém, sem criar outra planilha.
+A planilha nativa [`ESCALA/FÉRIAS 2026`](https://docs.google.com/spreadsheets/d/1japh5sUW3QU5F3dknhS40VLFBj6SfZKDlrVan5ivzNM/edit) é a referência editável e de planejamento. O Firestore continua servindo os dados ao PWA para manter leitura rápida em Android/iOS, autenticação e autorização no modelo V2. O fluxo será unidirecional: planilha → validação → Firestore. O PWA não deve ler a planilha a cada abertura, nem usar o PDF como entrada.
 
-As coleções continuam distintas porque representam registros diferentes, embora consulta, edição e importação pertençam à mesma área Escala no PWA:
+A planilha foi consultada sem edição em 27/09/2026. A leitura delimitada encontrou:
 
-- `scheduleDays/{YYYY-MM-DD}` guarda as posições e marcações de cada dia. Os 307 dias de escala V1 existentes em 2026 já foram carregados nesta coleção. Uma futura grade de gestão semanal poderá editar vários documentos diários de uma só vez; ela não criará uma segunda fonte de escala.
-- `vacations/{id}` guarda um período por documento, com início, fim, siglas, rótulo e estado ativo. A Home consulta os períodos que cobrem a data e destaca as siglas coincidentes.
+- Aba `ESCALA`: 307 datas distintas e 17 posições (`pos1`–`pos17`), mais o campo de marcações. As linhas de escala ocupam as colunas `J:AB`; metadados/auditoria da planilha ficam nas outras colunas.
+- Aba `FÉRIAS`: 52 períodos com início, fim, siglas e rótulo (`J:M`).
+- A planilha está em `pt_BR` e usa o fuso `America/Sao_Paulo`. A última modificação informada pelo Drive foi 27/09/2026 às 13:17 UTC.
 
-## Fluxo proposto para o PDF offline
+## Modelo operacional
 
-1. Uma pessoa autorizada a editar escala seleciona o PDF atualizado na tela integrada de Escala. O arquivo é lido localmente no navegador; não é armazenado no Firestore nem enviado para uma nova planilha.
-2. O importador extrai dias, posições, períodos de férias e siglas. Se o PDF for imagem, OCR pode auxiliar a extração, mas o resultado não é considerado correto sem validação humana.
-3. Antes de gravar, o PWA mostra uma prévia comparando o conteúdo extraído ao Firestore: novos, alterados, iguais, inválidos e ausentes. Datas, ordem das posições, siglas e intervalos precisam passar pelas validações do domínio.
-4. O usuário confirma as alterações propostas. Itens ausentes no PDF não são apagados nem desativados automaticamente; cada possível cancelamento exige decisão explícita.
-5. As alterações são gravadas em pequenos lotes com identidade idempotente, versão/autoria e confirmação final por releitura do Firestore. Um conflito com edição concorrente é mostrado para revisão, nunca sobrescrito silenciosamente.
+- `scheduleDays/{YYYY-MM-DD}` contém as posições ordenadas e as marcações usadas pela Home e por Eventos. Existem 307 documentos da migração da aba `ESCALA` V1; ainda falta comparar integralmente estes documentos com os 307 registros da planilha recém-indicada antes de afirmar que o espelho está atualizado.
+- `vacations/{id}` contém um período, uma lista de siglas e estado ativo. A última consulta documentada encontrou zero documentos; os 52 períodos da planilha não foram copiados para Firestore.
+- Datas são normalizadas para `YYYY-MM-DD`; as chaves por data permitem continuar a grade no ano seguinte sem substituir o histórico. As siglas compostas da escala são preservadas como estão nas posições; férias são listas explícitas de siglas.
+- Não importar metadados pessoais/auditáveis da planilha (`actorEmail`, `actorName`, UIDs, deviceId etc.) para os documentos operacionais, salvo decisão de produto e necessidade comprovada.
 
-O PDF pode ser atualizado periodicamente sem se tornar a fonte que o app consulta em tempo real. Depois de uma importação confirmada, a Home e Eventos leem exclusivamente as coleções Firestore. Não se propõe sincronização bidirecional ou execução de Apps Script.
+## Fluxo de publicação pretendido
 
-## Estado verificado em 27/09/2026
+1. A equipe edita os dados nas abas `ESCALA` e `FÉRIAS`; a planilha não fica pública.
+2. O conector valida datas reais, linhas duplicadas, posições, siglas, intervalos e tamanho. Mudanças, itens iguais, inválidos e possíveis remoções aparecem numa prévia, sem escrita inicial.
+3. A publicação é idempotente e versionada. Só altera/cria os documentos correspondentes às linhas aprovadas. Linhas ausentes não apagam documentos; cancelamentos requerem ação explícita.
+4. Depois da escrita, o conector relê o Firestore e informa o resultado. O PWA continua lendo apenas `scheduleDays` e `vacations`.
 
-- O checkout contém as sete imagens JPG da galeria offline V1 (`segunda` a `sábado` e férias); não contém um PDF offline para validar o formato ou a extração.
-- `scheduleDays` contém 307 documentos e a carga foi relida contra a fonte V1, conforme [`RELEASE_STATUS.md`](RELEASE_STATUS.md).
-- A coleção Firestore `vacations` foi consultada em modo de leitura e contém zero documentos.
-- A prévia local ignorada pelo Git contém 52 candidatos de férias, mas ainda depende de revisão: não leu notas/cancelamentos e um item não possui lista explícita de siglas.
-- O esquema e as Rules de `vacations` já existem. O PWA ainda não tem uma interface de gestão/importação de férias.
+## Situação e limites
 
-## Dependências antes de implementar e carregar
+- A planilha foi lida em modo somente leitura; nenhum valor foi modificado.
+- O PDF anexado anteriormente nunca foi importado nem armazenado no Firestore; `vacations` estava vazia na consulta registrada. O PDF está fora do processo daqui em diante e não será publicado no repositório.
+- Ainda não há sincronização automática da planilha com o Firestore. Editar a planilha, por si só, não atualiza o PWA. O conector e sua autorização precisam ser implementados/homologados antes de prometer atualização em tempo real.
+- O editor existente de escala no PWA grava no Firestore diretamente; antes de usar a planilha como fonte oficial contínua, esse caminho precisa ser alinhado ao mesmo fluxo para evitar divergência.
+- Nenhuma carga ou alteração do Firestore foi feita a partir desta planilha.
 
-- Receber o PDF offline atual para confirmar se há texto selecionável ou se será necessária leitura OCR e para definir um parser correspondente ao layout real.
-- Reconciliar os 52 candidatos com o PDF vigente e confirmar cancelamentos, alterações e o item sem siglas explícitas.
-- Implementar a área única de gestão e prévia do importador, protegida pela permissão existente `scheduleWrite`.
-- Só então carregar os períodos aprovados, sem sobrescrever documentos divergentes e sem alterar a V1.
+## Próximos passos
+
+1. Comparar todos os 307 registros `ESCALA` com `scheduleDays` e todos os 52 registros `FÉRIAS` com `vacations` atuais, sem escrita.
+2. Fechar o desenho de publicação planilha → Firestore, com autorização restrita, prévia, detecção de concorrência e confirmação.
+3. Implementar e homologar o conector antes da primeira carga de férias ou de uma rotina de atualização contínua.
