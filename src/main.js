@@ -293,19 +293,19 @@ function actionForm(route) {
       <div class="form-grid"><label>Pagadores · um por linha<textarea name="payers" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label><label>Credores · um por linha<textarea name="creditors" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label></div>
       <button class="secondary-button" type="submit">Salvar opções</button><p id="event-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
     if (!can('eventsWrite')) return catalogForm;
-    return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><button class="secondary-button" id="event-launch-close" type="button">Fechar</button></header><form data-module-form="events">
+    return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label>Data do Evento<input name="eventDate" type="date" required value="${todayInputValue()}"></label>
     <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
     <label>Tipo de Evento<select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
+    <label data-event-field="description">Descrição do evento<textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
     <label data-event-field="delayMultiple">Múltiplo do atraso<select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
     <label data-event-field="substitute">Substituto<select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift">Turno<select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
     <label>Pagador<select name="payer" required><option value="">Selecione</option></select></label><label>Credor<select name="creditor" required><option value="">Selecione</option></select></label>
     <label>Valor a pagar<input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
-    <label data-event-field="description">Descrição do evento<textarea name="description" rows="3" maxlength="1000"></textarea></label>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
     <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
-    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;
+    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><button class="secondary-button" id="event-launch-back" type="button" aria-label="Voltar ao app">Voltar</button></footer></dialog>`;
   }
   if (route === 'training' && can('trainingsManage')) return `<details class="quick-form"><summary>Gerenciar catálogo de treinamentos</summary><form id="training-catalog-form">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Link do YouTube<input name="videoUrl" type="url" required maxlength="600" placeholder="https://youtu.be/…"></label>
@@ -2646,7 +2646,10 @@ async function bindModuleForm(route) {
       form?.elements[name]?.addEventListener('change', () => updateEventEntryFields(form));
     }
     form?.elements.amountToPay?.addEventListener('input', () => updateEventEntryFields(form));
-    document.querySelector('#event-launch-close')?.addEventListener('click', resetEventEditor);
+    document.querySelector('#event-launch-back')?.addEventListener('click', resetEventEditor);
+    document.querySelector('#event-launch-dialog')?.addEventListener('click', (event) => {
+      if (event.target === event.currentTarget) resetEventEditor();
+    });
     document.querySelector('#event-launch-dialog')?.addEventListener('cancel', (event) => {
       event.preventDefault();
       resetEventEditor();
