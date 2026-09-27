@@ -2766,6 +2766,7 @@ async function loadEventEntryCatalog() {
         select.value = selected;
         select.dataset.catalogEmpty = values.length === 0 ? 'true' : 'false';
       }
+      if (form) populateEventSubstitutes(form);
       if (configForm) {
         configForm.elements.payers.value = loadedEventCatalog.payers.join('\n');
         configForm.elements.creditors.value = loadedEventCatalog.creditors.join('\n');
@@ -2821,7 +2822,6 @@ async function loadEventEntryCatalog() {
     }
   })() : Promise.resolve();
   const [catalogResult] = await Promise.all([catalogTask, membersTask]);
-  if (currentView() && form) populateEventSubstitutes(form);
   return catalogResult;
 }
 
@@ -2830,11 +2830,7 @@ function populateEventSubstitutes(form) {
   if (!select) return;
   const selected = select.value;
   const options = new Map();
-  for (const member of loadedEventMembers) {
-    const name = String(member.name || '').trim();
-    if (name && name !== member.sigla) options.set(normalizeEventOption(name), name);
-  }
-  for (const raw of [...loadedEventCatalog.payers, ...loadedEventCatalog.creditors]) {
+  for (const raw of loadedEventCatalog.creditors) {
     const name = String(raw || '').trim().replace(/^[A-Z0-9]{2}\s*-\s*/, '').trim();
     if (name && name.toLocaleUpperCase('pt-BR') !== 'CAIXA DA EQUIPE') options.set(normalizeEventOption(name), name);
   }
