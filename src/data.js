@@ -362,10 +362,20 @@ export async function saveContact(input, actorUid) {
 }
 
 export async function listEventMembers() {
-  const snapshot = await getDocsFromServer(query(
-    collection(db, 'eventMembers'), where('active', '==', true), limit(200)
-  ));
-  return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).sort((left, right) => String(left.sigla || '').localeCompare(String(right.sigla || '')));
+  const [snapshot, configuredSiglas] = await Promise.all([
+    getDocsFromServer(query(collection(db, 'eventMembers'), limit(200))),
+    listLabelStaffSiglas()
+  ]);
+  const members = new Map();
+  for (const item of snapshot.docs) {
+    const member = {id: item.id, ...item.data()};
+    if (member.sigla) members.set(member.sigla, member.active === true ? member : null);
+  }
+  for (const sigla of configuredSiglas) {
+    if (!members.has(sigla)) members.set(sigla, {id: sigla, sigla, name: sigla, active: true, catalogOnly: true});
+  }
+  return [...members.values()].filter(Boolean)
+    .sort((left, right) => String(left.sigla || '').localeCompare(String(right.sigla || '')));
 }
 
 export async function listUserProfiles({pageSize = 200} = {}) {

@@ -835,7 +835,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /appConfig/labelStaff {
-      allow read: if can('labelsRead') || can('labelsWrite') || can('labelsManage');
+      allow read: if can('labelsRead') || can('labelsWrite') || can('labelsManage') || can('eventsRead') || can('eventsWrite');
       allow create: if can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1;

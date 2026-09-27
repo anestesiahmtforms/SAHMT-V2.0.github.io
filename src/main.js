@@ -218,7 +218,7 @@ function actionForm(route) {
     <label>Pagador<select name="payer" required><option value="">Selecione</option></select></label><label>Credor<select name="creditor" required><option value="">Selecione</option></select></label>
     <label>Valor a pagar<input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <label data-event-field="description">Descrição do evento<textarea name="description" rows="3" maxlength="1000"></textarea></label>
-    <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Em Pessoas, atualize as siglas de Eventos a partir dos contatos ativos.</p>
+    <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
     <p id="event-catalog-missing" class="empty-state" hidden>O catálogo de pagadores e credores ainda precisa ser configurado pela Administração de Eventos.</p>
     <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
     <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></details>`;
@@ -2562,7 +2562,7 @@ async function bindModuleForm(route) {
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
     form?.elements.memberSigla?.addEventListener('change', () => {
       const member = loadedEventMembers.find((item) => item.sigla === form.elements.memberSigla.value);
-      if (member) form.elements.memberStatus.value = `${member.sigla} · ${member.name}`;
+      if (member) form.elements.memberStatus.value = member.name === member.sigla ? member.sigla : `${member.sigla} · ${member.name}`;
     });
     if (form) updateEventEntryFields(form);
     document.querySelector('#event-conflict-refresh')?.addEventListener('click', async (event) => {
@@ -2658,11 +2658,11 @@ async function loadEventEntryCatalog() {
     if (memberSelect) {
       const selected = memberSelect.value;
       memberSelect.replaceChildren(new Option('Selecione uma sigla', ''));
-      for (const member of members) memberSelect.add(new Option(`${member.sigla} · ${member.name}`, member.sigla));
+      for (const member of members) memberSelect.add(new Option(member.name === member.sigla ? member.sigla : `${member.sigla} · ${member.name}`, member.sigla));
       if (selected && !members.some((item) => item.sigla === selected)) memberSelect.add(new Option(`${selected} · sigla histórica`, selected));
       memberSelect.value = selected;
       memberSelect.disabled = members.length === 0;
-      memberSelect.title = members.length ? '' : 'Cadastre contatos ativos em Pessoas para usar siglas em Eventos.';
+      memberSelect.title = members.length ? '' : 'Cadastre siglas em Etiquetas ou contatos ativos em Pessoas para usar siglas em Eventos.';
     }
     const membersMissing = document.querySelector('#event-members-missing');
     if (membersMissing) membersMissing.hidden = members.length > 0;
