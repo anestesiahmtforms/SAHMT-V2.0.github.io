@@ -22,6 +22,7 @@ function previewScheduleSourceToFirestore() {
   const sourceFingerprint = sha256Hex_(JSON.stringify(source.records));
   const preview = {
     sourceFingerprint: sourceFingerprint,
+    targetFingerprint: scheduleTargetFingerprint_(current),
     sourceModifiedAt: source.sourceModifiedAt,
     generatedAt: new Date().toISOString(),
     scheduleRows: source.schedule.length,
@@ -60,6 +61,9 @@ function publishScheduleSourceToFirestore() {
   }
 
   const current = readScheduleFirestore_();
+  if (!previousPreview.targetFingerprint || scheduleTargetFingerprint_(current) !== previousPreview.targetFingerprint) {
+    throw new Error('O Firestore mudou desde a prévia. Gere e confira uma nova prévia antes de publicar.');
+  }
   const plan = buildScheduleSourcePlan_(source, current);
   if (plan.writes.length !== previousPreview.writes || plan.writes.length > SAHMT_V2_SCHEDULE_SOURCE.maxWrites) {
     throw new Error('O estado do Firestore mudou desde a prévia. Gere e confira uma nova prévia antes de publicar.');
@@ -442,6 +446,34 @@ function schedulePositionsEqual_(left, right) {
     if (leftPosition.position !== rightPosition.position || leftPosition.sigla !== rightPosition.sigla) return false;
   }
   return true;
+}
+
+/** Bind publication to the exact target state that the operator reviewed. */
+function scheduleTargetFingerprint_(current) {
+  const scheduleDays = current.scheduleDays.map(function (record) {
+    const highlights = record.highlights;
+    return {
+      id: record.id,
+      updateTime: record._updateTime || '',
+      positions: Array.isArray(record.positions) ? record.positions.map(function (item) {
+        return {position: item && item.position, sigla: item && item.sigla};
+      }) : null,
+      highlights: highlights ? {
+        siglas: Array.isArray(highlights.siglas) ? highlights.siglas.slice().sort() : [],
+        events: Array.isArray(highlights.events) ? highlights.events.slice().sort() : []
+      } : null
+    };
+  }).sort(function (left, right) { return left.id.localeCompare(right.id); });
+  const vacations = current.vacations.map(function (record) {
+    return {
+      id: record.id,
+      updateTime: record._updateTime || '',
+      start: record.start || '', end: record.end || '',
+      siglas: Array.isArray(record.siglas) ? record.siglas.slice() : [],
+      label: record.label || '', notes: record.notes || '', active: record.active === true
+    };
+  }).sort(function (left, right) { return left.id.localeCompare(right.id); });
+  return sha256Hex_(JSON.stringify({scheduleDays: scheduleDays, vacations: vacations}));
 }
 
 function compareScheduleSourceWithFirestore_(source, current) {
