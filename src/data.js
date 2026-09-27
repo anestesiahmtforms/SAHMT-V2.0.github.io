@@ -374,7 +374,9 @@ export async function listEventMembers() {
   for (const item of directoryResult.status === 'fulfilled' ? directoryResult.value.docs : []) {
     const member = {id: item.id, ...item.data()};
     const sigla = String(member.sigla || '').trim().toUpperCase();
-    if (sigla) members.set(sigla, member.active === true ? {...member, sigla} : null);
+    // Published schedules can still contain an inactive directory member.
+    // Keep the name for that scheduled sigla without reactivating the contact.
+    if (sigla && member.name) members.set(sigla, {...member, sigla});
   }
   // Contacts are the editable source for names. An older eventMembers record
   // can be missing or stale even while the contact is already available.

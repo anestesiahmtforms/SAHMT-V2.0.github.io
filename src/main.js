@@ -1632,6 +1632,7 @@ function beginEventEdit(item) {
       select.append(option);
     }
   }
+  setEventTypeContext(form, item.eventType === 'Suporte' ? 'support' : 'schedule');
   form.elements.editEventId.value = item.id;
   form.elements.editEventVersion.value = Number(item.version) || 1;
   for (const [name, value] of Object.entries({eventDate: item.date, memberSigla: item.memberSigla || '', scheduleSigla: item.scheduleSigla || '', memberStatus: item.memberStatus, eventType: item.eventType, delayMultiple: item.delayMultiple ?? '', substitute: item.substitute, shift: item.shift, payer: item.payer, creditor: item.creditor, amountToPay: item.amountToPay, description: item.description})) {
@@ -1654,6 +1655,7 @@ function resetEventEditor() {
   if (status) status.textContent = '';
   if (conflictRefresh) conflictRefresh.hidden = true;
   form.reset();
+  setEventTypeContext(form, 'schedule');
   form.elements.memberStatus.readOnly = true;
   form.elements.editEventId.value = '';
   form.elements.editEventVersion.value = '';
@@ -2535,6 +2537,7 @@ async function bindModuleForm(route) {
         for (const name of ['memberStatus', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay']) {
           values[name] = form.elements[name]?.value ?? '';
         }
+        values.eventType = form.elements.eventType.value;
         validateEventForm(values);
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), status: 'OPEN'};
         if (values.editEventId) {
@@ -3188,6 +3191,7 @@ function launchEventSupport(day) {
   const form = document.querySelector('[data-module-form="events"]');
   if (!form) return;
   resetEventEditor();
+  setEventTypeContext(form, 'support');
   form.elements.eventDate.value = day;
   form.elements.memberSigla.value = '';
   form.elements.scheduleSigla.value = 'SUPORTE';
@@ -3214,6 +3218,8 @@ async function launchEventFromSchedule(day, position) {
   }
   const form = document.querySelector('[data-module-form="events"]');
   if (!form) return;
+  resetEventEditor();
+  setEventTypeContext(form, 'schedule');
   const memberSigla = String(selected.sigla || scheduleSigla).toUpperCase();
   form.elements.eventDate.value = day;
   form.elements.editEventId.value = '';
@@ -3238,6 +3244,14 @@ async function launchEventFromSchedule(day, position) {
   const dialog = document.querySelector('#event-launch-dialog');
   if (dialog && !dialog.open) dialog.showModal();
   form.elements.eventType.focus({preventScroll: true});
+}
+
+function setEventTypeContext(form, context) {
+  const select = form?.elements.eventType;
+  if (!select) return;
+  const support = [...select.options].find((option) => option.value === 'Suporte');
+  if (support) support.disabled = context !== 'support';
+  select.disabled = context === 'support';
 }
 
 function chooseEventScheduleMember(scheduleSigla, choices) {
