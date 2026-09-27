@@ -864,7 +864,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /scheduleDays/{scheduleId} {
-      allow read: if can('scheduleRead');
+      allow read: if can('scheduleRead') || can('eventsRead') || can('eventsWrite');
       allow create: if can('scheduleWrite') && actorIsSelf();
       allow update: if validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
       allow delete: if can('scheduleWrite');

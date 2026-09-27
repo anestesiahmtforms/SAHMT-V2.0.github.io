@@ -269,6 +269,7 @@ function shellView() {
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
   const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="event-day-control" ${eventReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="event-report-day" value="${todayInputValue()}"></label><label id="event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><label>Filtrar por pessoa<input type="search" id="event-report-person" placeholder="Nome ou sigla" autocomplete="off"></label><button class="secondary-button" type="button" id="export-events" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><small class="record-meta">A busca inclui todos os registros carregados do período; use “Carregar mais” para consultar períodos extensos.</small><div id="event-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
+  const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-labelledby="event-schedule-title"><header class="event-schedule-heading"><div><p class="eyebrow">ESCALA DIÁRIA</p><h2 id="event-schedule-title">Anestesiologistas</h2><p id="event-schedule-weekday" class="record-meta"></p></div><label class="date-picker">Data<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const labelReport = route === 'labels' ? `<section class="event-report" aria-label="Relatórios de etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportMode === 'daily'}">RELATÓRIO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportMode === 'monthly'}">RELATÓRIO MENSAL - ETIQUETAS</button></div><div class="report-period"><label id="label-day-control" ${labelReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="label-report-day" value="${todayInputValue()}"></label><label id="label-month-control" ${labelReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-labels" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
@@ -276,12 +277,13 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="section-heading"><p class="eyebrow">ACESSO RÁPIDO</p><h2>Áreas do SAHMT</h2></div><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel"><p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>${checklistVisual}${managementBrand}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button" data-route="home">Voltar para Home</button></section>`;
+    </section>` : `<section class="module-view panel"><p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>${checklistVisual}${managementBrand}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button" data-route="home">Voltar para Home</button></section>`;
   return `<div class="app-shell">
     <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong><small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small></div><button class="logout-button" id="logout">Sair</button></div></header>
     <main class="main-content"><div class="page-title"><p class="eyebrow">GESTÃO RESPONSÁVEL</p><h1>${escapeHtml(title)}</h1></div>${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
+    <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">SAHMT · Hospital e equipe</footer>
   </div>`;
 }
@@ -547,6 +549,7 @@ async function loadModule(route) {
     document.querySelector('#share-events-pdf')?.addEventListener('click', () => shareReportPdf('events'));
     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
     await loadEventEntryCatalog();
+    bindEventSchedule();
     await loadEventReport();
     if (pendingEventLaunch) {
       const form = document.querySelector('[data-module-form="events"]');
@@ -2958,6 +2961,110 @@ async function loadChecklistStationAdmin() {
     }
   }
   await refresh();
+}
+
+function bindEventSchedule() {
+  const dateInput = document.querySelector('#event-schedule-date');
+  const content = document.querySelector('#event-schedule-content');
+  if (!dateInput || !content) return;
+  dateInput.value = localDateKey();
+  let requestSequence = 0;
+  const render = async () => {
+    const requestId = ++requestSequence;
+    const day = dateInput.value;
+    if (!day) return;
+    const weekday = new Intl.DateTimeFormat('pt-BR', {weekday: 'long', timeZone: 'UTC'}).format(new Date(`${day}T12:00:00Z`));
+    const weekdayLabel = document.querySelector('#event-schedule-weekday');
+    if (weekdayLabel) weekdayLabel.textContent = `${weekday} · toque em uma sigla para lançar um evento`;
+    content.innerHTML = '<p class="loading">Carregando escala…</p>';
+    try {
+      const {readSchedule} = await import('./data.js');
+      const schedule = await readSchedule(day, session.user.uid);
+      if (requestId !== requestSequence || !content.isConnected) return;
+      if (!schedule) {
+        content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
+        return;
+      }
+      const view = buildScheduleView(schedule, day, [], []);
+      if (!view.positions.length) {
+        content.innerHTML = '<p class="empty-state">A escala está publicada sem posições para esta data.</p>';
+        return;
+      }
+      content.innerHTML = `<div class="siglas-grid event-siglas-grid">${view.positions.map((position, index) => `<div class="sigla-item"><button class="sigla-token sigla-button" type="button" data-event-schedule-position="${index}" ${can('eventsWrite') ? '' : 'disabled'} aria-label="${can('eventsWrite') ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Sigla ${escapeHtml(position.sigla)}`}" title="${can('eventsWrite') ? 'Lançar evento' : 'Somente consulta'}"><strong>${escapeHtml(position.sigla)}</strong></button><div class="sigla-index">${escapeHtml(position.position || index + 1)}</div></div>`).join('')}</div>${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}`;
+      content.querySelectorAll('[data-event-schedule-position]').forEach((button) => button.addEventListener('click', () => {
+        const position = view.positions[Number(button.dataset.eventSchedulePosition)];
+        if (position) void launchEventFromSchedule(day, position);
+      }));
+    } catch (error) {
+      if (requestId !== requestSequence || !content.isConnected) return;
+      content.innerHTML = `<p class="empty-state">${error.code === 'permission-denied' ? 'Seu perfil precisa de permissão para consultar a escala.' : 'Não foi possível carregar a escala. Verifique a conexão e tente novamente.'}</p>`;
+    }
+  };
+  document.querySelector('#event-schedule-previous')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, -1); void render(); });
+  document.querySelector('#event-schedule-today')?.addEventListener('click', () => { dateInput.value = localDateKey(); void render(); });
+  document.querySelector('#event-schedule-next')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, 1); void render(); });
+  dateInput.addEventListener('change', render);
+  void render();
+}
+
+async function launchEventFromSchedule(day, position) {
+  if (!can('eventsWrite')) return;
+  const scheduleSigla = String(position.sigla || '').trim().toUpperCase();
+  const scheduledSiglas = [...new Set((position.siglas?.length ? position.siglas : [scheduleSigla])
+    .map((sigla) => String(sigla || '').trim().toUpperCase()).filter((sigla) => /^(?:[A-Z]{2}|L2)$/.test(sigla)))];
+  const choices = scheduledSiglas.map((sigla) => loadedEventMembers.find((member) => member.sigla === sigla) || {sigla, name: sigla});
+  let selected = choices[0] || {sigla: scheduleSigla, name: scheduleSigla};
+  if (choices.length > 1) {
+    selected = await chooseEventScheduleMember(scheduleSigla, choices);
+    if (!selected) return;
+  }
+  const form = document.querySelector('[data-module-form="events"]');
+  if (!form) return;
+  const memberSigla = String(selected.sigla || scheduleSigla).toUpperCase();
+  if (![...form.elements.memberSigla.options].some((option) => option.value === memberSigla)) {
+    form.elements.memberSigla.add(new Option(`${memberSigla} · sigla da escala`, memberSigla));
+  }
+  form.elements.eventDate.value = day;
+  form.elements.memberSigla.value = memberSigla;
+  form.elements.memberStatus.value = selected.name && selected.name !== memberSigla ? `${memberSigla} · ${selected.name}` : memberSigla;
+  form.elements.scheduleSigla.value = scheduleSigla;
+  form.elements.eventType.value = '';
+  form.elements.delayMultiple.value = '';
+  form.elements.substitute.value = '';
+  form.elements.shift.value = '';
+  form.elements.payer.value = '';
+  form.elements.creditor.value = '';
+  form.elements.amountToPay.value = '';
+  form.elements.description.value = '';
+  updateEventEntryFields(form);
+  const status = document.querySelector('#event-form-status');
+  status.textContent = selected.name === memberSigla
+    ? `Sigla ${memberSigla} selecionada. O nome precisa ser conferido no cadastro de Pessoas.`
+    : `Evento iniciado para ${selected.name} · ${memberSigla}.`;
+  form.closest('details')?.setAttribute('open', '');
+  form.scrollIntoView({behavior: 'smooth', block: 'start'});
+  form.elements.eventType.focus({preventScroll: true});
+}
+
+function chooseEventScheduleMember(scheduleSigla, choices) {
+  const dialog = document.querySelector('#event-schedule-choice-dialog');
+  const options = document.querySelector('#event-schedule-choice-options');
+  if (!dialog || !options) return Promise.resolve(null);
+  document.querySelector('#event-schedule-choice-title').textContent = `Escolha o anestesiologista · ${scheduleSigla}`;
+  options.replaceChildren();
+  let selected = null;
+  for (const choice of choices) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary-button';
+    button.textContent = choice.name && choice.name !== choice.sigla ? `${choice.name} · ${choice.sigla}` : `Sigla ${choice.sigla} · nome não cadastrado`;
+    button.addEventListener('click', () => { selected = choice; dialog.close(); });
+    options.append(button);
+  }
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(selected), {once: true});
+    dialog.showModal();
+  });
 }
 
 function updateEventEntryFields(form) {
