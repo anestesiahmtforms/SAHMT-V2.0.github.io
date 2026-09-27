@@ -57,6 +57,7 @@ let eventReportCursor = null;
 let eventReportLoadingMore = false;
 let loadedEventMembers = [];
 let pendingEventLaunch = null;
+let pendingEventPosition = null;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
 let loadedLabelRecords = [];
@@ -316,12 +317,13 @@ async function loadHome() {
     const eventSiglas = new Set((Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : []).map((value) => String(value || '').trim().toUpperCase().replace(/^EVENTO:/, '').split(':', 1)[0]).filter(Boolean));
     const cards = scheduleView.positions.map((position, index) => {
       const hasContact = position.contacts.length > 0;
+      const canLaunchEvent = can('eventsWrite') && featureEnabledForRoute('events', appFeatures);
       const aliases = position.sigla === 'DC' && position.siglas.length ? `<small>${position.siglas.map((sigla) => `<span class="${highlightedSiglas.has(sigla) ? 'sigla-token__released-part--checked' : ''}">${escapeHtml(sigla)}</span>`).join(' · ')}</small>` : '';
       const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>' : `<strong>${String(position.sigla || '—').split(/([/-])/).map((part) => part === '/' || part === '-' ? escapeHtml(part) : `<span class="${position.siglas.includes(part) && highlightedSiglas.has(part) ? 'sigla-token__released-part--checked' : ''}">${escapeHtml(part)}</span>`).join('')}</strong>`;
       const vacationMarker = position.onVacation ? `<small>FÉRIAS${position.vacationPosition ? ` · ${position.vacationPosition}` : ''}</small>` : '';
       const marked = highlightedSiglas.has(position.sigla);
       const eventMarked = eventSiglas.has(position.sigla) || position.siglas.some((sigla) => eventSiglas.has(sigla));
-      return `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-contact-index="${index}" ${hasContact ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}" title="${hasContact ? 'Abrir contato' : 'Contato não cadastrado'}">${tokenLabel}${aliases}${vacationMarker}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+      return `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-contact-index="${index}" ${hasContact || canLaunchEvent ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : canLaunchEvent ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}" title="${hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado'}">${tokenLabel}${aliases}${vacationMarker}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
     }).join('');
     const supportMarked = eventSiglas.has('SUPORTE');
     const nextIndex = scheduleView.positions.length + (can('eventsWrite') && featureEnabledForRoute('events', appFeatures) ? 1 : 0);
@@ -338,6 +340,10 @@ async function loadHome() {
         canRelease: can('scheduleWrite'),
         onRelease: () => void render()
       });
+      else if (position && can('eventsWrite') && featureEnabledForRoute('events', appFeatures)) {
+        pendingEventPosition = {day: selectedDate, position};
+        navigate('events');
+      }
     }));
   };
   const render = async () => {
@@ -664,6 +670,16 @@ async function loadModule(route) {
         form.closest('details').open = true;
       }
       pendingEventLaunch = null;
+    }
+    if (pendingEventPosition) {
+      const {day, position} = pendingEventPosition;
+      pendingEventPosition = null;
+      const scheduleDate = document.querySelector('#event-schedule-date');
+      if (scheduleDate && scheduleDate.value !== day) {
+        scheduleDate.value = day;
+        scheduleDate.dispatchEvent(new Event('change'));
+      }
+      void launchEventFromSchedule(day, position);
     }
     return;
   }
