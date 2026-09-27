@@ -8,13 +8,18 @@ export function normalizeEventType(value) {
 
 export function eventFieldRules(value) {
   const type = normalizeEventType(value);
-  if (type === 'atraso') return {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false};
-  if (type === 'suporte') return {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true};
+  if (type === 'atraso') return {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false, disableSubstitute: true, payerMode: 'member', creditorMode: 'team', amountMode: 'delay'};
+  if (type === 'suporte') return {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'};
   if (['gestao', 'congresso', 'pessoal', 'ferias', 'saude', 'ausencia'].includes(type)) {
-    return {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: true};
+    const personal = ['pessoal', 'ferias', 'saude', 'ausencia'].includes(type);
+    return {
+      memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false,
+      payerMode: personal ? 'member' : 'team', creditorMode: 'substitute',
+      amountMode: type === 'ausencia' ? 'manual' : 'shift'
+    };
   }
-  if (type === 'outros') return {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true};
-  return {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: false};
+  if (type === 'outros') return {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true, disableSubstitute: false, payerMode: 'manual', creditorMode: 'substitute', amountMode: 'manual'};
+  return {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: false, disableSubstitute: false, payerMode: 'manual', creditorMode: 'manual', amountMode: 'manual'};
 }
 
 export function validateEventForm(values) {

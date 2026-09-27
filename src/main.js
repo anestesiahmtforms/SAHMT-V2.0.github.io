@@ -57,6 +57,7 @@ let eventReportStale = false;
 let eventReportCursor = null;
 let eventReportLoadingMore = false;
 let loadedEventMembers = [];
+let loadedEventCatalog = {payers: [], creditors: []};
 let pendingEventPosition = null;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
@@ -294,11 +295,11 @@ function actionForm(route) {
     if (!can('eventsWrite')) return catalogForm;
     return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><button class="secondary-button" id="event-launch-close" type="button">Fechar</button></header><form data-module-form="events">
     <div class="form-grid"><label>Data do Evento<input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div class="event-member-field"><input name="memberSigla" type="hidden"><label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
+    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
     <label>Tipo de Evento<select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="delayMultiple">Múltiplo do atraso<select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
-    <label data-event-field="substitute">Substituto<input name="substitute" maxlength="120"></label><label data-event-field="shift">Turno<select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
+    <label data-event-field="substitute">Substituto<select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift">Turno<select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
     <label>Pagador<select name="payer" required><option value="">Selecione</option></select></label><label>Credor<select name="creditor" required><option value="">Selecione</option></select></label>
     <label>Valor a pagar<input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <label data-event-field="description">Descrição do evento<textarea name="description" rows="3" maxlength="1000"></textarea></label>
@@ -1615,7 +1616,7 @@ function beginEventEdit(item) {
   const conflictRefresh = document.querySelector('#event-conflict-refresh');
   if (status) status.textContent = '';
   if (conflictRefresh) conflictRefresh.hidden = true;
-  for (const name of ['payer', 'creditor']) {
+  for (const name of ['payer', 'creditor', 'substitute']) {
     const select = form.elements[name];
     const value = String(item[name] || '');
     if (value && ![...select.options].some((option) => option.value === value)) {
@@ -2523,6 +2524,11 @@ async function bindModuleForm(route) {
       }
       let collectionName; let record;
       if (route === 'events') {
+        // FormData omits disabled controls. V1 locks automatically completed
+        // controls, so read their values directly before validating/saving.
+        for (const name of ['memberStatus', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay']) {
+          values[name] = form.elements[name]?.value ?? '';
+        }
         validateEventForm(values);
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), status: 'OPEN'};
         if (values.editEventId) {
@@ -2635,6 +2641,11 @@ async function bindModuleForm(route) {
     const form = document.querySelector('[data-module-form="events"]');
     const eventType = form?.elements.eventType;
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
+    for (const name of ['memberStatus', 'delayMultiple', 'substitute', 'shift']) {
+      form?.elements[name]?.addEventListener('input', () => updateEventEntryFields(form));
+      form?.elements[name]?.addEventListener('change', () => updateEventEntryFields(form));
+    }
+    form?.elements.amountToPay?.addEventListener('input', () => updateEventEntryFields(form));
     document.querySelector('#event-launch-close')?.addEventListener('click', resetEventEditor);
     document.querySelector('#event-launch-dialog')?.addEventListener('cancel', (event) => {
       event.preventDefault();
@@ -2730,6 +2741,7 @@ async function loadEventEntryCatalog() {
     const {listEventMembers} = await import('./data.js');
     const members = await listEventMembers();
     loadedEventMembers = members;
+    loadedEventCatalog = {payers: [...(catalog.payers || [])], creditors: [...(catalog.creditors || [])]};
     const membersMissing = document.querySelector('#event-members-missing');
     if (membersMissing) membersMissing.hidden = members.length > 0;
     for (const [name, values] of [['payer', catalog.payers], ['creditor', catalog.creditors]]) {
@@ -2740,7 +2752,21 @@ async function loadEventEntryCatalog() {
       for (const value of values) select.add(new Option(value, value));
       if (selected && !values.includes(selected)) select.add(new Option(`${selected} · opção histórica`, selected));
       select.value = selected;
-      select.disabled = values.length === 0;
+      select.dataset.catalogEmpty = values.length === 0 ? 'true' : 'false';
+    }
+    const substitute = form?.elements.substitute;
+    if (substitute) {
+      const selected = substitute.value;
+      const options = new Map();
+      for (const raw of [...(catalog.payers || []), ...(catalog.creditors || [])]) {
+        const value = String(raw || '').trim();
+        const display = value.replace(/^[A-Z0-9]{2}\s*-\s*/, '').trim();
+        if (display && display.toLocaleUpperCase('pt-BR') !== 'CAIXA DA EQUIPE') options.set(normalizeEventOption(display), display);
+      }
+      substitute.replaceChildren(new Option('Selecione', ''));
+      for (const value of options.values()) substitute.add(new Option(value, value));
+      if (selected && ![...options.values()].includes(selected)) substitute.add(new Option(`${selected} · opção histórica`, selected));
+      substitute.value = selected;
     }
     const configForm = document.querySelector('#event-catalog-form');
     if (configForm) {
@@ -2751,6 +2777,7 @@ async function loadEventEntryCatalog() {
     if (staleNote) staleNote.hidden = catalog.stale !== true;
     const submit = form?.querySelector('[type="submit"]');
     if (submit) submit.disabled = !catalog.payers.length || !catalog.creditors.length;
+    if (form) updateEventEntryFields(form);
   } catch (error) {
     const status = document.querySelector('#event-catalog-status');
     if (status) status.textContent = `Não foi possível carregar as opções. ${error.message || ''}`;
@@ -3115,9 +3142,9 @@ async function launchEventFromSchedule(day, position) {
   form.elements.creditor.value = '';
   form.elements.amountToPay.value = '';
   form.elements.description.value = '';
-  updateEventEntryFields(form);
   form.elements.memberStatus.value = selected.name && selected.name !== memberSigla ? selected.name : memberSigla;
   form.elements.memberStatus.readOnly = selected.name !== memberSigla;
+  updateEventEntryFields(form);
   const status = document.querySelector('#event-form-status');
   status.textContent = selected.name === memberSigla
     ? `Sigla ${memberSigla} selecionada. O nome precisa ser conferido no cadastro de Pessoas.`
@@ -3149,22 +3176,98 @@ function chooseEventScheduleMember(scheduleSigla, choices) {
 }
 
 function updateEventEntryFields(form) {
+  if (!form?.elements?.eventType) return;
   const rules = eventFieldRules(form.elements.eventType.value);
-  const fieldState = rules;
-  for (const [name, visible] of Object.entries(fieldState)) {
+  const editing = Boolean(form.elements.editEventId?.value);
+  for (const name of ['memberStatus', 'description', 'delayMultiple', 'substitute', 'shift']) {
+    const visible = rules[name];
     const field = form.querySelector(`[data-event-field="${name}"]`);
-    const memberField = name === 'memberStatus';
-    if (field && !memberField) field.hidden = !visible;
-    if (form.elements[name]) {
-      form.elements[name].required = visible;
-      if (!visible && !memberField) form.elements[name].value = '';
-      form.elements[name].disabled = !visible && name === 'memberStatus';
-    }
+    const control = form.elements[name];
+    if (field) field.hidden = !visible;
+    if (!control) continue;
+    control.required = visible;
+    if (!visible) control.value = '';
+    control.disabled = (!visible && name === 'memberStatus') || (name === 'substitute' && rules.disableSubstitute === true);
   }
-  if (form.elements.memberSigla) {
-    form.elements.memberStatus.required = rules.memberStatus;
-    form.elements.memberStatus.disabled = !rules.memberStatus;
+
+  // V1 completes payer, creditor and amount from the selected event type,
+  // member, substitute, shift or delay. Keep those values inside V2's
+  // authorized Firestore catalogs and leave a field editable if no match exists.
+  const memberName = String(form.elements.memberStatus.value || '').trim();
+  const substitute = String(form.elements.substitute.value || '').trim();
+  const payerOptions = loadedEventCatalog.payers;
+  const creditorOptions = loadedEventCatalog.creditors;
+  const payerValue = rules.payerMode === 'team'
+    ? findEventCatalogValue(payerOptions, 'CAIXA DA EQUIPE')
+    : rules.payerMode === 'member' ? findEventPersonCatalogValue(payerOptions, memberName) : '';
+  const creditorValue = rules.creditorMode === 'team'
+    ? findEventCatalogValue(creditorOptions, 'CAIXA DA EQUIPE')
+    : rules.creditorMode === 'substitute' ? findEventPersonCatalogValue(creditorOptions, substitute) : '';
+  applyEventSelectAutofill(form.elements.payer, payerValue, editing);
+  applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
+
+  const amount = rules.amountMode === 'delay'
+    ? Number(form.elements.delayMultiple.value) * 200
+    : rules.amountMode === 'shift' ? (normalizeEventOption(form.elements.shift.value) === 'integral' ? 2000 : (['manha', 'tarde'].includes(normalizeEventOption(form.elements.shift.value)) ? 1000 : null))
+      : null;
+  applyEventAmountAutofill(form.elements.amountToPay, amount, editing);
+}
+
+function normalizeEventOption(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+}
+
+function findEventCatalogValue(options, desired) {
+  const normalized = normalizeEventOption(desired);
+  if (!normalized) return '';
+  return options.find((value) => normalizeEventOption(value) === normalized) || '';
+}
+
+function findEventPersonCatalogValue(options, personName) {
+  const normalized = normalizeEventOption(personName);
+  if (!normalized) return '';
+  return options.find((value) => {
+    const candidate = String(value || '').trim().replace(/^[A-Z0-9]{2}\s*-\s*/, '');
+    return normalizeEventOption(candidate) === normalized;
+  }) || '';
+}
+
+function applyEventSelectAutofill(select, value, editing) {
+  if (!select) return;
+  const wasAutofilled = select.dataset.eventAutofilled === 'true';
+  if (editing) {
+    select.dataset.eventAutofilled = 'false';
+    if (select.name !== 'substitute') select.disabled = select.dataset.catalogEmpty === 'true';
+    return;
   }
+  if (value) {
+    select.value = value;
+    select.dataset.eventAutofilled = 'true';
+    select.disabled = true;
+    return;
+  }
+  if (wasAutofilled) select.value = '';
+  select.dataset.eventAutofilled = 'false';
+  if (select.name !== 'substitute') select.disabled = select.dataset.catalogEmpty === 'true';
+}
+
+function applyEventAmountAutofill(input, value, editing) {
+  if (!input) return;
+  const wasAutofilled = input.dataset.eventAutofilled === 'true';
+  if (editing) {
+    input.dataset.eventAutofilled = 'false';
+    input.disabled = false;
+    return;
+  }
+  if (Number.isFinite(value)) {
+    input.value = String(value);
+    input.dataset.eventAutofilled = 'true';
+    input.disabled = true;
+    return;
+  }
+  if (wasAutofilled) input.value = '';
+  input.dataset.eventAutofilled = 'false';
+  input.disabled = false;
 }
 
 async function render() {
