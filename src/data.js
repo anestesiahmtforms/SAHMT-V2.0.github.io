@@ -362,16 +362,28 @@ export async function saveContact(input, actorUid) {
 }
 
 export async function listEventMembers() {
-  const [snapshot, configuredSiglas] = await Promise.all([
+  const [directoryResult, contactsResult, siglasResult] = await Promise.allSettled([
     getDocsFromServer(query(collection(db, 'eventMembers'), limit(200))),
+    getDocsFromServer(query(collection(db, 'contacts'), where('active', '==', true), orderBy('sigla', 'asc'), limit(200))),
     listLabelStaffSiglas()
   ]);
-  const members = new Map();
-  for (const item of snapshot.docs) {
-    const member = {id: item.id, ...item.data()};
-    if (member.sigla) members.set(member.sigla, member.active === true ? member : null);
+  if (directoryResult.status === 'rejected' && contactsResult.status === 'rejected' && siglasResult.status === 'rejected') {
+    throw directoryResult.reason;
   }
-  for (const sigla of configuredSiglas) {
+  const members = new Map();
+  for (const item of directoryResult.status === 'fulfilled' ? directoryResult.value.docs : []) {
+    const member = {id: item.id, ...item.data()};
+    const sigla = String(member.sigla || '').trim().toUpperCase();
+    if (sigla) members.set(sigla, member.active === true ? {...member, sigla} : null);
+  }
+  // Contacts are the editable source for names. An older eventMembers record
+  // can be missing or stale even while the contact is already available.
+  for (const item of contactsResult.status === 'fulfilled' ? contactsResult.value.docs : []) {
+    const contact = {id: item.id, ...item.data()};
+    const sigla = String(contact.sigla || '').trim().toUpperCase();
+    if (sigla && contact.name) members.set(sigla, {id: sigla, sigla, name: contact.name, active: true});
+  }
+  for (const sigla of siglasResult.status === 'fulfilled' ? siglasResult.value : []) {
     if (!members.has(sigla)) members.set(sigla, {id: sigla, sigla, name: sigla, active: true, catalogOnly: true});
   }
   return [...members.values()].filter(Boolean)
@@ -1158,7 +1170,7 @@ export async function getEventCatalog(uid) {
     const catalog = snapshot.exists()
       ? {id: snapshot.id, ...snapshot.data()}
       : {id: 'operational', payers: [], creditors: [], version: 0};
-    if (uid) await writeSafeCache(uid, 'eventCatalogs', 'operational', catalog);
+    if (uid) await writeSafeCache(uid, 'eventCatalogs', 'operational', catalog).catch(() => {});
     return catalog;
   } catch (error) {
     if (uid && mayUseOfflineCache(error)) {

@@ -294,7 +294,7 @@ function actionForm(route) {
       <div class="form-grid"><label>Pagadores · um por linha<textarea name="payers" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label><label>Credores · um por linha<textarea name="creditors" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label></div>
       <button class="secondary-button" type="submit">Salvar opções</button><p id="event-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
     if (!can('eventsWrite')) return catalogForm;
-    return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
+    return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
     <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
@@ -305,8 +305,8 @@ function actionForm(route) {
     <label><span>Pagador</span><select name="payer" required><option value="">Selecione</option></select></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option></select></label>
     <label><span>Valor a pagar</span><input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
-    <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
-    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></footer></dialog>`;
+    <p id="event-catalog-stale" class="record-meta" role="status" hidden></p>
+    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;
   }
   if (route === 'training' && can('trainingsManage')) return `<details class="quick-form"><summary>Gerenciar catálogo de treinamentos</summary><form id="training-catalog-form">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Link do YouTube<input name="videoUrl" type="url" required maxlength="600" placeholder="https://youtu.be/…"></label>
@@ -2642,6 +2642,7 @@ async function bindModuleForm(route) {
   if (route === 'events') {
     const form = document.querySelector('[data-module-form="events"]');
     const eventType = form?.elements.eventType;
+    eventType?.addEventListener('input', () => updateEventEntryFields(form));
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
     for (const name of ['memberStatus', 'delayMultiple', 'substitute', 'shift']) {
       form?.elements[name]?.addEventListener('input', () => updateEventEntryFields(form));
@@ -2754,25 +2755,11 @@ async function loadEventEntryCatalog() {
         const select = form?.elements[name];
         if (!select) continue;
         const selected = select.value;
-        select.replaceChildren(new Option('Selecione', ''));
+        select.replaceChildren(new Option(values.length ? 'Selecione' : `Nenhum ${name === 'payer' ? 'pagador' : 'credor'} cadastrado`, ''));
         for (const value of values) select.add(new Option(value, value));
         if (selected && !values.includes(selected)) select.add(new Option(`${selected} · opção histórica`, selected));
         select.value = selected;
         select.dataset.catalogEmpty = values.length === 0 ? 'true' : 'false';
-      }
-      const substitute = form?.elements.substitute;
-      if (substitute) {
-        const selected = substitute.value;
-        const options = new Map();
-        for (const raw of [...loadedEventCatalog.payers, ...loadedEventCatalog.creditors]) {
-          const value = String(raw || '').trim();
-          const display = value.replace(/^[A-Z0-9]{2}\s*-\s*/, '').trim();
-          if (display && display.toLocaleUpperCase('pt-BR') !== 'CAIXA DA EQUIPE') options.set(normalizeEventOption(display), display);
-        }
-        substitute.replaceChildren(new Option('Selecione', ''));
-        for (const value of options.values()) substitute.add(new Option(value, value));
-        if (selected && ![...options.values()].includes(selected)) substitute.add(new Option(`${selected} · opção histórica`, selected));
-        substitute.value = selected;
       }
       if (configForm) {
         configForm.elements.payers.value = loadedEventCatalog.payers.join('\n');
@@ -2780,8 +2767,11 @@ async function loadEventEntryCatalog() {
       }
       const staleNote = form?.querySelector('#event-catalog-stale');
       if (staleNote) {
-        staleNote.textContent = 'Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.';
-        staleNote.hidden = catalog.stale !== true;
+        const missing = [!loadedEventCatalog.payers.length && 'pagadores', !loadedEventCatalog.creditors.length && 'credores'].filter(Boolean);
+        staleNote.textContent = missing.length
+          ? `Sem ${missing.join(' e ')} no catálogo de Eventos. Abra “Configurar opções de Eventos” e salve o cadastro.`
+          : catalog.stale === true ? 'Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.' : '';
+        staleNote.hidden = !staleNote.textContent;
       }
       const submit = form?.querySelector('[type="submit"]');
       if (submit) submit.disabled = !loadedEventCatalog.payers.length || !loadedEventCatalog.creditors.length;
@@ -2820,6 +2810,26 @@ async function loadEventEntryCatalog() {
     }
   })() : Promise.resolve();
   await Promise.all([catalogTask, membersTask]);
+  if (currentView() && form) populateEventSubstitutes(form);
+}
+
+function populateEventSubstitutes(form) {
+  const select = form?.elements.substitute;
+  if (!select) return;
+  const selected = select.value;
+  const options = new Map();
+  for (const member of loadedEventMembers) {
+    const name = String(member.name || '').trim();
+    if (name && name !== member.sigla) options.set(normalizeEventOption(name), name);
+  }
+  for (const raw of [...loadedEventCatalog.payers, ...loadedEventCatalog.creditors]) {
+    const name = String(raw || '').trim().replace(/^[A-Z0-9]{2}\s*-\s*/, '').trim();
+    if (name && name.toLocaleUpperCase('pt-BR') !== 'CAIXA DA EQUIPE') options.set(normalizeEventOption(name), name);
+  }
+  select.replaceChildren(new Option(options.size ? 'Selecione' : 'Nenhum substituto cadastrado', ''));
+  for (const name of options.values()) select.add(new Option(name, name));
+  if (selected && ![...options.values()].includes(selected)) select.add(new Option(`${selected} · opção histórica`, selected));
+  select.value = selected;
 }
 
 async function loadLabelStaffCatalog() {
@@ -3245,7 +3255,7 @@ function updateEventEntryFields(form) {
   applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
 
   const amount = rules.amountMode === 'delay'
-    ? Number(form.elements.delayMultiple.value) * 200
+    ? (form.elements.delayMultiple.value === '' ? null : Number(form.elements.delayMultiple.value) * 200)
     : rules.amountMode === 'shift' ? (normalizeEventOption(form.elements.shift.value) === 'integral' ? 2000 : (['manha', 'tarde'].includes(normalizeEventOption(form.elements.shift.value)) ? 1000 : null))
       : null;
   applyEventAmountAutofill(form.elements.amountToPay, amount, editing);
