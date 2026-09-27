@@ -53,7 +53,7 @@ Após IAM e homologação, instale apenas os gatilhos Spark necessários: `insta
 ## Estado já preparado
 
 - A PWA publicada usa o Firebase `sahmt-17a16` e o Firestore `(default)`.
-- Rules e 32 índices estão publicados; o primeiro perfil foi provisionado pelo proprietário.
+- Rules e 35 índices compostos estão publicados e `READY`; o primeiro perfil foi provisionado pelo proprietário.
 - A planilha existe e suas oito abas/cabeçalhos V2 foram conferidos.
 - O projeto `SAHMT V2.0 – Integração Spark` foi criado na pasta oficial. O pacote V2 já havia sido enviado via `clasp` sem `FirestoreSync.gs` ou handlers `syncQueue`. Em 26/09/2026, a checagem somente leitura foi enviada e um `clasp pull` isolado confirmou conteúdo correspondente nos oito arquivos remotos (manifesto e sete fontes), sem os handlers legados. A API Apps Script da conta permite a sincronização via `clasp`; isso não concede IAM Firestore nem autoriza a execução OAuth do script. Nenhuma função foi executada. IAM, autorização de runtime, propriedades do script, homologação fictícia e instalação de gatilhos continuam pendentes.
 - A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`. Isso é intencional para esta arquitetura Spark.
