@@ -201,6 +201,29 @@ function can(permission) {
     session.profile?.permissions?.qualityManage === true && qualityAreaPermissions.includes(permission);
 }
 
+function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = []) {
+  const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
+  const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
+  return String(sigla || '—').toUpperCase().split(/([/-])/).map((part) => {
+    if (part === '/' || part === '-') return escapeHtml(part);
+    const classes = [];
+    if (vacationSet.has(part)) classes.push('sigla-token__vacation-part');
+    if (checkedSet.has(part)) classes.push('sigla-token__released-part--checked');
+    return `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(part)}</span>`;
+  }).join('');
+}
+
+function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = []) {
+  const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
+  const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
+  return siglas.map((sigla) => {
+    const classes = [];
+    if (vacationSet.has(sigla)) classes.push('sigla-token__vacation-part');
+    if (checkedSet.has(sigla)) classes.push('sigla-token__released-part--checked');
+    return `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(sigla)}</span>`;
+  }).join(' · ');
+}
+
 function actionForm(route) {
   if (route === 'events') {
     const catalogForm = can('eventsCatalogManage') ? `<details class="quick-form"><summary>Configurar opções de Eventos</summary><form id="event-catalog-form">
@@ -311,11 +334,12 @@ async function loadHome() {
     const cards = scheduleView.positions.map((position, index) => {
       const hasContact = position.contacts.length > 0;
       const canLaunchEvent = can('eventsWrite') && featureEnabledForRoute('events', appFeatures);
-      const aliases = position.sigla === 'DC' && position.siglas.length ? `<small>${position.siglas.map((sigla) => `<span class="${highlightedSiglas.has(sigla) ? 'sigla-token__released-part--checked' : ''}">${escapeHtml(sigla)}</span>`).join(' · ')}</small>` : '';
-      const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>' : `<strong>${String(position.sigla || '—').split(/([/-])/).map((part) => part === '/' || part === '-' ? escapeHtml(part) : `<span class="${position.siglas.includes(part) && highlightedSiglas.has(part) ? 'sigla-token__released-part--checked' : ''}">${escapeHtml(part)}</span>`).join('')}</strong>`;
+      const aliases = position.sigla === 'DC' && position.siglas.length ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas])}</small>` : '';
+      const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>' : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)))}</strong>`;
       const marked = highlightedSiglas.has(position.sigla);
       const eventMarked = eventSiglas.has(position.sigla) || position.siglas.some((sigla) => eventSiglas.has(sigla));
-      return `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-contact-index="${index}" ${hasContact || canLaunchEvent ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : canLaunchEvent ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}" title="${hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado'}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+      const vacationDescription = position.vacationParts.length ? `; em férias: ${position.vacationParts.join(', ')}` : '';
+      return `<div class="sigla-item"><button class="sigla-token sigla-button${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-contact-index="${index}" ${hasContact || canLaunchEvent ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : canLaunchEvent ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}${escapeHtml(vacationDescription)}" title="${hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado'}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
     }).join('');
     content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${cards ? `<div class="siglas-grid">${cards}</div>` : '<p class="empty-state">A escala está publicada sem itens.</p>'}`;
     content.querySelectorAll('[data-contact-index]').forEach((button) => button.addEventListener('click', () => {
@@ -2986,7 +3010,12 @@ function bindEventSchedule() {
         }
         const vacationLabel = view.vacationLabel ? `<p class="event-schedule-vacation">Férias · ${escapeHtml(view.vacationLabel)}</p>` : '';
         const vacationStatus = vacationsError ? '<p class="sync-state">Não foi possível consultar as férias deste dia.</p>' : vacations.some((vacation) => vacation.stale) ? '<p class="sync-state">Férias carregadas do cache deste aparelho.</p>' : '';
-        content.innerHTML = `${vacationLabel}<div class="siglas-grid event-siglas-grid">${view.positions.map((position, index) => `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}" type="button" data-event-schedule-position="${index}" ${can('eventsWrite') ? '' : 'disabled'} aria-label="${can('eventsWrite') ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}${position.onVacation ? ', em férias' : ''}` : `Sigla ${escapeHtml(position.sigla)}${position.onVacation ? ', em férias' : ''}`}" title="${can('eventsWrite') ? 'Lançar evento' : 'Somente consulta'}"><strong>${escapeHtml(position.sigla)}</strong></button><div class="sigla-index">${escapeHtml(position.position || index + 1)}</div></div>`).join('')}</div>${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${vacationStatus}`;
+        content.innerHTML = `${vacationLabel}<div class="siglas-grid event-siglas-grid">${view.positions.map((position, index) => {
+          const aliases = position.sigla === 'DC' && position.siglas.length ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts)}</small>` : '';
+          const label = position.sigla === 'DC' ? '<strong>DC</strong>' : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts)}</strong>`;
+          const vacationDescription = position.vacationParts.length ? `; em férias: ${position.vacationParts.join(', ')}` : '';
+          return `<div class="sigla-item"><button class="sigla-token sigla-button" type="button" data-event-schedule-position="${index}" ${can('eventsWrite') ? '' : 'disabled'} aria-label="${can('eventsWrite') ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Sigla ${escapeHtml(position.sigla)}`}${escapeHtml(vacationDescription)}" title="${can('eventsWrite') ? 'Lançar evento' : 'Somente consulta'}">${label}${aliases}</button><div class="sigla-index">${escapeHtml(position.position || index + 1)}</div></div>`;
+        }).join('')}</div>${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${vacationStatus}`;
         content.querySelectorAll('[data-event-schedule-position]').forEach((button) => button.addEventListener('click', () => {
           const position = view.positions[Number(button.dataset.eventSchedulePosition)];
           if (position) void launchEventFromSchedule(day, position);
