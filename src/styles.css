@@ -112,6 +112,7 @@
 .checklist-station-grid .checklist-actions .secondary-button { min-height: 48px; font-size: .76rem; }
 .checklist-station-select { display: block; width: 100%; min-height: 48px; padding: 9px 10px; border: 1px solid #bed4df; border-radius: 11px; background: linear-gradient(145deg,#fff,#e6f0f4); color: #123b5d; font-size: .9rem; font-weight: 900; line-height: 1.25; text-align: left; overflow-wrap: anywhere; box-shadow: 0 2px 0 #cfdee4; }
 .checklist-station-select:disabled { opacity: .7; cursor: default; }
+.checklist-station.is-selected .checklist-station-select { border-color: #0b8292; background: linear-gradient(145deg,#e9fbf9,#c6eeeb); box-shadow: 0 0 0 2px #0b829233,0 2px 0 #93c7c4; }
 .label-capture-panel>label { display: grid; gap: 6px; min-width: 0; color: #526578; font-size: .78rem; font-weight: 800; }
 .label-capture-panel input[type="file"] { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #b9ccd5; border-radius: 10px; background: #fff; color: var(--ink); }
 .label-camera-dialog { width: min(calc(100% - 20px), 560px); max-height: min(94dvh, 820px); padding: clamp(12px, 3vw, 18px); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
