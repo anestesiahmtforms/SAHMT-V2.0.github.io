@@ -9,10 +9,10 @@ const blankEvent = {
 
 test('normaliza acentos para aplicar as condições de tipo da V1', () => {
   assert.equal(normalizeEventType('Férias'), 'ferias');
-  assert.deepEqual(eventFieldRules('ATRASO'), {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false});
-  assert.deepEqual(eventFieldRules('Suporte'), {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true});
-  assert.deepEqual(eventFieldRules('Gestão'), {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: true});
-  assert.deepEqual(eventFieldRules('Outros'), {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true});
+  assert.deepEqual(eventFieldRules('ATRASO'), {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false, disableSubstitute: true, payerMode: 'member', creditorMode: 'team', amountMode: 'delay'});
+  assert.deepEqual(eventFieldRules('Suporte'), {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'});
+  assert.deepEqual(eventFieldRules('Gestão'), {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'});
+  assert.deepEqual(eventFieldRules('Outros'), {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true, disableSubstitute: false, payerMode: 'manual', creditorMode: 'substitute', amountMode: 'manual'});
 });
 
 test('ATRASO exige membro e múltiplo e não aceita substituto ou turno', () => {
