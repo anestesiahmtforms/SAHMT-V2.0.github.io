@@ -983,16 +983,16 @@ async function loadAdminModule(content) {
       return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><code>${escapeHtml(profile.uid || '')}</code></div>${editControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
-    content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. A pessoa precisa entrar com Google uma vez antes do provisionamento para obter o próprio UID. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
+    content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Solicitações de acesso</h3></div><p class="record-meta">Pedidos feitos no login aparecem aqui. Eles não concedem acesso automaticamente; escolha função e permissões antes de provisionar.</p>${requestEntries || '<p class="empty-state">Nenhuma solicitação pendente.</p>'}</section>
       ${featureSettings}
-      <section class="admin-user-form panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>O pedido aprovado preenche UID, e-mail e nome automaticamente. Você define função e permissões; isso não cria contas Google nem concede acesso antes de salvar o perfil.</p>
+      <details id="admin-user-editor" class="quick-form admin-user-form"><summary id="user-form-summary">Configurar um pedido ou editar perfil</summary><section class="panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Ao abrir um pedido, UID, e-mail e nome são preenchidos automaticamente. O cadastro manual sem pedido fica reservado a casos administrativos excepcionais.</p>
         <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Preenchido pelo pedido ou manualmente"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'temporario' ? 'selected' : ''} ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
           <fieldset><legend>Permissões SAHMT</legend><div class="permission-grid">${permissions}</div></fieldset>
           <div class="admin-user-flags"><label><input type="checkbox" name="active" checked> Perfil ativo</label><label><input type="checkbox" name="access" checked> Acesso ao SAHMT</label></div>
           <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar perfil</button><button class="secondary-button" id="cancel-user-edit" type="button" hidden>Cancelar edição</button></div><p id="admin-user-status" class="record-meta" role="status" aria-live="polite"></p>
         </form>
-      </section>
+      </section></details>
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Perfis V2</h3><label>Filtrar perfis<input id="admin-user-search" type="search" placeholder="Nome, sigla, e-mail ou UID"></label></div><p class="record-meta">Exibindo até 200 perfis, ordenados por nome. Para remover acesso, desative o perfil; o registro não é apagado.</p>${entries || '<p class="empty-state">Nenhum perfil provisionado foi encontrado.</p>'}</section>`;
     const featureForm = content.querySelector('#app-feature-form');
     featureForm?.addEventListener('submit', async (event) => {
@@ -1024,6 +1024,7 @@ async function loadAdminModule(content) {
       form.elements.access.checked = true;
       form.dataset.editingUid = '';
       content.querySelector('#user-form-title').textContent = 'Provisionar perfil SAHMT';
+      content.querySelector('#user-form-summary').textContent = 'Configurar um pedido ou editar perfil';
       form.querySelector('[type="submit"]').textContent = 'Salvar perfil';
       content.querySelector('#cancel-user-edit').hidden = true;
       status.textContent = '';
@@ -1044,8 +1045,10 @@ async function loadAdminModule(content) {
       form.dataset.editingUid = profile.uid;
       form.querySelectorAll('input[name="permission"]').forEach((input) => { input.checked = profile.permissions?.[input.value] === true; });
       content.querySelector('#user-form-title').textContent = `Editar perfil · ${profile.displayName || profile.uid}`;
+      content.querySelector('#user-form-summary').textContent = 'Editando perfil existente';
       form.querySelector('[type="submit"]').textContent = 'Atualizar perfil';
       content.querySelector('#cancel-user-edit').hidden = false;
+      content.querySelector('#admin-user-editor').open = true;
       form.scrollIntoView({behavior: 'smooth', block: 'start'});
     }));
     content.querySelectorAll('[data-review-access]').forEach((button) => button.addEventListener('click', () => {
@@ -1053,10 +1056,13 @@ async function loadAdminModule(content) {
       if (!request) return;
       resetForm();
       form.elements.uid.value = request.uid;
+      form.elements.uid.readOnly = true;
       form.elements.email.value = request.email;
       form.elements.displayName.value = request.displayName || '';
       form.elements.role.value = 'temporario';
+      content.querySelector('#user-form-summary').textContent = `Configurando pedido · ${request.displayName || request.email}`;
       status.textContent = 'Escolha a função e marque somente as permissões necessárias antes de salvar.';
+      content.querySelector('#admin-user-editor').open = true;
       form.scrollIntoView({behavior: 'smooth', block: 'start'});
     }));
     content.querySelector('#admin-user-search').addEventListener('input', (event) => {
