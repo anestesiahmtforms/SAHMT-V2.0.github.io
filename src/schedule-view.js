@@ -89,5 +89,5 @@ export function buildScheduleView(schedule = {}, dateKey, vacations = [], contac
     return {...position, siglas, contacts: matchedContacts, onVacation: vacationParts.length > 0, vacationParts, vacationPosition, vacationPositions};
   });
   const label = schedule.vacationLabel || [...new Set(vacationLabels.filter(Boolean))].join(' · ');
-  return {weekday, positions: entries, vacationLabel: label, vacationSiglas, scheduledVacationSiglas};
+  return {weekday, positions: entries, vacationLabel: label, vacationSiglas, vacationPositions, scheduledVacationSiglas};
 }
