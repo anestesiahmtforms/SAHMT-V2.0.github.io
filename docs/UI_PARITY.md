@@ -1,5 +1,11 @@
 # Paridade visual V1 → V2
 
+## Ajuste de apresentação mobile (26/09/2026)
+
+O commit `f2c4fdb` foi publicado no GitHub Pages. A camada responsiva compartilhada passa a limitar estouro horizontal em formulários, grades e diálogos, respeitar as safe areas do iOS, reorganizar controles em telas estreitas e melhorar a altura mínima dos alvos de toque. Em Etiquetas, a câmera mostra uma moldura central para alinhar a etiqueta; a captura continua local e mantém a imagem inteira para a leitura OCR e o recorte manual existentes. No Checklist, cada estação agora aparece como botão de seleção; tocar seleciona a estação e leva o foco à ação “Conforme”, enquanto “Não conforme” continua exigindo o registro da ocorrência pelas regras existentes. A lista usa duas colunas em celulares comuns e uma coluna em larguras de até 360 px.
+
+**Validação desta etapa:** build de produção e diff sem erro; workflow `36288743920` concluiu com sucesso; `index.html`, CSS e JavaScript publicados retornaram HTTP 200 e contêm os novos componentes. A comparação visual de cada rota em viewport Android/iOS, a permissão e o foco reais da câmera e o registro de um Checklist com dados reais continuam sem confirmação por aparelho. Não declarar a revisão visual global concluída até essa conferência.
+
 Este documento define o inventário comparável. Os dados de V1 abaixo vêm do pacote estático; “V2” e as justificativas de mudança serão completados conforme cada tela for implementada e revisada em viewport mobile e desktop.
 
 | Tela | V1 | V2 | Elementos preservados | Alterações | Justificativa | Removidos |
