@@ -81,9 +81,28 @@ const preloadedDataUsers = new Set();
 const scheduledDataPreloads = new Set();
 
 function preloadOperationalDataWhenIdle(user) {
-  if (!user?.uid || !navigator.onLine || session.offline || preloadedDataUsers.has(user.uid) || scheduledDataPreloads.has(user.uid)) return;
+  if (!user?.uid || !navigator.onLine || session.offline) return;
   const uid = user.uid;
-  scheduledDataPreloads.add(uid);
+  const profile = session.profile || {};
+  const permissions = profile.permissions || {};
+  const elevated = profile.role === 'administrador_app' || permissions.admin === true;
+  const allows = (names) => elevated || names.some((name) => permissions[name] === true);
+  const canUseData = allows([
+    'scheduleWrite', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'labelsRead', 'labelsWrite', 'labelsManage',
+    'managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite',
+    'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage',
+    'checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'trainingsRead', 'trainingsManage',
+    'notificationsRead', 'notificationsManage', 'peopleManage', 'usersManage'
+  ]);
+  const modules = [];
+  if (canUseData) modules.push('data');
+  if (allows(['trainingsRead', 'trainingsManage'])) modules.push('training');
+  if (allows(['equipmentManage'])) modules.push('equipment');
+  if (allows(['labelsWrite', 'labelsManage'])) modules.push('label-camera');
+  if (!modules.length) return;
+  const preloadKey = `${uid}:${modules.join(',')}`;
+  if (preloadedDataUsers.has(preloadKey) || scheduledDataPreloads.has(preloadKey)) return;
+  scheduledDataPreloads.add(preloadKey);
   const preload = async () => {
     try {
       if (session.status !== 'signed-in' || session.user?.uid !== uid || session.offline || !navigator.onLine) return;
@@ -94,18 +113,18 @@ function preloadOperationalDataWhenIdle(user) {
         ]).catch(() => {});
         if (session.status !== 'signed-in' || session.user?.uid !== uid || session.offline || !navigator.onLine) return;
       }
-      preloadedDataUsers.add(uid);
-      void Promise.all([
-        import('./data.js'),
-        import('./training.js'),
-        import('./equipment.js'),
-        import('./label-camera.js')
-      ]).catch((error) => {
-        preloadedDataUsers.delete(uid);
+      preloadedDataUsers.add(preloadKey);
+      const imports = [];
+      if (modules.includes('data')) imports.push(import('./data.js'));
+      if (modules.includes('training')) imports.push(import('./training.js'));
+      if (modules.includes('equipment')) imports.push(import('./equipment.js'));
+      if (modules.includes('label-camera')) imports.push(import('./label-camera.js'));
+      void Promise.all(imports).catch((error) => {
+        preloadedDataUsers.delete(preloadKey);
         console.warn('[SAHMT] Pré-carregamento de ações adiado:', error.code || error.message);
       });
     } finally {
-      scheduledDataPreloads.delete(uid);
+      scheduledDataPreloads.delete(preloadKey);
     }
   };
   if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
