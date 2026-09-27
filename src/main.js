@@ -11,6 +11,7 @@ import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
+import {contactActionLinks} from './contact-actions.js';
 
 const app = document.querySelector('#app');
 const labels = {
@@ -56,7 +57,6 @@ let eventReportStale = false;
 let eventReportCursor = null;
 let eventReportLoadingMore = false;
 let loadedEventMembers = [];
-let pendingEventLaunch = null;
 let pendingEventPosition = null;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
@@ -302,14 +302,8 @@ async function loadHome() {
   let contactsRequest = null;
   const vacationsCache = new Map();
   const renderSchedule = (schedule, selectedDate, selectedVacations, selectedContacts, syncState = '') => {
-    const offlineTile = (positionCount = 0) => `<div class="sigla-item sigla-item--offline"><button class="sigla-token sigla-button offline-sigla" type="button" data-open-offline-schedule aria-label="Abrir escala e férias 2026 para consulta offline" title="Abrir escala e férias offline">OFF LINE</button><div class="sigla-index">${positionCount + 1}</div></div>`;
-    const supportTile = (positionCount, marked = false) => can('eventsWrite') && featureEnabledForRoute('events', appFeatures)
-      ? `<div class="sigla-item sigla-item--support"><button class="sigla-token sigla-button sigla-token--support${marked ? ' sigla-token--event' : ''}" type="button" data-launch-support-event aria-label="Abrir lançamento de evento de Suporte" title="Abrir lançamento de evento de Suporte">Suporte</button><div class="sigla-index">${positionCount + 1}</div></div>`
-      : '';
     if (!schedule) {
-      content.innerHTML = `<p class="empty-state">Nenhuma escala publicada para esta data.</p><div class="siglas-grid">${supportTile(0)}${offlineTile(can('eventsWrite') ? 1 : 0)}</div>`;
-      bindOfflineScheduleLauncher(content);
-      bindScheduleEventLaunch(content, selectedDate);
+      content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
       return;
     }
     const scheduleView = buildScheduleView(schedule, selectedDate, selectedVacations, selectedContacts);
@@ -324,11 +318,7 @@ async function loadHome() {
       const eventMarked = eventSiglas.has(position.sigla) || position.siglas.some((sigla) => eventSiglas.has(sigla));
       return `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-contact-index="${index}" ${hasContact || canLaunchEvent ? '' : 'disabled'} aria-label="${hasContact ? `Abrir contato da sigla ${escapeHtml(position.sigla)}` : canLaunchEvent ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Contato não cadastrado para ${escapeHtml(position.sigla)}`}" title="${hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado'}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
     }).join('');
-    const supportMarked = eventSiglas.has('SUPORTE');
-    const nextIndex = scheduleView.positions.length + (can('eventsWrite') && featureEnabledForRoute('events', appFeatures) ? 1 : 0);
-    content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${cards ? `<div class="siglas-grid">${cards}${supportTile(scheduleView.positions.length, supportMarked)}${offlineTile(nextIndex)}</div>` : `<p class="empty-state">A escala está publicada sem itens.</p><div class="siglas-grid">${supportTile(0, supportMarked)}${offlineTile(can('eventsWrite') ? 1 : 0)}</div>`}`;
-    bindOfflineScheduleLauncher(content);
-    bindScheduleEventLaunch(content, selectedDate);
+    content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${cards ? `<div class="siglas-grid">${cards}</div>` : '<p class="empty-state">A escala está publicada sem itens.</p>'}`;
     content.querySelectorAll('[data-contact-index]').forEach((button) => button.addEventListener('click', () => {
       const position = scheduleView.positions[Number(button.dataset.contactIndex)];
       if (position?.contacts.length) showScheduleContacts(position.contacts, {
@@ -548,13 +538,6 @@ function bindScheduleEditor(dateInput, refreshSchedule) {
   });
 }
 
-function bindScheduleEventLaunch(root, date) {
-  root.querySelectorAll('[data-launch-support-event]').forEach((button) => button.addEventListener('click', () => {
-    pendingEventLaunch = {date, memberSigla: '', scheduleSigla: 'SUPORTE', name: '', eventType: 'Suporte'};
-    navigate('events');
-  }));
-}
-
 function showScheduleContacts(contacts, context = {}) {
   const dialog = document.querySelector('#schedule-contact-dialog');
   const content = document.querySelector('#schedule-contact-details');
@@ -562,22 +545,13 @@ function showScheduleContacts(contacts, context = {}) {
   const siglaLabel = context.sigla || '';
   const records = contacts.filter((contact, index, all) => all.findIndex((item) => item.sigla === contact.sigla) === index);
   const cards = records.map((contact) => {
-    const fields = [['Função', contact.role], ['Telefone', contact.phone], ['E-mail', contact.email], ['CRM', contact.crm], ['Entrada', contact.entryDate]]
-      .filter(([, value]) => String(value || '').trim());
-    const phoneDigits = String(contact.phone || '').replace(/\D/g, '');
-    const whatsAppLink = /^https:\/\/(?:wa\.me\/\d+|api\.whatsapp\.com\/send\?phone=\d+)$/.test(String(contact.whatsAppLink || '')) ? contact.whatsAppLink : '';
-    const actions = `${whatsAppLink ? `<a class="contact-action" href="${escapeHtml(whatsAppLink)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}${phoneDigits ? `<a class="contact-action" href="tel:${phoneDigits}">Ligar</a>` : ''}${contact.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(contact.email)}">Enviar e-mail</a>` : ''}`;
+    const links = contactActionLinks(contact);
+    const actions = `${links.phone ? `<a class="contact-action" href="tel:${links.phone}">Ligar</a>` : ''}${links.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(links.email)}">Enviar e-mail</a>` : ''}${links.whatsApp ? `<a class="contact-action" href="${escapeHtml(links.whatsApp)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}`;
     const released = (context.highlightedSiglas || []).includes(String(contact.sigla || '').toUpperCase());
     const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}" aria-pressed="${released}" aria-label="Liberar ${escapeHtml(contact.name)}">LIBERAR</button>` : '';
-    const eventLaunch = can('eventsWrite') ? `<button class="contact-action" type="button" data-launch-event-sigla="${escapeHtml(contact.sigla)}" data-launch-event-name="${escapeHtml(contact.name)}">Registrar evento</button>` : '';
-    return `<article class="schedule-contact-record"><h4>${escapeHtml(contact.name)} · ${escapeHtml(contact.sigla)}</h4>${fields.length ? `<dl class="contact-detail-list">${fields.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>` : '<p class="empty-state">Nenhum outro dado de contato cadastrado.</p>'}${actions || release || eventLaunch ? `<div class="contact-detail-actions">${release}${eventLaunch}${actions}</div>` : ''}</article>`;
+    return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${release}${actions}</div></article>`;
   }).join('');
   content.innerHTML = `<p class="eyebrow">SIGLA ${escapeHtml(siglaLabel)}</p><h3 id="schedule-contact-heading">${records.length > 1 ? `Contatos vinculados a ${escapeHtml(siglaLabel)}` : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
-  content.querySelectorAll('[data-launch-event-sigla]').forEach((button) => button.addEventListener('click', () => {
-    pendingEventLaunch = {date: context.date || localDateKey(), memberSigla: button.dataset.launchEventSigla, scheduleSigla: context.sigla || button.dataset.launchEventSigla, name: button.dataset.launchEventName || ''};
-    dialog.close();
-    navigate('events');
-  }));
   content.querySelectorAll('[data-release-sigla]').forEach((button) => button.addEventListener('click', async () => {
     const status = content.querySelector('[data-release-status]');
     const marked = button.getAttribute('aria-pressed') !== 'true';
@@ -609,13 +583,6 @@ function showScheduleContacts(contacts, context = {}) {
     }
   }));
   dialog.showModal();
-}
-
-function bindOfflineScheduleLauncher(root) {
-  root.querySelector('[data-open-offline-schedule]')?.addEventListener('click', () => {
-    offlineViewMode = 'gallery';
-    navigate('offline');
-  });
 }
 
 async function loadModule(route) {
@@ -652,24 +619,6 @@ async function loadModule(route) {
     await loadEventEntryCatalog();
     bindEventSchedule();
     await loadEventReport();
-    if (pendingEventLaunch) {
-      const form = document.querySelector('[data-module-form="events"]');
-      if (form) {
-        form.elements.eventDate.value = pendingEventLaunch.date;
-        if (![...form.elements.memberSigla.options].some((option) => option.value === pendingEventLaunch.memberSigla)) {
-          form.elements.memberSigla.add(new Option(`${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`, pendingEventLaunch.memberSigla));
-        }
-        form.elements.memberSigla.value = pendingEventLaunch.memberSigla;
-        form.elements.memberStatus.value = pendingEventLaunch.eventType === 'Suporte'
-          ? 'SUPORTE'
-          : `${pendingEventLaunch.memberSigla} · ${pendingEventLaunch.name}`;
-        form.elements.scheduleSigla.value = pendingEventLaunch.scheduleSigla;
-        if (pendingEventLaunch.eventType) form.elements.eventType.value = pendingEventLaunch.eventType;
-        form.querySelector('[data-event-field="memberStatus"]')?.scrollIntoView({block: 'nearest'});
-        form.closest('details').open = true;
-      }
-      pendingEventLaunch = null;
-    }
     if (pendingEventPosition) {
       const {day, position} = pendingEventPosition;
       pendingEventPosition = null;
