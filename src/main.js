@@ -292,10 +292,9 @@ function actionForm(route) {
       <div class="form-grid"><label>Pagadores · um por linha<textarea name="payers" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label><label>Credores · um por linha<textarea name="creditors" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label></div>
       <button class="secondary-button" type="submit">Salvar opções</button><p id="event-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
     if (!can('eventsWrite')) return catalogForm;
-    return `${catalogForm}<details class="quick-form" open><summary>Lançamento do evento</summary><form data-module-form="events">
+    return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><button class="secondary-button" id="event-launch-close" type="button">Fechar</button></header><form data-module-form="events">
     <div class="form-grid"><label>Data do Evento<input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div data-event-field="memberStatus"><label>Sigla do membro<select name="memberSigla"><option value="">Carregando siglas…</option></select></label>
-    <label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" placeholder="Selecione a sigla para preencher o nome"></label></div>
+    <div class="event-member-field"><input name="memberSigla" type="hidden"><label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
     <label>Tipo de Evento<select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="delayMultiple">Múltiplo do atraso<select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
@@ -304,9 +303,8 @@ function actionForm(route) {
     <label>Valor a pagar<input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <label data-event-field="description">Descrição do evento<textarea name="description" rows="3" maxlength="1000"></textarea></label>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
-    <p id="event-catalog-missing" class="empty-state" hidden>O catálogo de pagadores e credores ainda precisa ser configurado pela Administração de Eventos.</p>
     <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
-    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></details>`;
+    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;
   }
   if (route === 'training' && can('trainingsManage')) return `<details class="quick-form"><summary>Gerenciar catálogo de treinamentos</summary><form id="training-catalog-form">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Link do YouTube<input name="videoUrl" type="url" required maxlength="600" placeholder="https://youtu.be/…"></label>
@@ -354,7 +352,7 @@ function shellView() {
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
   const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="event-day-control" ${eventReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="event-report-day" value="${todayInputValue()}"></label><label id="event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><label>Filtrar por pessoa<input type="search" id="event-report-person" placeholder="Nome ou sigla" autocomplete="off"></label><button class="secondary-button" type="button" id="export-events" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><small class="record-meta">A busca inclui todos os registros carregados do período; use “Carregar mais” para consultar períodos extensos.</small><div id="event-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
-  const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-labelledby="event-schedule-title"><header class="event-schedule-heading"><div><p class="eyebrow">ESCALA DIÁRIA</p><h2 id="event-schedule-title">Anestesiologistas</h2><p id="event-schedule-weekday" class="record-meta"></p></div><label class="date-picker">Data<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
+  const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const labelReport = route === 'labels' ? `<section class="event-report" aria-label="Relatórios de etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportMode === 'daily'}">RELATÓRIO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportMode === 'monthly'}">RELATÓRIO MENSAL - ETIQUETAS</button></div><div class="report-period"><label id="label-day-control" ${labelReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="label-report-day" value="${todayInputValue()}"></label><label id="label-month-control" ${labelReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-labels" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
@@ -363,10 +361,10 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel"><p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>${checklistVisual}${managementBrand}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button" data-route="home">Voltar para Home</button></section>`;
-  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}">
-    <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong>${route === 'home' ? '' : `<small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small>`}</div><button class="logout-button" id="logout">Sair</button></div></header>
-    <main class="main-content">${route === 'home' ? '' : `<div class="page-title"><p class="eyebrow">GESTÃO RESPONSÁVEL</p><h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${checklistVisual}${managementBrand}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button" data-route="home">Voltar para Home</button></section>`;
+  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : ''}">
+    <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong>${route === 'home' || route === 'events' ? '' : `<small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small>`}</div><button class="logout-button" id="logout">Sair</button></div></header>
+    <main class="main-content">${route === 'home' || route === 'events' ? '' : `<div class="page-title"><p class="eyebrow">GESTÃO RESPONSÁVEL</p><h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -1627,10 +1625,6 @@ function beginEventEdit(item) {
       select.append(option);
     }
   }
-  const existingMemberSigla = String(item.memberSigla || '').trim().toUpperCase();
-  if (existingMemberSigla && ![...form.elements.memberSigla.options].some((option) => option.value === existingMemberSigla)) {
-    form.elements.memberSigla.add(new Option(`${existingMemberSigla} · sigla histórica`, existingMemberSigla));
-  }
   form.elements.editEventId.value = item.id;
   form.elements.editEventVersion.value = Number(item.version) || 1;
   for (const [name, value] of Object.entries({eventDate: item.date, memberSigla: item.memberSigla || '', scheduleSigla: item.scheduleSigla || '', memberStatus: item.memberStatus, eventType: item.eventType, delayMultiple: item.delayMultiple ?? '', substitute: item.substitute, shift: item.shift, payer: item.payer, creditor: item.creditor, amountToPay: item.amountToPay, description: item.description})) {
@@ -1639,8 +1633,9 @@ function beginEventEdit(item) {
   form.elements.eventType.dispatchEvent(new Event('change', {bubbles: true}));
   form.querySelector('[type="submit"]').textContent = 'Atualizar evento';
   form.querySelector('#event-edit-cancel').hidden = false;
-  form.closest('details').open = true;
-  form.scrollIntoView({behavior: 'smooth', block: 'center'});
+  form.elements.memberStatus.readOnly = false;
+  const dialog = document.querySelector('#event-launch-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
   form.elements.memberStatus.focus({preventScroll: true});
 }
 
@@ -1652,11 +1647,14 @@ function resetEventEditor() {
   if (status) status.textContent = '';
   if (conflictRefresh) conflictRefresh.hidden = true;
   form.reset();
+  form.elements.memberStatus.readOnly = true;
   form.elements.editEventId.value = '';
   form.elements.editEventVersion.value = '';
   form.querySelector('[type="submit"]').textContent = 'Salvar evento';
   form.querySelector('#event-edit-cancel').hidden = true;
   updateEventEntryFields(form);
+  const dialog = document.querySelector('#event-launch-dialog');
+  if (dialog?.open) dialog.close();
 }
 
 async function loadLabelReport(options = {}) {
@@ -2637,16 +2635,10 @@ async function bindModuleForm(route) {
     const form = document.querySelector('[data-module-form="events"]');
     const eventType = form?.elements.eventType;
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
-    form?.elements.memberSigla?.addEventListener('change', () => {
-      const sigla = String(form.elements.memberSigla.value || '').trim().toUpperCase();
-      const member = loadedEventMembers.find((item) => item.sigla === sigla);
-      form.elements.memberStatus.value = member
-        ? (member.name === member.sigla ? member.sigla : `${member.sigla} · ${member.name}`)
-        : sigla;
-      const status = document.querySelector('#event-form-status');
-      if (status) status.textContent = sigla && !member
-        ? `A sigla ${sigla} não tem nome no cadastro ativo. Confira o membro antes de salvar.`
-        : '';
+    document.querySelector('#event-launch-close')?.addEventListener('click', resetEventEditor);
+    document.querySelector('#event-launch-dialog')?.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      resetEventEditor();
     });
     if (form) updateEventEntryFields(form);
     document.querySelector('#event-conflict-refresh')?.addEventListener('click', async (event) => {
@@ -2738,16 +2730,6 @@ async function loadEventEntryCatalog() {
     const {listEventMembers} = await import('./data.js');
     const members = await listEventMembers();
     loadedEventMembers = members;
-    const memberSelect = form?.elements.memberSigla;
-    if (memberSelect) {
-      const selected = memberSelect.value;
-      memberSelect.replaceChildren(new Option('Selecione uma sigla', ''));
-      for (const member of members) memberSelect.add(new Option(member.name === member.sigla ? member.sigla : `${member.sigla} · ${member.name}`, member.sigla));
-      if (selected && !members.some((item) => item.sigla === selected)) memberSelect.add(new Option(`${selected} · sigla histórica`, selected));
-      memberSelect.value = selected;
-      memberSelect.disabled = members.length === 0;
-      memberSelect.title = members.length ? '' : 'Cadastre siglas em Etiquetas ou contatos ativos em Pessoas para usar siglas em Eventos.';
-    }
     const membersMissing = document.querySelector('#event-members-missing');
     if (membersMissing) membersMissing.hidden = members.length > 0;
     for (const [name, values] of [['payer', catalog.payers], ['creditor', catalog.creditors]]) {
@@ -2765,8 +2747,6 @@ async function loadEventEntryCatalog() {
       configForm.elements.payers.value = catalog.payers.join('\n');
       configForm.elements.creditors.value = catalog.creditors.join('\n');
     }
-    const note = document.querySelector('#event-catalog-missing');
-    if (note) note.hidden = Boolean(catalog.payers.length && catalog.creditors.length);
     const staleNote = document.querySelector('#event-catalog-stale');
     if (staleNote) staleNote.hidden = catalog.stale !== true;
     const submit = form?.querySelector('[type="submit"]');
@@ -3055,9 +3035,6 @@ function bindEventSchedule() {
     const requestId = ++requestSequence;
     const day = dateInput.value;
     if (!day) return;
-    const weekday = new Intl.DateTimeFormat('pt-BR', {weekday: 'long', timeZone: 'UTC'}).format(new Date(`${day}T12:00:00Z`));
-    const weekdayLabel = document.querySelector('#event-schedule-weekday');
-    if (weekdayLabel) weekdayLabel.textContent = `${weekday} · toque em uma sigla para lançar um evento`;
     content.innerHTML = '<p class="loading">Carregando escala…</p>';
     try {
       const {readSchedule, listVacationsForDate} = await import('./data-lite.js');
@@ -3125,12 +3102,10 @@ async function launchEventFromSchedule(day, position) {
   const form = document.querySelector('[data-module-form="events"]');
   if (!form) return;
   const memberSigla = String(selected.sigla || scheduleSigla).toUpperCase();
-  if (![...form.elements.memberSigla.options].some((option) => option.value === memberSigla)) {
-    form.elements.memberSigla.add(new Option(`${memberSigla} · sigla da escala`, memberSigla));
-  }
   form.elements.eventDate.value = day;
+  form.elements.editEventId.value = '';
+  form.elements.editEventVersion.value = '';
   form.elements.memberSigla.value = memberSigla;
-  form.elements.memberStatus.value = selected.name && selected.name !== memberSigla ? `${memberSigla} · ${selected.name}` : memberSigla;
   form.elements.scheduleSigla.value = scheduleSigla;
   form.elements.eventType.value = '';
   form.elements.delayMultiple.value = '';
@@ -3141,12 +3116,14 @@ async function launchEventFromSchedule(day, position) {
   form.elements.amountToPay.value = '';
   form.elements.description.value = '';
   updateEventEntryFields(form);
+  form.elements.memberStatus.value = selected.name && selected.name !== memberSigla ? selected.name : memberSigla;
+  form.elements.memberStatus.readOnly = selected.name !== memberSigla;
   const status = document.querySelector('#event-form-status');
   status.textContent = selected.name === memberSigla
     ? `Sigla ${memberSigla} selecionada. O nome precisa ser conferido no cadastro de Pessoas.`
-    : `Evento iniciado para ${selected.name} · ${memberSigla}.`;
-  form.closest('details')?.setAttribute('open', '');
-  form.scrollIntoView({behavior: 'smooth', block: 'start'});
+    : `Evento iniciado para ${selected.name}.`;
+  const dialog = document.querySelector('#event-launch-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
   form.elements.eventType.focus({preventScroll: true});
 }
 
@@ -3176,17 +3153,15 @@ function updateEventEntryFields(form) {
   const fieldState = rules;
   for (const [name, visible] of Object.entries(fieldState)) {
     const field = form.querySelector(`[data-event-field="${name}"]`);
-    if (field) field.hidden = !visible;
+    const memberField = name === 'memberStatus';
+    if (field && !memberField) field.hidden = !visible;
     if (form.elements[name]) {
       form.elements[name].required = visible;
-      if (!visible) form.elements[name].value = '';
+      if (!visible && !memberField) form.elements[name].value = '';
       form.elements[name].disabled = !visible && name === 'memberStatus';
     }
   }
   if (form.elements.memberSigla) {
-    form.elements.memberSigla.required = rules.memberStatus;
-    form.querySelector('[data-event-field="memberStatus"]')?.toggleAttribute('hidden', !rules.memberStatus);
-    form.elements.memberSigla.disabled = !rules.memberStatus || form.elements.memberSigla.options.length <= 1;
     form.elements.memberStatus.required = rules.memberStatus;
     form.elements.memberStatus.disabled = !rules.memberStatus;
   }
