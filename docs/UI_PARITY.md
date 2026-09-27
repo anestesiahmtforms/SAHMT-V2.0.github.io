@@ -81,3 +81,5 @@ Correção V59: o rótulo condicional de Situação do membro é descendente de 
 Correção V60: margens seguras foram restabelecidas ao redor do modal em telas móveis, os controles de seleção mantêm a interação nativa e “Voltar” pode fechar o `<dialog>` pelo mecanismo HTML nativo.
 
 Correção V61: a ligação dos controles do formulário precede as consultas de catálogo e relatório, permitindo que “Voltar” e a matriz condicional respondam assim que a tela de Eventos aparece.
+
+Correção V62: a leitura de Pagador/Credor/Substituto é independente da lista de nomes da equipe; uma falha de nomes não esvazia os seletores já autorizados. Falha do catálogo bloqueia a gravação. O proprietário informou o cadastro das opções, mas a conferência autenticada do conteúdo e dos toques em aparelho segue pendente.
