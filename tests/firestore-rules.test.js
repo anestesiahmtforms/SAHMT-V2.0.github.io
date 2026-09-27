@@ -689,7 +689,7 @@ test('liberação de sigla altera somente a lista compartilhada sob scheduleWrit
   assert.equal(stored.data().version, 2);
 });
 
-test('gestor da escala publica e ajusta posições sem perder destaques', async () => {
+test('planilha é a fonte da escala; clientes não criam nem alteram posições', async () => {
   await seedProfiles([
     accessProfile('schedule-editor', {scheduleWrite: true}),
     accessProfile('events-reader', {eventsRead: true})
@@ -704,15 +704,16 @@ test('gestor da escala publica e ajusta posições sem perder destaques', async 
     createdByUid: 'schedule-editor', createdAt: serverTimestamp(),
     updatedByUid: 'schedule-editor', updatedAt: serverTimestamp()
   };
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'scheduleDays', day), {...initial, createdByUid: 'migration:sheet-schedule-source', updatedByUid: 'migration:sheet-schedule-source', createdAt: new Date(), updatedAt: new Date()});
+  });
   await assertFails(setDoc(doc(eventsReader, 'scheduleDays', day), {...initial, createdByUid: 'events-reader', updatedByUid: 'events-reader'}));
-  await assertFails(setDoc(reference, {...initial, positions: []}));
-  await assertFails(setDoc(reference, {...initial, positions: [{position: 1, sigla: 'ERRADO'}]}));
-  await assertSucceeds(setDoc(reference, initial));
+  await assertFails(setDoc(reference, initial));
   await assertSucceeds(getDoc(doc(eventsReader, 'scheduleDays', day)));
   await assertFails(updateDoc(doc(eventsReader, 'scheduleDays', day), {
     positions: [{position: 1, sigla: 'ZZ'}], updatedByUid: 'events-reader', updatedAt: serverTimestamp(), version: 2
   }));
-  await assertSucceeds(updateDoc(reference, {
+  await assertFails(updateDoc(reference, {
     positions: [{position: 1, sigla: 'AB'}, {position: 2, sigla: 'DC'}],
     updatedByUid: 'schedule-editor', updatedAt: serverTimestamp(), version: 2
   }));
@@ -723,7 +724,7 @@ test('gestor da escala publica e ajusta posições sem perder destaques', async 
   }));
   await assertFails(deleteDoc(reference));
   const stored = await assertSucceeds(getDoc(reference));
-  assert.deepEqual(stored.data().positions, [{position: 1, sigla: 'AB'}, {position: 2, sigla: 'DC'}]);
+  assert.deepEqual(stored.data().positions, [{position: 1, sigla: 'AB'}]);
   assert.deepEqual(stored.data().highlights, {siglas: [], events: []});
 });
 

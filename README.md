@@ -6,7 +6,7 @@ Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Aut
 
 - O UID do Firebase Authentication identifica o perfil mínimo em `users/{uid}`; as Firestore Rules conferem perfil e permissão a cada acesso do cliente.
 - Home, Eventos, Etiquetas, Gestão, Checklist, Treinamentos, Administração e sincronização offline permanecem dentro do mesmo PWA. Administradores também controlam sem código a visibilidade dos módulos configuráveis.
-- A V2 não usa Sheets ou Apps Script para autenticar nem para gravar operações. Uma integração assíncrona de relatórios está preparada no código, mas não implantada.
+- Firebase Auth e Firestore Rules continuam autenticando e autorizando o PWA. ESCALA/FÉRIAS tem uma planilha privada como fonte de autoria; o Apps Script V2 publica manualmente snapshots validados no Firestore. O PWA não grava posições da escala nem acessa Sheets por chamadas de dados. Os demais registros operacionais seguem gravações diretas autorizadas no Firestore.
 
 ## Estado atual — 26/09/2026
 

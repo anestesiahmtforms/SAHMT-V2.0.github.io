@@ -32,7 +32,7 @@ O formato de trabalho aprovado para a cópia compacta é uma linha de cabeçalho
 - O PDF anexado anteriormente nunca foi importado nem armazenado no Firestore; `vacations` estava vazia na consulta registrada. O PDF está fora do processo daqui em diante e não será publicado no repositório.
 - O conector Apps Script está implementado como publicação manual em duas etapas, sem gatilho: prévia e publicação explícita. O código foi enviado ao projeto Apps Script em 27/09/2026. Exige e-mail em `SAHMT_V2_SCHEDULE_SYNC_ALLOWED_EMAILS`, planilha privada, autorização IAM, nova prévia após qualquer alteração e validação pós-escrita. Essas propriedades/permissões e a homologação ainda precisam ser concluídas. Editar a planilha, por si só, não atualiza o PWA.
 - As 52 linhas `FÉRIAS` não estão no Firestore: 51 têm datas e siglas explícitas; a linha 48, 23–29/11/2026, está rotulada `CONGRESSO` e não tem siglas, portanto não é publicada como férias sem classificação.
-- O editor existente de escala no PWA grava no Firestore diretamente; para preservar a planilha como fonte oficial, alterações feitas por esse editor precisam ser copiadas de volta para a planilha antes de qualquer publicação posterior ou o editor precisa ser convertido para encaminhar edições à fonte oficial.
+- O editor direto de posições foi removido da Home e das Rules do cliente. Perfis `scheduleWrite` ainda liberam siglas no cartão de contato, mas não criam/alteram posições; novas posições entram pela publicação manual da planilha via IAM Apps Script.
 - Nenhuma carga ou alteração do Firestore foi feita a partir desta planilha.
 
 ## Próximos passos

@@ -7,7 +7,6 @@ import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
 import {updateScheduleReleaseState} from './schedule-release.js';
-import {normalizeSchedulePositions} from './schedule-editor.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 
@@ -39,42 +38,6 @@ export async function readSchedule(day, uid) {
     const cached = uid ? await readSafeCache(uid, 'scheduleDays', day) : null;
     if (cached?.data) return {...cached.data, stale: true};
     throw error;
-  }
-}
-
-export async function saveScheduleDay(day, entries, expectedVersion, uid) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !uid || !Number.isInteger(expectedVersion) || expectedVersion < 0) {
-    throw new Error('A data ou a versão da escala é inválida.');
-  }
-  if (!navigator.onLine) throw new Error('Conecte-se para publicar a escala.');
-  const positions = normalizeSchedulePositions(entries);
-  const reference = doc(db, 'scheduleDays', day);
-  const saved = await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(reference);
-    if (!snapshot.exists()) {
-      if (expectedVersion !== 0) throw new Error('A escala mudou. Reabra este dia para conferir as posições atuais.');
-      transaction.set(reference, {
-        id: day, date: day, positions, highlights: {siglas: [], events: []}, version: 1,
-        createdByUid: uid, createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp()
-      });
-      return {id: day, date: day, positions, highlights: {siglas: [], events: []}, version: 1};
-    }
-    const current = snapshot.data();
-    if (current.version !== expectedVersion) throw new Error('A escala mudou. Reabra este dia para conferir as posições atuais.');
-    if (!Array.isArray(current.positions) || current.positions.some((position) => Object.keys(position || {}).some((key) => !['position', 'sigla'].includes(key))) || Array.isArray(current.assignments) || Array.isArray(current.siglas)) {
-      throw new Error('O formato desta escala precisa de revisão antes de editar posições.');
-    }
-    if (JSON.stringify(current.positions) === JSON.stringify(positions)) return {id: day, ...current};
-    transaction.update(reference, {
-      positions, updatedByUid: uid, updatedAt: serverTimestamp(), version: current.version + 1
-    });
-    return {id: day, ...current, positions, updatedByUid: uid, version: current.version + 1};
-  });
-  await writeSafeCache(uid, 'scheduleDays', day, saved).catch(() => {});
-  try { return await readSchedule(day, uid); }
-  catch (error) {
-    if (!mayUseOfflineCache(error)) throw error;
-    return {...saved, stale: true};
   }
 }
 

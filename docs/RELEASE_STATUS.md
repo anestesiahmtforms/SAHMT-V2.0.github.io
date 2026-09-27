@@ -1,6 +1,6 @@
 # SAHMT V2.0 — relatório de release e limites
 
-- Em 27/09/2026, a Home ganhou layout de uma tela baseado na altura dinâmica do dispositivo, respeitando áreas seguras do Android/iOS. A grade mantém linhas automáticas conforme as permissões do perfil; o botão de edição da escala ocupa espaço compacto apenas para `scheduleWrite`, e o nome de conta longo é truncado no cabeçalho. O service worker avançou para `v35` para substituir os assets do shell. Validação local: 76 testes de domínio, 40 testes das Firestore Rules no emulador com Temurin JDK 21 e build de produção passaram. A conferência visual depois da publicação em diferentes dimensões físicas continua pendente.
+- Em 27/09/2026, a Home ganhou layout de uma tela baseado na altura dinâmica do dispositivo, respeitando áreas seguras do Android/iOS. A grade mantém linhas automáticas conforme as permissões do perfil; o botão da Home abre a planilha oficial apenas para `scheduleWrite`, e o nome de conta longo é truncado no cabeçalho. O service worker está em `v37` nesta revisão. Validação local: 76 testes de domínio, 40 testes das Firestore Rules no emulador com Temurin JDK 21 e build de produção passaram. A conferência visual depois da publicação em diferentes dimensões físicas continua pendente.
 
 ## Artefato publicado
 

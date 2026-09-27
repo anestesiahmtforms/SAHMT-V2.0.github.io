@@ -928,8 +928,8 @@ service cloud.firestore {
     }
     match /scheduleDays/{scheduleId} {
       allow read: if can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite');
-      allow create: if validNewScheduleDay(scheduleId);
-      allow update: if validSchedulePositionsUpdate(scheduleId) || validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
+      allow create: if false;
+      allow update: if validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
       allow delete: if false;
     }
     match /contacts/{sigla} {
