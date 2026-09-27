@@ -288,7 +288,7 @@ function queryFirestore_(collectionId, filters, orderBy, limit, fieldPaths) {
     const document = item.document;
     const fields = firestoreFieldsToJs_(document.fields || {});
     const id = String(document.name || '').split('/').pop();
-    return Object.assign(fields, {id: fields.id || id, _documentName: document.name});
+    return Object.assign(fields, {id: fields.id || id, _documentName: document.name, _updateTime: document.updateTime});
   });
 }
 
