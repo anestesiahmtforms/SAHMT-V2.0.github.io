@@ -870,7 +870,7 @@ test('histórico de Etiquetas registra todas as alterações em batch e conserva
   }));
 });
 
-test('catálogo de plantonistas de Etiquetas é restrito e validado pelas Rules', async () => {
+test('catálogo compartilhado de siglas é restrito e validado pelas Rules', async () => {
   await seedProfiles([
     accessProfile('label-manager', {labelsManage: true}),
     accessProfile('label-writer', {labelsRead: true, labelsWrite: true}),
@@ -891,7 +891,7 @@ test('catálogo de plantonistas de Etiquetas é restrito e validado pelas Rules'
   const invalid = {...label, id: 'label-roster-invalid', clientMutationId: 'label-roster-invalid', staffSiglas: ['ZZ']};
   await assertFails(setFirestoreRecord(writer, 'labels', invalid.id, invalid, 'label-writer'));
   await assertSucceeds(getDoc(doc(reader, 'appConfig', 'labelStaff')));
-  await assertFails(getDoc(doc(unrelated, 'appConfig', 'labelStaff')));
+  await assertSucceeds(getDoc(doc(unrelated, 'appConfig', 'labelStaff')));
 
   await assertSucceeds(updateDoc(doc(manager, 'appConfig', 'labelStaff'), {siglas: ['CD'], updatedByUid: 'label-manager', updatedAt: serverTimestamp(), version: 2}));
   await assertSucceeds(updateFirestoreRecord(writer, 'labels', label.id, {patientName: 'Paciente Atualizado', updatedByUid: 'label-writer', updatedAt: serverTimestamp(), version: 2}, 'label-writer'));
