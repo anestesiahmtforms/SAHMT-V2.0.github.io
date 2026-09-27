@@ -83,7 +83,7 @@ function createWorker({offline = false} = {}) {
 }
 
 test('instala o shell V65 com os símbolos da Home e os imports estáticos do Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v65';/);
+  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v66';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});

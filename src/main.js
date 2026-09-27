@@ -284,7 +284,11 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
     return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
-  }).join('')}</div>`;
+  }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
+}
+
+function renderEventSupportTile(eventsWritable) {
+  return `<div class="sigla-item"><button class="sigla-token sigla-button sigla-token--support" type="button" data-event-support ${eventsWritable ? '' : 'disabled'} aria-label="Lançar evento de Suporte" title="Lançar Suporte"><strong>SUPORTE</strong></button><div class="sigla-index" aria-hidden="true"></div></div>`;
 }
 
 function actionForm(route) {
@@ -3111,6 +3115,7 @@ function bindEventSchedule() {
   const dateInput = document.querySelector('#event-schedule-date');
   const content = document.querySelector('#event-schedule-content');
   if (!dateInput || !content) return;
+  const canLaunchSupport = can('eventsWrite') && featureEnabledForRoute('events', appFeatures);
   dateInput.value = localDateKey();
   let requestSequence = 0;
   const vacationCache = new Map();
@@ -3132,7 +3137,8 @@ function bindEventSchedule() {
       const schedule = await readSchedule(day, session.user.uid);
       if (requestId !== requestSequence || !content.isConnected) return;
       if (!schedule) {
-        content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
+        content.innerHTML = `<p class="empty-state">Nenhuma escala publicada para esta data.</p>${canLaunchSupport ? `<div class="siglas-grid schedule-siglas-grid event-support-only">${renderEventSupportTile(true)}</div>` : ''}`;
+        bindEventSupportButton(content, day);
         return;
       }
       let vacations = [];
@@ -3141,17 +3147,19 @@ function bindEventSchedule() {
         if (requestId !== requestSequence || !content.isConnected) return;
         const view = buildScheduleView(schedule, day, vacations, []);
         if (!view.positions.length) {
-          content.innerHTML = '<p class="empty-state">A escala está publicada sem posições para esta data.</p>';
+          content.innerHTML = `<p class="empty-state">A escala está publicada sem posições para esta data.</p>${canLaunchSupport ? `<div class="siglas-grid schedule-siglas-grid event-support-only">${renderEventSupportTile(true)}</div>` : ''}`;
+          bindEventSupportButton(content, day);
           return;
         }
         const vacationLabel = view.vacationLabel ? `<p class="event-schedule-vacation">Férias · ${escapeHtml(view.vacationLabel)}</p>` : '';
         const vacationStatus = vacationsError ? '<p class="sync-state">Não foi possível consultar as férias deste dia.</p>' : vacations.some((vacation) => vacation.stale) ? '<p class="sync-state">Férias carregadas do cache deste aparelho.</p>' : '';
-        const grid = renderSchedulePositionGrid(view, {mode: 'events', schedule, eventsWritable: can('eventsWrite') && featureEnabledForRoute('events', appFeatures)});
+        const grid = renderSchedulePositionGrid(view, {mode: 'events', schedule, eventsWritable: canLaunchSupport});
         content.innerHTML = `${vacationLabel}${grid}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${vacationStatus}`;
         content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
           const position = view.positions[Number(button.dataset.schedulePositionIndex)];
           if (position) void launchEventFromSchedule(day, position);
         }));
+        bindEventSupportButton(content, day);
       };
       draw();
       const vacationResult = await vacationsPromise;
@@ -3169,6 +3177,28 @@ function bindEventSchedule() {
   document.querySelector('#event-schedule-next')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, 1); void render(); });
   dateInput.addEventListener('change', render);
   void render();
+}
+
+function bindEventSupportButton(content, day) {
+  content.querySelector('[data-event-support]')?.addEventListener('click', () => launchEventSupport(day));
+}
+
+function launchEventSupport(day) {
+  if (!can('eventsWrite') || !featureEnabledForRoute('events', appFeatures)) return;
+  const form = document.querySelector('[data-module-form="events"]');
+  if (!form) return;
+  resetEventEditor();
+  form.elements.eventDate.value = day;
+  form.elements.memberSigla.value = '';
+  form.elements.scheduleSigla.value = 'SUPORTE';
+  form.elements.memberStatus.value = 'SUPORTE';
+  form.elements.eventType.value = 'Suporte';
+  updateEventEntryFields(form);
+  const status = document.querySelector('#event-form-status');
+  if (status) status.textContent = 'Evento de Suporte iniciado. Selecione o substituto e o turno.';
+  const dialog = document.querySelector('#event-launch-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
+  form.elements.substitute.focus({preventScroll: true});
 }
 
 async function launchEventFromSchedule(day, position) {
