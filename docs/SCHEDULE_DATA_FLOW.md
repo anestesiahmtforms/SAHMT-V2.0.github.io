@@ -8,7 +8,7 @@ A nova leitura somente de metadados e da aba `FÉRIAS` em 27/09/2026 confirmou q
 
 - Aba `ESCALA` continua com `date` e `pos1`–`pos17`.
 - Aba `FÉRIAS` agora apresenta doze meses em dois blocos paralelos. Cada bloco usa `SEMANA`, `PERÍODO` e até cinco colunas `SIGLA`; o título informa o ano (`2026`). Os intervalos são texto, por exemplo `31 A 06/09`, e a semana de 23–29/11 usa `CONGRESSO` sem siglas.
-- A grade lida contém 52 períodos: 51 com siglas e um `CONGRESSO`. Os 51 intervalos com siglas são períodos únicos de sete dias, não se sobrepõem e cobrem 05/01/2026 a 03/01/2027. Não foram encontrados erros de formato nas siglas ou datas.
+- A grade lida contém 52 períodos: 51 com siglas e um `CONGRESSO`. Os 51 intervalos com siglas são períodos únicos de sete dias, não se sobrepõem e cobrem 05/01/2026 a 03/01/2027. Não foram encontrados erros de formato nas siglas ou datas. Em 27/09, o proprietário confirmou que a inclusão de `BA` em 23–29/03 procede e que a semana `CONGRESSO` não tem férias por contingência; as 51 linhas com siglas estão aprovadas para a prévia.
 - A comparação com o snapshot privado anterior encontrou 51 intervalos correspondentes. Na semana 23–29/03/2026, a grade atual acrescenta `BA` à sigla `WE`; os outros 50 intervalos correspondentes mantêm o mesmo conjunto de siglas. Quatro rótulos mudaram junto com as anotações de apresentação; o `CONGRESSO` segue fora da publicação.
 - Os metadados da planilha indicam título `ESCALA/FÉRIAS 2026`, idioma `pt_BR` e fuso `America/Sao_Paulo`.
 
@@ -33,12 +33,12 @@ O leitor Apps Script aceita a grade mensal atual e o formato tabular normalizado
 - A planilha foi lida em modo somente leitura; nenhum valor foi modificado. Nesta conferência, foram lidos os metadados, cabeçalhos e amostras limitadas das abas; os dados completos não foram copiados para arquivo versionado.
 - O PDF anexado anteriormente nunca foi importado nem armazenado no Firestore; `vacations` estava vazia na consulta registrada. O PDF está fora do processo daqui em diante e não será publicado no repositório.
 - O conector Apps Script está implementado como publicação manual em duas etapas, sem gatilho: prévia e publicação explícita. O leitor da grade atual foi enviado ao projeto e tem implantação de API limitada a `MYSELF`. `clasp run previewScheduleSourceToFirestore` foi recusado por permissão; a prévia real não foi gerada. A execução ainda exige identidade/projeto OAuth autorizado, allowlist `SAHMT_V2_SCHEDULE_SYNC_ALLOWED_EMAILS`, acesso IAM ao Firestore e validação pós-escrita. Editar a planilha, por si só, não atualiza o PWA.
-- A estrutura atual da aba `FÉRIAS` não foi publicada no Firestore. A consulta anterior de `vacations` encontrou zero documentos antes desta alteração; a publicação da grade atual depende da prévia Apps Script e da configuração de acesso já descritas neste documento.
+- A estrutura atual da aba `FÉRIAS` não foi publicada no Firestore. A consulta anterior de `vacations` encontrou zero documentos antes desta alteração; a publicação das 51 linhas aprovadas depende da prévia Apps Script e da configuração de acesso já descritas neste documento.
 - O editor direto de posições foi removido da Home e das Rules do cliente. Perfis `scheduleWrite` ainda liberam siglas no cartão de contato, mas não criam/alteram posições; novas posições entram pela publicação manual da planilha via IAM Apps Script.
 - Nenhuma carga ou alteração do Firestore foi feita a partir desta planilha.
 
 ## Próximos passos
 
 1. Corrigir/autorizar a identidade OAuth do Apps Script API no mesmo projeto Cloud usado pelo script e revisar IAM e allowlist.
-2. Executar a prévia real contra o Firestore e revisar a inclusão de `BA` em 23–29/03, as 51 férias, a exceção `CONGRESSO` e o conjunto de gravações.
+2. Executar a prévia real contra o Firestore e conferir que ela propõe publicar as 51 férias aprovadas, mantendo `CONGRESSO` fora do conjunto.
 3. Publicar somente após conferir a prévia e validar todos os documentos pela releitura do Firestore.
