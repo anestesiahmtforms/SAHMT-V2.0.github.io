@@ -12,7 +12,7 @@ A planilha foi consultada sem edição em 27/09/2026. A leitura delimitada encon
 
 ## Modelo operacional
 
-- `scheduleDays/{YYYY-MM-DD}` contém as posições ordenadas e as marcações usadas pela Home e por Eventos. Existem 307 documentos da migração da aba `ESCALA` V1. Comparação somente de leitura em 27/09 confirmou as mesmas 307 datas e as mesmas posições em todos os documentos; 10 datas têm marcações `highlights.siglas` diferentes da planilha. Nenhuma data está ausente ou sobrando.
+- `scheduleDays/{YYYY-MM-DD}` contém as posições ordenadas e as marcações usadas pela Home e por Eventos. Existem 307 documentos da migração da aba `ESCALA` V1. Comparação somente de leitura em 27/09 confirmou as mesmas 307 datas, posições e marcações em todos os documentos; nenhuma data está ausente ou sobrando. A coluna `marks` é um mapa booleano; somente chaves com valor `true` representam marcação ativa.
 - `vacations/{id}` contém um período, uma lista de siglas e estado ativo. A última consulta documentada encontrou zero documentos; os 52 períodos da planilha não foram copiados para Firestore.
 - Datas são normalizadas para `YYYY-MM-DD`; as chaves por data permitem continuar a grade no ano seguinte sem substituir o histórico. As siglas compostas da escala são preservadas como estão nas posições; férias são listas explícitas de siglas.
 - Não importar metadados pessoais/auditáveis da planilha (`actorEmail`, `actorName`, UIDs, deviceId etc.) para os documentos operacionais, salvo decisão de produto e necessidade comprovada.
@@ -35,6 +35,6 @@ A planilha foi consultada sem edição em 27/09/2026. A leitura delimitada encon
 
 ## Próximos passos
 
-1. Revisar as marcações divergentes nas 10 datas encontradas e decidir como classificar a linha `CONGRESSO`.
+1. Decidir como classificar a linha `CONGRESSO` sem siglas (23–29/11/2026); ela não deve entrar como férias.
 2. Fechar o desenho de publicação planilha → Firestore, com autorização restrita, prévia, detecção de concorrência e confirmação.
 3. Implementar e homologar o conector antes da primeira carga de férias ou de uma rotina de atualização contínua.
