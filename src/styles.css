@@ -86,7 +86,11 @@
 .label-camera-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .label-camera-dialog h3 { margin: 0; font-size: 1.05rem; }
 .label-camera-dialog > p { margin: 8px 0 12px; color: #526578; font-size: .8rem; line-height: 1.45; }
-.label-camera-dialog video { display: block; width: 100%; max-height: 56dvh; object-fit: contain; border-radius: 12px; background: #061a2a; }
+.label-camera-stage { position: relative; width: 100%; height: min(55dvh, 460px); min-height: 220px; overflow: hidden; border-radius: 14px; background: #061a2a; }
+.label-camera-dialog video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.label-camera-target { position: absolute; inset: 14% 7%; display: grid; place-items: center; border: 2px solid #fff; border-radius: 14px; box-shadow: 0 0 0 999px rgb(2 15 27 / 28%); pointer-events: none; }
+.label-camera-target::before { position: absolute; inset: 0; border: 1px dashed rgb(255 255 255 / 78%); border-radius: 12px; content: ""; }
+.label-camera-target span { align-self: end; margin-bottom: 9px; padding: 5px 9px; border-radius: 999px; background: rgb(4 24 42 / 78%); color: white; font-size: .72rem; font-weight: 850; }
 .label-camera-dialog #label-camera-capture { width: 100%; margin-top: 12px; }
 .label-crop-frame { position: relative; max-width: 100%; overflow: hidden; border-radius: 10px; background: #e5ebef; margin-inline: auto; }
 .label-crop-frame[hidden] { display: none; }
@@ -94,6 +98,66 @@
 .label-crop-frame.is-cropping .label-ocr-preview { cursor: crosshair; touch-action: none; }
 .label-crop-selection { position: absolute; z-index: 1; border: 2px solid #ffd54f; background: rgb(10 35 56 / 22%); pointer-events: none; }
 .label-crop-selection[hidden] { display: none; }
+
+/* Apresentação responsiva comum para os módulos no Android e iOS. */
+.main-content,.module-view,.panel,.quick-form,.content-grid,.form-grid,.admin-user-actions,.report-period,.checklist-controls,.label-capture-panel,.training-card,.management-area-detail { min-width: 0; }
+.module-view { overflow-wrap: anywhere; }
+.module-view img,.module-view canvas,.module-view video,.module-view iframe { max-width: 100%; }
+.module-view input:not([type="checkbox"]):not([type="radio"]),.module-view select,.module-view textarea { max-width: 100%; }
+.module-view .admin-user-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.module-view .admin-user-actions > button { flex: 1 1 160px; }
+.checklist-station-grid { align-items: stretch; }
+.checklist-station-grid .checklist-station { display: flex; flex-direction: column; justify-content: space-between; min-height: 156px; }
+.checklist-station-grid .checklist-station>div:first-child { flex: 1; }
+.checklist-station-grid .checklist-actions .secondary-button { min-height: 48px; font-size: .76rem; }
+.checklist-station-select { display: block; width: 100%; min-height: 48px; padding: 9px 10px; border: 1px solid #bed4df; border-radius: 11px; background: linear-gradient(145deg,#fff,#e6f0f4); color: #123b5d; font-size: .9rem; font-weight: 900; line-height: 1.25; text-align: left; overflow-wrap: anywhere; box-shadow: 0 2px 0 #cfdee4; }
+.checklist-station-select:disabled { opacity: .7; cursor: default; }
+.label-capture-panel>label { display: grid; gap: 6px; min-width: 0; color: #526578; font-size: .78rem; font-weight: 800; }
+.label-capture-panel input[type="file"] { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #b9ccd5; border-radius: 10px; background: #fff; color: var(--ink); }
+.label-camera-dialog { width: min(calc(100% - 20px), 560px); max-height: min(94dvh, 820px); padding: clamp(12px, 3vw, 18px); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.label-camera-dialog[open],.checklist-qr-dialog[open],.training-dialog[open] { overscroll-behavior: contain; }
+.label-camera-dialog #label-camera-capture,.checklist-qr-dialog form button { min-height: 48px; }
+.training-dialog,.checklist-qr-dialog { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+.quick-form summary,.report-mode button,.offline-view-tabs button { touch-action: manipulation; }
+@media (max-width: 600px) {
+  .main-content { width: calc(100% - 20px); padding: 16px 0 max(22px, env(safe-area-inset-bottom)); }
+  .module-view { padding: clamp(12px, 3.5vw, 18px); border-radius: 18px; }
+  .module-content { margin: 13px 0; }
+  .content-grid { gap: 11px; }
+  .panel-heading { align-items: flex-start; }
+  .checklist-controls { display: grid; gap: 10px; padding: 10px; }
+  .checklist-controls .report-period { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); align-items: stretch; }
+  .checklist-controls .report-period label { grid-column: 1 / -1; min-width: 0; }
+  .checklist-controls .report-period button { min-width: 0; white-space: normal; }
+  .checklist-controls .report-period input { width: 100%; }
+  .checklist-station-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+  .checklist-station-grid .checklist-station { min-height: 168px; padding: 8px; }
+  .checklist-station-grid .checklist-actions { grid-template-columns: 1fr; }
+  .checklist-station-grid .checklist-actions .secondary-button { min-height: 46px; }
+  .label-camera-stage { height: min(52dvh, 390px); min-height: 210px; }
+  .label-camera-target { inset: 17% 5%; }
+  .training-card { align-items: stretch; flex-direction: column; }
+  .training-card .primary-button { width: 100%; }
+  .learning-activity-card { grid-template-columns: minmax(0,1fr); }
+  .learning-activity-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .learning-activity-actions>* { min-width: 0; min-height: 46px; }
+  .action-plan-item-form { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .action-plan-item-form label:first-child,.action-plan-item-form label:nth-child(3),.action-plan-item-form button { grid-column: 1 / -1; }
+}
+@media (max-width: 360px) {
+  .checklist-station-grid { grid-template-columns: minmax(0,1fr); }
+  .checklist-station-grid .checklist-station { min-height: 0; }
+  .checklist-station-grid .checklist-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .checklist-controls .report-period { grid-template-columns: minmax(0,1fr); }
+  .checklist-controls .report-period>* { grid-column: 1 / -1; }
+  .label-camera-target { inset: 20% 4%; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .label-camera-dialog { max-height: 96dvh; overflow-y: auto; }
+  .label-camera-dialog>p { margin-block: 5px; }
+  .label-camera-stage { height: 56dvh; min-height: 160px; }
+  .checklist-qr-dialog,.training-dialog { max-height: 96dvh; }
+}
 
 /* Mantém o portão de entrada reconhecível em relação à autenticação da V1. */
 .login-gate {
