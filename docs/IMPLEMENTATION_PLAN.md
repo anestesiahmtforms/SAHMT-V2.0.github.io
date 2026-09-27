@@ -95,4 +95,4 @@ Não cortar funcionalidades para atingir data ou reduzir código. Não mudar a V
 
 pm run build passou. A validação real de gravação não foi feita.
 
-- [ ] EVENTOS: validar em produção que tocar numa sigla abre o modal com data, nome e sigla internos corretos; conferir edição, fechamento sem gravação e visual Android/iOS. A implementação local removeu títulos duplicados e o seletor visível de sigla. Build passou; nenhuma gravação de evento foi feita.
+- [ ] EVENTOS: validar em produção que tocar numa sigla abre o modal com data, nome e sigla internos corretos; conferir edição, fechamento sem gravação e visual Android/iOS. O commit `62c682d` está publicado (workflow `36344535791`); os bundles do Pages confirmam modal e CSS e nenhuma gravação real de evento foi feita.
