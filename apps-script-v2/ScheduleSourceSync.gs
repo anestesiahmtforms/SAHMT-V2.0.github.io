@@ -180,6 +180,15 @@ function readScheduleRows_(sheet) {
 
 function readVacationRows_(sheet) {
   const required = ['start', 'end', 'siglas', 'label'];
+  const scanRows = Math.min(20, Math.max(1, sheet.getLastRow()));
+  const scanColumns = Math.max(1, sheet.getLastColumn());
+  const scan = sheet.getRange(1, 1, scanRows, scanColumns).getDisplayValues();
+  const hasCompactHeaders = scan.some(function (row) {
+    const headers = row.map(function (item) { return String(item || '').trim().toLowerCase(); });
+    return required.every(function (key) { return headers.indexOf(key) >= 0; });
+  });
+  if (!hasCompactHeaders) return readVacationMatrixRows_(sheet);
+
   const header = findHeaderRow_(sheet, required);
   const lastRow = sheet.getLastRow();
   if (lastRow <= header.row) return {records: [], skippedWithoutSiglas: 0};
@@ -207,6 +216,106 @@ function readVacationRows_(sheet) {
     result.push({id: id, start: start, end: end, siglas: siglas, label: label, notes: '', active: true});
   });
   return {records: result, skippedWithoutSiglas: skippedWithoutSiglas};
+}
+
+/** Read the printable month-by-month vacation matrix (two month blocks per row). */
+function readVacationMatrixRows_(sheet) {
+  const monthNumbers = {
+    janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
+    julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12
+  };
+  const rowCount = Math.max(1, sheet.getLastRow());
+  const columnCount = Math.max(15, sheet.getLastColumn());
+  const rows = sheet.getRange(1, 1, rowCount, columnCount).getDisplayValues();
+  const title = rows.slice(0, 3).map(function (row) { return row.join(' '); }).join(' ');
+  const yearMatch = /\b(20\d{2})\b/.exec(title);
+  if (!yearMatch) throw new Error('Não foi possível identificar o ano no título da aba FÉRIAS.');
+  const year = Number(yearMatch[1]);
+  const activeMonth = [0, 0];
+  const result = [];
+  const skippedWithoutSiglas = [];
+  const periodPattern = /^(\d{1,2})\s*A\s*(\d{1,2})\s*\/\s*(\d{1,2})$/i;
+
+  rows.forEach(function (row, rowIndex) {
+    [0, 8].forEach(function (offset, groupIndex) {
+      const monthName = String(row[offset] || '').trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (monthNumbers[monthName]) {
+        activeMonth[groupIndex] = monthNumbers[monthName];
+        return;
+      }
+
+      const period = String(row[offset + 1] || '').trim().replace(/\s+/g, ' ');
+      const match = periodPattern.exec(period);
+      if (!match) return;
+      const rowNumber = rowIndex + 1;
+      const sectionMonth = activeMonth[groupIndex];
+      const startDay = Number(match[1]);
+      const endDay = Number(match[2]);
+      const endMonth = Number(match[3]);
+      if (!sectionMonth) throw new Error('Mês não identificado para o período na linha ' + rowNumber + ' da aba FÉRIAS.');
+      if (endMonth < 1 || endMonth > 12 || startDay < 1 || startDay > 31 || endDay < 1 || endDay > 31) {
+        throw new Error('Período inválido na linha ' + rowNumber + ' da aba FÉRIAS: ' + period + '.');
+      }
+
+      let startMonth = sectionMonth;
+      let startYear = year;
+      let endYear = year;
+      if (sectionMonth === 12 && endMonth === 1) endYear++;
+      else if (endMonth === sectionMonth && startDay > endDay) {
+        startMonth = sectionMonth === 1 ? 12 : sectionMonth - 1;
+        if (sectionMonth === 1) startYear--;
+      } else if (endMonth !== sectionMonth && endMonth !== sectionMonth + 1) {
+        throw new Error('O mês final não corresponde ao bloco mensal na linha ' + rowNumber + ' da aba FÉRIAS.');
+      }
+
+      const start = scheduleSourceDateParts_(startYear, startMonth, startDay, rowNumber);
+      const end = scheduleSourceDateParts_(endYear, endMonth, endDay, rowNumber);
+      const durationDays = (Date.parse(end + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z')) / 86400000 + 1;
+      if (durationDays !== 7) throw new Error('O período semanal na linha ' + rowNumber + ' não contém sete dias.');
+
+      const rawSiglas = [];
+      for (let column = offset + 2; column <= offset + 6; column++) {
+        const value = String(row[column] || '').trim();
+        if (value) rawSiglas.push(value);
+      }
+      const label = rawSiglas.join('-');
+      if (rawSiglas.length === 1 && /^CONGRESSO$/i.test(rawSiglas[0])) {
+        skippedWithoutSiglas.push({row: rowNumber, start: start, end: end, label: label});
+        return;
+      }
+
+      const siglas = [];
+      rawSiglas.forEach(function (value) {
+        const normalized = value.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        if (!normalized) return;
+        parseVacationSiglas_(normalized, rowNumber).forEach(function (sigla) { siglas.push(sigla); });
+      });
+      const uniqueSiglas = [...new Set(siglas)];
+      if (!uniqueSiglas.length) {
+        skippedWithoutSiglas.push({row: rowNumber, start: start, end: end, label: label});
+        return;
+      }
+      if (uniqueSiglas.some(function (sigla) { return sigla.length > 30 || !/^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$/.test(sigla); })) {
+        throw new Error('Siglas inválidas na linha ' + rowNumber + ' da aba FÉRIAS.');
+      }
+
+      const seed = [start, end, uniqueSiglas.join('|'), label].join('\n');
+      const id = 'sheet_' + sha256Hex_(seed).slice(0, 32);
+      result.push({id: id, start: start, end: end, siglas: uniqueSiglas, label: label, notes: '', active: true});
+    });
+  });
+
+  if (!result.length) throw new Error('A grade mensal da aba FÉRIAS não contém períodos com siglas válidas.');
+  return {records: result, skippedWithoutSiglas: skippedWithoutSiglas};
+}
+
+function scheduleSourceDateParts_(year, month, day, rowNumber) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) {
+    throw new Error('Data inválida na linha ' + rowNumber + ' da aba FÉRIAS.');
+  }
+  return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
 }
 
 /** Accept the compact sheet's JSON-array cells and ordinary comma/semicolon lists. */
