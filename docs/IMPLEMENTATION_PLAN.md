@@ -1,5 +1,7 @@
 # Plano de implementação
 
+Atualização de 27/09/2026: os quatro treinamentos do catálogo V1 já estão no Firestore, a câmera de Etiquetas recorta a área central visível e o Checklist V70 reproduz a ordenação diária dos arsenais da V1 na interface. A execução real dos treinamentos e a validação de pontuação continuam pendentes da identidade executora Apps Script. As referências abaixo a treinamentos não importados, recorte ausente ou ordem visual do Checklist não revisada descrevem etapas anteriores à V70.
+
 ## Fase 0 — Descoberta (inventário estático concluído; revisão dinâmica dos dados remanescentes)
 
 - [x] Localizar e descompactar o ZIP da V1 fora dos checkouts de produção.

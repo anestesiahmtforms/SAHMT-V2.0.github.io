@@ -1,5 +1,7 @@
 # Paridade visual V1 → V2
 
+Em 27/09/2026, a V70 passou a ordenar a grade diária do Checklist pelos grupos e pelos arsenais finais da V1 e a mostrar os rótulos de função dos seis arsenais especiais. A ordenação é dinâmica conforme o registro resolvido do dia e preserva a ordem administrativa armazenada. A grade e os fluxos ainda requerem conferência visual e operacional em Android/iOS; as referências abaixo à ordem não revisada refletem a etapa anterior.
+
 ## Ajuste de apresentação mobile (26/09/2026)
 
 Os commits `f2c4fdb`, `9d42095` e `a7ef309` foram publicados no GitHub Pages. A camada responsiva compartilhada passa a limitar estouro horizontal em formulários, grades e diálogos, respeitar as safe areas do iOS, reorganizar controles em telas estreitas e melhorar a altura mínima dos alvos de toque. Relatórios de Eventos e Etiquetas passam a quebrar busca, data e exportação em uma grade própria para celular. Em Etiquetas, a câmera mostra uma moldura central para alinhar a etiqueta; desde V68 a captura direta usa apenas essa área para a leitura OCR, enquanto fotos escolhidas pelo campo de arquivo continuam permitindo recorte manual. No Checklist, cada estação aparece como botão acessível de seleção; tocar destaca e rola até a estação, deixando “Conforme” e “Não conforme” como escolhas explícitas. “Não conforme” continua exigindo o registro da ocorrência pelas regras existentes. A lista usa duas colunas em celulares comuns e uma coluna em larguras de até 360 px.

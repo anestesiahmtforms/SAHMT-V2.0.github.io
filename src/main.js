@@ -7,6 +7,7 @@ import {eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
+import {checklistArsenalFunction, sortChecklistStationsForDisplay} from './checklist-display.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
@@ -1172,15 +1173,18 @@ async function loadDailyChecklist(stations, suppliedDay) {
     const priorByStation = new Map();
     for (const record of result.priorRecords || []) if (!priorByStation.has(record.stationId)) priorByStation.set(record.stationId, record);
     const summary = summarizeChecklistDay(day, todayInputValue(), applicableStations, records);
-    const cards = applicableStations.map((station) => {
-      const record = resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
+    const resolvedRecordFor = (station) => resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
+    const displayStations = sortChecklistStationsForDisplay(applicableStations, resolvedRecordFor);
+    const cards = displayStations.map((station) => {
+      const record = resolvedRecordFor(station);
+      const functionLabel = checklistArsenalFunction(station);
       const status = record?.condition === 'SIM' ? 'Conforme' : record?.condition === 'NAO' ? 'Não conforme' : 'Pendente';
       const stationStateClass = station.active !== true ? 'inactive' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : 'pending';
       const note = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}: ${escapeHtml(record.occurrence || '')}</small>` : record?.occurrence ? `<small>${escapeHtml(record.occurrence)}</small>` : '';
       const recordedAt = record?.createdAt ? `<small>Último registro: ${escapeHtml(interactionDateTime(record.createdAt))}</small>` : '';
       const action = can('checklistWrite') && dayMode === 'today' && station.active === true ? `<div class="checklist-actions"><button class="secondary-button" type="button" data-checklist-condition="SIM" data-station-id="${escapeHtml(station.id)}">Conforme</button><button class="secondary-button" type="button" data-checklist-condition="NAO" data-station-id="${escapeHtml(station.id)}">Não conforme</button></div><label class="checklist-occurrence" hidden>Descreva a ocorrência<textarea rows="2" maxlength="500" data-occurrence-for="${escapeHtml(station.id)}"></textarea></label>` : '';
       const pending = record?.pendingSync ? '<small class="record-meta">Aguardando sincronização</small>' : record?.syncFailed ? `<small class="sync-error">Falha ao sincronizar: ${escapeHtml(record.syncError || 'revise as permissões e tente novamente')}</small>` : '';
-      return `<article class="checklist-station checklist-station-${stationStateClass}" data-checklist-station="${escapeHtml(station.id)}" tabindex="-1"><div><button class="checklist-station-select" type="button" data-checklist-select="${escapeHtml(station.id)}" aria-label="Selecionar ${escapeHtml(station.name || station.id)} · ${status}" aria-pressed="false" ${action ? '' : 'disabled'}>${escapeHtml(station.name || station.id)}</button><small>${status}${station.active !== true ? ' · Estação inativa' : ''}${record?.responsibleName ? ` · Responsável da escala: ${escapeHtml(record.responsibleName)}` : ''}</small>${recordedAt}${note}${pending}</div>${action}</article>`;
+      return `<article class="checklist-station checklist-station-${stationStateClass}" data-checklist-station="${escapeHtml(station.id)}" tabindex="-1"><div><button class="checklist-station-select" type="button" data-checklist-select="${escapeHtml(station.id)}" aria-label="Selecionar ${escapeHtml(station.name || station.id)} · ${status}${functionLabel ? ` · ${escapeHtml(functionLabel)}` : ''}" aria-pressed="false" ${action ? '' : 'disabled'}>${functionLabel ? `<span class="checklist-arsenal-function">${escapeHtml(functionLabel)}</span>` : ''}<span>${escapeHtml(station.name || station.id)}</span></button><small>${status}${station.active !== true ? ' · Estação inativa' : ''}${record?.responsibleName ? ` · Responsável da escala: ${escapeHtml(record.responsibleName)}` : ''}</small>${recordedAt}${note}${pending}</div>${action}</article>`;
     }).join('');
     const summaryCards = applicableStations.length ? `<section class="checklist-summary-grid" aria-label="Resumo do checklist diário"><article><strong>${summary.recorded || 0}/${summary.total || 0}</strong><small>Estações concluídas</small></article><article><strong>${Math.max(0, (summary.total || 0) - (summary.recorded || 0))}</strong><small>Pendentes</small></article><article><strong>${summary.nonconforming || 0}</strong><small>Ocorrências</small></article></section>` : '';
     const stationGrid = cards ? `<section class="checklist-station-grid" aria-label="Estações do Checklist">${cards}</section>` : '<p class="empty-state">Nenhuma estação vigente está cadastrada para esta data.</p>';
