@@ -263,13 +263,12 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
   return `<div class="siglas-grid schedule-siglas-grid">${scheduleView.positions.map((position, index) => {
     const hasContact = position.contacts?.length > 0;
     const canLaunchEvent = eventsWritable && featureEnabledForRoute('events', appFeatures);
-    const showVacationRank = position.siglas.length > 1;
-    const singleSiglaOnVacation = !showVacationRank && position.vacationParts.length === 1;
+    const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
     const aliases = position.sigla === 'DC' && position.siglas.length
-      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, showVacationRank)}</small>`
+      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions)}</small>`
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
-      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, showVacationRank)}</strong>`;
+      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
     const marked = highlightedSiglas.has(position.sigla);
     const eventMarked = eventSiglas.has(position.sigla) || position.siglas.some((sigla) => eventSiglas.has(sigla));
     const vacationDescription = position.vacationParts.length
