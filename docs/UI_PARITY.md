@@ -8,6 +8,8 @@ Os commits `f2c4fdb`, `9d42095` e `a7ef309` foram publicados no GitHub Pages. A 
 
 Em 27/09/2026, a grade do formulário de Eventos foi corrigida para que “Sigla do membro” e “Membro (ausente/atrasado)” ocupem células próprias, em vez de ficarem empilhados dentro de uma única célula da grade. A seleção de uma sigla sem contato ativo agora substitui qualquer nome anterior pela própria sigla e mostra um aviso para conferir o membro. O cache do shell foi avançado para V40. A captura autenticada de Eventos e a revisão visual Android/iOS continuam pendentes.
 
+Após a publicação verificada de 51 férias no Firestore em 27/09/2026, a grade de Eventos passou a consultar escala e férias pela camada leve Firestore/cache em paralelo. A escala aparece assim que sua leitura termina; as siglas de férias recebem a mesma cor da Home e o rótulo de férias do dia fica visível. Se a consulta de férias falhar, a escala continua utilizável e informa que o destaque não pôde ser atualizado. O shell avança para V41 para renovar a cópia instalada. Build/CI e conferência autenticada da tela em Android/iOS ainda precisam ser confirmados.
+
 Este documento define o inventário comparável. Os dados de V1 abaixo vêm do pacote estático; “V2” e as justificativas de mudança serão completados conforme cada tela for implementada e revisada em viewport mobile e desktop.
 
 | Tela | V1 | V2 | Elementos preservados | Alterações | Justificativa | Removidos |

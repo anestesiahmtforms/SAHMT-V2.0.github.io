@@ -2950,6 +2950,7 @@ function bindEventSchedule() {
   if (!dateInput || !content) return;
   dateInput.value = localDateKey();
   let requestSequence = 0;
+  const vacationCache = new Map();
   const render = async () => {
     const requestId = ++requestSequence;
     const day = dateInput.value;
@@ -2959,23 +2960,44 @@ function bindEventSchedule() {
     if (weekdayLabel) weekdayLabel.textContent = `${weekday} · toque em uma sigla para lançar um evento`;
     content.innerHTML = '<p class="loading">Carregando escala…</p>';
     try {
-      const {readSchedule} = await import('./data.js');
+      const {readSchedule, listVacationsForDate} = await import('./data-lite.js');
+      const cachedVacations = vacationCache.get(day);
+      const vacationsPromise = cachedVacations && Date.now() - cachedVacations.at < 30_000
+        ? Promise.resolve({items: cachedVacations.items})
+        : listVacationsForDate(day, {uid: session.user.uid}).then((items) => {
+          vacationCache.set(day, {items, at: Date.now()});
+          if (vacationCache.size > 40) vacationCache.delete(vacationCache.keys().next().value);
+          return {items};
+        }, (error) => ({error}));
       const schedule = await readSchedule(day, session.user.uid);
       if (requestId !== requestSequence || !content.isConnected) return;
       if (!schedule) {
         content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
         return;
       }
-      const view = buildScheduleView(schedule, day, [], []);
-      if (!view.positions.length) {
-        content.innerHTML = '<p class="empty-state">A escala está publicada sem posições para esta data.</p>';
-        return;
-      }
-      content.innerHTML = `<div class="siglas-grid event-siglas-grid">${view.positions.map((position, index) => `<div class="sigla-item"><button class="sigla-token sigla-button" type="button" data-event-schedule-position="${index}" ${can('eventsWrite') ? '' : 'disabled'} aria-label="${can('eventsWrite') ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}` : `Sigla ${escapeHtml(position.sigla)}`}" title="${can('eventsWrite') ? 'Lançar evento' : 'Somente consulta'}"><strong>${escapeHtml(position.sigla)}</strong></button><div class="sigla-index">${escapeHtml(position.position || index + 1)}</div></div>`).join('')}</div>${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}`;
-      content.querySelectorAll('[data-event-schedule-position]').forEach((button) => button.addEventListener('click', () => {
-        const position = view.positions[Number(button.dataset.eventSchedulePosition)];
-        if (position) void launchEventFromSchedule(day, position);
-      }));
+      let vacations = [];
+      let vacationsError = false;
+      const draw = () => {
+        if (requestId !== requestSequence || !content.isConnected) return;
+        const view = buildScheduleView(schedule, day, vacations, []);
+        if (!view.positions.length) {
+          content.innerHTML = '<p class="empty-state">A escala está publicada sem posições para esta data.</p>';
+          return;
+        }
+        const vacationLabel = view.vacationLabel ? `<p class="event-schedule-vacation">Férias · ${escapeHtml(view.vacationLabel)}</p>` : '';
+        const vacationStatus = vacationsError ? '<p class="sync-state">Não foi possível consultar as férias deste dia.</p>' : vacations.some((vacation) => vacation.stale) ? '<p class="sync-state">Férias carregadas do cache deste aparelho.</p>' : '';
+        content.innerHTML = `${vacationLabel}<div class="siglas-grid event-siglas-grid">${view.positions.map((position, index) => `<div class="sigla-item"><button class="sigla-token sigla-button${position.onVacation ? ' sigla-token--vacation' : ''}" type="button" data-event-schedule-position="${index}" ${can('eventsWrite') ? '' : 'disabled'} aria-label="${can('eventsWrite') ? `Lançar evento pela sigla ${escapeHtml(position.sigla)}${position.onVacation ? ', em férias' : ''}` : `Sigla ${escapeHtml(position.sigla)}${position.onVacation ? ', em férias' : ''}`}" title="${can('eventsWrite') ? 'Lançar evento' : 'Somente consulta'}"><strong>${escapeHtml(position.sigla)}</strong></button><div class="sigla-index">${escapeHtml(position.position || index + 1)}</div></div>`).join('')}</div>${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${vacationStatus}`;
+        content.querySelectorAll('[data-event-schedule-position]').forEach((button) => button.addEventListener('click', () => {
+          const position = view.positions[Number(button.dataset.eventSchedulePosition)];
+          if (position) void launchEventFromSchedule(day, position);
+        }));
+      };
+      draw();
+      const vacationResult = await vacationsPromise;
+      if (requestId !== requestSequence || !content.isConnected) return;
+      vacations = vacationResult.items || [];
+      vacationsError = Boolean(vacationResult.error);
+      draw();
     } catch (error) {
       if (requestId !== requestSequence || !content.isConnected) return;
       content.innerHTML = `<p class="empty-state">${error.code === 'permission-denied' ? 'Seu perfil precisa de permissão para consultar a escala.' : 'Não foi possível carregar a escala. Verifique a conexão e tente novamente.'}</p>`;
