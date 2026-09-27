@@ -39,6 +39,8 @@ O worker usa `runQuery`/`get` e commits de criação/atualização. Como base pa
 
 Antes de conceder acesso, o administrador do Google Cloud deve conferir as permissões efetivas e os vínculos herdados do principal: um papel `Owner`, `Editor` ou outro papel amplo não é reduzido pela adição de um papel customizado. Preferir uma conta executora dedicada, sem esses vínculos amplos, com acesso de edição somente à pasta/planilha necessárias e o papel Firestore customizado condicionado ao `(default)`. Se essa separação ou o limite de acesso a todo o banco não forem aceitáveis, manter os gatilhos desativados. Não usar chave de service account, não enviar credenciais aqui e não instalar gatilhos até a revisão e a autorização da conta executora.
 
+**Conferência em 27/09/2026:** a política IAM do projeto retornou `roles/owner` diretamente para a conta proprietária que está conectada ao Firebase CLI e criou o projeto Apps Script. Portanto, executar os gatilhos sob essa conta manteria acesso amplo ao projeto, mesmo que um papel customizado mais estreito fosse adicionado. A [documentação de IAM](https://docs.cloud.google.com/iam/docs/roles-overview) classifica Owner como papel básico amplo, e o [acesso REST ao Firestore](https://docs.cloud.google.com/firestore/native/docs/security/iam) é controlado por IAM fora das Rules do PWA. A revisão de IAM não está concluída; antes de ativar os gatilhos, é necessário definir uma identidade executora separada e verificar seus vínculos efetivos, ou aceitar expressamente esse alcance. Nenhuma permissão foi alterada nesta conferência.
+
 ## 4. Homologar antes dos gatilhos
 
 Use dados fictícios e confira idempotência/replay, conflito e falha para cada fluxo:
