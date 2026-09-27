@@ -125,6 +125,14 @@
   .module-content { margin: 13px 0; }
   .content-grid { gap: 11px; }
   .panel-heading { align-items: flex-start; }
+  .event-report { padding: 12px; }
+  .event-report .report-period { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; gap: 8px; }
+  .event-report .report-period label { grid-column: 1 / -1; min-width: 0; }
+  .event-report .report-period input { width: 100%; }
+  .event-report .report-period button { min-width: 0; min-height: 46px; padding: 8px 6px; white-space: normal; }
+  .event-schedule-heading { align-items: flex-start; flex-wrap: wrap; }
+  .event-schedule .date-picker { flex: 1 1 150px; max-width: none; }
+  .event-schedule .date-picker input { width: 100%; max-width: none; }
   .checklist-controls { display: grid; gap: 10px; padding: 10px; }
   .checklist-controls .report-period { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); align-items: stretch; }
   .checklist-controls .report-period label { grid-column: 1 / -1; min-width: 0; }
@@ -150,6 +158,8 @@
   .checklist-station-grid .checklist-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .checklist-controls .report-period { grid-template-columns: minmax(0,1fr); }
   .checklist-controls .report-period>* { grid-column: 1 / -1; }
+  .event-report .report-period { grid-template-columns: minmax(0,1fr); }
+  .event-report .report-period>* { grid-column: 1 / -1; }
   .label-camera-target { inset: 20% 4%; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
