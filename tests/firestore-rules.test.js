@@ -55,6 +55,18 @@ async function seedEventCatalog(payers = ['Membro'], creditors = ['Equipe']) {
   });
 }
 
+function learningActivity(overrides = {}) {
+  const now = Date.now();
+  return {
+    id: 'acknowledge-orientation', version: 1, title: 'Orientação', description: 'Confirme a leitura', category: 'Orientação',
+    sourceKind: 'ACKNOWLEDGEMENT', resourceUrl: '', showInTraining: true, audienceType: 'ALL', audienceValue: '',
+    startAt: new Date(now - 86_400_000), endAt: new Date(now + 86_400_000), status: 'ACTIVE',
+    completionKind: 'ACKNOWLEDGEMENT', recurrenceMode: 'ONCE', order: 0,
+    createdByUid: 'learning-admin', createdAt: new Date(), updatedByUid: 'learning-admin', updatedAt: new Date(),
+    ...overrides
+  };
+}
+
 async function setFirestoreRecord(db, resourceType, resourceId, record) {
   return setDoc(doc(db, resourceType, resourceId), record);
 }
@@ -1101,6 +1113,113 @@ test('catálogo de treinamentos valida versão, autoria e permissão de gestão'
   await assertSucceeds(updateDoc(trainingRef, {title: 'Orientação atualizada', version: 2, updatedByUid: 'training-admin', updatedAt: serverTimestamp()}));
   await assertFails(updateDoc(trainingRef, {createdByUid: 'forged', version: 3, updatedByUid: 'training-admin', updatedAt: serverTimestamp()}));
   await assertFails(deleteDoc(trainingRef));
+});
+
+test('feed de aprendizagem restringe leitura a perfil ativo, audiência e estado publicado', async () => {
+  await seedProfiles([
+    accessProfile('learning-reader', {trainingsRead: true}, {role: 'equipe'}),
+    accessProfile('learning-other-role', {trainingsRead: true}, {role: 'gestor'}),
+    accessProfile('learning-user-reader', {trainingsRead: true}, {role: 'equipe'}),
+    accessProfile('learning-manager', {trainingsManage: true}),
+    accessProfile('learning-no-access'),
+    accessProfile('learning-inactive', {trainingsRead: true}, {active: false})
+  ]);
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'learningActivities', 'audience-all'), learningActivity({id: 'audience-all'}));
+    await setDoc(doc(db, 'learningActivities', 'audience-role'), learningActivity({id: 'audience-role', audienceType: 'ROLE', audienceValue: 'equipe'}));
+    await setDoc(doc(db, 'learningActivities', 'audience-user'), learningActivity({id: 'audience-user', audienceType: 'USER', audienceValue: 'learning-user-reader'}));
+    await setDoc(doc(db, 'learningActivities', 'wrong-role'), learningActivity({id: 'wrong-role', audienceType: 'ROLE', audienceValue: 'gestor'}));
+    await setDoc(doc(db, 'learningActivities', 'wrong-user'), learningActivity({id: 'wrong-user', audienceType: 'USER', audienceValue: 'another-user'}));
+    await setDoc(doc(db, 'learningActivities', 'hidden'), learningActivity({id: 'hidden', showInTraining: false}));
+    await setDoc(doc(db, 'learningActivities', 'inactive'), learningActivity({id: 'inactive', status: 'INACTIVE'}));
+  });
+  const reader = testEnvironment.authenticatedContext('learning-reader').firestore();
+  const otherRole = testEnvironment.authenticatedContext('learning-other-role').firestore();
+  const userReader = testEnvironment.authenticatedContext('learning-user-reader').firestore();
+  const manager = testEnvironment.authenticatedContext('learning-manager').firestore();
+  const noAccess = testEnvironment.authenticatedContext('learning-no-access').firestore();
+  const inactive = testEnvironment.authenticatedContext('learning-inactive').firestore();
+  for (const id of ['audience-all', 'audience-role']) await assertSucceeds(getDoc(doc(reader, 'learningActivities', id)));
+  await assertFails(getDoc(doc(reader, 'learningActivities', 'audience-user')));
+  await assertSucceeds(getDoc(doc(userReader, 'learningActivities', 'audience-user')));
+  await assertFails(getDoc(doc(otherRole, 'learningActivities', 'audience-role')));
+  await assertFails(getDoc(doc(reader, 'learningActivities', 'wrong-role')));
+  await assertFails(getDoc(doc(userReader, 'learningActivities', 'wrong-user')));
+  await assertFails(getDoc(doc(reader, 'learningActivities', 'hidden')));
+  await assertFails(getDoc(doc(reader, 'learningActivities', 'inactive')));
+  await assertFails(getDoc(doc(noAccess, 'learningActivities', 'audience-all')));
+  await assertFails(getDoc(doc(inactive, 'learningActivities', 'audience-all')));
+  await assertSucceeds(getDoc(doc(manager, 'learningActivities', 'hidden')));
+  await assertSucceeds(getDoc(doc(manager, 'learningActivities', 'inactive')));
+  await assertFails(getDocs(collection(noAccess, 'learningActivities')));
+});
+
+test('catálogo de aprendizagem limita criação, versão, autoria e exclusão', async () => {
+  await seedProfiles([
+    accessProfile('learning-manager', {trainingsManage: true}),
+    accessProfile('learning-reader', {trainingsRead: true})
+  ]);
+  const manager = testEnvironment.authenticatedContext('learning-manager').firestore();
+  const reader = testEnvironment.authenticatedContext('learning-reader').firestore();
+  const ref = doc(manager, 'learningActivities', 'acknowledge-orientation');
+  const record = learningActivity({createdByUid: 'learning-manager', createdAt: serverTimestamp(), updatedByUid: 'learning-manager', updatedAt: serverTimestamp()});
+  await assertSucceeds(setDoc(ref, record));
+  await assertFails(setDoc(doc(reader, 'learningActivities', 'reader-created'), learningActivity({id: 'reader-created'})));
+  await assertFails(setDoc(doc(manager, 'learningActivities', 'malformed'), learningActivity({id: 'malformed', sourceKind: 'CUSTOM', resourceUrl: 'javascript:alert(1)'})));
+  await assertFails(setDoc(doc(manager, 'learningActivities', 'extra-field'), {...learningActivity({id: 'extra-field'}), points: 100}));
+  await assertSucceeds(updateDoc(ref, {title: 'Orientação revisada', version: 2, updatedByUid: 'learning-manager', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {createdByUid: 'forged', version: 3, updatedByUid: 'learning-manager', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {title: 'Versão pulada', version: 4, updatedByUid: 'learning-manager', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {title: 'Sem nova versão', version: 2, updatedByUid: 'learning-manager', updatedAt: serverTimestamp()}));
+  await assertFails(deleteDoc(ref));
+});
+
+test('recibos de ciência são idempotentes, próprios e exigem audiência, versão e janela vigentes', async () => {
+  await seedProfiles([
+    accessProfile('learning-reader', {trainingsRead: true}, {role: 'equipe'}),
+    accessProfile('learning-other', {trainingsRead: true}, {role: 'gestor'}),
+    accessProfile('learning-no-access'),
+    accessProfile('learning-manager', {trainingsManage: true})
+  ]);
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'learningActivities', 'ack-once'), learningActivity({id: 'ack-once', audienceType: 'ROLE', audienceValue: 'equipe'}));
+    await setDoc(doc(db, 'learningActivities', 'ack-versioned'), learningActivity({id: 'ack-versioned', recurrenceMode: 'ONCE_PER_VERSION', version: 3}));
+    await setDoc(doc(db, 'learningActivities', 'ack-future'), learningActivity({id: 'ack-future', startAt: new Date(Date.now() + 86_400_000)}));
+    await setDoc(doc(db, 'learningActivities', 'ack-expired'), learningActivity({id: 'ack-expired', endAt: new Date(Date.now() - 86_400_000)}));
+    await setDoc(doc(db, 'learningActivities', 'ack-inactive'), learningActivity({id: 'ack-inactive', status: 'INACTIVE'}));
+    await setDoc(doc(db, 'learningActivities', 'ack-hidden'), learningActivity({id: 'ack-hidden', showInTraining: false}));
+    await setDoc(doc(db, 'learningActivities', 'ack-wrong-audience'), learningActivity({id: 'ack-wrong-audience', audienceType: 'ROLE', audienceValue: 'gestor'}));
+    await setDoc(doc(db, 'learningActivities', 'ack-external'), learningActivity({id: 'ack-external', sourceKind: 'EXTERNAL_LINK', resourceUrl: 'https://example.invalid/resource', completionKind: 'NONE'}));
+  });
+  const reader = testEnvironment.authenticatedContext('learning-reader').firestore();
+  const other = testEnvironment.authenticatedContext('learning-other').firestore();
+  const noAccess = testEnvironment.authenticatedContext('learning-no-access').firestore();
+  const manager = testEnvironment.authenticatedContext('learning-manager').firestore();
+  const makeReceipt = (uid, activityId, version = 1) => ({
+    id: activityId === 'ack-versioned' ? `${uid}_${activityId}_v${version}` : `${uid}_${activityId}_once`,
+    activityId, activityVersion: version, uid, evidenceKind: 'ACKNOWLEDGEMENT', status: 'CONFIRMED', createdAt: serverTimestamp()
+  });
+  const onceId = 'learning-reader_ack-once_once';
+  await assertSucceeds(setDoc(doc(reader, 'learningActivityReceipts', onceId), makeReceipt('learning-reader', 'ack-once')));
+  await assertFails(setDoc(doc(reader, 'learningActivityReceipts', onceId), makeReceipt('learning-reader', 'ack-once')));
+  await assertSucceeds(getDoc(doc(reader, 'learningActivityReceipts', onceId)));
+  await assertFails(getDoc(doc(other, 'learningActivityReceipts', onceId)));
+  await assertFails(updateDoc(doc(reader, 'learningActivityReceipts', onceId), {status: 'PENDING_VALIDATION'}));
+  await assertFails(deleteDoc(doc(reader, 'learningActivityReceipts', onceId)));
+  const versionedId = 'learning-reader_ack-versioned_v3';
+  await assertSucceeds(setDoc(doc(reader, 'learningActivityReceipts', versionedId), makeReceipt('learning-reader', 'ack-versioned', 3)));
+  await assertFails(setDoc(doc(reader, 'learningActivityReceipts', 'wrong-id'), makeReceipt('learning-reader', 'ack-versioned', 3)));
+  await assertFails(setDoc(doc(reader, 'learningActivityReceipts', 'learning-reader_ack-versioned_v2'), makeReceipt('learning-reader', 'ack-versioned', 2)));
+  for (const id of ['ack-future', 'ack-expired', 'ack-inactive', 'ack-hidden', 'ack-wrong-audience', 'ack-external']) {
+    await assertFails(setDoc(doc(reader, 'learningActivityReceipts', `learning-reader_${id}_once`), makeReceipt('learning-reader', id)));
+  }
+  await assertFails(setDoc(doc(other, 'learningActivityReceipts', 'learning-other_ack-once_once'), makeReceipt('learning-other', 'ack-once')));
+  await assertFails(setDoc(doc(noAccess, 'learningActivityReceipts', 'learning-no-access_ack-versioned_v3'), makeReceipt('learning-no-access', 'ack-versioned', 3)));
+  await assertSucceeds(getDoc(doc(manager, 'learningActivityReceipts', 'missing-receipt')));
+  await assertSucceeds(getDocs(query(collection(reader, 'learningActivityReceipts'), where('uid', '==', 'learning-reader'))));
+  await assertFails(getDocs(query(collection(reader, 'learningActivityReceipts'), where('uid', '==', 'learning-other'))));
 });
 
 test('coleções não declaradas ficam fechadas por padrão', async () => {
