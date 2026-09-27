@@ -2677,10 +2677,15 @@ async function bindModuleForm(route) {
       status.textContent = 'Salvando opções no Firestore…';
       try {
         const {saveEventCatalog} = await import('./data.js');
-        await saveEventCatalog({payers: catalogForm.elements.payers.value, creditors: catalogForm.elements.creditors.value}, session.user.uid);
-        await loadEventEntryCatalog();
+        const saved = await saveEventCatalog({payers: catalogForm.elements.payers.value, creditors: catalogForm.elements.creditors.value}, session.user.uid);
+        const loaded = await loadEventEntryCatalog();
         const latestStatus = document.querySelector('#event-catalog-status');
-        if (latestStatus) latestStatus.textContent = 'Opções confirmadas no Firestore.';
+        if (latestStatus) latestStatus.textContent = loaded?.ok && loaded.catalog?.stale !== true &&
+          loaded.catalog.version >= saved.version &&
+          JSON.stringify(loaded.catalog.payers) === JSON.stringify(saved.payers) &&
+          JSON.stringify(loaded.catalog.creditors) === JSON.stringify(saved.creditors)
+          ? 'Opções confirmadas no Firestore.'
+          : 'A gravação foi enviada, mas a leitura de confirmação não corresponde ao cadastro. Confira a conexão e abra Eventos novamente.';
       } catch (error) {
         status.textContent = error.code === 'permission-denied'
           ? 'Seu perfil não tem permissão para gerenciar o catálogo de Eventos.'
@@ -2764,6 +2769,10 @@ async function loadEventEntryCatalog() {
       if (configForm) {
         configForm.elements.payers.value = loadedEventCatalog.payers.join('\n');
         configForm.elements.creditors.value = loadedEventCatalog.creditors.join('\n');
+        const catalogStatus = configForm.querySelector('#event-catalog-status');
+        if (catalogStatus) catalogStatus.textContent = loadedEventCatalog.payers.length && loadedEventCatalog.creditors.length
+          ? `${loadedEventCatalog.payers.length} pagador(es) e ${loadedEventCatalog.creditors.length} credor(es) carregados do Firestore.`
+          : 'Ainda não há Pagadores e Credores salvos para Eventos neste Firestore.';
       }
       const staleNote = form?.querySelector('#event-catalog-stale');
       if (staleNote) {
@@ -2776,6 +2785,7 @@ async function loadEventEntryCatalog() {
       const submit = form?.querySelector('[type="submit"]');
       if (submit) submit.disabled = !loadedEventCatalog.payers.length || !loadedEventCatalog.creditors.length;
       if (form) updateEventEntryFields(form);
+      return {ok: true, catalog};
     } catch (error) {
       if (!currentView()) return;
       loadedEventCatalog = {payers: [], creditors: []};
@@ -2788,6 +2798,7 @@ async function loadEventEntryCatalog() {
         staleNote.hidden = false;
         staleNote.textContent = 'Não foi possível carregar as opções de Eventos. Verifique a conexão e abra Eventos novamente.';
       }
+      return {ok: false, error};
     }
   })();
   const membersTask = form ? (async () => {
@@ -2809,8 +2820,9 @@ async function loadEventEntryCatalog() {
       }
     }
   })() : Promise.resolve();
-  await Promise.all([catalogTask, membersTask]);
+  const [catalogResult] = await Promise.all([catalogTask, membersTask]);
   if (currentView() && form) populateEventSubstitutes(form);
+  return catalogResult;
 }
 
 function populateEventSubstitutes(form) {
