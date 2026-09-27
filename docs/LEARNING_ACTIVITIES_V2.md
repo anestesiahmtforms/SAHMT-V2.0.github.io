@@ -2,7 +2,7 @@
 
 ## Estado e origem
 
-Esta especificação registra o destino arquitetural e a implementação inicial local da lacuna descrita em [`UI_PARITY.md`](UI_PARITY.md). O código local acrescenta CRUD versionado, feed no shell Treinamentos, link HTTPS e ciência explícita imutável sem pontos; ainda não foi publicado em Rules/índices nem homologado. A V1 coloca atividades elegíveis no contêiner `training-activities` por `core/views/treinamentos.js` e as apresenta com `core/activity-ui.js`. A aba dinâmica `ATIVIDADES` tinha zero IDs em `A2:A1000` no snapshot delimitado descrito em [`V1_INVENTORY.md`](V1_INVENTORY.md), portanto não há catálogo dinâmico desse snapshot para migrar. A capacidade de cadastrar e usar atividades continua sendo requisito funcional, mesmo com a fonte vazia.
+Esta especificação registra o destino arquitetural e o estado implementado da lacuna descrita em [`UI_PARITY.md`](UI_PARITY.md). O código publicado acrescenta CRUD versionado, feed no shell Treinamentos, link HTTPS e ciência explícita imutável sem pontos. As Firestore Rules e os três índices compostos foram implantados no projeto `sahmt-17a16`; a prontidão final dos índices, os casos específicos de autorização e a navegação autenticada ainda precisam de confirmação. A V1 coloca atividades elegíveis no contêiner `training-activities` por `core/views/treinamentos.js` e as apresenta com `core/activity-ui.js`. A aba dinâmica `ATIVIDADES` tinha zero IDs em `A2:A1000` no snapshot delimitado descrito em [`V1_INVENTORY.md`](V1_INVENTORY.md), portanto não há catálogo dinâmico desse snapshot para migrar. A capacidade de cadastrar e usar atividades continua sendo requisito funcional, mesmo com a fonte vazia.
 
 As tarefas V2 existentes em `activities` pertencem a áreas de Gestão: atribuem responsáveis/participantes, registram interações e podem gerar claims de pontos. Elas não serão reaproveitadas como catálogo de aprendizagem. Vídeos de treinamento continuam em `trainings`, com seu próprio recibo, progresso e validação.
 
@@ -17,7 +17,7 @@ As tarefas V2 existentes em `activities` pertencem a áreas de Gestão: atribuem
 
 ## Modelo Firestore-alvo
 
-Coleções novas, ainda não implantadas no Firebase do projeto:
+Coleções novas implantadas no Firebase do projeto:
 
 ### `learningActivities/{activityId}`
 
@@ -59,10 +59,10 @@ As recorrências V1 `PER_EVENT`, `PER_VALIDATED_RENEWAL`, `DAILY`, `WEEKLY`, `MO
 
 ## Sequência de implementação e aceitação
 
-1. **Implementado localmente:** coleções, validadores, Rules e índices para catálogo/recibos; validar allow/deny por identidade, público, estado, janela, versão, autoria e imutabilidade no Emulator e depois publicar Rules/índices.
-2. **Implementado localmente:** CRUD versionado somente no painel `trainingsManage`; valores fora dos tipos/recorrências suportados permanecem indisponíveis.
-3. **Implementado localmente:** cards junto aos treinamentos com estados vazio/erro, janela filtrada e ações diretas; revisão responsiva e navegação autenticada ainda pendentes.
-4. **Implementado localmente:** link externo sem conclusão e ciência imutável sem pontos. Repetição usa recibo determinístico; homologar que perfil sem permissão, usuário fora do público e conta sem perfil não leem nem gravam.
+1. **Implementado e implantado:** coleções, validadores, Rules e índices para catálogo/recibos; confirmar estado `READY` dos índices e cobrir allow/deny por identidade, público, estado, janela, versão, autoria e imutabilidade no Emulator.
+2. **Implementado e publicado:** CRUD versionado somente no painel `trainingsManage`; valores fora dos tipos/recorrências suportados permanecem indisponíveis.
+3. **Implementado e publicado:** cards junto aos treinamentos com estados vazio/erro, janela filtrada e ações diretas; revisão responsiva e navegação autenticada ainda pendentes.
+4. **Implementado e publicado:** link externo sem conclusão e ciência imutável sem pontos. Repetição usa recibo determinístico; homologar que perfil sem permissão, usuário fora do público e conta sem perfil não leem nem gravam.
 5. Adaptadores de evidência e pontuação continuam pendentes; implementá-los um a um depois de fonte e critérios verificados. Não habilitar tipo só porque aparece no enum V1.
 6. Não migrar linhas de atividades até leitura delimitada confirmar novos registros e o proprietário aprovar origem, mapeamento e destino. O snapshot consultado tinha zero IDs.
 
