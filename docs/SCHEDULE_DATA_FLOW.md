@@ -1,6 +1,6 @@
 # Fonte e atualização da escala e das férias
 
-## Direção recomendada — aguarda validação do PDF
+## Direção adotada
 
 O Firestore é a fonte operacional única consultada pelo SAHMT V2. A planilha V1 não é uma dependência de execução, destino de sincronização ou arquivo de backup adicional do V2. A V1 permanece sem alterações; o fluxo de atualização proposto usa o PDF offline que a equipe já mantém, sem criar outra planilha.
 
@@ -21,15 +21,16 @@ O PDF pode ser atualizado periodicamente sem se tornar a fonte que o app consult
 
 ## Estado verificado em 27/09/2026
 
-- O checkout contém as sete imagens JPG da galeria offline V1 (`segunda` a `sábado` e férias); não contém um PDF offline para validar o formato ou a extração.
+- O PDF fornecido (`Escalas HMT 2026 V 7 15.03.2026.pdf`) tem sete páginas com texto selecionável: escalas de segunda a sábado e uma página de férias. O nome menciona V7/15 de março, mas o rodapé informa V8, atualizada em 03/08/2026 às 21:30. A prévia visual mostra os quadros e a extração funciona, com ao menos um trecho de setembro que precisa de conferência manual. O arquivo precede a versão da aba `ESCALA` oficial consultada em 25/09/2026 e não foi importado; não serve para substituir a escala já carregada nem comprova as férias vigentes em setembro.
+- A página de férias tem 53 linhas semanais, incluindo uma linha marcada `CONGRESSO` sem siglas de férias. A extração textual contém ruído de espaçamento e caracteres em algumas linhas; qualquer parser deve combinar validação estrutural com prévia visual editável. O PDF não foi enviado ao GitHub nem armazenado no Firestore.
 - `scheduleDays` contém 307 documentos e a carga foi relida contra a fonte V1, conforme [`RELEASE_STATUS.md`](RELEASE_STATUS.md).
 - A coleção Firestore `vacations` foi consultada em modo de leitura e contém zero documentos.
-- A prévia local ignorada pelo Git contém 52 candidatos de férias, mas ainda depende de revisão: não leu notas/cancelamentos e um item não possui lista explícita de siglas.
-- O esquema e as Rules de `vacations` já existem. O PWA ainda não tem uma interface de gestão/importação de férias.
+- A prévia privada anterior à chegada do PDF contém 52 candidatos de férias e continua sem conciliação confirmada; não leu notas/cancelamentos e um item não tem siglas explícitas.
+- O esquema e as Rules de `vacations` já existem. A Home agora tem uma interface de gestão de períodos no editor conjunto de Escala: listagem limitada a 100 registros, criação, edição com verificação concorrente e desativação sem exclusão. A importação/preview do PDF ainda não está implementada e não há férias aprovadas carregadas no Firestore.
 
 ## Dependências antes de implementar e carregar
 
-- Receber o PDF offline atual para confirmar se há texto selecionável ou se será necessária leitura OCR e para definir um parser correspondente ao layout real.
-- Reconciliar os 52 candidatos com o PDF vigente e confirmar cancelamentos, alterações e o item sem siglas explícitas.
-- Implementar a área única de gestão e prévia do importador, protegida pela permissão existente `scheduleWrite`.
+- Obter confirmação da versão vigente de férias: o PDF recebido tem data de atualização de 03/08/2026 e pode não refletir mudanças posteriores.
+- Reconciliar os 52 candidatos anteriores e as linhas do PDF, incluindo cancelamentos, alterações, o período sem siglas explícitas e `CONGRESSO`.
+- Implementar e validar uma área única de gestão e prévia do importador, protegida pela permissão existente `scheduleWrite`.
 - Só então carregar os períodos aprovados, sem sobrescrever documentos divergentes e sem alterar a V1.

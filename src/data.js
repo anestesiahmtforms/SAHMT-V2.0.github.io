@@ -153,6 +153,46 @@ export async function listVacationsForDate(day, {pageSize = 100} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
+export async function listVacationsForManagement({pageSize = 100} = {}) {
+  const result = await getDocsFromServer(query(
+    collection(db, 'vacations'), orderBy('start', 'asc'), limit(Math.min(100, Math.max(1, pageSize)))
+  ));
+  return result.docs.map((item) => ({id: item.id, ...item.data()}));
+}
+
+export async function saveVacation(input, actorUid, {id = '', expectedUpdatedAt = null} = {}) {
+  const start = String(input?.start || '');
+  const end = String(input?.end || '');
+  const siglas = [...new Set((Array.isArray(input?.siglas) ? input.siglas : [])
+    .map((value) => String(value).trim().toUpperCase()).filter(Boolean))];
+  const active = input?.active === true;
+  if (!actorUid || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) ||
+      start > end || siglas.length < 1 || siglas.length > 30 || siglas.some((value) => !/^(?:[A-Z]{2}|L2)$/.test(value))) {
+    throw new Error('Informe um período válido e de 1 a 30 siglas válidas.');
+  }
+  const vacationId = id || crypto.randomUUID();
+  const reference = doc(db, 'vacations', vacationId);
+  const label = `Férias ${start} a ${end}`;
+  return runTransaction(db, async (transaction) => {
+    const current = await transaction.get(reference);
+    if (current.exists()) {
+      const record = current.data();
+      const currentUpdatedAt = record.updatedAt?.toMillis?.() ?? null;
+      if (!id || currentUpdatedAt !== expectedUpdatedAt) throw new Error('Este período mudou em outro aparelho. Recarregue a lista antes de editar.');
+      transaction.update(reference, {
+        start, end, siglas, label, active, updatedByUid: actorUid, updatedAt: serverTimestamp()
+      });
+      return {id: vacationId, ...record, start, end, siglas, label, active, updatedByUid: actorUid};
+    }
+    if (id) throw new Error('Este período não existe mais. Atualize a lista.');
+    transaction.set(reference, {
+      id: vacationId, start, end, siglas, label, notes: '', active,
+      createdByUid: actorUid, createdAt: serverTimestamp(), updatedByUid: actorUid, updatedAt: serverTimestamp()
+    });
+    return {id: vacationId, start, end, siglas, label, notes: '', active, createdByUid: actorUid, updatedByUid: actorUid};
+  });
+}
+
 export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} = {}) {
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');

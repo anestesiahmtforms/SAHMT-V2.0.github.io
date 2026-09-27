@@ -275,7 +275,7 @@ function shellView() {
   const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
-        ${can('scheduleWrite') ? '<button class="secondary-button schedule-edit-launch" id="schedule-edit-day" type="button">Editar escala do dia</button>' : ''}
+        ${can('scheduleWrite') ? '<button class="secondary-button schedule-edit-launch" id="schedule-edit-day" type="button">Editar escala e férias</button>' : ''}
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
@@ -285,7 +285,7 @@ function shellView() {
     <main class="main-content">${route === 'home' ? '' : `<div class="page-title"><p class="eyebrow">GESTÃO RESPONSÁVEL</p><h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
-    ${can('scheduleWrite') ? '<dialog class="schedule-editor-dialog" id="schedule-editor-dialog" aria-labelledby="schedule-editor-title"><h3 id="schedule-editor-title">Escala do dia</h3><p class="record-meta" id="schedule-editor-date"></p><form id="schedule-editor-form"><div id="schedule-editor-positions" class="schedule-editor-positions"></div><button class="secondary-button" id="schedule-editor-add" type="button">Adicionar posição</button><p class="record-meta" id="schedule-editor-status" role="status" aria-live="polite"></p><div class="schedule-editor-actions"><button class="secondary-button" id="schedule-editor-cancel" type="button">Cancelar</button><button class="primary-button" id="schedule-editor-save" type="submit">Salvar escala</button></div></form></dialog>' : ''}
+    ${can('scheduleWrite') ? '<dialog class="schedule-editor-dialog" id="schedule-editor-dialog" aria-labelledby="schedule-editor-title"><h3 id="schedule-editor-title">Escala e férias</h3><nav class="schedule-admin-tabs" aria-label="Editar escala e férias"><button class="schedule-admin-tab" id="schedule-admin-day-tab" type="button" aria-pressed="true">Escala do dia</button><button class="schedule-admin-tab" id="schedule-admin-vacation-tab" type="button" aria-pressed="false">Férias</button></nav><section id="schedule-admin-day-panel"><p class="record-meta" id="schedule-editor-date"></p><form id="schedule-editor-form"><div id="schedule-editor-positions" class="schedule-editor-positions"></div><button class="secondary-button" id="schedule-editor-add" type="button">Adicionar posição</button><p class="record-meta" id="schedule-editor-status" role="status" aria-live="polite"></p><div class="schedule-editor-actions"><button class="secondary-button" id="schedule-editor-cancel" type="button">Fechar</button><button class="primary-button" id="schedule-editor-save" type="submit">Salvar escala</button></div></form></section><section id="schedule-admin-vacation-panel" hidden><form id="schedule-vacation-form" class="schedule-vacation-form"><div class="form-grid"><label>Início das férias<input name="start" type="date" required></label><label>Fim das férias<input name="end" type="date" required></label><label class="form-span">Siglas · separadas por vírgula, espaço ou hífen<input name="siglas" type="text" autocomplete="off" maxlength="120" placeholder="AB, CD, L2" required></label><label class="contact-active-field form-span"><input name="active" type="checkbox" checked> Férias ativas</label></div><input name="vacationId" type="hidden"><p id="schedule-vacation-status" class="record-meta" role="status" aria-live="polite"></p><div class="schedule-editor-actions"><button class="secondary-button" id="schedule-vacation-reset" type="button">Novo período</button><button class="primary-button" type="submit">Salvar férias</button></div></form><div id="schedule-vacation-list" class="schedule-vacation-list" aria-live="polite"><p class="loading">Carregue os períodos para editar.</p></div><button class="secondary-button" id="schedule-admin-close" type="button">Fechar</button></section></dialog>' : ''}
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">SAHMT · Hospital e equipe</footer>
   </div>`;
@@ -457,6 +457,7 @@ function bindScheduleEditor(dateInput, refreshSchedule) {
   let loadedVersion = 0;
   let editingDay = '';
   let loadSequence = 0;
+  bindVacationEditor(dialog);
   const rows = () => [...list.querySelectorAll('.schedule-editor-row')];
   const renumber = () => {
     rows().forEach((row, index) => {
@@ -536,6 +537,93 @@ function bindScheduleEditor(dateInput, refreshSchedule) {
       saveButton.disabled = false;
     }
   });
+}
+
+function bindVacationEditor(dialog) {
+  const dayTab = document.querySelector('#schedule-admin-day-tab');
+  const vacationTab = document.querySelector('#schedule-admin-vacation-tab');
+  const dayPanel = document.querySelector('#schedule-admin-day-panel');
+  const vacationPanel = document.querySelector('#schedule-admin-vacation-panel');
+  const form = document.querySelector('#schedule-vacation-form');
+  const list = document.querySelector('#schedule-vacation-list');
+  const status = document.querySelector('#schedule-vacation-status');
+  const reset = document.querySelector('#schedule-vacation-reset');
+  if (!dayTab || !vacationTab || !dayPanel || !vacationPanel || !form || !list || !status || !reset) return;
+  const idInput = form.elements.namedItem('vacationId');
+  const saveButton = form.querySelector('[type="submit"]');
+  let expectedUpdatedAt = null;
+  let loadSequence = 0;
+  const selectTab = (tab) => {
+    const showVacations = tab === 'vacations';
+    dayTab.setAttribute('aria-pressed', String(!showVacations));
+    vacationTab.setAttribute('aria-pressed', String(showVacations));
+    dayPanel.hidden = showVacations;
+    vacationPanel.hidden = !showVacations;
+  };
+  const resetForm = () => {
+    form.reset();
+    idInput.value = '';
+    form.elements.namedItem('active').checked = true;
+    expectedUpdatedAt = null;
+    status.textContent = 'Cadastre um período ou selecione um item da lista.';
+  };
+  const loadList = async () => {
+    const request = ++loadSequence;
+    list.innerHTML = '<p class="loading">Carregando férias do Firestore…</p>';
+    try {
+      const {listVacationsForManagement} = await import('./data.js');
+      const records = await listVacationsForManagement();
+      if (request !== loadSequence || !dialog.open) return;
+      if (!records.length) {
+        list.innerHTML = '<p class="empty-state">Nenhum período de férias cadastrado.</p>';
+        return;
+      }
+      list.innerHTML = records.map((item) => `<article class="schedule-vacation-item"><div><strong>${escapeHtml(item.start)} a ${escapeHtml(item.end)}</strong><span>${escapeHtml((Array.isArray(item.siglas) ? item.siglas : []).join(' · '))}</span><small>${item.active ? 'Ativas' : 'Inativas'}</small></div><button class="secondary-button" type="button" data-vacation-edit="${escapeHtml(item.id)}">Editar</button></article>`).join('');
+      list.querySelectorAll('[data-vacation-edit]').forEach((button) => button.addEventListener('click', () => {
+        const item = records.find((record) => record.id === button.dataset.vacationEdit);
+        if (!item) return;
+        form.elements.namedItem('start').value = item.start || '';
+        form.elements.namedItem('end').value = item.end || '';
+        form.elements.namedItem('siglas').value = Array.isArray(item.siglas) ? item.siglas.join(', ') : '';
+        form.elements.namedItem('active').checked = item.active === true;
+        idInput.value = item.id;
+        expectedUpdatedAt = item.updatedAt?.toMillis?.() ?? null;
+        status.textContent = 'Edite o período e salve. Para encerrar sem apagar o histórico, desmarque “Férias ativas”.';
+        form.elements.namedItem('start').focus();
+      }));
+    } catch (error) {
+      if (request !== loadSequence || !dialog.open) return;
+      list.innerHTML = `<p class="sync-state">${escapeHtml(error.message || 'Não foi possível consultar as férias no Firestore.')}</p>`;
+    }
+  };
+  dayTab.addEventListener('click', () => selectTab('day'));
+  vacationTab.addEventListener('click', () => { selectTab('vacations'); void loadList(); });
+  document.querySelector('#schedule-admin-close')?.addEventListener('click', () => { loadSequence++; dialog.close(); });
+  reset.addEventListener('click', resetForm);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const rawSiglas = String(form.elements.namedItem('siglas').value || '');
+    const siglas = rawSiglas.split(/[\s,;|/+-]+/).map((value) => value.trim().toUpperCase()).filter(Boolean);
+    saveButton.disabled = true;
+    status.textContent = 'Salvando férias…';
+    try {
+      const {saveVacation} = await import('./data.js');
+      await saveVacation({
+        start: form.elements.namedItem('start').value,
+        end: form.elements.namedItem('end').value,
+        siglas,
+        active: form.elements.namedItem('active').checked
+      }, session.user.uid, {id: idInput.value, expectedUpdatedAt});
+      resetForm();
+      status.textContent = 'Período salvo no Firestore.';
+      await loadList();
+    } catch (error) {
+      status.textContent = error.message || 'Não foi possível salvar o período.';
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+  selectTab('day');
 }
 
 function showScheduleContacts(contacts, context = {}) {
