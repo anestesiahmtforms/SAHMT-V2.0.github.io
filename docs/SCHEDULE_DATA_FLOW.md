@@ -22,7 +22,7 @@ O formato de trabalho aprovado para a cópia compacta é uma linha de cabeçalho
 ## Fluxo de publicação pretendido
 
 1. A equipe edita os dados nas abas `ESCALA` e `FÉRIAS`; a planilha não fica pública. Cabeçalhos seguem os contratos compactos acima.
-2. `ScheduleSourceSync.gs` lê os cabeçalhos por nome, valida datas reais, duplicatas, posições, siglas e intervalos. `previewScheduleSourceToFirestore` compara mudanças sem alterar a planilha ou o Firestore.
+2. `ScheduleSourceSync.gs` lê os cabeçalhos por nome, valida datas reais, duplicatas, posições, siglas e intervalos. Lê `scheduleDays` e `vacations` com projeção de campos e paginação. `previewScheduleSourceToFirestore` compara mudanças sem alterar a planilha ou o Firestore.
 3. A publicação é idempotente e versionada. Só altera/cria os documentos correspondentes às linhas aprovadas. Dias de escala ausentes não são apagados. Férias criadas pelo conector e removidas da aba são desativadas (sem exclusão física), com IDs listados na prévia.
 4. Depois da escrita, o conector relê o Firestore e informa o resultado. O PWA continua lendo apenas `scheduleDays` e `vacations`.
 

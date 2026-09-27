@@ -223,9 +223,30 @@ function scheduleSourceDate_(value) {
 }
 
 function readScheduleFirestore_() {
-  const scheduleDays = queryFirestore_('scheduleDays', [], [], 1000, ['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']);
-  const vacations = queryFirestore_('vacations', [], [], 1000, ['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']);
+  const scheduleDays = listFirestoreDocumentsPaged_('scheduleDays', ['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']);
+  const vacations = listFirestoreDocumentsPaged_('vacations', ['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']);
   return {scheduleDays: scheduleDays, vacations: vacations};
+}
+
+function listFirestoreDocumentsPaged_(collectionId, fieldPaths) {
+  const documents = [];
+  let pageToken = '';
+  do {
+    const parameters = ['pageSize=1000'].concat((fieldPaths || []).map(function (fieldPath) {
+      return 'mask.fieldPaths=' + encodeURIComponent(fieldPath);
+    }));
+    if (pageToken) parameters.push('pageToken=' + encodeURIComponent(pageToken));
+    const path = '/' + encodeURIComponent(collectionId) + '?' + parameters.join('&');
+    const page = firestoreRequest_(firestoreDocumentsUrl_(path), {method: 'get'});
+    (page.documents || []).forEach(function (document) {
+      const fields = firestoreFieldsToJs_(document.fields || {});
+      const id = String(document.name || '').split('/').pop();
+      documents.push(Object.assign(fields, {id: fields.id || id, _documentName: document.name, _updateTime: document.updateTime}));
+    });
+    pageToken = page.nextPageToken || '';
+    if (documents.length > 10000) throw new Error('Leitura interrompida: a coleção ' + collectionId + ' excede o limite operacional de 10.000 documentos.');
+  } while (pageToken);
+  return documents;
 }
 
 function buildScheduleSourcePlan_(source, current) {
