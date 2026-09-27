@@ -3318,8 +3318,10 @@ async function render() {
     await signOutGlobal();
   });
   if (currentRoute() === 'home') await loadHome(); else {
-    await loadModule(currentRoute());
-    await bindModuleForm(currentRoute());
+    const route = currentRoute();
+    if (route === 'events') await bindModuleForm(route);
+    await loadModule(route);
+    if (route !== 'events') await bindModuleForm(route);
   }
   void updateOutboxStatus();
   if (navigator.onLine) void syncOutbox();

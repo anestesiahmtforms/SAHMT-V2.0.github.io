@@ -79,3 +79,5 @@ Em 27/09/2026, os campos da janela de lançamento foram alinhados em linhas hori
 Correção V59: o rótulo condicional de Situação do membro é descendente de um contêiner interno; o alinhamento horizontal agora seleciona todos os rótulos descendentes da grade, sem mudar o comportamento de visibilidade nem o acesso administrativo.
 
 Correção V60: margens seguras foram restabelecidas ao redor do modal em telas móveis, os controles de seleção mantêm a interação nativa e “Voltar” pode fechar o `<dialog>` pelo mecanismo HTML nativo.
+
+Correção V61: a ligação dos controles do formulário precede as consultas de catálogo e relatório, permitindo que “Voltar” e a matriz condicional respondam assim que a tela de Eventos aparece.
