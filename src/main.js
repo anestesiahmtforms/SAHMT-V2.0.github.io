@@ -58,6 +58,7 @@ let eventReportCursor = null;
 let eventReportLoadingMore = false;
 let loadedEventMembers = [];
 let loadedEventCatalog = {payers: [], creditors: []};
+let eventCatalogLoadSequence = 0;
 let pendingEventPosition = null;
 let labelReportMode = 'daily';
 let labelReportLoad = 0;
@@ -2738,54 +2739,87 @@ async function bindModuleForm(route) {
 
 async function loadEventEntryCatalog() {
   const form = document.querySelector('[data-module-form="events"]');
-  if (!form && !document.querySelector('#event-catalog-form')) return;
-  try {
-    const {getEventCatalog} = await import('./data.js');
-    const catalog = await getEventCatalog(session.user.uid);
-    const {listEventMembers} = await import('./data.js');
-    const members = await listEventMembers();
-    loadedEventMembers = members;
-    loadedEventCatalog = {payers: [...(catalog.payers || [])], creditors: [...(catalog.creditors || [])]};
-    const membersMissing = document.querySelector('#event-members-missing');
-    if (membersMissing) membersMissing.hidden = members.length > 0;
-    for (const [name, values] of [['payer', catalog.payers], ['creditor', catalog.creditors]]) {
-      const select = form?.elements[name];
-      if (!select) continue;
-      const selected = select.value;
-      select.replaceChildren(new Option('Selecione', ''));
-      for (const value of values) select.add(new Option(value, value));
-      if (selected && !values.includes(selected)) select.add(new Option(`${selected} · opção histórica`, selected));
-      select.value = selected;
-      select.dataset.catalogEmpty = values.length === 0 ? 'true' : 'false';
-    }
-    const substitute = form?.elements.substitute;
-    if (substitute) {
-      const selected = substitute.value;
-      const options = new Map();
-      for (const raw of [...(catalog.payers || []), ...(catalog.creditors || [])]) {
-        const value = String(raw || '').trim();
-        const display = value.replace(/^[A-Z0-9]{2}\s*-\s*/, '').trim();
-        if (display && display.toLocaleUpperCase('pt-BR') !== 'CAIXA DA EQUIPE') options.set(normalizeEventOption(display), display);
+  const configForm = document.querySelector('#event-catalog-form');
+  if (!form && !configForm) return;
+  const uid = session.user.uid;
+  const sequence = ++eventCatalogLoadSequence;
+  const currentView = () => sequence === eventCatalogLoadSequence && session.user?.uid === uid && (form?.isConnected || configForm?.isConnected);
+  const {getEventCatalog, listEventMembers} = await import('./data.js');
+  const catalogTask = (async () => {
+    try {
+      const catalog = await getEventCatalog(uid);
+      if (!currentView()) return;
+      loadedEventCatalog = {payers: [...(catalog.payers || [])], creditors: [...(catalog.creditors || [])]};
+      for (const [name, values] of [['payer', loadedEventCatalog.payers], ['creditor', loadedEventCatalog.creditors]]) {
+        const select = form?.elements[name];
+        if (!select) continue;
+        const selected = select.value;
+        select.replaceChildren(new Option('Selecione', ''));
+        for (const value of values) select.add(new Option(value, value));
+        if (selected && !values.includes(selected)) select.add(new Option(`${selected} · opção histórica`, selected));
+        select.value = selected;
+        select.dataset.catalogEmpty = values.length === 0 ? 'true' : 'false';
       }
-      substitute.replaceChildren(new Option('Selecione', ''));
-      for (const value of options.values()) substitute.add(new Option(value, value));
-      if (selected && ![...options.values()].includes(selected)) substitute.add(new Option(`${selected} · opção histórica`, selected));
-      substitute.value = selected;
+      const substitute = form?.elements.substitute;
+      if (substitute) {
+        const selected = substitute.value;
+        const options = new Map();
+        for (const raw of [...loadedEventCatalog.payers, ...loadedEventCatalog.creditors]) {
+          const value = String(raw || '').trim();
+          const display = value.replace(/^[A-Z0-9]{2}\s*-\s*/, '').trim();
+          if (display && display.toLocaleUpperCase('pt-BR') !== 'CAIXA DA EQUIPE') options.set(normalizeEventOption(display), display);
+        }
+        substitute.replaceChildren(new Option('Selecione', ''));
+        for (const value of options.values()) substitute.add(new Option(value, value));
+        if (selected && ![...options.values()].includes(selected)) substitute.add(new Option(`${selected} · opção histórica`, selected));
+        substitute.value = selected;
+      }
+      if (configForm) {
+        configForm.elements.payers.value = loadedEventCatalog.payers.join('\n');
+        configForm.elements.creditors.value = loadedEventCatalog.creditors.join('\n');
+      }
+      const staleNote = form?.querySelector('#event-catalog-stale');
+      if (staleNote) {
+        staleNote.textContent = 'Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.';
+        staleNote.hidden = catalog.stale !== true;
+      }
+      const submit = form?.querySelector('[type="submit"]');
+      if (submit) submit.disabled = !loadedEventCatalog.payers.length || !loadedEventCatalog.creditors.length;
+      if (form) updateEventEntryFields(form);
+    } catch (error) {
+      if (!currentView()) return;
+      loadedEventCatalog = {payers: [], creditors: []};
+      const submit = form?.querySelector('[type="submit"]');
+      if (submit) submit.disabled = true;
+      const status = configForm?.querySelector('#event-catalog-status');
+      if (status) status.textContent = `Não foi possível carregar as opções. ${error.message || ''}`;
+      const staleNote = form?.querySelector('#event-catalog-stale');
+      if (staleNote) {
+        staleNote.hidden = false;
+        staleNote.textContent = 'Não foi possível carregar as opções de Eventos. Verifique a conexão e abra Eventos novamente.';
+      }
     }
-    const configForm = document.querySelector('#event-catalog-form');
-    if (configForm) {
-      configForm.elements.payers.value = catalog.payers.join('\n');
-      configForm.elements.creditors.value = catalog.creditors.join('\n');
+  })();
+  const membersTask = form ? (async () => {
+    const membersMissing = form.querySelector('#event-members-missing');
+    try {
+      const members = await listEventMembers();
+      if (!currentView()) return;
+      loadedEventMembers = members;
+      if (membersMissing) {
+        membersMissing.textContent = 'O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.';
+        membersMissing.hidden = members.length > 0;
+      }
+    } catch {
+      if (!currentView()) return;
+      loadedEventMembers = [];
+      if (membersMissing) {
+        membersMissing.hidden = false;
+        membersMissing.textContent = 'Não foi possível carregar os nomes da equipe. Confira o membro antes de salvar.';
+      }
     }
-    const staleNote = document.querySelector('#event-catalog-stale');
-    if (staleNote) staleNote.hidden = catalog.stale !== true;
-    const submit = form?.querySelector('[type="submit"]');
-    if (submit) submit.disabled = !catalog.payers.length || !catalog.creditors.length;
-    if (form) updateEventEntryFields(form);
-  } catch (error) {
-    const status = document.querySelector('#event-catalog-status');
-    if (status) status.textContent = `Não foi possível carregar as opções. ${error.message || ''}`;
-  }
+  })() : Promise.resolve();
+  await Promise.all([catalogTask, membersTask]);
 }
 
 async function loadLabelStaffCatalog() {
