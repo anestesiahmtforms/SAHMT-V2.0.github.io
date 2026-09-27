@@ -321,6 +321,68 @@ service cloud.firestore {
     }
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    function validSchedulePositionAt(positions, index) {
+      return positions.size() <= index || (
+        positions[index] is map && positions[index].keys().hasAll(['position', 'sigla']) &&
+        positions[index].keys().hasOnly(['position', 'sigla']) &&
+        positions[index].position == index + 1 &&
+        positions[index].sigla is string && positions[index].sigla.size() <= 30 &&
+        positions[index].sigla.matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')
+      );
+    }
+    function validSchedulePositions(positions) {
+      return positions is list && positions.size() > 0 && positions.size() <= 30 &&
+        validSchedulePositionAt(positions, 0) &&
+        validSchedulePositionAt(positions, 1) &&
+        validSchedulePositionAt(positions, 2) &&
+        validSchedulePositionAt(positions, 3) &&
+        validSchedulePositionAt(positions, 4) &&
+        validSchedulePositionAt(positions, 5) &&
+        validSchedulePositionAt(positions, 6) &&
+        validSchedulePositionAt(positions, 7) &&
+        validSchedulePositionAt(positions, 8) &&
+        validSchedulePositionAt(positions, 9) &&
+        validSchedulePositionAt(positions, 10) &&
+        validSchedulePositionAt(positions, 11) &&
+        validSchedulePositionAt(positions, 12) &&
+        validSchedulePositionAt(positions, 13) &&
+        validSchedulePositionAt(positions, 14) &&
+        validSchedulePositionAt(positions, 15) &&
+        validSchedulePositionAt(positions, 16) &&
+        validSchedulePositionAt(positions, 17) &&
+        validSchedulePositionAt(positions, 18) &&
+        validSchedulePositionAt(positions, 19) &&
+        validSchedulePositionAt(positions, 20) &&
+        validSchedulePositionAt(positions, 21) &&
+        validSchedulePositionAt(positions, 22) &&
+        validSchedulePositionAt(positions, 23) &&
+        validSchedulePositionAt(positions, 24) &&
+        validSchedulePositionAt(positions, 25) &&
+        validSchedulePositionAt(positions, 26) &&
+        validSchedulePositionAt(positions, 27) &&
+        validSchedulePositionAt(positions, 28) &&
+        validSchedulePositionAt(positions, 29);
+    }
+    function validNewScheduleDay(scheduleId) {
+      let data = request.resource.data;
+      return can('scheduleWrite') && validIsoDay(scheduleId) &&
+        data.keys().hasAll(['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == scheduleId && data.date == scheduleId && validSchedulePositions(data.positions) &&
+        data.highlights is map && data.highlights.keys().hasAll(['siglas', 'events']) &&
+        data.highlights.keys().hasOnly(['siglas', 'events']) &&
+        data.highlights.siglas == [] && data.highlights.events == [] && data.version == 1 &&
+        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+        data.createdAt == request.time && data.updatedAt == request.time;
+    }
+    function validSchedulePositionsUpdate(scheduleId) {
+      let data = request.resource.data;
+      return can('scheduleWrite') && updateActorIsSelf() && validIsoDay(scheduleId) &&
+        data.diff(resource.data).affectedKeys().hasOnly(['positions', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.id == scheduleId && data.date == scheduleId &&
+        validSchedulePositions(data.positions) &&
+        data.version == resource.data.version + 1 && data.updatedAt == request.time;
+    }
     function validManagementAssignmentUpdate(areaId) {
       let currentVersion = resource.data.get('version', 0);
       return request.resource.data.keys().hasAll(['id', 'managerUids', 'memberUids', 'version', 'updatedByUid', 'updatedAt']) &&
@@ -864,13 +926,13 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /scheduleDays/{scheduleId} {
-      allow read: if can('scheduleRead') || can('eventsRead') || can('eventsWrite');
-      allow create: if can('scheduleWrite') && actorIsSelf();
-      allow update: if validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
-      allow delete: if can('scheduleWrite');
+      allow read: if can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite');
+      allow create: if validNewScheduleDay(scheduleId);
+      allow update: if validSchedulePositionsUpdate(scheduleId) || validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
+      allow delete: if false;
     }
     match /contacts/{sigla} {
-      allow read: if (can('scheduleRead') && resource.data.active == true) || can('peopleManage');
+      allow read: if ((can('scheduleRead') || can('scheduleWrite')) && resource.data.active == true) || can('peopleManage');
       allow create: if can('peopleManage') && validContact(request.resource.data, sigla);
       allow update: if can('peopleManage') && resource.data.sigla == sigla &&
         request.resource.data.createdByUid == resource.data.createdByUid &&

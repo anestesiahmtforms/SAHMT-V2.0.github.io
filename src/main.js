@@ -274,6 +274,7 @@ function shellView() {
   const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
+        ${can('scheduleWrite') ? '<button class="secondary-button schedule-edit-launch" id="schedule-edit-day" type="button">Editar escala do dia</button>' : ''}
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="section-heading"><p class="eyebrow">ACESSO RÁPIDO</p><h2>Áreas do SAHMT</h2></div><div class="module-grid">${moduleCards()}</div></section>
@@ -283,6 +284,7 @@ function shellView() {
     <main class="main-content"><div class="page-title"><p class="eyebrow">GESTÃO RESPONSÁVEL</p><h1>${escapeHtml(title)}</h1></div>${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
+    ${can('scheduleWrite') ? '<dialog class="schedule-editor-dialog" id="schedule-editor-dialog" aria-labelledby="schedule-editor-title"><h3 id="schedule-editor-title">Escala do dia</h3><p class="record-meta" id="schedule-editor-date"></p><form id="schedule-editor-form"><div id="schedule-editor-positions" class="schedule-editor-positions"></div><button class="secondary-button" id="schedule-editor-add" type="button">Adicionar posição</button><p class="record-meta" id="schedule-editor-status" role="status" aria-live="polite"></p><div class="schedule-editor-actions"><button class="secondary-button" id="schedule-editor-cancel" type="button">Cancelar</button><button class="primary-button" id="schedule-editor-save" type="submit">Salvar escala</button></div></form></dialog>' : ''}
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">SAHMT · Hospital e equipe</footer>
   </div>`;
@@ -444,7 +446,101 @@ async function loadHome() {
     void render();
   });
   dateInput.addEventListener('change', render);
+  bindScheduleEditor(dateInput, render);
   await render();
+}
+
+function bindScheduleEditor(dateInput, refreshSchedule) {
+  const launch = document.querySelector('#schedule-edit-day');
+  const dialog = document.querySelector('#schedule-editor-dialog');
+  const form = document.querySelector('#schedule-editor-form');
+  const list = document.querySelector('#schedule-editor-positions');
+  const status = document.querySelector('#schedule-editor-status');
+  const saveButton = document.querySelector('#schedule-editor-save');
+  const addButton = document.querySelector('#schedule-editor-add');
+  if (!launch || !dialog || !form || !list || !status || !saveButton || !addButton) return;
+  let loadedVersion = 0;
+  let editingDay = '';
+  let loadSequence = 0;
+  const rows = () => [...list.querySelectorAll('.schedule-editor-row')];
+  const renumber = () => {
+    rows().forEach((row, index) => {
+      row.querySelector('label').firstChild.textContent = `Posição ${index + 1}`;
+      row.querySelector('input').setAttribute('aria-label', `Sigla da posição ${index + 1}`);
+      row.querySelector('button').disabled = rows().length === 1;
+    });
+    addButton.disabled = rows().length >= 30;
+  };
+  const addRow = (value = '') => {
+    if (rows().length >= 30) return;
+    const row = document.createElement('div');
+    row.className = 'schedule-editor-row';
+    const label = document.createElement('label');
+    label.append(document.createTextNode('Posição '));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'sigla';
+    input.required = true;
+    input.maxLength = 30;
+    input.autocomplete = 'off';
+    input.placeholder = 'Ex.: AB ou AB/CD';
+    input.value = value;
+    label.append(input);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'secondary-button';
+    remove.textContent = 'Remover';
+    remove.addEventListener('click', () => { row.remove(); renumber(); });
+    row.append(label, remove);
+    list.append(row);
+    renumber();
+  };
+  addButton.addEventListener('click', () => { addRow(); rows().at(-1)?.querySelector('input')?.focus(); });
+  document.querySelector('#schedule-editor-cancel')?.addEventListener('click', () => { loadSequence++; dialog.close(); });
+  launch.addEventListener('click', async () => {
+    editingDay = dateInput.value;
+    const loadId = ++loadSequence;
+    const day = editingDay;
+    document.querySelector('#schedule-editor-date').textContent = editingDay;
+    list.replaceChildren();
+    status.textContent = 'Carregando posições…';
+    saveButton.disabled = true;
+    addButton.disabled = true;
+    dialog.showModal();
+    try {
+      const {readSchedule} = await import('./data.js');
+      const schedule = await readSchedule(day, session.user.uid);
+      if (!dialog.open || loadId !== loadSequence) return;
+      if (schedule?.stale) throw new Error('A escala deste dia precisa ser atualizada antes da edição.');
+      if (schedule && (!Number.isInteger(schedule.version) || !Array.isArray(schedule.positions) || schedule.positions.length > 30 || schedule.positions.some((position) => Object.keys(position || {}).some((key) => !['position', 'sigla'].includes(key))) || Array.isArray(schedule.assignments) || Array.isArray(schedule.siglas))) {
+        throw new Error('O formato desta escala precisa de revisão antes de editar posições.');
+      }
+      loadedVersion = schedule?.version || 0;
+      const positions = Array.isArray(schedule?.positions) ? schedule.positions : [];
+      for (const position of positions) addRow(position.sigla);
+      if (!positions.length) addRow();
+      status.textContent = schedule ? 'Edite as siglas na ordem das posições.' : 'Informe as siglas na ordem da escala diária.';
+      saveButton.disabled = false;
+    } catch (error) {
+      if (!dialog.open || loadId !== loadSequence) return;
+      status.textContent = error.message || 'Não foi possível carregar a escala. Tente novamente.';
+    }
+  });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    saveButton.disabled = true;
+    status.textContent = 'Salvando escala…';
+    try {
+      const entries = rows().map((row) => row.querySelector('input').value);
+      const {saveScheduleDay} = await import('./data.js');
+      await saveScheduleDay(editingDay, entries, loadedVersion, session.user.uid);
+      dialog.close();
+      await refreshSchedule();
+    } catch (error) {
+      status.textContent = error.message || 'Não foi possível salvar a escala.';
+      saveButton.disabled = false;
+    }
+  });
 }
 
 function bindScheduleEventLaunch(root, date) {

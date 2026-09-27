@@ -665,7 +665,7 @@ test('liberação de sigla altera somente a lista compartilhada sob scheduleWrit
     'highlights.siglas': ['AB'], updatedByUid: 'schedule-manager', updatedAt: serverTimestamp(), version: 2
   }));
   await assertFails(updateDoc(doc(manager, 'scheduleDays', day), {
-    positions: [{position: 1, sigla: 'ZZ'}], updatedByUid: 'schedule-manager', updatedAt: serverTimestamp(), version: 3
+    positions: [{position: 1, sigla: 'ZZ'}], updatedByUid: 'schedule-manager', updatedAt: serverTimestamp(), version: 9
   }));
   await assertFails(updateDoc(doc(manager, 'scheduleDays', day), {
     'highlights.events': ['AD'], updatedByUid: 'schedule-manager', updatedAt: serverTimestamp(), version: 3
@@ -675,6 +675,44 @@ test('liberação de sigla altera somente a lista compartilhada sob scheduleWrit
   assert.deepEqual(stored.data().positions, schedule.positions);
   assert.deepEqual(stored.data().highlights, {siglas: ['AB'], events: ['SUPORTE']});
   assert.equal(stored.data().version, 2);
+});
+
+test('gestor da escala publica e ajusta posições sem perder destaques', async () => {
+  await seedProfiles([
+    accessProfile('schedule-editor', {scheduleWrite: true}),
+    accessProfile('events-reader', {eventsRead: true})
+  ]);
+  const editor = testEnvironment.authenticatedContext('schedule-editor').firestore();
+  const eventsReader = testEnvironment.authenticatedContext('events-reader').firestore();
+  const day = '2026-09-26';
+  const reference = doc(editor, 'scheduleDays', day);
+  const initial = {
+    id: day, date: day, positions: [{position: 1, sigla: 'AB'}],
+    highlights: {siglas: [], events: []}, version: 1,
+    createdByUid: 'schedule-editor', createdAt: serverTimestamp(),
+    updatedByUid: 'schedule-editor', updatedAt: serverTimestamp()
+  };
+  await assertFails(setDoc(doc(eventsReader, 'scheduleDays', day), {...initial, createdByUid: 'events-reader', updatedByUid: 'events-reader'}));
+  await assertFails(setDoc(reference, {...initial, positions: []}));
+  await assertFails(setDoc(reference, {...initial, positions: [{position: 1, sigla: 'ERRADO'}]}));
+  await assertSucceeds(setDoc(reference, initial));
+  await assertSucceeds(getDoc(doc(eventsReader, 'scheduleDays', day)));
+  await assertFails(updateDoc(doc(eventsReader, 'scheduleDays', day), {
+    positions: [{position: 1, sigla: 'ZZ'}], updatedByUid: 'events-reader', updatedAt: serverTimestamp(), version: 2
+  }));
+  await assertSucceeds(updateDoc(reference, {
+    positions: [{position: 1, sigla: 'AB'}, {position: 2, sigla: 'DC'}],
+    updatedByUid: 'schedule-editor', updatedAt: serverTimestamp(), version: 2
+  }));
+  await assertFails(updateDoc(reference, {
+    positions: [{position: 1, sigla: 'ZZ'}],
+    'highlights.events': ['EVENTO:ZZ:forged'],
+    updatedByUid: 'schedule-editor', updatedAt: serverTimestamp(), version: 3
+  }));
+  await assertFails(deleteDoc(reference));
+  const stored = await assertSucceeds(getDoc(reference));
+  assert.deepEqual(stored.data().positions, [{position: 1, sigla: 'AB'}, {position: 2, sigla: 'DC'}]);
+  assert.deepEqual(stored.data().highlights, {siglas: [], events: []});
 });
 
 test('titular pode corrigir dados básicos, mas não editar autorização do próprio perfil', async () => {
