@@ -70,13 +70,13 @@ export function buildScheduleView(schedule = {}, dateKey, vacations = [], contac
       if (vacationSiglas.has(sigla)) scheduledVacationSiglas.add(sigla);
     }
   }
-  const showVacationPositions = scheduledVacationSiglas.size > 1;
+  const vacationPositions = Object.fromEntries(vacationOrder.map((sigla, index) => [sigla, index + 1]));
   const entries = positions.map((position) => {
     const siglas = resolveScheduleSiglas(position.sigla, weekday);
     const vacationParts = siglas.filter((sigla) => vacationSiglas.has(sigla));
     const matchedContacts = siglas.map((sigla) => contacts.find((contact) => String(contact.sigla || '').toUpperCase() === sigla)).filter(Boolean);
-    const vacationPosition = showVacationPositions && vacationParts.length ? Math.min(...vacationParts.map((sigla) => vacationOrder.indexOf(sigla) + 1).filter((rank) => rank > 0)) : 0;
-    return {...position, siglas, contacts: matchedContacts, onVacation: vacationParts.length > 0, vacationParts, vacationPosition};
+    const vacationPosition = vacationParts.length ? Math.min(...vacationParts.map((sigla) => vacationPositions[sigla] || 0).filter(Boolean)) : 0;
+    return {...position, siglas, contacts: matchedContacts, onVacation: vacationParts.length > 0, vacationParts, vacationPosition, vacationPositions};
   });
   const label = schedule.vacationLabel || [...new Set(vacationLabels.filter(Boolean))].join(' · ');
   return {weekday, positions: entries, vacationLabel: label, vacationSiglas, scheduledVacationSiglas};
