@@ -294,15 +294,15 @@ function actionForm(route) {
       <button class="secondary-button" type="submit">Salvar opções</button><p id="event-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
     if (!can('eventsWrite')) return catalogForm;
     return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
-    <div class="form-grid"><label>Data do Evento<input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label>Membro (ausente/atrasado)<input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
+    <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
+    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
-    <label>Tipo de Evento<select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
-    <label data-event-field="description">Descrição do evento<textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
-    <label data-event-field="delayMultiple">Múltiplo do atraso<select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
-    <label data-event-field="substitute">Substituto<select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift">Turno<select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
-    <label>Pagador<select name="payer" required><option value="">Selecione</option></select></label><label>Credor<select name="creditor" required><option value="">Selecione</option></select></label>
-    <label>Valor a pagar<input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
+    <label><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
+    <label data-event-field="description"><span>Descrição do evento</span><textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
+    <label data-event-field="delayMultiple"><span>Múltiplo do atraso</span><select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
+    <label data-event-field="substitute"><span>Substituto</span><select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift"><span>Turno</span><select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
+    <label><span>Pagador</span><select name="payer" required><option value="">Selecione</option></select></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option></select></label>
+    <label><span>Valor a pagar</span><input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
     <p id="event-catalog-stale" class="record-meta" hidden>Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.</p>
     <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><button class="secondary-button" id="event-launch-back" type="button" aria-label="Voltar ao app">Voltar</button></footer></dialog>`;
@@ -1578,7 +1578,7 @@ function renderEventReportRecords() {
   target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => {
     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
     const showHistory = confirmed && Number(item.version) > 1;
-    const canEdit = can('eventsWrite') && confirmed && (item.createdByUid === session.user.uid || can('admin'));
+    const canEdit = can('admin') && confirmed;
     return `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong><span class="event-record-actions">${showHistory ? `<button class="secondary-button" type="button" data-event-history="${escapeHtml(item.id)}" aria-expanded="false">Histórico</button>` : ''}${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</span></div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Histórico de alterações" hidden></section>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`;
   }).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
@@ -1610,6 +1610,7 @@ function renderEventReportRecords() {
 }
 
 function beginEventEdit(item) {
+  if (!can('admin')) return;
   const form = document.querySelector('[data-module-form="events"]');
   if (!form || !item) return;
   const status = document.querySelector('#event-form-status');
