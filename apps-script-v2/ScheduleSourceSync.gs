@@ -384,7 +384,7 @@ function buildScheduleSourcePlan_(source, current) {
   let createScheduleDays = 0, updateScheduleDays = 0, unchangedScheduleDays = 0;
   source.schedule.forEach(function (record) {
     const existing = existingDays.get(record.id);
-    if (existing && JSON.stringify(existing.positions || []) === JSON.stringify(record.positions)) { unchangedScheduleDays++; return; }
+    if (existing && schedulePositionsEqual_(existing.positions, record.positions)) { unchangedScheduleDays++; return; }
     if (existing) {
       updateScheduleDays++;
       const changes = {positions: record.positions, version: Number(existing.version || 0) + 1, updatedByUid: SAHMT_V2_SCHEDULE_SOURCE.actor, updatedAt: new Date()};
@@ -433,12 +433,23 @@ function buildScheduleSourcePlan_(source, current) {
     unchangedVacations: unchangedVacations, deactivateVacations: deactivateVacations};
 }
 
+/** Compare the ordered position values, independent of Firestore map key order. */
+function schedulePositionsEqual_(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    const leftPosition = left[index] || {};
+    const rightPosition = right[index] || {};
+    if (leftPosition.position !== rightPosition.position || leftPosition.sigla !== rightPosition.sigla) return false;
+  }
+  return true;
+}
+
 function compareScheduleSourceWithFirestore_(source, current) {
   const differences = [];
   const daysById = new Map(current.scheduleDays.map(function (record) { return [record.id, record]; }));
   source.schedule.forEach(function (record) {
     const actual = daysById.get(record.id);
-    if (!actual || JSON.stringify(actual.positions || []) !== JSON.stringify(record.positions)) differences.push('scheduleDays/' + record.id);
+    if (!actual || !schedulePositionsEqual_(actual.positions, record.positions)) differences.push('scheduleDays/' + record.id);
   });
   const vacationsById = new Map(current.vacations.map(function (record) { return [record.id, record]; }));
   source.vacations.forEach(function (record) {
