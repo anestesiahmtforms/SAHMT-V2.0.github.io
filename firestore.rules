@@ -935,12 +935,11 @@ service cloud.firestore {
     match /contacts/{sigla} {
       allow read: if ((can('scheduleRead') || can('scheduleWrite')) && resource.data.active == true) || can('peopleManage');
       allow create: if can('peopleManage') && validContact(request.resource.data, sigla) &&
-        request.resource.data.createdByUid == request.auth.uid &&
-        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+        request.resource.data.createdByUid == request.auth.uid;
       allow update: if can('peopleManage') && resource.data.sigla == sigla &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
-        validContact(request.resource.data, sigla) && request.resource.data.updatedAt == request.time;
+        validContact(request.resource.data, sigla);
       allow delete: if false;
     }
     match /eventMembers/{sigla} {
