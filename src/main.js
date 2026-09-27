@@ -2538,8 +2538,15 @@ async function bindModuleForm(route) {
     const eventType = form?.elements.eventType;
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
     form?.elements.memberSigla?.addEventListener('change', () => {
-      const member = loadedEventMembers.find((item) => item.sigla === form.elements.memberSigla.value);
-      if (member) form.elements.memberStatus.value = member.name === member.sigla ? member.sigla : `${member.sigla} · ${member.name}`;
+      const sigla = String(form.elements.memberSigla.value || '').trim().toUpperCase();
+      const member = loadedEventMembers.find((item) => item.sigla === sigla);
+      form.elements.memberStatus.value = member
+        ? (member.name === member.sigla ? member.sigla : `${member.sigla} · ${member.name}`)
+        : sigla;
+      const status = document.querySelector('#event-form-status');
+      if (status) status.textContent = sigla && !member
+        ? `A sigla ${sigla} não tem nome no cadastro ativo. Confira o membro antes de salvar.`
+        : '';
     });
     if (form) updateEventEntryFields(form);
     document.querySelector('#event-conflict-refresh')?.addEventListener('click', async (event) => {
