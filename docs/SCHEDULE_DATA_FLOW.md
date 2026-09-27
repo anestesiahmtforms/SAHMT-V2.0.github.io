@@ -4,13 +4,13 @@
 
 A planilha nativa [`ESCALA/FÉRIAS 2026`](https://docs.google.com/spreadsheets/d/1japh5sUW3QU5F3dknhS40VLFBj6SfZKDlrVan5ivzNM/edit) é a referência editável e de planejamento. O Firestore continua servindo os dados ao PWA para manter leitura rápida em Android/iOS, autenticação e autorização no modelo V2. O fluxo será unidirecional: planilha → validação → Firestore. O PWA não deve ler a planilha a cada abertura, nem usar o PDF como entrada.
 
-A planilha foi consultada sem edição em 27/09/2026. A leitura delimitada encontrou o estado anterior à cópia compacta:
+A leitura somente de cabeçalhos em 27/09/2026 confirmou a cópia compacta na planilha oficial:
 
-- Aba `ESCALA`: 307 datas distintas e 17 posições (`pos1`–`pos17`), mais o campo de marcações. As linhas de escala ocupam as colunas `J:AB`; metadados/auditoria da planilha ficam nas outras colunas.
-- Aba `FÉRIAS`: 52 períodos com início, fim, siglas e rótulo (`J:M`).
-- A planilha está em `pt_BR` e usa o fuso `America/Sao_Paulo`. A última modificação informada pelo Drive foi 27/09/2026 às 13:17 UTC.
+- Aba `ESCALA`, colunas A:R: `date`, `pos1`–`pos17`. A primeira linha de dados foi lida e contém data e siglas nas posições esperadas.
+- Aba `FÉRIAS`, colunas A:D: `start`, `end`, `siglas`, `label`. As células `siglas` são listas JSON de texto, por exemplo `["LC","RA"]`; períodos sem siglas usam `[]`.
+- Os metadados da planilha indicam título `ESCALA/FÉRIAS 2026`, idioma `pt_BR` e fuso `America/Sao_Paulo`.
 
-O formato de trabalho aprovado para a cópia compacta é uma linha de cabeçalho e dados abaixo dela: `ESCALA` com `date`, `pos1`–`pos17`; `FÉRIAS` com `start`, `end`, `siglas`, `label`. Colunas auxiliares e auditoria não fazem parte do contrato. O conector localiza os cabeçalhos pelo nome e não depende de letras/posições fixas de coluna. Datas vazias da escala permanecem sem registro; em férias, períodos sem siglas são ignorados e mostrados na prévia para classificação.
+O Apps Script localiza os cabeçalhos pelo nome e não depende de letras/posições fixas de coluna. Datas vazias da escala permanecem sem registro; em férias, listas vazias são ignoradas e mostradas na prévia para classificação. O leitor foi ajustado para interpretar as listas JSON observadas e continua aceitando listas simples separadas por vírgula ou ponto e vírgula.
 
 ## Modelo operacional
 
@@ -28,15 +28,15 @@ O formato de trabalho aprovado para a cópia compacta é uma linha de cabeçalho
 
 ## Situação e limites
 
-- A planilha foi lida em modo somente leitura; nenhum valor foi modificado. A comparação foi feita com os campos operacionais, sem copiar os dados para arquivo versionado.
+- A planilha foi lida em modo somente leitura; nenhum valor foi modificado. Nesta conferência, foram lidos os metadados, cabeçalhos e amostras limitadas das abas; os dados completos não foram copiados para arquivo versionado.
 - O PDF anexado anteriormente nunca foi importado nem armazenado no Firestore; `vacations` estava vazia na consulta registrada. O PDF está fora do processo daqui em diante e não será publicado no repositório.
 - O conector Apps Script está implementado como publicação manual em duas etapas, sem gatilho: prévia e publicação explícita. O código foi enviado ao projeto Apps Script em 27/09/2026. Exige e-mail em `SAHMT_V2_SCHEDULE_SYNC_ALLOWED_EMAILS`, planilha privada, autorização IAM, nova prévia após qualquer alteração e validação pós-escrita. Essas propriedades/permissões e a homologação ainda precisam ser concluídas. Editar a planilha, por si só, não atualiza o PWA.
-- As 52 linhas `FÉRIAS` não estão no Firestore: 51 têm datas e siglas explícitas; a linha 48, 23–29/11/2026, está rotulada `CONGRESSO` e não tem siglas, portanto não é publicada como férias sem classificação.
+- A consulta de Firestore registrada anteriormente encontrou zero documentos em `vacations`; a cópia compacta da aba `FÉRIAS` tem 52 linhas de dados. A linha 48, 23–29/11/2026, guarda `[]` e rótulo `CONGRESSO`, portanto não é publicada como férias sem classificação.
 - O editor direto de posições foi removido da Home e das Rules do cliente. Perfis `scheduleWrite` ainda liberam siglas no cartão de contato, mas não criam/alteram posições; novas posições entram pela publicação manual da planilha via IAM Apps Script.
 - Nenhuma carga ou alteração do Firestore foi feita a partir desta planilha.
 
 ## Próximos passos
 
-1. Decidir como classificar a linha `CONGRESSO` sem siglas (23–29/11/2026); ela não deve entrar como férias.
-2. Fechar o desenho de publicação planilha → Firestore, com autorização restrita, prévia, detecção de concorrência e confirmação.
-3. Implementar e homologar o conector antes da primeira carga de férias ou de uma rotina de atualização contínua.
+1. Revisar a prévia de publicação contra o Firestore, confirmando o tratamento de `CONGRESSO` e as 51 férias com siglas.
+2. Fechar IAM e allowlist da conta executora; manter o sincronizador desativado até revisar o alcance do papel no projeto.
+3. Executar primeiro a prévia manual; publicar somente após conferir contagens e mudanças, e validar por releitura do Firestore.

@@ -190,15 +190,15 @@ function readVacationRows_(sheet) {
     const rowNumber = header.row + 1 + offset;
     const startValue = row[header.columns.start];
     const endValue = row[header.columns.end];
-    const rawSiglas = String(row[header.columns.siglas] || '').trim().toUpperCase();
+    const rawSiglas = String(row[header.columns.siglas] || '').trim();
     const label = String(row[header.columns.label] || '').trim();
     if (!startValue && !endValue && !rawSiglas && !label) return;
     if (!startValue || !endValue || !label) throw new Error('Período incompleto na linha ' + rowNumber + ' da aba FÉRIAS.');
     const start = scheduleSourceDate_(startValue);
     const end = scheduleSourceDate_(endValue);
     if (start > end) throw new Error('O início é posterior ao fim na linha ' + rowNumber + ' da aba FÉRIAS.');
-    if (!rawSiglas) { skippedWithoutSiglas.push({row: rowNumber, start: start, end: end, label: label}); return; }
-    const siglas = [...new Set(rawSiglas.split(/[,;\s]+/).filter(Boolean))];
+    const siglas = parseVacationSiglas_(rawSiglas, rowNumber);
+    if (!siglas.length) { skippedWithoutSiglas.push({row: rowNumber, start: start, end: end, label: label}); return; }
     if (!siglas.length || siglas.some(function (sigla) { return sigla.length > 30 || !/^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$/.test(sigla); })) {
       throw new Error('Siglas inválidas na linha ' + rowNumber + ' da aba FÉRIAS.');
     }
@@ -207,6 +207,26 @@ function readVacationRows_(sheet) {
     result.push({id: id, start: start, end: end, siglas: siglas, label: label, notes: '', active: true});
   });
   return {records: result, skippedWithoutSiglas: skippedWithoutSiglas};
+}
+
+/** Accept the compact sheet's JSON-array cells and ordinary comma/semicolon lists. */
+function parseVacationSiglas_(value, rowNumber) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  let parts;
+  if (raw.charAt(0) === '[') {
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (error) {
+      throw new Error('Lista de siglas inválida na linha ' + rowNumber + ' da aba FÉRIAS: use uma lista JSON ou siglas separadas por vírgula.');
+    }
+    if (!Array.isArray(parsed) || parsed.some(function (item) { return typeof item !== 'string'; })) {
+      throw new Error('Lista de siglas inválida na linha ' + rowNumber + ' da aba FÉRIAS.');
+    }
+    parts = parsed;
+  } else {
+    parts = raw.split(/[,;\s]+/);
+  }
+  return [...new Set(parts.map(function (item) { return String(item || '').trim().toUpperCase(); }).filter(Boolean))];
 }
 
 function scheduleSourceDate_(value) {
