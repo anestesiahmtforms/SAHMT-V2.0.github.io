@@ -6,6 +6,8 @@ Os commits `f2c4fdb`, `9d42095` e `a7ef309` foram publicados no GitHub Pages. A 
 
 **Validação desta etapa:** build de produção e diff sem erro; workflow `36289197061` concluiu com sucesso, incluindo testes de domínio, Firestore Rules, Functions e deploy; `index.html`, CSS e JavaScript publicados retornaram HTTP 200 e contêm os novos componentes. A comparação visual de cada rota em viewport Android/iOS, a permissão e o foco reais da câmera e o registro de um Checklist com dados reais continuam sem confirmação por aparelho. Não declarar a revisão visual global concluída até essa conferência.
 
+Em 27/09/2026, a grade do formulário de Eventos foi corrigida para que “Sigla do membro” e “Membro (ausente/atrasado)” ocupem células próprias, em vez de ficarem empilhados dentro de uma única célula da grade. O cache do shell foi avançado para V39. O build local passou; a captura autenticada de Eventos e a revisão visual Android/iOS continuam pendentes.
+
 Este documento define o inventário comparável. Os dados de V1 abaixo vêm do pacote estático; “V2” e as justificativas de mudança serão completados conforme cada tela for implementada e revisada em viewport mobile e desktop.
 
 | Tela | V1 | V2 | Elementos preservados | Alterações | Justificativa | Removidos |
