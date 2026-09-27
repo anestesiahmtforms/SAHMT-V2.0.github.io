@@ -4,6 +4,7 @@ export function bindLabelCamera(form) {
   const captureButton = form.querySelector('#label-camera-capture');
   const dialog = form.querySelector('#label-camera-dialog');
   const video = form.querySelector('#label-camera-video');
+  const target = form.querySelector('.label-camera-target');
   const status = form.querySelector('#label-camera-status');
   const fileInput = form.querySelector('#label-ocr-file');
   if (!openButton || !dialog || !video || !captureButton || !fileInput) return () => {};
@@ -37,7 +38,7 @@ export function bindLabelCamera(form) {
       await video.play();
       if (generation !== requestGeneration || !dialog.open) return;
       captureButton.disabled = false;
-      status.textContent = 'Enquadre a etiqueta e toque em Capturar foto.';
+      status.textContent = 'Enquadre a etiqueta na moldura central. Apenas essa área será capturada.';
     } catch (error) {
       if (generation !== requestGeneration) return;
       stopStream();
@@ -63,16 +64,40 @@ export function bindLabelCamera(form) {
       status.textContent = 'Este navegador não permite transferir a captura ao leitor. Use o campo Foto ou arquivo.';
       return;
     }
-    const scale = Math.min(1, 2200 / Math.max(sourceWidth, sourceHeight));
+    let sourceLeft = 0;
+    let sourceTop = 0;
+    let cropWidth = sourceWidth;
+    let cropHeight = sourceHeight;
+    if (target) {
+      const videoRect = video.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      if (!videoRect.width || !videoRect.height || !targetRect.width || !targetRect.height) {
+        status.textContent = 'A moldura da câmera ainda não está pronta. Tente novamente.';
+        return;
+      }
+      // The preview uses object-fit: cover, so map the visible target back to source pixels.
+      const coverScale = Math.max(videoRect.width / sourceWidth, videoRect.height / sourceHeight);
+      const imageLeft = (videoRect.width - sourceWidth * coverScale) / 2;
+      const imageTop = (videoRect.height - sourceHeight * coverScale) / 2;
+      sourceLeft = Math.max(0, (targetRect.left - videoRect.left - imageLeft) / coverScale);
+      sourceTop = Math.max(0, (targetRect.top - videoRect.top - imageTop) / coverScale);
+      cropWidth = Math.min(sourceWidth, (targetRect.right - videoRect.left - imageLeft) / coverScale) - sourceLeft;
+      cropHeight = Math.min(sourceHeight, (targetRect.bottom - videoRect.top - imageTop) / coverScale) - sourceTop;
+    }
+    if (cropWidth < 1 || cropHeight < 1) {
+      status.textContent = 'Não foi possível localizar a moldura na imagem. Ajuste a câmera e tente novamente.';
+      return;
+    }
+    const scale = Math.min(1, 2200 / Math.max(cropWidth, cropHeight));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    canvas.width = Math.max(1, Math.round(cropWidth * scale));
+    canvas.height = Math.max(1, Math.round(cropHeight * scale));
     const context = canvas.getContext('2d');
     if (!context) {
       status.textContent = 'Não foi possível preparar a captura. Tente novamente ou escolha uma foto.';
       return;
     }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    context.drawImage(video, sourceLeft, sourceTop, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
     captureButton.disabled = true;
     canvas.toBlob((blob) => {
       canvas.width = 0;
