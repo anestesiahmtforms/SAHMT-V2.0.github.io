@@ -77,3 +77,5 @@ As regras ficam em `src/event-form.js`; atualização de visibilidade, bloqueios
 Em 27/09/2026, os campos da janela de lançamento foram alinhados em linhas horizontais, com rótulo à esquerda e resposta ocupando o restante; o controle responsivo mantém o formulário sem rolagem. “Editar” aparece e abre somente para perfis administrativos V2 (`administrador_app` ou permissão `admin`), sem identificadores fixos. O commit [`48356b9`](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commit/48356b9), workflow [`36348540178`](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36348540178) e Pages V58 foram confirmados; conferência autenticada em aparelho segue pendente.
 
 Correção V59: o rótulo condicional de Situação do membro é descendente de um contêiner interno; o alinhamento horizontal agora seleciona todos os rótulos descendentes da grade, sem mudar o comportamento de visibilidade nem o acesso administrativo.
+
+Correção V60: margens seguras foram restabelecidas ao redor do modal em telas móveis, os controles de seleção mantêm a interação nativa e “Voltar” pode fechar o `<dialog>` pelo mecanismo HTML nativo.
