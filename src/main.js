@@ -366,7 +366,7 @@ function shellView() {
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report${eventReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportOpen && eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportOpen && eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></section>` : '';
+  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2>RELATÓRIOS DE EVENTOS</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportOpen && eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportOpen && eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></dialog>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const labelReport = route === 'labels' ? `<section class="event-report label-report${labelReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de Etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportOpen && labelReportMode === 'daily'}">REGISTRO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportOpen && labelReportMode === 'monthly'}">REGISTRO MENSAL - ETIQUETAS</button></div><div id="label-day-control" class="report-period label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></section>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
@@ -590,10 +590,12 @@ async function loadModule(route) {
   if (route === 'events') {
     content.remove();
     if (can('eventsRead') || can('eventsWrite')) void loadReportPdfModule().catch(() => {});
+    const reportDialog = document.querySelector('#event-report-dialog');
+    reportDialog?.addEventListener('close', () => { eventReportOpen = false; });
     document.querySelectorAll('[data-event-report-mode]').forEach((button) => button.addEventListener('click', async () => {
       eventReportMode = button.dataset.eventReportMode;
       eventReportOpen = true;
-      document.querySelector('.event-report')?.classList.remove('event-report--closed');
+      if (reportDialog && !reportDialog.open) reportDialog.showModal();
       document.querySelectorAll('[data-event-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
       const results = document.querySelector('#event-report-results');
       if (results) results.hidden = false;
@@ -605,7 +607,10 @@ async function loadModule(route) {
     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
     await loadEventEntryCatalog();
     bindEventSchedule();
-    if (eventReportOpen) await loadEventReport();
+    if (eventReportOpen) {
+      if (reportDialog && !reportDialog.open) reportDialog.showModal();
+      await loadEventReport();
+    }
     else {
       const pdfButton = document.querySelector('#share-events-pdf');
       if (pdfButton) pdfButton.disabled = true;
