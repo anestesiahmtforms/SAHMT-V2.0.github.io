@@ -262,7 +262,7 @@ function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], v
 }
 
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
-  const highlightedSiglas = new Set(Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
+  const highlightedSiglas = new Set(mode === 'events' ? [] : Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
   const isAdmin = can('admin');
   const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
   const eventSiglas = new Set();
