@@ -1380,44 +1380,33 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
   };
 }
 
-export async function updateLabelRecord(labelId, input, uid, actorName = '') {
+export async function updateLabelRecord(labelId, input, uid, actorName = '', expectedVersion) {
   if (!labelId || !uid) throw new Error('A sessão expirou. Entre novamente.');
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão desta etiqueta não está disponível. Atualize o relatório antes de editar.');
   const ref = doc(db, 'labels', labelId);
-  const current = await getDocFromServer(ref);
-  if (!current.exists()) throw new Error('Esta etiqueta não está mais disponível. Atualize o relatório.');
-  const label = current.data();
-  if (label.active !== true || label.status !== 'CONFIRMED') {
-    throw Object.assign(new Error('Esta etiqueta foi alterada ou desativada desde que o relatório foi aberto.'), {code: 'stale-version'});
-  }
   const fields = ['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
-  const version = Math.max(1, Number(label.version) || 1) + 1;
-  const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(label[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
-  if (!changedFields.length) throw new Error('Nenhuma alteração foi feita nesta etiqueta.');
-  const historyRef = doc(db, 'labels', labelId, 'history', String(version));
-  const historyEntry = {
-    id: String(version), labelId, version, actorUid: uid, actorName: String(actorName || '').trim().slice(0, 120),
-    changedFields,
-    before: Object.fromEntries(changedFields.map((field) => [field, label[field] ?? null])),
-    after: Object.fromEntries(changedFields.map((field) => [field, updates[field] ?? null])),
-    createdAt: serverTimestamp()
-  };
-  const batch = writeBatch(db);
-  batch.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
-  batch.set(historyRef, historyEntry);
-  try {
-    await batch.commit();
-  } catch (error) {
-    try {
-      const latest = await getDocFromServer(ref);
-      if (latest.exists() && Number(latest.data().version || 1) > version - 1) {
-        throw Object.assign(new Error('Outra pessoa atualizou esta etiqueta enquanto você editava.'), {code: 'stale-version'});
-      }
-    } catch (checkError) {
-      if (checkError.code === 'stale-version') throw checkError;
+  await runTransaction(db, async (transaction) => {
+    const current = await transaction.get(ref);
+    if (!current.exists()) throw new Error('Esta etiqueta não está mais disponível. Atualize o relatório.');
+    const label = current.data();
+    if (label.active !== true || label.status !== 'CONFIRMED' || Math.max(1, Number(label.version) || 1) !== expectedVersion) {
+      throw Object.assign(new Error('Esta etiqueta foi alterada desde que o relatório foi aberto. Atualize e compare antes de editar.'), {code: 'stale-version'});
     }
-    throw error;
-  }
+    const version = expectedVersion + 1;
+    const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(label[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
+    if (!changedFields.length) throw new Error('Nenhuma alteração foi feita nesta etiqueta.');
+    const historyRef = doc(db, 'labels', labelId, 'history', String(version));
+    const historyEntry = {
+      id: String(version), labelId, version, actorUid: uid, actorName: String(actorName || '').trim().slice(0, 120),
+      changedFields,
+      before: Object.fromEntries(changedFields.map((field) => [field, label[field] ?? null])),
+      after: Object.fromEntries(changedFields.map((field) => [field, updates[field] ?? null])),
+      createdAt: serverTimestamp()
+    };
+    transaction.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
+    transaction.set(historyRef, historyEntry);
+  });
 }
 
 export async function listLabelHistory(labelId, {pageSize = 20} = {}) {

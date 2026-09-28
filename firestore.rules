@@ -455,16 +455,16 @@ service cloud.firestore {
          (data.creditor != 'Caixa' && data.staffSiglas.size() > 0 && labelStaffAllowed(data.staffSiglas, labelId))) &&
         data.consultation == (data.type == 'Consulta Pré-anestésica') && data.status == 'CONFIRMED';
     }
+    function labelActorAccess(data) {
+      return data.createdByUid == request.auth.uid ||
+        (profile().sigla is string && profile().sigla != '' && data.staffSiglas is list && data.staffSiglas.hasAny([profile().sigla]));
+    }
     function labelRecordAccess() {
-      return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) &&
-        (resource.data.createdByUid == request.auth.uid ||
-         (profile().sigla is string && profile().sigla != '' && resource.data.staffSiglas is list && resource.data.staffSiglas.hasAny([profile().sigla]))));
+      return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) && labelActorAccess(resource.data));
     }
     function labelHistoryAccess(labelId) {
       let parent = get(/databases/$(database)/documents/labels/$(labelId)).data;
-      return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) &&
-        (parent.createdByUid == request.auth.uid ||
-         (profile().sigla is string && profile().sigla != '' && parent.staffSiglas is list && parent.staffSiglas.hasAny([profile().sigla]))));
+      return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) && labelActorAccess(parent));
     }
     function labelHistoryFieldMatches(labelId, fields, before, after, field) {
       let parentPath = /databases/$(database)/documents/labels/$(labelId);
@@ -480,7 +480,7 @@ service cloud.firestore {
       let after = data.after;
       let fields = data.changedFields;
       return exists(parentPath) && existsAfter(parentPath) &&
-        (can('labelsManage') || get(parentPath).data.createdByUid == request.auth.uid) &&
+        (can('labelsManage') || labelActorAccess(get(parentPath).data)) &&
         fields is list && fields.size() > 0 && fields.size() <= 10 &&
         fields.hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation']) &&
         before is map && after is map && before.keys().hasOnly(fields) && after.keys().hasOnly(fields) &&
@@ -1035,7 +1035,7 @@ service cloud.firestore {
       allow read: if labelRecordAccess();
       allow create: if (can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId);
       allow update: if (can('labelsWrite') || can('labelsManage')) && updateActorIsSelf() &&
-        (resource.data.createdByUid == request.auth.uid || can('labelsManage')) &&
+        (labelActorAccess(resource.data) || can('labelsManage')) &&
         request.resource.data.id == resource.data.id && request.resource.data.clientMutationId == resource.data.clientMutationId &&
         request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
