@@ -374,7 +374,7 @@ function shellView() {
   const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><h3>ACESSOS DE GESTÃO</h3><div class="module-grid">${utilityCards}</div></section>` : '';
   const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></dialog>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
-  const labelReport = route === 'labels' ? `<section class="event-report label-report${labelReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de Etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportOpen && labelReportMode === 'daily'}">REGISTRO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportOpen && labelReportMode === 'monthly'}">REGISTRO MENSAL - ETIQUETAS</button></div><div id="label-day-control" class="report-period label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></section>` : '';  const view = route === 'home' ? `<section class="content-grid">
+  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
         ${can('scheduleWrite') ? '<a class="secondary-button schedule-edit-launch" href="https://docs.google.com/spreadsheets/d/1japh5sUW3QU5F3dknhS40VLFBj6SfZKDlrVan5ivzNM/edit#gid=0" target="_blank" rel="noopener noreferrer">Editar planilha oficial</a>' : ''}
@@ -641,12 +641,18 @@ async function loadModule(route) {
   if (route === 'labels') {
     content.remove();
     void loadReportPdfModule().catch(() => {});
-    document.querySelectorAll('[data-label-report-mode]').forEach((button) => button.addEventListener('click', async () => {
-      labelReportMode = button.dataset.labelReportMode;
+    const reportDialog = document.querySelector('#label-report-dialog');
+    reportDialog?.addEventListener('close', () => { labelReportOpen = false; });
+    document.querySelectorAll('[data-label-report-launch]').forEach((button) => button.addEventListener('click', async () => {
+      labelReportMode = button.dataset.labelReportLaunch;
       labelReportOpen = true;
-      document.querySelector('.label-report')?.classList.remove('event-report--closed');
-      document.querySelector('#label-report-results')?.removeAttribute('hidden');
-      document.querySelectorAll('[data-label-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+      if (reportDialog && !reportDialog.open) reportDialog.showModal();
+      const title = document.querySelector('#label-report-dialog-title');
+      if (title) title.textContent = labelReportMode === 'daily' ? 'RELATÓRIO DIÁRIO' : 'RELATÓRIO MENSAL';
+      const results = document.querySelector('#label-report-results');
+      if (results) results.hidden = false;
+      const reportDay = document.querySelector('#label-report-day');
+      if (labelReportMode === 'daily' && reportDay) reportDay.value = todayInputValue();
       document.querySelector('#label-day-control').hidden = labelReportMode !== 'daily';
       document.querySelector('#label-month-control').hidden = labelReportMode !== 'monthly';
       await loadLabelReport();
@@ -654,6 +660,13 @@ async function loadModule(route) {
     document.querySelector('#label-report-day')?.addEventListener('change', loadLabelReport);
     document.querySelector('#label-report-month')?.addEventListener('change', loadLabelReport);
     document.querySelector('#share-labels-pdf')?.addEventListener('click', () => shareReportPdf('labels'));
+    if (labelReportOpen) {
+      if (reportDialog && !reportDialog.open) reportDialog.showModal();
+      await loadLabelReport();
+    } else {
+      const pdfButton = document.querySelector('#share-labels-pdf');
+      if (pdfButton) pdfButton.disabled = true;
+    }
     document.querySelector('#label-edit-cancel')?.addEventListener('click', resetLabelEditor);
     document.querySelector('#label-entry-close')?.addEventListener('click', resetLabelEditor);
     document.querySelector('#label-manual-open')?.addEventListener('click', () => {
