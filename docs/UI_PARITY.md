@@ -96,9 +96,9 @@ A view V1 `core/views/treinamentos.js` renderiza `data.activities` pelo componen
 
 A rota remove a faixa de título duplicada e a sigla/e-mail abaixo do nome, mostra apenas OPERACIONAL em maiúsculas no cabeçalho do módulo, remove o rótulo de escala/dia/instrução e centraliza DATA. Tocar numa sigla abre um diálogo fixo amplo; o nome do membro é preenchido no campo ausente/atrasado, enquanto a sigla permanece oculta no payload para manter a ligação Firestore. O seletor visível de sigla e a mensagem do catálogo de pagadores/credores foram removidos. Ações e estado do formulário seguem na matriz abaixo.
 
-| Tipo | Obrigatórios visíveis | Campos ocultos/desativados | Preenchimento automático V1 preservado na V2 |
+| Tipo | Obrigatórios visíveis | Campos ocultos/desativados | Regra V1 e estado atual da V2 |
 |---|---|---|---|
-| Atraso | Membro, múltiplo, pagador, credor, valor | Substituto e turno | Pagador pelo membro; credor Caixa da Equipe; valor = múltiplo × R$ 100 |
+| Atraso | Membro, múltiplo, pagador, credor, valor | Substituto e turno | V1: pagador pelo membro, credor Caixa da Equipe e valor = múltiplo × R$ 100. V2 atual: mesmo pagador/credor, valor = múltiplo × R$ 200 após o commit remoto `58c73b8`. |
 | Suporte | Substituto, turno, pagador, credor, valor | Membro/situação | Membro fica oculto e o registro recebe `SUPORTE`; pagador Caixa da Equipe; credor pelo substituto; valor R$ 1.000 em Manhã/Tarde ou R$ 2.000 Integral |
 | Pessoal, Férias, Saúde | Membro, substituto, turno, pagador, credor, valor | Descrição e múltiplo | Pagador pelo membro; credor pelo substituto; valor pelo turno |
 | Gestão, Congresso | Membro, substituto, turno, pagador, credor, valor | Descrição e múltiplo | Pagador Caixa da Equipe; credor pelo substituto; valor pelo turno |
