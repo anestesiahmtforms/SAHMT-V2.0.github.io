@@ -80,7 +80,7 @@ Não habilite enforcement global adicional no console como parte deste procedime
 ## Estado já preparado
 
 - A PWA publicada usa o Firebase `sahmt-17a16` e o Firestore `(default)`.
-- Rules e 35 índices compostos estão publicados e `READY`; o primeiro perfil foi provisionado pelo proprietário.
+- Rules estão publicadas. A API Firestore confirmou 37 índices `READY` em 27/09/2026; a leitura atual do Firebase CLI lista 39 definições sem informar estado. O primeiro perfil foi provisionado pelo proprietário.
 - A planilha existe e suas oito abas/cabeçalhos V2 foram conferidos.
 - O projeto `SAHMT V2.0 – Integração Spark` foi criado na pasta oficial. O pacote V2 já havia sido enviado via `clasp` sem `FirestoreSync.gs` ou handlers `syncQueue`. Em 26/09/2026, a checagem somente leitura foi enviada e um `clasp pull` isolado confirmou conteúdo correspondente nos oito arquivos remotos (manifesto e sete fontes), sem os handlers legados. A API Apps Script da conta permite a sincronização via `clasp`; isso não concede IAM Firestore nem autoriza a execução OAuth do script. Nenhuma função foi executada. IAM, autorização de runtime, propriedades do script, homologação fictícia e instalação de gatilhos continuam pendentes.
 - A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`; o plano Spark mantém ativa a operação base. A callable opcional de leitura por IA não pode ser implantada nesse estado. Qualquer mudança para Blaze deve ser uma decisão explícita do proprietário, considerando custos e cotas.
