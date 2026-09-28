@@ -35,7 +35,8 @@ export async function extractLabelWithAi(file) {
   if (!(file instanceof Blob) || !/^image\/(?:jpeg|png|webp)$/i.test(file.type) || file.size > 12 * 1024 * 1024) {
     throw new Error('Escolha uma imagem JPG, PNG ou WebP de até 12 MB.');
   }
-  await appCheckReady;
+  const appCheck = await appCheckReady;
+  if (!appCheck) throw new Error('A leitura por IA aguarda a configuração do App Check para este domínio. Você pode continuar pelo registro manual.');
   const image = await loadImage(file);
   const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
   const canvas = document.createElement('canvas');

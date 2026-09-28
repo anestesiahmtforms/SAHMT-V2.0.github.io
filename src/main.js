@@ -76,7 +76,7 @@ let checklistReportLoad = 0;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
-let cleanupLabelOcr = null;
+let cleanupLabelMedia = null;
 let loadedTrainingCatalog = [];
 let loadedLearningActivityCatalog = [];
 let offlineViewMode = 'sync';
@@ -2717,11 +2717,11 @@ async function bindModuleForm(route) {
     form?.elements.creditor?.addEventListener('change', () => updateLabelEntryFields(form));
     if (form) updateLabelEntryFields(form);
     if (form && workspace) {
-      const cleanupOcr = bindLabelOcr(workspace, form);
+      const cleanupAi = bindLabelAi(workspace, form);
       const {bindLabelCamera} = await import('./label-camera.js');
-      if (!form.isConnected) { cleanupOcr(); return; }
+      if (!form.isConnected) { cleanupAi(); return; }
       const cleanupCamera = bindLabelCamera(workspace);
-      cleanupLabelOcr = () => { cleanupOcr(); cleanupCamera(); };
+      cleanupLabelMedia = () => { cleanupAi(); cleanupCamera(); };
     }
     const entryDialog = document.querySelector('#label-entry-dialog');
     entryDialog?.addEventListener('click', (event) => { if (event.target === entryDialog) resetLabelEditor(); });
@@ -3008,7 +3008,7 @@ function updateLabelEntryFields(form) {
   creditor.disabled = consultation;
 }
 
-function bindLabelOcr(workspace, form) {
+function bindLabelAi(workspace, form) {
   const fileInput = workspace.querySelector('#label-image-file');
   const runButton = workspace.querySelector('#label-read-ai');
   const status = workspace.querySelector('#label-ai-status');
@@ -3422,9 +3422,9 @@ function applyEventAmountAutofill(input, value, editing) {
 }
 
 async function render() {
-  if (cleanupLabelOcr) {
-    cleanupLabelOcr();
-    cleanupLabelOcr = null;
+  if (cleanupLabelMedia) {
+    cleanupLabelMedia();
+    cleanupLabelMedia = null;
   }
   stopChecklistQrScanner();
   if (cleanupCurrentModule) {
