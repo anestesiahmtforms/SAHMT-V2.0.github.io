@@ -1,5 +1,7 @@
 # Plano de implementação
 
+Atualização de 28/09/2026: a leitura de Etiquetas em V2 é pela callable autenticada `readLabelImage` com IA no servidor, conforme [`ETIQUETAS_IA_V2.md`](ETIQUETAS_IA_V2.md); as referências abaixo a OCR local, recorte manual, precisão de OCR local e CSV/PDF de Etiquetas são notas históricas, não descrevem o fluxo atual. A imagem vira rascunho e só é persistida após confirmação no formulário. O fluxo de IA em produção aguarda ativar faturamento no projeto Firebase, cadastrar `OPENAI_API_KEY` privadamente e implantar a função. A dependência npm Tesseract foi removida por não pertencer ao fluxo atual; arquivos públicos antigos ainda precisam ser retirados da publicação.
+
 Atualização de 28/09/2026: a fonte `CADASTRO EQUIPE - SAHMT` foi conferida pela aba `Cadastro_Equipe`; a ferramenta de Pessoas V72 prepara atualização limitada às siglas existentes e aos cinco campos previamente selecionados. A carga no Firestore e a confirmação de RO dependem da execução autenticada da ação de importação no PWA.
 
 Atualização de 27/09/2026: os quatro treinamentos do catálogo V1 já estão no Firestore, a câmera de Etiquetas recorta a área central visível e o Checklist V70 reproduz a ordenação diária dos arsenais da V1 na interface. A execução real dos treinamentos e a validação de pontuação continuam pendentes da identidade executora Apps Script. As referências abaixo a treinamentos não importados, recorte ausente ou ordem visual do Checklist não revisada descrevem etapas anteriores à V70.
