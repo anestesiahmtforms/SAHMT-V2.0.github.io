@@ -2,7 +2,7 @@
 
 > Referência histórica da leitura local anterior. O fluxo atual em V2 usa a função autenticada `readLabelImage` e a IA no servidor; consulte [ETIQUETAS_IA_V2.md](ETIQUETAS_IA_V2.md). A configuração da chave e o deploy da função ainda são necessários antes de a leitura IA operar em produção.
 
-O conteúdo abaixo documenta uma implementação substituída e não deve ser seguido para o fluxo atual. Tesseract foi removido das dependências npm; os arquivos históricos em `public/vendor/ocr/` ainda estão no checkout, mas não são carregados pela interface atual.
+O conteúdo abaixo documenta uma implementação substituída e não deve ser seguido para o fluxo atual. Tesseract foi removido das dependências npm; os arquivos históricos em `public/vendor/ocr/` permanecem no checkout, mas o workflow de publicação os exclui do artefato Pages.
 
 ## Fluxo
 
