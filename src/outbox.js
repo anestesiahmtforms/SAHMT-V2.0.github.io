@@ -317,12 +317,20 @@ export async function retryFailedOperations(uid) {
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) return;
-      cursor.update({...cursor.value, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
-      retried++;
+      if (cursor.value.lastErrorCode !== 'invalid-outbox-operation') {
+        cursor.update({...cursor.value, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+        retried++;
+      }
       cursor.continue();
     };
     return () => retried;
   });
+}
+
+export async function retryableFailedOperationCount(uid) {
+  if (!uid) return 0;
+  const failed = await getUserOperations(uid, 'failed');
+  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation').length;
 }
 
 export async function retryFailedOperation(uid, requestId) {
@@ -333,7 +341,7 @@ export async function retryFailedOperation(uid, requestId) {
     const request = store.get(requestId);
     request.onsuccess = () => {
       const item = request.result;
-      if (!item || item.uid !== uid || item.status !== 'failed') return;
+      if (!item || item.uid !== uid || item.status !== 'failed' || item.lastErrorCode === 'invalid-outbox-operation') return;
       store.put({...item, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
       retried = true;
     };

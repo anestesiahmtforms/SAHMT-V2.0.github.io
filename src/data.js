@@ -2205,6 +2205,33 @@ async function createScheduledEvent(data, {uid, requestId}) {
 }
 
 const flushPromises = new Map();
+function assertQueuedOperationShape(operation, uid) {
+  const invalid = () => Object.assign(
+    new Error('Ação offline inconsistente. Nada foi enviado; revise ou descarte esta ação na área Offline.'),
+    {code: 'invalid-outbox-operation'}
+  );
+  const payload = operation?.payload;
+  const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  if (!operation || operation.uid !== uid || typeof operation.requestId !== 'string' || !operation.requestId || !payload) throw invalid();
+
+  if (['events', 'checklists', 'activities'].includes(operation.type)) {
+    if (payload.collectionName !== operation.type || operation.resourceId !== operation.requestId || !isRecord(payload.data)) throw invalid();
+    return;
+  }
+  if (operation.type === 'eventEdits') {
+    if (payload.collectionName !== 'events' || !payload.eventId || payload.eventId !== operation.resourceId ||
+        !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 1 || !isRecord(payload.data)) throw invalid();
+    return;
+  }
+  if (operation.type === 'scheduleReleases') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.day || '') || typeof payload.sigla !== 'string' || !payload.sigla.trim() ||
+        typeof payload.marked !== 'boolean' || operation.resourceId !== `${payload.day}:${payload.sigla}` ||
+        operation.requestId !== scheduleReleaseRequestId(uid, payload)) throw invalid();
+    return;
+  }
+  throw invalid();
+}
+
 export async function flushOutbox(uid, {requestId} = {}) {
   if (!uid || !navigator.onLine) return {synced: 0, pending: 0};
   return runKeyedTask(flushPromises, uid, async () => {
@@ -2213,6 +2240,7 @@ export async function flushOutbox(uid, {requestId} = {}) {
     const operations = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
     for (const operation of operations) {
       try {
+        assertQueuedOperationShape(operation, uid);
         if (operation.type === 'scheduleReleases') {
           await applyScheduleSiglaRelease(operation.payload, uid);
         } else if (operation.type === 'eventEdits') {
@@ -2231,21 +2259,23 @@ export async function flushOutbox(uid, {requestId} = {}) {
         synced++;
         window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: operation.type}}));
       } catch (error) {
-        try {
-          if (operation.type === 'scheduleReleases') throw error;
-          const committed = operation.type === 'eventEdits'
-            ? await confirmCommittedEventEdit(operation.payload.eventId, operation.payload.data, uid, operation.requestId, operation.payload.expectedVersion + 1)
-            : await confirmCommittedMutation({collectionName: operation.payload.collectionName, data: operation.payload.data, uid, requestId: operation.requestId});
-          if (committed) {
-            await removeQueuedOperation(uid, operation.requestId);
-            synced++;
-            window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, replay: true}}));
-            continue;
-          }
-        } catch {}
+        if (error.code !== 'invalid-outbox-operation') {
+          try {
+            if (operation.type === 'scheduleReleases') throw error;
+            const committed = operation.type === 'eventEdits'
+              ? await confirmCommittedEventEdit(operation.payload.eventId, operation.payload.data, uid, operation.requestId, operation.payload.expectedVersion + 1)
+              : await confirmCommittedMutation({collectionName: operation.payload.collectionName, data: operation.payload.data, uid, requestId: operation.requestId});
+            if (committed) {
+              await removeQueuedOperation(uid, operation.requestId);
+              synced++;
+              window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, replay: true}}));
+              continue;
+            }
+          } catch {}
+        }
         const attempts = operation.attempts + 1;
         const conflict = error.code === 'stale-version' && operation.type === 'eventEdits';
-        const permanent = ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(error.code);
+        const permanent = ['permission-denied', 'invalid-argument', 'failed-precondition', 'invalid-outbox-operation'].includes(error.code);
         const delay = Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10));
         await updateQueuedOperation(uid, operation.requestId, {
           status: conflict ? 'conflict' : permanent ? 'failed' : 'queued',
@@ -2254,7 +2284,7 @@ export async function flushOutbox(uid, {requestId} = {}) {
           lastError: String(error.message || error).slice(0, 300),
           lastErrorCode: error.code || ''
         });
-        if (permanent) window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {message: 'Uma ação offline foi recusada pelo Firestore. Verifique suas permissões.'}}));
+        if (permanent && error.code !== 'invalid-outbox-operation') window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {message: 'Uma ação offline foi recusada pelo Firestore. Verifique suas permissões.'}}));
         if (!navigator.onLine || !permanent) break;
       }
     }

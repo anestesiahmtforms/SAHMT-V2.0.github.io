@@ -2,7 +2,7 @@ import './styles.css';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations} from './outbox.js';
+import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount} from './outbox.js';
 import {eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -872,10 +872,11 @@ async function loadOfflineView(target) {
     ]);
     const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
     const today = todayInputValue();
-    const retryableFailed = counts.failed;
+    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation');
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
       const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
+      const invalidLocalOperation = item.lastErrorCode === 'invalid-outbox-operation';
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
       const operationStatus = item.status === 'conflict'
@@ -895,7 +896,7 @@ async function loadOfflineView(target) {
           ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
           : versionConflict
             ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
-            : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+            : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : '';
       const description = item.type === 'scheduleReleases'
         ? `${item.payload.sigla} · ${formatRecordDate(item.payload.day)}`
@@ -920,7 +921,7 @@ async function loadOfflineView(target) {
     }).join('');
     const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
     target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
-      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) foram recusadas e precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
+      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
       ${retryableFailed ? `<button class="primary-button" type="button" id="offline-retry" ${navigator.onLine ? '' : 'disabled'}>Tentar sincronizar novamente</button>` : ''}
       ${unsettled.length ? `<ul class="record-list">${rows}</ul>` : ''}${trainingRows ? `<h4>Progresso de treinamento</h4><ul class="record-list">${trainingRows}</ul>` : ''}${!unsettled.length && !trainingRows ? '<p class="empty-state">As gravações online são confirmadas diretamente pelo Firestore.</p>' : ''}
       <p class="offline-footnote">Ações pendentes só ficam confirmadas depois que o Firestore aceitar a sincronização. O perfil em cache permite abrir o shell temporariamente; as Rules do Firestore continuam sendo a autorização efetiva.</p></section></section>${offlineScheduleGalleryMarkup(import.meta.env.BASE_URL)}`;
@@ -3477,15 +3478,16 @@ async function render() {
 async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status');
   if (!target || session.status !== 'signed-in') return;
-  const [counts, pendingProgress] = await Promise.all([
+  const [counts, pendingProgress, retryableFailures] = await Promise.all([
     operationCounts(session.user.uid),
-    pendingTrainingProgressCount(session.user.uid)
+    pendingTrainingProgressCount(session.user.uid),
+    retryableFailedOperationCount(session.user.uid)
   ]);
   const count = counts.queued + counts.failed + counts.conflict;
   const details = [count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
-  target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${counts.failed ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
+  target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
     await retryFailedOperations(session.user.uid);
