@@ -147,6 +147,7 @@
 .label-camera-target::before { position: absolute; inset: 0; border: 1px dashed rgb(255 255 255 / 78%); border-radius: 12px; content: ""; }
 .label-camera-target span { align-self: end; margin-bottom: 9px; padding: 5px 9px; border-radius: 999px; background: rgb(4 24 42 / 78%); color: white; font-size: .72rem; font-weight: 850; }
 .label-camera-dialog #label-camera-capture { width: 100%; margin-top: 12px; }
+.label-ai-privacy-note { margin: 4px 0 0; font-size: .74rem; line-height: 1.35; }
 .label-crop-selection { position: absolute; z-index: 1; border: 2px solid #ffd54f; background: rgb(10 35 56 / 22%); pointer-events: none; }
 .label-crop-selection[hidden] { display: none; }
 
