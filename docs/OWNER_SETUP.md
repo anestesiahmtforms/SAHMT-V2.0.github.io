@@ -52,6 +52,31 @@ Use dados fictícios e confira idempotência/replay, conflito e falha para cada 
 
 Após IAM e homologação, instale apenas os gatilhos Spark necessários: `installChecklistValidationTrigger`, `installTrainingValidationTrigger`, `installManagementScoreValidationTrigger` e `installSahmtV2SparkReportTrigger`. Eles varrem o Firestore periodicamente; o PWA não espera por eles. O handler/instalador legado `syncQueue` foi removido do pacote V2 e não deve ser recriado.
 
+## 5. Ativar leitura de Etiquetas por IA (opcional)
+
+Esta parte envia a imagem da etiqueta à OpenAI e requer faturamento Blaze no Firebase. Mantenha-a desligada se não quiser esse custo ou esse fluxo de dados. Nunca coloque a chave secreta da OpenAI no GitHub, no PWA ou nesta conversa.
+
+### A. Criar as chaves reCAPTCHA v3
+
+1. Abra o [Google reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create) com a conta administradora.
+2. Crie uma chave do tipo **reCAPTCHA v3** para o domínio `anestesiahmtforms.github.io`. Se o Pages usar outro hostname próprio, inclua também esse hostname. Não inclua `https://` nem caminhos.
+3. Guarde a **chave do site** e a **chave secreta**. A chave do site será pública no cliente; a chave secreta fica somente no cadastro do App Check no Firebase.
+
+### B. Registrar reCAPTCHA no Firebase App Check
+
+1. Abra o [App Check do projeto sahmt-17a16](https://console.firebase.google.com/project/sahmt-17a16/appcheck).
+2. Na aba **Apps**, selecione o app Web SAHMT V2.0 e escolha registrar/configurar **reCAPTCHA v3**.
+3. Cole a **chave secreta** do reCAPTCHA no campo solicitado e salve. Confira que está configurando o app Web correto.
+
+### C. Disponibilizar a chave do site ao build do Pages
+
+1. Abra o repositório oficial no GitHub e vá a **Settings → Secrets and variables → Actions → Variables → New repository variable**.
+2. Nome: `VITE_APP_CHECK_SITE_KEY`. Valor: a **chave do site** (pública) criada no reCAPTCHA. Não use a chave secreta neste campo.
+3. O workflow do Pages lê essa variável durante o build. Depois de salvá-la, abra **Actions**, selecione **Build and deploy SAHMT V2** e execute **Run workflow** na branch `main` (ou faça um commit normal para dispará-lo).
+4. Aguarde a conclusão e abra o PWA. A inicialização do App Check deve ocorrer sem erro. A leitura por IA só ficará operacional depois de habilitar Blaze, configurar `OPENAI_API_KEY` no Firebase, publicar a função e realizar um teste autenticado.
+
+Não habilite enforcement global adicional no console como parte deste procedimento: `readLabelImage` já exige App Check por configuração própria. Não compartilhe nenhuma das chaves aqui. A chave secreta no Firebase e a mudança para Blaze devem ser configuradas pelo proprietário, considerando custos e política de dados.
+
 ## Estado já preparado
 
 - A PWA publicada usa o Firebase `sahmt-17a16` e o Firestore `(default)`.
