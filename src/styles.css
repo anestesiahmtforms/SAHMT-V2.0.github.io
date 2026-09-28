@@ -24,7 +24,7 @@
 .event-report-launchers button{min-height:44px;padding:8px;border:1px solid #fff;border-radius:999px;background:linear-gradient(145deg,#1b9b8d,#08736c);color:#fff;font-size:clamp(.65rem,2.4vw,.78rem);font-weight:950;letter-spacing:.035em;box-shadow:0 3px 0 #07534d,0 7px 13px #001b3529}
 .event-report-launchers button[data-event-report-launch="monthly"]{background:linear-gradient(145deg,#e7b653,#a8731d);box-shadow:0 3px 0 #765016,0 7px 13px #001b3529}
 .event-report-launchers button:active{transform:translateY(2px)}
-.event-report-dialog{position:fixed;inset:0;width:min(calc(100vw - 20px),760px);height:min(calc(100dvh - 20px),820px);max-width:none;max-height:none;margin:auto;padding:clamp(12px,3vw,22px);overflow:hidden;grid-template-rows:auto auto auto minmax(0,1fr);gap:12px;border:2px solid #fff;border-radius:22px;background:linear-gradient(145deg,#fffdf8,#e8f0f3);color:var(--ink);box-shadow:0 22px 70px #001b3580}
+.event-report-dialog{position:fixed;inset:0;width:min(calc(100vw - 20px),760px);height:min(calc(100dvh - 20px),820px);max-width:none;max-height:none;margin:auto;padding:clamp(12px,3vw,22px);overflow:hidden;grid-template-rows:auto auto minmax(0,1fr);gap:12px;border:2px solid #fff;border-radius:22px;background:linear-gradient(145deg,#fffdf8,#e8f0f3);color:var(--ink);box-shadow:0 22px 70px #001b3580}
 .event-report-dialog[open]{display:grid}
 .event-report-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
 .event-report-dialog__header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:8px;border-bottom:1px solid #d7e3e8}
@@ -32,6 +32,10 @@
 .event-report-dialog__header form{margin:0}
 .event-report-dialog__header button{min-height:38px;padding:6px 11px}
 .event-report-dialog .module-content{min-height:0;margin:0;overflow:auto;overscroll-behavior:contain}
+.event-report .event-day-control{display:grid;grid-template-columns:minmax(0,1fr);margin:0;gap:6px}
+.event-report .event-day-control[hidden]{display:none}
+.event-report .event-day-control label{gap:4px;font-size:.72rem}
+.event-report .event-day-control input{min-height:42px;padding:7px 10px;border-color:#b7ccd5;border-radius:11px;background:linear-gradient(145deg,#fff,#edf5f8);color:#123c60;font-weight:850;text-align:center;cursor:pointer}
 @media(max-width:520px){.event-report-dialog{width:calc(100vw - 14px);height:calc(100dvh - 14px);padding:10px;border-radius:18px;gap:9px}}
 .checklist-controls{display:flex;align-items:end;gap:10px;margin:14px 0;padding:12px}.checklist-controls label{display:grid;flex:1;gap:5px;color:#526578;font-size:.76rem;font-weight:800}.checklist-controls input{min-height:44px;padding:8px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink)}.checklist-station{display:grid;gap:10px;margin:9px 0;padding:13px;border:1px solid #d7e3e8;border-radius:15px;background:#ffffffdb}.checklist-station>div:first-child{display:grid;gap:4px}.checklist-station strong{font-size:.9rem}.checklist-station small{color:#526578;font-size:.74rem;line-height:1.4}.checklist-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.checklist-actions .secondary-button{min-height:44px;padding:8px;font-size:.78rem}.checklist-occurrence{display:grid;gap:5px;color:#526578;font-size:.76rem;font-weight:800}.checklist-occurrence textarea{width:100%;padding:9px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink);font:inherit}
 .sync-state{margin:0 0 9px;padding:8px 10px;border-radius:10px;background:#fff5d9;color:#76500f;font-size:.75rem;font-weight:800}.checklist-station .sync-error{color:#a12828;font-weight:800}
