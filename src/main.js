@@ -1523,7 +1523,7 @@ async function saveChecklistAnswer(stationId, condition, day) {
   }
 }
 
-async function loadEventReport() {
+async function loadEventReport({append = false} = {}) {
   const target = document.querySelector('#event-report-results');
   if (!target) return false;
   const loadId = ++eventReportLoad;
@@ -1608,13 +1608,26 @@ function renderEventReportRecords() {
   const heading = eventReportMode === 'daily'
     ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
     : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
-  target.innerHTML = `${heading}${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => {
+  const recordMarkup = (item) => {
     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
     const showHistory = eventReportMode === 'daily' && confirmed && Number(item.version) > 1;
     const canEdit = can('admin') && confirmed;
     const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
-    return `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong><span class="event-record-actions">${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</span></div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${registration}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`;
-  }).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
+    const status = item.pendingEdit && item.syncFailed ? 'Rascunho de edição não confirmado' : item.pendingEdit ? 'Edição aguardando confirmação' : item.syncFailed ? 'Registro recusado pelo Firestore' : item.pendingFirestore ? 'Aguardando confirmação do Firestore' : '';
+    const amount = item.amountToPay != null && item.amountToPay !== '' ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : '';
+    return `<li class="event-record-banner${confirmed ? '' : ' event-record-banner--pending'}" data-event-record="${escapeHtml(item.id)}"><div class="event-record-banner__heading"><div><strong>${escapeHtml(item.memberStatus || 'Evento')}</strong><span>${escapeHtml(item.eventType || 'Outros')}</span></div>${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><div class="event-record-banner__details"><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${amount}${registration}${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}</div></li>`;
+  };
+  const bannerList = records.length ? `<ul class="event-record-banner-list">${records.map(recordMarkup).join('')}</ul>` : `<p class="empty-state">${empty}</p>`;
+  const moreButton = eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : '';
+  if (append) {
+    const visibleIds = new Set([...target.querySelectorAll('[data-event-record]')].map((element) => element.dataset.eventRecord));
+    const newRecords = records.filter((item) => !visibleIds.has(item.id));
+    target.querySelector('.event-record-banner-list')?.insertAdjacentHTML('beforeend', newRecords.map(recordMarkup).join(''));
+    target.querySelector('#event-report-more')?.remove();
+    target.insertAdjacentHTML('beforeend', moreButton);
+  } else {
+    target.innerHTML = `${heading}${syncNotice}${bannerList}${moreButton}`;
+  }
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
   if (eventReportMode === 'daily') void loadDailyEventEditNotes(records, target);
   target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
@@ -1876,7 +1889,7 @@ async function shareReportPdf(kind) {
   if (!button || !target || !records.length) return;
   const period = isLabel
     ? (labelReportMode === 'daily' ? document.querySelector('#label-report-day')?.value : document.querySelector('#label-report-month')?.value)
-    : (eventReportMode === 'daily' ? todayInputValue() : document.querySelector('#event-report-month')?.value);
+    : (eventReportMode === 'daily' ? document.querySelector('#event-schedule-date')?.value : document.querySelector('#event-report-month')?.value);
   const mode = isLabel ? labelReportMode : eventReportMode;
   const pdfRecords = isLabel && mode === 'monthly'
     ? [...records].sort((left, right) => String(left.date || '').localeCompare(String(right.date || '')) || reportTimestamp(left.createdAt) - reportTimestamp(right.createdAt))
