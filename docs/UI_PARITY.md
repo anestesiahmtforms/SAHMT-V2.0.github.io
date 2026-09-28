@@ -1,5 +1,7 @@
 # Paridade visual V1 → V2
 
+A página Pessoas V72 inclui uma importação em lote restrita a cinco campos escolhidos anteriormente: sigla, nome, e-mail, telefone e situação ativa. O fluxo confere siglas existentes e oferece um resumo antes de gravar; não cria perfis nem replica campos adicionais da planilha.
+
 Correção V71: o toque em uma sigla da Escala abre somente seu painel de contato, mesmo quando não há contato ativo legível. O evento continua sendo iniciado pelos toques na grade do módulo Eventos.
 
 Em 27/09/2026, a V70 passou a ordenar a grade diária do Checklist pelos grupos e pelos arsenais finais da V1 e a mostrar os rótulos de função dos seis arsenais especiais. A ordenação é dinâmica conforme o registro resolvido do dia e preserva a ordem administrativa armazenada. A grade e os fluxos ainda requerem conferência visual e operacional em Android/iOS; as referências abaixo à ordem não revisada refletem a etapa anterior.

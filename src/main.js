@@ -349,7 +349,7 @@ function actionForm(route) {
   if (route === 'people' && can('peopleManage')) return `<details class="quick-form" open><summary>Cadastro de contato</summary><form data-module-form="people">
     <div class="form-grid"><label>Sigla<input name="sigla" required pattern="(?:[A-Z]{2}|L2)" maxlength="2" autocomplete="off"></label><label>Nome<input name="name" required maxlength="120"></label>
     <label>Função<input name="role" maxlength="80"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>E-mail<input name="email" type="email" maxlength="200"></label><label>Link WhatsApp<input name="whatsAppLink" type="url" maxlength="250" placeholder="https://wa.me/5511999999999"></label><label>CRM<input name="crm" maxlength="40"></label><label>Data de entrada<input name="entryDate" maxlength="32" placeholder="DD/MM/AAAA"></label></div>
-    <label class="contact-active-field"><input name="active" type="checkbox" checked> Contato ativo</label><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar contato</button><button class="secondary-button" id="contact-reset" type="button">Novo contato</button></div></form></details>`;
+    <label class="contact-active-field"><input name="active" type="checkbox" checked> Contato ativo</label><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar contato</button><button class="secondary-button" id="contact-reset" type="button">Novo contato</button></div></form></details><details class="quick-form contact-import-panel"><summary>Atualizar cadastros da equipe</summary><p class="record-meta">Importa somente sigla, nome, e-mail, telefone e situação ativa. Os demais campos do contato e as permissões dos usuários são preservados.</p><label>Arquivo CSV com as cinco colunas selecionadas<input id="contact-import-file" type="file" accept=".csv,text/csv"></label><div class="admin-user-actions"><button class="secondary-button" id="contact-import-preview" type="button">Conferir arquivo</button><button class="primary-button" id="contact-import-confirm" type="button" hidden disabled>Atualizar cadastros no Firestore</button></div><p id="contact-import-status" class="record-meta" role="status" aria-live="polite"></p></details>`;
   return '';
 }
 
@@ -2356,6 +2356,7 @@ async function populateSelect(selector, items, prompt) {
 }
 
 async function bindModuleForm(route) {
+  if (route === 'people') bindContactImport();
   if (route === 'training' && can('trainingsManage')) {
     const form = document.querySelector('#training-catalog-form');
     const status = document.querySelector('#training-catalog-status');
@@ -2752,6 +2753,60 @@ async function bindModuleForm(route) {
       if (form) { form.elements.sigla.readOnly = false; form.elements.sigla.focus(); }
     });
   }
+}
+
+function bindContactImport() {
+  const fileInput = document.querySelector('#contact-import-file');
+  const previewButton = document.querySelector('#contact-import-preview');
+  const importButton = document.querySelector('#contact-import-confirm');
+  const status = document.querySelector('#contact-import-status');
+  if (!fileInput || !previewButton || !importButton || !status) return;
+  let pendingRecords = null;
+  previewButton.addEventListener('click', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) { status.textContent = 'Selecione o CSV preparado com os campos aprovados.'; return; }
+    previewButton.disabled = true;
+    importButton.hidden = true;
+    importButton.disabled = true;
+    status.textContent = 'Conferindo o arquivo e as siglas cadastradas no V2…';
+    try {
+      const {parseContactImportCsv, compareContactImportRows} = await import('./contact-import.js');
+      const {listContactCatalog} = await import('./data.js');
+      const parsed = parseContactImportCsv(await file.text());
+      const contacts = await listContactCatalog();
+      const comparison = compareContactImportRows(parsed, contacts);
+      if (comparison.missing.length) throw new Error(`Siglas sem cadastro correspondente no V2: ${comparison.missing.join(', ')}. Nenhum dado foi gravado.`);
+      if (comparison.matched !== parsed.length) throw new Error('Não foi possível conferir todos os cadastros. Nenhum dado foi gravado.');
+      pendingRecords = parsed;
+      status.textContent = `${comparison.matched} siglas V2 conferidas · ${comparison.changes} com campos alterados · ${comparison.active} ativas · ${comparison.inactive} inativas. Somente os cinco campos selecionados serão atualizados.`;
+      importButton.textContent = `Atualizar ${comparison.matched} cadastros no Firestore`;
+      importButton.hidden = false;
+      importButton.disabled = false;
+    } catch (error) {
+      pendingRecords = null;
+      status.textContent = error.message || 'Não foi possível conferir o arquivo.';
+    } finally {
+      previewButton.disabled = false;
+    }
+  });
+  importButton.addEventListener('click', async () => {
+    if (!pendingRecords?.length) return;
+    importButton.disabled = true;
+    previewButton.disabled = true;
+    status.textContent = `Atualizando ${pendingRecords.length} cadastros no Firestore…`;
+    try {
+      const {updateContactRegistrationFields} = await import('./data.js');
+      const result = await updateContactRegistrationFields(pendingRecords, session.user.uid);
+      notice = `${result.updated} cadastros da equipe atualizados no Firestore. Os acessos V2 foram preservados.`;
+      pendingRecords = null;
+      fileInput.value = '';
+      await render();
+    } catch (error) {
+      status.textContent = `Nenhuma confirmação de importação: ${error.message || 'verifique a conexão e tente novamente.'}`;
+      importButton.disabled = false;
+      previewButton.disabled = false;
+    }
+  });
 }
 
 async function loadEventEntryCatalog() {
