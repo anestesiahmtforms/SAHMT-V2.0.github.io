@@ -1,0 +1,418 @@
+diff --git a/src/main.js b/src/main.js
+index 6787017..96c5ee9 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -210,13 +210,24 @@ function loginView() {
+   </main>`;
+ }
+ 
+-function moduleCards() {
+-  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
++function moduleCards(routes = Object.keys(labels), layout = 'standard') {
++  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage', 'admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
+   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg'};
+-  return Object.entries(labels).filter(([route]) => permissionFor[route]?.some(can) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
+-    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'TR',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
+-    <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
+-  </button>`).join('');
++  return Object.entries(labels).filter(([route]) => routes.includes(route) && permissionFor[route]?.some(can) && featureEnabledForRoute(route, appFeatures)).map(([route, [title]]) => {
++    if (layout === 'actions') {
++      const icons = {checklist: '✓', training: '▶', notifications: '!'};
++      return `<button class="home-action home-action--${route}" data-route="${route}"><span class="home-action__icon" aria-hidden="true">${icons[route]}</span><span>${escapeHtml(title)}</span></button>`;
++    }
++    const image = moduleIcons[route];
++    return `<button class="home-launcher home-launcher--${route}" data-route="${route}">${image ? `<img src="${import.meta.env.BASE_URL}${image}" alt="" width="72" height="72" loading="lazy" decoding="async">` : ''}<span>${escapeHtml(title)}</span></button>`;
++  }).join('');
++}
++
++function managementUtilityCards() {
++  return [['people', 'peopleManage', 'PS'], ['admin', 'usersManage', 'AD']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route, , mark]) => {
++    const [title, subtitle] = labels[route];
++    return `<button class="module-card" data-route="${route}"><span class="module-mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
++  }).join('');
+ }
+ 
+ function can(permission) {
+@@ -230,10 +241,9 @@ function vacationRankMarkup(sigla, classes, position) {
+   return `<span class="sigla-token__vacation-rank"><span class="${classes.join(' ')}">${escapeHtml(sigla)}</span><small class="sigla-token__vacation-number" aria-label="Posição ${position} na escala de férias">${position}</small></span>`;
+ }
+ 
+-function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, eventSiglas = []) {
++function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
+   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
+-  const eventSet = new Set(eventSiglas.map((item) => String(item || '').toUpperCase()));
+   return String(sigla || '—').toUpperCase().split(/([/-])/).map((part) => {
+     if (part === '/' || part === '-') return escapeHtml(part);
+     const onVacation = vacationSet.has(part);
+@@ -241,24 +251,21 @@ function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vaca
+     const classes = [];
+     if (onVacation) classes.push('sigla-token__vacation-part');
+     if (checkedSet.has(part)) classes.push('sigla-token__released-part--checked');
+-    if (eventSet.has(part)) classes.push('sigla-token__event');
+     return onVacation
+       ? vacationRankMarkup(part, classes, vacationPositions[part] || '')
+       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(part)}</span>`;
+   }).join('');
+ }
+ 
+-function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, eventSiglas = []) {
++function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
+   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
+-  const eventSet = new Set(eventSiglas.map((item) => String(item || '').toUpperCase()));
+   return siglas.map((sigla) => {
+     const onVacation = vacationSet.has(sigla);
+     if (onVacation && !showVacationRank) return escapeHtml(sigla);
+     const classes = [];
+     if (onVacation) classes.push('sigla-token__vacation-part');
+     if (checkedSet.has(sigla)) classes.push('sigla-token__released-part--checked');
+-    if (eventSet.has(sigla)) classes.push('sigla-token__event');
+     return onVacation
+       ? vacationRankMarkup(sigla, classes, vacationPositions[sigla] || '')
+       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(sigla)}</span>`;
+@@ -266,7 +273,7 @@ function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], v
+ }
+ 
+ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
+-  const highlightedSiglas = new Set(Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
++  const highlightedSiglas = new Set(mode === 'events' ? [] : Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
+   const isAdmin = can('admin');
+   const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
+   const eventSiglas = new Set();
+@@ -284,12 +291,13 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
+     const hasContact = position.contacts?.length > 0;
+     const canLaunchEvent = eventsWritable && featureEnabledForRoute('events', appFeatures);
+     const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
++    const hasEvent = eventMode && (eventSiglas.has(String(position.sigla || '').toUpperCase()) || position.siglas.some((sigla) => eventSiglas.has(String(sigla || '').toUpperCase())));
+     const aliases = position.sigla === 'DC' && position.siglas.length
+-      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, true, [...eventSiglas])}</small>`
++      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions)}</small>`
+       : '';
+     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
+-      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, [...eventSiglas])}</strong>`;
+-    const marked = highlightedSiglas.has(position.sigla);
++      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
++    const marked = !eventMode && highlightedSiglas.has(position.sigla);
+     const vacationDescription = position.vacationParts.length
+       ? `; em férias: ${position.vacationParts.map((sigla) => `${sigla}, posição ${position.vacationPositions[sigla]} na escala de férias`).join('; ')}`
+       : '';
+@@ -300,7 +308,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
+       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
+       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
+     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
+-    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
++    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
+ }
+ 
+@@ -364,20 +372,25 @@ function shellView() {
+   const route = currentRoute();
+   const profile = session.profile;
+   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
++  const todayWeekday = new Intl.DateTimeFormat('pt-BR', {weekday: 'long', timeZone: 'America/Sao_Paulo'}).format(new Date()).replace(/-feira$/i, '').toLocaleUpperCase('pt-BR');
+   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
+   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
+-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report${eventReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportOpen && eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportOpen && eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></section>` : '';
++  const utilityCards = route === 'management' ? managementUtilityCards() : '';
++  const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><h3>ACESSOS DE GESTÃO</h3><div class="module-grid">${utilityCards}</div></section>` : '';
++  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></dialog>` : '';
+   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
+-  const labelReport = route === 'labels' ? `<section class="event-report label-report${labelReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de Etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportOpen && labelReportMode === 'daily'}">REGISTRO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportOpen && labelReportMode === 'monthly'}">REGISTRO MENSAL - ETIQUETAS</button></div><div id="label-day-control" class="report-period label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></section>` : '';  const view = route === 'home' ? `<section class="content-grid">
+-      <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
+-        <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
++  const labelReport = route === 'labels' ? `<section class="event-report label-report${labelReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de Etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportOpen && labelReportMode === 'daily'}">REGISTRO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportOpen && labelReportMode === 'monthly'}">REGISTRO MENSAL - ETIQUETAS</button></div><div id="label-day-control" class="report-period label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></section>` : '';  const view = route === 'home' ? `<section class="home-dashboard">
++      <article class="schedule-card panel"><header class="home-calendar-heading"><h2>CALENDÁRIO</h2></header><label class="date-picker home-date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label>
++        <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button"><span>HOJE</span><small>${escapeHtml(todayWeekday)}</small></button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
+         ${can('scheduleWrite') ? '<a class="secondary-button schedule-edit-launch" href="https://docs.google.com/spreadsheets/d/1japh5sUW3QU5F3dknhS40VLFBj6SfZKDlrVan5ivzNM/edit#gid=0" target="_blank" rel="noopener noreferrer">Editar planilha oficial</a>' : ''}
+         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
+       </article>
+-      <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
+-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : route === 'labels' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${checklistVisual}${managementBrand}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button${route === 'events' ? ' events-home-button' : ''}" data-route="home">${route === 'events' ? 'HOME' : 'Voltar para Home'}</button></section>`;
++      <section class="home-action-strip" aria-label="Acessos rápidos SAHMT">${moduleCards(['checklist', 'training', 'notifications'], 'actions')}</section>
++      <section class="home-module-strip" aria-label="Módulos SAHMT">${moduleCards(['events', 'labels', 'management'], 'launchers')}</section>
++      <footer class="home-footer-banner">By Francisco Tadeu da Mota Albuquerque</footer>
++    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : route === 'labels' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${checklistVisual}${managementBrand}${managementUtilities}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button${route === 'events' ? ' events-home-button' : ''}" data-route="home">${route === 'events' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : ''}">
+-    <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong>${route === 'home' || route === 'events' ? '' : `<small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small>`}</div></div></header>
++    <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${route === 'home' ? 'SAHMT' : escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong>${route === 'home' ? `<small>${escapeHtml(profile.email || session.user.email || '')}</small>` : route === 'events' ? '' : `<small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small>`}</div></div></header>
+     <main class="main-content">${route === 'home' || route === 'events' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : ''}">${route === 'labels' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
+     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
+@@ -590,22 +603,32 @@ async function loadModule(route) {
+   if (route === 'events') {
+     content.remove();
+     if (can('eventsRead') || can('eventsWrite')) void loadReportPdfModule().catch(() => {});
+-    document.querySelectorAll('[data-event-report-mode]').forEach((button) => button.addEventListener('click', async () => {
+-      eventReportMode = button.dataset.eventReportMode;
++    const reportDialog = document.querySelector('#event-report-dialog');
++    reportDialog?.addEventListener('close', () => { eventReportOpen = false; });
++    document.querySelectorAll('[data-event-report-launch]').forEach((button) => button.addEventListener('click', async () => {
++      eventReportMode = button.dataset.eventReportLaunch;
+       eventReportOpen = true;
+-      document.querySelector('.event-report')?.classList.remove('event-report--closed');
+-      document.querySelectorAll('[data-event-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
++      if (reportDialog && !reportDialog.open) reportDialog.showModal();
++      const title = document.querySelector('#event-report-dialog-title');
++      if (title) title.textContent = eventReportMode === 'daily' ? 'RELATÓRIO DIÁRIO' : 'RELATÓRIO MENSAL';
+       const results = document.querySelector('#event-report-results');
+       if (results) results.hidden = false;
++      const reportDay = document.querySelector('#event-report-day');
++      if (eventReportMode === 'daily' && reportDay) reportDay.value = document.querySelector('#event-schedule-date')?.value || todayInputValue();
++      document.querySelector('#event-day-control').hidden = eventReportMode !== 'daily';
+       document.querySelector('#event-month-control').hidden = eventReportMode !== 'monthly';
+       await loadEventReport();
+     }));
++    document.querySelector('#event-report-day')?.addEventListener('change', loadEventReport);
+     document.querySelector('#event-report-month')?.addEventListener('change', loadEventReport);
+     document.querySelector('#share-events-pdf')?.addEventListener('click', () => shareReportPdf('events'));
+     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
+     await loadEventEntryCatalog();
+     bindEventSchedule();
+-    if (eventReportOpen) await loadEventReport();
++    if (eventReportOpen) {
++      if (reportDialog && !reportDialog.open) reportDialog.showModal();
++      await loadEventReport();
++    }
+     else {
+       const pdfButton = document.querySelector('#share-events-pdf');
+       if (pdfButton) pdfButton.disabled = true;
+@@ -752,6 +775,8 @@ async function loadModule(route) {
+       !['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage'].some((permission) => session.profile?.permissions?.[permission] === true)) {
+       const qualityArea = await data.getManagementArea('area-gestao-da-qualidade');
+       items = qualityArea ? [qualityArea] : [];
++    } else if (route === 'management' && !['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage'].some(can)) {
++      items = [];
+     } else {
+       loadedTrainingCatalog = [];
+       items = await data.listModuleRecords(route, session.user.uid, {pageSize: route === 'checklist' ? 200 : 50});
+@@ -808,7 +833,7 @@ async function loadModule(route) {
+       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
+         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
+         : '';
+-      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Carregando atividades…</p></section>` : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
++      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Carregando atividades…</p></section>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
+         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
+         const button = event.currentTarget;
+@@ -1527,7 +1552,7 @@ async function loadEventReport({append = false} = {}) {
+   const target = document.querySelector('#event-report-results');
+   if (!target) return false;
+   const loadId = ++eventReportLoad;
+-  const day = document.querySelector('#event-schedule-date')?.value || todayInputValue();
++  const day = document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue();
+   const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
+   if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
+@@ -1562,7 +1587,7 @@ async function loadEventReport({append = false} = {}) {
+     eventReportSourceRecords.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || eventCreatedAtValue(right.createdAt) - eventCreatedAtValue(left.createdAt));
+     eventReportStale = eventReportStale || report.stale;
+     eventReportCursor = report.nextCursor;
+-    renderEventReportRecords();
++    renderEventReportRecords({append});
+     return true;
+   } catch (error) {
+     if (loadId === eventReportLoad) {
+@@ -1589,7 +1614,7 @@ function eventCreatedAtValue(value) {
+   return Number.isFinite(date) ? date : 0;
+ }
+ 
+-function renderEventReportRecords() {
++function renderEventReportRecords({append = false} = {}) {
+   const target = document.querySelector('#event-report-results');
+   if (!target) return;
+   const records = eventReportSourceRecords;
+@@ -1606,7 +1631,7 @@ function renderEventReportRecords() {
+       : '';
+   const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : 'Nenhum evento neste período.';
+   const heading = eventReportMode === 'daily'
+-    ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
++    ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
+     : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
+   const recordMarkup = (item) => {
+     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
+@@ -1684,6 +1709,9 @@ function beginEventEdit(item) {
+   form.querySelector('#event-edit-cancel').hidden = false;
+   form.elements.memberStatus.readOnly = false;
+   const dialog = document.querySelector('#event-launch-dialog');
++  dialog?.classList.add('event-launch-dialog--editing');
++  const title = document.querySelector('#event-launch-title');
++  if (title) title.textContent = 'EDITAR EVENTO';
+   if (dialog && !dialog.open) dialog.showModal();
+   form.elements.memberStatus.focus({preventScroll: true});
+ }
+@@ -1704,6 +1732,9 @@ function resetEventEditor() {
+   form.querySelector('#event-edit-cancel').hidden = true;
+   updateEventEntryFields(form);
+   const dialog = document.querySelector('#event-launch-dialog');
++  dialog?.classList.remove('event-launch-dialog--editing');
++  const title = document.querySelector('#event-launch-title');
++  if (title) title.textContent = 'LANÇAMENTO DO EVENTO';
+   if (dialog?.open) dialog.close();
+ }
+ 
+diff --git a/src/styles.css b/src/styles.css
+index 69f32ec..cd46f5c 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -10,9 +10,12 @@
+ .event-report{margin-top:14px;padding:16px}.report-mode{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.report-mode button{min-height:44px;padding:8px;border:1px solid #c8d8df;border-radius:11px;background:#fff;color:#1762a1;font-size:.7rem;font-weight:900}.report-mode button[aria-pressed="true"]{border-color:#1762a1;background:#1762a1;color:#fff}.report-period{display:flex;align-items:end;gap:9px;margin-top:12px}.report-period label{display:grid;flex:1;gap:5px;color:#526578;font-size:.76rem;font-weight:800}.report-period input{min-height:42px;padding:8px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink);font:inherit}.report-period .secondary-button{min-height:42px;padding:8px 10px;white-space:nowrap}.report-period button:disabled{opacity:.45;cursor:not-allowed}
+ .event-record-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px}.event-history{margin-top:8px;padding:10px;border-left:3px solid #1762a1;border-radius:8px;background:#f3f8fa}.event-history ol,.event-history ul{display:grid;gap:8px;margin:0;padding-left:1.2rem}.event-history li{padding:4px 0}.event-history li strong,.event-history li small{display:block}.event-history li small{margin-top:3px;color:#526578;font-size:.72rem;line-height:1.4}
+ .event-report-period-heading{margin:0 0 6px;color:#123c60;font-size:.92rem;font-weight:900;text-align:center;text-transform:capitalize}.event-registration{padding-top:6px;border-top:1px solid #e2ebef;color:#1762a1!important;font-weight:800}.event-history>strong{display:block;margin-bottom:6px;color:#123c60}.event-history ol{gap:7px}.event-history li>strong{color:#1762a1}.event-history ul{gap:4px;margin-top:5px}.event-history ul li{padding:0}.event-history ul small{margin-top:2px}
+-.event-record-banner-list{display:grid;gap:9px;margin:0;padding:0;list-style:none}
+-.event-record-banner{display:grid;gap:8px;padding:11px;border:1px solid #d0e0e6;border-left:5px solid #16877e;border-radius:14px;background:linear-gradient(145deg,#fff,#f0f7f8);box-shadow:0 3px 10px #14325412}
+-.event-record-banner--pending{border-left-color:#d29a35;background:linear-gradient(145deg,#fffdf6,#fff5df)}
++.event-record-banner-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
++.event-record-banner{display:grid;gap:8px;padding:12px;border:2px solid #71899b;border-radius:16px;background:linear-gradient(145deg,#f8fbfc,#eaf1f5);box-shadow:0 5px 13px #1432541a,inset 0 1px #ffffffd9}
++.event-record-banner--pending{border-color:#71899b;background:linear-gradient(145deg,#fffdf7,#fff5e2)}
++.event-history>ol>li{display:grid;gap:8px;margin:0;padding:10px;border:1px solid #71899b;border-radius:12px;background:linear-gradient(145deg,#f8fbfc,#edf3f6);box-shadow:0 3px 8px #14325414}
++.event-history>ol>li>ul{gap:6px;margin:0;padding:9px 10px 9px 1.45rem;border:1px solid #e6c7a8;border-radius:10px;background:linear-gradient(145deg,#fff8f0,#ffefdf)}
++.event-history>ol>li>ul>li{padding:2px 0}
+ .event-record-banner__heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+ .event-record-banner__heading>div{display:grid;gap:3px;min-width:0}
+ .event-record-banner__heading strong{color:#123c60;font-size:.88rem}
+@@ -20,6 +23,23 @@
+ .event-record-banner__heading button{flex:0 0 auto;min-height:38px;padding:7px 13px}
+ .event-record-banner__details{display:grid;gap:5px}
+ .event-record-banner__details>small{color:#526578;font-size:.73rem;line-height:1.4;overflow-wrap:anywhere}
++.event-report-launchers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
++.event-report-launchers button{min-height:44px;padding:8px;border:1px solid #fff;border-radius:999px;background:linear-gradient(145deg,#1b9b8d,#08736c);color:#fff;font-size:clamp(.65rem,2.4vw,.78rem);font-weight:950;letter-spacing:.035em;box-shadow:0 3px 0 #07534d,0 7px 13px #001b3529}
++.event-report-launchers button[data-event-report-launch="monthly"]{background:linear-gradient(145deg,#e7b653,#a8731d);box-shadow:0 3px 0 #765016,0 7px 13px #001b3529}
++.event-report-launchers button:active{transform:translateY(2px)}
++.event-report-dialog{position:fixed;inset:0;width:min(calc(100vw - 20px),760px);height:min(calc(100dvh - 20px),820px);max-width:none;max-height:none;margin:auto;padding:clamp(12px,3vw,22px);overflow:hidden;grid-template-rows:auto auto minmax(0,1fr);gap:12px;border:2px solid #fff;border-radius:22px;background:linear-gradient(145deg,#fffdf8,#e8f0f3);color:var(--ink);box-shadow:0 22px 70px #001b3580}
++.event-report-dialog[open]{display:grid}
++.event-report-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
++.event-report-dialog__header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:8px;border-bottom:1px solid #d7e3e8}
++.event-report-dialog__header h2{margin:0;color:#123c60;font-size:clamp(.88rem,3.2vw,1.1rem);letter-spacing:.04em}
++.event-report-dialog__header form{margin:0}
++.event-report-dialog__header button{min-height:38px;padding:6px 11px}
++.event-report-dialog .module-content{min-height:0;margin:0;overflow:auto;overscroll-behavior:contain}
++.event-report .event-day-control{display:grid;grid-template-columns:minmax(0,1fr);margin:0;gap:6px}
++.event-report .event-day-control[hidden]{display:none}
++.event-report .event-day-control label{gap:4px;font-size:.72rem}
++.event-report .event-day-control input{min-height:42px;padding:7px 10px;border-color:#b7ccd5;border-radius:11px;background:linear-gradient(145deg,#fff,#edf5f8);color:#123c60;font-weight:850;text-align:center;cursor:pointer}
++@media(max-width:520px){.event-report-dialog{width:calc(100vw - 14px);height:calc(100dvh - 14px);padding:10px;border-radius:18px;gap:9px}}
+ .checklist-controls{display:flex;align-items:end;gap:10px;margin:14px 0;padding:12px}.checklist-controls label{display:grid;flex:1;gap:5px;color:#526578;font-size:.76rem;font-weight:800}.checklist-controls input{min-height:44px;padding:8px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink)}.checklist-station{display:grid;gap:10px;margin:9px 0;padding:13px;border:1px solid #d7e3e8;border-radius:15px;background:#ffffffdb}.checklist-station>div:first-child{display:grid;gap:4px}.checklist-station strong{font-size:.9rem}.checklist-station small{color:#526578;font-size:.74rem;line-height:1.4}.checklist-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.checklist-actions .secondary-button{min-height:44px;padding:8px;font-size:.78rem}.checklist-occurrence{display:grid;gap:5px;color:#526578;font-size:.76rem;font-weight:800}.checklist-occurrence textarea{width:100%;padding:9px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink);font:inherit}
+ .sync-state{margin:0 0 9px;padding:8px 10px;border-radius:10px;background:#fff5d9;color:#76500f;font-size:.75rem;font-weight:800}.checklist-station .sync-error{color:#a12828;font-weight:800}
+ .training-score{display:flex;align-items:center;margin:0 0 12px;padding:15px;border:1px solid #d7e3e8;border-radius:16px;background:#fff}.training-score>div{display:grid;gap:3px}.training-score .eyebrow{margin:0;color:#1762a1;font-size:.67rem;font-weight:800;letter-spacing:.08em}.training-score strong{color:var(--ink);font-size:1.4rem}.training-score small{color:#526578;font-size:.72rem;line-height:1.4}
+@@ -78,7 +98,7 @@
+   .event-schedule{margin:12px 0 16px;padding:14px;border:1px solid #d2e0e7;border-radius:18px;background:linear-gradient(145deg,#f9fcfd,#e6eff2)}.event-schedule-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.event-schedule-heading h2{margin:2px 0;font-size:1.05rem}.event-schedule-heading .eyebrow{margin:0}.event-schedule .date-picker{max-width:190px}.event-schedule .schedule-siglas-grid{margin:12px 0 4px}.event-schedule-vacation{margin:10px 2px 0;color:#76500f;font-size:.76rem;font-weight:850;line-height:1.4}.event-schedule-choice-options{display:grid;gap:8px}.event-schedule-choice-options button{width:100%;text-align:left}
+ .schedule-contact-dialog{width:min(100% - 28px,440px);max-height:85dvh;padding:20px;border:2px solid #fff;border-radius:20px;background:linear-gradient(145deg,#fff,#e6eef1);color:var(--ink);box-shadow:0 20px 60px #001b3577}.schedule-contact-dialog::backdrop{background:#041c30b8;backdrop-filter:blur(2px)}.schedule-contact-dialog h3{margin:2px 0 14px;font-size:1.15rem}.schedule-contact-dialog form{display:flex;justify-content:flex-end;margin-top:16px}
+ .schedule-edit-launch{display:flex;width:100%;min-height:40px;margin-top:12px;align-items:center;justify-content:center;text-decoration:none}.schedule-edit-launch:focus-visible{outline:3px solid #18b7b7;outline-offset:3px}
+-.schedule-siglas-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(3px,.8dvh,7px)}.sigla-item{display:grid;justify-items:center;gap:3px;min-width:0}.sigla-token{display:grid;place-content:center;gap:2px;width:100%;min-height:48px;padding:5px;border:1px solid #fff;border-radius:12px;background:linear-gradient(145deg,#fff,#dce8ee);box-shadow:0 4px 0 #98b2bd,0 8px 14px #14325418;color:var(--ink);font-size:.8rem;font-weight:900}.sigla-token:disabled{opacity:.62;cursor:default}.sigla-index{min-height:12px;color:#526578;font-size:.58rem;text-align:center}
++.schedule-siglas-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(3px,.8dvh,7px)}.sigla-item{display:grid;justify-items:center;gap:3px;min-width:0}.sigla-token{display:grid;place-content:center;gap:2px;width:100%;min-height:48px;padding:6px;border:1px solid #ffffffed;border-radius:18px;background:linear-gradient(150deg,#fff 0%,#eff5f8 58%,#dce8ee 100%);box-shadow:0 2px 0 #a8bdc7,0 6px 12px #1432541b,inset 0 2px 0 #ffffffd9;color:var(--ink);font-size:.8rem;font-weight:900;transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}.schedule-siglas-grid .sigla-item:nth-child(4n+1) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#fff,#edf4fb 58%,#dce8f3)}.schedule-siglas-grid .sigla-item:nth-child(4n+2) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#fff,#edf7f3 58%,#dceee6)}.schedule-siglas-grid .sigla-item:nth-child(4n+3) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#fff,#faf4e9 58%,#efe5d1)}.schedule-siglas-grid .sigla-item:nth-child(4n) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#fff,#f2eff9 58%,#e7e1f2)}.schedule-siglas-grid .sigla-token:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 3px 0 #9bb2bd,0 8px 14px #14325424,inset 0 2px 0 #fff}.schedule-siglas-grid .sigla-token:not(:disabled):active{transform:translateY(2px) scale(.99);box-shadow:0 1px 0 #9bb2bd,0 3px 7px #1432541a,inset 0 2px 0 #ffffffb8}.sigla-token:disabled{opacity:.62;cursor:default}.sigla-index{min-height:12px;color:#526578;font-size:.58rem;text-align:center}
+ .app-shell--home .main-content{grid-template-rows:minmax(0,1fr)}
+ .app-shell--home .content-grid{grid-template-rows:minmax(0,1.22fr) minmax(0,.78fr)}
+ .app-shell--home .modules-section{grid-template-rows:minmax(0,1fr);gap:0}
+@@ -97,16 +117,69 @@
+ .contact-detail-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.contact-action{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:8px 13px;border:1px solid #bfd2db;border-radius:11px;background:#fff;color:#1762a1;font-size:.8rem;font-weight:850;text-decoration:none}
+ .schedule-contact-record+.schedule-contact-record{margin-top:16px;padding-top:14px;border-top:1px solid #d7e3e8}.schedule-contact-record h4{margin:0 0 10px;color:var(--ink);font-size:.95rem}
+ .sigla-token--checked{border-color:rgba(34,197,94,.88);background:linear-gradient(180deg,rgba(134,239,172,.98),rgba(74,222,128,.96) 42%,rgba(34,197,94,.94))!important;color:#fff!important;text-shadow:0 1px 1px rgba(0,0,0,.22);box-shadow:0 0 0 2px rgba(220,252,231,.96),0 0 10px rgba(74,222,128,.34),inset 0 0 12px rgba(255,255,255,.18),0 8px 18px rgba(21,128,61,.16)!important}.sigla-token__released-part--checked{color:#15803d;font-weight:950;text-shadow:0 0 4px rgba(34,197,94,.55),0 1px 1px rgba(21,128,61,.24)}.schedule-release{display:inline-flex;align-items:center;justify-content:center;min-width:72px;min-height:32px;margin-top:6px;padding:6px 9px;border-color:rgba(202,138,4,.62);border-radius:999px;background:linear-gradient(180deg,#fef3c7,#facc15);color:#713f12;font-size:.58rem;font-weight:900;letter-spacing:.04em;box-shadow:0 5px 12px rgba(22,101,52,.14),inset 0 1px 0 rgba(255,255,255,.9)}.schedule-release.is-released{border-color:rgba(22,163,74,.86);background:linear-gradient(180deg,#86efac,#22c55e);color:#fff;box-shadow:0 0 0 2px rgba(187,247,208,.92),0 7px 16px rgba(22,101,52,.2),inset 0 1px 0 rgba(255,255,255,.34)}.schedule-release:active{transform:scale(.96)}.schedule-release-status{min-height:0;margin:5px 0;color:#526578;font-size:.72rem}.schedule-release-status:empty{display:none}
++.app-shell:not(.app-shell--events) .schedule-siglas-grid .sigla-token--checked:not(.sigla-token--vacation):not(.sigla-token--event){border-color:#9fc8a5;background:linear-gradient(180deg,#e2f1e3,#c9e4cb 42%,#b5d8b9)!important;color:#365c3c!important;text-shadow:0 1px 1px rgba(255,255,255,.68);box-shadow:0 0 0 2px rgba(232,244,232,.92),0 0 8px rgba(123,171,130,.2),inset 0 0 10px rgba(255,255,255,.34),0 6px 14px rgba(61,105,67,.12)!important}
+ .module-view .checklist-controls{display:grid;gap:12px;margin:14px 0;padding:12px}.checklist-controls .report-mode{margin:0}.checklist-controls .report-period{display:flex;align-items:end;gap:10px}.checklist-month-list{display:grid;gap:7px}.checklist-month-row{display:grid;grid-template-columns:minmax(84px,auto) 1fr auto;align-items:center;gap:5px 10px;width:100%;padding:12px;border:1px solid #d7e3e8;border-radius:12px;background:#fff;text-align:left;color:var(--ink)}.checklist-month-row strong{font-size:.83rem}.checklist-month-row span:nth-child(2){font-size:.77rem;color:#526578;line-height:1.35}.checklist-month-row small{grid-column:2;color:#76500f;font-size:.69rem;font-weight:800}.checklist-month-row .arrow{grid-column:3;grid-row:1 / span 2}.checklist-report-note{margin:0 0 10px;color:#526578;font-size:.75rem;line-height:1.45}
+ .identity-card{display:grid;gap:9px;margin:16px 0;padding:12px;border:1px solid #b9ccd5;border-radius:14px;background:#f4fafb;text-align:left}.identity-card p{margin:0;color:#526578;font-size:.78rem;line-height:1.4}.identity-card code{overflow-wrap:anywhere;padding:8px;border-radius:9px;background:#e4eef1;color:#143254;font-size:.74rem}.admin-auth-note,.admin-user-form>p{color:#526578;font-size:.78rem;line-height:1.5}.admin-user-form{margin:12px 0;padding:16px}.admin-user-form h3,.admin-list-heading h3{margin:0 0 8px;color:var(--ink);font-size:1rem}.admin-user-form fieldset{margin:14px 0;padding:12px;border:1px solid #c7d7de;border-radius:13px}.admin-user-form legend{padding:0 6px;color:#526578;font-size:.78rem;font-weight:850}.permission-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px}.permission-option,.admin-user-flags label{display:flex;align-items:center;gap:8px;min-height:38px;padding:6px 8px;border-radius:9px;background:#f7fafb;color:#28445c;font-size:.73rem}.permission-option input,.admin-user-flags input{width:18px;height:18px;accent-color:#1762a1}.permission-option:has(input:disabled){opacity:.55}.admin-user-flags,.admin-user-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:10px 0}.admin-user-list{margin-top:18px}.admin-list-heading{display:flex;align-items:end;justify-content:space-between;gap:12px}.admin-list-heading label{display:grid;gap:5px;color:#526578;font-size:.75rem;font-weight:800}.admin-list-heading input{min-height:42px;max-width:280px;padding:8px 10px;border:1px solid #b9ccd5;border-radius:10px;background:white;color:var(--ink)}.user-profile-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;padding:12px;border:1px solid #d7e3e8;border-radius:13px;background:#fff}.user-profile-row>div{display:grid;gap:4px;min-width:0}.user-profile-row strong{font-size:.82rem}.user-profile-row small,.user-profile-row code{overflow-wrap:anywhere;color:#526578;font-size:.69rem}.user-profile-row .secondary-button{min-height:40px;padding:7px 10px}.admin-user-list>.record-meta{display:block;margin:4px 0 10px;color:#526578;font-size:.72rem}
+ @media(max-width:520px){.checklist-controls .report-period{align-items:stretch;flex-direction:column}.checklist-controls .report-period .secondary-button{width:100%}.admin-list-heading{align-items:stretch;flex-direction:column}.admin-list-heading input{max-width:none}.user-profile-row{align-items:flex-start;flex-direction:column}.user-profile-row>.secondary-button{width:100%}}
+ .sync-status-button{min-height:30px;padding:4px 2px;border:0;background:transparent;color:inherit;font:inherit;text-align:center;cursor:pointer}.offline-panel{display:grid;gap:12px}.offline-panel>p{margin:0;color:#526578;font-size:.84rem;line-height:1.5}.offline-panel .record-list{margin:0}.offline-footnote{padding:10px;border-radius:10px;background:#edf5f8;color:#526578;font-size:.74rem!important}.sync-error{color:#a12828;font-weight:700}
+ .checklist-qr-dialog{width:min(calc(100% - 24px),520px);max-height:min(92dvh,760px);padding:18px;border:2px solid #fff;border-radius:18px;background:linear-gradient(145deg,#fff,#e8f0f3);color:var(--ink);box-shadow:0 20px 60px #001b3577}.checklist-qr-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}.checklist-qr-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.checklist-qr-dialog h3{margin:0;font-size:1.05rem}.checklist-qr-dialog>p{margin:8px 0 12px;color:#526578;font-size:.8rem;line-height:1.45}.checklist-qr-dialog video{display:block;width:100%;max-height:46dvh;object-fit:cover;border-radius:12px;background:#061a2a}.checklist-qr-dialog video[hidden]{display:none}.checklist-qr-dialog form{display:grid;gap:10px;margin-top:12px}.checklist-qr-dialog label{display:grid;gap:6px;color:#526578;font-size:.78rem;font-weight:800}.checklist-qr-dialog input{min-height:44px;padding:9px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink);font:inherit}.checklist-station.qr-match{border-color:#0b8292;box-shadow:0 0 0 3px #0b829233;transition:box-shadow .2s,border-color .2s}.checklist-station:focus{outline:3px solid #0b829255;outline-offset:2px}
+ .management-indicators { margin: 1.25rem 0; }
++.management-utilities { margin: 14px 0; }
++.management-utilities > h3 { margin: 0 0 8px; color: #1762a1; font-size: .76rem; font-weight: 950; letter-spacing: .08em; }
+ .management-indicators h4 { margin: 0 0 .75rem; }
+ .management-documents { margin: 1.25rem 0; }
+ .management-documents h4 { margin: 0 0 .75rem; }
+ .management-document-link { color: #125b91; font-weight: 850; text-decoration-thickness: 1px; text-underline-offset: 3px; }
++
++/* Home V2 follows the SAHMT launcher presentation from the prior PWA. */
++.app-shell--home{gap:clamp(5px,.9dvh,10px);padding-inline:clamp(8px,2.2vw,18px)}
++.app-shell--home .topbar{position:relative;top:auto;width:min(100%,1120px);min-height:clamp(94px,18dvh,152px);margin:0 auto;padding:clamp(12px,2.8vw,22px);display:grid;grid-template-columns:clamp(62px,20vw,106px) minmax(0,1fr);grid-template-rows:1fr auto;grid-template-areas:"brand account" "brand sync";align-items:center;gap:3px 12px;border:2px solid rgba(255,159,67,.72);border-radius:28px;background:linear-gradient(100deg,rgba(255,210,120,.42),rgba(232,217,187,.97));box-shadow:0 12px 28px rgba(181,100,4,.2)}
++.app-shell--home .brand{grid-area:brand;display:grid;place-items:center;width:100%;height:100%;min-width:0;border:0;border-radius:22px;background:transparent;color:var(--ink)}
++.app-shell--home .brand img{width:clamp(60px,19vw,96px);height:clamp(60px,19vw,96px);border:4px solid #fff;border-radius:22px;background:#fff;box-shadow:0 5px 0 #8caeb7,0 9px 18px rgba(20,58,78,.2)}
++.app-shell--home .brand span{display:none}
++.app-shell--home .account{grid-area:account;display:grid;justify-content:center;width:100%;min-width:0}
++.app-shell--home .account-copy{display:grid;justify-items:center;max-width:100%;text-align:center}
++.app-shell--home .account-copy strong{color:#b96508;font-size:clamp(1.65rem,7.4vw,2.65rem);font-weight:950;letter-spacing:.11em;line-height:1;text-overflow:clip}
++.app-shell--home .account-copy small{max-width:100%;color:#143254;font-size:clamp(.68rem,2.7vw,.94rem);font-weight:750;text-overflow:ellipsis}
++.app-shell--home .sync-pill{grid-area:sync;justify-self:center;display:flex;max-width:100%;align-items:center;gap:6px;color:#1762a1;font-size:clamp(.62rem,2.5vw,.78rem);font-weight:850}
++.app-shell--home .sync-status-button{color:#1762a1;font-size:inherit}
++.app-shell--home .sync-status-button--synced{display:inline-flex;width:auto;height:30px;min-height:30px;align-items:center;gap:7px;padding:3px 7px;border:0;background:transparent;color:#1762a1}
++.app-shell--home .sync-status-button--synced .sync-status-icon{display:block;width:12px;height:12px;overflow:hidden;border-radius:50%;background:#24bf69;color:transparent;font-size:0;box-shadow:0 0 0 4px rgba(36,191,105,.16)}
++.app-shell--home .sync-status-button--synced::after{content:"Atualizado"}
++.app-shell--home .main-content{width:min(100%,1120px);grid-template-rows:minmax(0,1fr);gap:0;padding-block:0}
++.app-shell--home .home-dashboard{display:grid;min-height:0;grid-template-rows:minmax(0,1fr) auto auto;align-content:stretch;gap:clamp(5px,.9dvh,9px)}
++.app-shell--home .schedule-card{display:flex;min-height:0;flex-direction:column;gap:clamp(4px,.7dvh,7px);padding:clamp(8px,1.8vw,15px);overflow:hidden;border:2px solid rgba(199,154,62,.44);border-radius:28px;background:linear-gradient(145deg,#fff8e8,#f0e4cc);box-shadow:0 10px 25px rgba(18,43,55,.18)}
++.app-shell--home .home-calendar-heading{display:grid;min-height:20px;place-items:center}
++.app-shell--home .home-calendar-heading h2{margin:0;color:#173957;font-size:clamp(.78rem,3.2vw,1rem);font-weight:950;letter-spacing:.035em}
++.app-shell--home .home-date-picker{display:block;width:100%;max-width:none;margin:0}
++.app-shell--home .home-date-picker input{width:100%;max-width:none;min-height:clamp(38px,5.4dvh,54px);padding:7px 10px;border:2px solid #1762a1;border-radius:20px;background:#dce8ee;color:#173957;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:850;text-align:center;box-shadow:0 0 0 3px rgba(255,255,255,.84),inset 0 1px 2px rgba(13,50,87,.08)}
++.app-shell--home .schedule-day-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(5px,1vw,9px);margin:0}
++.app-shell--home .schedule-day-nav button{min-width:0;min-height:clamp(40px,6dvh,54px);padding:5px;border:2px solid #fff;border-radius:20px;background:linear-gradient(145deg,#f6fbfd,#dce8ee);color:#173957;font-size:clamp(.68rem,2.7vw,.84rem);font-weight:900;box-shadow:0 3px 0 #a6bfca,0 6px 12px rgba(20,58,78,.12)}
++.app-shell--home .schedule-day-nav #schedule-today{display:grid;align-content:center;justify-items:center;gap:1px;border-color:#153b60;background:#103859;color:#fff;box-shadow:0 4px 0 #092743,0 8px 14px rgba(13,50,87,.2)}
++.app-shell--home .schedule-day-nav #schedule-today small{font-size:.68em;font-weight:850}
++.app-shell--home .schedule-edit-launch{min-height:30px;margin:0;padding:4px 8px;font-size:.66rem}
++.app-shell--home .schedule-content{flex:1 1 auto;min-height:0;margin:0;overflow:hidden}
++.app-shell--home .schedule-content>.loading,.app-shell--home .schedule-content>.empty-state{height:100%;min-height:0;display:grid;place-items:center;padding:8px}
++.app-shell--home .schedule-siglas-grid{height:100%;min-height:0;grid-template-columns:repeat(5,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);align-content:stretch;gap:clamp(2px,.55dvh,5px);margin:0}
++.app-shell--home .schedule-siglas-grid .sigla-item{min-height:0;align-content:center;gap:1px}
++.app-shell--home .schedule-siglas-grid .sigla-token{min-height:clamp(28px,5dvh,48px);height:auto;padding:2px;border:2px solid #fff;border-radius:999px;background:linear-gradient(155deg,#fff,#eaf3f6 56%,#c6dce3);box-shadow:0 3px 0 #91aeb7,0 5px 10px rgba(20,58,78,.13),inset 0 1px 0 #fff;font-size:clamp(.56rem,2.6vw,.82rem)}
++.app-shell--home .schedule-siglas-grid .sigla-token--checked:not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(180deg,#e2f1e3,#c9e4cb 42%,#b5d8b9)!important}
++.app-shell--home .schedule-siglas-grid .sigla-index{min-height:10px;color:#173957;font-size:clamp(.45rem,1.9vw,.62rem);font-weight:800;line-height:1}
++.app-shell--home .home-action-strip,.app-shell--home .home-module-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(6px,1.5vw,12px);min-width:0}
++.app-shell--home .home-action{position:relative;display:grid;min-width:0;min-height:clamp(62px,10dvh,88px);align-content:center;justify-items:center;gap:4px;padding:7px 4px 9px;overflow:hidden;border:2px solid rgba(249,247,238,.96);border-radius:22px;background:linear-gradient(135deg,#1762a1,#0d3257);color:#fff;font-size:clamp(.62rem,2.8vw,.82rem);font-weight:900;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.22);box-shadow:0 5px 0 #082b4a,0 9px 14px rgba(13,50,87,.18),inset 0 1px 0 rgba(255,255,255,.42)}
++.app-shell--home .home-action--training{background:linear-gradient(135deg,#e58a24,#a94c0c);box-shadow:0 5px 0 #713006,0 9px 14px rgba(142,65,7,.2),inset 0 1px 0 rgba(255,255,255,.44)}
++.app-shell--home .home-action--notifications{background:linear-gradient(135deg,#7b8b95,#4d5c66);box-shadow:0 5px 0 #34434d,0 9px 14px rgba(52,67,77,.18),inset 0 1px 0 rgba(255,255,255,.38)}
++.app-shell--home .home-action__icon{font-size:clamp(1.15rem,5vw,1.6rem);line-height:1}
++.app-shell--home .home-module-strip{min-height:clamp(82px,13dvh,116px);gap:clamp(6px,1.5vw,12px)}
++.app-shell--home .home-launcher{position:relative;isolation:isolate;display:grid;min-width:0;min-height:100%;grid-template-rows:minmax(0,1fr) auto;justify-items:center;align-items:center;gap:2px;padding:clamp(5px,1.3vw,10px);overflow:hidden;border:2px solid rgba(255,255,255,.96);border-radius:28px;background:linear-gradient(145deg,#fff,#e4eef3 56%,#b8d0dc);color:#12324f;text-align:center;box-shadow:0 5px 0 #7898a8,0 10px 16px rgba(26,73,98,.14),inset 0 1px 0 #fff}
++.app-shell--home .home-launcher::before{position:absolute;z-index:-1;inset:4px;border:1px solid rgba(255,255,255,.82);border-radius:22px;content:"";pointer-events:none}
++.app-shell--home .home-launcher--labels{background:linear-gradient(145deg,#f5fffd,#cbe9e2 58%,#91c6bb);box-shadow:0 5px 0 #4c8f88,0 10px 16px rgba(30,96,89,.15),inset 0 1px 0 #fff}
++.app-shell--home .home-launcher--management{background:linear-gradient(145deg,#fffdf5,#f3e5c5 58%,#d8b879);box-shadow:0 5px 0 #9a6b28,0 10px 16px rgba(154,107,40,.15),inset 0 1px 0 #fff}
++.app-shell--home .home-launcher img{width:clamp(44px,12vw,72px);height:clamp(40px,10dvh,70px);object-fit:contain;filter:drop-shadow(0 5px 5px rgba(18,50,72,.2))}
++.app-shell--home .home-launcher>span{max-width:100%;padding:3px 8px;border:1px solid rgba(255,255,255,.86);border-radius:999px;background:rgba(255,255,255,.78);color:#12324f;font-size:clamp(.52rem,2.1vw,.7rem);font-weight:900;letter-spacing:.02em;line-height:1;white-space:nowrap}
++.app-shell--home .app-footer{width:min(100%,1120px);margin:0 auto;padding:clamp(7px,1.5dvh,12px) 10px max(7px,env(safe-area-inset-bottom));border-radius:999px;background:#17b5b2;color:#fff;font-size:clamp(.58rem,2vw,.72rem);font-weight:850}
++.app-shell--home .topbar{padding-top:max(clamp(12px,2.8vw,22px),env(safe-area-inset-top))}
++@media(max-height:740px){.app-shell--home .home-dashboard{gap:5px}.app-shell--home .schedule-card{padding:7px;gap:4px}.app-shell--home .schedule-day-nav button{min-height:36px}.app-shell--home .schedule-siglas-grid .sigla-token{min-height:clamp(25px,4.2dvh,39px)}.app-shell--home .home-action{min-height:62px}.app-shell--home .home-module-strip{min-height:78px}.app-shell--home .home-launcher img{height:44px}}
+ .equipment-manager { margin: 1.25rem 0; }
+ .equipment-manager h4 { margin: 0; }
+ .equipment-card { display: grid; gap: 10px; }
+@@ -313,9 +386,9 @@
+ .offline-view-tabs{display:flex;gap:7px;overflow-x:auto;padding:0 0 12px;scrollbar-width:none}.offline-view-tabs::-webkit-scrollbar{display:none}.offline-view-tabs button{flex:0 0 auto;min-height:38px;padding:8px 13px;border:1px solid #c5d6e3;border-radius:999px;background:#f2f7fa;color:#16486b;font:inherit;font-size:.78rem;font-weight:800;cursor:pointer}.offline-view-tabs button[aria-pressed="true"]{border-color:#0d567b;background:#0d567b;color:#fff}.offline-schedule-gallery{display:grid;gap:12px}.offline-schedule-gallery[hidden],#offline-sync-panel[hidden]{display:none!important}.offline-schedule-heading{position:sticky;z-index:2;top:calc(57px + env(safe-area-inset-top));display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 -2px;padding:12px 2px;color:#fff;background:linear-gradient(118deg,#0a3654,#08777d);border-radius:12px}.offline-schedule-heading .eyebrow,.offline-schedule-heading h3{margin:0;color:inherit}.offline-schedule-heading .eyebrow{font-size:.62rem;opacity:.78}.offline-schedule-heading h3{font-size:clamp(1rem,4.7vw,1.4rem)}.offline-schedule-heading .secondary-button{flex:0 0 auto;min-height:38px;padding:8px 11px;color:#072f50;background:#f8fbff;border-color:rgba(255,255,255,.74);font-size:.72rem}.offline-schedule-intro{margin:0;color:#496474;font-size:.78rem;line-height:1.45}.offline-schedule-nav{display:flex;gap:7px;overflow-x:auto;padding:0 1px 5px;scrollbar-width:none}.offline-schedule-nav::-webkit-scrollbar{display:none}.offline-schedule-nav a{flex:0 0 auto;padding:7px 11px;border-radius:999px;color:#0c5269;background:#d9eeea;font-size:.72rem;font-weight:800;text-decoration:none}.offline-schedule-image-card{margin:0;padding:10px;border:1px solid #d5e3e4;border-radius:16px;background:#fff;box-shadow:0 8px 22px rgba(10,61,76,.08);scroll-margin-top:100px}.offline-schedule-image-card h4{margin:1px 4px 9px;color:#145264;font-size:.88rem}.offline-schedule-image-card img{display:block;width:100%;height:auto;border-radius:10px;background:#f8f8f8}.offline-schedule-image-card--vacation h4{color:#9a6910}@media(max-width:370px){.offline-schedule-heading{gap:7px}.offline-schedule-heading .secondary-button{padding-inline:8px;font-size:.66rem}.offline-schedule-image-card{padding:7px;border-radius:13px}}
+ @media(min-width:601px){.action-plan-item-form{grid-template-columns:minmax(0,1fr) minmax(130px,.45fr) minmax(0,1fr) auto}}.action-plan-item-form textarea{width:100%;min-height:42px;padding:8px;border:1px solid #b9ccd5;border-radius:9px;background:#fff;color:var(--ink);font:inherit}@media(max-width:600px){.action-plan-item-form label:nth-child(3){grid-column:1/-1}}
+ .label-history{margin-top:.5rem;padding:.65rem;border-left:3px solid #0b3f3a;background:#f4f8f7}.label-history ol{margin:0;padding-left:1.2rem}.label-history li+li{margin-top:.6rem}.label-history small{display:block;overflow-wrap:anywhere}
+-.sigla-token--event{outline:2px solid #f59e0b;outline-offset:2px}.sigla-token--event:not(.sigla-token--checked){border-color:#d97706!important;background:linear-gradient(180deg,#fff7ed,#fed7aa)!important;color:#7c2d12!important;box-shadow:0 0 0 2px rgba(255,237,213,.95),0 5px 14px rgba(194,65,12,.18)!important}
++.app-shell--events .event-schedule .sigla-token--event:not(.sigla-token--vacation){border-color:#d6a09c!important;background:linear-gradient(145deg,#f9e2df,#f0c3bf)!important;color:#7a3f3b!important;box-shadow:0 2px 0 #d8b1ad,0 5px 11px #854c471f,inset 0 2px 0 #fff9f8!important;text-shadow:none!important}
+ .sigla-token--vacation,.sigla-token.sigla-token--vacation.sigla-token--checked,.sigla-token.sigla-token--vacation.sigla-token--event{border-color:#e4c35e!important;background:linear-gradient(145deg,#fff2bc,#f2d97b)!important;color:#684c0b!important;box-shadow:0 0 0 2px #fff8df,0 0 12px 2px #dfbd5066,0 4px 0 #bd9a3d!important;text-shadow:0 1px #fff6d3}.sigla-token__vacation-rank{display:inline-grid;grid-template-rows:auto auto;justify-items:center;align-items:center;max-width:100%;vertical-align:middle;line-height:1}.sigla-token__vacation-part{display:inline-block;max-width:100%;padding:0 .16em;border-radius:999px;background:radial-gradient(ellipse at center,#fff4c2 0%,#ffe28a 64%,#f3cf5d 100%);color:#60480e!important;box-shadow:0 0 0 2px #e2bd4e,0 0 9px 3px #e2bd4e88}.sigla-token__vacation-number{position:static;display:block;min-width:7px;max-width:100%;transform:none;color:#8c6815!important;font-size:.48rem;font-weight:950;line-height:1;pointer-events:none;text-shadow:0 1px #fff}.sigla-token__aliases{display:block;color:#526578;font-size:.62rem;font-weight:800;line-height:1.25}.sigla-token__aliases .sigla-token__vacation-part{color:#60480e!important}
+-.sigla-token__event{color:#c62828!important;font-weight:1000!important;text-shadow:0 0 7px #ef444466}
++.app-shell--events .event-schedule .sigla-token--vacation.sigla-token--event{border:2px solid #e4c35e!important;background:linear-gradient(145deg,#fff2bc,#f2d97b)!important;box-shadow:0 0 0 2px #fff8df,0 0 12px 2px #dfbd5066,0 4px 0 #bd9a3d,inset 0 0 0 5px #e6a09b!important}
+ .event-launch-dialog>header>div{width:100%;text-align:center}.event-launch-dialog #event-launch-title{text-transform:uppercase;font-weight:950;letter-spacing:.04em}.event-launch-dialog .event-field--required-empty input,.event-launch-dialog .event-field--required-empty select,.event-launch-dialog .event-field--required-empty textarea{border-color:#d74444;background:#fff1f1;box-shadow:0 0 0 2px #dc454533,0 2px 7px #b4231822}.event-launch-dialog .event-field--complete input,.event-launch-dialog .event-field--complete select,.event-launch-dialog .event-field--complete textarea{border-color:#26945a;background:#eaf8ef;box-shadow:0 0 0 2px #20a45a2b,0 2px 7px #176b3b1c}.event-launch-dialog .event-field--inactive input,.event-launch-dialog .event-field--inactive select,.event-launch-dialog .event-field--inactive textarea{border-color:#c7cdd2;background:#eceff1;color:#68747d;box-shadow:none;opacity:1}.event-launch-dialog .event-member-control.event-field--required-empty{border-color:#d74444;background:linear-gradient(145deg,#fff4f4,#ffe4e4);box-shadow:0 0 0 2px #dc454533,0 3px 0 #d74444}.event-launch-dialog .event-member-control.event-field--complete{border-color:#26945a;background:linear-gradient(145deg,#f2fff6,#dff5e7);box-shadow:0 0 0 2px #20a45a2b,0 3px 0 #26945a}.event-launch-dialog .event-member-control.event-field--inactive{border-color:#c7cdd2;background:#eceff1;box-shadow:none;color:#68747d}
+ .schedule-siglas-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(3px,.8dvh,7px)}
+ @media(min-width:720px){.schedule-siglas-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@@ -341,6 +414,9 @@
+ 
+ /* O formulário de lançamento deve caber inteiro no container, sem rolagem. */
+ .event-launch-dialog[open]{overflow:hidden}
++.event-launch-dialog.event-launch-dialog--editing{border:4px solid #e6b43e;background:linear-gradient(145deg,#fffdf6,#fff0c2);box-shadow:0 0 0 5px #f2c95c88,0 22px 70px #001b3580}
++.event-launch-dialog--editing>header{background:linear-gradient(145deg,#fff9e8,#ffedb1);border-bottom-color:#e6b43e}
++.event-launch-dialog--editing #event-launch-title{color:#79540a}
+ .event-launch-dialog>form{overflow:hidden;gap:clamp(5px,1dvh,10px)}
+ .event-launch-dialog>form>.form-grid{flex:1 1 auto;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr));align-content:center;gap:clamp(5px,1.1dvh,10px)}
+ .event-launch-dialog>form>.form-grid>label{display:grid;align-content:center;gap:3px;min-width:0;margin:0;color:#526578;font-size:clamp(.63rem,1.8vw,.76rem);line-height:1.1}
+@@ -373,6 +449,8 @@
+ .app-shell--events .event-schedule .schedule-content>.empty-state{width:100%;height:100%;display:grid;place-items:center;padding:8px}
+ .app-shell--events .event-schedule .schedule-content>.sync-state{flex:0 0 auto;margin:2px 0;padding:4px 6px;font-size:.62rem}
+ .app-shell--events .event-report{height:clamp(150px,27dvh,225px);min-height:0;margin:0;padding:clamp(6px,1.1dvh,10px);display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:clamp(4px,.7dvh,7px);overflow:hidden}
++.app-shell--events .event-report-dialog:not([open]){display:none}
++.app-shell--events .event-report-dialog[open]{height:min(calc(100dvh - 20px),820px);grid-template-rows:auto auto minmax(0,1fr);margin:auto;padding:clamp(12px,3vw,22px);gap:12px;overflow:hidden}
+ .app-shell--events .event-report--closed{height:auto;grid-template-rows:auto}
+ .app-shell--events .event-report .report-mode{grid-template-columns:minmax(0,1fr)}
+ .app-shell--events .event-report .report-mode{gap:clamp(4px,.7dvh,7px)}
+@@ -475,3 +553,10 @@
+   .app-shell--labels .label-report .report-period button{width:100%}
+ }
+ @media(orientation:landscape) and (max-height:520px){.app-shell--labels .label-entry-dialog[open]{padding-block:6px}.app-shell--labels .label-entry-dialog form{gap:6px}.app-shell--labels .label-entry-dialog .form-grid{gap:5px}}
++
++/* Home aligned to the supplied V1 launcher: calendar, quick actions, module cards and footer. */
++.app-shell--home .home-dashboard{grid-template-rows:minmax(0,1fr) auto auto auto}
++.app-shell--home .home-footer-banner{width:100%;padding:clamp(7px,1.5dvh,12px) 10px max(7px,env(safe-area-inset-bottom));border-radius:999px;background:#17b5b2;color:#fff;font-size:clamp(.58rem,2vw,.72rem);font-weight:850;text-align:center}
++.app-shell--home .app-footer{display:none}
++.management-utilities .module-card{min-height:76px}
++@media(max-height:740px){.app-shell--home .home-footer-banner{padding-block:5px}}
