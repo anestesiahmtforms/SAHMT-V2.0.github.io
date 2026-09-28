@@ -2,7 +2,7 @@
 
 ## Decisão operacional
 
-O SAHMT V2 usa Firebase Authentication + Firestore no plano Spark para suas operações. A callable `readLabelImage` é uma exceção opcional solicitada para ler etiquetas por IA; ela exige plano Blaze/faturamento, segredo privado no Secret Manager e deploy dedicado. Está inativa enquanto esses requisitos não forem deliberadamente aprovados e configurados pelo proprietário. Não cole chaves de API no chat, frontend, GitHub ou Apps Script. As demais callables e triggers em `functions/` são legado/testes de Emulator e não fazem parte do runtime publicado.
+O SAHMT V2 usa Firebase Authentication + Firestore no plano Spark para suas operações. A callable `readLabelImage` é uma exceção opcional solicitada para ler etiquetas por IA; ela exige plano Blaze/faturamento, segredo privado no Secret Manager, App Check reCAPTCHA v3 configurado e deploy dedicado. Está inativa enquanto esses requisitos não forem deliberadamente aprovados e configurados pelo proprietário. Não cole chaves de API no chat, frontend, GitHub ou Apps Script. As demais callables e triggers em `functions/` são legado/testes de Emulator e não fazem parte do runtime publicado.
 
 A PWA e as Rules já estão publicadas. O que ainda depende de configuração do proprietário é o Apps Script V2 assíncrono. Sem essa integração, o PWA continua registrando dados operacionais no Firestore; validações confiáveis de assinatura do Checklist e pontos de Treinamentos/Gestão ficam pendentes, e relatórios não são sincronizados com Sheets.
 

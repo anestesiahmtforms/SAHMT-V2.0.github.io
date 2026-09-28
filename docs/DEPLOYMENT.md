@@ -20,7 +20,7 @@ Para os passos que exigem ação do proprietário, consulte o [guia de ativaçã
 
 ## App Check (preparado, ainda sem enforcement)
 
-O cliente inicializa reCAPTCHA v3 somente quando `VITE_APP_CHECK_SITE_KEY` contém a chave pública registrada para o domínio publicado. `.env.example` documenta a variável sem incluir uma chave real; emuladores locais ignoram App Check. Cadastre o app/domínio no Firebase, injete a site key no ambiente de build do Pages, publique e confirme métricas de tráfego legítimo antes de exigir tokens em qualquer produto Firebase. A ativação de enforcement é uma etapa separada no Console e permanece pendente; não adicione chave secreta ou token de debug ao repositório.
+O cliente inicializa reCAPTCHA v3 somente quando `VITE_APP_CHECK_SITE_KEY` contém a chave pública registrada para o domínio publicado. `.env.example` documenta a variável sem incluir uma chave real; emuladores locais ignoram App Check. Cadastre o app/domínio no Firebase, injete a site key no ambiente de build do Pages e confirme tokens válidos. Enforcement global no Firebase permanece pendente; a callable `readLabelImage` já declara enforcement obrigatório isoladamente e não aceitará chamadas sem App Check. Não adicione chave secreta ou token de debug ao repositório.
 
 ## Bloqueios externos conhecidos
 

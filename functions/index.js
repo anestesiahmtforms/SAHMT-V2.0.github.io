@@ -20,7 +20,7 @@ const dcAliasesByWeekday = Object.freeze({
 });
 const dcFallback = ['AD', 'CR', 'LA', 'LH'];
 
-export const readLabelImage = onCall({region: REGION, enforceAppCheck: false, secrets: [OPENAI_API_KEY], timeoutSeconds: 60, memory: '512MiB'}, async (request) => {
+export const readLabelImage = onCall({region: REGION, enforceAppCheck: true, secrets: [OPENAI_API_KEY], timeoutSeconds: 60, memory: '512MiB'}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre no SAHMT para ler a etiqueta.');
   const profileSnapshot = await db.doc(`users/${uid}`).get();

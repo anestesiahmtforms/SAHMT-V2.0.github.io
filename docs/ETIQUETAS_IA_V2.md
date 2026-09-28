@@ -17,7 +17,7 @@ O código da função usa `defineSecret('OPENAI_API_KEY')`. A chave não fica no
 npx.cmd firebase functions:secrets:set OPENAI_API_KEY --project sahmt-17a16
 ```
 
-O Firebase CLI solicita o valor no terminal. Cole a chave somente nesse prompt privado. Em seguida, implante as Rules e a função:
+O Firebase CLI solicita o valor no terminal. Cole a chave somente nesse prompt privado. Antes de chamar a função, registre o domínio do Pages no App Check, injete `VITE_APP_CHECK_SITE_KEY` no ambiente de build do Pages, publique o cliente e confirme tokens válidos. `readLabelImage` exige App Check e Firebase Auth; sem a chave pública/configuração de domínio, a função rejeita a chamada. Em seguida, implante as Rules e a função:
 
 ```powershell
 npx.cmd firebase deploy --only firestore:rules,functions:readLabelImage --project sahmt-17a16
@@ -29,6 +29,6 @@ As funções Firebase usam Secret Manager e cada função precisa vincular expli
 
 ## Estado de implantação
 
-Este checkout contém a interface, o callable e a validação das Rules. A construção local do PWA foi concluída. A função não fica ativa só por enviar os arquivos ao GitHub Pages: exige Blaze/faturamento habilitado, secret privado e deploy no Firebase. O projeto `sahmt-17a16` está no Spark; enquanto isso não mudar por decisão explícita do proprietário, a leitura por IA permanece indisponível. As outras rotas do app continuam usando Firestore diretamente e não dependem dessa callable.
+Este checkout contém a interface, o callable (com App Check obrigatório) e a validação das Rules. A construção local do PWA foi concluída. A função não fica ativa só por enviar os arquivos ao GitHub Pages: exige Blaze/faturamento habilitado, secret privado, App Check configurado no projeto e cliente Pages publicado com a chave pública, além do deploy no Firebase. O projeto `sahmt-17a16` está no Spark; enquanto isso não mudar por decisão explícita do proprietário, a leitura por IA permanece indisponível. As outras rotas do app continuam usando Firestore diretamente e não dependem dessa callable.
 
 Antes de habilitar para usuários, executar uma leitura com uma imagem autorizada sem dados reais, validar o resultado de cada tipo de etiqueta V1, conferir os logs para garantir ausência de imagem/chave e verificar consumo/cotas da conta OpenAI.
