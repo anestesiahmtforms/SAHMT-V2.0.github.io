@@ -526,12 +526,12 @@ function showScheduleContacts(contacts, context = {}) {
   const records = contacts.filter((contact, index, all) => all.findIndex((item) => item.sigla === contact.sigla) === index);
   const cards = records.map((contact) => {
     const links = contactActionLinks(contact);
-    const actions = `${links.phone ? `<a class="contact-action" href="tel:${links.phone}">Ligar</a>` : ''}${links.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(links.email)}">Enviar e-mail</a>` : ''}${links.whatsApp ? `<a class="contact-action" href="${escapeHtml(links.whatsApp)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}`;
+    const actions = `${links.whatsApp ? `<a class="contact-action" href="${escapeHtml(links.whatsApp)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}${links.phone ? `<a class="contact-action" href="tel:${links.phone}">Ligar</a>` : ''}${links.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(links.email)}">Enviar e-mail</a>` : ''}`;
     const released = (context.highlightedSiglas || []).includes(String(contact.sigla || '').toUpperCase());
     const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}" aria-pressed="${released}" aria-label="Liberar ${escapeHtml(contact.name)}">LIBERAR</button>` : '';
-    return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${release}${actions}</div></article>`;
+    return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${actions}${release}</div></article>`;
   }).join('');
-  content.innerHTML = `<p class="eyebrow">SIGLA ${escapeHtml(siglaLabel)}</p><h3 id="schedule-contact-heading">${records.length > 1 ? `Contatos vinculados a ${escapeHtml(siglaLabel)}` : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
+  content.innerHTML = `<h3 id="schedule-contact-heading">${records.length > 1 ? 'Contatos vinculados' : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
   content.querySelectorAll('[data-release-sigla]').forEach((button) => button.addEventListener('click', async () => {
     const status = content.querySelector('[data-release-status]');
     const marked = button.getAttribute('aria-pressed') !== 'true';
