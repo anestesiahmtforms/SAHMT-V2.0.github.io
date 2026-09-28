@@ -5,13 +5,28 @@ export function bindLabelCamera(form) {
   const dialog = form.querySelector('#label-camera-dialog');
   const video = form.querySelector('#label-camera-video');
   const target = form.querySelector('.label-camera-target');
+  const photoPreview = document.createElement('img');
   const status = form.querySelector('#label-camera-status');
   const fileInput = form.querySelector('#label-image-file');
+  const readButton = form.querySelector('#label-read-ai');
   if (!openButton || !dialog || !video || !captureButton || !fileInput) return () => {};
+  photoPreview.alt = 'Prévia da foto da etiqueta';
+  photoPreview.hidden = true;
+  photoPreview.className = 'label-camera-photo';
+  target?.parentElement?.insertBefore(photoPreview, target);
   const controller = new AbortController();
   const {signal} = controller;
   let stream = null;
+  let previewUrl = '';
+  let generatedCapture = null;
   let requestGeneration = 0;
+  const clearPhotoPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = '';
+    photoPreview.removeAttribute('src');
+    photoPreview.hidden = true;
+    video.hidden = false;
+  };
   const stopStream = () => {
     requestGeneration++;
     stream?.getTracks().forEach((track) => track.stop());
@@ -51,13 +66,40 @@ export function bindLabelCamera(form) {
     }
   };
   const onOpen = () => {
+    clearPhotoPreview();
+    video.hidden = false;
     if (!dialog.open) dialog.showModal();
     void startCamera();
   };
   const onClose = () => dialog.close();
+  const onFileChange = () => {
+    const file = fileInput.files?.[0];
+    if (!file || file === generatedCapture) {
+      if (file === generatedCapture) generatedCapture = null;
+      return;
+    }
+    if (readButton) readButton.disabled = true;
+    stopStream();
+    clearPhotoPreview();
+    video.hidden = true;
+    photoPreview.hidden = false;
+    previewUrl = URL.createObjectURL(file);
+    photoPreview.onload = () => {
+      if (!dialog.open) return;
+      captureButton.disabled = false;
+      status.textContent = 'Confira o enquadramento da foto na moldura central e toque em CAPTURAR.';
+    };
+    photoPreview.onerror = () => {
+      captureButton.disabled = true;
+      status.textContent = 'Não foi possível abrir esta foto. Escolha outra imagem ou use o registro manual.';
+    };
+    status.textContent = 'Preparando a prévia para ajustar o enquadramento…';
+    photoPreview.src = previewUrl;
+  };
   const onCapture = () => {
-    const sourceWidth = video.videoWidth;
-    const sourceHeight = video.videoHeight;
+    const source = photoPreview.hidden ? video : photoPreview;
+    const sourceWidth = source === video ? video.videoWidth : photoPreview.naturalWidth;
+    const sourceHeight = source === video ? video.videoHeight : photoPreview.naturalHeight;
     if (!sourceWidth || !sourceHeight) {
       status.textContent = 'A câmera ainda está ajustando a imagem. Tente novamente em alguns segundos.';
       return;
@@ -71,7 +113,7 @@ export function bindLabelCamera(form) {
     let cropWidth = sourceWidth;
     let cropHeight = sourceHeight;
     if (target) {
-      const videoRect = video.getBoundingClientRect();
+      const videoRect = source.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       if (!videoRect.width || !videoRect.height || !targetRect.width || !targetRect.height) {
         status.textContent = 'A moldura da câmera ainda não está pronta. Tente novamente.';
@@ -99,7 +141,7 @@ export function bindLabelCamera(form) {
       status.textContent = 'Não foi possível preparar a captura. Tente novamente ou escolha uma foto.';
       return;
     }
-    context.drawImage(video, sourceLeft, sourceTop, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+    context.drawImage(source, sourceLeft, sourceTop, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
     captureButton.disabled = true;
     canvas.toBlob((blob) => {
       canvas.width = 0;
@@ -114,21 +156,30 @@ export function bindLabelCamera(form) {
       const transfer = new DataTransfer();
       transfer.items.add(file);
       stopStream();
+      clearPhotoPreview();
       dialog.close();
       fileInput.files = transfer.files;
+      generatedCapture = file;
       fileInput.dispatchEvent(new Event('change', {bubbles: true}));
     }, 'image/jpeg', 0.92);
   };
-  const onDialogClose = () => stopStream();
+  const onDialogClose = () => {
+    const unconfirmedPhoto = !photoPreview.hidden;
+    stopStream();
+    clearPhotoPreview();
+    if (unconfirmedPhoto) fileInput.value = '';
+  };
   const onBackdrop = (event) => { if (event.target === dialog) dialog.close(); };
   openButton.addEventListener('click', onOpen, {signal});
   closeButton?.addEventListener('click', onClose, {signal});
   captureButton.addEventListener('click', onCapture, {signal});
+  fileInput.addEventListener('change', onFileChange, {signal});
   dialog.addEventListener('close', onDialogClose, {signal});
   dialog.addEventListener('click', onBackdrop, {signal});
   return () => {
     controller.abort();
     stopStream();
+    clearPhotoPreview();
     if (dialog.open) dialog.close();
   };
 }
