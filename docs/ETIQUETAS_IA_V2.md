@@ -25,8 +25,10 @@ npx.cmd firebase deploy --only firestore:rules,functions:readLabelImage --projec
 
 As funções Firebase usam Secret Manager e cada função precisa vincular explicitamente o segredo; alterar o valor exige novo deploy para a função usar a nova versão. Consulte [configuração segura de ambiente do Cloud Functions for Firebase](https://firebase.google.com/docs/functions/config-env?hl=pt-br).
 
+`store: false` na Responses API impede guardar o estado da resposta para recuperação posterior, mas não desliga os registros de monitoramento contra abuso: a OpenAI informa retenção de até 30 dias por padrão. Retenção zero ou monitoramento modificado dependem de elegibilidade e aprovação da conta; imagens também podem ser retidas para revisão manual em casos raros. Consulte os [controles de dados da API OpenAI](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint) antes de liberar o fluxo para dados reais.
+
 ## Estado de implantação
 
-Este checkout contém a interface, o callable e a validação das Rules. A construção local do PWA foi concluída. A função não fica ativa só por enviar os arquivos ao GitHub Pages: ainda exige secret privado e deploy no Firebase. O projeto `sahmt-17a16` teve o faturamento desabilitado na tentativa anterior de deploy; enquanto isso não mudar no Console do Google Cloud/Firebase, o deploy da função permanece bloqueado. Não habilitar plano ou faturamento sem decisão do proprietário.
+Este checkout contém a interface, o callable e a validação das Rules. A construção local do PWA foi concluída. A função não fica ativa só por enviar os arquivos ao GitHub Pages: exige Blaze/faturamento habilitado, secret privado e deploy no Firebase. O projeto `sahmt-17a16` está no Spark; enquanto isso não mudar por decisão explícita do proprietário, a leitura por IA permanece indisponível. As outras rotas do app continuam usando Firestore diretamente e não dependem dessa callable.
 
 Antes de habilitar para usuários, executar uma leitura com uma imagem autorizada sem dados reais, validar o resultado de cada tipo de etiqueta V1, conferir os logs para garantir ausência de imagem/chave e verificar consumo/cotas da conta OpenAI.
