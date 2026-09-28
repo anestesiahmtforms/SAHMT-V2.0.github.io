@@ -22,7 +22,8 @@ export function bindLabelCamera(form) {
   const startCamera = async () => {
     const generation = ++requestGeneration;
     if (!navigator.mediaDevices?.getUserMedia) {
-      status.textContent = 'Este navegador não oferece câmera direta. Use o campo Foto ou arquivo da etiqueta.';
+      status.textContent = 'Este navegador não oferece câmera direta. Abrindo a câmera do aparelho para capturar a etiqueta.';
+      fileInput.click();
       return;
     }
     captureButton.disabled = true;
@@ -45,7 +46,8 @@ export function bindLabelCamera(form) {
       const detail = error.name === 'NotAllowedError' ? 'Permita o acesso à câmera nas configurações do navegador.'
         : error.name === 'NotFoundError' ? 'Nenhuma câmera compatível foi encontrada.'
           : 'Não foi possível iniciar a câmera neste aparelho.';
-      status.textContent = `${detail} Você ainda pode escolher uma foto ou arquivo.`;
+      status.textContent = `${detail} Escolha a foto da etiqueta para continuar.`;
+      fileInput.click();
     }
   };
   const onOpen = () => {

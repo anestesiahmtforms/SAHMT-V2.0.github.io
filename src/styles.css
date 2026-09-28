@@ -405,3 +405,63 @@
 .event-launch-dialog>form>.form-grid .event-member-control{display:grid;grid-template-columns:minmax(0,1fr);justify-items:stretch;align-items:center;gap:4px;box-sizing:border-box;width:100%;padding:8px 10px;text-align:center}
 .event-launch-dialog>form>.form-grid .event-member-control>span{width:100%;text-align:center}
 .event-launch-dialog>form>.form-grid .event-member-control>input[name="memberStatus"]{width:100%;margin:0;text-align:center}
+
+/* Fluxo de Etiquetas em uma superfície única, com captura e relatórios leves. */
+.app-shell--labels{min-height:100dvh}
+.app-shell--labels .main-content{width:min(100% - 20px,1040px);margin-inline:auto}
+.app-shell--labels .page-title--labels{text-align:center;margin-block:clamp(6px,1.5dvh,14px)}
+.app-shell--labels .page-title--labels h1{margin:0;text-transform:uppercase;letter-spacing:.04em}
+.app-shell--labels .module-view--labels{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:clamp(8px,1.4dvh,14px)}
+.app-shell--labels .module-view--labels>.label-workspace{display:grid;gap:8px;margin:0;padding:clamp(10px,2vw,16px);border:1px solid #d3e1e7;border-radius:18px;background:linear-gradient(145deg,#fff,#edf4f6);box-shadow:0 3px 0 #c8d9e0}
+.app-shell--labels .label-action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(6px,1.4vw,12px)}
+.app-shell--labels .label-action-grid button{min-width:0;min-height:clamp(48px,7dvh,60px);padding:8px;white-space:normal;font-size:clamp(.68rem,2vw,.88rem);font-weight:900}
+.app-shell--labels #label-camera-open{border-color:#115fa0;background:linear-gradient(145deg,#2377b9,#10518c);color:#fff;box-shadow:0 3px 0 #0b3e6d}
+.app-shell--labels #label-ocr-run{border-color:#17877d;background:linear-gradient(145deg,#d8f4ee,#a8ded3);color:#07554d;box-shadow:0 3px 0 #64b0a4}
+.app-shell--labels #label-manual-open{border-color:#c6d8df;background:#fff;color:#164b73;box-shadow:0 3px 0 #c5d5da}
+.app-shell--labels #label-ocr-status{margin:0;min-height:1.25em;font-size:.76rem}
+.app-shell--labels .label-report{height:auto;min-height:0;margin:0;padding:clamp(8px,1.5vw,14px);display:grid;grid-template-columns:minmax(0,1fr);gap:8px;overflow:hidden}
+.app-shell--labels .label-report.event-report--closed{grid-template-rows:auto}
+.app-shell--labels .label-report .report-mode{display:grid;grid-template-columns:minmax(0,1fr);gap:7px}
+.app-shell--labels .label-report .report-mode button{min-height:clamp(44px,6dvh,54px);font-size:clamp(.7rem,2vw,.86rem);font-weight:900}
+.app-shell--labels .label-report [data-label-report-mode="monthly"]{border-color:#16877e;background:linear-gradient(145deg,#d9f4ed,#a9ded0);color:#07554d;box-shadow:0 3px 0 #5caa9e}
+.app-shell--labels .label-report .report-period{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;margin:0}
+.app-shell--labels .label-report .report-period label{min-width:0;display:grid;gap:4px;font-size:.72rem;font-weight:850}
+.app-shell--labels .label-report .report-period input{width:100%;min-height:44px}
+.app-shell--labels .label-report .report-period button{min-height:44px}
+.app-shell--labels .label-report .module-content{min-height:0;max-height:min(42dvh,420px);margin:0;overflow:auto;overscroll-behavior:contain}
+.app-shell--labels .label-report .record-list{margin:0}
+.app-shell--labels .label-entry-dialog{position:fixed;inset:4dvh max(14px,calc((100vw - 760px)/2));width:auto;max-width:760px;max-height:92dvh;margin:auto;padding:clamp(12px,2.5vw,22px);overflow:auto;overscroll-behavior:contain;border:2px solid #fff;border-radius:20px;background:linear-gradient(150deg,#fff,#eaf2f5);color:var(--ink);box-shadow:0 22px 70px #001b3577}
+.app-shell--labels .label-entry-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
+.app-shell--labels .label-entry-dialog>header{position:relative;display:flex;align-items:center;justify-content:center;min-height:42px;margin:0 0 12px;padding:4px 42px 10px;border-bottom:1px solid #d2e0e6}
+.app-shell--labels .label-entry-dialog>header h3{margin:0;text-align:center;font-size:1.05rem;letter-spacing:.035em}
+.app-shell--labels .label-entry-dialog>header button{position:absolute;top:0;right:0;min-height:38px}
+.app-shell--labels .label-entry-dialog form{display:grid;gap:10px}
+.app-shell--labels .label-entry-dialog .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.app-shell--labels .label-entry-dialog .form-grid>label,.app-shell--labels .label-staff-field{display:grid;align-content:start;gap:5px;min-width:0;color:#526578;font-size:.75rem;font-weight:850}
+.app-shell--labels .label-entry-dialog .form-grid input:not([type=hidden]),.app-shell--labels .label-entry-dialog .form-grid select,.app-shell--labels .label-staff-field>button{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:8px 10px;border:1px solid #b9ccd5;border-radius:10px;background:#fff;color:var(--ink);font:inherit;font-size:.88rem}
+.app-shell--labels .label-entry-dialog .label-entry-patient{grid-column:1/-1;padding:10px;border:2px solid #d9aa32;border-radius:13px;background:linear-gradient(145deg,#fff9e8,#fff0bd);box-shadow:0 3px 0 #d8b650;color:#513e0c}
+.app-shell--labels .label-entry-dialog .label-entry-patient>span{text-align:center;font-size:.86rem;font-weight:950}
+.app-shell--labels .label-entry-dialog .label-entry-patient>input{text-align:center;font-weight:850}
+.app-shell--labels .label-staff-field{grid-column:1/-1}
+.app-shell--labels .label-staff-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;max-height:180px;padding:8px;overflow:auto;border:1px solid #c9dce2;border-radius:12px;background:#f7fafb}
+.app-shell--labels .label-staff-option{display:flex;align-items:center;gap:7px;min-height:38px;padding:6px 8px;border:1px solid #d2e1e6;border-radius:9px;background:#fff;color:var(--ink);font-size:.78rem;font-weight:850}
+.app-shell--labels .label-staff-option input{width:18px;height:18px;min-height:18px;margin:0;accent-color:#1762a1}
+.app-shell--labels .label-entry-dialog .admin-user-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0}
+.app-shell--labels .label-entry-dialog .admin-user-actions button{min-height:46px}
+.app-shell--labels .label-entry-dialog #label-form-status,.app-shell--labels .label-entry-dialog #label-conflict-refresh{margin:0}
+.app-shell--labels .label-history{margin-top:8px;padding:8px;border-radius:10px;background:#f3f7f9}
+.app-shell--labels .label-history ol{display:grid;gap:7px;margin:0;padding-left:20px}
+.app-shell--labels .label-history li{padding-left:2px}
+.app-shell--labels .label-history small{display:block;margin-top:3px;overflow-wrap:anywhere}
+@media(max-width:600px){
+  .app-shell--labels .main-content{width:calc(100% - 14px);padding:8px 0 max(12px,env(safe-area-inset-bottom))}
+  .app-shell--labels .module-view--labels{padding:10px;border-radius:16px}
+  .app-shell--labels .label-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .app-shell--labels #label-manual-open{grid-column:1/-1}
+  .app-shell--labels .label-entry-dialog[open]{inset:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:12px;border-radius:17px}
+  .app-shell--labels .label-entry-dialog .form-grid{grid-template-columns:minmax(0,1fr);gap:8px}
+  .app-shell--labels .label-entry-dialog .form-grid>*{grid-column:1/-1}
+  .app-shell--labels .label-report .report-period{grid-template-columns:minmax(0,1fr)}
+  .app-shell--labels .label-report .report-period button{width:100%}
+}
+@media(orientation:landscape) and (max-height:520px){.app-shell--labels .label-entry-dialog[open]{padding-block:6px}.app-shell--labels .label-entry-dialog form{gap:6px}.app-shell--labels .label-entry-dialog .form-grid{gap:5px}}

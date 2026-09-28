@@ -1380,7 +1380,7 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
   };
 }
 
-export async function updateLabelRecord(labelId, input, uid) {
+export async function updateLabelRecord(labelId, input, uid, actorName = '') {
   if (!labelId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   const ref = doc(db, 'labels', labelId);
   const current = await getDocFromServer(ref);
@@ -1396,14 +1396,14 @@ export async function updateLabelRecord(labelId, input, uid) {
   if (!changedFields.length) throw new Error('Nenhuma alteração foi feita nesta etiqueta.');
   const historyRef = doc(db, 'labels', labelId, 'history', String(version));
   const historyEntry = {
-    id: String(version), labelId, version, actorUid: uid,
+    id: String(version), labelId, version, actorUid: uid, actorName: String(actorName || '').trim().slice(0, 120),
     changedFields,
     before: Object.fromEntries(changedFields.map((field) => [field, label[field] ?? null])),
     after: Object.fromEntries(changedFields.map((field) => [field, updates[field] ?? null])),
     createdAt: serverTimestamp()
   };
   const batch = writeBatch(db);
-  batch.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version});
+  batch.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
   batch.set(historyRef, historyEntry);
   try {
     await batch.commit();

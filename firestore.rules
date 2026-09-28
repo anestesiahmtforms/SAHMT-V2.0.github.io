@@ -439,9 +439,11 @@ service cloud.firestore {
     }
     function validLabelRecord(data, labelId) {
       return data.keys().hasAll(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version', 'createdByName', 'updatedByName']) &&
         data.id == labelId && data.clientMutationId == labelId && data.active == true && data.version is int && data.version > 0 &&
         data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
+        (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() <= 120 && data.createdByName == profile().displayName)) &&
+        (!data.keys().hasAny(['updatedByName']) || (data.updatedByName is string && data.updatedByName.size() <= 120 && data.updatedByName == profile().displayName)) &&
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 160 &&
         data.procedureCode is string && data.encounterCode is string && data.encounterCode.size() > 0 &&
@@ -484,10 +486,10 @@ service cloud.firestore {
         before is map && after is map && before.keys().hasOnly(fields) && after.keys().hasOnly(fields) &&
         before.keys().size() == fields.size() && after.keys().size() == fields.size() &&
         data.keys().hasAll(['id', 'labelId', 'version', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
-        data.keys().hasOnly(['id', 'labelId', 'version', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'labelId', 'version', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
         version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.labelId == labelId &&
         data.version is int && int(version) == data.version &&
-        data.actorUid == request.auth.uid && data.createdAt == request.time &&
+        data.actorUid == request.auth.uid && (!data.keys().hasAny(['actorName']) || (data.actorName is string && data.actorName.size() <= 120 && data.actorName == profile().displayName)) && data.createdAt == request.time &&
         getAfter(parentPath).data.version == data.version && getAfter(parentPath).data.updatedByUid == request.auth.uid &&
         labelHistoryFieldMatches(labelId, fields, before, after, 'date') &&
         labelHistoryFieldMatches(labelId, fields, before, after, 'patientName') &&
@@ -1037,7 +1039,7 @@ service cloud.firestore {
         request.resource.data.id == resource.data.id && request.resource.data.clientMutationId == resource.data.clientMutationId &&
         request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'updatedByUid', 'updatedAt', 'version']) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'updatedByName', 'updatedByUid', 'updatedAt', 'version']) &&
         validLabelRecord(request.resource.data, labelId);
       allow delete: if false;
       match /history/{version} {

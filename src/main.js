@@ -64,6 +64,7 @@ let loadedEventCatalog = {payers: [], creditors: []};
 let eventCatalogLoadSequence = 0;
 let pendingEventPosition = null;
 let labelReportMode = 'daily';
+let labelReportOpen = false;
 let labelReportLoad = 0;
 let loadedLabelRecords = [];
 let labelReportCursor = null;
@@ -343,15 +344,7 @@ function actionForm(route) {
     <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
-  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<details class="quick-form" open><summary>Registrar etiqueta</summary><form data-module-form="labels">
-    <section class="label-capture-panel" aria-label="Leitura assistida da etiqueta"><label>Foto ou arquivo da etiqueta<input id="label-ocr-file" name="ocrImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"></label><button class="secondary-button" id="label-camera-open" type="button">Abrir câmera</button><div class="label-crop-frame" id="label-crop-frame" hidden><canvas id="label-ocr-preview" class="label-ocr-preview" aria-label="Prévia da etiqueta. Arraste para marcar a área de leitura." tabindex="0"></canvas><div class="label-crop-selection" id="label-crop-selection" hidden></div></div><div class="admin-user-actions"><button class="secondary-button" id="label-crop-toggle" type="button" hidden>Marcar área para recortar</button><button class="secondary-button" id="label-crop-reset" type="button" hidden>Usar foto inteira</button><button class="secondary-button" id="label-ocr-run" type="button" disabled>Ler dados da foto neste aparelho</button></div><p class="record-meta">A leitura local serve como rascunho. Confira os campos antes de salvar; a imagem não é enviada nem gravada. Para recortar, toque em “Marcar área” e arraste sobre a foto.</p><p id="label-ocr-status" class="record-meta" role="status" aria-live="polite"></p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><p class="eyebrow">ETIQUETAS</p><h3 id="label-camera-title">Capturar etiqueta</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">A imagem permanece neste aparelho até você revisar o formulário.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>Capturar foto</button></dialog></section>
-    <div class="form-grid"><label>Data<input name="date" type="date" value="${todayInputValue()}" required></label><label>Nome do Paciente<input name="patientName" autocomplete="off" required maxlength="160"></label>
-    <label data-label-field="procedure">Cirurgia<input name="procedureCode" inputmode="numeric" maxlength="80"></label><label>Atendimento<input name="encounterCode" inputmode="numeric" required maxlength="80"></label>
-    <label>Tipo<select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label>
-    <label data-label-field="amount" hidden>Valor em Real<input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance">Convênio<input name="insurance" maxlength="120"></label>
-    <label>Credor<select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><label data-label-field="staff">Plantonista(s), separados por vírgula<input name="staffSiglas" list="label-staff-suggestions" autocomplete="off" maxlength="240" placeholder="Informe as siglas"><datalist id="label-staff-suggestions"></datalist><small id="label-staff-catalog-note" class="record-meta">Selecione siglas do catálogo autorizado.</small></label></div>
-    <input name="editLabelId" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></details>`;
-  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return `${can('checklistManage') ? `<details class="quick-form"><summary>Configurar estações do Checklist</summary><form id="checklist-station-form"><div class="form-grid"><label>Nome da estação<input name="name" required maxlength="120"></label><label>Código QR<input name="qrCode" required maxlength="300" autocomplete="off"></label><label>Início da vigência<input name="start" type="date"></label><label>Fim da vigência<input name="end" type="date"></label><label>Ordem<input name="order" type="number" min="0" max="9999" step="1" value="0"></label><label class="contact-active-field"><input name="active" type="checkbox" checked> Estação ativa</label></div><input name="stationId" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar estação</button><button class="secondary-button" id="station-edit-cancel" type="button">Nova estação</button></div><p id="checklist-station-status" class="record-meta" role="status" aria-live="polite"></p></form><div id="checklist-station-list" class="module-content"><p class="loading">Carregando catálogo…</p></div></details>` : ''}<section class="checklist-controls panel" aria-label="Relatórios do checklist"><div class="report-mode"><button type="button" data-checklist-report-mode="daily" aria-pressed="${checklistReportMode === 'daily'}">CHECKLIST DIÁRIO</button><button type="button" data-checklist-report-mode="monthly" aria-pressed="${checklistReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Data do checklist<input id="checklist-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}"></label><label id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label>${can('checklistWrite') ? `<button class="secondary-button" id="checklist-scan-qr" type="button" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Ler QR da estação</button><button class="secondary-button" id="checklist-qr-photo" type="button" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Ler QR de uma foto</button><input id="checklist-qr-photo-file" class="sr-only" type="file" accept="image/*" capture="environment" tabindex="-1" aria-label="Escolher foto do QR da estação"><span id="checklist-qr-photo-status" class="record-meta" role="status" aria-live="polite"></span>` : ''}<button class="secondary-button" id="checklist-refresh" type="button">Atualizar</button></div></section>`;
+  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-ocr-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-ocr-run" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ocr-status" class="record-meta" role="status" aria-live="polite">Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label><span>Data</span><input name="date" type="date" value="${todayInputValue()}" required></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label data-label-field="amount" hidden><span>Valor em Real</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><span>PLANTONISTA(S)</span><button class="secondary-button" type="button" id="label-staff-toggle" aria-expanded="false">Selecionar plantonistas</button><input name="staffSiglas" type="hidden"><div id="label-staff-options" class="label-staff-options" hidden></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return `${can('checklistManage') ? `<details class="quick-form"><summary>Configurar estações do Checklist</summary><form id="checklist-station-form"><div class="form-grid"><label>Nome da estação<input name="name" required maxlength="120"></label><label>Código QR<input name="qrCode" required maxlength="300" autocomplete="off"></label><label>Início da vigência<input name="start" type="date"></label><label>Fim da vigência<input name="end" type="date"></label><label>Ordem<input name="order" type="number" min="0" max="9999" step="1" value="0"></label><label class="contact-active-field"><input name="active" type="checkbox" checked> Estação ativa</label></div><input name="stationId" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar estação</button><button class="secondary-button" id="station-edit-cancel" type="button">Nova estação</button></div><p id="checklist-station-status" class="record-meta" role="status" aria-live="polite"></p></form><div id="checklist-station-list" class="module-content"><p class="loading">Carregando catálogo…</p></div></details>` : ''}<section class="checklist-controls panel" aria-label="Relatórios do checklist"><div class="report-mode"><button type="button" data-checklist-report-mode="daily" aria-pressed="${checklistReportMode === 'daily'}">CHECKLIST DIÁRIO</button><button type="button" data-checklist-report-mode="monthly" aria-pressed="${checklistReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Data do checklist<input id="checklist-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}"></label><label id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label>${can('checklistWrite') ? `<button class="secondary-button" id="checklist-scan-qr" type="button" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Ler QR da estação</button><button class="secondary-button" id="checklist-qr-photo" type="button" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Ler QR de uma foto</button><input id="checklist-qr-photo-file" class="sr-only" type="file" accept="image/*" capture="environment" tabindex="-1" aria-label="Escolher foto do QR da estação"><span id="checklist-qr-photo-status" class="record-meta" role="status" aria-live="polite"></span>` : ''}<button class="secondary-button" id="checklist-refresh" type="button">Atualizar</button></div></section>`;
   if (route === 'management' && (can('managementActivityWrite') || can('qualityManage'))) return `<details class="quick-form" open><summary>Nova atividade</summary><form data-module-form="activity">
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
@@ -374,18 +367,17 @@ function shellView() {
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
   const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report${eventReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportOpen && eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportOpen && eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></section>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
-  const labelReport = route === 'labels' ? `<section class="event-report" aria-label="Relatórios de etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportMode === 'daily'}">RELATÓRIO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportMode === 'monthly'}">RELATÓRIO MENSAL - ETIQUETAS</button></div><div class="report-period"><label id="label-day-control" ${labelReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="label-report-day" value="${todayInputValue()}"></label><label id="label-month-control" ${labelReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-labels" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
-  const view = route === 'home' ? `<section class="content-grid">
+  const labelReport = route === 'labels' ? `<section class="event-report label-report${labelReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de Etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportOpen && labelReportMode === 'daily'}">REGISTRO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportOpen && labelReportMode === 'monthly'}">REGISTRO MENSAL - ETIQUETAS</button></div><div id="label-day-control" class="report-period label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></section>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
         ${can('scheduleWrite') ? '<a class="secondary-button schedule-edit-launch" href="https://docs.google.com/spreadsheets/d/1japh5sUW3QU5F3dknhS40VLFBj6SfZKDlrVan5ivzNM/edit#gid=0" target="_blank" rel="noopener noreferrer">Editar planilha oficial</a>' : ''}
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${checklistVisual}${managementBrand}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button${route === 'events' ? ' events-home-button' : ''}" data-route="home">${route === 'events' ? 'HOME' : 'Voltar para Home'}</button></section>`;
-  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : ''}">
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : route === 'labels' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${checklistVisual}${managementBrand}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button${route === 'events' ? ' events-home-button' : ''}" data-route="home">${route === 'events' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : ''}">
     <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong>${route === 'home' || route === 'events' ? '' : `<small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small>`}</div></div></header>
-    <main class="main-content">${route === 'home' || route === 'events' ? '' : `<div class="page-title"><p class="eyebrow">GESTÃO RESPONSÁVEL</p><h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+    <main class="main-content">${route === 'home' || route === 'events' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : ''}">${route === 'labels' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -634,6 +626,9 @@ async function loadModule(route) {
     void loadReportPdfModule().catch(() => {});
     document.querySelectorAll('[data-label-report-mode]').forEach((button) => button.addEventListener('click', async () => {
       labelReportMode = button.dataset.labelReportMode;
+      labelReportOpen = true;
+      document.querySelector('.label-report')?.classList.remove('event-report--closed');
+      document.querySelector('#label-report-results')?.removeAttribute('hidden');
       document.querySelectorAll('[data-label-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
       document.querySelector('#label-day-control').hidden = labelReportMode !== 'daily';
       document.querySelector('#label-month-control').hidden = labelReportMode !== 'monthly';
@@ -641,9 +636,20 @@ async function loadModule(route) {
     }));
     document.querySelector('#label-report-day')?.addEventListener('change', loadLabelReport);
     document.querySelector('#label-report-month')?.addEventListener('change', loadLabelReport);
-    document.querySelector('#export-labels')?.addEventListener('click', exportLabelReport);
     document.querySelector('#share-labels-pdf')?.addEventListener('click', () => shareReportPdf('labels'));
     document.querySelector('#label-edit-cancel')?.addEventListener('click', resetLabelEditor);
+    document.querySelector('#label-entry-close')?.addEventListener('click', resetLabelEditor);
+    document.querySelector('#label-manual-open')?.addEventListener('click', () => {
+      resetLabelEditor({keepOpen: true});
+      document.querySelector('#label-entry-dialog')?.showModal();
+    });
+    document.querySelector('#label-staff-toggle')?.addEventListener('click', (event) => {
+      const button = event.currentTarget;
+      const options = document.querySelector('#label-staff-options');
+      if (!options) return;
+      options.hidden = !options.hidden;
+      button.setAttribute('aria-expanded', String(!options.hidden));
+    });
     await loadLabelStaffCatalog();
     const catalogForm = document.querySelector('#label-staff-catalog-form');
     catalogForm?.addEventListener('submit', async (event) => {
@@ -662,7 +668,6 @@ async function loadModule(route) {
         submit.disabled = false;
       }
     });
-    await loadLabelReport();
     return;
   }
   if (route === 'admin') {
@@ -1728,7 +1733,16 @@ async function loadLabelReport(options = {}) {
     const records = loadedLabelRecords;
     if (exportButton) exportButton.disabled = records.length === 0;
     if (pdfButton) pdfButton.disabled = records.length === 0;
-    target.innerHTML = `${records.length ? `<ul class="record-list">${records.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${(can('labelsWrite') || can('labelsManage')) && (item.createdByUid === session.user.uid || can('labelsManage')) ? `<button class="secondary-button" type="button" data-label-edit="${escapeHtml(item.id)}">Editar</button>` : ''}<button class="secondary-button" type="button" data-label-history="${escapeHtml(item.id)}" aria-expanded="false" aria-controls="label-history-${escapeHtml(item.id)}">Histórico</button></span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}<div id="label-history-${escapeHtml(item.id)}" class="label-history" data-label-history-content="${escapeHtml(item.id)}" hidden></div></li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
+    const reportHeading = labelReportMode === 'daily' ? `<h3 class="event-report-day-heading">Etiquetas · ${escapeHtml(formatRecordDate(day))}</h3>` : '';
+    target.innerHTML = `${reportHeading}${records.length ? `<ul class="record-list">${records.map((item) => {
+      const mayEdit = (can('labelsWrite') || can('labelsManage')) && (item.createdByUid === session.user.uid || can('labelsManage'));
+      const daily = labelReportMode === 'daily';
+      const recordId = escapeHtml(item.id);
+      const history = daily ? `<button class="secondary-button" type="button" data-label-history="${recordId}" aria-expanded="false" aria-controls="label-history-${recordId}">Histórico</button>` : '';
+      const registration = daily ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
+      const historyPanel = daily ? `<div id="label-history-${recordId}" class="label-history" data-label-history-content="${recordId}" hidden></div>` : '';
+      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">Editar</button>` : ''}${history}</span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${registration}${historyPanel}</li>`;
+    }).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
     target.querySelectorAll('[data-label-edit]').forEach((button) => button.addEventListener('click', () => beginLabelEdit(records.find((item) => item.id === button.dataset.labelEdit))));
     target.querySelectorAll('[data-label-history]').forEach((button) => button.addEventListener('click', async () => {
       const historyTarget = target.querySelector(`[data-label-history-content="${CSS.escape(button.dataset.labelHistory)}"]`);
@@ -1752,7 +1766,7 @@ async function loadLabelReport(options = {}) {
           const date = entry.createdAt?.toDate?.() || (entry.createdAt ? new Date(entry.createdAt) : null);
           const when = date && !Number.isNaN(date.getTime()) ? date.toLocaleString('pt-BR') : 'Horário indisponível';
           const fields = entry.changedFields.map((field) => `${escapeHtml(field)}: ${escapeHtml(JSON.stringify(entry.before[field]))} → ${escapeHtml(JSON.stringify(entry.after[field]))}`).join('<br>');
-          return `<li><strong>Versão ${entry.version} · ${escapeHtml(when)}</strong><small>${fields}</small></li>`;
+          return `<li><strong>Versão ${entry.version} · ${escapeHtml(when)}</strong><small>Responsável: ${escapeHtml(entry.actorName || entry.actorUid || 'Não informado')}</small><small>${fields}</small></li>`;
         }).join('')}</ol>` : '<small>Nenhuma alteração registrada.</small>';
         historyTarget.dataset.loaded = 'true';
         historyTarget.dataset.loading = 'false';
@@ -1790,28 +1804,33 @@ function beginLabelEdit(item) {
   form.elements.type.value = item.type || '';
   form.elements.creditor.value = item.creditor || '';
   updateLabelEntryFields(form);
-  for (const [name, value] of Object.entries({date: item.date, patientName: item.patientName, procedureCode: item.procedureCode, encounterCode: item.encounterCode, amount: item.amount ?? '', insurance: item.insurance, staffSiglas: item.staffSiglas?.join(', ')})) {
+  for (const [name, value] of Object.entries({date: item.date, patientName: item.patientName, procedureCode: item.procedureCode, encounterCode: item.encounterCode, amount: item.amount ?? '', insurance: item.insurance})) {
     if (form.elements[name]) form.elements[name].value = value ?? '';
   }
+  setLabelStaffSiglas(item.staffSiglas || []);
   form.querySelector('[type="submit"]').textContent = 'Atualizar etiqueta';
   form.querySelector('#label-edit-cancel').hidden = false;
   form.querySelector('#label-form-status').textContent = '';
   form.querySelector('#label-conflict-refresh').hidden = true;
-  form.closest('details').open = true;
-  form.scrollIntoView({behavior: 'smooth', block: 'center'});
+  document.querySelector('#label-entry-dialog')?.showModal();
   form.elements.patientName.focus({preventScroll: true});
 }
 
-function resetLabelEditor() {
+function resetLabelEditor({keepOpen = false} = {}) {
   const form = document.querySelector('[data-module-form="labels"]');
   if (!form) return;
   form.reset();
+  setLabelStaffSiglas([]);
   form.elements.editLabelId.value = '';
   form.querySelector('[type="submit"]').textContent = 'Salvar registro';
   form.querySelector('#label-edit-cancel').hidden = true;
   form.querySelector('#label-form-status').textContent = '';
   form.querySelector('#label-conflict-refresh').hidden = true;
   updateLabelEntryFields(form);
+  if (!keepOpen) {
+    const dialog = document.querySelector('#label-entry-dialog');
+    if (dialog?.open) dialog.close();
+  }
 }
 
 function exportLabelReport() {
@@ -2544,7 +2563,7 @@ async function bindModuleForm(route) {
         }
         values.eventType = form.elements.eventType.value;
         validateEventForm(values);
-        const actorName = String(session.profile?.displayName || session.user.displayName || '').trim().slice(0, 120);
+        const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
@@ -2558,24 +2577,33 @@ async function bindModuleForm(route) {
         collectionName = 'events';
         record = eventRecord;
       } else if (route === 'labels') {
+        values.staffSiglas = form.elements.staffSiglas?.value || '';
+        values.creditor = form.elements.creditor?.value || '';
         collectionName = 'labels';
         const normalizedType = values.type.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
         const rawAmount = String(values.amount || '').trim().replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.');
         const amount = rawAmount ? Number(rawAmount) : null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date || '')) throw new Error('Informe a data da etiqueta.');
+        if (!values.patientName?.trim()) throw new Error('Informe o nome do paciente.');
+        if (!values.encounterCode?.trim()) throw new Error('Informe o número do atendimento.');
+        if (!['particular', 'complementacao', 'convenio', 'consulta pre-anestesica', 'sadt'].includes(normalizedType)) throw new Error('Selecione o tipo de etiqueta.');
         if (rawAmount && !Number.isFinite(amount)) throw new Error('Informe um valor válido.');
         const selectedStaffSiglas = [...new Set((values.staffSiglas || '').split(',').map((sigla) => sigla.trim().toUpperCase()).filter(Boolean))];
         const existingLabel = values.editLabelId ? loadedLabelRecords.find((item) => item.id === values.editLabelId) : null;
         const historicStaffUnchanged = existingLabel && JSON.stringify([...(existingLabel.staffSiglas || [])].sort()) === JSON.stringify(selectedStaffSiglas.sort());
         selectedStaffSiglas.sort();
+        if (!['Caixa', 'Plantão', 'Plantão/Caixa'].includes(values.creditor)) throw new Error('Selecione o credor.');
         if (values.creditor !== 'Caixa' && !selectedStaffSiglas.length) throw new Error('Informe as siglas dos plantonistas.');
+        if (!['consulta pre-anestesica', 'sadt'].includes(normalizedType) && !(values.procedureCode || '').trim()) throw new Error('Informe o número da cirurgia.');
         const unknownStaff = values.creditor === 'Caixa' ? [] : selectedStaffSiglas.filter((sigla) => !loadedLabelStaffSiglas.includes(sigla));
         if (unknownStaff.length && !historicStaffUnchanged) throw new Error(`Sigla(s) fora do catálogo autorizado: ${unknownStaff.join(', ')}.`);
         if (normalizedType !== 'consulta pre-anestesica' && !values.insurance.trim()) throw new Error('Informe o convênio.');
         const creditor = normalizedType === 'consulta pre-anestesica' ? 'Caixa' : values.creditor;
-        record = {date: values.date, patientName: values.patientName.trim(), procedureCode: (values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : (values.insurance || '').trim(), creditor, staffSiglas: creditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED'};
+        const actorName = String(session.profile?.displayName || session.user.displayName || '').trim().slice(0, 120);
+        record = {date: values.date, patientName: values.patientName.trim(), procedureCode: (values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : (values.insurance || '').trim(), creditor, staffSiglas: creditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
-          await updateLabelRecord(values.editLabelId, record, session.user.uid);
+          await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName);
           notice = 'Etiqueta atualizada no Firestore.';
           await render();
           return;
@@ -2684,16 +2712,20 @@ async function bindModuleForm(route) {
   }
   if (route === 'labels') {
     const form = document.querySelector('[data-module-form="labels"]');
+    const workspace = document.querySelector('.label-workspace');
     form?.elements.type?.addEventListener('change', () => updateLabelEntryFields(form));
     form?.elements.creditor?.addEventListener('change', () => updateLabelEntryFields(form));
     if (form) updateLabelEntryFields(form);
-    if (form) {
-      const cleanupOcr = bindLabelOcr(form);
+    if (form && workspace) {
+      const cleanupOcr = bindLabelOcr(workspace, form);
       const {bindLabelCamera} = await import('./label-camera.js');
       if (!form.isConnected) { cleanupOcr(); return; }
-      const cleanupCamera = bindLabelCamera(form);
+      const cleanupCamera = bindLabelCamera(workspace);
       cleanupLabelOcr = () => { cleanupOcr(); cleanupCamera(); };
     }
+    const entryDialog = document.querySelector('#label-entry-dialog');
+    entryDialog?.addEventListener('click', (event) => { if (event.target === entryDialog) resetLabelEditor(); });
+    document.querySelector('#label-staff-options')?.addEventListener('change', syncLabelStaffSiglas);
     document.querySelector('#label-conflict-refresh')?.addEventListener('click', async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
@@ -2915,8 +2947,21 @@ async function loadLabelStaffCatalog() {
   try {
     const {listLabelStaffSiglas} = await import('./data.js');
     loadedLabelStaffSiglas = await listLabelStaffSiglas();
-    const datalist = document.querySelector('#label-staff-suggestions');
-    if (datalist) datalist.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => new Option(sigla, sigla)));
+    const options = document.querySelector('#label-staff-options');
+    if (options) {
+      options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
+        const label = document.createElement('label');
+        label.className = 'label-staff-option';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = sigla;
+        checkbox.addEventListener('change', syncLabelStaffSiglas);
+        const text = document.createElement('span');
+        text.textContent = sigla;
+        label.append(checkbox, text);
+        return label;
+      }));
+    }
     const catalogForm = document.querySelector('#label-staff-catalog-form');
     if (catalogForm) catalogForm.elements.siglas.value = loadedLabelStaffSiglas.join(', ');
     if (note) note.textContent = loadedLabelStaffSiglas.length
@@ -2926,6 +2971,21 @@ async function loadLabelStaffCatalog() {
     loadedLabelStaffSiglas = [];
     if (note) note.textContent = `Não foi possível carregar o catálogo autorizado. ${error.message || ''}`;
   }
+}
+
+function syncLabelStaffSiglas() {
+  const form = document.querySelector('[data-module-form="labels"]');
+  const field = form?.elements.staffSiglas;
+  const selected = [...(document.querySelectorAll('#label-staff-options input:checked'))].map((input) => input.value);
+  if (field) field.value = selected.join(', ');
+  const button = document.querySelector('#label-staff-toggle');
+  if (button) button.textContent = selected.length ? `Plantonistas: ${selected.join(', ')}` : 'Selecionar plantonistas';
+}
+
+function setLabelStaffSiglas(values) {
+  const selected = new Set(values.map((value) => String(value).trim().toUpperCase()).filter(Boolean));
+  document.querySelectorAll('#label-staff-options input').forEach((input) => { input.checked = selected.has(input.value); });
+  syncLabelStaffSiglas();
 }
 
 function updateLabelEntryFields(form) {
@@ -2948,144 +3008,55 @@ function updateLabelEntryFields(form) {
   creditor.disabled = consultation;
 }
 
-function bindLabelOcr(form) {
-  const fileInput = form.querySelector('#label-ocr-file');
-  const preview = form.querySelector('#label-ocr-preview');
-  const frame = form.querySelector('#label-crop-frame');
-  const selection = form.querySelector('#label-crop-selection');
-  const cropToggle = form.querySelector('#label-crop-toggle');
-  const cropReset = form.querySelector('#label-crop-reset');
-  const runButton = form.querySelector('#label-ocr-run');
-  const status = form.querySelector('#label-ocr-status');
-  let preparedImage = null;
-  let cropMode = false;
-  let cropRect = null;
-  let pointerStart = null;
-  let imageLoadGeneration = 0;
-  const sizePreview = () => {
-    if (!preparedImage || !preview.isConnected) return;
-    const availableWidth = frame.parentElement?.clientWidth || preparedImage.width;
-    const scale = Math.min(1, 300 / preparedImage.height, availableWidth / preparedImage.width);
-    const width = Math.max(1, Math.round(preparedImage.width * scale));
-    const height = Math.max(1, Math.round(preparedImage.height * scale));
-    preview.style.width = `${width}px`;
-    preview.style.height = `${height}px`;
-    frame.style.width = `${width}px`;
-    frame.style.height = `${height}px`;
-  };
-  const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(sizePreview) : null;
-  if (resizeObserver && frame.parentElement) resizeObserver.observe(frame.parentElement);
-  const paintSelection = (rect) => {
-    cropRect = rect;
-    selection.hidden = !rect;
-    cropReset.hidden = !rect;
-    if (!rect) return;
-    selection.style.left = `${rect.left * 100}%`;
-    selection.style.top = `${rect.top * 100}%`;
-    selection.style.width = `${rect.width * 100}%`;
-    selection.style.height = `${rect.height * 100}%`;
-  };
-  const point = (event) => {
-    const bounds = preview.getBoundingClientRect();
-    return {x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))};
-  };
-  fileInput?.addEventListener('change', async () => {
-    const generation = ++imageLoadGeneration;
-    const file = fileInput.files?.[0];
-    runButton.disabled = true;
-    cropToggle.hidden = true;
-    frame.hidden = true;
-    paintSelection(null);
-    preparedImage = null;
-    if (!file) return;
-    if (!/^image\/(?:jpeg|png|webp)$/i.test(file.type) || file.size > 12 * 1024 * 1024) {
-      if (status) status.textContent = file.size > 12 * 1024 * 1024 ? 'Escolha uma imagem com até 12 MB.' : 'Escolha uma imagem JPG, PNG ou WebP.';
-      return;
-    }
-    if (status) status.textContent = 'Preparando a prévia local…';
-    try {
-      const {prepareLabelImage} = await import('./label-ocr.js');
-      const image = await prepareLabelImage(file);
-      if (generation !== imageLoadGeneration) return;
-      preparedImage = image;
-      preview.width = preparedImage.width;
-      preview.height = preparedImage.height;
-      sizePreview();
-      preview.getContext('2d').drawImage(preparedImage, 0, 0);
-      frame.hidden = false;
-      cropToggle.hidden = false;
-      runButton.disabled = false;
-      if (status) status.textContent = 'Foto pronta. A leitura só começa quando você tocar no botão.';
-    } catch (error) {
-      if (generation !== imageLoadGeneration) return;
-      if (status) status.textContent = `Não foi possível abrir esta foto. ${error.message || ''}`;
-    }
+function bindLabelOcr(workspace, form) {
+  const fileInput = workspace.querySelector('#label-ocr-file');
+  const runButton = workspace.querySelector('#label-ocr-run');
+  const status = workspace.querySelector('#label-ocr-status');
+  const dialog = document.querySelector('#label-entry-dialog');
+  let generation = 0;
+  fileInput?.addEventListener('change', () => {
+    generation++;
+    runButton.disabled = !fileInput.files?.[0];
+    if (status && fileInput.files?.[0]) status.textContent = 'Etiqueta capturada. Confira a imagem e toque em Ler Etiqueta.';
   });
-  cropToggle?.addEventListener('click', () => {
-    cropMode = !cropMode;
-    frame.classList.toggle('is-cropping', cropMode);
-    cropToggle.textContent = cropMode ? 'Cancelar recorte' : 'Marcar área para recortar';
-    if (status) status.textContent = cropMode ? 'Arraste sobre a foto para marcar a área. A leitura começa quando você tocar no botão.' : 'Recorte cancelado.';
-  });
-  cropReset?.addEventListener('click', () => { paintSelection(null); cropMode = false; frame.classList.remove('is-cropping'); cropToggle.textContent = 'Marcar área para recortar'; if (status) status.textContent = 'Foto inteira selecionada para leitura.'; });
-  preview?.addEventListener('pointerdown', (event) => {
-    if (!cropMode || !preparedImage) return;
-    event.preventDefault();
-    preview.setPointerCapture(event.pointerId);
-    pointerStart = point(event);
-    paintSelection({left: pointerStart.x, top: pointerStart.y, width: 0, height: 0});
-  });
-  preview?.addEventListener('pointermove', (event) => {
-    if (!pointerStart) return;
-    const end = point(event);
-    paintSelection({left: Math.min(pointerStart.x, end.x), top: Math.min(pointerStart.y, end.y), width: Math.abs(end.x - pointerStart.x), height: Math.abs(end.y - pointerStart.y)});
-  });
-  const finishCrop = () => {
-    if (!pointerStart) return;
-    pointerStart = null;
-    if (cropRect && (cropRect.width < .05 || cropRect.height < .05)) paintSelection(null);
-    else { cropMode = false; frame.classList.remove('is-cropping'); cropToggle.textContent = 'Ajustar área recortada'; if (status) status.textContent = 'Área marcada. Confira o recorte e toque em “Ler dados”.'; }
-  };
-  preview?.addEventListener('pointerup', finishCrop);
-  preview?.addEventListener('pointercancel', finishCrop);
   runButton?.addEventListener('click', async () => {
     const file = fileInput?.files?.[0];
     if (!file) return;
+    const current = ++generation;
     runButton.disabled = true;
-    if (status) status.textContent = 'Preparando a leitura local…';
+    if (status) status.textContent = 'Enviando imagem para leitura segura por IA…';
     try {
-      const {cropLabelImage, readLabelImage} = await import('./label-ocr.js');
-      const image = cropRect ? cropLabelImage(preparedImage, cropRect) : preparedImage;
-      const result = await readLabelImage(image, (progress) => {
-        if (!status) return;
-        const percent = Number.isFinite(progress.progress) ? ` ${Math.round(progress.progress * 100)}%` : '';
-        status.textContent = `${progress.status || 'Lendo etiqueta'}${percent}`;
-      });
-      const suggestions = {
-        patientName: result.patientName,
-        insurance: result.insurance,
-        procedureCode: result.procedureCode,
-        encounterCode: result.encounterCode,
-        type: result.type,
-        creditor: result.creditor
-      };
-      for (const [name, value] of Object.entries(suggestions)) {
-        if (value && form.elements[name]) form.elements[name].value = value;
+      const {extractLabelWithAi} = await import('./label-ai.js');
+      const result = await extractLabelWithAi(file);
+      if (current !== generation || !form.isConnected) return;
+      for (const name of ['patientName', 'insurance', 'procedureCode', 'encounterCode', 'type', 'creditor']) {
+        if (result[name] && form.elements[name]) form.elements[name].value = result[name];
       }
       form.elements.type.dispatchEvent(new Event('change', {bubbles: true}));
       form.elements.creditor.dispatchEvent(new Event('change', {bubbles: true}));
-      const uncertainNames = {patientName: 'nome', insurance: 'convênio', procedureCode: 'cirurgia', encounterCode: 'atendimento'};
-      const uncertain = result.uncertain.map((field) => uncertainNames[field] || field);
+      updateLabelEntryFields(form);
+      dialog?.showModal();
+      const names = {patientName: 'nome', insurance: 'convênio', procedureCode: 'cirurgia', encounterCode: 'atendimento'};
+      const uncertain = (result.uncertain || []).map((field) => names[field] || field);
       if (status) status.textContent = uncertain.length
-        ? `Rascunho extraído. Confira tudo; leitura incerta ou ausente: ${uncertain.join(', ')}. Nada foi gravado.`
-        : 'Rascunho extraído. Confira todos os campos, especialmente os números, antes de salvar. Nada foi gravado.';
+        ? `Rascunho lido por IA. Confira todos os campos; pendente ou incerto: ${uncertain.join(', ')}. Nada foi salvo ainda.`
+        : 'Rascunho lido por IA. Confira os campos, especialmente os números, antes de salvar.';
+      const formStatus = document.querySelector('#label-form-status');
+      if (formStatus) formStatus.textContent = status?.textContent || '';
+      form.elements.patientName.focus({preventScroll: true});
     } catch (error) {
-      if (status) status.textContent = `Não foi possível ler esta foto neste aparelho. Preencha os campos manualmente. ${error.message || ''}`;
+      const code = String(error?.code || '');
+      const message = code === 'functions/not-found' || code === 'functions/failed-precondition'
+        ? 'A leitura por IA ainda aguarda a ativação do serviço Firebase. Você pode continuar pelo registro manual.'
+        : code === 'functions/permission-denied' || code === 'functions/unauthenticated'
+          ? 'A sessão ou permissão para ler etiquetas precisa ser conferida. O registro manual continua disponível.'
+          : `A leitura por IA não foi concluída. ${error.message || 'Tente novamente ou faça o registro manual.'}`;
+      if (status) status.textContent = message;
     } finally {
       if (runButton.isConnected) runButton.disabled = !fileInput.files?.[0];
     }
   });
-  return () => resizeObserver?.disconnect();
+  return () => { generation++; };
 }
 
 function renderTrainingAdminList(items) {

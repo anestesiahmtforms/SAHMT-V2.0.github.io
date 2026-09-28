@@ -1,5 +1,7 @@
 # Leitura local de Etiquetas
 
+> Referência histórica da leitura local anterior. O fluxo atual em V2 usa a função autenticada `readLabelImage` e a IA no servidor; consulte [ETIQUETAS_IA_V2.md](ETIQUETAS_IA_V2.md). A configuração da chave e o deploy da função ainda são necessários antes de a leitura IA operar em produção.
+
 ## Fluxo
 
 - A leitura começa somente quando a pessoa toca em **Ler dados da foto neste aparelho**. A importação de `tesseract.js` também é dinâmica; abrir o PWA, autenticar ou abrir outra área não baixa nem inicializa o mecanismo.
