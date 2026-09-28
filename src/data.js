@@ -1144,18 +1144,24 @@ export async function transitionManagementActionPlan(planId, nextStatus, uid) {
   });
 }
 
-export async function listEventRecords({from, to, uid, pageSize = 100, cursor = null, includePending = true} = {}) {
+export async function listEventRecords({from, to, uid, sigla = '', isAdmin = false, pageSize = 100, cursor = null, includePending = true} = {}) {
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar os eventos.');
   let records = [];
   let stale = navigator.onLine === false;
   let nextCursor = null;
   if (!stale) {
     try {
+      const visibility = isAdmin
+        ? []
+        : String(sigla || '').trim()
+          ? [or(where('createdByUid', '==', uid), where('memberSigla', '==', String(sigla).trim().toUpperCase()))]
+          : [where('createdByUid', '==', uid)];
       const result = await getDocsFromServer(query(
         collection(db, 'events'),
         where('active', '==', true),
         where('date', '>=', from),
         where('date', '<=', to),
+        ...visibility,
         orderBy('date', 'desc'),
         ...(cursor ? [startAfter(cursor)] : []),
         limit(Math.min(100, Math.max(1, pageSize)))
@@ -1278,9 +1284,10 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
   const ref = doc(db, 'events', eventId);
   const fields = ['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
+  const updatedByName = String(input.updatedByName || '').trim().slice(0, 120);
   if (typeof updates.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) throw new Error('A data do evento é inválida.');
   const queueOfflineEdit = async () => {
-    await enqueueOperation({uid, type: 'eventEdits', resourceId: eventId, requestId, payload: {collectionName: 'events', eventId, expectedVersion, data: updates}});
+    await enqueueOperation({uid, type: 'eventEdits', resourceId: eventId, requestId, payload: {collectionName: 'events', eventId, expectedVersion, data: {...updates, updatedByName}}});
     return {id: eventId, pendingFirestore: true};
   };
   if (!navigator.onLine) {
@@ -1305,12 +1312,12 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
       const historyRef = doc(db, 'events', eventId, 'history', String(version));
       const snapshotFields = [...fields, 'status'];
       const historyEntry = {
-        id: String(version), eventId, version, requestId, actorUid: uid, changedFields,
+        id: String(version), eventId, version, requestId, actorUid: uid, actorName: updatedByName, changedFields,
         before: Object.fromEntries(snapshotFields.map((field) => [field, event[field] ?? null])),
         after: Object.fromEntries(snapshotFields.map((field) => [field, (field in updates ? updates[field] : event[field]) ?? null])),
         createdAt: serverTimestamp()
       };
-      transaction.update(ref, {...updates, updatedByUid: uid, updatedAt: serverTimestamp(), version});
+      transaction.update(ref, {...updates, updatedByName, updatedByUid: uid, updatedAt: serverTimestamp(), version});
       transaction.set(historyRef, historyEntry);
     });
   } catch (error) {
@@ -2167,7 +2174,7 @@ async function createScheduledEvent(data, {uid, requestId}) {
   const day = data.date;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('A data da escala do evento é inválida.');
   const scheduleRef = doc(db, 'scheduleDays', day);
-  const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${requestId}`;
+  const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${String(data.memberSigla || '-').trim().toUpperCase()}:${requestId}`;
   const result = await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(scheduleRef);
     if (!snapshot.exists()) {

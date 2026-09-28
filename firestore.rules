@@ -416,7 +416,8 @@ service cloud.firestore {
       let newEvents = newHighlights.get('events', []);
       let marker = newEvents[oldEvents.size()];
       let markerParts = marker.split(':');
-      let eventId = markerParts[2];
+      let eventId = markerParts.size() == 4 ? markerParts[3] : markerParts[2];
+      let markerMemberSigla = markerParts.size() == 4 ? markerParts[2] : '';
       let eventPath = /databases/$(database)/documents/events/$(eventId);
       let eventAfter = getAfter(eventPath).data;
       return can('eventsWrite') && updateActorIsSelf() &&
@@ -428,8 +429,9 @@ service cloud.firestore {
         newHighlights.keys().hasOnly(['siglas', 'events']) &&
         newHighlights.get('siglas', []) == oldHighlights.get('siglas', []) &&
         oldEvents is list && newEvents is list && oldEvents.size() < 100 && newEvents.size() == oldEvents.size() + 1 &&
-        newEvents.hasAll(oldEvents) && marker is string && markerParts.size() == 3 &&
+        newEvents.hasAll(oldEvents) && marker is string && (markerParts.size() == 3 || markerParts.size() == 4) &&
         markerParts[0] == 'EVENTO' && markerParts[1] == eventAfter.get('scheduleSigla', '') &&
+        (markerParts.size() == 3 || markerMemberSigla == (eventAfter.get('memberSigla', '') == '' ? '-' : eventAfter.get('memberSigla', ''))) &&
         markerParts[2].size() > 0 && eventAfter.get('id', '') == eventId &&
         eventAfter.get('date', '') == scheduleId && eventAfter.get('createdByUid', '') == request.auth.uid &&
         request.resource.data.updatedAt == request.time &&
@@ -547,7 +549,9 @@ service cloud.firestore {
     }
     function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
       return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdByName', 'updatedByName', 'createdAt', 'updatedAt', 'version']) &&
+        (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() <= 120 && data.createdByName == profile().displayName)) &&
+        (!data.keys().hasAny(['updatedByName']) || (data.updatedByName is string && data.updatedByName.size() <= 120 && data.updatedByName == profile().displayName)) &&
         data.id == eventId && data.clientMutationId == eventId && data.active == true && data.version is int && data.version > 0 &&
         data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
@@ -588,7 +592,7 @@ service cloud.firestore {
       let after = data.after;
       let fields = data.changedFields;
       return exists(parentPath) && existsAfter(parentPath) &&
-        (can('admin') || get(parentPath).data.createdByUid == request.auth.uid) &&
+        can('admin') &&
         fields is list && fields.size() > 0 && fields.size() <= 13 &&
         fields.hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
         fields.toSet().size() == fields.size() &&
@@ -598,12 +602,12 @@ service cloud.firestore {
         before.keys().size() == 13 && after.keys().size() == 13 &&
         fields.toSet() == before.diff(after).affectedKeys() &&
         before == eventHistorySnapshot(get(parentPath).data) && after == eventHistorySnapshot(getAfter(parentPath).data) &&
-        data.keys().hasAll(['id', 'eventId', 'version', 'requestId', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
-        data.keys().hasOnly(['id', 'eventId', 'version', 'requestId', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+        data.keys().hasAll(['id', 'eventId', 'version', 'requestId', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'eventId', 'version', 'requestId', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
         version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.eventId == eventId &&
         data.version is int && int(version) == data.version &&
         data.requestId is string && data.requestId.size() > 0 && data.requestId.size() <= 128 &&
-        data.actorUid == request.auth.uid && data.createdAt == request.time &&
+        data.actorUid == request.auth.uid && data.actorName is string && data.actorName == profile().displayName && data.createdAt == request.time &&
         get(parentPath).data.version == data.version - 1 &&
         getAfter(parentPath).data.version == data.version && getAfter(parentPath).data.updatedByUid == request.auth.uid &&
         before.diff(after).affectedKeys().size() > 0;
@@ -611,6 +615,11 @@ service cloud.firestore {
     function eventHistoryExistsAfter(eventId, version) {
       let historyPath = /databases/$(database)/documents/events/$(eventId)/history/$(string(version));
       return existsAfter(historyPath);
+    }
+    function eventRecordReadAccess(data) {
+      return isAdmin() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
+        (data.createdByUid == request.auth.uid ||
+         (profile().sigla is string && profile().sigla != '' && data.get('memberSigla', '') == profile().sigla)));
     }
     function activeManagementArea(areaId) {
       let path = /databases/$(database)/documents/managementAreas/$(areaId);
@@ -1003,21 +1012,20 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /events/{eventId} {
-      allow read: if can('eventsRead') || can('eventsWrite');
+      allow read: if eventRecordReadAccess(resource.data);
       allow create: if can('eventsWrite') && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
         validEventRecord(request.resource.data, eventId, false);
-      allow update: if can('eventsWrite') && updateActorIsSelf() &&
-        (resource.data.createdByUid == request.auth.uid || can('admin')) &&
+      allow update: if can('eventsWrite') && can('admin') && updateActorIsSelf() &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
         eventHistoryExistsAfter(eventId, request.resource.data.version) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByUid', 'updatedAt', 'version']) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByName', 'updatedByUid', 'updatedAt', 'version']) &&
         validEventRecord(request.resource.data, eventId, true);
       allow delete: if false;
       match /history/{version} {
-        allow read: if exists(/databases/$(database)/documents/events/$(eventId)) && (can('eventsRead') || can('eventsWrite'));
-        allow create: if can('eventsWrite') && validEventHistoryEntry(request.resource.data, eventId, version);
+        allow read: if exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data);
+        allow create: if can('eventsWrite') && can('admin') && validEventHistoryEntry(request.resource.data, eventId, version);
         allow update, delete: if false;
       }
     }

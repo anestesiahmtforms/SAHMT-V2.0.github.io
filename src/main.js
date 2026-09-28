@@ -52,6 +52,7 @@ let outboxRetryUid = '';
 let selectedManagementAreaId = '';
 let managementActivityLoad = 0;
 let eventReportMode = 'daily';
+let eventReportOpen = false;
 let eventReportLoad = 0;
 let loadedEventReportRecords = [];
 let eventReportSourceRecords = [];
@@ -227,9 +228,10 @@ function vacationRankMarkup(sigla, classes, position) {
   return `<span class="sigla-token__vacation-rank"><span class="${classes.join(' ')}">${escapeHtml(sigla)}</span><small class="sigla-token__vacation-number" aria-label="Posição ${position} na escala de férias">${position}</small></span>`;
 }
 
-function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, eventSiglas = []) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
+  const eventSet = new Set(eventSiglas.map((item) => String(item || '').toUpperCase()));
   return String(sigla || '—').toUpperCase().split(/([/-])/).map((part) => {
     if (part === '/' || part === '-') return escapeHtml(part);
     const onVacation = vacationSet.has(part);
@@ -237,21 +239,24 @@ function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vaca
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(part)) classes.push('sigla-token__released-part--checked');
+    if (eventSet.has(part)) classes.push('sigla-token__event');
     return onVacation
       ? vacationRankMarkup(part, classes, vacationPositions[part] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(part)}</span>`;
   }).join('');
 }
 
-function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, eventSiglas = []) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
+  const eventSet = new Set(eventSiglas.map((item) => String(item || '').toUpperCase()));
   return siglas.map((sigla) => {
     const onVacation = vacationSet.has(sigla);
     if (onVacation && !showVacationRank) return escapeHtml(sigla);
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(sigla)) classes.push('sigla-token__released-part--checked');
+    if (eventSet.has(sigla)) classes.push('sigla-token__event');
     return onVacation
       ? vacationRankMarkup(sigla, classes, vacationPositions[sigla] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(sigla)}</span>`;
@@ -260,20 +265,29 @@ function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], v
 
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
   const highlightedSiglas = new Set(Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
-  const eventSiglas = new Set((Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : [])
-    .map((value) => String(value || '').trim().toUpperCase().replace(/^EVENTO:/, '').split(':', 1)[0]).filter(Boolean));
+  const isAdmin = can('admin');
+  const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
+  const eventSiglas = new Set();
+  for (const marker of Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : []) {
+    const parts = String(marker || '').trim().toUpperCase().replace(/^EVENTO:/, '').split(':');
+    const scheduled = parts[0] || '';
+    if (parts.length >= 3) {
+      const memberSigla = parts.length >= 4 ? parts[2] : (scheduled.includes('/') || scheduled.includes('-') ? '' : scheduled);
+      if (memberSigla && memberSigla !== '-' && (isAdmin || memberSigla === ownSigla)) eventSiglas.add(memberSigla);
+      else if (isAdmin && !memberSigla) scheduled.split(/[/-]/).filter(Boolean).forEach((sigla) => eventSiglas.add(sigla));
+    }
+  }
   const eventMode = mode === 'events';
   return `<div class="siglas-grid schedule-siglas-grid">${scheduleView.positions.map((position, index) => {
     const hasContact = position.contacts?.length > 0;
     const canLaunchEvent = eventsWritable && featureEnabledForRoute('events', appFeatures);
     const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
     const aliases = position.sigla === 'DC' && position.siglas.length
-      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions)}</small>`
+      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, true, [...eventSiglas])}</small>`
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
-      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
+      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, [...eventSiglas])}</strong>`;
     const marked = highlightedSiglas.has(position.sigla);
-    const eventMarked = eventSiglas.has(position.sigla) || position.siglas.some((sigla) => eventSiglas.has(sigla));
     const vacationDescription = position.vacationParts.length
       ? `; em férias: ${position.vacationParts.map((sigla) => `${sigla}, posição ${position.vacationPositions[sigla]} na escala de férias`).join('; ')}`
       : '';
@@ -284,7 +298,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${eventMarked ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
 }
 
@@ -295,9 +309,9 @@ function renderEventSupportTile(eventsWritable) {
 function actionForm(route) {
   if (route === 'events') {
     if (!can('eventsWrite')) return '';
-    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
+    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><h3 id="event-launch-title">LANÇAMENTO DO EVENTO</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
+    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>MEMBRO AUSENTE/ATRASADO</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
     <label><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="description"><span>Descrição do evento</span><textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
@@ -358,7 +372,7 @@ function shellView() {
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite"></div></section>` : '';
+  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report${eventReportOpen ? '' : ' event-report--closed'}" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportOpen && eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportOpen && eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></section>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const labelReport = route === 'labels' ? `<section class="event-report" aria-label="Relatórios de etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportMode === 'daily'}">RELATÓRIO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportMode === 'monthly'}">RELATÓRIO MENSAL - ETIQUETAS</button></div><div class="report-period"><label id="label-day-control" ${labelReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="label-report-day" value="${todayInputValue()}"></label><label id="label-month-control" ${labelReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-labels" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const view = route === 'home' ? `<section class="content-grid">
@@ -585,7 +599,11 @@ async function loadModule(route) {
     if (can('eventsRead') || can('eventsWrite')) void loadReportPdfModule().catch(() => {});
     document.querySelectorAll('[data-event-report-mode]').forEach((button) => button.addEventListener('click', async () => {
       eventReportMode = button.dataset.eventReportMode;
+      eventReportOpen = true;
+      document.querySelector('.event-report')?.classList.remove('event-report--closed');
       document.querySelectorAll('[data-event-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+      const results = document.querySelector('#event-report-results');
+      if (results) results.hidden = false;
       document.querySelector('#event-month-control').hidden = eventReportMode !== 'monthly';
       await loadEventReport();
     }));
@@ -594,7 +612,11 @@ async function loadModule(route) {
     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
     await loadEventEntryCatalog();
     bindEventSchedule();
-    await loadEventReport();
+    if (eventReportOpen) await loadEventReport();
+    else {
+      const pdfButton = document.querySelector('#share-events-pdf');
+      if (pdfButton) pdfButton.disabled = true;
+    }
     if (pendingEventPosition) {
       const {day, position} = pendingEventPosition;
       pendingEventPosition = null;
@@ -1498,7 +1520,7 @@ async function loadEventReport() {
   const target = document.querySelector('#event-report-results');
   if (!target) return false;
   const loadId = ++eventReportLoad;
-  const day = todayInputValue();
+  const day = document.querySelector('#event-schedule-date')?.value || todayInputValue();
   const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
   if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
@@ -1524,7 +1546,7 @@ async function loadEventReport() {
   if (pdfButton) pdfButton.disabled = true;
   try {
     const {listEventRecords} = await import('./data.js');
-    const report = await listEventRecords({from, to, uid: session.user.uid, cursor: append ? eventReportCursor : null, includePending: !append});
+    const report = await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
     if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
     if (append) {
       const existingIds = new Set(eventReportSourceRecords.map((item) => item.id));
@@ -1576,38 +1598,41 @@ function renderEventReportRecords() {
       ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
       : '';
   const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : 'Nenhum evento neste período.';
-  target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => {
+  const heading = eventReportMode === 'daily'
+    ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
+    : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
+  target.innerHTML = `${heading}${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => {
     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
-    const showHistory = confirmed && Number(item.version) > 1;
+    const showHistory = eventReportMode === 'daily' && confirmed && Number(item.version) > 1;
     const canEdit = can('admin') && confirmed;
-    return `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong><span class="event-record-actions">${showHistory ? `<button class="secondary-button" type="button" data-event-history="${escapeHtml(item.id)}" aria-expanded="false">Histórico</button>` : ''}${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</span></div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Histórico de alterações" hidden></section>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`;
+    const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
+    return `<li><div class="contact-list-heading"><strong>${item.pendingEdit && item.syncFailed ? 'Rascunho local · ' : ''}${escapeHtml(item.memberStatus || 'Evento')} · ${escapeHtml(item.eventType || 'Outros')}</strong><span class="event-record-actions">${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</span></div><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${item.amountToPay ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${registration}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}${item.pendingEdit ? item.syncFailed ? `<small class="sync-error">Rascunho de edição não confirmado. ${escapeHtml(item.syncError || 'Consulte Sincronização para comparar com a versão atual.')}</small>` : '<small class="sync-state">Edição local aguardando confirmação do Firestore.</small>' : item.syncFailed ? `<small class="sync-error">Firestore recusou este evento${item.syncError ? `: ${escapeHtml(item.syncError)}` : ''}. Revise em Offline.</small>` : item.pendingFirestore ? '<small class="sync-state">Aguardando confirmação do Firestore.</small>' : ''}</li>`;
   }).join('')}</ul>` : `<p class="empty-state">${empty}</p>`}${eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
-  target.querySelectorAll('[data-event-history]').forEach((button) => button.addEventListener('click', async () => {
-    const panel = button.closest('li')?.querySelector('[data-event-history-panel]');
-    if (!panel) return;
-    panel.hidden = !panel.hidden;
-    button.setAttribute('aria-expanded', String(!panel.hidden));
-    if (panel.hidden || panel.dataset.loaded === 'true') return;
-    button.disabled = true;
-    panel.innerHTML = '<p class="loading">Carregando histórico…</p>';
-    try {
-      const {listEventHistory} = await import('./data.js');
-      const history = await listEventHistory(button.dataset.eventHistory);
-      const labels = {date: 'Data', memberSigla: 'Sigla do membro', scheduleSigla: 'Sigla da escala', memberStatus: 'Membro / situação', eventType: 'Tipo de evento', description: 'Descrição', delayMultiple: 'Múltiplo do atraso', substitute: 'Substituto', shift: 'Turno', payer: 'Pagador', creditor: 'Credor', amountToPay: 'Valor', status: 'Status'};
-      const value = (item) => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
-      panel.innerHTML = history.length ? `<ol>${history.map((entry) => `<li><strong>Versão ${escapeHtml(entry.version)}</strong><small>${entry.createdAt?.toDate ? escapeHtml(entry.createdAt.toDate().toLocaleString('pt-BR')) : 'Data indisponível'}</small><ul>${entry.changedFields.map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before[field]))}</small><small>Depois: ${escapeHtml(value(entry.after[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<p class="empty-state">Nenhuma alteração histórica encontrada.</p>';
-      panel.dataset.loaded = 'true';
-    } catch (error) {
-      panel.innerHTML = `<p class="empty-state">Não foi possível carregar o histórico. ${escapeHtml(error.message || '')}</p>`;
-    } finally {
-      button.disabled = false;
-    }
-  }));
+  if (eventReportMode === 'daily') void loadDailyEventEditNotes(records, target);
   target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
     event.currentTarget.disabled = true;
     loadEventReport({append: true});
   });
+}
+
+async function loadDailyEventEditNotes(records, target) {
+  const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed && Number(item.version) > 1);
+  if (!changed.length) return;
+  const {listEventHistory} = await import('./data.js');
+  const labels = {date: 'Data', memberSigla: 'Sigla do membro', scheduleSigla: 'Sigla da escala', memberStatus: 'Membro / situação', eventType: 'Tipo de evento', description: 'Descrição', delayMultiple: 'Múltiplo do atraso', substitute: 'Substituto', shift: 'Turno', payer: 'Pagador', creditor: 'Credor', amountToPay: 'Valor', status: 'Status'};
+  const value = (item) => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
+  await Promise.all(changed.map(async (item) => {
+    const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(item.id)}"]`);
+    if (!panel) return;
+    try {
+      const history = await listEventHistory(item.id, {pageSize: 50});
+      if (!panel.isConnected) return;
+      panel.innerHTML = history.length ? `<strong>Edições do registro</strong><ol>${history.map((entry) => `<li><strong>${escapeHtml(entry.actorName || entry.actorUid || 'Administrador')} · ${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><ul>${entry.changedFields.map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before[field]))}</small><small>Depois: ${escapeHtml(value(entry.after[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração encontrada.</small>';
+    } catch (error) {
+      if (panel.isConnected) panel.innerHTML = `<small>Não foi possível carregar as edições. ${escapeHtml(error.message || '')}</small>`;
+    }
+  }));
 }
 
 function beginEventEdit(item) {
@@ -2519,7 +2544,8 @@ async function bindModuleForm(route) {
         }
         values.eventType = form.elements.eventType.value;
         validateEventForm(values);
-        const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), status: 'OPEN'};
+        const actorName = String(session.profile?.displayName || session.user.displayName || '').trim().slice(0, 120);
+        const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
           const result = await updateEventRecord(values.editEventId, eventRecord, session.user.uid, Number(values.editEventVersion));
@@ -2631,11 +2657,10 @@ async function bindModuleForm(route) {
     const eventType = form?.elements.eventType;
     eventType?.addEventListener('input', () => updateEventEntryFields(form));
     eventType?.addEventListener('change', () => updateEventEntryFields(form));
-    for (const name of ['memberStatus', 'delayMultiple', 'substitute', 'shift']) {
+    for (const name of ['eventDate', 'memberStatus', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay']) {
       form?.elements[name]?.addEventListener('input', () => updateEventEntryFields(form));
       form?.elements[name]?.addEventListener('change', () => updateEventEntryFields(form));
     }
-    form?.elements.amountToPay?.addEventListener('input', () => updateEventEntryFields(form));
     document.querySelector('#event-launch-back')?.addEventListener('click', resetEventEditor);
     document.querySelector('#event-launch-dialog')?.addEventListener('click', (event) => {
       if (event.target === event.currentTarget) resetEventEditor();
@@ -3212,10 +3237,14 @@ function bindEventSchedule() {
       content.innerHTML = `<p class="empty-state">${error.code === 'permission-denied' ? 'Seu perfil precisa de permissão para consultar a escala.' : 'Não foi possível carregar a escala. Verifique a conexão e tente novamente.'}</p>`;
     }
   };
-  document.querySelector('#event-schedule-previous')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, -1); void render(); });
-  document.querySelector('#event-schedule-today')?.addEventListener('click', () => { dateInput.value = localDateKey(); void render(); });
-  document.querySelector('#event-schedule-next')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, 1); void render(); });
-  dateInput.addEventListener('change', render);
+  const renderSelectedScheduleDay = () => {
+    void render();
+    if (eventReportOpen && eventReportMode === 'daily') void loadEventReport();
+  };
+  document.querySelector('#event-schedule-previous')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, -1); renderSelectedScheduleDay(); });
+  document.querySelector('#event-schedule-today')?.addEventListener('click', () => { dateInput.value = localDateKey(); renderSelectedScheduleDay(); });
+  document.querySelector('#event-schedule-next')?.addEventListener('click', () => { dateInput.value = shiftDateKey(dateInput.value, 1); renderSelectedScheduleDay(); });
+  dateInput.addEventListener('change', renderSelectedScheduleDay);
   void render();
 }
 
@@ -3314,7 +3343,8 @@ function chooseEventScheduleMember(scheduleSigla, choices) {
 
 function updateEventEntryFields(form) {
   if (!form?.elements?.eventType) return;
-  const rules = eventFieldRules(form.elements.eventType.value);
+  const eventType = form.elements.eventType.value;
+  const rules = eventFieldRules(eventType);
   const editing = Boolean(form.elements.editEventId?.value);
   for (const name of ['memberStatus', 'description', 'delayMultiple', 'substitute', 'shift']) {
     const visible = rules[name];
@@ -3344,10 +3374,23 @@ function updateEventEntryFields(form) {
   applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
 
   const amount = rules.amountMode === 'delay'
-    ? (form.elements.delayMultiple.value === '' ? null : Number(form.elements.delayMultiple.value) * 200)
+    ? (form.elements.delayMultiple.value === '' ? null : Number(form.elements.delayMultiple.value) * 100)
     : rules.amountMode === 'shift' ? (normalizeEventOption(form.elements.shift.value) === 'integral' ? 2000 : (['manha', 'tarde'].includes(normalizeEventOption(form.elements.shift.value)) ? 1000 : null))
       : null;
   applyEventAmountAutofill(form.elements.amountToPay, amount, editing);
+  const requiredByType = {eventDate: true, eventType: true, memberStatus: rules.memberStatus, description: rules.description, delayMultiple: rules.delayMultiple, substitute: rules.substitute, shift: rules.shift, payer: true, creditor: true, amountToPay: true};
+  for (const [name, required] of Object.entries(requiredByType)) {
+    const control = form.elements[name];
+    if (!control) continue;
+    const wrapper = control.closest('label') || control.closest('[data-event-field]');
+    const inactive = name !== 'eventDate' && name !== 'eventType' && (!eventType || (control.disabled && control.dataset.eventAutofilled !== 'true') || (['memberStatus', 'description', 'delayMultiple', 'substitute', 'shift'].includes(name) && !rules[name]));
+    const complete = String(control.value || '').trim().length > 0;
+    const state = inactive ? 'inactive' : required && complete ? 'complete' : required ? 'required' : 'optional';
+    control.dataset.eventFieldState = state;
+    wrapper?.classList.toggle('event-field--inactive', inactive);
+    wrapper?.classList.toggle('event-field--required-empty', !inactive && required && !complete);
+    wrapper?.classList.toggle('event-field--complete', !inactive && required && complete);
+  }
 }
 
 function normalizeEventOption(value) {
