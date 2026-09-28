@@ -13,6 +13,9 @@
 .event-record-banner-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
 .event-record-banner{display:grid;gap:8px;padding:12px;border:2px solid #71899b;border-radius:16px;background:linear-gradient(145deg,#f8fbfc,#eaf1f5);box-shadow:0 5px 13px #1432541a,inset 0 1px #ffffffd9}
 .event-record-banner--pending{border-color:#71899b;background:linear-gradient(145deg,#fffdf7,#fff5e2)}
+.event-history>ol>li{display:grid;gap:8px;margin:0;padding:10px;border:1px solid #71899b;border-radius:12px;background:linear-gradient(145deg,#f8fbfc,#edf3f6);box-shadow:0 3px 8px #14325414}
+.event-history>ol>li>ul{gap:6px;margin:0;padding:9px 10px 9px 1.45rem;border:1px solid #e6c7a8;border-radius:10px;background:linear-gradient(145deg,#fff8f0,#ffefdf)}
+.event-history>ol>li>ul>li{padding:2px 0}
 .event-record-banner__heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .event-record-banner__heading>div{display:grid;gap:3px;min-width:0}
 .event-record-banner__heading strong{color:#123c60;font-size:.88rem}
