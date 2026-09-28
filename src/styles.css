@@ -336,6 +336,11 @@
 .event-launch-dialog>form>#event-members-missing,.event-launch-dialog>form>#event-catalog-stale,.event-launch-dialog>form>#event-form-status{margin:0;font-size:.7rem;line-height:1.2}
 .event-launch-dialog>form>.admin-user-actions{flex:0 0 auto;margin-top:0;padding-top:0}
 .event-launch-dialog>form>.admin-user-actions .primary-button{min-height:clamp(38px,6dvh,46px)}
+.event-report .report-mode{grid-template-columns:minmax(0,1fr)}
+.event-report .report-mode button{width:100%;min-height:48px}
+.event-report .event-month-control{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end}
+.event-report .event-month-control[hidden]{display:none}
+@media(max-width:520px){.event-report .event-month-control>*{grid-column:auto}.event-report .event-month-control{grid-template-columns:minmax(0,1fr) auto;align-items:end}.event-report .event-month-control button{width:auto;white-space:nowrap}}
 @media(max-width:600px){.event-launch-dialog>header{margin:0 0 5px;padding:4px 2px 7px}.event-launch-dialog>form{gap:5px}.event-launch-dialog>form>.form-grid{gap:5px}.event-launch-dialog>form>.form-grid>label{font-size:clamp(.59rem,2.4vw,.7rem)}.event-launch-dialog>form>.form-grid input,.event-launch-dialog>form>.form-grid select{height:clamp(32px,5.4dvh,40px);padding-inline:6px}.event-launch-dialog>form>.form-grid textarea{height:clamp(38px,7dvh,52px)}}
 @media(max-height:620px){.event-launch-dialog[open]{padding-block:6px}.event-launch-dialog>header{margin-bottom:4px;padding-block:3px 5px}.event-launch-dialog>form{gap:4px}.event-launch-dialog>form>.form-grid{gap:4px}.event-launch-dialog>form>.form-grid input,.event-launch-dialog>form>.form-grid select{height:32px}.event-launch-dialog>form>.form-grid textarea{height:38px}}
 

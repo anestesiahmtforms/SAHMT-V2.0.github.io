@@ -295,12 +295,8 @@ function renderEventSupportTile(eventsWritable) {
 
 function actionForm(route) {
   if (route === 'events') {
-    const catalogForm = can('eventsCatalogManage') ? `<details class="quick-form"><summary>Configurar opções de Eventos</summary><form id="event-catalog-form">
-      <p class="record-meta">Configure pagadores e credores usados no lançamento. As opções ficam no Firestore e valem para esta área em todo o PWA.</p>
-      <div class="form-grid"><label>Pagadores · um por linha<textarea name="payers" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label><label>Credores · um por linha<textarea name="creditors" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label></div>
-      <button class="secondary-button" type="submit">Salvar opções</button><p id="event-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
-    if (!can('eventsWrite')) return catalogForm;
-    return `${catalogForm}<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></header><form data-module-form="events" autocomplete="on" novalidate>
+    if (!can('eventsWrite')) return '';
+    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
     <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
@@ -314,6 +310,10 @@ function actionForm(route) {
     <p id="event-catalog-stale" class="record-meta" role="status" hidden></p>
     <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;
   }
+  if (route === 'admin' && can('eventsCatalogManage')) return `<details class="quick-form"><summary>Configurar opções de Eventos</summary><form id="event-catalog-form">
+    <p class="record-meta">Pagadores e credores disponíveis no lançamento de Eventos.</p>
+    <div class="form-grid"><label>Pagadores · um por linha<textarea name="payers" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label><label>Credores · um por linha<textarea name="creditors" rows="4" maxlength="12000" placeholder="Uma opção por linha"></textarea></label></div>
+    <button class="secondary-button" type="submit">Salvar opções</button><p id="event-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>`;
   if (route === 'training' && can('trainingsManage')) return `<details class="quick-form"><summary>Gerenciar catálogo de treinamentos</summary><form id="training-catalog-form">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Link do YouTube<input name="videoUrl" type="url" required maxlength="600" placeholder="https://youtu.be/…"></label>
     <label>Descrição<input name="description" maxlength="500"></label><label>Pontos de acesso<input name="accessPoints" type="number" min="0" max="1000" step="0.01" value="0" required></label>
@@ -359,7 +359,7 @@ function shellView() {
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="event-day-control" ${eventReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="event-report-day" value="${todayInputValue()}"></label><label id="event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><label>Filtrar por pessoa<input type="search" id="event-report-person" placeholder="Nome ou sigla" autocomplete="off"></label><button class="secondary-button" type="button" id="export-events" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><small class="record-meta">A busca inclui todos os registros carregados do período; use “Carregar mais” para consultar períodos extensos.</small><div id="event-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
+  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-report" aria-label="Relatórios de eventos"><div class="report-mode"><button type="button" data-event-report-mode="daily" aria-pressed="${eventReportMode === 'daily'}">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-mode="monthly" aria-pressed="${eventReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div id="event-month-control" class="report-period event-month-control" ${eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const labelReport = route === 'labels' ? `<section class="event-report" aria-label="Relatórios de etiquetas"><div class="report-mode"><button type="button" data-label-report-mode="daily" aria-pressed="${labelReportMode === 'daily'}">RELATÓRIO DIÁRIO - ETIQUETAS</button><button type="button" data-label-report-mode="monthly" aria-pressed="${labelReportMode === 'monthly'}">RELATÓRIO MENSAL - ETIQUETAS</button></div><div class="report-period"><label id="label-day-control" ${labelReportMode !== 'daily' ? 'hidden' : ''}>Data dos registros<input type="date" id="label-report-day" value="${todayInputValue()}"></label><label id="label-month-control" ${labelReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="export-labels" disabled>Gerar CSV</button><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite"><p class="loading">Carregando relatório…</p></div></section>` : '';
   const view = route === 'home' ? `<section class="content-grid">
@@ -587,14 +587,10 @@ async function loadModule(route) {
     document.querySelectorAll('[data-event-report-mode]').forEach((button) => button.addEventListener('click', async () => {
       eventReportMode = button.dataset.eventReportMode;
       document.querySelectorAll('[data-event-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
-      document.querySelector('#event-day-control').hidden = eventReportMode !== 'daily';
       document.querySelector('#event-month-control').hidden = eventReportMode !== 'monthly';
       await loadEventReport();
     }));
-    document.querySelector('#event-report-day')?.addEventListener('change', loadEventReport);
     document.querySelector('#event-report-month')?.addEventListener('change', loadEventReport);
-    document.querySelector('#event-report-person')?.addEventListener('input', renderEventReportRecords);
-    document.querySelector('#export-events')?.addEventListener('click', exportEventReport);
     document.querySelector('#share-events-pdf')?.addEventListener('click', () => shareReportPdf('events'));
     document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
     await loadEventEntryCatalog();
@@ -650,6 +646,8 @@ async function loadModule(route) {
   }
   if (route === 'admin') {
     await loadAdminModule(content);
+    await loadEventEntryCatalog();
+    bindEventCatalogForm();
     return;
   }
   if (route === 'people') {
@@ -1501,7 +1499,7 @@ async function loadEventReport() {
   const target = document.querySelector('#event-report-results');
   if (!target) return false;
   const loadId = ++eventReportLoad;
-  const day = document.querySelector('#event-report-day')?.value || todayInputValue();
+  const day = todayInputValue();
   const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
   if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
@@ -1523,8 +1521,6 @@ async function loadEventReport() {
     eventReportCursor = null;
     eventReportStale = false;
   }
-  const exportButton = document.querySelector('#export-events');
-  if (exportButton) exportButton.disabled = true;
   const pdfButton = document.querySelector('#share-events-pdf');
   if (pdfButton) pdfButton.disabled = true;
   try {
@@ -1568,13 +1564,10 @@ function eventCreatedAtValue(value) {
 function renderEventReportRecords() {
   const target = document.querySelector('#event-report-results');
   if (!target) return;
-  const term = (document.querySelector('#event-report-person')?.value || '').trim().toLocaleLowerCase('pt-BR');
-  const records = term ? eventReportSourceRecords.filter((item) => `${item.memberSigla || ''} ${item.scheduleSigla || ''} ${item.memberStatus || ''} ${item.substitute || ''}`.toLocaleLowerCase('pt-BR').includes(term)) : eventReportSourceRecords;
+  const records = eventReportSourceRecords;
   const hasPending = eventReportSourceRecords.some((item) => item.pendingFirestore || item.syncFailed);
   loadedEventReportRecords = records.filter((item) => !item.pendingFirestore && !item.syncFailed);
-  const exportButton = document.querySelector('#export-events');
   const pdfButton = document.querySelector('#share-events-pdf');
-  if (exportButton) exportButton.disabled = loadedEventReportRecords.length === 0;
   if (pdfButton) pdfButton.disabled = loadedEventReportRecords.length === 0;
   const syncNotice = eventReportStale && eventReportSourceRecords.some((item) => !item.pendingFirestore && !item.syncFailed)
     ? '<p class="sync-state">A conexão caiu durante a consulta. Os registros confirmados já exibidos permanecem somente nesta tela; próximos blocos dependem da conexão e o histórico não é salvo localmente.</p>'
@@ -1583,7 +1576,7 @@ function renderEventReportRecords() {
     : hasPending
       ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
       : '';
-  const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : term ? 'Nenhum evento corresponde à busca.' : 'Nenhum evento neste período.';
+  const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : 'Nenhum evento neste período.';
   target.innerHTML = `${syncNotice}${records.length ? `<ul class="record-list">${records.map((item) => {
     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
     const showHistory = confirmed && Number(item.version) > 1;
@@ -1797,23 +1790,6 @@ function resetLabelEditor() {
   updateLabelEntryFields(form);
 }
 
-function exportEventReport() {
-  const columns = ['Data', 'Sigla da escala', 'Sigla do membro', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo do atraso', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor a pagar'];
-  const cell = (value) => {
-    let text = String(value ?? '');
-    if (/^[=+@\-]/.test(text)) text = `'${text}`;
-    return `"${text.replaceAll('"', '""')}"`;
-  };
-  const rows = [columns, ...loadedEventReportRecords.map((item) => [item.date, item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, Number(item.amountToPay || 0).toFixed(2)])];
-  const blob = new Blob(['\ufeff', rows.map((row) => row.map(cell).join(';')).join('\r\n')], {type: 'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `SAHMT-Eventos-${eventReportMode === 'daily' ? document.querySelector('#event-report-day')?.value : document.querySelector('#event-report-month')?.value}.csv`;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function exportLabelReport() {
   const columns = ['Data', 'Nome do Paciente', 'Cirurgia', 'Atendimento', 'Tipo', 'Valor', 'Convênio', 'Credor', 'Plantonistas'];
   const cell = (value) => {
@@ -1851,7 +1827,7 @@ async function shareReportPdf(kind) {
   if (!button || !target || !records.length) return;
   const period = isLabel
     ? (labelReportMode === 'daily' ? document.querySelector('#label-report-day')?.value : document.querySelector('#label-report-month')?.value)
-    : (eventReportMode === 'daily' ? document.querySelector('#event-report-day')?.value : document.querySelector('#event-report-month')?.value);
+    : (eventReportMode === 'daily' ? todayInputValue() : document.querySelector('#event-report-month')?.value);
   const mode = isLabel ? labelReportMode : eventReportMode;
   const pdfRecords = isLabel && mode === 'monthly'
     ? [...records].sort((left, right) => String(left.date || '').localeCompare(String(right.date || '')) || reportTimestamp(left.createdAt) - reportTimestamp(right.createdAt))
@@ -2680,32 +2656,7 @@ async function bindModuleForm(route) {
         : 'Não foi possível atualizar o relatório. Seus dados continuam no formulário; verifique a conexão e tente novamente.';
       if (button.isConnected) button.disabled = false;
     });
-    const catalogForm = document.querySelector('#event-catalog-form');
-    catalogForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const status = catalogForm.querySelector('#event-catalog-status');
-      const submit = catalogForm.querySelector('[type="submit"]');
-      submit.disabled = true;
-      status.textContent = 'Salvando opções no Firestore…';
-      try {
-        const {saveEventCatalog} = await import('./data.js');
-        const saved = await saveEventCatalog({payers: catalogForm.elements.payers.value, creditors: catalogForm.elements.creditors.value}, session.user.uid);
-        const loaded = await loadEventEntryCatalog();
-        const latestStatus = document.querySelector('#event-catalog-status');
-        if (latestStatus) latestStatus.textContent = loaded?.ok && loaded.catalog?.stale !== true &&
-          loaded.catalog.version >= saved.version &&
-          JSON.stringify(loaded.catalog.payers) === JSON.stringify(saved.payers) &&
-          JSON.stringify(loaded.catalog.creditors) === JSON.stringify(saved.creditors)
-          ? 'Opções confirmadas no Firestore.'
-          : 'A gravação foi enviada, mas a leitura de confirmação não corresponde ao cadastro. Confira a conexão e abra Eventos novamente.';
-      } catch (error) {
-        status.textContent = error.code === 'permission-denied'
-          ? 'Seu perfil não tem permissão para gerenciar o catálogo de Eventos.'
-          : error.message || 'Não foi possível salvar as opções.';
-      } finally {
-        if (submit.isConnected) submit.disabled = false;
-      }
-    });
+    bindEventCatalogForm();
   }
   if (route === 'labels') {
     const form = document.querySelector('[data-module-form="labels"]');
@@ -2809,6 +2760,35 @@ function bindContactImport() {
   });
 }
 
+function bindEventCatalogForm() {
+  const catalogForm = document.querySelector('#event-catalog-form');
+  catalogForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = catalogForm.querySelector('#event-catalog-status');
+    const submit = catalogForm.querySelector('[type="submit"]');
+    submit.disabled = true;
+    status.textContent = 'Salvando opções no Firestore…';
+    try {
+      const {saveEventCatalog} = await import('./data.js');
+      const saved = await saveEventCatalog({payers: catalogForm.elements.payers.value, creditors: catalogForm.elements.creditors.value}, session.user.uid);
+      const loaded = await loadEventEntryCatalog();
+      const latestStatus = document.querySelector('#event-catalog-status');
+      if (latestStatus) latestStatus.textContent = loaded?.ok && loaded.catalog?.stale !== true &&
+        loaded.catalog.version >= saved.version &&
+        JSON.stringify(loaded.catalog.payers) === JSON.stringify(saved.payers) &&
+        JSON.stringify(loaded.catalog.creditors) === JSON.stringify(saved.creditors)
+        ? 'Opções confirmadas no Firestore.'
+        : 'A gravação foi enviada, mas a leitura de confirmação não corresponde ao cadastro. Confira a conexão e tente novamente.';
+    } catch (error) {
+      status.textContent = error.code === 'permission-denied'
+        ? 'Seu perfil não tem permissão para gerenciar o catálogo de Eventos.'
+        : error.message || 'Não foi possível salvar as opções.';
+    } finally {
+      if (submit.isConnected) submit.disabled = false;
+    }
+  });
+}
+
 async function loadEventEntryCatalog() {
   const form = document.querySelector('[data-module-form="events"]');
   const configForm = document.querySelector('#event-catalog-form');
@@ -2845,7 +2825,7 @@ async function loadEventEntryCatalog() {
       if (staleNote) {
         const missing = [!loadedEventCatalog.payers.length && 'pagadores', !loadedEventCatalog.creditors.length && 'credores'].filter(Boolean);
         staleNote.textContent = missing.length
-          ? `Sem ${missing.join(' e ')} no catálogo de Eventos. Abra “Configurar opções de Eventos” e salve o cadastro.`
+          ? `Sem ${missing.join(' e ')} no catálogo de Eventos. Abra Administração para configurar as opções.`
           : catalog.stale === true ? 'Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.' : '';
         staleNote.hidden = !staleNote.textContent;
       }
