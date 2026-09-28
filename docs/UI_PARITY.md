@@ -6,7 +6,7 @@ Correção V71: o toque em uma sigla da Escala abre somente seu painel de contat
 
 Em 27/09/2026, a V70 passou a ordenar a grade diária do Checklist pelos grupos e pelos arsenais finais da V1 e a mostrar os rótulos de função dos seis arsenais especiais. A ordenação é dinâmica conforme o registro resolvido do dia e preserva a ordem administrativa armazenada. A grade e os fluxos ainda requerem conferência visual e operacional em Android/iOS; as referências abaixo à ordem não revisada refletem a etapa anterior.
 
-Em 28/09/2026, a Home passou a usar o viewport dinâmico (`100dvh`) como grade externa fixa, com linhas explícitas para cabeçalho, conteúdo e rodapé. Isso torna efetiva a compressão responsiva já existente para a escala e os atalhos, sem estender a página em celulares com alturas diferentes. O build de produção local passou; confirmar ausência de rolagem e legibilidade nos tamanhos reais de Android/iOS continua pendente.
+Em 28/09/2026, a Home passou a usar o viewport dinâmico (`100dvh`) como grade externa fixa, com linhas explícitas para cabeçalho, conteúdo e rodapé. Isso torna efetiva a compressão responsiva já existente para a escala e os atalhos, sem estender a página em celulares com alturas diferentes. O build de produção local passou; o workflow [`36379388236`](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36379388236) concluiu com sucesso e o CSS servido pelo Pages contém a regra. A leitura de métricas e captura da sessão Chrome expiraram antes de renderizar estado observável; portanto, ausência de rolagem e legibilidade em viewport mobile e aparelhos Android/iOS continuam pendentes de confirmação visual.
 
 ## Ajuste de apresentação mobile (26/09/2026)
 
