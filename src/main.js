@@ -1568,7 +1568,7 @@ async function loadEventReport({append = false} = {}) {
     eventReportSourceRecords.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || eventCreatedAtValue(right.createdAt) - eventCreatedAtValue(left.createdAt));
     eventReportStale = eventReportStale || report.stale;
     eventReportCursor = report.nextCursor;
-    renderEventReportRecords();
+    renderEventReportRecords({append});
     return true;
   } catch (error) {
     if (loadId === eventReportLoad) {
@@ -1595,7 +1595,7 @@ function eventCreatedAtValue(value) {
   return Number.isFinite(date) ? date : 0;
 }
 
-function renderEventReportRecords() {
+function renderEventReportRecords({append = false} = {}) {
   const target = document.querySelector('#event-report-results');
   if (!target) return;
   const records = eventReportSourceRecords;
