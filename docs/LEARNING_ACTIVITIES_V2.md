@@ -61,7 +61,7 @@ As recorrências V1 `PER_EVENT`, `PER_VALIDATED_RENEWAL`, `DAILY`, `WEEKLY`, `MO
 
 ## Sequência de implementação e aceitação
 
-1. **Implementado e implantado:** coleções, validadores, Rules e índices para catálogo/recibos; a última confirmação de estado disponível cobre 37 índices `READY` em 27/09/2026. A consulta atual do Firebase CLI lista 39 definições, mas não informa se todas estão prontas. Ainda falta cobrir allow/deny por identidade, público, estado, janela, versão, autoria e imutabilidade no Emulator.
+1. **Implementado, implantado e coberto no Emulator:** catálogo/recibos, Rules e consultas; os testes em `tests/firestore-rules.test.js` verificam leitura por perfil ativo, permissão, público e estado; criação/edição somente por `trainingsManage`, autoria preservada, versão incremental e exclusão negada; recibos próprios, idempotência, audiência, versão, janela, imutabilidade e bloqueio de usuário sem acesso. O workflow 36495355811 passou em 28/09/2026. Ainda falta homologar esses fluxos com contas reais; isso não é coberto pelo Emulator.
 2. **Implementado e publicado:** CRUD versionado somente no painel `trainingsManage`; valores fora dos tipos/recorrências suportados permanecem indisponíveis.
 3. **Implementado e publicado:** cards junto aos treinamentos com estados vazio/erro, janela filtrada e ações diretas; revisão responsiva e navegação autenticada ainda pendentes.
 4. **Implementado e publicado:** links externos tipados sem conclusão rastreada e ciência imutável sem pontos. Repetição usa recibo determinístico; homologar que perfil sem permissão, usuário fora do público e conta sem perfil não leem nem gravam.
