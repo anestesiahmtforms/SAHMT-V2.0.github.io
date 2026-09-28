@@ -71,6 +71,9 @@ export function bindLabelCamera(form) {
     }
   };
   const onOpen = () => {
+    fileInput.value = '';
+    generatedCapture = null;
+    if (readButton) readButton.disabled = true;
     clearPhotoPreview();
     video.hidden = false;
     if (!dialog.open) dialog.showModal();
