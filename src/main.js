@@ -286,7 +286,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
       : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
-    const marked = highlightedSiglas.has(position.sigla);
+    const marked = !eventMode && highlightedSiglas.has(position.sigla);
     const vacationDescription = position.vacationParts.length
       ? `; em férias: ${position.vacationParts.map((sigla) => `${sigla}, posição ${position.vacationPositions[sigla]} na escala de férias`).join('; ')}`
       : '';
