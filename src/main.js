@@ -400,7 +400,7 @@ async function loadHome() {
     content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${grid || '<p class="empty-state">A escala está publicada sem itens.</p>'}`;
     content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
       const position = scheduleView.positions[Number(button.dataset.schedulePositionIndex)];
-      if (position?.contacts.length) showScheduleContacts(position.contacts, {
+      if (position) showScheduleContacts(position.contacts || [], {
         sigla: position.sigla,
         date: selectedDate,
         groupSiglas: position.contacts.map((contact) => String(contact.sigla || '').toUpperCase()),
@@ -408,10 +408,6 @@ async function loadHome() {
         canRelease: can('scheduleWrite'),
         onRelease: () => void render()
       });
-      else if (position && can('eventsWrite') && featureEnabledForRoute('events', appFeatures)) {
-        pendingEventPosition = {day: selectedDate, position};
-        navigate('events');
-      }
     }));
   };
   const render = async () => {
