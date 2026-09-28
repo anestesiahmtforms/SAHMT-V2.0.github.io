@@ -1690,6 +1690,9 @@ function beginEventEdit(item) {
   form.querySelector('#event-edit-cancel').hidden = false;
   form.elements.memberStatus.readOnly = false;
   const dialog = document.querySelector('#event-launch-dialog');
+  dialog?.classList.add('event-launch-dialog--editing');
+  const title = document.querySelector('#event-launch-title');
+  if (title) title.textContent = 'EDITAR EVENTO';
   if (dialog && !dialog.open) dialog.showModal();
   form.elements.memberStatus.focus({preventScroll: true});
 }
@@ -1710,6 +1713,9 @@ function resetEventEditor() {
   form.querySelector('#event-edit-cancel').hidden = true;
   updateEventEntryFields(form);
   const dialog = document.querySelector('#event-launch-dialog');
+  dialog?.classList.remove('event-launch-dialog--editing');
+  const title = document.querySelector('#event-launch-title');
+  if (title) title.textContent = 'LANÇAMENTO DO EVENTO';
   if (dialog?.open) dialog.close();
 }
 
