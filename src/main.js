@@ -230,10 +230,9 @@ function vacationRankMarkup(sigla, classes, position) {
   return `<span class="sigla-token__vacation-rank"><span class="${classes.join(' ')}">${escapeHtml(sigla)}</span><small class="sigla-token__vacation-number" aria-label="Posição ${position} na escala de férias">${position}</small></span>`;
 }
 
-function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, eventSiglas = []) {
+function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
-  const eventSet = new Set(eventSiglas.map((item) => String(item || '').toUpperCase()));
   return String(sigla || '—').toUpperCase().split(/([/-])/).map((part) => {
     if (part === '/' || part === '-') return escapeHtml(part);
     const onVacation = vacationSet.has(part);
@@ -241,24 +240,21 @@ function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vaca
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(part)) classes.push('sigla-token__released-part--checked');
-    if (eventSet.has(part)) classes.push('sigla-token__event');
     return onVacation
       ? vacationRankMarkup(part, classes, vacationPositions[part] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(part)}</span>`;
   }).join('');
 }
 
-function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, eventSiglas = []) {
+function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
-  const eventSet = new Set(eventSiglas.map((item) => String(item || '').toUpperCase()));
   return siglas.map((sigla) => {
     const onVacation = vacationSet.has(sigla);
     if (onVacation && !showVacationRank) return escapeHtml(sigla);
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(sigla)) classes.push('sigla-token__released-part--checked');
-    if (eventSet.has(sigla)) classes.push('sigla-token__event');
     return onVacation
       ? vacationRankMarkup(sigla, classes, vacationPositions[sigla] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(sigla)}</span>`;
@@ -284,11 +280,12 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const hasContact = position.contacts?.length > 0;
     const canLaunchEvent = eventsWritable && featureEnabledForRoute('events', appFeatures);
     const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
+    const hasEvent = eventMode && (eventSiglas.has(String(position.sigla || '').toUpperCase()) || position.siglas.some((sigla) => eventSiglas.has(String(sigla || '').toUpperCase())));
     const aliases = position.sigla === 'DC' && position.siglas.length
-      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, true, [...eventSiglas])}</small>`
+      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions)}</small>`
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
-      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, [...eventSiglas])}</strong>`;
+      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
     const marked = highlightedSiglas.has(position.sigla);
     const vacationDescription = position.vacationParts.length
       ? `; em férias: ${position.vacationParts.map((sigla) => `${sigla}, posição ${position.vacationPositions[sigla]} na escala de férias`).join('; ')}`
@@ -300,7 +297,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
 }
 
