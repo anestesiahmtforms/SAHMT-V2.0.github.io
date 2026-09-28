@@ -5,15 +5,20 @@ export function bindLabelCamera(form) {
   const dialog = form.querySelector('#label-camera-dialog');
   const video = form.querySelector('#label-camera-video');
   const target = form.querySelector('.label-camera-target');
-  const photoPreview = document.createElement('img');
+  let photoPreview = null;
   const status = form.querySelector('#label-camera-status');
   const fileInput = form.querySelector('#label-image-file');
   const readButton = form.querySelector('#label-read-ai');
   if (!openButton || !dialog || !video || !captureButton || !fileInput) return () => {};
-  photoPreview.alt = 'Prévia da foto da etiqueta';
-  photoPreview.hidden = true;
-  photoPreview.className = 'label-camera-photo';
-  target?.parentElement?.insertBefore(photoPreview, target);
+  try {
+    photoPreview = document.createElement('img');
+    photoPreview.alt = 'Prévia da foto da etiqueta';
+    photoPreview.hidden = true;
+    photoPreview.className = 'label-camera-photo';
+    target?.parentElement?.insertBefore(photoPreview, target);
+  } catch {
+    photoPreview = null;
+  }
   const controller = new AbortController();
   const {signal} = controller;
   let stream = null;
@@ -23,8 +28,8 @@ export function bindLabelCamera(form) {
   const clearPhotoPreview = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = '';
-    photoPreview.removeAttribute('src');
-    photoPreview.hidden = true;
+    photoPreview?.removeAttribute('src');
+    if (photoPreview) photoPreview.hidden = true;
     video.hidden = false;
   };
   const stopStream = () => {
@@ -79,6 +84,10 @@ export function bindLabelCamera(form) {
       return;
     }
     if (readButton) readButton.disabled = true;
+    if (!photoPreview) {
+      status.textContent = 'Não foi possível mostrar a prévia para enquadrar a foto. Use a câmera direta ou o registro manual.';
+      return;
+    }
     stopStream();
     clearPhotoPreview();
     video.hidden = true;
@@ -97,7 +106,7 @@ export function bindLabelCamera(form) {
     photoPreview.src = previewUrl;
   };
   const onCapture = () => {
-    const source = photoPreview.hidden ? video : photoPreview;
+    const source = photoPreview && !photoPreview.hidden ? photoPreview : video;
     const sourceWidth = source === video ? video.videoWidth : photoPreview.naturalWidth;
     const sourceHeight = source === video ? video.videoHeight : photoPreview.naturalHeight;
     if (!sourceWidth || !sourceHeight) {
@@ -164,7 +173,7 @@ export function bindLabelCamera(form) {
     }, 'image/jpeg', 0.92);
   };
   const onDialogClose = () => {
-    const unconfirmedPhoto = !photoPreview.hidden;
+    const unconfirmedPhoto = Boolean(photoPreview && !photoPreview.hidden);
     stopStream();
     clearPhotoPreview();
     if (unconfirmedPhoto) fileInput.value = '';
