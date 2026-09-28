@@ -393,3 +393,6 @@
 .event-launch-dialog>form>.form-grid>label.event-member-control{width:100%;padding:8px 10px;border:2px solid #d9aa32;border-radius:13px;background:linear-gradient(145deg,#fff9e8,#fff0bd);box-shadow:0 3px 0 #d8b650,0 6px 15px #74500024;color:#513e0c}
 .event-launch-dialog>form>.form-grid>label.event-member-control>span{font-size:clamp(.78rem,1.8vw,.92rem);font-weight:950;letter-spacing:.04em}
 .event-launch-dialog>form>.form-grid>label.event-member-control>input{width:100%;border:1px solid #d5a92f;background:#fff;color:#352706;font-weight:900;text-align:center}
+.event-launch-dialog>.event-launch-footer{flex:0 0 auto;display:flex;justify-content:center;padding-top:8px;border-top:1px solid #d4e2e8}
+.event-launch-dialog>.event-launch-footer form{margin:0}
+.event-launch-dialog>.event-launch-footer .secondary-button{min-width:min(80%,260px);min-height:42px;background:#fff;color:#1762a1;font-weight:900;touch-action:manipulation}

@@ -295,7 +295,7 @@ function renderEventSupportTile(eventsWritable) {
 function actionForm(route) {
   if (route === 'events') {
     if (!can('eventsWrite')) return '';
-    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></header><form data-module-form="events" autocomplete="on" novalidate>
+    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
     <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
@@ -307,7 +307,7 @@ function actionForm(route) {
     <label><span>Valor a pagar</span><input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
     <p id="event-catalog-stale" class="record-meta" role="status" hidden></p>
-    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;
+    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></footer></dialog>`;
   }
   if (route === 'admin' && can('eventsCatalogManage')) return `<details class="quick-form"><summary>Configurar opções de Eventos</summary><form id="event-catalog-form">
     <p class="record-meta">Pagadores e credores disponíveis no lançamento de Eventos.</p>
