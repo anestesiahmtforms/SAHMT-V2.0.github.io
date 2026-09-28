@@ -3459,7 +3459,7 @@ function updateEventEntryFields(form) {
   applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
 
   const amount = rules.amountMode === 'delay'
-    ? (form.elements.delayMultiple.value === '' ? null : Number(form.elements.delayMultiple.value) * 100)
+    ? (form.elements.delayMultiple.value === '' ? null : Number(form.elements.delayMultiple.value) * 200)
     : rules.amountMode === 'shift' ? (normalizeEventOption(form.elements.shift.value) === 'integral' ? 2000 : (['manha', 'tarde'].includes(normalizeEventOption(form.elements.shift.value)) ? 1000 : null))
       : null;
   applyEventAmountAutofill(form.elements.amountToPay, amount, editing);
