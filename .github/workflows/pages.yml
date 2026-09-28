@@ -43,6 +43,7 @@ jobs:
       - name: Build PWA
         env:
           VITE_APP_CHECK_SITE_KEY: ${{ vars.VITE_APP_CHECK_SITE_KEY }}
+          VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
         run: npm run build
       - name: Include local-only review tools
         run: mkdir -p dist/tools && cp tools/catalog-review.html dist/tools/catalog-review.html && cp tools/user-contact-review.html dist/tools/user-contact-review.html

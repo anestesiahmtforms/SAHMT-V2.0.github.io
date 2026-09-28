@@ -3,14 +3,19 @@ import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
-import {defineSecret} from 'firebase-functions/params';
+import {defineBoolean, defineSecret} from 'firebase-functions/params';
 import {buildReportSyncJob} from './report-sync-queue.js';
 
 initializeApp({projectId: process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT});
 const db = getFirestore();
 const REGION = 'southamerica-east1';
 const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
-const LABEL_AI_MODEL = 'gpt-5.2';
+const LABEL_AI_PROCESSING_APPROVED = defineBoolean('SAHMT_LABEL_AI_PROCESSING_APPROVED', {
+  default: false,
+  label: 'Processamento de imagens de etiquetas autorizado',
+  description: 'Mantenha false até a instituição aprovar o envio de dados de pacientes à OpenAI e confirmar os controles contratuais de retenção.'
+});
+const LABEL_AI_MODEL = 'gpt-6-luna';
 const MAX_STATIONS = 200;
 const MAX_DAILY_RECORDS = 1000;
 
@@ -23,6 +28,9 @@ const dcFallback = ['AD', 'CR', 'LA', 'LH'];
 export const readLabelImage = onCall({region: REGION, enforceAppCheck: true, secrets: [OPENAI_API_KEY], timeoutSeconds: 60, memory: '512MiB'}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Entre no SAHMT para ler a etiqueta.');
+  if (!LABEL_AI_PROCESSING_APPROVED.value()) {
+    throw new HttpsError('failed-precondition', 'A leitura por IA está desativada até a instituição aprovar o tratamento das imagens de etiquetas. Use o registro manual.');
+  }
   const profileSnapshot = await db.doc(`users/${uid}`).get();
   const profile = profileSnapshot.data();
   const permissions = profile?.permissions || {};
@@ -61,7 +69,7 @@ export const readLabelImage = onCall({region: REGION, enforceAppCheck: true, sec
       body: JSON.stringify({
         model: LABEL_AI_MODEL,
         store: false,
-        reasoning: {effort: 'low'},
+        reasoning: {effort: 'none'},
         max_output_tokens: 320,
         input: [{role: 'user', content: [{type: 'input_text', text: prompt}, ...imageParts]}],
         text: {format: {type: 'json_schema', name: 'etiqueta_hmt', strict: true, schema: {
