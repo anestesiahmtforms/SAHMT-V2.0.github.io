@@ -73,6 +73,7 @@ let labelReportLoadingMore = false;
 let loadedLabelStaffSiglas = [];
 let reportPdfPromise = null;
 let checklistReportMode = 'daily';
+let checklistReportOpen = false;
 let checklistReportLoad = 0;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
@@ -162,25 +163,6 @@ function loadQrDecoder() {
     document.head.append(script);
   });
   return qrDecoderPromise;
-}
-
-async function decodeQrPhoto(file) {
-  if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Escolha uma foto válida do QR Code.');
-  if (typeof createImageBitmap !== 'function') throw new Error('Este aparelho não consegue abrir a foto do QR. Use a câmera ou digite o código.');
-  await loadQrDecoder();
-  const bitmap = await createImageBitmap(file);
-  try {
-    const scale = Math.min(1, 900 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext('2d', {willReadFrequently: true});
-    if (!context) throw new Error('Não foi possível preparar a foto do QR Code.');
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return decodeQrImageData(context.getImageData(0, 0, canvas.width, canvas.height), window.ZXing);
-  } finally {
-    bitmap.close();
-  }
 }
 
 function loginView() {
@@ -349,7 +331,7 @@ function actionForm(route) {
     <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
-  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" aria-describedby="label-ai-privacy-note" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-privacy-note" class="record-meta label-ai-privacy-note">${labelAiEnabled ? 'Ao tocar em LER ETIQUETA, a imagem é enviada à IA OpenAI para leitura. Os campos extraídos aparecem como rascunho e precisam ser revisados antes de salvar.' : 'A leitura por IA está desativada. Use Registro Manual; nenhuma imagem será enviada à IA.'}</p><p id="label-ai-status" class="record-meta" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label><span>Data</span><input name="date" type="date" value="${todayInputValue()}" required></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label data-label-field="amount" hidden><span>Valor em Real</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><span>PLANTONISTA(S)</span><button class="secondary-button" type="button" id="label-staff-toggle" aria-expanded="false">Selecionar plantonistas</button><input name="staffSiglas" type="hidden"><div id="label-staff-options" class="label-staff-options" hidden></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return `${can('checklistManage') ? `<details class="quick-form"><summary>Configurar estações do Checklist</summary><form id="checklist-station-form"><div class="form-grid"><label>Nome da estação<input name="name" required maxlength="120"></label><label>Código QR<input name="qrCode" required maxlength="300" autocomplete="off"></label><label>Início da vigência<input name="start" type="date"></label><label>Fim da vigência<input name="end" type="date"></label><label>Ordem<input name="order" type="number" min="0" max="9999" step="1" value="0"></label><label class="contact-active-field"><input name="active" type="checkbox" checked> Estação ativa</label></div><input name="stationId" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar estação</button><button class="secondary-button" id="station-edit-cancel" type="button">Nova estação</button></div><p id="checklist-station-status" class="record-meta" role="status" aria-live="polite"></p></form><div id="checklist-station-list" class="module-content"><p class="loading">Carregando catálogo…</p></div></details>` : ''}<section class="checklist-controls panel" aria-label="Relatórios do checklist"><div class="report-mode"><button type="button" data-checklist-report-mode="daily" aria-pressed="${checklistReportMode === 'daily'}">CHECKLIST DIÁRIO</button><button type="button" data-checklist-report-mode="monthly" aria-pressed="${checklistReportMode === 'monthly'}">RELATÓRIO MENSAL</button></div><div class="report-period"><label id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Data do checklist<input id="checklist-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}"></label><label id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}>Mês de referência<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label>${can('checklistWrite') ? `<button class="secondary-button" id="checklist-scan-qr" type="button" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Ler QR da estação</button><button class="secondary-button" id="checklist-qr-photo" type="button" ${checklistReportMode !== 'daily' ? 'hidden' : ''}>Ler QR de uma foto</button><input id="checklist-qr-photo-file" class="sr-only" type="file" accept="image/*" capture="environment" tabindex="-1" aria-label="Escolher foto do QR da estação"><span id="checklist-qr-photo-status" class="record-meta" role="status" aria-live="polite"></span>` : ''}<button class="secondary-button" id="checklist-refresh" type="button">Atualizar</button></div></section>`;
+  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" aria-describedby="label-ai-privacy-note" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-privacy-note" class="record-meta label-ai-privacy-note">${labelAiEnabled ? 'Ao tocar em LER ETIQUETA, a imagem é enviada à IA OpenAI para leitura. Os campos extraídos aparecem como rascunho e precisam ser revisados antes de salvar.' : 'A leitura por IA está desativada. Use Registro Manual; nenhuma imagem será enviada à IA.'}</p><p id="label-ai-status" class="record-meta" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label><span>Data</span><input name="date" type="date" value="${todayInputValue()}" required></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label data-label-field="amount" hidden><span>Valor em Real</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><span>PLANTONISTA(S)</span><button class="secondary-button" type="button" id="label-staff-toggle" aria-expanded="false">Selecionar plantonistas</button><input name="staffSiglas" type="hidden"><div id="label-staff-options" class="label-staff-options" hidden></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
   if (route === 'management' && (can('managementActivityWrite') || can('qualityManage'))) return `<details class="quick-form" open><summary>Nova atividade</summary><form data-module-form="activity">
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
@@ -374,6 +356,10 @@ function shellView() {
   const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><h3>ACESSOS DE GESTÃO</h3><div class="module-grid">${utilityCards}</div></section>` : '';
   const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></dialog>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
+  const checklistCalendar = route === 'checklist' ? `<section class="checklist-page-calendar" aria-label="Data do Checklist"><h2>CALENDÁRIO</h2><input id="checklist-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do Checklist"></section>` : '';
+  const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
+  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly">RELATÓRIO MENSAL</button></div>` : '';
+  const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title">RELATÓRIO DIÁRIO - CHECKLIST</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><h3>CALENDÁRIO</h3><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div></dialog>` : '';
   const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><header class="panel-heading"><div><p class="eyebrow">ESCALA</p><h2>Calendário</h2></div><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav>
@@ -381,10 +367,10 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : route === 'labels' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${checklistVisual}${managementBrand}${managementUtilities}${eventSchedule}${actionForm(route)}${eventReport}${labelReport}<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div><button class="secondary-button${route === 'events' ? ' events-home-button' : ''}" data-route="home">${route === 'events' ? 'HOME' : 'Voltar para Home'}</button></section>`;
-  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : ''}">
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' ? '<h2 class="events-module-heading">OPERACIONAL</h2>' : route === 'labels' || route === 'checklist' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementBrand}${managementUtilities}${eventSchedule}${route === 'checklist' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : ''}" data-route="home">${route === 'events' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : ''}">
     <header class="topbar"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="sync-pill" id="outbox-status" role="status"></div><div class="account"><div class="account-copy"><strong>${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</strong>${route === 'home' || route === 'events' ? '' : `<small>${escapeHtml(profile.sigla || profile.email || session.user.email || '')}</small>`}</div></div></header>
-    <main class="main-content">${route === 'home' || route === 'events' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : ''}">${route === 'labels' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+    <main class="main-content">${route === 'home' || route === 'events' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><video id="checklist-qr-video" playsinline muted hidden></video><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -814,22 +800,64 @@ async function loadModule(route) {
       return;
     }
     if (route === 'checklist') {
-      document.querySelectorAll('[data-checklist-report-mode]').forEach((button) => button.addEventListener('click', async () => {
-        checklistReportMode = button.dataset.checklistReportMode;
-        document.querySelectorAll('[data-checklist-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+      const reportDialog = document.querySelector('#checklist-report-dialog');
+      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; stopChecklistQrScanner(false); });
+      const pageDay = document.querySelector('#checklist-day');
+      const reportDay = document.querySelector('#checklist-report-day');
+      const updateDayControls = (day) => {
+        const value = day && day <= todayInputValue() ? day : todayInputValue();
+        if (pageDay) pageDay.value = value;
+        if (reportDay) reportDay.value = value;
+        const next = document.querySelector('#checklist-report-next');
+        if (next) next.disabled = value >= todayInputValue();
+        const today = document.querySelector('#checklist-report-today');
+        if (today) today.disabled = value === todayInputValue();
+        const scan = document.querySelector('#checklist-scan-qr');
+        if (scan) {
+          scan.hidden = value !== todayInputValue();
+          scan.onclick = async () => {
+            if (!checklistReportOpen) {
+              checklistReportMode = 'daily';
+              checklistReportOpen = true;
+              const dialog = document.querySelector('#checklist-report-dialog');
+              if (dialog && !dialog.open) dialog.showModal();
+              const title = document.querySelector('#checklist-report-title');
+              if (title) title.textContent = 'RELATÓRIO DIÁRIO - CHECKLIST';
+              document.querySelector('#checklist-day-control').hidden = false;
+              document.querySelector('#checklist-month-control').hidden = true;
+              await loadDailyChecklist(items, value);
+            }
+            const writableStations = items.filter((station) => stationIsInDateRange(station, value) && stationIsValidOn(station, value));
+            if (writableStations.length) void openChecklistQrScanner(writableStations, value);
+          };
+        }
+      };
+      const setReportDay = (value) => {
+        updateDayControls(value);
+        if (checklistReportOpen && checklistReportMode === 'daily') void loadDailyChecklist(items, value);
+      };
+      updateDayControls(pageDay?.value || todayInputValue());
+      document.querySelectorAll('[data-checklist-report-launch]').forEach((button) => button.addEventListener('click', async () => {
+        checklistReportMode = button.dataset.checklistReportLaunch;
+        checklistReportOpen = true;
+        if (reportDialog && !reportDialog.open) reportDialog.showModal();
+        const title = document.querySelector('#checklist-report-title');
+        if (title) title.textContent = checklistReportMode === 'daily' ? 'RELATÓRIO DIÁRIO - CHECKLIST' : 'RELATÓRIO MENSAL - CHECKLIST';
         document.querySelector('#checklist-day-control').hidden = checklistReportMode !== 'daily';
         document.querySelector('#checklist-month-control').hidden = checklistReportMode !== 'monthly';
-        const scanButton = document.querySelector('#checklist-scan-qr');
-        if (scanButton) scanButton.hidden = checklistReportMode !== 'daily';
-        const photoButton = document.querySelector('#checklist-qr-photo');
-        if (photoButton) photoButton.hidden = checklistReportMode !== 'daily';
+        if (checklistReportMode === 'daily') updateDayControls(pageDay?.value || todayInputValue());
         await loadChecklistView(items);
       }));
-      document.querySelector('#checklist-day')?.addEventListener('change', () => loadChecklistView(items));
+      pageDay?.addEventListener('change', () => setReportDay(pageDay.value));
+      reportDay?.addEventListener('change', () => setReportDay(reportDay.value));
       document.querySelector('#checklist-month')?.addEventListener('change', () => loadChecklistView(items));
-      document.querySelector('#checklist-refresh')?.addEventListener('click', () => loadChecklistView(items));
-      await loadChecklistView(items);
-      await loadChecklistStationAdmin();
+      document.querySelector('#checklist-report-previous')?.addEventListener('click', () => setReportDay(shiftDateKey(reportDay?.value || todayInputValue(), -1)));
+      document.querySelector('#checklist-report-next')?.addEventListener('click', () => setReportDay(shiftDateKey(reportDay?.value || todayInputValue(), 1)));
+      document.querySelector('#checklist-report-today')?.addEventListener('click', () => setReportDay(todayInputValue()));
+      if (checklistReportOpen) {
+        if (reportDialog && !reportDialog.open) reportDialog.showModal();
+        await loadChecklistView(items);
+      }
       return;
     }
     if (route === 'management') {
@@ -1207,7 +1235,7 @@ async function loadAdminModule(content) {
 async function loadDailyChecklist(stations, suppliedDay) {
   const content = document.querySelector('#module-content');
   if (!content) return;
-  const day = suppliedDay || document.querySelector('#checklist-day')?.value || todayInputValue();
+  const day = suppliedDay || document.querySelector('#checklist-report-day')?.value || document.querySelector('#checklist-day')?.value || todayInputValue();
   const dayMode = checklistDayMode(day, todayInputValue());
   if (dayMode === 'invalid') return;
   if (dayMode === 'future') {
@@ -1221,6 +1249,14 @@ async function loadDailyChecklist(stations, suppliedDay) {
     const {listChecklistRecords} = await import('./data.js');
     const result = await listChecklistRecords(day, session.user.uid, {pageSize: 1000, stationIds: applicableStations.map((station) => station.id)});
     const records = result.records;
+    const syncIndicator = document.querySelector('#checklist-report-sync');
+    if (syncIndicator) {
+      const waiting = records.some((record) => record.pendingSync || record.syncFailed);
+      const stale = result.stale || waiting;
+      syncIndicator.classList.toggle('is-stale', stale);
+      syncIndicator.querySelector('span')?.classList.toggle('is-stale', stale);
+      syncIndicator.lastChild.textContent = result.stale ? ' Sem conexão · dados salvos' : waiting ? ' Aguardando sincronização' : ' Sincronizado';
+    }
     const latestByStation = new Map();
     for (const record of records) if (!latestByStation.has(record.stationId)) latestByStation.set(record.stationId, record);
     const priorByStation = new Map();
@@ -1250,7 +1286,7 @@ async function loadDailyChecklist(stations, suppliedDay) {
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
     const signatureMarkup = dayMode === 'today' && can('checklistSign') ? `<section class="checklist-signature panel" aria-label="Assinatura interna do Checklist"><p>Assinatura do relatório diário</p><button class="secondary-button" id="checklist-signature-prepare" type="button" ${!navigator.onLine || result.stale || pendingChecklistWrites || !applicableStations.length ? 'disabled' : ''}>Revisar e assinar</button><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></section>` : '';
-    content.innerHTML = `${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${signatureMarkup}${summaryCards}${stationGrid}`;
+    content.innerHTML = `${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}${stationGrid}${signatureMarkup}`;
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.addEventListener('click', () => {
       content.querySelectorAll('[data-checklist-select]').forEach((other) => {
         const selected = other === button;
@@ -1315,36 +1351,6 @@ async function loadDailyChecklist(stations, suppliedDay) {
         if (prepareSignature.isConnected) prepareSignature.disabled = !navigator.onLine || pendingChecklistWrites;
       }
     });
-    const scanButton = document.querySelector('#checklist-scan-qr');
-    if (scanButton) {
-      scanButton.hidden = checklistReportMode !== 'daily' || day !== todayInputValue();
-      scanButton.onclick = () => openChecklistQrScanner(writableStations, day);
-    }
-    const photoButton = document.querySelector('#checklist-qr-photo');
-    const photoInput = document.querySelector('#checklist-qr-photo-file');
-    const photoStatus = document.querySelector('#checklist-qr-photo-status');
-    if (photoButton && photoInput) {
-      photoButton.hidden = checklistReportMode !== 'daily' || day !== todayInputValue();
-      photoButton.onclick = () => photoInput.click();
-      photoInput.onchange = async () => {
-        const file = photoInput.files?.[0];
-        photoInput.value = '';
-        if (!file) return;
-        photoButton.disabled = true;
-        if (photoStatus) photoStatus.textContent = 'Lendo a foto neste aparelho…';
-        try {
-          const qrValue = await decodeQrPhoto(file);
-          const station = qrValue && findStationForQr(writableStations, qrValue, day);
-          if (!station) throw new Error('QR não identificado ou sem correspondência com uma estação ativa. Revise a foto ou digite o código no leitor.');
-          if (photoStatus) photoStatus.textContent = `QR localizado: ${station.name || station.id}. Foto processada neste aparelho e não enviada.`;
-          revealChecklistStation(station);
-        } catch (error) {
-          if (photoStatus) photoStatus.textContent = error.message || 'Não foi possível ler o QR desta foto.';
-        } finally {
-          photoButton.disabled = false;
-        }
-      };
-    }
     content.querySelectorAll('[data-checklist-condition="NAO"]').forEach((button) => button.addEventListener('click', () => {
       if (button.dataset.confirm === '1') { void saveChecklistAnswer(button.dataset.stationId, 'NAO', day); return; }
       const box = content.querySelector(`[data-occurrence-for="${CSS.escape(button.dataset.stationId)}"]`)?.closest('.checklist-occurrence');
@@ -1518,12 +1524,30 @@ async function loadMonthlyChecklist(stations) {
       content.innerHTML = `${result.stale ? '<p class="sync-state">Sem conexão: exibindo o resumo salvo neste aparelho.</p>' : ''}${result.truncated ? '<p class="sync-state">O volume do mês excede o limite desta consulta; este resumo pode estar incompleto.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">O histórico anterior não está completo neste cache; respostas herdadas podem faltar.</p>' : ''}<p class="checklist-report-note">Resumo dos registros encontrados no Firestore. Um NÃO anterior permanece indicado até nova resposta, conforme a regra do Checklist. A assinatura é feita no relatório diário do dia atual.</p><div class="checklist-month-list">${rows}</div>`;
     content.querySelectorAll('[data-checklist-open-day]').forEach((button) => button.addEventListener('click', async () => {
       checklistReportMode = 'daily';
+      checklistReportOpen = true;
       const day = button.dataset.checklistOpenDay;
       const dayInput = document.querySelector('#checklist-day');
+      const reportDayInput = document.querySelector('#checklist-report-day');
       if (dayInput) dayInput.value = day;
-      document.querySelectorAll('[data-checklist-report-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.checklistReportMode === 'daily')));
+      if (reportDayInput) reportDayInput.value = day;
+      const dialog = document.querySelector('#checklist-report-dialog');
+      if (dialog && !dialog.open) dialog.showModal();
+      const title = document.querySelector('#checklist-report-title');
+      if (title) title.textContent = 'RELATÓRIO DIÁRIO - CHECKLIST';
       document.querySelector('#checklist-day-control').hidden = false;
       document.querySelector('#checklist-month-control').hidden = true;
+      const next = document.querySelector('#checklist-report-next');
+      if (next) next.disabled = day >= todayInputValue();
+      const today = document.querySelector('#checklist-report-today');
+      if (today) today.disabled = day === todayInputValue();
+      const scan = document.querySelector('#checklist-scan-qr');
+      if (scan) {
+        scan.hidden = day !== todayInputValue();
+        scan.onclick = () => {
+          const writableStations = stations.filter((station) => stationIsInDateRange(station, day) && stationIsValidOn(station, day));
+          if (writableStations.length) void openChecklistQrScanner(writableStations, day);
+        };
+      }
       await loadDailyChecklist(stations, day);
     }));
   } catch (error) {

@@ -493,3 +493,75 @@
 @media(orientation:landscape) and (max-height:520px){.app-shell--labels .label-entry-dialog[open]{padding-block:6px}.app-shell--labels .label-entry-dialog form{gap:6px}.app-shell--labels .label-entry-dialog .form-grid{gap:5px}}
 
 .app-shell:not(.app-shell--events) .schedule-siglas-grid .sigla-token--checked:not(.sigla-token--vacation):not(.sigla-token--event){border-color:#9fc8a5;background:linear-gradient(180deg,#e2f1e3,#c9e4cb 42%,#b5d8b9)!important;color:#365c3c!important;text-shadow:0 1px 1px rgba(255,255,255,.68);box-shadow:0 0 0 2px rgba(232,244,232,.92),0 0 8px rgba(123,171,130,.2),inset 0 0 10px rgba(255,255,255,.34),0 6px 14px rgba(61,105,67,.12)!important}
+
+/* Checklist: a clean title page, QR scanner shortcut and report overlay. */
+.app-shell--checklist .page-title--checklist{display:grid;justify-items:center;margin:0 0 12px;text-align:center}
+.app-shell--checklist .page-title--checklist h1{font-size:clamp(1.35rem,5vw,2rem);font-weight:950;letter-spacing:.045em;text-transform:uppercase}
+.app-shell--checklist .module-view--checklist{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:clamp(9px,1.8dvh,16px)}
+.app-shell--checklist .module-view--checklist>p,.app-shell--checklist .module-view--checklist>.eyebrow{display:none}
+.checklist-page-calendar{display:grid;gap:6px;margin:0;padding:10px 12px;border:1px solid #d3e1e7;border-radius:16px;background:linear-gradient(145deg,#fff,#edf4f6);box-shadow:0 3px 0 #c8d9e0}
+.checklist-page-calendar h2{margin:0;color:#173957;font-size:.8rem;font-weight:950;letter-spacing:.04em;text-align:center}
+.checklist-page-calendar input{width:100%;min-height:50px;padding:7px 10px;border:2px solid #9dbac7;border-radius:14px;background:#fff;color:#173957;font-size:1rem;font-weight:850;text-align:center}
+.app-shell--checklist .checklist-visual{margin:0;padding:clamp(8px,1.7vw,14px);border-radius:20px;background:linear-gradient(145deg,#fff,#e8f0f3)}
+.app-shell--checklist .checklist-visual figcaption{text-align:center;font-size:.85rem;font-weight:900}
+.checklist-qr-launcher{display:grid;justify-items:center;align-content:center;gap:6px;width:min(100%,360px);min-height:clamp(92px,13dvh,122px);justify-self:center;padding:10px;border:2px solid #fff;border-radius:24px;background:linear-gradient(145deg,#2377b9,#10518c);color:#fff;font-size:clamp(.85rem,3.6vw,1.05rem);font-weight:950;letter-spacing:.04em;box-shadow:0 5px 0 #0b3e6d,0 10px 18px rgba(13,50,87,.18),inset 0 1px 0 rgba(255,255,255,.45)}
+.checklist-qr-launcher svg{width:42px;height:42px;color:#fff}
+.checklist-qr-launcher:active{transform:translateY(2px)}
+.checklist-report-launchers{width:100%;margin:0}
+.checklist-report-dialog{position:fixed;inset:0;width:min(calc(100vw - 20px),860px);height:min(calc(100dvh - 20px),920px);max-width:none;max-height:none;margin:auto;padding:clamp(10px,2.5vw,20px);display:none;grid-template-rows:auto auto minmax(0,1fr);gap:clamp(8px,1.3dvh,13px);overflow:hidden;border:3px solid #1762a1;border-radius:25px;background:linear-gradient(145deg,#fffaf0,#f5ead7);color:#143254;box-shadow:0 22px 70px #001b3580}
+.checklist-report-dialog[open]{display:grid}
+.checklist-report-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
+.checklist-report-dialog__header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;padding:2px 0 8px;border-bottom:1px solid #d5e0df}
+.checklist-report-dialog__header h2{grid-column:2;margin:0;color:#173957;font-size:clamp(.85rem,3.4vw,1.15rem);font-weight:950;letter-spacing:.025em;text-align:center;white-space:nowrap}
+.checklist-report-dialog__header form{grid-column:3;grid-row:1;justify-self:end;margin:0}
+.checklist-report-dialog__header button{min-height:38px;padding:5px 10px}
+.checklist-report-periods{min-height:0}
+.checklist-report-calendar{display:grid;gap:clamp(5px,.8dvh,9px);padding:clamp(8px,1.6vw,14px);border:1px solid #e2e2dc;border-radius:20px;background:linear-gradient(145deg,#f4f3ed,#efeee8);box-shadow:0 3px 0 #d8d9d2}
+.checklist-report-calendar h3{margin:0;color:#173957;font-size:clamp(.78rem,2.6vw,.98rem);font-weight:950;text-align:center}
+.checklist-report-calendar>input{width:100%;min-height:clamp(52px,9dvh,76px);padding:8px;border:2px solid #75a8c8;border-radius:20px;background:#dce8ee;color:#173957;font-size:clamp(1rem,4.5vw,1.45rem);font-weight:900;text-align:center}
+.checklist-report-calendar .schedule-day-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0}
+.checklist-report-calendar .schedule-day-nav button{min-width:0;min-height:clamp(44px,7.3dvh,62px);padding:6px;border:1px solid #fff;border-radius:18px;background:linear-gradient(145deg,#f7fafb,#dfe8eb);color:#173957;font-size:clamp(.72rem,3vw,.95rem);font-weight:900;box-shadow:0 3px 0 #c3d0d3}
+.checklist-report-calendar .schedule-day-nav #checklist-report-today{background:linear-gradient(145deg,#1762a1,#0d3257);color:#fff;box-shadow:0 3px 0 #092743}
+.checklist-report-sync{display:flex;justify-content:center;align-items:center;gap:6px;margin:0;color:#18834a;font-size:.72rem;font-weight:850}
+.checklist-report-sync>span{width:12px;height:12px;border-radius:50%;background:#25aa5d;box-shadow:0 0 0 3px #25aa5d28}
+.checklist-report-sync>span.is-stale{background:#d9911a;box-shadow:0 0 0 3px #d9911a28}
+.checklist-report-sync.is-stale{color:#8d5a08}
+.checklist-report-month{display:grid;padding:10px 12px;border:1px solid #d5e0df;border-radius:16px;background:#f4f3ed}
+.checklist-report-month label{display:grid;gap:6px;color:#173957;font-size:.72rem;font-weight:900}
+.checklist-report-month input{width:100%;min-height:48px;padding:7px 10px;border:2px solid #75a8c8;border-radius:13px;background:#fff;color:#173957;font-size:1rem;font-weight:850;text-align:center}
+.checklist-report-content{min-height:0;height:100%;margin:0;padding:clamp(5px,1.2vw,10px);overflow:auto;overscroll-behavior:contain;border:1px solid #eadfc9;border-radius:18px;background:rgba(255,255,255,.66)}
+.checklist-report-dialog .checklist-summary-grid{margin:0 0 8px}
+.checklist-report-dialog .checklist-station-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(4px,.8vw,8px);margin:0}
+.checklist-report-dialog .checklist-station-grid .checklist-station{min-height:0;padding:5px;border:0;background:transparent}
+.checklist-report-dialog .checklist-station>div:first-child{gap:3px}
+.checklist-report-dialog .checklist-station>div:first-child>small{font-size:.61rem;text-align:center}
+.checklist-report-dialog .checklist-station-select{min-height:clamp(48px,8dvh,72px);padding:5px 3px;border:2px solid #fff;border-radius:18px;background:linear-gradient(145deg,#fff,#e3edf1);color:#173957;font-size:clamp(.52rem,2.2vw,.78rem);font-weight:950;text-align:center;overflow-wrap:anywhere;box-shadow:0 3px 0 #9db4bc,0 5px 10px rgba(20,58,78,.12)}
+.checklist-report-dialog .checklist-station-complete .checklist-station-select{background:linear-gradient(145deg,#eff8ee,#d4e9d0);color:#315d36}
+.checklist-report-dialog .checklist-station-nonconforming .checklist-station-select{background:linear-gradient(145deg,#ffe6e2,#f5c4bf);color:#8f2929}
+.checklist-report-dialog .checklist-station-inactive .checklist-station-select{background:linear-gradient(145deg,#e6f1f6,#b9d5e5);color:#164b73}
+.checklist-report-dialog .checklist-actions{gap:4px}
+.checklist-report-dialog .checklist-actions .secondary-button{min-height:34px;padding:4px;font-size:.61rem}
+.checklist-signature{display:grid;gap:8px;margin:10px 0 0;padding:clamp(10px,1.8vw,16px);border:1px solid #c4d9df;border-radius:20px;background:linear-gradient(145deg,#f5fbfc,#dce9ed);box-shadow:0 4px 0 #a4c0c8;text-align:center}
+.checklist-signature>p:first-child{margin:0;color:#173957;font-size:.9rem;font-weight:950;letter-spacing:.03em;text-transform:uppercase}
+.checklist-signature>button{width:100%;min-height:clamp(50px,7.5dvh,66px);border-radius:20px;background:linear-gradient(145deg,#2a8bcc,#0d3257);color:#fff;font-size:clamp(.8rem,3vw,1rem);font-weight:900;box-shadow:0 4px 0 #092743}
+@media(max-width:520px){
+ .checklist-report-dialog{inset:max(7px,env(safe-area-inset-top)) max(7px,env(safe-area-inset-right)) max(7px,env(safe-area-inset-bottom)) max(7px,env(safe-area-inset-left));width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:9px;border-radius:21px}
+ .checklist-report-dialog__header{grid-template-columns:minmax(0,1fr) auto;padding-bottom:6px}
+ .checklist-report-dialog__header h2{grid-column:1;grid-row:1;justify-self:start;font-size:clamp(.76rem,3.35vw,.95rem);text-align:left}
+ .checklist-report-dialog__header form{grid-column:2;grid-row:1}
+ .checklist-report-dialog__header button{min-height:36px;padding:4px 8px}
+ .checklist-report-calendar{gap:5px;padding:7px;border-radius:16px}
+ .checklist-report-calendar>input{min-height:52px;font-size:1rem}
+ .checklist-report-calendar .schedule-day-nav button{min-height:42px;padding:4px 2px}
+ .checklist-report-dialog .checklist-station-grid{gap:3px}
+ .checklist-report-dialog .checklist-station-grid .checklist-station{padding:2px}
+ .checklist-report-dialog .checklist-station-select{min-height:clamp(45px,6.5dvh,58px);padding:3px 1px;border-radius:14px;font-size:clamp(.48rem,2.35vw,.65rem)}
+ .checklist-report-dialog .checklist-station-grid .checklist-station>div:first-child>small{font-size:.54rem;line-height:1.1}
+ .checklist-report-dialog .checklist-actions .secondary-button{min-height:30px;padding:2px;font-size:.55rem}
+}
+@media(max-height:680px){.checklist-report-dialog{gap:6px;padding-block:8px}.checklist-report-calendar{gap:4px;padding-block:6px}.checklist-report-calendar>input{min-height:42px}.checklist-report-calendar .schedule-day-nav button{min-height:36px}.checklist-report-dialog .checklist-station-select{min-height:42px}.checklist-signature{gap:5px;margin-top:7px}}
+
+.checklist-report-launchers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.checklist-report-launchers button{min-height:46px;padding:8px;border:1px solid #fff;border-radius:999px;background:linear-gradient(145deg,#1b9b8d,#08736c);color:#fff;font-size:clamp(.65rem,2.4vw,.78rem);font-weight:950;letter-spacing:.035em;box-shadow:0 3px 0 #07534d,0 7px 13px #001b3529}
+.checklist-report-launchers button[data-checklist-report-launch="monthly"]{background:linear-gradient(145deg,#e7b653,#a8731d);box-shadow:0 3px 0 #765016,0 7px 13px #001b3529}
+.checklist-report-launchers button:active{transform:translateY(2px)}
