@@ -20,6 +20,10 @@
 .event-record-banner__heading button{flex:0 0 auto;min-height:38px;padding:7px 13px}
 .event-record-banner__details{display:grid;gap:5px}
 .event-record-banner__details>small{color:#526578;font-size:.73rem;line-height:1.4;overflow-wrap:anywhere}
+.event-report-launchers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.event-report-launchers button{min-height:44px;padding:8px;border:1px solid #fff;border-radius:999px;background:linear-gradient(145deg,#1b9b8d,#08736c);color:#fff;font-size:clamp(.65rem,2.4vw,.78rem);font-weight:950;letter-spacing:.035em;box-shadow:0 3px 0 #07534d,0 7px 13px #001b3529}
+.event-report-launchers button[data-event-report-launch="monthly"]{background:linear-gradient(145deg,#e7b653,#a8731d);box-shadow:0 3px 0 #765016,0 7px 13px #001b3529}
+.event-report-launchers button:active{transform:translateY(2px)}
 .event-report-dialog{position:fixed;inset:0;width:min(calc(100vw - 20px),760px);height:min(calc(100dvh - 20px),820px);max-width:none;max-height:none;margin:auto;padding:clamp(12px,3vw,22px);overflow:hidden;grid-template-rows:auto auto auto minmax(0,1fr);gap:12px;border:2px solid #fff;border-radius:22px;background:linear-gradient(145deg,#fffdf8,#e8f0f3);color:var(--ink);box-shadow:0 22px 70px #001b3580}
 .event-report-dialog[open]{display:grid}
 .event-report-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
