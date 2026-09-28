@@ -386,6 +386,8 @@
 .app-shell--events .event-schedule .schedule-content>.empty-state{width:100%;height:100%;display:grid;place-items:center;padding:8px}
 .app-shell--events .event-schedule .schedule-content>.sync-state{flex:0 0 auto;margin:2px 0;padding:4px 6px;font-size:.62rem}
 .app-shell--events .event-report{height:clamp(150px,27dvh,225px);min-height:0;margin:0;padding:clamp(6px,1.1dvh,10px);display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:clamp(4px,.7dvh,7px);overflow:hidden}
+.app-shell--events .event-report-dialog:not([open]){display:none}
+.app-shell--events .event-report-dialog[open]{height:min(calc(100dvh - 20px),820px);grid-template-rows:auto auto minmax(0,1fr);margin:auto;padding:clamp(12px,3vw,22px);gap:12px;overflow:hidden}
 .app-shell--events .event-report--closed{height:auto;grid-template-rows:auto}
 .app-shell--events .event-report .report-mode{grid-template-columns:minmax(0,1fr)}
 .app-shell--events .event-report .report-mode{gap:clamp(4px,.7dvh,7px)}
