@@ -10,7 +10,7 @@ Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Aut
 
 ## Estado atual — 28/09/2026
 
-- O PWA está publicado em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/). O commit [`da7c8a2`](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commit/da7c8a2) e o workflow [36382024898](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36382024898) passaram; a página e o bundle atualizado responderam HTTP 200.
+- O PWA está publicado em [SAHMT V2.0](https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/). O commit [`ef97ec6`](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commit/ef97ec6737ca9036ba2a821079c6f001fd50d84a) passou no workflow [36480474360](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36480474360), que executou testes de domínio, Rules, Functions Emulator, build e deploy.
 - Firebase Authentication e Firestore são a sessão e o modelo operacional V2. O primeiro perfil administrador foi provisionado pelo proprietário, que confirmou entrada na Home autenticada.
 - No Firestore foram verificados 307 dias de escala e 51 períodos de férias válidos publicados; `BA` na semana de 23–29/03 foi confirmado pelo proprietário e a semana de `CONGRESSO` fica sem férias por contingência. A planilha privada ESCALA/FÉRIAS segue como fonte de autoria; o PWA não grava posições de escala nem acessa Sheets diretamente.
 - Os catálogos verificados incluem 28 estações do Checklist (23 ativas, 5 inativas), 30 siglas ativas de Etiquetas, 31 contatos (30 ativos e um inativo), 31 projeções mínimas para Eventos e quatro treinamentos. A ordem sugerida para as estações ainda requer conferência visual.
