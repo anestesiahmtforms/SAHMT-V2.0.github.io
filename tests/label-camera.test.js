@@ -58,7 +58,7 @@ function createForm() {
     ['#label-camera-dialog', new FakeDialog()],
     ['#label-camera-video', Object.assign(new FakeElement(), {videoWidth: 640, videoHeight: 480, play: async () => {}})],
     ['#label-camera-status', new FakeElement()],
-    ['#label-ocr-file', new FakeElement()]
+    ['#label-image-file', new FakeElement()]
   ]);
   const form = {querySelector: (selector) => elements.get(selector)};
   return {form, elements};
@@ -87,7 +87,7 @@ test('captura de Etiquetas cria JPEG em memória e libera a câmera ao capturar,
     const capture = elements.get('#label-camera-capture');
     const dialog = elements.get('#label-camera-dialog');
     const video = elements.get('#label-camera-video');
-    const input = elements.get('#label-ocr-file');
+    const input = elements.get('#label-image-file');
     let changedFile = null;
     input.addEventListener('change', () => { changedFile = input.files?.[0] || null; });
     const cleanup = bindLabelCamera(form);

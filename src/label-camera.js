@@ -6,7 +6,7 @@ export function bindLabelCamera(form) {
   const video = form.querySelector('#label-camera-video');
   const target = form.querySelector('.label-camera-target');
   const status = form.querySelector('#label-camera-status');
-  const fileInput = form.querySelector('#label-ocr-file');
+  const fileInput = form.querySelector('#label-image-file');
   if (!openButton || !dialog || !video || !captureButton || !fileInput) return () => {};
   const controller = new AbortController();
   const {signal} = controller;

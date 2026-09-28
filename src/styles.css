@@ -147,10 +147,6 @@
 .label-camera-target::before { position: absolute; inset: 0; border: 1px dashed rgb(255 255 255 / 78%); border-radius: 12px; content: ""; }
 .label-camera-target span { align-self: end; margin-bottom: 9px; padding: 5px 9px; border-radius: 999px; background: rgb(4 24 42 / 78%); color: white; font-size: .72rem; font-weight: 850; }
 .label-camera-dialog #label-camera-capture { width: 100%; margin-top: 12px; }
-.label-crop-frame { position: relative; max-width: 100%; overflow: hidden; border-radius: 10px; background: #e5ebef; margin-inline: auto; }
-.label-crop-frame[hidden] { display: none; }
-.label-ocr-preview { display: block; max-width: 100%; touch-action: auto; }
-.label-crop-frame.is-cropping .label-ocr-preview { cursor: crosshair; touch-action: none; }
 .label-crop-selection { position: absolute; z-index: 1; border: 2px solid #ffd54f; background: rgb(10 35 56 / 22%); pointer-events: none; }
 .label-crop-selection[hidden] { display: none; }
 
@@ -416,9 +412,9 @@
 .app-shell--labels .label-action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(6px,1.4vw,12px)}
 .app-shell--labels .label-action-grid button{min-width:0;min-height:clamp(48px,7dvh,60px);padding:8px;white-space:normal;font-size:clamp(.68rem,2vw,.88rem);font-weight:900}
 .app-shell--labels #label-camera-open{border-color:#115fa0;background:linear-gradient(145deg,#2377b9,#10518c);color:#fff;box-shadow:0 3px 0 #0b3e6d}
-.app-shell--labels #label-ocr-run{border-color:#17877d;background:linear-gradient(145deg,#d8f4ee,#a8ded3);color:#07554d;box-shadow:0 3px 0 #64b0a4}
+.app-shell--labels #label-read-ai{border-color:#17877d;background:linear-gradient(145deg,#d8f4ee,#a8ded3);color:#07554d;box-shadow:0 3px 0 #64b0a4}
 .app-shell--labels #label-manual-open{border-color:#c6d8df;background:#fff;color:#164b73;box-shadow:0 3px 0 #c5d5da}
-.app-shell--labels #label-ocr-status{margin:0;min-height:1.25em;font-size:.76rem}
+.app-shell--labels #label-ai-status{margin:0;min-height:1.25em;font-size:.76rem}
 .app-shell--labels .label-report{height:auto;min-height:0;margin:0;padding:clamp(8px,1.5vw,14px);display:grid;grid-template-columns:minmax(0,1fr);gap:8px;overflow:hidden}
 .app-shell--labels .label-report.event-report--closed{grid-template-rows:auto}
 .app-shell--labels .label-report .report-mode{display:grid;grid-template-columns:minmax(0,1fr);gap:7px}
