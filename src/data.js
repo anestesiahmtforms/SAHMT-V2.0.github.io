@@ -373,33 +373,33 @@ export async function updateContactRegistrationFields(records, actorUid) {
     }
     siglas.add(record.sigla);
   }
-  const snapshots = await Promise.all(records.map((record) => getDocFromServer(doc(db, 'contacts', record.sigla))));
-  const missing = records.filter((_, index) => !snapshots[index].exists()).map((record) => record.sigla);
-  if (missing.length) throw new Error(`Não existem contatos V2 para: ${missing.join(', ')}. Nenhuma alteração foi gravada.`);
-  const batch = writeBatch(db);
-  records.forEach((record, index) => {
-    const current = snapshots[index].data();
-    const updatedAt = serverTimestamp();
-    batch.set(doc(db, 'contacts', record.sigla), {
-      ...current,
-      sigla: record.sigla,
-      name: record.name.slice(0, 120),
-      email: record.email.trim().toLowerCase().slice(0, 200),
-      phone: record.phone.trim().slice(0, 40),
-      active: record.active,
-      updatedByUid: actorUid,
-      updatedAt
-    });
-    batch.set(doc(db, 'eventMembers', record.sigla), {
-      id: record.sigla,
-      sigla: record.sigla,
-      name: record.name.slice(0, 120),
-      active: record.active,
-      updatedByUid: actorUid,
-      updatedAt
+  await runTransaction(db, async (transaction) => {
+    const snapshots = await Promise.all(records.map((record) => transaction.get(doc(db, 'contacts', record.sigla))));
+    const missing = records.filter((_, index) => !snapshots[index].exists()).map((record) => record.sigla);
+    if (missing.length) throw new Error(`Não existem contatos V2 para: ${missing.join(', ')}. Nenhuma alteração foi gravada.`);
+    records.forEach((record, index) => {
+      const current = snapshots[index].data();
+      const updatedAt = serverTimestamp();
+      transaction.set(doc(db, 'contacts', record.sigla), {
+        ...current,
+        sigla: record.sigla,
+        name: record.name.slice(0, 120),
+        email: record.email.trim().toLowerCase().slice(0, 200),
+        phone: record.phone.trim().slice(0, 40),
+        active: record.active,
+        updatedByUid: actorUid,
+        updatedAt
+      });
+      transaction.set(doc(db, 'eventMembers', record.sigla), {
+        id: record.sigla,
+        sigla: record.sigla,
+        name: record.name.slice(0, 120),
+        active: record.active,
+        updatedByUid: actorUid,
+        updatedAt
+      });
     });
   });
-  await batch.commit();
   return {updated: records.length, siglas: [...siglas]};
 }
 
