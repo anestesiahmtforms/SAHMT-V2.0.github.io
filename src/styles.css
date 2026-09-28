@@ -385,3 +385,11 @@
 .event-launch-dialog>form>#event-form-status{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 @media(max-width:600px){.event-launch-dialog>form>.form-grid label{grid-template-columns:minmax(96px,38%) minmax(0,1fr);gap:7px;font-size:clamp(.62rem,2.5vw,.72rem)}.event-launch-dialog>form>.form-grid input,.event-launch-dialog>form>.form-grid select{height:clamp(30px,5dvh,38px);font-size:.8rem}.event-launch-dialog>form>.form-grid textarea{height:clamp(34px,6dvh,42px);font-size:.8rem}}
 @media(max-height:620px){.event-launch-dialog>form>.form-grid{grid-auto-rows:minmax(28px,auto);gap:3px}.event-launch-dialog>form>.form-grid label{font-size:.62rem}.event-launch-dialog>form>.form-grid input,.event-launch-dialog>form>.form-grid select{height:30px}.event-launch-dialog>form>.form-grid textarea{height:34px}}
+
+/* Campos do lançamento: membro em destaque; demais respostas centralizadas. */
+.event-launch-dialog>form>.form-grid>label{grid-template-columns:minmax(0,1fr);justify-items:center;gap:4px;text-align:center}
+.event-launch-dialog>form>.form-grid>label>span{text-align:center}
+.event-launch-dialog>form>.form-grid>label>input:not([type="hidden"], [type="checkbox"]),.event-launch-dialog>form>.form-grid>label>select,.event-launch-dialog>form>.form-grid>label>textarea{width:80%;margin-inline:auto}
+.event-launch-dialog>form>.form-grid>label.event-member-control{width:100%;padding:8px 10px;border:2px solid #d9aa32;border-radius:13px;background:linear-gradient(145deg,#fff9e8,#fff0bd);box-shadow:0 3px 0 #d8b650,0 6px 15px #74500024;color:#513e0c}
+.event-launch-dialog>form>.form-grid>label.event-member-control>span{font-size:clamp(.78rem,1.8vw,.92rem);font-weight:950;letter-spacing:.04em}
+.event-launch-dialog>form>.form-grid>label.event-member-control>input{width:100%;border:1px solid #d5a92f;background:#fff;color:#352706;font-weight:900;text-align:center}

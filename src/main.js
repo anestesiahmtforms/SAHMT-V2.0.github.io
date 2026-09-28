@@ -1,6 +1,6 @@
 import './styles.css';
 import {firebaseConfigured} from './firebase-app.js';
-import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
+import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
 import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations} from './outbox.js';
 import {eventFieldRules, validateEventForm} from './event-form.js';
@@ -202,7 +202,6 @@ function loginView() {
       ${configMessage}${resultMessage}${accessRequest}
       ${profileRetry}
       <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
-      ${session.user ? '<button class="text-button" id="blocked-signout" type="button">Sair ou trocar conta</button>' : ''}
       <small>Uma única conta para acessar as áreas do SAHMT, conforme suas permissões.</small>
     </section>
   </main>`;
@@ -298,7 +297,7 @@ function actionForm(route) {
     if (!can('eventsWrite')) return '';
     return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><p class="eyebrow">EVENTO</p><h3 id="event-launch-title">Lançamento do evento</h3></div><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
+    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>Membro (ausente/atrasado)</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
     <label><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="description"><span>Descrição do evento</span><textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
@@ -3557,7 +3556,6 @@ function bindLogin() {
     try { notice = ''; await signInGoogle(); }
     catch { notice = 'Não foi possível entrar com Google. Verifique a conta e tente novamente.'; await render(); }
   });
-  document.querySelector('#blocked-signout')?.addEventListener('click', () => signOutGlobal());
 }
 
 function sessionChanged(next) {
