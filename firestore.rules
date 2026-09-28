@@ -621,7 +621,8 @@ service cloud.firestore {
     function eventRecordReadAccess(data) {
       return isAdmin() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
         (data.createdByUid == request.auth.uid ||
-         (profile().sigla is string && profile().sigla != '' && data.get('memberSigla', '') == profile().sigla)));
+         (profile().sigla is string && profile().sigla != '' &&
+          (data.get('memberSigla', '') == profile().sigla || data.get('scheduleSigla', '') == profile().sigla))));
     }
     function activeManagementArea(areaId) {
       let path = /databases/$(database)/documents/managementAreas/$(areaId);

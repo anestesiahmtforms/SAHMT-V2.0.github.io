@@ -10,7 +10,7 @@ O Firestore cria índices automáticos por campo e pode mesclar índices para fi
 
 | Coleção | Consulta observada | Índice em `firestore.indexes.json` |
 |---|---|---|
-| `events` | `active == true`, intervalo de `date`, `date DESC` | `active ASC, date DESC` |
+| `events` | Administrador: `active == true`, intervalo de `date`, `date DESC`; pessoa: a mesma janela e `createdByUid == UID` ou `memberSigla == sigla` ou `scheduleSigla == sigla` | `active ASC, date DESC`; `active ASC, createdByUid ASC, date DESC`; `active ASC, memberSigla ASC, date DESC`; `active ASC, scheduleSigla ASC, date DESC` |
 | `labels` | Administrador: `active == true`, intervalo de `date`, `date DESC`; pessoa: a mesma janela combinada com `createdByUid == UID` ou `staffSiglas ARRAY_CONTAINS sigla` | `active ASC, date DESC`; `active ASC, createdByUid ASC, date DESC`; `active ASC, staffSiglas ARRAY_CONTAINS, date DESC` |
 | `vacations` | `active == true`, `start <= dia`, `end >= dia`, `start ASC` | `active ASC, start ASC, end ASC` |
 | Coleções dos módulos listados em `moduleCollections` | `active == true`, ordenação própria | `active ASC` + `order`/data configurada para Eventos, Contatos, Gestão, Checklist, Treinamentos e Notificações |

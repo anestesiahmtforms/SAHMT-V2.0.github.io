@@ -3,6 +3,7 @@
     {"collectionGroup":"events","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"date","order":"DESCENDING"}]},
     {"collectionGroup":"events","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"createdByUid","order":"ASCENDING"},{"fieldPath":"date","order":"DESCENDING"}]},
     {"collectionGroup":"events","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberSigla","order":"ASCENDING"},{"fieldPath":"date","order":"DESCENDING"}]},
+    {"collectionGroup":"events","queryScope":"COLLECTION","fields": [{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"scheduleSigla","order":"ASCENDING"},{"fieldPath":"date","order":"DESCENDING"}]},
     {"collectionGroup":"contacts","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"sigla","order":"ASCENDING"}]},
     {"collectionGroup":"vacations","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"start","order":"ASCENDING"},{"fieldPath":"end","order":"ASCENDING"}]},
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"order","order":"ASCENDING"}]},

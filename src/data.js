@@ -1154,7 +1154,11 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
       const visibility = isAdmin
         ? []
         : String(sigla || '').trim()
-          ? [or(where('createdByUid', '==', uid), where('memberSigla', '==', String(sigla).trim().toUpperCase()))]
+          ? [or(
+            where('createdByUid', '==', uid),
+            where('memberSigla', '==', String(sigla).trim().toUpperCase()),
+            where('scheduleSigla', '==', String(sigla).trim().toUpperCase())
+          )]
           : [where('createdByUid', '==', uid)];
       const result = await getDocsFromServer(query(
         collection(db, 'events'),
