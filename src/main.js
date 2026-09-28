@@ -2774,9 +2774,21 @@ function bindContactImport() {
   const status = document.querySelector('#contact-import-status');
   if (!fileInput || !previewButton || !importButton || !status) return;
   let pendingRecords = null;
+  let pendingFile = null;
+  let previewGeneration = 0;
+  const sameFile = (left, right) => Boolean(left && right && left.name === right.name && left.size === right.size && left.lastModified === right.lastModified && left.type === right.type);
+  fileInput.addEventListener('change', () => {
+    previewGeneration++;
+    pendingRecords = null;
+    pendingFile = null;
+    importButton.hidden = true;
+    importButton.disabled = true;
+    status.textContent = fileInput.files?.[0] ? 'Arquivo alterado. Confira novamente antes de atualizar.' : '';
+  });
   previewButton.addEventListener('click', async () => {
     const file = fileInput.files?.[0];
     if (!file) { status.textContent = 'Selecione o CSV preparado com os campos aprovados.'; return; }
+    const generation = ++previewGeneration;
     previewButton.disabled = true;
     importButton.hidden = true;
     importButton.disabled = true;
@@ -2786,23 +2798,36 @@ function bindContactImport() {
       const {listContactCatalog} = await import('./data.js');
       const parsed = parseContactImportCsv(await file.text());
       const contacts = await listContactCatalog();
+      if (generation !== previewGeneration || !sameFile(fileInput.files?.[0], file)) throw new Error('O arquivo mudou durante a conferência. Confira novamente antes de atualizar.');
       const comparison = compareContactImportRows(parsed, contacts);
       if (comparison.missing.length) throw new Error(`Siglas sem cadastro correspondente no V2: ${comparison.missing.join(', ')}. Nenhum dado foi gravado.`);
       if (comparison.matched !== parsed.length) throw new Error('Não foi possível conferir todos os cadastros. Nenhum dado foi gravado.');
       pendingRecords = parsed;
+      pendingFile = file;
       status.textContent = `${comparison.matched} siglas V2 conferidas · ${comparison.changes} com campos alterados · ${comparison.active} ativas · ${comparison.inactive} inativas. Somente os cinco campos selecionados serão atualizados.`;
       importButton.textContent = `Atualizar ${comparison.matched} cadastros no Firestore`;
       importButton.hidden = false;
       importButton.disabled = false;
     } catch (error) {
-      pendingRecords = null;
-      status.textContent = error.message || 'Não foi possível conferir o arquivo.';
+      if (generation === previewGeneration) {
+        pendingRecords = null;
+        pendingFile = null;
+        status.textContent = error.message || 'Não foi possível conferir o arquivo.';
+      }
     } finally {
       previewButton.disabled = false;
     }
   });
   importButton.addEventListener('click', async () => {
     if (!pendingRecords?.length) return;
+    if (!sameFile(fileInput.files?.[0], pendingFile)) {
+      pendingRecords = null;
+      pendingFile = null;
+      importButton.hidden = true;
+      importButton.disabled = true;
+      status.textContent = 'O arquivo mudou depois da conferência. Confira novamente antes de atualizar.';
+      return;
+    }
     importButton.disabled = true;
     previewButton.disabled = true;
     status.textContent = `Atualizando ${pendingRecords.length} cadastros no Firestore…`;
@@ -2811,6 +2836,7 @@ function bindContactImport() {
       const result = await updateContactRegistrationFields(pendingRecords, session.user.uid);
       notice = `${result.updated} cadastros da equipe atualizados no Firestore. Os acessos V2 foram preservados.`;
       pendingRecords = null;
+      pendingFile = null;
       fileInput.value = '';
       await render();
     } catch (error) {
