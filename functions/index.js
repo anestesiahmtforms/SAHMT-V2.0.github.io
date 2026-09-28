@@ -77,7 +77,19 @@ export const readLabelImage = onCall({region: REGION, enforceAppCheck: true, sec
   }
   if (!response.ok) {
     const status = response.status;
-    throw new HttpsError(status === 429 ? 'resource-exhausted' : 'unavailable', status === 429 ? 'A leitura por IA atingiu o limite temporário. Aguarde e tente novamente.' : `A IA não conseguiu ler a etiqueta (HTTP ${status}).`);
+    if (status === 429) {
+      throw new HttpsError('resource-exhausted', 'A leitura por IA atingiu o limite temporário. Aguarde e tente novamente.');
+    }
+    if (status === 401 || status === 403) {
+      // Keep provider details out of the client and never log the request or image.
+      console.error('OpenAI label extraction authorization failed.', {status});
+      throw new HttpsError('internal', 'A integração de IA precisa ser conferida pelo administrador. Use o registro manual enquanto isso.');
+    }
+    if (status >= 400 && status < 500) {
+      console.error('OpenAI label extraction rejected the request.', {status});
+      throw new HttpsError('internal', 'A integração de IA não aceitou esta leitura. O administrador precisa conferir o serviço; use o registro manual.');
+    }
+    throw new HttpsError('unavailable', 'A leitura por IA está temporariamente indisponível. Tente novamente ou use o registro manual.');
   }
   let result;
   try { result = await response.json(); }
