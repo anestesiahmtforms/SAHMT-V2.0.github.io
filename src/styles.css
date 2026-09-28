@@ -565,3 +565,34 @@
 .checklist-report-launchers button{min-height:46px;padding:8px;border:1px solid #fff;border-radius:999px;background:linear-gradient(145deg,#1b9b8d,#08736c);color:#fff;font-size:clamp(.65rem,2.4vw,.78rem);font-weight:950;letter-spacing:.035em;box-shadow:0 3px 0 #07534d,0 7px 13px #001b3529}
 .checklist-report-launchers button[data-checklist-report-launch="monthly"]{background:linear-gradient(145deg,#e7b653,#a8731d);box-shadow:0 3px 0 #765016,0 7px 13px #001b3529}
 .checklist-report-launchers button:active{transform:translateY(2px)}
+
+
+/* Lançamento de eventos: apresentação vertical dos cartões no modelo de referência. */
+body:has(#event-launch-dialog[open]) #outbox-status{display:none!important}
+.event-launch-dialog[open]{display:flex;flex-direction:column;overflow:hidden}
+.event-launch-dialog>header{position:relative;top:auto;flex:0 0 auto;justify-content:center;margin:0 0 12px;padding:10px 4px 14px;text-align:center;background:linear-gradient(145deg,#fffdf7,#f6f0e4);border-bottom:1px solid #d8e1e5}
+.event-launch-dialog>header>div{width:100%;text-align:center}
+.event-launch-dialog #event-launch-title{color:#143b5d;font-size:clamp(1.15rem,4vw,1.65rem);font-weight:950;letter-spacing:.035em;text-align:center;text-transform:uppercase}
+.event-launch-dialog>form{position:relative;z-index:1;display:flex;flex:1 1 auto;flex-direction:column;align-content:initial;gap:12px;min-height:0;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain;scroll-padding-block:12px 18px;-webkit-overflow-scrolling:touch}
+.event-launch-dialog>form>.form-grid{display:grid;flex:0 0 auto;grid-template-columns:minmax(0,1fr)!important;grid-auto-rows:auto!important;align-content:start!important;gap:10px!important;min-height:0;overflow:visible!important}
+.event-launch-dialog>form>.form-grid>label{display:grid;grid-template-columns:minmax(0,1fr)!important;align-content:center;justify-items:stretch;align-items:center;gap:6px;box-sizing:border-box;width:100%;min-width:0;margin:0;padding:9px 10px;border:2px solid #e9c3b0;border-radius:22px;background:linear-gradient(145deg,#f9e7db,#f3ddd0);color:#a13c35;font-size:.76rem;font-weight:900;line-height:1.12;text-align:left}
+.event-launch-dialog>form>.form-grid>label>span{min-width:0;color:inherit;text-align:left;text-transform:uppercase}
+.event-launch-dialog>form>.form-grid>label:first-child{padding:0 8px 2px;border:0;border-radius:0;background:transparent;color:#415c73}
+.event-launch-dialog>form>.form-grid input:not([type=hidden]),.event-launch-dialog>form>.form-grid select,.event-launch-dialog>form>.form-grid textarea{box-sizing:border-box;width:100%;min-width:0;height:auto;min-height:52px;margin:0;padding:10px 14px;border:2px solid #e7a6a3;border-radius:22px;background:#fff8f7;color:#244761;font:inherit;font-size:clamp(.92rem,2.5vw,1.08rem);font-weight:500;text-align:left}
+.event-launch-dialog>form>.form-grid textarea{min-height:72px;resize:vertical}
+.event-launch-dialog>form>.form-grid select{position:relative;z-index:2;appearance:auto;-webkit-appearance:menulist;pointer-events:auto;touch-action:manipulation}
+.event-launch-dialog>form>.form-grid>label:first-child input{min-height:70px;border-color:#d9e1e5;background:#fff;text-align:center}
+.event-launch-dialog .event-member-field{display:contents}
+.event-launch-dialog>form>.form-grid>label.event-member-control{width:100%;padding:9px 10px;border:2px solid #bfd9b8;border-radius:24px;background:linear-gradient(145deg,#e9f0df,#e1ead7);box-shadow:0 2px 0 #d4e2c9;color:#367347}
+.event-launch-dialog>form>.form-grid>label.event-member-control>span{font-size:.76rem;font-weight:950;letter-spacing:.02em}
+.event-launch-dialog>form>.form-grid>label.event-member-control>input[name=memberStatus]{width:100%;min-height:72px;margin:0;border:2px solid #b9d9c0;border-radius:22px;background:#f1fff2;color:#315e40;font-weight:600;text-align:left}
+.event-launch-dialog .event-field--required-empty input,.event-launch-dialog .event-field--required-empty select,.event-launch-dialog .event-field--required-empty textarea{border-color:#e7a6a3;background:#fff5f4;box-shadow:0 0 0 2px #dc454522}
+.event-launch-dialog .event-field--complete input,.event-launch-dialog .event-field--complete select,.event-launch-dialog .event-field--complete textarea{border-color:#b6d8be;background:#f0fff2;box-shadow:0 0 0 2px #20a45a22}
+.event-launch-dialog .event-field--inactive input,.event-launch-dialog .event-field--inactive select,.event-launch-dialog .event-field--inactive textarea{border-color:#c7cdd2;background:#eceff1;color:#68747d;box-shadow:none;opacity:1}
+.event-launch-dialog>form>.admin-user-actions{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;margin:0;padding:0}
+.event-launch-dialog>form>.admin-user-actions .primary-button{flex-basis:auto;width:100%;min-height:70px;border:0;border-radius:30px;background:linear-gradient(145deg,#11718a,#075269);color:#fff;font-size:1rem;font-weight:950;box-shadow:0 5px 0 #064457,0 9px 18px #0752692b}
+.event-launch-dialog>form>.admin-user-actions .secondary-button{min-height:48px}
+.event-launch-dialog>.event-launch-footer{flex:0 0 auto;display:flex;justify-content:center;padding-top:10px;border-top:1px solid #d4e2e8}
+.event-launch-dialog>.event-launch-footer form{width:100%;margin:0}
+.event-launch-dialog>.event-launch-footer .secondary-button{width:100%;min-height:58px;border:1px solid #ead7ad;border-radius:30px;background:linear-gradient(145deg,#fff1d1,#ead9ac);color:#173b5b;font-weight:900;touch-action:manipulation}
+@media(max-width:600px){.event-launch-dialog[open]{inset:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));width:auto;height:auto;margin:0;padding:12px;border-radius:20px}.event-launch-dialog>header{margin:0 0 8px;padding:5px 2px 10px}.event-launch-dialog>form{gap:10px}.event-launch-dialog>form>.form-grid{gap:9px!important}.event-launch-dialog>form>.form-grid>label{padding:8px 9px;font-size:.72rem}.event-launch-dialog>form>.form-grid input:not([type=hidden]),.event-launch-dialog>form>.form-grid select{min-height:50px;padding:9px 12px;font-size:.92rem}.event-launch-dialog>form>.form-grid>label:first-child input{min-height:62px}.event-launch-dialog>form>.form-grid>label.event-member-control>input[name=memberStatus]{min-height:64px}.event-launch-dialog>form>.admin-user-actions .primary-button{min-height:64px}}
