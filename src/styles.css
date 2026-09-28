@@ -396,3 +396,6 @@
 .event-launch-dialog>.event-launch-footer{flex:0 0 auto;display:flex;justify-content:center;padding-top:8px;border-top:1px solid #d4e2e8}
 .event-launch-dialog>.event-launch-footer form{margin:0}
 .event-launch-dialog>.event-launch-footer .secondary-button{min-width:min(80%,260px);min-height:42px;background:#fff;color:#1762a1;font-weight:900;touch-action:manipulation}
+.event-launch-dialog>form>.form-grid .event-member-control{display:grid;grid-template-columns:minmax(0,1fr);justify-items:stretch;align-items:center;gap:4px;box-sizing:border-box;width:100%;padding:8px 10px;text-align:center}
+.event-launch-dialog>form>.form-grid .event-member-control>span{width:100%;text-align:center}
+.event-launch-dialog>form>.form-grid .event-member-control>input[name="memberStatus"]{width:100%;margin:0;text-align:center}

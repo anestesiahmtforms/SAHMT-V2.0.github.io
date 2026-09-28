@@ -1,5 +1,6 @@
 # SAHMT V2.0 — relatório de release e limites
 
+- Correção adicional do campo Membro em 27/09/2026: a regra de estilo agora alcança o rótulo aninhado no invólucro condicional `memberStatus`; centraliza o título e a resposta, mantém a resposta em largura integral e aplica o destaque ouro. Build local passou. A publicação desta correção está no commit seguinte.
 - Correção visual de Eventos em 27/09/2026: o campo Membro ganhou título centralizado, campo em largura integral e destaque; os demais rótulos ficam centralizados acima de respostas com 80% da largura do modal. O botão Voltar foi para o rodapé do modal, mantendo fechamento nativo. O botão de saída/troca de conta foi removido do portão de acesso, e os estilos antigos foram limpos.
 pm run build passou; o commit [d7b379b](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/commit/d7b379b) concluiu o workflow [36367493523](https://github.com/anestesiahmtforms/SAHMT-V2.0.github.io/actions/runs/36367493523). As mudanças de main.js e CSS foram enviadas ao repositório oficial. A interação autenticada e a conferência em Android/iOS continuam pendentes.
 
