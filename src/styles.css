@@ -652,3 +652,24 @@ body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transp
 .event-history>ol>li>ul{background:linear-gradient(145deg,#fff8f0,#f6ead4)}
 .app-footer{background:var(--teal);color:#fff}
 button:focus-visible,input:focus-visible{outline-color:var(--teal)}
+\n
+/* Revisão fiel da paleta V1
+:root{--bg-top:#0d3257;--bg-mid:#214463;--bg-bottom:#eee4d1;--sand:rgba(245,236,219,.96);--sand-strong:#f6ead4;--ink:#143254;--teal:#18b7b7;--gold:#c79a3e;--copper:#b56404;--mist:#dce8ee;--forest:#237a57;--orange:#ff9f43;--blue:#214463;--shadow:0 18px 40px rgba(8,18,31,.18)}
+body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transparent 22%),radial-gradient(circle at left 80%,rgba(255,183,77,.12),transparent 18%),linear-gradient(180deg,#0d3257 0%,#214463 44%,#eee4d1 100%)!important;color:#143254}
+.login-card,.panel,.module-view,.schedule-card,.event-report,.checklist-controls,.training-dialog,.event-report-dialog,.checklist-report-dialog,.checklist-station-dialog{background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96))!important;color:#143254}
+.login-card{border-color:rgba(255,255,255,.96)!important}
+.panel,.module-view{border-color:rgba(255,255,255,.96)!important}
+.primary-button,.event-launch-dialog>form>.admin-user-actions .primary-button{background:linear-gradient(180deg,#214463,#0d3257)!important;color:#fff!important;box-shadow:0 4px 0 #092743!important}
+.secondary-button,.google-button{background:#dce8ee!important;color:#143254!important;border-color:#c3d4dc!important}
+.topbar{background:rgba(13,50,87,.97)!important}
+.page-title,.section-heading{color:#fff!important}
+.eyebrow,.panel-heading .eyebrow,.section-heading .eyebrow,.module-view .eyebrow,.quick-form summary,.record-meta{color:#214463!important}
+.quick-form,.management-area-detail,.checklist-station,.training-score,.training-card,.management-detail-heading{background:rgba(245,236,219,.88)!important;border-color:#c8d8dc!important}
+.module-card,.module-card:nth-child(2),.module-card:nth-child(3),.module-card:nth-child(4){background:linear-gradient(145deg,#fff 0%,#e8f2f7 52%,#b9d0dc 100%)!important;border-color:rgba(255,255,255,.96)!important;box-shadow:0 5px 0 #8faab5,0 10px 17px rgba(8,18,31,.18),inset 0 2px 0 rgba(255,255,255,.98)!important;color:#143254!important}
+.module-mark{background:rgba(255,255,255,.88)!important;color:#214463!important}
+.record-list li,.area-card,.checklist-page-calendar,.checklist-report-calendar{background:#f6ead4!important;border-color:rgba(199,154,62,.36)!important;color:#143254!important}
+.event-record-banner,.event-history>ol>li{background:linear-gradient(145deg,#f5ecdb,#dce8ee)!important;border-color:#214463!important}
+.event-history>ol>li>ul{background:linear-gradient(145deg,#fff8f0,#f6ead4)!important}
+.app-footer{background:#18b7b7!important;color:#fff!important}
+.login-card input,.date-picker input,.report-period input,.quick-form input,.quick-form select,.quick-form textarea,.checklist-controls input,.checklist-occurrence textarea{background:#fff!important;border-color:#b9cbd2!important;color:#143254!important}
+button:focus-visible,input:focus-visible{outline-color:#18b7b7!important}
