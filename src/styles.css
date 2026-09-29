@@ -866,3 +866,8 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .identity-card .brand{min-height:50px;gap:12px;font-size:clamp(1.2rem,4.2vw,1.45rem);letter-spacing:.12em}
 .app-shell--events .identity-card .brand img{width:46px;height:46px;border-radius:7px}
 @media(max-width:420px){.app-shell--events .identity-card .brand{min-height:46px;gap:9px;font-size:clamp(1.12rem,4.8vw,1.3rem)}.app-shell--events .identity-card .brand img{width:41px;height:41px}}
+
+/* Expande largura e altura do contêiner de marca na página Eventos. */
+.app-shell--events .topbar{padding-inline:clamp(7px,1.6vw,16px)}
+.app-shell--events .identity-card{width:100%;min-height:128px;padding:14px 20px 24px;border-radius:20px}
+@media(max-width:420px){.app-shell--events .topbar{padding-inline:7px}.app-shell--events .identity-card{min-height:120px;padding:12px 14px 22px;border-radius:18px}}
