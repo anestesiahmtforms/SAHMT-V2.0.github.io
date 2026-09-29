@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v87';
+const CACHE = 'sahmt-v2-shell-v88';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
