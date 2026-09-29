@@ -1,6 +1,6 @@
 # Leitura local de Etiquetas
 
-> Referência histórica da leitura local anterior. O fluxo atual em V2 usa a função autenticada `readLabelImage` e a IA no servidor; consulte [ETIQUETAS_IA_V2.md](ETIQUETAS_IA_V2.md). A configuração da chave e o deploy da função ainda são necessários antes de a leitura IA operar em produção.
+> Referência histórica da leitura local anterior. O fluxo atual em V2 usa o Cloudflare Worker autenticado e IA no servidor; consulte [ETIQUETAS_IA_V2.md](ETIQUETAS_IA_V2.md) e [LABEL_AI_WORKER.md](LABEL_AI_WORKER.md). App Check, deploy e homologação autenticada ainda precisam ser confirmados.
 
 O conteúdo abaixo documenta uma implementação substituída e não deve ser seguido para o fluxo atual. O módulo `src/label-ocr.js`, o teste exclusivo desse módulo, a dependência npm e os arquivos vendorizados do motor foram removidos do repositório V2. A preparação de imagem para a IA fica em `src/label-ai.js`.
 

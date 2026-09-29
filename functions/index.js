@@ -3,126 +3,13 @@ import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
-import {defineBoolean, defineSecret} from 'firebase-functions/params';
 import {buildReportSyncJob} from './report-sync-queue.js';
 
 initializeApp({projectId: process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT});
 const db = getFirestore();
 const REGION = 'southamerica-east1';
-const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
-const LABEL_AI_PROCESSING_APPROVED = defineBoolean('SAHMT_LABEL_AI_PROCESSING_APPROVED', {
-  default: false,
-  label: 'Processamento de imagens de etiquetas autorizado',
-  description: 'Mantenha false até a instituição aprovar o envio de dados de pacientes à OpenAI e confirmar os controles contratuais de retenção.'
-});
-const LABEL_AI_MODEL = 'gpt-6-luna';
 const MAX_STATIONS = 200;
 const MAX_DAILY_RECORDS = 1000;
-
-const dcAliasesByWeekday = Object.freeze({
-  segunda: ['CR', 'LH'], terca: ['CR', 'LH', 'AD'], quarta: ['CR', 'LH', 'AD'],
-  quinta: ['CR', 'LH'], sexta: ['CR', 'LA']
-});
-const dcFallback = ['AD', 'CR', 'LA', 'LH'];
-
-export const readLabelImage = onCall({region: REGION, enforceAppCheck: true, secrets: [OPENAI_API_KEY], timeoutSeconds: 60, memory: '512MiB'}, async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Entre no SAHMT para ler a etiqueta.');
-  if (!LABEL_AI_PROCESSING_APPROVED.value()) {
-    throw new HttpsError('failed-precondition', 'A leitura por IA está desativada até a instituição aprovar o tratamento das imagens de etiquetas. Use o registro manual.');
-  }
-  const profileSnapshot = await db.doc(`users/${uid}`).get();
-  const profile = profileSnapshot.data();
-  const permissions = profile?.permissions || {};
-  if (!profileSnapshot.exists || profile.active !== true || profile.access !== true || !(permissions.labelsWrite === true || permissions.labelsManage === true || permissions.admin === true)) {
-    throw new HttpsError('permission-denied', 'Seu perfil não tem permissão para ler etiquetas.');
-  }
-
-  const imageDataUrl = String(request.data?.imageDataUrl || '').trim();
-  const numericImageDataUrls = Array.isArray(request.data?.numericImageDataUrls) ? request.data.numericImageDataUrls : [];
-  const imagePattern = /^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/]+={0,2}$/i;
-  if (!imagePattern.test(imageDataUrl) || imageDataUrl.length > 8 * 1024 * 1024 || numericImageDataUrls.length > 3 || numericImageDataUrls.some((image) => typeof image !== 'string' || !imagePattern.test(image) || image.length > 3 * 1024 * 1024)) {
-    throw new HttpsError('invalid-argument', 'A foto da etiqueta está inválida ou é grande demais. Capture novamente.');
-  }
-  const apiKey = OPENAI_API_KEY.value();
-  if (!apiKey) throw new HttpsError('failed-precondition', 'A leitura por IA ainda não foi configurada no servidor.');
-
-  const prompt = [
-    'Você lê etiquetas hospitalares HMT, etiquetas SADT e cartões de consulta pré-anestésica.',
-    'Extraia somente nomePaciente, convenio, cirurgia, atendimento, tipo e credor, respondendo pelo esquema JSON.',
-    'Etiqueta hospitalar padrão: nomePaciente é o texto após Nome: e antes de Pront:. convenio vem após Convenio: até o fim da linha. cirurgia é somente o número sob o primeiro código de barras, próximo a N.Cirur; atendimento é somente o número sob o segundo, próximo a N.Atend.',
-    'Consulta pré-anestésica em cartão escuro: extraia nomePaciente e atendimento; tipo exatamente Consulta Pré-anestésica; credor exatamente Caixa; deixe convenio e cirurgia vazios.',
-    'SADT: reconheça N. Guia, Senha e Convenio. Extraia nomePaciente após Nome: e antes de Pront:, convenio após Convenio: na linha da senha e atendimento sob o código de barras. tipo exatamente SADT; cirurgia e credor vazios.',
-    'Na etiqueta padrão, deixe tipo e credor vazios. Nunca use número de prontuário como cirurgia ou atendimento. Compare a imagem principal com os recortes inferiores.',
-    'Para números, retorne somente dígitos visíveis. Se algum dígito estiver duvidoso, retorne string vazia; nunca estime. Se não distinguir zero de oito, deixe o campo vazio.',
-    'Preserve grafia natural do nome e convênio, corrigindo só erro visual inequívoco. Não invente valores.'
-  ].join('\n');
-  const imageParts = [
-    {type: 'input_image', image_url: imageDataUrl, detail: 'high'},
-    ...numericImageDataUrls.map((image_url) => ({type: 'input_image', image_url, detail: 'high'}))
-  ];
-  let response;
-  try {
-    response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        model: LABEL_AI_MODEL,
-        store: false,
-        reasoning: {effort: 'none'},
-        max_output_tokens: 320,
-        input: [{role: 'user', content: [{type: 'input_text', text: prompt}, ...imageParts]}],
-        text: {format: {type: 'json_schema', name: 'etiqueta_hmt', strict: true, schema: {
-          type: 'object', additionalProperties: false,
-          required: ['nomePaciente', 'convenio', 'cirurgia', 'atendimento', 'tipo', 'credor'],
-          properties: {nomePaciente: {type: 'string'}, convenio: {type: 'string'}, cirurgia: {type: 'string'}, atendimento: {type: 'string'}, tipo: {type: 'string'}, credor: {type: 'string'}}
-        }}}
-      }),
-      signal: AbortSignal.timeout(50000)
-    });
-  } catch {
-    throw new HttpsError('unavailable', 'Não foi possível conectar à IA. Tente novamente.');
-  }
-  if (!response.ok) {
-    const status = response.status;
-    if (status === 429) {
-      throw new HttpsError('resource-exhausted', 'A leitura por IA atingiu o limite temporário. Aguarde e tente novamente.');
-    }
-    if (status === 401 || status === 403) {
-      // Keep provider details out of the client and never log the request or image.
-      console.error('OpenAI label extraction authorization failed.', {status});
-      throw new HttpsError('internal', 'A integração de IA precisa ser conferida pelo administrador. Use o registro manual enquanto isso.');
-    }
-    if (status >= 400 && status < 500) {
-      console.error('OpenAI label extraction rejected the request.', {status});
-      throw new HttpsError('internal', 'A integração de IA não aceitou esta leitura. O administrador precisa conferir o serviço; use o registro manual.');
-    }
-    throw new HttpsError('unavailable', 'A leitura por IA está temporariamente indisponível. Tente novamente ou use o registro manual.');
-  }
-  let result;
-  try { result = await response.json(); }
-  catch { throw new HttpsError('internal', 'A IA retornou uma resposta inválida.'); }
-  const output = String(result.output_text || (result.output || [])
-    .flatMap((item) => item.type === 'message' ? (item.content || []).filter((part) => part.type === 'output_text').map((part) => part.text || '') : [])
-    .join('\n')).trim();
-  if (!output) throw new HttpsError('internal', 'A IA não retornou campos legíveis.');
-  let extracted;
-  try { extracted = JSON.parse(output); }
-  catch { throw new HttpsError('internal', 'A IA retornou campos em formato inválido.'); }
-  const cleanText = (value, max) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
-  const normalize = (value) => cleanText(value, 60).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const name = cleanText(extracted.nomePaciente, 160);
-  const insurance = cleanText(extracted.convenio, 120);
-  const procedureCode = cleanText(extracted.cirurgia, 80).replace(/\D/g, '').slice(0, 80);
-  const encounterCode = cleanText(extracted.atendimento, 80).replace(/\D/g, '').slice(0, 80);
-  const rawType = normalize(extracted.tipo);
-  const isConsultation = rawType === 'consulta pre-anestesica' || (!rawType && !insurance && !procedureCode && name && encounterCode);
-  const isSadt = rawType === 'sadt';
-  const type = isConsultation ? 'Consulta Pré-anestésica' : isSadt ? 'SADT' : '';
-  const required = isConsultation ? ['patientName', 'encounterCode'] : isSadt ? ['patientName', 'insurance', 'encounterCode'] : ['patientName', 'insurance', 'procedureCode', 'encounterCode'];
-  const fieldValues = {patientName: name, insurance: isConsultation ? '' : insurance, procedureCode: isConsultation || isSadt ? '' : procedureCode, encounterCode};
-  return {model: LABEL_AI_MODEL, patientName: name, insurance: fieldValues.insurance, procedureCode: fieldValues.procedureCode, encounterCode, type, creditor: isConsultation ? 'Caixa' : '', uncertain: required.filter((field) => !fieldValues[field])};
-});
 
 function saoPauloDay(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {

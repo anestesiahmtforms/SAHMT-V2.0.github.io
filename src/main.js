@@ -16,7 +16,9 @@ import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 
 const app = document.querySelector('#app');
-const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true';
+const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
+  import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
+  Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
 const labels = {
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
@@ -3231,19 +3233,7 @@ function bindLabelAi(workspace, form) {
       if (formStatus) formStatus.textContent = status?.textContent || '';
       form.elements.patientName.focus({preventScroll: true});
     } catch (error) {
-      const code = String(error?.code || '');
-      const message = code === 'functions/not-found'
-        ? 'A leitura por IA ainda aguarda a ativação do serviço Firebase. Você pode continuar pelo registro manual.'
-        : code === 'functions/failed-precondition'
-          ? error.message || 'A leitura por IA está desativada até a aprovação institucional do processamento de imagens.'
-        : code === 'functions/permission-denied' || code === 'functions/unauthenticated'
-          ? 'A sessão ou permissão para ler etiquetas precisa ser conferida. O registro manual continua disponível.'
-          : code === 'functions/resource-exhausted'
-            ? 'A leitura por IA atingiu um limite temporário. Aguarde um pouco ou faça o registro manual.'
-            : code === 'functions/internal'
-              ? error.message || 'A integração de IA precisa ser conferida pelo administrador. O registro manual continua disponível.'
-          : `A leitura por IA não foi concluída. ${error.message || 'Tente novamente ou faça o registro manual.'}`;
-      if (status) status.textContent = message;
+      if (status) status.textContent = error?.message || 'Não foi possível realizar a leitura por IA. Tente novamente ou preencha os campos manualmente.';
     } finally {
       if (runButton.isConnected) runButton.disabled = !labelAiEnabled || !fileInput.files?.[0];
     }

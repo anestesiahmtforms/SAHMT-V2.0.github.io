@@ -2,7 +2,7 @@
 
 ## Decisão operacional
 
-O SAHMT V2 usa Firebase Authentication + Firestore no plano Spark para suas operações. A callable `readLabelImage` é uma exceção opcional solicitada para ler etiquetas por IA; ela exige plano Blaze/faturamento, segredo privado no Secret Manager, App Check reCAPTCHA v3 configurado e deploy dedicado. Está inativa enquanto esses requisitos não forem deliberadamente aprovados e configurados pelo proprietário. Não cole chaves de API no chat, frontend, GitHub ou Apps Script. As demais callables e triggers em `functions/` são legado/testes de Emulator e não fazem parte do runtime publicado.
+O SAHMT V2 usa Firebase Authentication + Firestore no plano Spark para suas operações. A leitura de Etiquetas por IA usa o Cloudflare Worker `sahmt-label-ai`, protegido por Firebase Auth e App Check; Firebase Cloud Functions e Blaze não são necessários. A chave OpenAI permanece somente como Secret Cloudflare. As demais callables e triggers em `functions/` são legado/testes de Emulator e não fazem parte do runtime publicado.
 
 A PWA e as Rules já estão publicadas. O que ainda depende de configuração do proprietário é o Apps Script V2 assíncrono. Sem essa integração, o PWA continua registrando dados operacionais no Firestore; validações confiáveis de assinatura do Checklist e pontos de Treinamentos/Gestão ficam pendentes, e relatórios não são sincronizados com Sheets.
 
@@ -52,30 +52,9 @@ Use dados fictícios e confira idempotência/replay, conflito e falha para cada 
 
 Após IAM e homologação, instale apenas os gatilhos Spark necessários: `installChecklistValidationTrigger`, `installTrainingValidationTrigger`, `installManagementScoreValidationTrigger` e `installSahmtV2SparkReportTrigger`. Eles varrem o Firestore periodicamente; o PWA não espera por eles. O handler/instalador legado `syncQueue` foi removido do pacote V2 e não deve ser recriado.
 
-## 5. Ativar leitura de Etiquetas por IA (opcional)
+## 5. Configurar IA de Etiquetas no Cloudflare Worker
 
-Esta parte envia a imagem da etiqueta à OpenAI e requer faturamento Blaze no Firebase. Mantenha-a desligada se não quiser esse custo ou esse fluxo de dados. Nunca coloque a chave secreta da OpenAI no GitHub, no PWA ou nesta conversa.
-
-### A. Criar as chaves reCAPTCHA v3
-
-1. Abra o [Google reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create) com a conta administradora.
-2. Crie uma chave do tipo **reCAPTCHA v3** para o domínio `anestesiahmtforms.github.io`. Se o Pages usar outro hostname próprio, inclua também esse hostname. Não inclua `https://` nem caminhos.
-3. Guarde a **chave do site** e a **chave secreta**. A chave do site será pública no cliente; a chave secreta fica somente no cadastro do App Check no Firebase.
-
-### B. Registrar reCAPTCHA no Firebase App Check
-
-1. Abra o [App Check do projeto sahmt-17a16](https://console.firebase.google.com/project/sahmt-17a16/appcheck).
-2. Na aba **Apps**, selecione o app Web SAHMT V2.0 e escolha registrar/configurar **reCAPTCHA v3**.
-3. Cole a **chave secreta** do reCAPTCHA no campo solicitado e salve. Confira que está configurando o app Web correto.
-
-### C. Disponibilizar a chave do site ao build do Pages
-
-1. Abra o repositório oficial no GitHub e vá a **Settings → Secrets and variables → Actions → Variables → New repository variable**.
-2. Nome: `VITE_APP_CHECK_SITE_KEY`. Valor: a **chave do site** (pública) criada no reCAPTCHA. Não use a chave secreta neste campo.
-3. O workflow do Pages lê essa variável durante o build. Depois de salvá-la, abra **Actions**, selecione **Build and deploy SAHMT V2** e execute **Run workflow** na branch `main` (ou faça um commit normal para dispará-lo).
-4. Aguarde a conclusão e abra o PWA. A inicialização do App Check deve ocorrer sem erro. A leitura por IA só ficará operacional depois de habilitar Blaze, configurar `OPENAI_API_KEY` no Firebase, publicar a função e realizar um teste autenticado.
-
-Não habilite enforcement global adicional no console como parte deste procedimento: `readLabelImage` já exige App Check por configuração própria. Não compartilhe nenhuma das chaves aqui. A chave secreta no Firebase e a mudança para Blaze devem ser configuradas pelo proprietário, considerando custos e política de dados.
+Siga [`LABEL_AI_WORKER.md`](LABEL_AI_WORKER.md) para registrar App Check, configurar as variáveis públicas de Actions, publicar o Worker e homologar com uma etiqueta fictícia. Não coloque `OPENAI_API_KEY` no Firebase, GitHub, frontend ou Apps Script. O build mantém a leitura desligada até as variáveis e os testes estarem prontos.
 
 ## Estado já preparado
 
@@ -83,4 +62,4 @@ Não habilite enforcement global adicional no console como parte deste procedime
 - Rules estão publicadas. A API Firestore confirmou 37 índices `READY` em 27/09/2026; a leitura atual do Firebase CLI lista 39 definições sem informar estado. O primeiro perfil foi provisionado pelo proprietário.
 - A planilha existe e suas oito abas/cabeçalhos V2 foram conferidos.
 - O projeto `SAHMT V2.0 – Integração Spark` foi criado na pasta oficial. O pacote V2 já havia sido enviado via `clasp` sem `FirestoreSync.gs` ou handlers `syncQueue`. Em 26/09/2026, a checagem somente leitura foi enviada e um `clasp pull` isolado confirmou conteúdo correspondente nos oito arquivos remotos (manifesto e sete fontes), sem os handlers legados. A API Apps Script da conta permite a sincronização via `clasp`; isso não concede IAM Firestore nem autoriza a execução OAuth do script. Nenhuma função foi executada. IAM, autorização de runtime, propriedades do script, homologação fictícia e instalação de gatilhos continuam pendentes.
-- A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`; o plano Spark mantém ativa a operação base. A callable opcional de leitura por IA não pode ser implantada nesse estado. Qualquer mudança para Blaze deve ser uma decisão explícita do proprietário, considerando custos e cotas.
+- A consulta de faturamento em 26/09/2026 indicou `billingEnabled=false`; o plano Spark mantém ativa a operação base. A IA de Etiquetas usa Cloudflare Worker e não depende de mudar para Blaze.
