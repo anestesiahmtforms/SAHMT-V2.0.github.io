@@ -777,3 +777,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .event-schedule>.schedule-day-nav .secondary-button{background:linear-gradient(145deg,#f7fbff,#d6e5ec)!important;border-color:#fff!important;color:#143254!important}
 .app-shell--events .event-report-launchers button[data-event-report-launch="daily"]{background:linear-gradient(145deg,#20b5a5,#08766c)!important}
 .app-shell--events .event-report-launchers button[data-event-report-launch="monthly"]{background:linear-gradient(145deg,#edbd4f,#aa741b)!important}
+
+
+/* Título de Eventos em faixa destacada
+.app-shell--events .events-module-heading{display:flex;align-items:center;justify-content:center;min-height:46px;margin:0 0 clamp(8px,1.2dvh,12px)!important;padding:8px 14px;border:2px solid rgba(255,255,255,.96);border-radius:18px;background:linear-gradient(145deg,#214463 0%,#0d3257 72%,#092743 100%);box-shadow:0 4px 0 rgba(8,28,48,.34),0 8px 16px rgba(8,24,39,.2),inset 0 2px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(3,21,37,.24);color:#fff!important;font-size:clamp(.9rem,3vw,1.08rem)!important;font-weight:950;letter-spacing:.12em;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.22)}
