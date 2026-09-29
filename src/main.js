@@ -3459,7 +3459,7 @@ async function launchEventFromSchedule(day, position) {
   const status = document.querySelector('#event-form-status');
   status.textContent = selected.name === memberSigla
     ? `Sigla ${memberSigla} selecionada. O nome precisa ser conferido no cadastro de Pessoas.`
-    : `Evento iniciado para ${selected.name}.`;
+    : '';
   const dialog = document.querySelector('#event-launch-dialog');
   if (dialog && !dialog.open) dialog.showModal();
   // Não forçar foco programático no <select>: no Safari/iOS isso pode consumir o primeiro toque.
