@@ -872,12 +872,13 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .identity-card{width:100%;min-height:128px;padding:14px 20px 24px;border-radius:20px}
 @media(max-width:420px){.app-shell--events .topbar{padding-inline:7px}.app-shell--events .identity-card{min-height:120px;padding:12px 14px 22px;border-radius:18px}}
 
-/* Mantém os contêineres de conteúdo do app em 95% da largura do visor. */
-.app-shell .main-content{width:95vw;max-width:none;margin-inline:auto}
-.app-shell--events .main-content{width:95vw;max-width:none;margin-inline:auto}
+/* Contêineres principais ocupam 90% do visor em todos os módulos. */
+.app-shell .main-content{width:90vw;max-width:none;margin-inline:auto}
 
-/* Alinha o cartão superior da marca à largura geral de 95% do visor. */
-.app-shell .topbar{padding-inline:1vw}
-.app-shell .identity-card{flex:0 0 95vw;width:95vw;max-width:95vw;margin-inline:auto}
-.app-shell--home .topbar{padding-inline:1vw}
-.app-shell--events .identity-card{flex:0 0 95vw;width:95vw;max-width:95vw;margin-inline:auto}
+/* Cabeçalho e marca acompanham a mesma largura responsiva. */
+.app-shell .topbar{padding-inline:5vw}
+.app-shell .identity-card{flex:0 0 90vw;width:90vw;max-width:90vw;margin-inline:auto}
+.app-shell--home .topbar{padding-inline:5vw}
+.app-shell--events .topbar{padding-inline:5vw}
+.app-shell--events .main-content{width:90vw;max-width:none;margin-inline:auto}
+.app-shell--events .identity-card{flex:0 0 90vw;width:90vw;max-width:90vw;margin-inline:auto}
