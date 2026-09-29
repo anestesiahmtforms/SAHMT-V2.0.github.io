@@ -11,10 +11,11 @@ export const app = firebaseConfigured
   : null;
 
 const appCheckSiteKey = import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim();
+const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true';
 const useEmulators = import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
-export const appCheckReady = app && appCheckSiteKey && !useEmulators
-  ? import('firebase/app-check').then(({initializeAppCheck, ReCaptchaV3Provider}) => initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(appCheckSiteKey),
+export const appCheckReady = app && labelAiEnabled && appCheckSiteKey && !useEmulators
+  ? import('firebase/app-check').then(({initializeAppCheck, ReCaptchaEnterpriseProvider}) => initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
     isTokenAutoRefreshEnabled: true
   }))
   : Promise.resolve(null);

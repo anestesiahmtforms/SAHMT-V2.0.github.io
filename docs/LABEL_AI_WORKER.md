@@ -9,12 +9,14 @@
 - OpenAI: `gpt-6-luna`; `OPENAI_API_KEY` é Secret Cloudflare e não deve ser lida, colada no chat, commitada ou colocada em variável Vite.
 - Cloud Functions/Blaze não são necessários para esta leitura.
 
+Em 29/09/2026, o Worker foi publicado no Cloudflare (versão `2f609917-ffa3-46ab-aea3-fc573541ffac`), o app Web SAHMT PWA foi registrado no Firebase App Check com Fraud Defense e as três variáveis públicas do GitHub Actions foram cadastradas. `VITE_LABEL_AI_ENABLED` permanece `false` até a homologação autenticada; com esse valor, o PWA não inicializa o App Check nem consome avaliações ao abrir a página.
+
 O `GET /health` responder `200` comprova apenas disponibilidade básica do endpoint; não prova que o código versionado atual está implantado nem testa Auth, App Check, perfil ou OpenAI.
 
 ## 1. Preparar App Check no Firebase
 
-1. No [Firebase Console](https://console.firebase.google.com/project/sahmt-17a16/appcheck), selecione o app Web SAHMT com App ID `1:1072832154794:web:38e8e627d4189ebb0a14d3`.
-2. Registre/configure o provedor **reCAPTCHA v3** para o domínio `anestesiahmtforms.github.io`. Se o Firebase Console oferecer uma nova chave de site, use a chave pública correspondente a esse domínio. Nunca use a chave secreta no PWA.
+1. No Google Cloud Fraud Defense do projeto `sahmt-17a16`, crie uma chave Web baseada em pontuação, restrita ao domínio `anestesiahmtforms.github.io`. Mantenha a verificação de domínio ativa e não inclua `localhost` na chave de produção.
+2. No [Firebase Console](https://console.firebase.google.com/project/sahmt-17a16/appcheck), selecione o app Web SAHMT com App ID `1:1072832154794:web:38e8e627d4189ebb0a14d3` e registre o provedor **Fraud Defense (reCAPTCHA Enterprise)** com essa chave pública. O reCAPTCHA clássico está descontinuado para novos cadastros. Não coloque chaves secretas no PWA.
 3. Mantenha o enforcement global do App Check conforme a política já adotada no projeto; o Worker valida obrigatoriamente cada token recebido, independentemente do enforcement global.
 4. Teste a integração no domínio publicado e confirme que o app consegue obter tokens. Não use token de debug em produção.
 
@@ -24,7 +26,7 @@ No repositório `anestesiahmtforms/SAHMT-V2.0.github.io`, abra **Settings → Se
 
 | Nome | Valor |
 |---|---|
-| `VITE_APP_CHECK_SITE_KEY` | Site key pública reCAPTCHA v3 do App Check acima |
+| `VITE_APP_CHECK_SITE_KEY` | Chave pública Web do reCAPTCHA Enterprise registrada no App Check acima |
 | `VITE_LABEL_AI_ENDPOINT` | `https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract` |
 | `VITE_LABEL_AI_ENABLED` | `false` até concluir deploy e homologação autenticada |
 
@@ -55,7 +57,7 @@ npm run test:label-ai-worker
 npm run build
 ```
 
-Antes de abrir o recurso a usuários, publique o PWA com `VITE_LABEL_AI_ENABLED=true` e faça uma homologação controlada, usando etiqueta fictícia sem dados pessoais, uma conta Firebase ativa com `labelsWrite` (ou permissão administrativa), App Check real e a origem oficial. Confirme o rascunho e que nada é persistido até **Salvar registro**. Depois restaure o controle de habilitação conforme a decisão institucional.
+Para homologar o fluxo completo, habilite `VITE_LABEL_AI_ENABLED=true` apenas durante uma janela controlada no domínio oficial e use etiqueta fictícia sem dados pessoais, uma conta Firebase ativa com `labelsWrite` (ou permissão administrativa) e App Check real. Confirme o rascunho e que nada é persistido até **Salvar registro**. Se qualquer etapa falhar, retorne a variável a `false` e publique novamente; mantenha `true` somente após a homologação.
 
 ## 5. Critérios de aceite e limites
 
@@ -66,4 +68,4 @@ Antes de abrir o recurso a usuários, publique o PWA com `VITE_LABEL_AI_ENABLED=
 - Worker não grava registros nem usa service account. O Firestore lê o perfil com o ID Token do próprio usuário e mantém a aplicação das Security Rules.
 - Não registrar imagens, conteúdo clínico, tokens ou segredo. `store:false` não equivale a garantia de retenção zero no provedor; confirme as políticas institucionais e contratuais antes de imagens reais.
 
-Ainda dependem de acesso do proprietário ao painel Cloudflare/Firebase/GitHub: confirmar o deploy do Worker, obter e cadastrar a site key pública, publicar o Pages com App Check e completar o teste autenticado controlado. A leitura fica **não pronta para homologação final** até essas verificações.
+Ainda faltam a publicação do Pages com a configuração nova e a homologação autenticada com imagem fictícia. A leitura fica **desativada** enquanto `VITE_LABEL_AI_ENABLED=false`.
