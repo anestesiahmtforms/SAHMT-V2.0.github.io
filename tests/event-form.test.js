@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {eventFieldRules, normalizeEventType, validateEventForm} from '../src/event-form.js';
+import {eventAmountToPay, eventFieldRules, normalizeEventType, validateEventForm} from '../src/event-form.js';
 
 const blankEvent = {
   eventDate: '2026-09-24', memberStatus: '', eventType: '', description: '', delayMultiple: '',
@@ -13,6 +13,18 @@ test('normaliza acentos para aplicar as condições de tipo da V1', () => {
   assert.deepEqual(eventFieldRules('Suporte'), {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'});
   assert.deepEqual(eventFieldRules('Gestão'), {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'});
   assert.deepEqual(eventFieldRules('Outros'), {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true, disableSubstitute: false, payerMode: 'manual', creditorMode: 'substitute', amountMode: 'manual'});
+});
+
+test('calcula atraso a R$ 100 por múltiplo e turnos pelo valor definido', () => {
+  assert.equal(eventAmountToPay('ATRASO', '0', ''), 0);
+  assert.equal(eventAmountToPay('ATRASO', '2', ''), 200);
+  assert.equal(eventAmountToPay('ATRASO', '', ''), null);
+  assert.equal(eventAmountToPay('ATRASO', '7', ''), null);
+  assert.equal(eventAmountToPay('Suporte', '', 'Manhã'), 1000);
+  assert.equal(eventAmountToPay('Congresso', '', 'Tarde'), 1000);
+  assert.equal(eventAmountToPay('Gestão', '', 'Integral'), 2000);
+  assert.equal(eventAmountToPay('Ausência', '', 'Integral'), null);
+  assert.equal(eventAmountToPay('Outros', '3', 'Integral'), null);
 });
 
 test('ATRASO exige membro e múltiplo e não aceita substituto ou turno', () => {

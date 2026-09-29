@@ -3,7 +3,7 @@ import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
 import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount} from './outbox.js';
-import {eventFieldRules, validateEventForm} from './event-form.js';
+import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
@@ -3458,11 +3458,8 @@ function updateEventEntryFields(form) {
   applyEventSelectAutofill(form.elements.payer, payerValue, editing);
   applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
 
-  const amount = rules.amountMode === 'delay'
-    ? (form.elements.delayMultiple.value === '' ? null : Number(form.elements.delayMultiple.value) * 200)
-    : rules.amountMode === 'shift' ? (normalizeEventOption(form.elements.shift.value) === 'integral' ? 2000 : (['manha', 'tarde'].includes(normalizeEventOption(form.elements.shift.value)) ? 1000 : null))
-      : null;
-  applyEventAmountAutofill(form.elements.amountToPay, amount, editing);
+  const amount = eventAmountToPay(eventType, form.elements.delayMultiple.value, form.elements.shift.value);
+  applyEventAmountAutofill(form.elements.amountToPay, amount, editing, rules.amountMode !== 'manual');
   const requiredByType = {eventDate: true, eventType: true, memberStatus: rules.memberStatus, description: rules.description, delayMultiple: rules.delayMultiple, substitute: rules.substitute, shift: rules.shift, payer: true, creditor: true, amountToPay: true};
   for (const [name, required] of Object.entries(requiredByType)) {
     const control = form.elements[name];
@@ -3516,9 +3513,21 @@ function applyEventSelectAutofill(select, value, editing) {
   if (select.name !== 'substitute') select.disabled = select.dataset.catalogEmpty === 'true';
 }
 
-function applyEventAmountAutofill(input, value, editing) {
+function applyEventAmountAutofill(input, value, editing, automatic = false) {
   if (!input) return;
   const wasAutofilled = input.dataset.eventAutofilled === 'true';
+  if (automatic) {
+    if (Number.isFinite(value)) {
+      input.value = String(value);
+      input.dataset.eventAutofilled = 'true';
+      input.disabled = true;
+    } else {
+      if (wasAutofilled || editing) input.value = '';
+      input.dataset.eventAutofilled = 'false';
+      input.disabled = true;
+    }
+    return;
+  }
   if (editing) {
     input.dataset.eventAutofilled = 'false';
     input.disabled = false;

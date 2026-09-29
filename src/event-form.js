@@ -22,6 +22,20 @@ export function eventFieldRules(value) {
   return {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: false, disableSubstitute: false, payerMode: 'manual', creditorMode: 'manual', amountMode: 'manual'};
 }
 
+export function eventAmountToPay(eventType, delayMultiple, shift) {
+  const {amountMode} = eventFieldRules(eventType);
+  if (amountMode === 'delay') {
+    const multiple = String(delayMultiple ?? '');
+    return /^[0-6]$/.test(multiple) ? Number(multiple) * 100 : null;
+  }
+  if (amountMode === 'shift') {
+    const normalizedShift = normalizeEventType(shift);
+    if (normalizedShift === 'integral') return 2000;
+    if (['manha', 'tarde'].includes(normalizedShift)) return 1000;
+  }
+  return null;
+}
+
 export function validateEventForm(values) {
   const type = normalizeEventType(values.eventType);
   if (!eventTypes.has(type)) throw new Error('Selecione um tipo de evento válido.');

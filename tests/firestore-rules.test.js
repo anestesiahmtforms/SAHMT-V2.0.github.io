@@ -802,17 +802,37 @@ test('permissão de escrita cria evento próprio diretamente no Firestore', asyn
   const other = testEnvironment.authenticatedContext('other-writer').firestore();
   const admin = testEnvironment.authenticatedContext('event-admin').firestore();
   const now = new Date();
-  const event = {date: '2026-09-24', memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 400, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
+  const event = {date: '2026-09-24', memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 200, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
   await assertSucceeds(setFirestoreRecord(user, 'events', 'standalone', {...event, id: 'standalone', clientMutationId: 'standalone', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
   await assertSucceeds(setFirestoreRecord(user, 'events', 'request-1', {...event, createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
-  await assertFails(updateEventWithHistory(user, {eventId: 'request-1', event, uid: 'writer', updates: {amountToPay: 420}, requestId: 'event-edit-2'}));
-  await assertSucceeds(updateEventWithHistory(admin, {eventId: 'request-1', event, uid: 'event-admin', updates: {amountToPay: 420}, requestId: 'event-edit-2'}));
+  const shiftEvent = {...event, id: 'shift-valid', clientMutationId: 'shift-valid', eventType: 'Gestão', memberStatus: 'AB — Ausente', delayMultiple: null, substitute: 'Substituto', shift: 'Manhã', amountToPay: 1000};
+  await assertSucceeds(setFirestoreRecord(user, 'events', 'shift-valid', shiftEvent, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'shift-invalid-amount', {...shiftEvent, id: 'shift-invalid-amount', clientMutationId: 'shift-invalid-amount', amountToPay: 2000}, 'writer'));
+  const supportEvent = {...shiftEvent, id: 'support-valid', clientMutationId: 'support-valid', eventType: 'Suporte', memberStatus: 'SUPORTE', shift: 'Integral', amountToPay: 2000};
+  await assertSucceeds(setFirestoreRecord(user, 'events', 'support-valid', supportEvent, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'support-invalid-amount', {...supportEvent, id: 'support-invalid-amount', clientMutationId: 'support-invalid-amount', amountToPay: 1000}, 'writer'));
+  const absenceEvent = {...shiftEvent, id: 'absence-manual', clientMutationId: 'absence-manual', eventType: 'Ausência', shift: 'Integral', amountToPay: 375};
+  await assertSucceeds(setFirestoreRecord(user, 'events', 'absence-manual', absenceEvent, 'writer'));
+  const legacyEvent = {...event, id: 'legacy-event', clientMutationId: 'legacy-event', amountToPay: 400};
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'events', 'legacy-event'), {
+      ...legacyEvent, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+    });
+  });
+  await assertSucceeds(updateEventWithHistory(admin, {
+    eventId: 'legacy-event', event: legacyEvent, uid: 'event-admin',
+    updates: {memberStatus: 'CD — Atrasado'}, requestId: 'legacy-event-edit'
+  }));
+  await assertFails(updateEventWithHistory(user, {eventId: 'request-1', event, uid: 'writer', updates: {amountToPay: 220}, requestId: 'event-edit-2'}));
+  await assertFails(updateEventWithHistory(admin, {eventId: 'request-1', event, uid: 'event-admin', updates: {amountToPay: 220}, requestId: 'event-edit-2-admin'}));
+  await assertFails(setFirestoreRecord(user, 'events', 'invalid-delay-amount', {...event, id: 'invalid-delay-amount', clientMutationId: 'invalid-delay-amount', amountToPay: 400}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'missing-member', {...event, id: 'missing-member', clientMutationId: 'missing-member', memberStatus: ''}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'invalid-delay', {...event, id: 'invalid-delay', clientMutationId: 'invalid-delay', delayMultiple: 8}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'unknown-payer', {...event, id: 'unknown-payer', clientMutationId: 'unknown-payer', payer: 'Não catalogado'}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'bad-other', {...event, id: 'bad-other', clientMutationId: 'bad-other', eventType: 'Outros', description: ''}, 'writer'));
-  const editedEvent = {...event, amountToPay: 420, version: 2};
-  await assertSucceeds(updateEventWithHistory(admin, {eventId: 'request-1', event: editedEvent, uid: 'event-admin', updates: {memberStatus: 'CD — Atrasado'}, requestId: 'event-edit-3'}));
+  await assertSucceeds(updateEventWithHistory(admin, {eventId: 'request-1', event, uid: 'event-admin', updates: {memberStatus: 'CD — Atrasado'}, requestId: 'event-edit-3'}));
+  const editedEvent = {...event, memberStatus: 'CD — Atrasado', version: 2};
+  await assertSucceeds(updateEventWithHistory(admin, {eventId: 'request-1', event: editedEvent, uid: 'event-admin', updates: {memberStatus: 'EF — Atrasado'}, requestId: 'event-edit-4'}));
   await assertFails(updateFirestoreRecord(user, 'events', 'request-1', {memberStatus: 'EF — Atrasado', updatedByUid: 'writer', updatedAt: serverTimestamp(), version: 3}, 'writer'));
   await assertFails(updateFirestoreRecord(other, 'events', 'request-1', {memberStatus: 'EF — Atrasado', updatedByUid: 'other-writer', updatedAt: serverTimestamp(), version: 4}, 'other-writer'));
   await assertFails(deleteDoc(doc(user, 'events', 'request-1')));

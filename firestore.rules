@@ -549,6 +549,13 @@ service cloud.firestore {
         data.createdByUid is string && data.updatedByUid == request.auth.uid &&
         data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
     }
+    function unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues) {
+      return allowHistoricalCatalogValues &&
+        data.eventType == resource.data.eventType &&
+        data.delayMultiple == resource.data.delayMultiple &&
+        data.shift == resource.data.shift &&
+        data.amountToPay == resource.data.amountToPay;
+    }
     function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
       return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdByName', 'updatedByName', 'createdAt', 'updatedAt', 'version']) &&
@@ -566,9 +573,10 @@ service cloud.firestore {
         data.payer is string && data.payer.size() > 0 && data.payer.size() <= 120 && eventCatalogContainsOrUnchanged('payers', data.payer, eventId, allowHistoricalCatalogValues) &&
         data.creditor is string && data.creditor.size() > 0 && data.creditor.size() <= 120 && eventCatalogContainsOrUnchanged('creditors', data.creditor, eventId, allowHistoricalCatalogValues) &&
         data.amountToPay is number && data.amountToPay >= 0 && data.status == 'OPEN' &&
-        ((data.eventType == 'ATRASO' && data.memberStatus.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.description == '' && data.substitute == '' && data.shift == '') ||
-         (data.eventType == 'Suporte' && data.memberStatus == 'SUPORTE' && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
-         (data.eventType in ['Pessoal', 'Férias', 'Ferias', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
+        ((data.eventType == 'ATRASO' && data.memberStatus.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && (data.amountToPay == data.delayMultiple * 100 || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues)) && data.description == '' && data.substitute == '' && data.shift == '') ||
+         (data.eventType == 'Suporte' && data.memberStatus == 'SUPORTE' && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral'] && (((data.shift == 'Integral' && data.amountToPay == 2000) || (data.shift in ['Manhã', 'Manha', 'Tarde'] && data.amountToPay == 1000)) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues))) ||
+         (data.eventType in ['Pessoal', 'Férias', 'Ferias', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral'] && (((data.shift == 'Integral' && data.amountToPay == 2000) || (data.shift in ['Manhã', 'Manha', 'Tarde'] && data.amountToPay == 1000)) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues))) ||
+         (data.eventType in ['Ausência', 'Ausencia'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
          (data.eventType == 'Outros' && data.memberStatus.size() > 0 && data.description.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']));
     }
     function eventHistorySnapshot(data) {
