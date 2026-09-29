@@ -950,3 +950,8 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--home .schedule-date-block{padding:5px}
 .app-shell--home .schedule-content>.schedule-siglas-grid{gap:clamp(5px,.8dvh,8px);padding:3px}
 @media(max-width:420px){.app-shell--home .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}.app-shell--home .identity-card .brand img{width:42px;height:42px}.app-shell--home .identity-card__user-row{gap:5px}.app-shell--home .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}.app-shell--home .home-header-scale{min-height:27px;padding:3px 8px}}
+
+
+/* Indicador discreto de gravação confirmada junto ao número da sigla em Eventos. */
+.app-shell--events .schedule-siglas-grid .sigla-index{display:flex;align-items:center;justify-content:center;gap:4px}
+.app-shell--events .event-confirmation-dot{flex:0 0 8px;display:inline-block;width:8px;height:8px;border:1px solid rgba(255,255,255,.9);border-radius:50%;background:radial-gradient(circle at 30% 25%,#e2ffea 0 9%,#81e6a0 22%,#32b65c 60%,#197b3a 100%);box-shadow:0 1px 0 #176435,0 1px 4px rgba(24,126,61,.35),inset 0 1px 1px rgba(255,255,255,.9)}
