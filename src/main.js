@@ -3462,7 +3462,7 @@ async function launchEventFromSchedule(day, position) {
     : `Evento iniciado para ${selected.name}.`;
   const dialog = document.querySelector('#event-launch-dialog');
   if (dialog && !dialog.open) dialog.showModal();
-  form.elements.eventType.focus({preventScroll: true});
+  // Não forçar foco programático no <select>: no Safari/iOS isso pode consumir o primeiro toque.
 }
 
 function setEventTypeContext(form, context) {
