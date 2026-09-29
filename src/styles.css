@@ -955,3 +955,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 /* Indicador discreto de gravação confirmada junto ao número da sigla em Eventos. */
 .app-shell--events .schedule-siglas-grid .sigla-index{display:flex;align-items:center;justify-content:center;gap:4px}
 .app-shell--events .event-confirmation-dot{flex:0 0 8px;display:inline-block;width:8px;height:8px;border:1px solid rgba(255,255,255,.9);border-radius:50%;background:radial-gradient(circle at 30% 25%,#e2ffea 0 9%,#81e6a0 22%,#32b65c 60%,#197b3a 100%);box-shadow:0 1px 0 #176435,0 1px 4px rgba(24,126,61,.35),inset 0 1px 1px rgba(255,255,255,.9)}
+
+
+/* Esfera de confirmação posicionada ao lado direito da sigla dentro do botão. */
+.app-shell--events .schedule-siglas-grid .sigla-index{display:block}
+.app-shell--events .schedule-siglas-grid .sigla-token--event{position:relative}
+.app-shell--events .schedule-siglas-grid .event-confirmation-dot{position:absolute;top:50%;right:7px;z-index:2;display:block;width:8px;height:8px;margin:0;transform:translateY(-50%)}
