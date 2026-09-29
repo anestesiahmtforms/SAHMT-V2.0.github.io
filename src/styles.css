@@ -732,3 +732,14 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .event-report-launchers button{min-height:clamp(58px,8dvh,70px)!important;padding:12px 14px!important;border-width:2px!important;border-radius:999px!important;font-size:clamp(.72rem,2.8vw,.9rem)!important;letter-spacing:.045em!important;box-shadow:0 6px 0 rgba(9,39,67,.32),0 11px 18px rgba(8,24,39,.22),inset 0 2px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(8,25,40,.16)!important}
 .event-report-launchers button:active{transform:translateY(3px) scale(.99)!important;box-shadow:0 2px 0 rgba(9,39,67,.3),0 4px 8px rgba(8,24,39,.16),inset 0 2px 4px rgba(8,25,40,.16)!important}
 @media(max-width:520px){.event-report-launchers button{min-height:56px!important;padding:10px 8px!important;font-size:clamp(.64rem,2.8vw,.78rem)!important}.event-report-dialog__header{min-height:46px}}
+
+
+/* Bloco unificado de data e navegação de Eventos
+/* O campo de data e os três controles de navegação compõem um único bloco. */
+.app-shell--events .event-schedule{gap:0}
+.app-shell--events .event-schedule-heading{margin:0;padding:8px 9px 5px;border:1px solid rgba(199,154,62,.42);border-bottom:0;border-radius:16px 16px 0 0;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96));box-shadow:0 3px 0 rgba(20,50,84,.12),inset 0 1px 0 rgba(255,255,255,.9)}
+.app-shell--events .event-schedule>.schedule-day-nav{margin:0 0 8px;padding:5px 9px 9px;border:1px solid rgba(199,154,62,.42);border-top:0;border-radius:0 0 16px 16px;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96));gap:clamp(5px,1vw,9px)}
+.app-shell--events .event-schedule .schedule-content{margin-top:0}
+/* Relatórios empilhados, um botão largo por linha. */
+.app-shell--events .event-report-launchers{grid-template-columns:minmax(0,1fr);gap:10px}
+.app-shell--events .event-report-launchers button{width:100%;min-height:58px!important;white-space:nowrap}
