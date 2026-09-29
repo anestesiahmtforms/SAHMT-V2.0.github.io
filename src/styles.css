@@ -631,3 +631,24 @@ body:has(#event-launch-dialog[open]) #outbox-status{display:none!important}
 .checklist-station-footer{margin:0;padding-top:8px;border-top:1px solid #d5e0df}
 .checklist-station-footer button{width:100%;min-height:44px}
 @media(max-width:520px){.checklist-station-dialog{inset:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));width:auto;max-width:none;max-height:none;margin:0;padding:12px;border-radius:20px}}
+
+
+/* Tema global V1 aplicado ao ecossistema V2. Estados funcionais permanecem semânticos. */
+:root{--navy:#0d3257;--blue:#214463;--teal:#18b7b7;--sand:#f5ecdb;--sand-strong:#f6ead4;--mist:#dce8ee;--ink:#143254;--copper:#b56404;--gold:#c79a3e;--forest:#237a57;--orange:#ff9f43;--shadow:0 18px 40px rgba(8,18,31,.18)}
+body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transparent 34%),radial-gradient(circle at 0 80%,rgba(255,183,77,.12),transparent 32%),linear-gradient(180deg,#0d3257 0%,#214463 44%,#eee4d1 100%)}
+.login-card,.panel,.module-view,.training-dialog,.event-report-dialog{background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96));color:var(--ink)}
+.primary-button{background:linear-gradient(180deg,#214463,#0d3257);color:#fff;box-shadow:0 4px 0 #092743}
+.secondary-button,.google-button{background:var(--mist);color:var(--ink);border-color:#c3d4dc}
+.text-button,.panel-heading .eyebrow,.section-heading .eyebrow,.module-view .eyebrow,.quick-form summary,.record-meta{color:#214463}
+.panel,.module-view{border-color:rgba(255,255,255,.94)}
+.module-card,.module-card:nth-child(2),.module-card:nth-child(3),.module-card:nth-child(4){background:linear-gradient(145deg,#fff,#dce8ee 68%,#c7d8df);box-shadow:0 5px 0 #8faab5,0 10px 17px #001b3528;color:var(--ink)}
+.module-mark,.module-card .arrow{color:#214463}
+.quick-form,.management-area-detail,.checklist-station,.training-score,.training-card{background:rgba(245,236,219,.82);border-color:#c8d8dc}
+.record-list li,.area-card{background:#fffdf8;border-color:#c8d8dc;color:var(--ink)}
+.date-picker input,.report-period input,.quick-form input,.quick-form select,.quick-form textarea,.checklist-controls input,.checklist-occurrence textarea{background:#fffdf8;border-color:#b9cbd2;color:var(--ink)}
+.event-report-dialog,.checklist-report-dialog,.checklist-station-dialog,.training-dialog{background:linear-gradient(145deg,#f5ecdb,#dce8ee);border-color:#fff}
+.event-record-banner{background:linear-gradient(145deg,#fffdf8,#dce8ee)}
+.event-history>ol>li{background:linear-gradient(145deg,#fffdf8,#dce8ee)}
+.event-history>ol>li>ul{background:linear-gradient(145deg,#fff8f0,#f6ead4)}
+.app-footer{background:var(--teal);color:#fff}
+button:focus-visible,input:focus-visible{outline-color:var(--teal)}
