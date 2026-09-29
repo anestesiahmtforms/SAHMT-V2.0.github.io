@@ -629,7 +629,7 @@ async function loadModule(route) {
     return;
   }
   if (route === 'labels') {
-    content.remove();
+    content?.remove();
     void loadReportPdfModule().catch(() => {});
     const reportDialog = document.querySelector('#label-report-dialog');
     reportDialog?.addEventListener('close', () => { labelReportOpen = false; });
