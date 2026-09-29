@@ -673,3 +673,36 @@ body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transp
 .app-footer{background:#18b7b7!important;color:#fff!important}
 .login-card input,.date-picker input,.report-period input,.quick-form input,.quick-form select,.quick-form textarea,.checklist-controls input,.checklist-occurrence textarea{background:#fff!important;border-color:#b9cbd2!important;color:#143254!important}
 button:focus-visible,input:focus-visible{outline-color:#18b7b7!important}
+
+
+/* Acabamento premium 3D
+/* Superfície 3D espelhada comum; mantém as cores próprias de cada ação/estado. */
+button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"]{
+ position:relative;
+ border:1px solid rgba(255,255,255,.94);
+ border-radius:18px;
+ box-shadow:0 5px 0 rgba(9,39,67,.28),0 9px 16px rgba(8,24,39,.19),inset 0 2px 0 rgba(255,255,255,.82),inset 0 -2px 0 rgba(8,25,40,.14);
+ text-shadow:0 1px 0 rgba(255,255,255,.22);
+ transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;
+}
+button:hover,[role="button"]:hover,input[type="button"]:hover,input[type="submit"]:hover,input[type="reset"]:hover{
+ filter:brightness(1.045) saturate(1.04);
+ box-shadow:0 6px 0 rgba(9,39,67,.25),0 12px 20px rgba(8,24,39,.22),inset 0 2px 0 rgba(255,255,255,.92),inset 0 -2px 0 rgba(8,25,40,.12);
+}
+button:active,[role="button"]:active,input[type="button"]:active,input[type="submit"]:active,input[type="reset"]:active{
+ transform:translateY(3px) scale(.99);
+ filter:brightness(.98);
+ box-shadow:0 2px 0 rgba(9,39,67,.28),0 4px 8px rgba(8,24,39,.16),inset 0 2px 5px rgba(8,25,40,.17),inset 0 1px 0 rgba(255,255,255,.55);
+}
+button:disabled,input[type="button"]:disabled,input[type="submit"]:disabled,input[type="reset"]:disabled{
+ transform:none;filter:saturate(.65);box-shadow:0 2px 0 rgba(9,39,67,.16),inset 0 1px 0 rgba(255,255,255,.5)
+}
+button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-visible,input[type="submit"]:focus-visible,input[type="reset"]:focus-visible{
+ outline:3px solid #18b7b7;outline-offset:3px
+}
+/* Mantém o formato característico de lançadores e controles circulares. */
+.event-report-launchers button,.label-report-launchers button,.checklist-report-launchers button{border-radius:999px}
+.sigla-card,.checklist-station-select{border-radius:20px}
+@media(prefers-reduced-motion:reduce){
+ button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"]{transition:none}
+}
