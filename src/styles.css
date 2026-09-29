@@ -898,3 +898,13 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--home .schedule-date-block .schedule-edit-launch{min-height:34px;margin:6px 5px 0;padding:5px 8px;border-radius:12px}
 .app-shell--home .schedule-card>.schedule-content{flex:1 1 auto;min-height:0;margin:0;padding:clamp(6px,1.2vw,10px);border:2px solid rgba(255,255,255,.96);border-radius:20px;background:linear-gradient(145deg,#e1ebef,#cadbe1);box-shadow:0 6px 0 rgba(20,50,84,.18),0 12px 20px rgba(8,24,39,.14),inset 0 1px 0 #fff;overflow:hidden}
 .app-shell--home .schedule-content>.schedule-siglas-grid{height:100%;min-height:0;margin:0;padding:2px;grid-auto-rows:minmax(0,1fr);gap:clamp(5px,.8dvh,8px)}
+
+/* Ajustes solicitados para o bloco da escala na Home. */
+.app-shell--home .schedule-date-block .panel-heading .eyebrow{width:100%;margin:0;text-align:center;font-size:clamp(.82rem,3vw,.95rem);letter-spacing:.18em;text-transform:uppercase}
+.app-shell--home .schedule-date-block .date-picker input{width:100%;max-width:none;height:clamp(42px,5.5dvh,50px);min-height:42px;margin:0;padding-inline:10px;font-size:clamp(.86rem,2.9vw,1rem);text-align:center}
+.app-shell--home .schedule-card>.schedule-content{flex:1 1 auto;min-height:0;margin:0;padding:clamp(5px,.9dvh,8px);border:2px solid #fff;border-radius:18px;background:linear-gradient(145deg,#e1ebef,#cadbe1);box-shadow:0 6px 0 rgba(20,50,84,.18),0 12px 20px rgba(8,24,39,.14),inset 0 1px 0 #fff;overflow:hidden}
+.app-shell--home .schedule-content>.schedule-siglas-grid{height:100%;min-height:0;margin:0;padding:2px;grid-auto-rows:minmax(0,1fr);gap:clamp(4px,.6dvh,6px)}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-item{min-height:0;align-content:center;gap:1px}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token{width:92%;min-height:clamp(32px,4.2dvh,40px);height:auto;padding:2px 4px;border-radius:15px;font-size:clamp(.62rem,2.6vw,.76rem)}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token>strong{line-height:1}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-index{min-height:9px;font-size:clamp(.48rem,1.8vw,.56rem);line-height:1}
