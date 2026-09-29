@@ -570,7 +570,7 @@ function showScheduleContacts(contacts, context = {}) {
 
 async function loadModule(route) {
   const content = document.querySelector('#module-content');
-  if (!content) return;
+  if (!content && route !== 'labels') return;
   if (!featureEnabledForRoute(route, appFeatures)) {
     navigate('home');
     return;
