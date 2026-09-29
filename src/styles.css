@@ -749,3 +749,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .event-schedule-heading{box-sizing:border-box;width:100%;min-width:0}
 .app-shell--events .event-schedule-heading .date-picker{box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;overflow:hidden}
 .app-shell--events .event-schedule-heading .date-picker input{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;margin:0}
+
+
+/* Contenção definitiva do input de data no iPhone
+.app-shell--events .event-schedule-heading{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;padding-inline:8px!important;overflow:hidden}
+.app-shell--events .event-schedule-heading .date-picker{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:100%!important;padding:0!important;overflow:hidden}
+.app-shell--events .event-schedule-heading .date-picker input{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:100%!important;margin:0!important;padding-inline:8px!important;justify-self:stretch;flex:none}
