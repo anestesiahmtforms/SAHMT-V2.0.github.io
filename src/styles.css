@@ -875,3 +875,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 /* Mantém os contêineres de conteúdo do app em 95% da largura do visor. */
 .app-shell .main-content{width:95vw;max-width:none;margin-inline:auto}
 .app-shell--events .main-content{width:95vw;max-width:none;margin-inline:auto}
+
+/* Alinha o cartão superior da marca à largura geral de 95% do visor. */
+.app-shell .topbar{padding-inline:1vw}
+.app-shell .identity-card{flex:0 0 95vw;width:95vw;max-width:95vw;margin-inline:auto}
+.app-shell--home .topbar{padding-inline:1vw}
+.app-shell--events .identity-card{flex:0 0 95vw;width:95vw;max-width:95vw;margin-inline:auto}
