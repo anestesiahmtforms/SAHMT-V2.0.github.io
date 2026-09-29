@@ -743,3 +743,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 /* Relatórios empilhados, um botão largo por linha. */
 .app-shell--events .event-report-launchers{grid-template-columns:minmax(0,1fr);gap:10px}
 .app-shell--events .event-report-launchers button{width:100%;min-height:58px!important;white-space:nowrap}
+
+
+/* Correção de largura do campo de data em Eventos
+.app-shell--events .event-schedule-heading{box-sizing:border-box;width:100%;min-width:0}
+.app-shell--events .event-schedule-heading .date-picker{box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;overflow:hidden}
+.app-shell--events .event-schedule-heading .date-picker input{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;margin:0}
