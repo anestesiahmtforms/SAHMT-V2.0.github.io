@@ -884,3 +884,17 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell dialog{position:fixed!important;inset:5vh 5vw!important;inset:5dvh 5vw!important;width:90vw!important;height:90vh!important;height:90dvh!important;max-width:90vw!important;max-height:90vh!important;max-height:90dvh!important;margin:0!important;box-sizing:border-box;overflow:auto!important;overscroll-behavior:contain;scrollbar-width:none}
 .app-shell dialog::-webkit-scrollbar,.app-shell dialog *::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
 .app-shell dialog *{scrollbar-width:none}
+
+/* Home: mesma separação entre bloco de data/navegação e bloco de siglas de Eventos. */
+.app-shell--home .schedule-card{gap:clamp(7px,1dvh,10px)}
+.app-shell--home .schedule-date-block{flex:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding:6px;border:1px solid rgba(199,154,62,.42);border-radius:17px;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96));box-shadow:0 3px 0 rgba(20,50,84,.12),inset 0 1px 0 rgba(255,255,255,.9)}
+.app-shell--home .schedule-date-block .panel-heading{display:grid;justify-items:center;gap:4px;padding:2px 4px 6px;text-align:center}
+.app-shell--home .schedule-date-block .panel-heading>div{width:100%}
+.app-shell--home .schedule-date-block .date-picker{display:block;width:100%;max-width:none}
+.app-shell--home .schedule-date-block .date-picker input{display:block;width:100%;max-width:min(100%,380px);height:clamp(38px,4.8dvh,44px);min-height:38px;margin:0 auto;padding:5px 8px;text-align:center}
+.app-shell--home .schedule-date-block .schedule-day-nav{margin:0;padding:5px 7px 7px;border:1px solid rgba(220,232,238,.9);border-radius:15px;background:rgba(220,232,238,.7);gap:clamp(5px,1vw,9px)}
+.app-shell--home .schedule-date-block .schedule-day-nav button{min-height:clamp(34px,4.5dvh,40px);padding:5px 7px}
+.app-shell--home .schedule-date-block .schedule-day-nav .secondary-button{background:linear-gradient(145deg,#f7fbff,#d6e5ec);border-color:#fff;color:#143254}
+.app-shell--home .schedule-date-block .schedule-edit-launch{min-height:34px;margin:6px 5px 0;padding:5px 8px;border-radius:12px}
+.app-shell--home .schedule-card>.schedule-content{flex:1 1 auto;min-height:0;margin:0;padding:clamp(6px,1.2vw,10px);border:2px solid rgba(255,255,255,.96);border-radius:20px;background:linear-gradient(145deg,#e1ebef,#cadbe1);box-shadow:0 6px 0 rgba(20,50,84,.18),0 12px 20px rgba(8,24,39,.14),inset 0 1px 0 #fff;overflow:hidden}
+.app-shell--home .schedule-content>.schedule-siglas-grid{height:100%;min-height:0;margin:0;padding:2px;grid-auto-rows:minmax(0,1fr);gap:clamp(5px,.8dvh,8px)}
