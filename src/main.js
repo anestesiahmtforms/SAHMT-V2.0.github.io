@@ -279,6 +279,8 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
       : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
     const marked = !eventMode && highlightedSiglas.has(position.sigla);
+    const showConfirmedDot = eventMode ? hasEvent : marked && !schedule.stale && schedule.pendingFirestore !== true;
+    const confirmationLabel = eventMode ? 'Registro de evento confirmado no Firestore' : 'Liberação confirmada no Firestore';
     const vacationDescription = position.vacationParts.length
       ? `; em férias: ${position.vacationParts.map((sigla) => `${sigla}, posição ${position.vacationPositions[sigla]} na escala de férias`).join('; ')}`
       : '';
@@ -289,7 +291,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}${eventMode && hasEvent ? '<span class="event-confirmation-dot" role="img" aria-label="Registro de evento confirmado no Firestore" title="Registro confirmado no Firestore"></span>' : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<div class="sigla-item"><button class="sigla-token sigla-button${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-dot" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}"></span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
 }
 
@@ -556,7 +558,7 @@ function showScheduleContacts(contacts, context = {}) {
       });
       if (status) status.textContent = updated.pendingFirestore
         ? 'Liberação salva neste aparelho; aguardando confirmação do Firestore.'
-        : marked ? 'Sigla liberada para esta data.' : 'Liberação removida para esta data.';
+        : marked ? '' : 'Liberação removida para esta data.';
       context.onRelease?.();
     } catch {
       button.disabled = false;
