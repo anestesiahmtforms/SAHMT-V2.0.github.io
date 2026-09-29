@@ -653,7 +653,7 @@ body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transp
 .app-footer{background:var(--teal);color:#fff}
 button:focus-visible,input:focus-visible{outline-color:var(--teal)}
 \n
-/* Revisão fiel da paleta V1
+/* Revisão fiel da paleta V1 */
 :root{--bg-top:#0d3257;--bg-mid:#214463;--bg-bottom:#eee4d1;--sand:rgba(245,236,219,.96);--sand-strong:#f6ead4;--ink:#143254;--teal:#18b7b7;--gold:#c79a3e;--copper:#b56404;--mist:#dce8ee;--forest:#237a57;--orange:#ff9f43;--blue:#214463;--shadow:0 18px 40px rgba(8,18,31,.18)}
 body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transparent 22%),radial-gradient(circle at left 80%,rgba(255,183,77,.12),transparent 18%),linear-gradient(180deg,#0d3257 0%,#214463 44%,#eee4d1 100%)!important;color:#143254}
 .login-card,.panel,.module-view,.schedule-card,.event-report,.checklist-controls,.training-dialog,.event-report-dialog,.checklist-report-dialog,.checklist-station-dialog{background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96))!important;color:#143254}
@@ -675,7 +675,7 @@ body{background:radial-gradient(circle at top right,rgba(255,255,255,.12),transp
 button:focus-visible,input:focus-visible{outline-color:#18b7b7!important}
 
 
-/* Acabamento premium 3D
+/* Acabamento premium 3D */
 /* Superfície 3D espelhada comum; mantém as cores próprias de cada ação/estado. */
 button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"]{
  position:relative;
@@ -709,7 +709,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 
 
 
-/* Ajustes de proporção da página de Eventos
+/* Ajustes de proporção da página de Eventos */
 /* Blocos separados: campo de data, navegação e siglas ficam em áreas próprias. */
 .app-shell--events .event-schedule{position:relative;isolation:isolate;overflow:hidden;gap:clamp(7px,1.1dvh,11px)}
 .app-shell--events .event-schedule-heading{flex:0 0 auto;padding:7px 9px;border:1px solid rgba(199,154,62,.42);border-radius:15px;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.92));box-shadow:0 3px 0 rgba(20,50,84,.12),inset 0 1px 0 rgba(255,255,255,.9)}
@@ -734,7 +734,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 @media(max-width:520px){.event-report-launchers button{min-height:56px!important;padding:10px 8px!important;font-size:clamp(.64rem,2.8vw,.78rem)!important}.event-report-dialog__header{min-height:46px}}
 
 
-/* Bloco unificado de data e navegação de Eventos
+/* Bloco unificado de data e navegação de Eventos */
 /* O campo de data e os três controles de navegação compõem um único bloco. */
 .app-shell--events .event-schedule{gap:0}
 .app-shell--events .event-schedule-heading{margin:0;padding:8px 9px 5px;border:1px solid rgba(199,154,62,.42);border-bottom:0;border-radius:16px 16px 0 0;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.96));box-shadow:0 3px 0 rgba(20,50,84,.12),inset 0 1px 0 rgba(255,255,255,.9)}
@@ -745,19 +745,19 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .event-report-launchers button{width:100%;min-height:58px!important;white-space:nowrap}
 
 
-/* Correção de largura do campo de data em Eventos
+/* Correção de largura do campo de data em Eventos */
 .app-shell--events .event-schedule-heading{box-sizing:border-box;width:100%;min-width:0}
 .app-shell--events .event-schedule-heading .date-picker{box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;overflow:hidden}
 .app-shell--events .event-schedule-heading .date-picker input{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;margin:0}
 
 
-/* Contenção definitiva do input de data no iPhone
+/* Contenção definitiva do input de data no iPhone */
 .app-shell--events .event-schedule-heading{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;padding-inline:8px!important;overflow:hidden}
 .app-shell--events .event-schedule-heading .date-picker{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:100%!important;padding:0!important;overflow:hidden}
 .app-shell--events .event-schedule-heading .date-picker input{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:100%!important;margin:0!important;padding-inline:8px!important;justify-self:stretch;flex:none}
 
 
-/* Separação visual completa entre calendário e grade de siglas
+/* Separação visual completa entre calendário e grade de siglas */
 /* Mantém data e navegação agrupadas e cria uma área independente para as siglas. */
 .app-shell--events .event-schedule{gap:0}
 .app-shell--events .event-schedule-heading{border-radius:18px 18px 0 0}
@@ -766,7 +766,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{height:100%;min-height:0;margin:0;padding:2px;gap:clamp(5px,.8dvh,8px)}
 
 
-/* Contraste reforçado em Eventos
+/* Contraste reforçado em Eventos */
 /* Mais contraste na área das siglas, mantendo suas cores funcionais. */
 .app-shell--events .event-schedule .schedule-content{background:linear-gradient(145deg,#e1ebef,#cadbe1)!important;border-color:#fff!important;box-shadow:0 6px 0 rgba(20,50,84,.18),0 12px 20px rgba(8,24,39,.14),inset 0 1px 0 #fff!important}
 .app-shell--events .event-schedule .schedule-siglas-grid .sigla-item:nth-child(4n+1) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#f8fbff,#dceafa 58%,#c1d8f0)!important;border-color:#fff!important}
@@ -779,5 +779,5 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .event-report-launchers button[data-event-report-launch="monthly"]{background:linear-gradient(145deg,#edbd4f,#aa741b)!important}
 
 
-/* Título de Eventos em faixa destacada
+/* Título de Eventos em faixa destacada */
 .app-shell--events .events-module-heading{display:flex;align-items:center;justify-content:center;min-height:46px;margin:0 0 clamp(8px,1.2dvh,12px)!important;padding:8px 14px;border:2px solid rgba(255,255,255,.96);border-radius:18px;background:linear-gradient(145deg,#214463 0%,#0d3257 72%,#092743 100%);box-shadow:0 4px 0 rgba(8,28,48,.34),0 8px 16px rgba(8,24,39,.2),inset 0 2px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(3,21,37,.24);color:#fff!important;font-size:clamp(.9rem,3vw,1.08rem)!important;font-weight:950;letter-spacing:.12em;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.22)}
