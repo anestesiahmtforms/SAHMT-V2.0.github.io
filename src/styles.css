@@ -879,3 +879,8 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--home .topbar,.app-shell--events .topbar{padding-inline:0}
 .app-shell--events .main-content{width:90%!important;max-width:none;margin-inline:auto}
 .app-shell--events .identity-card{flex:0 0 90%;width:90%;max-width:90%;margin-inline:auto}
+
+/* Modais do ecossistema: 90% da tela, fixos e sem barra visível. */
+.app-shell dialog{position:fixed!important;inset:5vh 5vw!important;inset:5dvh 5vw!important;width:90vw!important;height:90vh!important;height:90dvh!important;max-width:90vw!important;max-height:90vh!important;max-height:90dvh!important;margin:0!important;box-sizing:border-box;overflow:auto!important;overscroll-behavior:contain;scrollbar-width:none}
+.app-shell dialog::-webkit-scrollbar,.app-shell dialog *::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
+.app-shell dialog *{scrollbar-width:none}
