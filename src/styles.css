@@ -871,3 +871,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .topbar{padding-inline:clamp(7px,1.6vw,16px)}
 .app-shell--events .identity-card{width:100%;min-height:128px;padding:14px 20px 24px;border-radius:20px}
 @media(max-width:420px){.app-shell--events .topbar{padding-inline:7px}.app-shell--events .identity-card{min-height:120px;padding:12px 14px 22px;border-radius:18px}}
+
+/* Mantém os contêineres de conteúdo do app em 97% da largura do visor. */
+.app-shell .main-content{width:97vw;max-width:none;margin-inline:auto}
+.app-shell--events .main-content{width:97vw;max-width:none;margin-inline:auto}
