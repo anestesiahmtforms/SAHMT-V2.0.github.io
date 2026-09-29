@@ -336,7 +336,7 @@ function actionForm(route) {
     <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
-  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" aria-describedby="label-ai-privacy-note" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-privacy-note" class="record-meta label-ai-privacy-note">${labelAiEnabled ? 'Ao tocar em LER ETIQUETA, a imagem é enviada à IA OpenAI para leitura. Os campos extraídos aparecem como rascunho e precisam ser revisados antes de salvar.' : 'A leitura por IA está desativada. Use Registro Manual; nenhuma imagem será enviada à IA.'}</p><p id="label-ai-status" class="record-meta" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label><span>Data</span><input name="date" type="date" value="${todayInputValue()}" required></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label data-label-field="amount" hidden><span>Valor em Real</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><span>PLANTONISTA(S)</span><button class="secondary-button" type="button" id="label-staff-toggle" aria-expanded="false">Selecionar plantonistas</button><input name="staffSiglas" type="hidden"><div id="label-staff-options" class="label-staff-options" hidden></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
+  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `${can('labelsManage') ? `<details class="quick-form"><summary>Catálogo de plantonistas</summary><form id="label-staff-catalog-form"><label>Siglas autorizadas · separadas por vírgula ou linha<textarea name="siglas" rows="3" maxlength="500" placeholder="AB, CD, L2"></textarea></label><button class="secondary-button" type="submit">Salvar catálogo</button><p id="label-staff-catalog-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : ''}<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" aria-describedby="label-ai-privacy-note" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-privacy-note" class="record-meta label-ai-privacy-note">${labelAiEnabled ? 'Ao tocar em LER ETIQUETA, a imagem é enviada à IA OpenAI para leitura. Os campos extraídos aparecem como rascunho e precisam ser revisados antes de salvar.' : 'A leitura por IA está desativada. Use Registro Manual; nenhuma imagem será enviada à IA.'}</p><p id="label-ai-status" class="record-meta" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label><span>Data</span><input name="date" type="date" value="${todayInputValue()}" required></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label data-label-field="amount" hidden><span>Valor em Real</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTA(S)</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
   if (route === 'management' && (can('managementActivityWrite') || can('qualityManage'))) return `<details class="quick-form" open><summary>Nova atividade</summary><form data-module-form="activity">
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
@@ -662,13 +662,6 @@ async function loadModule(route) {
     document.querySelector('#label-manual-open')?.addEventListener('click', () => {
       resetLabelEditor({keepOpen: true});
       document.querySelector('#label-entry-dialog')?.showModal();
-    });
-    document.querySelector('#label-staff-toggle')?.addEventListener('click', (event) => {
-      const button = event.currentTarget;
-      const options = document.querySelector('#label-staff-options');
-      if (!options) return;
-      options.hidden = !options.hidden;
-      button.setAttribute('aria-expanded', String(!options.hidden));
     });
     await loadLabelStaffCatalog();
     const catalogForm = document.querySelector('#label-staff-catalog-form');
@@ -2886,7 +2879,12 @@ async function bindModuleForm(route) {
     }
     const entryDialog = document.querySelector('#label-entry-dialog');
     entryDialog?.addEventListener('click', (event) => { if (event.target === entryDialog) resetLabelEditor(); });
-    document.querySelector('#label-staff-options')?.addEventListener('change', syncLabelStaffSiglas);
+    document.querySelector('#label-staff-options')?.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-sigla]');
+      if (!button) return;
+      button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+      syncLabelStaffSiglas();
+    });
     document.querySelector('#label-conflict-refresh')?.addEventListener('click', async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
@@ -3137,22 +3135,19 @@ async function loadLabelStaffCatalog() {
     const options = document.querySelector('#label-staff-options');
     if (options) {
       options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
-        const label = document.createElement('label');
-        label.className = 'label-staff-option';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.value = sigla;
-        checkbox.addEventListener('change', syncLabelStaffSiglas);
-        const text = document.createElement('span');
-        text.textContent = sigla;
-        label.append(checkbox, text);
-        return label;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'label-staff-option';
+        button.dataset.sigla = sigla;
+        button.setAttribute('aria-pressed', 'false');
+        button.textContent = sigla;
+        return button;
       }));
     }
     const catalogForm = document.querySelector('#label-staff-catalog-form');
     if (catalogForm) catalogForm.elements.siglas.value = loadedLabelStaffSiglas.join(', ');
     if (note) note.textContent = loadedLabelStaffSiglas.length
-      ? `${loadedLabelStaffSiglas.length} sigla(s) autorizada(s). Separe múltiplas siglas por vírgula.`
+      ? 'Toque nas siglas para selecionar um ou mais plantonistas.'
       : 'O catálogo ainda não foi configurado. Peça a alguém com permissão labelsManage para cadastrá-lo.';
   } catch (error) {
     loadedLabelStaffSiglas = [];
@@ -3163,15 +3158,15 @@ async function loadLabelStaffCatalog() {
 function syncLabelStaffSiglas() {
   const form = document.querySelector('[data-module-form="labels"]');
   const field = form?.elements.staffSiglas;
-  const selected = [...(document.querySelectorAll('#label-staff-options input:checked'))].map((input) => input.value);
+  const selected = [...document.querySelectorAll('#label-staff-options button[aria-pressed="true"]')].map((button) => button.dataset.sigla);
   if (field) field.value = selected.join(', ');
-  const button = document.querySelector('#label-staff-toggle');
-  if (button) button.textContent = selected.length ? `Plantonistas: ${selected.join(', ')}` : 'Selecionar plantonistas';
 }
 
 function setLabelStaffSiglas(values) {
   const selected = new Set(values.map((value) => String(value).trim().toUpperCase()).filter(Boolean));
-  document.querySelectorAll('#label-staff-options input').forEach((input) => { input.checked = selected.has(input.value); });
+  document.querySelectorAll('#label-staff-options button[data-sigla]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(selected.has(button.dataset.sigla.toUpperCase())));
+  });
   syncLabelStaffSiglas();
 }
 
@@ -3189,6 +3184,7 @@ function updateLabelEntryFields(form) {
     const control = label?.querySelector('input');
     if (label) label.hidden = !visible;
     if (control) { control.disabled = !visible; control.required = required[name]; if (!visible) control.value = ''; }
+    if (name === 'staff' && !visible) setLabelStaffSiglas([]);
   }
   const creditor = form.elements.creditor;
   if (consultation) creditor.value = 'Caixa';
