@@ -933,3 +933,20 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .module-view--events{grid-template-rows:minmax(0,1fr) auto auto auto}
 .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{gap:clamp(8px,1.25dvh,13px);padding:4px}
 @media(max-width:420px){.app-shell--events .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}.app-shell--events .identity-card .brand img{width:42px;height:42px}.app-shell--events .identity-card__user-row{gap:5px}.app-shell--events .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}.app-shell--events .events-header-operational{min-height:27px;padding:3px 8px}}
+
+
+/* Cabeçalho de ESCALA no mesmo padrão visual de Eventos. */
+.app-shell--home .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:116px;height:auto;padding:8px 12px 10px}
+.app-shell--home .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
+.app-shell--home .identity-card .brand img{width:clamp(40px,12vw,50px);height:clamp(40px,12vw,50px);border-radius:7px}
+.app-shell--home .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
+.app-shell--home .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
+.app-shell--home .identity-card__user-row .sync-pill{min-width:32px}
+.app-shell--home .home-header-scale{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
+.app-shell--home .schedule-date-heading{display:block!important;padding:0 4px 5px!important}
+.app-shell--home .schedule-date-heading .date-picker,.app-shell--home .schedule-date-heading .date-picker input{display:block;width:100%;max-width:none}
+.app-shell--home .schedule-date-heading .date-picker input{height:clamp(34px,4.2dvh,40px);min-height:34px;margin:0;padding-block:3px}
+.app-shell--home .content-grid{grid-template-rows:minmax(0,1.42fr) minmax(0,.58fr)}
+.app-shell--home .schedule-date-block{padding:5px}
+.app-shell--home .schedule-content>.schedule-siglas-grid{gap:clamp(5px,.8dvh,8px);padding:3px}
+@media(max-width:420px){.app-shell--home .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}.app-shell--home .identity-card .brand img{width:42px;height:42px}.app-shell--home .identity-card__user-row{gap:5px}.app-shell--home .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}.app-shell--home .home-header-scale{min-height:27px;padding:3px 8px}}
