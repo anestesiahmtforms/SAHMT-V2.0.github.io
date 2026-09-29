@@ -781,3 +781,21 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 
 /* Título de Eventos em faixa destacada */
 .app-shell--events .events-module-heading{display:flex;align-items:center;justify-content:center;min-height:46px;margin:0 0 clamp(8px,1.2dvh,12px)!important;padding:8px 14px;border:2px solid rgba(255,255,255,.96);border-radius:18px;background:linear-gradient(145deg,#214463 0%,#0d3257 72%,#092743 100%);box-shadow:0 4px 0 rgba(8,28,48,.34),0 8px 16px rgba(8,24,39,.2),inset 0 2px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(3,21,37,.24);color:#fff!important;font-size:clamp(.9rem,3vw,1.08rem)!important;font-weight:950;letter-spacing:.12em;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.22)}
+
+
+/* Cartão de identidade SAHMT e usuário autenticado */
+.app-shell .topbar{align-items:center;gap:10px}
+.app-shell .identity-card{flex:0 1 auto;display:grid;justify-items:center;align-content:center;gap:2px;width:max-content;max-width:calc(100vw - 112px);min-width:0;padding:4px 13px 5px;border:2px solid rgba(255,255,255,.96);border-radius:17px;background:linear-gradient(105deg,rgba(255,210,120,.58),rgba(245,236,219,.98) 46%,rgba(232,217,187,.98));box-shadow:0 4px 0 rgba(181,100,4,.28),0 8px 16px rgba(0,20,38,.2),inset 0 2px 0 rgba(255,255,255,.96),inset 0 -2px 0 rgba(181,100,4,.12)}
+.app-shell .identity-card .brand{display:flex;align-items:center;justify-content:center;gap:8px;min-height:34px;padding:0 2px;border:0!important;border-radius:8px;background:transparent!important;box-shadow:none!important;color:#143254;font-size:1rem;letter-spacing:.1em}
+.app-shell .identity-card .brand:hover,.app-shell .identity-card .brand:active{transform:none;filter:none;box-shadow:none!important}
+.app-shell .identity-card .brand img{width:31px;height:31px;border-radius:5px;background:#fff}
+.app-shell .identity-card .brand span{color:#b56404;font-weight:950}
+.app-shell .identity-card__user{width:100%;min-width:0;color:#143254;font-size:clamp(.58rem,2vw,.7rem);font-weight:850;line-height:1.15;text-align:center;overflow-wrap:anywhere}
+.app-shell .topbar>.sync-pill{flex:0 1 auto;min-width:0;max-width:40vw}
+@media(max-width:420px){
+ .app-shell .topbar{gap:7px}
+ .app-shell .identity-card{max-width:calc(100vw - 96px);padding:3px 9px 4px;border-radius:15px}
+ .app-shell .identity-card .brand{gap:6px;min-height:30px;font-size:.94rem}
+ .app-shell .identity-card .brand img{width:27px;height:27px}
+ .app-shell .identity-card__user{font-size:clamp(.54rem,2.1vw,.64rem)}
+}
