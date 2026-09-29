@@ -764,3 +764,16 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .event-schedule>.schedule-day-nav{margin:0 0 clamp(10px,1.6dvh,16px);border-radius:0 0 18px 18px}
 .app-shell--events .event-schedule .schedule-content{flex:1 1 auto;min-height:0;margin:0;padding:clamp(6px,1.2vw,10px);border:2px solid rgba(255,255,255,.96);border-radius:20px;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.94));box-shadow:0 5px 0 rgba(20,50,84,.14),0 10px 18px rgba(8,24,39,.12),inset 0 1px 0 rgba(255,255,255,.9);overflow:hidden}
 .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{height:100%;min-height:0;margin:0;padding:2px;gap:clamp(5px,.8dvh,8px)}
+
+
+/* Contraste reforçado em Eventos
+/* Mais contraste na área das siglas, mantendo suas cores funcionais. */
+.app-shell--events .event-schedule .schedule-content{background:linear-gradient(145deg,#e1ebef,#cadbe1)!important;border-color:#fff!important;box-shadow:0 6px 0 rgba(20,50,84,.18),0 12px 20px rgba(8,24,39,.14),inset 0 1px 0 #fff!important}
+.app-shell--events .event-schedule .schedule-siglas-grid .sigla-item:nth-child(4n+1) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#f8fbff,#dceafa 58%,#c1d8f0)!important;border-color:#fff!important}
+.app-shell--events .event-schedule .schedule-siglas-grid .sigla-item:nth-child(4n+2) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#f8fffc,#d7eee5 58%,#b8ddce)!important;border-color:#fff!important}
+.app-shell--events .event-schedule .schedule-siglas-grid .sigla-item:nth-child(4n+3) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#fffdf7,#f5e8cb 58%,#e7cf9e)!important;border-color:#fff!important}
+.app-shell--events .event-schedule .schedule-siglas-grid .sigla-item:nth-child(4n) .sigla-token:not(.sigla-token--checked):not(.sigla-token--vacation):not(.sigla-token--event){background:linear-gradient(150deg,#fdfaff,#ebe2f6 58%,#d3c3e9)!important;border-color:#fff!important}
+.app-shell--events .event-schedule .sigla-token{color:#143254!important;box-shadow:0 4px 0 rgba(20,50,84,.24),0 7px 11px rgba(20,50,84,.16),inset 0 2px 0 rgba(255,255,255,.95)!important}
+.app-shell--events .event-schedule>.schedule-day-nav .secondary-button{background:linear-gradient(145deg,#f7fbff,#d6e5ec)!important;border-color:#fff!important;color:#143254!important}
+.app-shell--events .event-report-launchers button[data-event-report-launch="daily"]{background:linear-gradient(145deg,#20b5a5,#08766c)!important}
+.app-shell--events .event-report-launchers button[data-event-report-launch="monthly"]{background:linear-gradient(145deg,#edbd4f,#aa741b)!important}
