@@ -36,3 +36,8 @@ test('aplica vigência da estação à data do checklist', () => {
   assert.equal(stationIsValidOn(station, ''), false);
   assert.equal(stationIsValidOn({...station, active: undefined}, '2026-09-24'), false);
 });
+test('administradores conseguem localizar QR de arsenal inativo para liberar', () => {
+  const inactive = {id: 'arsenal-inativo', name: 'Arsenal inativo', qrCode: 'SAHMT:CHK:0999', active: false};
+  assert.equal(findStationForQr([inactive], 'SAHMT:CHK:0999', '2026-09-24'), null);
+  assert.equal(findStationForQr([inactive], 'SAHMT:CHK:0999', '2026-09-24', {includeInactive: true}), inactive);
+});

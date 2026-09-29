@@ -19,10 +19,10 @@ export function stationIsValidOn(station, day) {
   return station?.active === true && stationIsInDateRange(station, day);
 }
 
-export function findStationForQr(stations, qrValue, day) {
+export function findStationForQr(stations, qrValue, day, {includeInactive = false} = {}) {
   const scanned = normalizeQrValue(qrValue);
   if (!scanned) return null;
-  const matches = stations.filter((station) => stationIsValidOn(station, day) && (
+  const matches = stations.filter((station) => (includeInactive ? stationIsInDateRange(station, day) : stationIsValidOn(station, day)) && (
     normalizeQrValue(station.qrCode) === scanned || normalizeQrValue(station.id) === scanned
   ));
   return matches.length === 1 ? matches[0] : null;
