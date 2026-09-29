@@ -708,31 +708,27 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 }
 
 
+
 /* Ajustes de proporção da página de Eventos
-/* Área de escala: os limites e as sombras não invadem visualmente as siglas. */
-.app-shell--events .event-schedule{position:relative;isolation:isolate;overflow:hidden;gap:clamp(4px,.65dvh,7px)}
-.app-shell--events .event-schedule .schedule-content{position:relative;z-index:0;overflow:hidden}
-.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{padding:2px;gap:clamp(3px,.55dvh,5px)}
-.app-shell--events .event-schedule .sigla-token{position:relative;z-index:0;min-width:0;max-width:100%;box-shadow:0 2px 0 rgba(20,50,84,.18),0 3px 6px rgba(20,50,84,.10),inset 0 1px 0 rgba(255,255,255,.8)!important}
-.app-shell--events .event-schedule .sigla-token:active{transform:translateY(1px) scale(.99);box-shadow:0 1px 0 rgba(20,50,84,.16),inset 0 1px 3px rgba(20,50,84,.12)!important}
-/* Recolhe os rótulos DATA/Data do relatório, preservando o campo e seu acesso. */
-.app-shell--events .event-schedule-heading .date-picker{font-size:0!important}
-.app-shell--events .event-schedule-heading .date-picker input{font-size:clamp(.85rem,2.8vw,1rem)!important}
-.event-report .event-day-control label{font-size:0!important}
-.event-report .event-day-control label input{font-size:1rem!important}
-.event-report .event-month-control label{font-size:0!important}
-.event-report .event-month-control label input{font-size:1rem!important}
-/* Controles de relatório com alinhamento único e botões mais robustos. */
+/* Blocos separados: campo de data, navegação e siglas ficam em áreas próprias. */
+.app-shell--events .event-schedule{position:relative;isolation:isolate;overflow:hidden;gap:clamp(7px,1.1dvh,11px)}
+.app-shell--events .event-schedule-heading{flex:0 0 auto;padding:7px 9px;border:1px solid rgba(199,154,62,.42);border-radius:15px;background:linear-gradient(145deg,rgba(245,236,219,.98),rgba(220,232,238,.92));box-shadow:0 3px 0 rgba(20,50,84,.12),inset 0 1px 0 rgba(255,255,255,.9)}
+.app-shell--events .event-schedule-heading .date-picker{display:block;width:100%;font-size:0!important}
+.app-shell--events .event-schedule-heading .date-picker input{width:100%;height:clamp(42px,6dvh,50px);min-height:42px;font-size:clamp(.9rem,2.8vw,1rem)!important}
+.app-shell--events .event-schedule>.schedule-day-nav{flex:0 0 auto;margin:0;padding:6px;border:1px solid rgba(220,232,238,.9);border-radius:16px;background:rgba(220,232,238,.7);gap:clamp(5px,1vw,9px)}
+.app-shell--events .event-schedule .schedule-day-nav button{min-height:clamp(40px,6dvh,48px);padding:7px 10px}
+.app-shell--events .event-schedule .schedule-content{position:relative;z-index:0;flex:1 1 auto;min-height:0;margin:0;display:flex;overflow:hidden}
+.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{flex:1 1 auto;width:100%;height:100%;min-height:0;padding:3px;gap:clamp(4px,.7dvh,7px)}
+/* Preserva o relevo premium original dos botões de siglas. */
+.app-shell--events .event-schedule .sigla-token{position:relative;z-index:0;min-width:0;max-width:100%}
+/* Mantém só os campos nos controles diário/mensal, sem rótulos redundantes. */
+.event-report .event-day-control label,.event-report .event-month-control label{display:grid;grid-template-rows:0 auto;gap:0;min-width:0;font-size:0!important}
+.event-report .event-day-control label input,.event-report .event-month-control label input{width:100%;min-height:50px;font-size:1rem!important}
 .event-report-dialog{gap:clamp(10px,2vh,16px)}
 .event-report-dialog__header{min-height:54px;align-items:center;padding:0 0 10px}
 .event-report-dialog__header h2{line-height:1.15}
 .event-report .event-day-control,.event-report .event-month-control{align-items:stretch;gap:10px;margin:0}
-.event-report .event-day-control label,.event-report .event-month-control label{display:grid;grid-template-rows:0 auto;gap:0;min-width:0}
-.event-report .event-day-control input,.event-report .event-month-control input{width:100%;min-height:50px}
 .event-report-launchers{align-items:stretch;gap:10px}
 .event-report-launchers button{min-height:clamp(58px,8dvh,70px)!important;padding:12px 14px!important;border-width:2px!important;border-radius:999px!important;font-size:clamp(.72rem,2.8vw,.9rem)!important;letter-spacing:.045em!important;box-shadow:0 6px 0 rgba(9,39,67,.32),0 11px 18px rgba(8,24,39,.22),inset 0 2px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(8,25,40,.16)!important}
 .event-report-launchers button:active{transform:translateY(3px) scale(.99)!important;box-shadow:0 2px 0 rgba(9,39,67,.3),0 4px 8px rgba(8,24,39,.16),inset 0 2px 4px rgba(8,25,40,.16)!important}
-/* Botões de siglas: relevo mais discreto e sem expansão para fora do cartão. */
-.sigla-token,.sigla-card,.checklist-station-select{box-shadow:0 2px 0 rgba(20,50,84,.18),0 3px 7px rgba(20,50,84,.10),inset 0 1px 0 rgba(255,255,255,.8)!important}
-.sigla-token:active,.sigla-card:active,.checklist-station-select:active{transform:translateY(1px) scale(.99);box-shadow:0 1px 0 rgba(20,50,84,.16),inset 0 1px 3px rgba(20,50,84,.12)!important}
 @media(max-width:520px){.event-report-launchers button{min-height:56px!important;padding:10px 8px!important;font-size:clamp(.64rem,2.8vw,.78rem)!important}.event-report-dialog__header{min-height:46px}}
