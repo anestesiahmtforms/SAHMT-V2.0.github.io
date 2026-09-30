@@ -1,4 +1,5 @@
 import './styles.css';
+import {labelReportPresentation, withLabelReportDeadline} from './label-report-state.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
@@ -69,6 +70,7 @@ let pendingEventPosition = null;
 let labelReportMode = 'daily';
 let labelReportOpen = false;
 let labelReportLoad = 0;
+let labelReportState = 'idle';
 let loadedLabelRecords = [];
 let labelReportCursor = null;
 let labelReportLoadingMore = false;
@@ -647,9 +649,14 @@ async function loadModule(route) {
   }
   if (route === 'labels') {
     content?.remove();
-    void loadReportPdfModule().catch(() => {});
     const reportDialog = document.querySelector('#label-report-dialog');
-    reportDialog?.addEventListener('close', () => { labelReportOpen = false; });
+    reportDialog?.addEventListener('close', () => {
+      labelReportOpen = false;
+      labelReportLoad++;
+      labelReportLoadingMore = false;
+      labelReportState = 'idle';
+      updateLabelReportSync();
+    });
     document.querySelectorAll('[data-label-report-launch]').forEach((button) => button.addEventListener('click', async () => {
       labelReportMode = button.dataset.labelReportLaunch;
       labelReportOpen = true;
@@ -1646,6 +1653,8 @@ async function loadEventReport({append = false} = {}) {
   const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
   if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
+    labelReportState = 'error';
+    updateLabelReportSync();
     return false;
   }
   let from = day;
@@ -1828,11 +1837,23 @@ function resetEventEditor() {
   if (dialog?.open) dialog.close();
 }
 
+function updateLabelReportSync() {
+  const target = document.querySelector('#label-report-sync');
+  if (!target) return;
+  const status = labelReportPresentation(labelReportState, navigator.onLine);
+  target.classList.toggle('label-report-sync--synced', status.confirmed);
+  target.innerHTML = status.confirmed ? '<span aria-hidden="true">✓</span> Sincronizado' : escapeHtml(status.text);
+}
+
 async function loadLabelReport(options = {}) {
   const target = document.querySelector('#label-report-results');
   if (!target) return false;
   const append = options?.append === true;
+  if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
   const loadId = ++labelReportLoad;
+  const requestUid = session.user.uid;
+  labelReportState = 'loading';
+  updateLabelReportSync();
   const day = document.querySelector('#label-report-day')?.value || todayInputValue();
   const month = document.querySelector('#label-report-month')?.value || todayInputValue().slice(0, 7);
   if (labelReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || labelReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
@@ -1845,7 +1866,6 @@ async function loadLabelReport(options = {}) {
     from = `${month}-01`;
     to = `${year}-${String(monthNumber).padStart(2, '0')}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
   }
-  if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
   if (append) labelReportLoadingMore = true;
   else {
     target.innerHTML = '<p class="loading">Carregando registros…</p>';
@@ -1857,9 +1877,12 @@ async function loadLabelReport(options = {}) {
   const pdfButton = document.querySelector('#share-labels-pdf');
   if (pdfButton && !append) pdfButton.disabled = true;
   try {
-    const {listLabelRecords} = await import('./data.js');
-    const report = await listLabelRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), cursor: append ? labelReportCursor : null});
-    if (loadId !== labelReportLoad || !document.querySelector('#label-report-results')) return false;
+    const report = await withLabelReportDeadline(async () => {
+      if (!navigator.onLine) throw Object.assign(new Error('Conecte-se à internet para consultar as etiquetas.'), {code: 'unavailable'});
+      const {listLabelRecords} = await import('./label-report-reader.js');
+      return listLabelRecords({from, to, uid: requestUid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), pageSize: 50, cursor: append ? labelReportCursor : null});
+    });
+    if (loadId !== labelReportLoad || !target.isConnected || session.user?.uid !== requestUid) return false;
     if (append) {
       const existingIds = new Set(loadedLabelRecords.map((item) => item.id));
       loadedLabelRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
@@ -1926,9 +1949,13 @@ async function loadLabelReport(options = {}) {
       event.currentTarget.disabled = true;
       loadLabelReport({append: true});
     });
+    labelReportState = 'synced';
+    updateLabelReportSync();
     return true;
   } catch (error) {
-    if (loadId === labelReportLoad) {
+    if (loadId === labelReportLoad && target.isConnected && session.user?.uid === requestUid) {
+      labelReportState = 'error';
+      updateLabelReportSync();
       if (append) {
         target.insertAdjacentHTML('afterbegin', `<p class="empty-state">Não foi possível carregar mais etiquetas. ${escapeHtml(error.message || '')}</p>`);
         const moreButton = target.querySelector('#label-report-more');
@@ -1937,10 +1964,13 @@ async function loadLabelReport(options = {}) {
           moreButton.textContent = navigator.onLine ? 'Tentar carregar mais' : 'Conecte-se para carregar mais';
         }
       } else target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
+      target.querySelector('#label-report-retry')?.remove();
+      target.insertAdjacentHTML('beforeend', '<button class="secondary-button" type="button" id="label-report-retry">Tentar novamente</button>');
+      target.querySelector('#label-report-retry')?.addEventListener('click', () => void loadLabelReport({append}));
     }
     return false;
   } finally {
-    if (append) labelReportLoadingMore = false;
+    if (append && loadId === labelReportLoad) labelReportLoadingMore = false;
   }
 }
 
@@ -3654,6 +3684,9 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  labelReportLoad++;
+  labelReportLoadingMore = false;
+  labelReportState = 'idle';
   if (cleanupLabelMedia) {
     cleanupLabelMedia();
     cleanupLabelMedia = null;
@@ -3715,11 +3748,7 @@ async function updateOutboxStatus() {
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
-  const reportSync = document.querySelector('#label-report-sync');
-  if (reportSync) {
-    reportSync.classList.toggle('label-report-sync--synced', isSynced);
-    reportSync.innerHTML = isSynced ? '<span aria-hidden="true">✓</span> Sincronizado' : escapeHtml(syncLabel);
-  }
+  updateLabelReportSync();
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
     await retryFailedOperations(session.user.uid);
