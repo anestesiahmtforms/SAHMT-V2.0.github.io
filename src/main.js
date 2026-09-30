@@ -17,6 +17,8 @@ import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 
 const app = document.querySelector('#app');
+const STARTUP_BANNER_DURATION_MS = 6000;
+let startupBannerActive = firebaseConfigured;
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
@@ -141,7 +143,8 @@ function preloadOperationalDataWhenIdle(user) {
       scheduledDataPreloads.delete(preloadKey);
     }
   };
-  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
+  if (startupBannerActive) void preload();
+  else if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
   else window.setTimeout(preload, 700);
 }
 
@@ -3696,7 +3699,8 @@ async function render() {
     cleanupCurrentModule = null;
     await cleanup();
   }
-  if (session.status === 'checking' || session.status === 'loading-profile') {
+  if (startupBannerActive) {
+    if (app.querySelector('.boot-screen')) return;
     app.innerHTML = `<main class="boot-screen" role="status" aria-live="polite"><div class="boot-card">
       <img src="${import.meta.env.BASE_URL}assets/icon-192.png" width="76" height="76" alt="SAHMT">
       <strong>SAHMT</strong><span>Iniciando o aplicativo…</span><span class="boot-slogan">Gestão Responsável!</span>
@@ -3707,6 +3711,10 @@ async function render() {
       ].map(([x, y, delay, color]) => `<i class="boot-particle" style="--x:${x}px;--y:${y}px;--d:${delay};--c:${color}"></i>`).join('')}</span>
       <i class="boot-spinner" aria-hidden="true"></i>
     </div></main>`;
+    return;
+  }
+  if (session.status === 'checking' || session.status === 'loading-profile') {
+    app.innerHTML = `<main class="login-gate"><section class="login-card" role="status" aria-live="polite"><h1>SAHMT</h1><p>Verificando acesso…</p><i class="boot-spinner" aria-hidden="true"></i></section></main>`;
     return;
   }
   if (session.status !== 'signed-in') {
@@ -3854,6 +3862,18 @@ function sessionChanged(next) {
   }
   session = next;
   notice = '';
+  if (startupBannerActive && next.status === 'signed-in') {
+    preloadOperationalDataWhenIdle(next.user);
+    if (navigator.onLine) {
+      void syncOutbox();
+      if (userChanged && can('scheduleRead')) {
+        const uid = next.user.uid;
+        void import('./data-lite.js').then(async ({readSchedule}) => {
+          if (session.status === 'signed-in' && session.user.uid === uid) await readSchedule(todayInputValue(), uid);
+        }).catch((error) => console.warn('[SAHMT] Escala inicial será carregada na tela:', error.code || error.message));
+      }
+    }
+  }
   void render();
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
@@ -3893,6 +3913,11 @@ window.addEventListener('sahmt-write-rejected', (event) => {
   notice = `O Firestore recusou a gravação sincronizada; ela não foi confirmada. ${event.detail?.message || ''}`;
   void render();
 });
+void render();
+if (startupBannerActive) window.setTimeout(() => {
+  startupBannerActive = false;
+  void render();
+}, STARTUP_BANNER_DURATION_MS);
 watchSession(sessionChanged);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

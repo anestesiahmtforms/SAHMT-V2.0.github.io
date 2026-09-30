@@ -323,9 +323,9 @@
 .boot-card img{border-radius:18px;box-shadow:0 6px 15px #0d325733}
 .boot-card strong{font-size:1.35rem;letter-spacing:.08em}
 .boot-card>span:not(.boot-particles){font-size:.8rem;line-height:1.35;color:#526578}
-.boot-card .boot-slogan{position:relative;z-index:2;display:grid;place-items:center;min-height:2.8em;width:100%;font-size:1.38rem;font-weight:900;letter-spacing:.01em;line-height:1.15;color:#16803d;text-shadow:0 2px 10px rgba(13,50,87,.16);animation:sahmt-slogan-in 2.6s ease both}
+.boot-card .boot-slogan{position:relative;z-index:2;display:grid;place-items:center;min-height:2.8em;width:100%;font-size:1.38rem;font-weight:900;letter-spacing:.01em;line-height:1.15;color:#16803d;text-shadow:0 2px 10px rgba(13,50,87,.16);animation:sahmt-slogan-in 6s ease both}
 .boot-particles{position:absolute;z-index:1;left:50%;top:48%;width:250px;height:130px;transform:translate(-50%,-50%);pointer-events:none}
-.boot-particle{position:absolute;left:50%;top:42%;display:block;width:6px;height:6px;border-radius:50%;background:var(--c);box-shadow:0 0 6px 2px var(--c),0 0 15px 3px color-mix(in srgb,var(--c) 65%,transparent);opacity:0;animation:boot-particle-burst 2.6s cubic-bezier(.18,.72,.28,1) infinite;animation-delay:var(--d)}
+.boot-particle{position:absolute;left:50%;top:42%;display:block;width:6px;height:6px;border-radius:50%;background:var(--c);box-shadow:0 0 6px 2px var(--c),0 0 15px 3px color-mix(in srgb,var(--c) 65%,transparent);opacity:0;animation:boot-particle-burst 6s cubic-bezier(.18,.72,.28,1) infinite;animation-delay:var(--d)}
 .boot-spinner{width:28px;height:28px;border:3px solid #c6d6e6;border-top-color:#18b7b7;border-radius:50%;animation:sahmt-boot-spin .8s linear infinite}
 @keyframes sahmt-boot-spin{to{transform:rotate(360deg)}}
 @keyframes sahmt-slogan-in{0%{opacity:0;transform:scale(.62)}18%{opacity:1;transform:scale(1.08)}35%,75%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
