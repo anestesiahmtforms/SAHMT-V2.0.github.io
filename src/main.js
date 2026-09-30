@@ -1,4 +1,5 @@
 import './styles.css';
+import {createStartupReportCache} from './startup-report-cache.js';
 import {labelReportPresentation, withLabelReportDeadline} from './label-report-state.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
@@ -19,6 +20,48 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 const app = document.querySelector('#app');
 const STARTUP_BANNER_DURATION_MS = 6000;
 let startupBannerActive = firebaseConfigured;
+const startupReports = createStartupReportCache();
+const startupReportKey = (kind, uid, day, scope = '') => JSON.stringify([kind, uid, day, scope]);
+
+function preloadStartupReports(user) {
+  if (!navigator.onLine || session.offline || session.status !== 'signed-in') return;
+  const uid = user.uid;
+  const day = todayInputValue();
+  const sigla = session.profile?.sigla || '';
+  const isAdmin = can('admin');
+  const canManageLabels = can('labelsManage');
+  const stillCurrent = () => session.status === 'signed-in' && session.user?.uid === uid;
+  const warm = (key, read) => startupReports.warm(key, () => withLabelReportDeadline(async () => {
+    if (!stillCurrent()) throw new Error('Sessão alterada.');
+    return read();
+  }));
+  if (featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)) {
+    warm(startupReportKey('labels', uid, day, [sigla, canManageLabels]), async () => {
+      const {listLabelRecords} = await import('./label-report-reader.js');
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      return listLabelRecords({from: day, to: day, uid, sigla, canManage: canManageLabels, pageSize: 50, cursor: null});
+    });
+  }
+  if (featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can)) {
+    warm(startupReportKey('events', uid, day, [sigla, isAdmin]), async () => {
+      const {listEventRecords} = await import('./data.js');
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      return listEventRecords({from: day, to: day, uid, sigla, isAdmin, cursor: null, includePending: true});
+    });
+  }
+  if (featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can)) {
+    warm(startupReportKey('checklist', uid, day), async () => {
+      const {listModuleRecords, listChecklistRecords} = await import('./data.js');
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      const stations = await listModuleRecords('checklist', uid);
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      const stationIds = stations.filter(station => stationIsInDateRange(station, day)).map(station => station.id).sort();
+      const result = await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
+      return {...result, startupStationIds: stationIds};
+    });
+  }
+  window.setTimeout(() => startupReports.clear(), 30000);
+}
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
@@ -1249,7 +1292,13 @@ async function loadDailyChecklist(stations, suppliedDay) {
   content.innerHTML = '<p class="loading">Carregando registros do dia…</p>';
   try {
     const {listChecklistRecords} = await import('./data.js');
-    const result = await listChecklistRecords(day, session.user.uid, {pageSize: 1000, stationIds: applicableStations.map((station) => station.id)});
+    const uid = session.user.uid;
+    const stationIds = applicableStations.map(station => station.id).sort();
+    const preloaded = navigator.onLine ? startupReports.take(startupReportKey('checklist', uid, day)) : null;
+    const ready = preloaded ? await preloaded.catch(() => null) : null;
+    const result = ready && JSON.stringify(ready.startupStationIds) === JSON.stringify(stationIds)
+      ? ready : await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
+    if (session.user?.uid !== uid || !content.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue())) return;
     const records = result.records;
     const syncIndicator = document.querySelector('#checklist-report-sync');
     if (syncIndicator) {
@@ -1679,7 +1728,9 @@ async function loadEventReport({append = false} = {}) {
   if (pdfButton) pdfButton.disabled = true;
   try {
     const {listEventRecords} = await import('./data.js');
-    const report = await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
+    const preloaded = !append && eventReportMode === 'daily' && navigator.onLine
+      ? startupReports.take(startupReportKey('events', session.user.uid, day, [session.profile?.sigla || '', can('admin')])) : null;
+    const report = (preloaded ? await preloaded.catch(() => null) : null) || await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
     if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
     if (append) {
       const existingIds = new Set(eventReportSourceRecords.map((item) => item.id));
@@ -1881,6 +1932,12 @@ async function loadLabelReport(options = {}) {
   try {
     const report = await withLabelReportDeadline(async () => {
       if (!navigator.onLine) throw Object.assign(new Error('Conecte-se à internet para consultar as etiquetas.'), {code: 'unavailable'});
+      const preloaded = !append && labelReportMode === 'daily'
+        ? startupReports.take(startupReportKey('labels', requestUid, day, [session.profile?.sigla || '', can('labelsManage')])) : null;
+      if (preloaded) {
+        const ready = await preloaded.catch(() => null);
+        if (ready) return ready;
+      }
       const {listLabelRecords} = await import('./label-report-reader.js');
       return listLabelRecords({from, to, uid: requestUid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), pageSize: 50, cursor: append ? labelReportCursor : null});
     });
@@ -3848,6 +3905,7 @@ function bindLogin() {
 
 function sessionChanged(next) {
   const userChanged = session.user?.uid !== next.user?.uid;
+  if (userChanged || next.status !== 'signed-in') startupReports.clear();
   if (next.status !== 'signed-in' || userChanged) {
     labelManualConfirmation = {uid: '', status: ''};
     scheduleOutboxRetry('', null);
@@ -3863,6 +3921,7 @@ function sessionChanged(next) {
   session = next;
   notice = '';
   if (startupBannerActive && next.status === 'signed-in') {
+    if (userChanged) preloadStartupReports(next.user);
     preloadOperationalDataWhenIdle(next.user);
     if (navigator.onLine) {
       void syncOutbox();
@@ -3895,6 +3954,7 @@ async function refreshAppFeatures(uid, force = false) {
 }
 window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
 window.addEventListener('online', () => {
+  startupReports.clear();
   if (session.status === 'signed-in') {
     void refreshAppFeatures(session.user.uid, true);
     void syncOutbox();
@@ -3902,14 +3962,17 @@ window.addEventListener('online', () => {
 });
 window.addEventListener('offline', () => { void updateOutboxStatus(); });
 window.addEventListener('sahmt-write-synced', (event) => {
+  startupReports.clear();
   void updateOutboxStatus();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
 window.addEventListener('sahmt-write-queued', () => {
+  startupReports.clear();
   void updateOutboxStatus();
   if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
 });
 window.addEventListener('sahmt-write-rejected', (event) => {
+  startupReports.clear();
   notice = `O Firestore recusou a gravação sincronizada; ela não foi confirmada. ${event.detail?.message || ''}`;
   void render();
 });

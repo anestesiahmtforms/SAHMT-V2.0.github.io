@@ -15,6 +15,7 @@ function setup(read, {online = true, timeout = 50} = {}) {
     setTimeout, clearTimeout, Promise, Error, navigator: {onLine: online},
     labelReportState: 'idle', labelReportLoad: 0, labelReportMode: 'daily', labelReportCursor: null,
     labelReportLoadingMore: false, loadedLabelRecords: [], session: {user: {uid: 'user-1'}, profile: {}},
+    startupReports: {take: () => null}, startupReportKey: () => '',
     document: {querySelector: selector => selector === '#label-report-results' ? target : selector === '#label-report-sync' ? sync : selector === '#label-report-day' ? day : null},
     escapeHtml: String, formatRecordDate: String, todayInputValue: () => '2026-09-30', can: () => true,
     mockReader: {listLabelRecords: read}, reportTimestamp: () => 0
@@ -34,6 +35,21 @@ test('verde só após a resposta do servidor, inclusive relatório vazio', async
   assert.equal(ctx.labelReportState, 'loading'); assert.equal(sync.confirmed, false);
   pending.resolve({records: [], nextCursor: null}); assert.equal(await loading, true);
   assert.equal(sync.confirmed, true); assert.match(target.innerHTML, /Nenhuma etiqueta/);
+});
+test('abertura aproveita consulta inicial em andamento e só confirma após a resposta', async () => {
+  const pending = deferred(); let queried = false;
+  const {ctx, sync, load} = setup(() => {queried = true; return {records: []};});
+  ctx.startupReports.take = () => pending.promise;
+  const loading = load(); await Promise.resolve();
+  assert.equal(sync.confirmed, false);
+  pending.resolve({records: [], nextCursor: null});
+  assert.equal(await loading, true); assert.equal(sync.confirmed, true); assert.equal(queried, false);
+});
+test('falha do pré-carregamento refaz a consulta ao abrir', async () => {
+  let reads = 0;
+  const {ctx, load} = setup(() => {reads++; return {records: [], nextCursor: null};});
+  ctx.startupReports.take = () => Promise.reject(new Error('Pré-carregamento falhou'));
+  assert.equal(await load(), true); assert.equal(reads, 1);
 });
 test('erro encerra o carregamento, não marca sincronizado e oferece nova tentativa', async () => {
   let attempts = 0;
