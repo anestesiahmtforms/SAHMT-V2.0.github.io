@@ -5,10 +5,11 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
-import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
+import {mayQueueOffline, runGuardedOperationalWrite, stageOperationalWrite} from './record-write.js';
 import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
-import {checklistReadMetrics, createChecklistReadCoordinator} from './checklist-query.js';
+import {createChecklistReadCoordinator, readChecklistWithHistory} from './checklist-query.js';
+import {stageChecklistSignatureRequest} from './checklist-signature-write.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 
 const MAX_PAGE_SIZE = 50;
@@ -1284,7 +1285,8 @@ export async function listEventHistory(eventId, {pageSize = 20} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
-export async function updateEventRecord(eventId, input, uid, expectedVersion, requestId = crypto.randomUUID(), {queueOffline = true} = {}) {
+export async function updateEventRecord(eventId, input, uid, expectedVersion, requestId = crypto.randomUUID(), {queueOffline = true, assertCurrent} = {}) {
+  assertCurrent?.();
   if (!eventId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão deste evento não está disponível. Atualize o relatório antes de editar.');
   const ref = doc(db, 'events', eventId);
@@ -1293,6 +1295,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
   const updatedByName = String(input.updatedByName || '').trim().slice(0, 120);
   if (typeof updates.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) throw new Error('A data do evento é inválida.');
   const queueOfflineEdit = async () => {
+    assertCurrent?.();
     await enqueueOperation({uid, type: 'eventEdits', resourceId: eventId, requestId, payload: {collectionName: 'events', eventId, expectedVersion, data: {...updates, updatedByName}}});
     return {id: eventId, pendingFirestore: true};
   };
@@ -1301,41 +1304,42 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
     throw Object.assign(new Error('A conexão caiu durante a sincronização desta edição.'), {code: 'unavailable'});
   }
   let unchanged = false;
-  try {
-    await runTransaction(db, async (transaction) => {
-      const current = await transaction.get(ref);
-      if (!current.exists()) throw Object.assign(new Error('Este evento não está mais disponível. Atualize o relatório.'), {code: 'stale-version'});
-      const event = current.data();
-      if (event.status !== 'OPEN' || event.active !== true || Number(event.version || 1) !== expectedVersion) {
-        throw Object.assign(new Error('Outra pessoa atualizou este evento enquanto você editava.'), {code: 'stale-version'});
-      }
-      const version = expectedVersion + 1;
-      const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(event[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
-      if (!changedFields.length) {
-        unchanged = true;
-        return;
-      }
-      const historyRef = doc(db, 'events', eventId, 'history', String(version));
-      const snapshotFields = [...fields, 'status'];
-      const historyEntry = {
-        id: String(version), eventId, version, requestId, actorUid: uid, actorName: updatedByName, changedFields,
-        before: Object.fromEntries(snapshotFields.map((field) => [field, event[field] ?? null])),
-        after: Object.fromEntries(snapshotFields.map((field) => [field, (field in updates ? updates[field] : event[field]) ?? null])),
-        createdAt: serverTimestamp()
-      };
-      transaction.update(ref, {...updates, updatedByName, updatedByUid: uid, updatedAt: serverTimestamp(), version});
-      transaction.set(historyRef, historyEntry);
-    });
-  } catch (error) {
-    if (error.code === 'stale-version') throw error;
-    try {
-      if (await confirmCommittedEventEdit(eventId, updates, uid, requestId, expectedVersion + 1)) return {id: eventId, pendingFirestore: false, alreadyCommitted: true};
-    } catch {}
-    if (!['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code) && navigator.onLine) throw error;
-    if (!queueOffline) throw error;
-    return queueOfflineEdit();
-  }
-  return {id: eventId, pendingFirestore: false, unchanged};
+  return runGuardedOperationalWrite({
+    assertCurrent,
+    write: async () => {
+      await runTransaction(db, async (transaction) => {
+        const current = await transaction.get(ref);
+        assertCurrent?.();
+        if (!current.exists()) throw Object.assign(new Error('Este evento não está mais disponível. Atualize o relatório.'), {code: 'stale-version'});
+        const event = current.data();
+        if (event.status !== 'OPEN' || event.active !== true || Number(event.version || 1) !== expectedVersion) {
+          throw Object.assign(new Error('Outra pessoa atualizou este evento enquanto você editava.'), {code: 'stale-version'});
+        }
+        const version = expectedVersion + 1;
+        const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(event[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
+        if (!changedFields.length) {
+          unchanged = true;
+          return;
+        }
+        const historyRef = doc(db, 'events', eventId, 'history', String(version));
+        const snapshotFields = [...fields, 'status'];
+        const historyEntry = {
+          id: String(version), eventId, version, requestId, actorUid: uid, actorName: updatedByName, changedFields,
+          before: Object.fromEntries(snapshotFields.map((field) => [field, event[field] ?? null])),
+          after: Object.fromEntries(snapshotFields.map((field) => [field, (field in updates ? updates[field] : event[field]) ?? null])),
+          createdAt: serverTimestamp()
+        };
+        transaction.update(ref, {...updates, updatedByName, updatedByUid: uid, updatedAt: serverTimestamp(), version});
+        transaction.set(historyRef, historyEntry);
+      });
+      return {id: eventId, pendingFirestore: false, unchanged};
+    },
+    confirmCommitted: async () => await confirmCommittedEventEdit(eventId, updates, uid, requestId, expectedVersion + 1)
+      ? {id: eventId, pendingFirestore: false, alreadyCommitted: true}
+      : null,
+    canQueue: (error) => queueOffline && (['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code) || !navigator.onLine),
+    queue: queueOfflineEdit
+  });
 }
 
 export async function listLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 100, cursor = null} = {}) {
@@ -1386,7 +1390,8 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
   };
 }
 
-export async function updateLabelRecord(labelId, input, uid, actorName = '', expectedVersion) {
+export async function updateLabelRecord(labelId, input, uid, actorName = '', expectedVersion, {assertCurrent} = {}) {
+  assertCurrent?.();
   if (!labelId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão desta etiqueta não está disponível. Atualize o relatório antes de editar.');
   const ref = doc(db, 'labels', labelId);
@@ -1394,6 +1399,7 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
   await runTransaction(db, async (transaction) => {
     const current = await transaction.get(ref);
+    assertCurrent?.();
     if (!current.exists()) throw new Error('Esta etiqueta não está mais disponível. Atualize o relatório.');
     const label = current.data();
     if (label.active !== true || label.status !== 'CONFIRMED' || Math.max(1, Number(label.version) || 1) !== expectedVersion) {
@@ -1627,7 +1633,8 @@ export async function acknowledgeLearningActivity(activity, uid) {
   });
 }
 
-export async function saveChecklistStation(input, uid) {
+export async function saveChecklistStation(input, uid, {assertCurrent} = {}) {
+  assertCurrent?.();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar o catálogo do Checklist.');
   const name = String(input.name || '').trim().replace(/\s+/g, ' ');
@@ -1644,10 +1651,12 @@ export async function saveChecklistStation(input, uid) {
     throw new Error('Confira nome, QR, vigência e ordem da estação.');
   }
   const duplicate = await getDocsFromServer(query(collection(db, 'stations'), where('qrCode', '==', qrCode), limit(2)));
+  assertCurrent?.();
   if (duplicate.docs.some((item) => item.id !== stationId)) throw new Error('Este código QR já pertence a outra estação.');
   const ref = doc(db, 'stations', stationId);
   return runTransaction(db, async (transaction) => {
     const current = await transaction.get(ref);
+    assertCurrent?.();
     const record = {
       id: stationId,
       name,
@@ -1674,20 +1683,18 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
   let records; let priorRecords = []; let historyIncomplete = false; let stale = false; let readMetrics = null;
   try {
     const base = collection(db, 'checklists');
-    const remote = await checklistReadCoordinator.run({scope: 'daily', uid, period: day, stationIds: requestedStationIds}, async () => {
-      const snapshots = await Promise.all([
-        getDocsFromServer(query(base, where('date', '==', day), orderBy('createdAt', 'desc'), limit(currentLimit))),
-        ...requestedStationIds.map((stationId) => getDocsFromServer(query(
+    const remote = await checklistReadCoordinator.run({scope: 'daily', uid, period: day, stationIds: requestedStationIds, recordLimit: currentLimit}, () => readChecklistWithHistory({
+      stationIds: requestedStationIds, firstDay: day,
+      readCurrent: () => getDocsFromServer(query(base, where('date', '==', day), orderBy('createdAt', 'desc'), limit(currentLimit))),
+      readPrevious: (stationId) => getDocsFromServer(query(
           base,
           where('stationId', '==', stationId),
           where('date', '<', day),
           orderBy('date', 'desc'),
           orderBy('createdAt', 'desc'),
           limit(1)
-        )))
-      ]);
-      return {currentResult: snapshots[0], priorResults: snapshots.slice(1), readMetrics: checklistReadMetrics(snapshots)};
-    });
+        ))
+    }));
     const {currentResult, priorResults} = remote;
     readMetrics = remote.readMetrics;
     records = currentResult.docs.map((item) => ({id: item.id, ...item.data()}));
@@ -1735,21 +1742,19 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
   let records; let priorRecords = []; let stale = false; let truncated = false; let historyIncomplete = false; let readMetrics = null;
   try {
     const base = collection(db, 'checklists');
-    const remote = await checklistReadCoordinator.run({scope: 'monthly', uid, period: month, stationIds: requestedStationIds}, async () => {
-      const snapshots = await Promise.all([
-        getDocsFromServer(query(base, where('date', '>=', from), where('date', '<=', to), orderBy('date', 'asc'), orderBy('createdAt', 'desc'), limit(maxRecords + 1))),
-        ...requestedStationIds.map((stationId) => getDocsFromServer(query(
+    const remote = await checklistReadCoordinator.run({scope: 'monthly', uid, period: month, stationIds: requestedStationIds, recordLimit: maxRecords}, () => readChecklistWithHistory({
+      stationIds: requestedStationIds, firstDay: from, recordLimit: maxRecords,
+      readCurrent: () => getDocsFromServer(query(base, where('date', '>=', from), where('date', '<=', to), orderBy('date', 'asc'), orderBy('createdAt', 'desc'), limit(maxRecords + 1))),
+      readPrevious: (stationId) => getDocsFromServer(query(
           base,
           where('stationId', '==', stationId),
           where('date', '<', from),
           orderBy('date', 'desc'),
           orderBy('createdAt', 'desc'),
           limit(1)
-        )))
-      ]);
-      return {result: snapshots[0], priorResults: snapshots.slice(1), readMetrics: checklistReadMetrics(snapshots)};
-    });
-    const {result, priorResults} = remote;
+        ))
+    }));
+    const {currentResult: result, priorResults} = remote;
     readMetrics = remote.readMetrics;
     truncated = result.docs.length > maxRecords;
     records = result.docs.slice(0, maxRecords).map((item) => ({id: item.id, ...item.data()}));
@@ -1809,7 +1814,8 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
   };
 }
 
-export async function createChecklistSignatureRequest({day, revision, declaration, justification, uid} = {}) {
+export async function createChecklistSignatureRequest({day, revision, declaration, justification, uid, assertCurrent} = {}) {
+  assertCurrent?.();
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !/^[a-f0-9]{64}$/.test(revision || '') || declaration !== true) {
     throw new Error('Atualize o relatório e confirme a declaração antes de solicitar a validação.');
   }
@@ -1817,21 +1823,9 @@ export async function createChecklistSignatureRequest({day, revision, declaratio
   if (reason.length < 8) throw new Error('Informe uma justificativa de pelo menos 8 caracteres para a auditoria.');
   const id = checklistSignatureRequestId(day, revision, uid);
   const reference = doc(db, 'checklistSignatureRequests', id);
-  return runTransaction(db, async (transaction) => {
-    const existing = await transaction.get(reference);
-    if (existing.exists()) {
-      const request = existing.data();
-      if (request.signerUid !== uid || request.day !== day || request.revision !== revision) {
-        throw new Error('O pedido de assinatura existente não corresponde a esta sessão.');
-      }
-      return {id, status: request.status, alreadyRequested: true};
-    }
-    transaction.set(reference, {
-      id, day, revision, signerUid: uid, declaration: true,
-      justification: reason, status: 'PENDING_VALIDATION', requestedAt: serverTimestamp()
-    });
-    return {id, status: 'PENDING_VALIDATION', alreadyRequested: false};
-  });
+  return runTransaction(db, (transaction) => stageChecklistSignatureRequest(transaction, reference, {
+    id, day, revision, signerUid: uid, declaration: true, justification: reason
+  }, {assertCurrent, requestedAt: serverTimestamp}));
 }
 
 function mergeWatchedRanges(ranges, duration) {
@@ -2108,9 +2102,9 @@ function dateSortValue(value) {
   return value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
 }
 
-function buildRecordBatch(batch, {collectionName, data, uid, requestId}) {
+function buildRecordBatch(batch, {collectionName, data, uid, requestId, assertCurrent}) {
   stageOperationalWrite(batch, {
-    collectionName, data, uid, requestId, now: serverTimestamp(),
+    collectionName, data, uid, requestId, assertCurrent, now: serverTimestamp(),
     recordRef: doc(db, collectionName, requestId)
   });
 }
@@ -2134,57 +2128,56 @@ async function confirmCommittedMutation({collectionName, data, uid, requestId}) 
     JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
 }
 
-export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID()} = {}) {
+export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID(), assertCurrent} = {}) {
+  assertCurrent?.();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const payload = {collectionName, data};
+  const queueWrite = async () => {
+    assertCurrent?.();
+    await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
+    return {id: requestId, pendingFirestore: true};
+  };
   if (!navigator.onLine) {
     if (!mayQueueOffline(collectionName)) throw new Error('Etiquetas precisam de conexão para serem confirmadas; os dados do paciente não ficam salvos neste aparelho.');
-    await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-    return {id: requestId, pendingFirestore: true};
+    return queueWrite();
   }
   if (collectionName === 'events' && data.scheduleSigla) {
-    try {
-      return await createScheduledEvent(data, {uid, requestId});
-    } catch (error) {
-      try {
-        if (await confirmCommittedMutation({collectionName, data, uid, requestId})) {
-          return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
-        }
-      } catch {}
-      if (mayUseOfflineCache(error)) {
-        await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-        return {id: requestId, pendingFirestore: true};
-      }
-      throw error;
-    }
+    return runGuardedOperationalWrite({
+      assertCurrent,
+      write: () => createScheduledEvent(data, {uid, requestId, assertCurrent}),
+      confirmCommitted: async () => await confirmCommittedMutation({collectionName, data, uid, requestId})
+        ? {id: requestId, pendingFirestore: false, alreadyCommitted: true}
+        : null,
+      canQueue: mayUseOfflineCache,
+      queue: queueWrite
+    });
   }
   const batch = writeBatch(db);
-  buildRecordBatch(batch, {collectionName, data, uid, requestId});
-  try {
-    await batch.commit();
-    return {id: requestId, pendingFirestore: false};
-  } catch (error) {
-    try {
-      if (await confirmCommittedMutation({collectionName, data, uid, requestId})) {
-        return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
-      }
-    } catch {}
-    if (error.code !== 'unavailable' && error.code !== 'deadline-exceeded' && error.code !== 'network-request-failed' && navigator.onLine) throw error;
-    if (!mayQueueOffline(collectionName)) throw new Error('O Firestore não confirmou a etiqueta. Os dados continuam apenas no formulário e não foram armazenados neste aparelho.');
-    await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-    return {id: requestId, pendingFirestore: true};
-  }
+  buildRecordBatch(batch, {collectionName, data, uid, requestId, assertCurrent});
+  return runGuardedOperationalWrite({
+    assertCurrent,
+    write: async () => { await batch.commit(); return {id: requestId, pendingFirestore: false}; },
+    confirmCommitted: async () => await confirmCommittedMutation({collectionName, data, uid, requestId})
+      ? {id: requestId, pendingFirestore: false, alreadyCommitted: true}
+      : null,
+    canQueue: (error) => ['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code) || !navigator.onLine,
+    queue: () => {
+      if (!mayQueueOffline(collectionName)) throw new Error('O Firestore não confirmou a etiqueta. Os dados continuam apenas no formulário e não foram armazenados neste aparelho.');
+      return queueWrite();
+    }
+  });
 }
 
-async function createScheduledEvent(data, {uid, requestId}) {
+async function createScheduledEvent(data, {uid, requestId, assertCurrent}) {
   const day = data.date;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('A data da escala do evento é inválida.');
   const scheduleRef = doc(db, 'scheduleDays', day);
   const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${String(data.memberSigla || '-').trim().toUpperCase()}:${requestId}`;
   const result = await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(scheduleRef);
+    assertCurrent?.();
     if (!snapshot.exists()) {
-      buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
+      buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId, assertCurrent});
       return {id: requestId, pendingFirestore: false, schedule: null};
     }
     const schedule = snapshot.data();
@@ -2193,7 +2186,7 @@ async function createScheduledEvent(data, {uid, requestId}) {
       throw new Error('Este ID de evento já está destacado na escala.');
     }
     const version = (Number.isInteger(schedule.version) && schedule.version >= 0 ? schedule.version : 0) + 1;
-    buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
+    buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId, assertCurrent});
     transaction.update(scheduleRef, {
       'highlights.events': [...events, marker],
       updatedByUid: uid,

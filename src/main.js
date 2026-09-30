@@ -11,7 +11,9 @@ import {sortChecklistStationsForDisplay} from './checklist-display.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {createChecklistReportGate} from './checklist-report-gate.js';
+import {createChecklistBannerGate} from './checklist-banner-gate.js';
 import {sessionChangeRequiresRender, sessionChangeGrantsAccess, sessionChangeRevokesAccess, featureChangeRequiresRender} from './session-refresh.js';
+import {createWriteSessionGuard} from './write-session.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -79,6 +81,7 @@ let reportPdfPromise = null;
 let checklistReportMode = 'daily';
 let checklistReportOpen = false;
 const checklistReportGate = createChecklistReportGate();
+const checklistBannerGate = createChecklistBannerGate();
 let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
@@ -218,6 +221,17 @@ function can(permission) {
   const qualityAreaPermissions = ['managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage'];
   return currentRoute() === 'management' && (!selectedManagementAreaId || selectedManagementAreaId === 'area-gestao-da-qualidade') &&
     session.profile?.permissions?.qualityManage === true && qualityAreaPermissions.includes(permission);
+}
+
+function captureWriteSession(moduleRoute, isAllowed, isContextCurrent) {
+  const guard = createWriteSessionGuard({
+    uid: session.user?.uid || '',
+    getSession: () => session,
+    isAllowed: () => featureEnabledForRoute(moduleRoute, appFeatures) && isAllowed(),
+    isContextCurrent
+  });
+  guard.assertCurrent();
+  return guard;
 }
 
 function vacationRankMarkup(sigla, classes, position) {
@@ -1335,10 +1349,11 @@ async function loadDailyChecklist(stations, suppliedDay) {
           confirm.disabled = true;
           status.textContent = 'Registrando o pedido de validação no Firestore…';
           try {
+            const writeGuard = captureWriteSession('checklist', () => can('checklistSign'), isCurrent);
             const {signChecklistReport} = await import('./checklist-signature.js');
-            if (!isCurrent() || !can('checklistSign')) return;
-            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid});
-            if (!isCurrent()) return;
+            writeGuard.assertCurrent();
+            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid, assertCurrent: writeGuard.assertCurrent});
+            if (!writeGuard.isCurrent()) return;
             status.textContent = 'Pedido registrado. Assinatura e pontuação aguardam validação.';
             await loadDailyChecklist(stations, day);
           } catch (error) {
@@ -1387,6 +1402,14 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const actions = document.querySelector('#checklist-station-actions');
   const status = document.querySelector('#checklist-station-status');
   if (!dialog || !result || !actions || !status) return;
+  dialog.dataset.checklistDay = day;
+  dialog.dataset.checklistStationId = station.id;
+  const bannerRequest = checklistBannerGate.begin({day, stationId: station.id, uid: session.user?.uid || '', route: currentRoute(), dialogOpen: true});
+  const isCurrentBanner = () => Boolean(dialog.isConnected && document.querySelector('#checklist-station-dialog') === dialog &&
+    session.status === 'signed-in' && checklistBannerGate.isCurrent(bannerRequest, {
+      day: dialog.dataset.checklistDay, stationId: dialog.dataset.checklistStationId, uid: session.user?.uid || '',
+      route: currentRoute(), dialogOpen: dialog.open
+    }));
   const active = station.active === true;
   const dayIsToday = checklistDayMode(day, todayInputValue()) === 'today';
   const canWriteToday = can('checklistWrite') && dayIsToday && active && stationIsValidOn(station, day);
@@ -1424,7 +1447,8 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     answerButtons.forEach((button) => { button.disabled = true; });
     if (saveButton) saveButton.disabled = true;
     status.textContent = 'Salvando checklist…';
-    const outcome = await saveChecklistAnswer(station.id, condition, day, textarea?.value || '');
+    const outcome = await saveChecklistAnswer(station.id, condition, day, textarea?.value || '', {isContextCurrent: isCurrentBanner});
+    if (!isCurrentBanner()) return;
     if (!outcome.ok) {
       status.textContent = outcome.message;
       answerButtons.forEach((button) => { button.disabled = false; });
@@ -1452,14 +1476,19 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     if (!nextActive && !window.confirm(`Confirma a inativação de ${station.name || station.id}?`)) return;
     toggleButton.disabled = true;
     status.textContent = nextActive ? 'Liberando arsenal…' : 'Inativando arsenal…';
+    let writeGuard;
     try {
+      writeGuard = captureWriteSession('checklist', () => can('checklistManage'), isCurrentBanner);
       const {saveChecklistStation} = await import('./data.js');
-      await saveChecklistStation({stationId: station.id, name: station.name, qrCode: station.qrCode, start: station.start || '', end: station.end || '', order: Number(station.order) || 0, active: nextActive}, session.user.uid);
+      writeGuard.assertCurrent();
+      await saveChecklistStation({stationId: station.id, name: station.name, qrCode: station.qrCode, start: station.start || '', end: station.end || '', order: Number(station.order) || 0, active: nextActive}, writeGuard.uid, {assertCurrent: writeGuard.assertCurrent});
+      if (!writeGuard.isCurrent()) return;
       station.active = nextActive;
       dialog.close();
       ensureChecklistDailyReportOpen(day);
       await loadDailyChecklist(stations, day);
     } catch (error) {
+      if (writeGuard && !writeGuard.isCurrent()) return;
       status.textContent = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para alterar este arsenal.' : error.message || 'Não foi possível atualizar o arsenal.';
       toggleButton.disabled = false;
     }
@@ -1644,14 +1673,18 @@ async function loadMonthlyChecklist(stations) {
   }
 }
 
-async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '') {
+async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {isContextCurrent} = {}) {
   if (checklistDayMode(day, todayInputValue()) !== 'today') return {ok: false, message: 'O Checklist só pode ser registrado na data de hoje.'};
   const occurrence = condition === 'NAO' ? String(occurrenceValue || '').trim() : '';
   if (condition === 'NAO' && !occurrence) return {ok: false, message: 'Descreva a ocorrência antes de registrar a não conformidade.'};
   try {
+    const dialog = document.querySelector('#checklist-station-dialog');
+    const writeGuard = captureWriteSession('checklist', () => can('checklistWrite'), isContextCurrent || (() => dialog?.isConnected && dialog.open && currentRoute() === 'checklist'));
     const {createOperationalRecord} = await import('./data.js');
+    writeGuard.assertCurrent();
     // A atribuição do responsável só é definida após validação no servidor.
-    const result = await createOperationalRecord('checklists', {stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid: session.user.uid});
+    const result = await createOperationalRecord('checklists', {stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid: writeGuard.uid, assertCurrent: writeGuard.assertCurrent});
+    writeGuard.assertCurrent();
     return {ok: true, pendingFirestore: result.pendingFirestore === true};
   } catch (error) {
     return {ok: false, message: error.code === 'permission-denied' ? 'Seu perfil não tem permissão para registrar checklist.' : `Não foi possível salvar. ${error.message || ''}`};
@@ -2713,7 +2746,19 @@ async function bindModuleForm(route) {
     submit.disabled = true;
     const values = Object.fromEntries(new FormData(form).entries());
     const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
+    let writeGuard;
     try {
+      if (route === 'events') {
+        writeGuard = captureWriteSession(route, () => can('eventsWrite') && (!values.editEventId || can('admin')), () => form.isConnected && currentRoute() === route);
+      } else if (route === 'labels') {
+        const editingLabel = values.editLabelId ? loadedLabelRecords.find((item) => item.id === values.editLabelId) : null;
+        writeGuard = captureWriteSession(route, () => {
+          const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
+          return (can('labelsWrite') || can('labelsManage')) && (!values.editLabelId ||
+            can('labelsManage') || editingLabel?.createdByUid === session.user?.uid ||
+            (ownSigla && editingLabel?.staffSiglas?.includes(ownSigla)));
+        }, () => form.isConnected && currentRoute() === route);
+      }
       if (route === 'people') {
         const {saveContact} = await import('./data.js');
         await saveContact({...values, active: form.elements.active.checked}, session.user.uid);
@@ -2741,7 +2786,9 @@ async function bindModuleForm(route) {
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
-          const result = await updateEventRecord(values.editEventId, eventRecord, session.user.uid, Number(values.editEventVersion));
+          writeGuard.assertCurrent();
+          const result = await updateEventRecord(values.editEventId, eventRecord, writeGuard.uid, Number(values.editEventVersion), undefined, {assertCurrent: writeGuard.assertCurrent});
+          writeGuard.assertCurrent();
           notice = result.pendingFirestore
             ? 'Edição salva neste aparelho com a versão base. Será enviada quando a conexão voltar; se o registro mudar, o rascunho ficará para comparação.'
             : 'Evento atualizado no Firestore.';
@@ -2777,7 +2824,9 @@ async function bindModuleForm(route) {
         record = {date: values.date, patientName: values.patientName.trim(), procedureCode: (values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : (values.insurance || '').trim(), creditor, staffSiglas: creditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
-          await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName, Number(values.editLabelVersion));
+          writeGuard.assertCurrent();
+          await updateLabelRecord(values.editLabelId, record, writeGuard.uid, actorName, Number(values.editLabelVersion), {assertCurrent: writeGuard.assertCurrent});
+          writeGuard.assertCurrent();
           notice = 'Etiqueta atualizada no Firestore.';
           await render();
           return;
@@ -2822,12 +2871,15 @@ async function bindModuleForm(route) {
       }
       delete record.sign;
       const {createOperationalRecord} = await import('./data.js');
-      const result = await createOperationalRecord(collectionName, record, {uid: session.user.uid});
+      writeGuard?.assertCurrent();
+      const result = await createOperationalRecord(collectionName, record, {uid: writeGuard?.uid || session.user.uid, assertCurrent: writeGuard?.assertCurrent});
+      writeGuard?.assertCurrent();
       notice = result.pendingFirestore
         ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
       await render();
     } catch (error) {
+      if (writeGuard && (!form.isConnected || currentRoute() !== route || session.status !== 'signed-in' || session.user?.uid !== writeGuard.uid)) return;
       notice = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para esta ação.' : `Não foi possível salvar. ${error.message || ''}`;
       if (route === 'events') {
         const status = document.querySelector('#event-form-status');
@@ -3319,8 +3371,12 @@ async function loadChecklistStationAdmin() {
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     if (status) status.textContent = 'Salvando estação…';
+    let writeGuard;
     try {
+      const route = currentRoute();
+      writeGuard = captureWriteSession('checklist', () => can('checklistManage'), () => form.isConnected && currentRoute() === route);
       const {saveChecklistStation, listModuleRecords} = await import('./data.js');
+      writeGuard.assertCurrent();
       await saveChecklistStation({
         stationId: form.elements.stationId.value,
         name: form.elements.name.value,
@@ -3329,13 +3385,17 @@ async function loadChecklistStationAdmin() {
         end: form.elements.end.value,
         order: Number(form.elements.order.value),
         active: form.elements.active.checked
-      }, session.user.uid);
+      }, writeGuard.uid, {assertCurrent: writeGuard.assertCurrent});
+      if (!writeGuard.isCurrent()) return;
       reset();
       if (status) status.textContent = 'Estação salva no Firestore.';
       await refresh();
-      const activeStations = await listModuleRecords('checklist', session.user.uid, {pageSize: 200});
+      if (!writeGuard.isCurrent()) return;
+      const activeStations = await listModuleRecords('checklist', writeGuard.uid, {pageSize: 200});
+      if (!writeGuard.isCurrent()) return;
       await loadChecklistView(activeStations);
     } catch (error) {
+      if (writeGuard && !writeGuard.isCurrent()) return;
       if (status) status.textContent = error.code === 'permission-denied'
         ? 'Seu perfil não tem permissão para manter o catálogo do Checklist.'
         : error.message || 'Não foi possível salvar a estação.';

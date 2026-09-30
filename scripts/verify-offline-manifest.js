@@ -37,15 +37,38 @@ for (const key of offlineEntries) {
   for (const value of graph.visited) cachedEntries.add(value);
   for (const value of graph.files) cachedFiles.add(value);
 }
-if (!offlineEntries.includes('src/data.js') || !cachedEntries.has('src/data.js')) {
-  throw new Error('O fluxo offline precisa manter src/data.js e suas dependências no cache.');
+const optionalMatch = serviceWorker.match(/const OFFLINE_OPTIONAL_ENTRIES = \[([^\]]*)\];/);
+if (!optionalMatch) throw new Error('A lista de módulos opcionais offline não foi encontrada.');
+const optionalEntries = [...optionalMatch[1].matchAll(/['"]([^'"]+)['"]/g)].map((item) => item[1]);
+const appCheckEntry = 'node_modules/firebase/app-check/dist/esm/index.esm.js';
+if (manifest[appCheckEntry] && !optionalEntries.includes(appCheckEntry)) throw new Error('O SDK App Check emitido é necessário para a inicialização offline do Firestore.');
+for (const key of optionalEntries.filter((key) => manifest[key])) {
+  const graph = collectGraph(key);
+  for (const value of graph.visited) cachedEntries.add(value);
+  for (const value of graph.files) cachedFiles.add(value);
 }
-for (const key of ['src/report-pdf.js', 'src/label-ai.js', 'src/checklist-signature.js']) {
-  if (cachedEntries.has(key)) throw new Error(`Módulo pesado/online não deve entrar no precache offline: ${key}`);
+for (const key of ['src/firebase-auth.js', 'src/data-lite.js', 'src/data.js', 'src/label-camera.js']) {
+  if (!offlineEntries.includes(key) || !cachedEntries.has(key)) {
+    throw new Error(`O fluxo offline precisa manter ${key} e suas dependências no cache.`);
+  }
+}
+// Rollup may give a dynamic module an underscored/generated manifest key, so
+// check its emitted identity as well as the source path.
+for (const key of cachedEntries) {
+  const entry = manifest[key];
+  const identity = [key, entry.src, entry.name, entry.file].filter(Boolean).join(' ');
+  if (/(report-pdf|label-ai|checklist-signature|html2canvas|dompurify|canvg)/.test(identity)) {
+    throw new Error(`Módulo pesado/online não deve entrar no precache offline: ${key}`);
+  }
 }
 let totalBytes = 0;
 for (const file of cachedFiles) {
   const path = join('dist', file);
   totalBytes += statSync(path).size;
 }
-console.log(`[offline manifest] shell: ${shell.files.size} arquivos / ${[...shell.files].reduce((sum, file) => sum + statSync(join('dist', file)).size, 0)} bytes; cache completo: ${cachedFiles.size} arquivos / ${totalBytes} bytes; módulos offline adicionais: ${offlineEntries.join(', ')}`);
+const fixedPrecache = serviceWorker.match(/const PRECACHE = \[([\s\S]*?)\];/);
+if (!fixedPrecache || !/^\s*BASE\s*,/m.test(fixedPrecache[1])) throw new Error('O precache fixo precisa incluir a página inicial.');
+const precacheFiles = new Set(['index.html', ...cachedFiles,
+  ...[...fixedPrecache[1].matchAll(/`\$\{BASE\}([^`]+)`/g)].map((item) => item[1])]);
+const precacheBytes = [...precacheFiles].reduce((sum, file) => sum + statSync(join('dist', file)).size, 0);
+console.log(`[offline manifest] shell: ${shell.files.size} arquivos / ${[...shell.files].reduce((sum, file) => sum + statSync(join('dist', file)).size, 0)} bytes; grafo offline: ${cachedFiles.size} arquivos / ${totalBytes} bytes; precache total com HTML/manifestos/imagens fixas: ${precacheFiles.size} arquivos / ${precacheBytes} bytes; módulos offline adicionais: ${offlineEntries.join(', ')}`);

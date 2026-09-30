@@ -1,4 +1,5 @@
 const isElevated = (profile = {}) => profile.role === 'administrador_app' || profile.permissions?.admin === true;
+const profileScope = (profile = {}) => String(profile.sigla || '').trim().toUpperCase();
 
 const truePermissionKeys = (profile = {}) => Object.entries(profile.permissions || {})
   .filter(([, enabled]) => enabled === true)
@@ -14,6 +15,7 @@ export function sessionChangeRevokesAccess(previous, next) {
   if (isElevated(before) && !isElevated(after)) return true;
   if (!isElevated(before) && !isElevated(after) && before.role !== after.role) return true;
   if (isElevated(before) && isElevated(after)) return false;
+  if (profileScope(before) !== profileScope(after)) return true;
   const nextPermissions = new Set(truePermissionKeys(after));
   return truePermissionKeys(before).some((permission) => !nextPermissions.has(permission));
 }

@@ -1,5 +1,11 @@
 const CACHE = 'sahmt-v2-shell-v107';
-const OFFLINE_DYNAMIC_ENTRIES = ['src/data.js'];
+// Cached Auth must initialize before a saved profile can open the PWA. Home's
+// cached projections use data-lite, and Labels binds its manual dialog after
+// loading the camera controller even when no camera/AI action is requested.
+const OFFLINE_DYNAMIC_ENTRIES = ['src/firebase-auth.js', 'src/data-lite.js', 'src/data.js', 'src/label-camera.js'];
+// Firestore initialization awaits App Check in builds configured for AI. Keep
+// that small SDK chunk when emitted; the IA-disabled build omits it entirely.
+const OFFLINE_OPTIONAL_ENTRIES = ['node_modules/firebase/app-check/dist/esm/index.esm.js'];
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -11,7 +17,8 @@ const PRECACHE = [
   `${BASE}assets/sahmt-logo.png`,
   `${BASE}assets/selo-qga-accredited-qmentum-diamond.png`,
   `${BASE}assets/modules/operacional.jpg`,
-  `${BASE}assets/modules/checklist.svg`
+  `${BASE}assets/modules/checklist.svg`,
+  `${BASE}vendor/zxing.min.js`
 ];
 
 self.addEventListener('install', (event) => {
@@ -29,7 +36,7 @@ self.addEventListener('install', (event) => {
       if (visited.has(key)) return;
       visited.add(key);
       const entry = manifest[key];
-      if (!entry) return;
+      if (!entry) throw new Error(`Import offline obrigatório ausente no manifest Vite: ${key}`);
       for (const file of [entry.file, ...(entry.css || []), ...(entry.assets || [])]) {
         const assetUrl = new URL(file, new URL(BASE, self.location.origin));
         if (assetUrl.origin === self.location.origin && assetUrl.pathname.startsWith(BASE)) assets.add(assetUrl.href);
@@ -41,6 +48,7 @@ self.addEventListener('install', (event) => {
       if (!manifest[key]) throw new Error(`Módulo offline obrigatório ausente no manifest Vite: ${key}`);
       visitEntry(key);
     }
+    for (const key of OFFLINE_OPTIONAL_ENTRIES) if (manifest[key]) visitEntry(key);
     await Promise.all([...assets].map(async (assetUrl) => {
       const response = await fetch(assetUrl, {cache: 'reload'});
       if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);
@@ -65,8 +73,17 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`)) return;
-  if (request.cache === 'reload' || request.cache === 'no-store') {
-    event.respondWith(fetch(request));
+  if (request.mode !== 'navigate' && (request.cache === 'reload' || request.cache === 'no-store')) {
+    event.respondWith(fetch(request).catch(async (error) => {
+      const immutableBuildAsset = url.pathname.startsWith(`${BASE}assets/`) && /-[\w-]{8,}\.(?:js|css)$/.test(url.pathname);
+      const requiredQrDecoder = url.pathname === `${BASE}vendor/zxing.min.js`;
+      if (request.cache === 'reload' && (immutableBuildAsset || requiredQrDecoder)) {
+        const currentShell = await caches.open(CACHE);
+        const cached = (await currentShell.match(request)) || (await caches.match(request));
+        if (cached) return cached;
+      }
+      throw error;
+    }));
     return;
   }
   if (request.mode === 'navigate') {
@@ -79,8 +96,23 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       } catch {
-        return (await caches.match(`${BASE}index.html`)) || (await caches.match(BASE));
+        const currentShell = await caches.open(CACHE);
+        return (await currentShell.match(`${BASE}index.html`)) || (await currentShell.match(BASE)) ||
+          (await caches.match(`${BASE}index.html`)) || (await caches.match(BASE));
       }
+    })());
+    return;
+  }
+  if (url.pathname.startsWith(`${BASE}assets/offline-schedule/`)) {
+    event.respondWith((async () => {
+      // Preparing the gallery replaces this copy. A prior shell may still hold
+      // the same URL, so looking across every cache first can resurrect it.
+      const imageCache = await caches.open(OFFLINE_SCHEDULE_CACHE);
+      const cached = (await imageCache.match(request)) || (await caches.match(request));
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok && response.type === 'basic') await imageCache.put(request, response.clone());
+      return response;
     })());
     return;
   }

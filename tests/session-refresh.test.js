@@ -31,6 +31,17 @@ test('administração efetiva preservada não conta remoção de permissões red
   assert.equal(sessionChangeRequiresRender(before, after), false);
 });
 
+test('troca de sigla muda o escopo pessoal imediatamente; normalização e administração global preservam a tela', () => {
+  const before = signedIn('u1', {...profile, sigla: 'FR'});
+  const after = signedIn('u1', {...profile, sigla: 'RO'});
+  assert.equal(sessionChangeRequiresRender(before, after), true);
+  assert.equal(sessionChangeRequiresRender(before, signedIn('u1', {...profile, sigla: ' fr '})), false);
+  assert.equal(sessionChangeRequiresRender(
+    signedIn('u1', {...profile, role: 'administrador_app', sigla: 'FR'}),
+    signedIn('u1', {...profile, role: 'administrador_app', sigla: 'RO'})
+  ), false);
+});
+
 test('novas permissões atualizam a Home, sem reconstruir módulo aberto', () => {
   const granted = signedIn('u1', {...profile, permissions: {...profile.permissions, labelsRead: true}});
   assert.equal(sessionChangeGrantsAccess(signedIn('u1'), granted), true);

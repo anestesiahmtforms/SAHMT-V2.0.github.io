@@ -12,7 +12,7 @@ const manifest = {
     css: ['assets/main.css'],
     assets: ['assets/logo.svg'],
     imports: ['assets/shared.js'],
-    dynamicImports: ['src/data.js', 'src/report-pdf.js']
+    dynamicImports: ['src/firebase-auth.js', 'src/data-lite.js', 'src/data.js', 'src/label-camera.js', '_report-pdf-built.js']
   },
   'assets/shared.js': {
     file: 'assets/shared.js',
@@ -26,11 +26,16 @@ const manifest = {
     dynamicImports: ['src/checklist-signature.js']
   },
   'assets/firestore.js': {file: 'assets/firestore.js', imports: []},
-  'src/report-pdf.js': {file: 'assets/report-pdf.js', imports: []},
+  'src/firebase-auth.js': {file: 'assets/firebase-auth.js', imports: ['assets/auth.js']},
+  'assets/auth.js': {file: 'assets/auth.js', imports: []},
+  'src/data-lite.js': {file: 'assets/data-lite.js', imports: ['assets/firestore-lite.js']},
+  'assets/firestore-lite.js': {file: 'assets/firestore-lite.js', imports: []},
+  'src/label-camera.js': {file: 'assets/label-camera.js', imports: []},
+  '_report-pdf-built.js': {file: 'assets/report-pdf.js', name: 'report-pdf', imports: []},
   'src/checklist-signature.js': {file: 'assets/checklist-signature.js', imports: []}
 };
 
-function createWorker({offline = false} = {}) {
+function createWorker({offline = false, manifestOverride = manifest, globalCacheMatch = null} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
@@ -41,7 +46,7 @@ function createWorker({offline = false} = {}) {
   let skipWaitingCalls = 0;
   let claimCalls = 0;
   let deletes = [];
-  const manifestResponse = {json: async () => manifest};
+  const manifestResponse = {json: async () => manifestOverride};
 
   const cache = {
     async addAll(urls) {
@@ -73,7 +78,7 @@ function createWorker({offline = false} = {}) {
       return true;
     },
     async match(request) {
-      return cache.match(request);
+      return globalCacheMatch ? globalCacheMatch(request) : cache.match(request);
     }
   };
   const self = {
@@ -102,15 +107,44 @@ test('instala shell V107 com símbolos e módulos offline selecionados do manife
     'assets/modules/operacional.jpg',
     'assets/modules/checklist.svg',
     'assets/sahmt-logo.png',
+    'vendor/zxing.min.js',
     'assets/selo-qga-accredited-qmentum-diamond.png',
     'assets/main.js',
     'assets/shared.css',
+    'assets/firebase-auth.js',
+    'assets/auth.js',
+    'assets/data-lite.js',
+    'assets/firestore-lite.js',
+    'assets/label-camera.js',
     'assets/data.js',
     'assets/firestore.js'
   ]) assert.ok(worker.entries.has(`https://sahmt.example${BASE}${asset}`), `${asset} deve estar no cache offline`);
   assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/report-pdf.js`));
   assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/checklist-signature.js`));
   assert.equal(worker.skipWaiting(), 1);
+});
+
+test('não ativa shell incompleto quando falta módulo essencial ou um import dele', async () => {
+  for (const missing of ['src/firebase-auth.js', 'src/data-lite.js', 'src/data.js', 'src/label-camera.js', 'assets/auth.js']) {
+    const incomplete = {...manifest};
+    delete incomplete[missing];
+    const worker = createWorker({manifestOverride: incomplete});
+    let install;
+    worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
+    await assert.rejects(install, /offline obrigatório ausente/);
+    assert.equal(worker.skipWaiting(), 0);
+  }
+});
+
+test('build com IA configurada inclui somente o SDK App Check necessário à inicialização do Firestore', async () => {
+  const configured = {...manifest, 'node_modules/firebase/app-check/dist/esm/index.esm.js': {file: 'assets/app-check-core.js', imports: ['assets/shared.js']}};
+  const worker = createWorker({manifestOverride: configured});
+  let install;
+  worker.handlers.get('install')({waitUntil(promise) {install = promise;}});
+  await install;
+  assert.ok(worker.entries.has(`https://sahmt.example${BASE}assets/app-check-core.js`));
+  assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/report-pdf.js`));
+  assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/checklist-signature.js`));
 });
 
 test('mantém o shell anterior para abas antigas e preserva os caches da fila offline', async () => {
@@ -150,6 +184,32 @@ test('serve shell salvo quando a navegação ocorre sem rede', async () => {
   assert.equal(worker.fetched.length, 0);
 });
 
+test('recarregar a página offline usa o shell salvo, mesmo com request.cache reload', async () => {
+  const worker = createWorker({offline: true});
+  const indexUrl = `https://sahmt.example${BASE}index.html`;
+  const savedIndex = {url: indexUrl};
+  worker.entries.set(indexUrl, savedIndex);
+  let response;
+  worker.handlers.get('fetch')({
+    request: {method: 'GET', mode: 'navigate', url: `https://sahmt.example${BASE}`, cache: 'reload'},
+    respondWith(promise) { response = promise; }
+  });
+  assert.strictEqual(await response, savedIndex);
+});
+
+test('nova navegação offline prefere o shell atual à página index do cache anterior', async () => {
+  const previousIndex = {source: 'previous-shell-index'};
+  const worker = createWorker({offline: true, globalCacheMatch: async () => previousIndex});
+  const currentBase = {source: 'current-shell-base'};
+  worker.entries.set(`https://sahmt.example${BASE}`, currentBase);
+  let response;
+  worker.handlers.get('fetch')({
+    request: {method: 'GET', mode: 'navigate', url: `https://sahmt.example${BASE}`, cache: 'default'},
+    respondWith(promise) { response = promise; }
+  });
+  assert.strictEqual(await response, currentBase);
+});
+
 test('requisição reload da mesma URL ignora a cópia antiga e busca imagem atualizada', async () => {
   const worker = createWorker();
   const url = `https://sahmt.example${BASE}assets/modules/operacional.jpg`;
@@ -164,6 +224,50 @@ test('requisição reload da mesma URL ignora a cópia antiga e busca imagem atu
   assert.equal(refreshed.source, 'network');
   assert.notStrictEqual(refreshed, previous);
   assert.equal(worker.fetched.at(-1).cache, 'reload');
+});
+
+test('imagem preparada corrigida prevalece sobre a mesma URL salva num shell anterior', async () => {
+  const previous = {source: 'old-shell-image'};
+  const corrected = {source: 'corrected-prepared-image'};
+  const worker = createWorker({offline: true, globalCacheMatch: async () => previous});
+  const url = `https://sahmt.example${BASE}assets/offline-schedule/segunda-2026.jpg`;
+  worker.entries.set(url, corrected);
+  let response;
+  worker.handlers.get('fetch')({request: {method: 'GET', mode: 'no-cors', url, cache: 'default'}, respondWith(promise) {response = promise;}});
+  assert.strictEqual(await response, corrected);
+  assert.equal(worker.fetched.length, 0);
+});
+
+test('reload offline recupera somente JS/CSS imutáveis do build e não devolve imagem antiga', async () => {
+  for (const asset of ['index-abcd1234.js', 'index-abcd1234.css', 'operacional.jpg']) {
+    const worker = createWorker({offline: true});
+    const url = `https://sahmt.example${BASE}assets/${asset}`;
+    const cached = {source: 'saved-build'};
+    worker.entries.set(url, cached);
+    let response;
+    worker.handlers.get('fetch')({request: {method: 'GET', mode: 'cors', url, cache: 'reload'}, respondWith(promise) {response = promise;}});
+    if (/\.(js|css)$/.test(asset)) assert.strictEqual(await response, cached);
+    else await assert.rejects(response, /offline/);
+  }
+});
+
+test('no-store permanece obrigatório no servidor, inclusive para JS salvo', async () => {
+  const worker = createWorker({offline: true});
+  const url = `https://sahmt.example${BASE}assets/index-abcd1234.js`;
+  worker.entries.set(url, {source: 'saved-build'});
+  let response;
+  worker.handlers.get('fetch')({request: {method: 'GET', mode: 'cors', url, cache: 'no-store'}, respondWith(promise) {response = promise;}});
+  await assert.rejects(response, /offline/);
+});
+
+test('decoder QR essencial sem hash abre offline em reload e prefere a versão do shell atual', async () => {
+  const current = {source: 'current-qr-decoder'};
+  const worker = createWorker({offline: true, globalCacheMatch: async () => ({source: 'old-qr-decoder'})});
+  const url = `https://sahmt.example${BASE}vendor/zxing.min.js`;
+  worker.entries.set(url, current);
+  let response;
+  worker.handlers.get('fetch')({request: {method: 'GET', mode: 'no-cors', url, cache: 'reload'}, respondWith(promise) {response = promise;}});
+  assert.strictEqual(await response, current);
 });
 
 test('páginas auxiliares ficam fora do cache do shell', async () => {
