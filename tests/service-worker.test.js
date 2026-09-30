@@ -100,11 +100,13 @@ test('instala o shell V101 com os símbolos da Home e os imports estáticos do V
 
 test('mantém os caches de férias e externos ao atualizar o shell', async () => {
   const worker = createWorker();
+  worker.names.add('sahmt-v2-shell-v100');
   let activation;
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v100']);
+  assert.ok(worker.names.has('sahmt-v2-shell-v101'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
