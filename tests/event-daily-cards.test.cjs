@@ -41,6 +41,6 @@ test('pendente não oferece edição nem histórico confirmado; usuário comum n
 test('mensal preserva a apresentação compacta e não busca histórico', () => {
   const {target, reads} = setup({mode: 'monthly'});
   assert.match(target.innerHTML, /event-record-banner/);
-  assert.doesNotMatch(target.innerHTML, /label-daily-record|data-event-history=/);
+  assert.doesNotMatch(target.innerHTML, /label-daily-record|data-event-history=|data-event-edit=/);
   assert.equal(reads(), 0);
 });
