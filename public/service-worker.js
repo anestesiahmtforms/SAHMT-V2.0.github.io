@@ -1,4 +1,5 @@
-const CACHE = 'sahmt-v2-shell-v100';
+const CACHE = 'sahmt-v2-shell-v101';
+const OFFLINE_DYNAMIC_ENTRIES = ['src/data.js'];
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -36,6 +37,10 @@ self.addEventListener('install', (event) => {
       for (const imported of entry.imports || []) visitEntry(imported);
     };
     visitEntry(entryKey);
+    for (const key of OFFLINE_DYNAMIC_ENTRIES) {
+      if (!manifest[key]) throw new Error(`Módulo offline obrigatório ausente no manifest Vite: ${key}`);
+      visitEntry(key);
+    }
     await Promise.all([...assets].map(async (assetUrl) => {
       const response = await fetch(assetUrl, {cache: 'reload'});
       if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);
@@ -46,7 +51,13 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('sahmt-v2-') && key !== CACHE && key !== OFFLINE_SCHEDULE_CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(async (keys) => {
+    const olderShells = keys
+      .filter((key) => /^sahmt-v2-shell-v\d+$/.test(key) && key !== CACHE)
+      .sort((left, right) => Number(right.match(/v(\d+)$/)?.[1] || 0) - Number(left.match(/v(\d+)$/)?.[1] || 0));
+    const keep = new Set([CACHE, OFFLINE_SCHEDULE_CACHE, olderShells[0]].filter(Boolean));
+    await Promise.all(keys.filter((key) => key.startsWith('sahmt-v2-') && !keep.has(key)).map((key) => caches.delete(key)));
+  }).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', (event) => {
@@ -54,6 +65,10 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`)) return;
+  if (request.cache === 'reload' || request.cache === 'no-store') {
+    event.respondWith(fetch(request));
+    return;
+  }
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       try {

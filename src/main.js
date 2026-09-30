@@ -10,6 +10,8 @@ import {decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsVali
 import {checklistArsenalFunction, sortChecklistStationsForDisplay} from './checklist-display.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
+import {createChecklistReportGate} from './checklist-report-gate.js';
+import {sessionChangeRequiresRender, sessionChangeGrantsAccess, sessionChangeRevokesAccess, featureChangeRequiresRender} from './session-refresh.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -76,7 +78,7 @@ let loadedLabelStaffSiglas = [];
 let reportPdfPromise = null;
 let checklistReportMode = 'daily';
 let checklistReportOpen = false;
-let checklistReportLoad = 0;
+const checklistReportGate = createChecklistReportGate();
 let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
@@ -781,7 +783,7 @@ async function loadModule(route) {
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
-      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; stopChecklistQrScanner(false); });
+      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; checklistReportGate.invalidate(); stopChecklistQrScanner(false); });
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
         const value = day && day <= todayInputValue() ? day : todayInputValue();
@@ -982,7 +984,7 @@ async function loadOfflineView(target) {
         await cacheOfflineScheduleImages({
           baseUrl: import.meta.env.BASE_URL,
           fetchImage: async (url) => {
-            const response = await fetch(url);
+            const response = await fetch(url, {cache: 'reload'});
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             await imageCache.put(url, response.clone());
             if (!(await imageCache.match(url))) throw new Error('A imagem não ficou disponível no cache local.');
@@ -1201,22 +1203,51 @@ async function loadAdminModule(content) {
   }
 }
 
+function selectedChecklistReportPeriod(mode) {
+  return mode === 'monthly'
+    ? todayInputValue().slice(0, 7)
+    : document.querySelector('#checklist-report-day')?.value || todayInputValue();
+}
+
+function isCurrentChecklistReportRequest(request, content) {
+  const current = {
+    day: selectedChecklistReportPeriod(request?.mode),
+    mode: checklistReportMode,
+    route: currentRoute(),
+    uid: session.user?.uid || '',
+    reportOpen: checklistReportOpen
+  };
+  return Boolean(
+    content?.isConnected &&
+    document.querySelector('#module-content') === content &&
+    document.querySelector('#checklist-report-dialog')?.open === true &&
+    session.status === 'signed-in' &&
+    checklistReportGate.isCurrent(request, current)
+  );
+}
+
 async function loadDailyChecklist(stations, suppliedDay) {
   const content = document.querySelector('#module-content');
   if (!content) return;
   const day = suppliedDay || document.querySelector('#checklist-report-day')?.value || todayInputValue();
+  const uid = session.user?.uid || '';
+  const request = checklistReportGate.begin({day, mode: 'daily', route: currentRoute(), uid, reportOpen: checklistReportOpen});
+  const isCurrent = () => isCurrentChecklistReportRequest(request, content);
   const dayMode = checklistDayMode(day, todayInputValue());
   if (dayMode === 'invalid') return;
   if (dayMode === 'future') {
-    content.innerHTML = '<p class="empty-state">Não é possível consultar um Checklist futuro.</p>';
+    if (isCurrent()) content.innerHTML = '<p class="empty-state">Não é possível consultar um Checklist futuro.</p>';
     return;
   }
   const applicableStations = stations.filter((station) => stationIsInDateRange(station, day));
   const writableStations = applicableStations.filter((station) => stationIsValidOn(station, day));
+  if (!isCurrent()) return;
   content.innerHTML = '<p class="loading">Carregando registros do dia…</p>';
   try {
     const {listChecklistRecords} = await import('./data.js');
-    const result = await listChecklistRecords(day, session.user.uid, {pageSize: 1000, stationIds: applicableStations.map((station) => station.id)});
+    if (!isCurrent()) return;
+    const result = await listChecklistRecords(day, uid, {pageSize: 1000, stationIds: applicableStations.map((station) => station.id)});
+    if (!isCurrent()) return;
     const records = result.records;
     const syncIndicator = document.querySelector('#checklist-report-sync');
     if (syncIndicator) {
@@ -1263,13 +1294,16 @@ async function loadDailyChecklist(stations, suppliedDay) {
     }));
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
     prepareSignature?.addEventListener('click', async () => {
+      if (!isCurrent() || !can('checklistSign')) return;
       const status = content.querySelector('#checklist-signature-status');
       const previewTarget = content.querySelector('#checklist-signature-preview');
       prepareSignature.disabled = true;
       status.textContent = 'Preparando o pedido de validação do relatório…';
       try {
         const {getChecklistSignaturePreview} = await import('./checklist-signature.js');
-        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid: session.user.uid});
+        if (!isCurrent() || !can('checklistSign')) return;
+        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid});
+        if (!isCurrent() || !can('checklistSign')) return;
         if (preview.requestStatus === 'PENDING_VALIDATION') {
           previewTarget.innerHTML = '<p class="sync-state">Este pedido já está registrado e aguarda validação. O responsável, a assinatura e os pontos ainda não foram confirmados.</p>';
           status.textContent = 'Pedido de validação pendente.';
@@ -1297,27 +1331,32 @@ async function loadDailyChecklist(stations, suppliedDay) {
         declaration.addEventListener('change', updateEnabled);
         justification?.addEventListener('input', updateEnabled);
         confirm.addEventListener('click', async () => {
+          if (!isCurrent() || !can('checklistSign')) return;
           confirm.disabled = true;
           status.textContent = 'Registrando o pedido de validação no Firestore…';
           try {
             const {signChecklistReport} = await import('./checklist-signature.js');
-            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid: session.user.uid});
+            if (!isCurrent() || !can('checklistSign')) return;
+            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid});
+            if (!isCurrent()) return;
             status.textContent = 'Pedido registrado. Assinatura e pontuação aguardam validação.';
             await loadDailyChecklist(stations, day);
           } catch (error) {
+            if (!isCurrent()) return;
             status.textContent = error.message || 'Não foi possível assinar. Atualize o relatório e tente novamente.';
             previewTarget.replaceChildren();
             prepareSignature.disabled = !navigator.onLine || pendingChecklistWrites;
           }
         });
       } catch (error) {
+        if (!isCurrent()) return;
         status.textContent = error.message || 'Não foi possível conferir a revisão do relatório.';
       } finally {
-        if (prepareSignature.isConnected) prepareSignature.disabled = !navigator.onLine || pendingChecklistWrites;
+        if (isCurrent() && prepareSignature.isConnected) prepareSignature.disabled = !navigator.onLine || pendingChecklistWrites;
       }
     });
   } catch (error) {
-    content.innerHTML = `<p class="empty-state">Não foi possível carregar o checklist. ${escapeHtml(error.message || '')}</p>`;
+    if (isCurrent()) content.innerHTML = `<p class="empty-state">Não foi possível carregar o checklist. ${escapeHtml(error.message || '')}</p>`;
   }
 }
 
@@ -1559,16 +1598,20 @@ async function loadMonthlyChecklist(stations) {
   const content = document.querySelector('#module-content');
   if (!content) return;
   const month = todayInputValue().slice(0, 7);
+  const uid = session.user?.uid || '';
+  const request = checklistReportGate.begin({day: month, mode: 'monthly', route: currentRoute(), uid, reportOpen: checklistReportOpen});
+  const isCurrent = () => isCurrentChecklistReportRequest(request, content);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    content.innerHTML = '<p class="empty-state">Selecione um mês válido.</p>';
+    if (isCurrent()) content.innerHTML = '<p class="empty-state">Selecione um mês válido.</p>';
     return;
   }
-  const loadId = ++checklistReportLoad;
+  if (!isCurrent()) return;
   content.innerHTML = '<p class="loading">Carregando registros do mês…</p>';
   try {
     const {listMonthlyChecklistRecords} = await import('./data.js');
-    const result = await listMonthlyChecklistRecords(month, session.user.uid, {stationIds: stations.map((station) => station.id)});
-    if (loadId !== checklistReportLoad || currentRoute() !== 'checklist' || checklistReportMode !== 'monthly') return;
+    if (!isCurrent()) return;
+    const result = await listMonthlyChecklistRecords(month, uid, {stationIds: stations.map((station) => station.id)});
+    if (!isCurrent()) return;
     const today = todayInputValue();
     const days = summarizeChecklistMonth(month, today, stations, result.records, result.priorRecords);
     const rows = days.map((summary) => {
@@ -1596,7 +1639,7 @@ async function loadMonthlyChecklist(stations) {
       await loadDailyChecklist(stations, day);
     }));
   } catch (error) {
-    if (loadId !== checklistReportLoad) return;
+    if (!isCurrent()) return;
     content.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório mensal. ${escapeHtml(error.message || '')}</p>`;
   }
 }
@@ -3722,8 +3765,14 @@ function bindLogin() {
   });
 }
 
+function updateIdentityProfile(next) {
+  const identity = document.querySelector('.identity-card__user');
+  if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
+}
+
 function sessionChanged(next) {
-  const userChanged = session.user?.uid !== next.user?.uid;
+  const previous = session;
+  const userChanged = previous.user?.uid !== next.user?.uid;
   if (next.status !== 'signed-in' || userChanged) scheduleOutboxRetry('', null);
   if (next.status !== 'signed-in') {
     appFeatures = {...DEFAULT_APP_FEATURES};
@@ -3734,8 +3783,16 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
-  notice = '';
-  void render();
+  const permissionRevoked = sessionChangeRevokesAccess(previous, next);
+  if (permissionRevoked) app.innerHTML = '<main class="boot-screen" role="status" aria-live="polite"><strong>Atualizando o acesso…</strong></main>';
+  const mustRender = sessionChangeRequiresRender(previous, next) ||
+    (currentRoute() === 'home' && sessionChangeGrantsAccess(previous, next));
+  if (mustRender) {
+    notice = '';
+    void render();
+  } else {
+    updateIdentityProfile(next);
+  }
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
 async function refreshAppFeatures(uid, force = false) {
@@ -3746,11 +3803,15 @@ async function refreshAppFeatures(uid, force = false) {
     const {readAppFeatures} = await import('./data-lite.js');
     const features = normalizeAppFeatures(await readAppFeatures(uid));
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    const previous = appFeatures;
     appFeatures = features;
-    await render();
+    if (featureChangeRequiresRender(previous, features, currentRoute(), featureEnabledForRoute)) await render();
   } catch (error) {
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
-    appFeatures = {...DEFAULT_APP_FEATURES};
+    const previous = appFeatures;
+    const fallback = {...DEFAULT_APP_FEATURES};
+    appFeatures = fallback;
+    if (featureChangeRequiresRender(previous, fallback, currentRoute(), featureEnabledForRoute)) await render();
     console.warn('[SAHMT] Configuração de módulos indisponível; usando padrões locais:', error.code || error.message);
   }
 }

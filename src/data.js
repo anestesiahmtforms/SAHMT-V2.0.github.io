@@ -8,9 +8,11 @@ import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
 import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
+import {checklistReadMetrics, createChecklistReadCoordinator} from './checklist-query.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 
 const MAX_PAGE_SIZE = 50;
+const checklistReadCoordinator = createChecklistReadCoordinator();
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
 const moduleCollections = Object.freeze({
   events: {name: 'events', order: 'date', direction: 'desc'},
@@ -1669,20 +1671,25 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Informe uma data válida para o checklist.');
   const currentLimit = Math.min(1000, Math.max(1, pageSize));
   const requestedStationIds = [...new Set(stationIds.map((id) => String(id || '').trim()).filter(Boolean))].sort();
-  let records; let priorRecords = []; let historyIncomplete = false; let stale = false;
+  let records; let priorRecords = []; let historyIncomplete = false; let stale = false; let readMetrics = null;
   try {
     const base = collection(db, 'checklists');
-    const [currentResult, ...priorResults] = await Promise.all([
-      getDocsFromServer(query(base, where('date', '==', day), orderBy('createdAt', 'desc'), limit(currentLimit))),
-      ...requestedStationIds.map((stationId) => getDocsFromServer(query(
-        base,
-        where('stationId', '==', stationId),
-        where('date', '<', day),
-        orderBy('date', 'desc'),
-        orderBy('createdAt', 'desc'),
-        limit(1)
-      )))
-    ]);
+    const remote = await checklistReadCoordinator.run({scope: 'daily', uid, period: day, stationIds: requestedStationIds}, async () => {
+      const snapshots = await Promise.all([
+        getDocsFromServer(query(base, where('date', '==', day), orderBy('createdAt', 'desc'), limit(currentLimit))),
+        ...requestedStationIds.map((stationId) => getDocsFromServer(query(
+          base,
+          where('stationId', '==', stationId),
+          where('date', '<', day),
+          orderBy('date', 'desc'),
+          orderBy('createdAt', 'desc'),
+          limit(1)
+        )))
+      ]);
+      return {currentResult: snapshots[0], priorResults: snapshots.slice(1), readMetrics: checklistReadMetrics(snapshots)};
+    });
+    const {currentResult, priorResults} = remote;
+    readMetrics = remote.readMetrics;
     records = currentResult.docs.map((item) => ({id: item.id, ...item.data()}));
     priorRecords = priorResults.flatMap((result) => result.docs.map((item) => ({id: item.id, ...item.data()})));
     if (uid) await writeSafeCache(uid, 'checklists', day, {records, priorRecords, stationIds: requestedStationIds});
@@ -1713,7 +1720,8 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
     records: records.sort((a, b) => dateSortValue(b.createdAt) - dateSortValue(a.createdAt)),
     priorRecords,
     historyIncomplete,
-    stale
+    stale,
+    readMetrics
   };
 }
 
@@ -1724,20 +1732,25 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
   const [year, monthNumber] = month.split('-').map(Number);
   const from = `${month}-01`;
   const to = `${month}-${String(new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()).padStart(2, '0')}`;
-  let records; let priorRecords = []; let stale = false; let truncated = false; let historyIncomplete = false;
+  let records; let priorRecords = []; let stale = false; let truncated = false; let historyIncomplete = false; let readMetrics = null;
   try {
     const base = collection(db, 'checklists');
-    const [result, ...priorResults] = await Promise.all([
-      getDocsFromServer(query(base, where('date', '>=', from), where('date', '<=', to), orderBy('date', 'asc'), orderBy('createdAt', 'desc'), limit(maxRecords + 1))),
-      ...requestedStationIds.map((stationId) => getDocsFromServer(query(
-        base,
-        where('stationId', '==', stationId),
-        where('date', '<', from),
-        orderBy('date', 'desc'),
-        orderBy('createdAt', 'desc'),
-        limit(1)
-      )))
-    ]);
+    const remote = await checklistReadCoordinator.run({scope: 'monthly', uid, period: month, stationIds: requestedStationIds}, async () => {
+      const snapshots = await Promise.all([
+        getDocsFromServer(query(base, where('date', '>=', from), where('date', '<=', to), orderBy('date', 'asc'), orderBy('createdAt', 'desc'), limit(maxRecords + 1))),
+        ...requestedStationIds.map((stationId) => getDocsFromServer(query(
+          base,
+          where('stationId', '==', stationId),
+          where('date', '<', from),
+          orderBy('date', 'desc'),
+          orderBy('createdAt', 'desc'),
+          limit(1)
+        )))
+      ]);
+      return {result: snapshots[0], priorResults: snapshots.slice(1), readMetrics: checklistReadMetrics(snapshots)};
+    });
+    const {result, priorResults} = remote;
+    readMetrics = remote.readMetrics;
     truncated = result.docs.length > maxRecords;
     records = result.docs.slice(0, maxRecords).map((item) => ({id: item.id, ...item.data()}));
     priorRecords = priorResults.flatMap((items) => items.docs.map((item) => ({id: item.id, ...item.data()})));
@@ -1766,7 +1779,7 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
   }
   return {
     records: records.sort((a, b) => a.date.localeCompare(b.date) || dateSortValue(b.createdAt) - dateSortValue(a.createdAt)),
-    priorRecords, stale, truncated, historyIncomplete
+    priorRecords, stale, truncated, historyIncomplete, readMetrics
   };
 }
 
