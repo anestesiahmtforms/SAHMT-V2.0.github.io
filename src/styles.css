@@ -1585,3 +1585,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 #schedule-contact-dialog>form{margin-top:0;padding-top:8px}
 #schedule-contact-dialog>form .secondary-button{min-height:40px;padding:6px 10px}
 @media(max-width:380px){#schedule-contact-dialog{padding:11px}#schedule-contact-dialog .contact-detail-actions .contact-action{font-size:.8rem}}
+
+/* Espaço reservado ao botão evita que o formulário corte sua borda e sombra. */
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions{box-sizing:border-box;flex:0 0 auto!important;min-height:50px;padding:2px 3px 8px!important;overflow:visible;align-items:start}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions .primary-button{box-sizing:border-box;height:40px!important;min-height:40px!important;margin:0!important;padding:5px 8px!important;box-shadow:0 3px 0 #064457!important;transform:none}
+@media(orientation:landscape) and (max-height:520px){.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions{min-height:42px;padding-bottom:8px!important}.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions .primary-button{height:32px!important;min-height:32px!important;padding:3px 6px!important}}
