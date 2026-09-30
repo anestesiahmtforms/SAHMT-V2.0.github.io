@@ -536,6 +536,8 @@
 .checklist-report-dialog .checklist-station>div:first-child>small{font-size:.61rem;text-align:center}
 .checklist-report-dialog .checklist-station-select{min-height:clamp(48px,8dvh,72px);padding:5px 3px;border:2px solid #fff;border-radius:18px;background:linear-gradient(145deg,#fff,#e3edf1);color:#173957;font-size:clamp(.52rem,2.2vw,.78rem);font-weight:950;text-align:center;overflow-wrap:anywhere;box-shadow:0 3px 0 #9db4bc,0 5px 10px rgba(20,58,78,.12)}
 .checklist-report-dialog .checklist-station-complete .checklist-station-select{background:linear-gradient(145deg,#eff8ee,#d4e9d0);color:#315d36}
+.checklist-report-dialog .checklist-station-pending .checklist-station-select{background:linear-gradient(145deg,#fff0ee,#f9d8d4);color:#7d2825}
+.checklist-report-dialog .checklist-station-nonconforming .checklist-station-select{background:linear-gradient(145deg,#ffe6e2,#f5c4bf);color:#8f2929}
 .checklist-report-dialog .checklist-station-nonconforming .checklist-station-select{background:linear-gradient(145deg,#ffe6e2,#f5c4bf);color:#8f2929}
 .checklist-report-dialog .checklist-station-inactive .checklist-station-select{background:linear-gradient(145deg,#e6f1f6,#b9d5e5);color:#164b73}
 .checklist-report-dialog .checklist-actions{gap:4px}
