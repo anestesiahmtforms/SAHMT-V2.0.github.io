@@ -80,3 +80,26 @@ test('edição recusada: X Pendente e erro somente no modal', async () => {
   assert.match(status.textContent, /Edição não confirmada/);
   assert.match(vm.runInContext('renderLabelManualConfirmation()', context), /✕/);
 });
+
+function reportRecordHtml(mode, allowed) {
+  const start = source.indexOf('records.map((item) => {', source.indexOf('const reportHeading = labelReportMode'));
+  const end = source.indexOf("}).join('')", start);
+  const records = [{id: 'label-1', createdByUid: 'user-1', patientName: 'Paciente teste', date: '2026-09-30', staffSiglas: []}];
+  return vm.runInNewContext(source.slice(start, end + 2), {
+    records, labelReportMode: mode, session: {user: {uid: 'user-1'}, profile: {}},
+    can: () => allowed, escapeHtml: String, formatRecordDate: String
+  }).join('');
+}
+test('relatório mensal não apresenta Editar para nenhum perfil', () => {
+  for (const allowed of [true, false]) assert.doesNotMatch(reportRecordHtml('monthly', allowed), /data-label-edit|EDITAR REGISTRO|>Editar</);
+});
+test('relatório diário mantém Editar conforme as permissões', () => {
+  assert.match(reportRecordHtml('daily', true), /data-label-edit/);
+  assert.doesNotMatch(reportRecordHtml('daily', false), /data-label-edit/);
+});
+test('abertura da edição também fica bloqueada no modo mensal', () => {
+  const fn = source.slice(source.indexOf('function beginLabelEdit(item)'), source.indexOf('function resetLabelEditor'));
+  const ctx = vm.createContext({labelReportMode: 'monthly', document: {querySelector() {throw new Error('Não deveria abrir editor');}}});
+  vm.runInContext(fn, ctx);
+  vm.runInContext('beginLabelEdit({id: "label-1"})', ctx);
+});

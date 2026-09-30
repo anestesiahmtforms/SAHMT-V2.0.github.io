@@ -1872,7 +1872,7 @@ async function loadLabelReport(options = {}) {
     const reportHeading = labelReportMode === 'daily' ? `<h3 class="event-report-day-heading">Etiquetas · ${escapeHtml(formatRecordDate(day))}</h3>` : '';
     target.innerHTML = `${reportHeading}${records.length ? `<ul class="record-list">${records.map((item) => {
       const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
-      const mayEdit = (can('labelsWrite') || can('labelsManage')) &&
+      const mayEdit = labelReportMode === 'daily' && (can('labelsWrite') || can('labelsManage')) &&
         (item.createdByUid === session.user.uid || can('labelsManage') || (ownSigla && item.staffSiglas?.includes(ownSigla)));
       const daily = labelReportMode === 'daily';
       const recordId = escapeHtml(item.id);
@@ -1888,7 +1888,7 @@ async function loadLabelReport(options = {}) {
         ];
         return `<li class="label-daily-record"><span class="label-record-index" aria-label="Registro ${records.indexOf(item) + 1}">${records.indexOf(item) + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div>${registration}<div class="label-record-actions">${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${history}</div>${historyPanel}</li>`;
       }
-      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">Editar</button>` : ''}</span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`;
+      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`;
     }).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
     target.querySelectorAll('[data-label-edit]').forEach((button) => button.addEventListener('click', () => beginLabelEdit(records.find((item) => item.id === button.dataset.labelEdit))));
     target.querySelectorAll('[data-label-history]').forEach((button) => button.addEventListener('click', async () => {
@@ -1945,6 +1945,7 @@ async function loadLabelReport(options = {}) {
 }
 
 function beginLabelEdit(item) {
+  if (labelReportMode !== 'daily') return;
   const form = document.querySelector('[data-module-form="labels"]');
   if (!form || !item) return;
   form.dataset.labelEntrySource = 'edit';
