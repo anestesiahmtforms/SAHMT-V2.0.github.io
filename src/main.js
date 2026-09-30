@@ -336,7 +336,7 @@ function actionForm(route) {
     <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
-  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-status" class="sr-only" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label><span>Data</span><input name="date" type="date" value="${todayInputValue()}" required></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label data-label-field="amount" hidden><span>Valor em Real</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><label data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTA(S)</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
+  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-status" class="sr-only" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label class="label-entry-date"><span>DATA DA LEITURA</span><input name="date" type="date" value="${todayInputValue()}" readonly required aria-readonly="true"></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label class="label-entry-insurance" data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label class="label-entry-attendance"><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label class="label-entry-procedure" data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label class="label-entry-type"><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label class="label-entry-creditor"><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTAS</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div><label class="label-entry-amount" data-label-field="amount" hidden><span>Valor em Real · opcional</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
   if (route === 'management' && (can('managementActivityWrite') || can('qualityManage'))) return `<details class="quick-form" open><summary>Nova atividade</summary><form data-module-form="activity">
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
@@ -365,7 +365,7 @@ function shellView() {
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily">RELATÓRIO DIÁRIO</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title">RELATÓRIO DIÁRIO - CHECKLIST</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div></dialog>` : '';
-  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
+  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
@@ -638,7 +638,7 @@ async function loadModule(route) {
       labelReportOpen = true;
       if (reportDialog && !reportDialog.open) reportDialog.showModal();
       const title = document.querySelector('#label-report-dialog-title');
-      if (title) title.textContent = labelReportMode === 'daily' ? 'RELATÓRIO DIÁRIO' : 'RELATÓRIO MENSAL';
+      if (title) title.textContent = labelReportMode === 'daily' ? 'RELATÓRIO DIÁRIO - ETIQUETAS' : 'RELATÓRIO MENSAL - ETIQUETAS';
       const results = document.querySelector('#label-report-results');
       if (results) results.hidden = false;
       const reportDay = document.querySelector('#label-report-day');
@@ -661,7 +661,8 @@ async function loadModule(route) {
     document.querySelector('#label-entry-close')?.addEventListener('click', resetLabelEditor);
     document.querySelector('#label-manual-open')?.addEventListener('click', () => {
       resetLabelEditor({keepOpen: true});
-      document.querySelector('#label-entry-dialog')?.showModal();
+      const dialog = document.querySelector('#label-entry-dialog');
+      if (dialog?.showModal) dialog.showModal();
     });
     await loadLabelStaffCatalog();
     return;
@@ -1853,9 +1854,18 @@ async function loadLabelReport(options = {}) {
       const daily = labelReportMode === 'daily';
       const recordId = escapeHtml(item.id);
       const history = daily ? `<button class="secondary-button" type="button" data-label-history="${recordId}" aria-expanded="false" aria-controls="label-history-${recordId}">Histórico</button>` : '';
-      const registration = daily ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
+      const registration = daily ? `<div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || 'Não informado')}</strong></div>` : '';
       const historyPanel = daily ? `<div id="label-history-${recordId}" class="label-history" data-label-history-content="${recordId}" hidden></div>` : '';
-      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">Editar</button>` : ''}${history}</span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${registration}${historyPanel}</li>`;
+      if (daily) {
+        const fields = [
+          ['DATA', formatRecordDate(item.date)], ['NOME DO PACIENTE', item.patientName], ['CONVÊNIO', item.insurance],
+          ['CIRURGIA', item.procedureCode], ['ATENDIMENTO', item.encounterCode], ['TIPO', item.type],
+          ['CREDOR', item.creditor], ['PLANTONISTA(S)', item.staffSiglas?.join(', ')],
+          ...(item.amount != null ? [['VALOR EM REAL', `R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`]] : [])
+        ];
+        return `<li class="label-daily-record"><span class="label-record-index" aria-label="Registro ${records.indexOf(item) + 1}">${records.indexOf(item) + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div>${registration}<div class="label-record-actions">${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${history}</div>${historyPanel}</li>`;
+      }
+      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">Editar</button>` : ''}</span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`;
     }).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
     target.querySelectorAll('[data-label-edit]').forEach((button) => button.addEventListener('click', () => beginLabelEdit(records.find((item) => item.id === button.dataset.labelEdit))));
     target.querySelectorAll('[data-label-history]').forEach((button) => button.addEventListener('click', async () => {
@@ -1924,6 +1934,8 @@ function beginLabelEdit(item) {
   }
   setLabelStaffSiglas(item.staffSiglas || []);
   form.querySelector('[type="submit"]').textContent = 'Atualizar etiqueta';
+  const editorTitle = document.querySelector('#label-entry-title');
+  if (editorTitle) editorTitle.textContent = 'EDITAR ETIQUETA';
   form.querySelector('#label-edit-cancel').hidden = false;
   form.querySelector('#label-form-status').textContent = '';
   form.querySelector('#label-conflict-refresh').hidden = true;
@@ -1936,9 +1948,12 @@ function resetLabelEditor({keepOpen = false} = {}) {
   if (!form) return;
   form.reset();
   setLabelStaffSiglas([]);
+  form.elements.date.value = todayInputValue();
   form.elements.editLabelId.value = '';
   form.elements.editLabelVersion.value = '';
   form.querySelector('[type="submit"]').textContent = 'Salvar registro';
+  const editorTitle = document.querySelector('#label-entry-title');
+  if (editorTitle) editorTitle.textContent = 'REGISTRO DE ETIQUETA';
   form.querySelector('#label-edit-cancel').hidden = true;
   form.querySelector('#label-form-status').textContent = '';
   form.querySelector('#label-conflict-refresh').hidden = true;
@@ -2831,6 +2846,8 @@ async function bindModuleForm(route) {
     const workspace = document.querySelector('.label-workspace');
     form?.elements.type?.addEventListener('change', () => updateLabelEntryFields(form));
     form?.elements.creditor?.addEventListener('change', () => updateLabelEntryFields(form));
+    form?.addEventListener('input', () => syncLabelFieldStates(form));
+    form?.addEventListener('change', () => syncLabelFieldStates(form));
     if (form) updateLabelEntryFields(form);
     if (form && workspace) {
       const cleanupAi = bindLabelAi(workspace, form);
@@ -3120,6 +3137,26 @@ function syncLabelStaffSiglas() {
   const field = form?.elements.staffSiglas;
   const selected = [...document.querySelectorAll('#label-staff-options button[aria-pressed="true"]')].map((button) => button.dataset.sigla);
   if (field) field.value = selected.join(', ');
+  if (form) syncLabelFieldStates(form);
+}
+
+function syncLabelFieldStates(form) {
+  for (const field of form.querySelectorAll('[data-label-field], .form-grid > label')) {
+    if (field.hidden) {
+      field.classList.remove('label-field--required-empty', 'label-field--complete', 'label-field--inactive', 'label-field--optional-active');
+      continue;
+    }
+    const controls = [...field.querySelectorAll('input:not([type="hidden"]), select, textarea')];
+    if (!controls.length) continue;
+    const activeControls = controls.filter((control) => !control.disabled);
+    const requiredMissing = activeControls.some((control) => control.required && !String(control.value || '').trim());
+    const requiredComplete = activeControls.some((control) => control.required) && !requiredMissing;
+    const optionalAmount = field.dataset.labelField === 'amount' && activeControls.length > 0;
+    field.classList.toggle('label-field--inactive', activeControls.length === 0 || (!requiredMissing && !requiredComplete && !optionalAmount && activeControls.every((control) => !String(control.value || '').trim())));
+    field.classList.toggle('label-field--required-empty', requiredMissing);
+    field.classList.toggle('label-field--complete', requiredComplete);
+    field.classList.toggle('label-field--optional-active', optionalAmount);
+  }
 }
 
 function setLabelStaffSiglas(values) {
@@ -3149,6 +3186,7 @@ function updateLabelEntryFields(form) {
   const creditor = form.elements.creditor;
   if (consultation) creditor.value = 'Caixa';
   creditor.disabled = consultation;
+  syncLabelFieldStates(form);
 }
 
 function bindLabelAi(workspace, form) {
@@ -3180,6 +3218,7 @@ function bindLabelAi(workspace, form) {
       form.elements.type.dispatchEvent(new Event('change', {bubbles: true}));
       form.elements.creditor.dispatchEvent(new Event('change', {bubbles: true}));
       updateLabelEntryFields(form);
+      form.elements.date.value = todayInputValue();
       dialog?.showModal();
       const names = {patientName: 'nome', insurance: 'convênio', procedureCode: 'cirurgia', encounterCode: 'atendimento'};
       const uncertain = (result.uncertain || []).map((field) => names[field] || field);
@@ -3631,6 +3670,11 @@ async function updateOutboxStatus() {
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
+  const reportSync = document.querySelector('#label-report-sync');
+  if (reportSync) {
+    reportSync.classList.toggle('label-report-sync--synced', isSynced);
+    reportSync.innerHTML = isSynced ? '<span aria-hidden="true">✓</span> Sincronizado' : escapeHtml(syncLabel);
+  }
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
     await retryFailedOperations(session.user.uid);
