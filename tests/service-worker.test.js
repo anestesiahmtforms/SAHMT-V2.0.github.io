@@ -34,7 +34,7 @@ function createWorker({offline = false} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
-  const names = new Set(['sahmt-v2-shell-v20', 'sahmt-v2-shell-v97', 'sahmt-v2-shell-v98', 'sahmt-v2-shell-v99', 'sahmt-v2-shell-v100', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
+  const names = new Set(['sahmt-v2-shell-v20', 'sahmt-v2-shell-v102', 'sahmt-v2-shell-v103', 'sahmt-v2-shell-v104', 'sahmt-v2-shell-v105', 'sahmt-v2-shell-v106', 'sahmt-v2-shell-v107', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
@@ -91,8 +91,8 @@ function createWorker({offline = false} = {}) {
   return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
-test('instala shell V101 com imports estáticos e módulos offline selecionados do manifest Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v101';/);
+test('instala shell V107 com símbolos e módulos offline selecionados do manifest Vite', async () => {
+  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v107';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
@@ -116,14 +116,15 @@ test('instala shell V101 com imports estáticos e módulos offline selecionados 
 test('mantém o shell anterior para abas antigas e preserva os caches da fila offline', async () => {
   const worker = createWorker();
   const oldAssetUrl = `https://sahmt.example${BASE}assets/old-main.js`;
-  const oldAsset = {url: oldAssetUrl, source: 'shell-v100'};
+  const oldAsset = {url: oldAssetUrl, source: 'shell-v106'};
   worker.entries.set(oldAssetUrl, oldAsset);
   let activation;
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
-  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v20', 'sahmt-v2-shell-v97', 'sahmt-v2-shell-v98', 'sahmt-v2-shell-v99']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v100'));
+  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v20', 'sahmt-v2-shell-v102', 'sahmt-v2-shell-v103', 'sahmt-v2-shell-v104', 'sahmt-v2-shell-v105']);
+  assert.ok(worker.names.has('sahmt-v2-shell-v106'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v107'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
