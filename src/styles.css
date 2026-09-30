@@ -1477,3 +1477,17 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .label-entry-dialog .admin-user-actions button{transform:none!important;transition:filter .16s ease,box-shadow .16s ease;touch-action:manipulation}
 .app-shell--labels .label-manual-confirmation{min-width:60px;white-space:nowrap;overflow-wrap:normal;word-break:normal}
 .app-shell--labels .label-manual-confirmation>small{display:block;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+
+/* Áreas de Gestão abrem sobre a página, com cabeçalho e fechamento fixos. */
+.management-area-dialog{position:fixed;inset:max(8px,5dvh,env(safe-area-inset-top)) 5vw max(8px,5dvh,env(safe-area-inset-bottom));box-sizing:border-box;width:90vw;max-width:960px;height:auto;max-height:none;margin:0 auto;padding:clamp(8px,2vw,16px);overflow:hidden;overscroll-behavior:none;border:2px solid #fff;border-radius:20px;background:linear-gradient(145deg,#fffaf0,#e6eff2);color:var(--ink);box-shadow:0 22px 70px #001b3577}
+.management-area-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px}
+.management-area-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
+.management-area-dialog__header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:4px 2px 9px;border-bottom:1px solid #c7d9e1}
+.management-area-dialog__header h2{margin:0;font-size:clamp(.88rem,3.4vw,1.1rem);letter-spacing:.04em}
+.management-area-dialog__header form{flex:0 0 auto;margin:0}
+.management-area-dialog__header button{min-height:40px;padding:6px 10px}
+.management-area-dialog__body{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.management-area-dialog .management-area-detail{margin:0;padding:10px;border-radius:14px}
+.management-area-dialog .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.management-area-dialog input:not([type=checkbox]):not([type=hidden]),.management-area-dialog select,.management-area-dialog textarea{min-width:0;max-width:100%;font-size:16px}
+@media(max-width:520px){.management-area-dialog .form-grid{grid-template-columns:minmax(0,1fr)}.management-area-dialog .management-detail-heading{flex-wrap:wrap}.management-area-dialog .admin-user-actions{flex-wrap:wrap}}

@@ -435,7 +435,7 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
@@ -912,7 +912,9 @@ async function loadModule(route) {
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Carregando atividades…</p></section>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      const areaDialog = content.querySelector('#management-area-dialog');
+      areaDialog?.addEventListener('close', () => { managementActivityLoad++; });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
         const button = event.currentTarget;
@@ -942,9 +944,9 @@ async function loadModule(route) {
           });
           const select = document.querySelector('#activity-area');
           if (select) select.value = selectedManagementAreaId;
+          if (areaDialog && !areaDialog.open) areaDialog.showModal();
           await loadManagementAreaActivities(items.find((area) => area.id === selectedManagementAreaId));
         }));
-        await loadManagementAreaActivities(items.find((area) => area.id === selectedManagementAreaId));
       }
     } else {
       const heading = (item) => route === 'events'
@@ -2176,6 +2178,7 @@ async function shareReportPdf(kind) {
 async function loadManagementAreaActivities(area) {
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
+  const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
   detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">ATIVIDADES</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header><p class="loading">Carregando atividades…</p>`;
@@ -2205,7 +2208,7 @@ async function loadManagementAreaActivities(area) {
       if (!itemsByPlan.has(item.planId)) itemsByPlan.set(item.planId, []);
       itemsByPlan.get(item.planId).push(item);
     }
-    if (loadId !== managementActivityLoad || !document.querySelector('#management-area-detail')) return;
+    if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
     const indicatorsView = indicators.length ? `<section class="management-indicators"><h4>Indicadores · ${indicators.length}</h4><div class="indicator-grid">${indicators.map((indicator, index) => {
       const recent = measurements[index] || [];
       const latest = recent[0];
@@ -2542,7 +2545,7 @@ async function loadManagementAreaActivities(area) {
       }
     }));
   } catch (error) {
-    if (loadId !== managementActivityLoad) return;
+    if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
     detail.innerHTML = `<p class="empty-state">Não foi possível carregar as atividades. ${escapeHtml(error.message || '')}</p>`;
   }
 }
