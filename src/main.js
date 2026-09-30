@@ -3760,7 +3760,7 @@ async function render() {
     if (app.querySelector('.boot-screen')) return;
     app.innerHTML = `<main class="boot-screen" role="status" aria-live="polite"><div class="boot-card">
       <img src="${import.meta.env.BASE_URL}assets/icon-192.png" width="76" height="76" alt="SAHMT">
-      <strong>SAHMT</strong><span>Iniciando o aplicativo…</span><span class="boot-slogan">Gestão Responsável!</span>
+      <strong>SAHMT</strong><span class="boot-slogan" aria-label="Gestão responsável! Gestão eficiente! Gestão na palma da mão!"><span class="boot-slogan__phrase" aria-hidden="true">Gestão responsável!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão eficiente!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão na palma da mão!</span></span>
       <span class="boot-particles" aria-hidden="true">${[
         [-92, 48, '.02s', '#46d98b'], [-68, 66, '.10s', '#43a5ff'], [-43, 38, '.18s', '#ffc857'], [-21, 78, '.26s', '#ff7a59'],
         [4, 52, '.34s', '#b88cff'], [28, 72, '.42s', '#5ee7d2'], [53, 43, '.50s', '#ffd166'], [80, 64, '.58s', '#ff8fb3'],
