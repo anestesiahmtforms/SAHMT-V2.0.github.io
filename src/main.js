@@ -367,9 +367,9 @@ function updateLabelManualConfirmation(status, uid) {
 function actionForm(route) {
   if (route === 'events') {
     if (!can('eventsWrite')) return '';
-    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><h3 id="event-launch-title">LANÇAMENTO DO EVENTO</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
+    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><h3 id="event-launch-title" tabindex="-1" autofocus>LANÇAMENTO DO EVENTO</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>MEMBRO AUSENTE/ATRASADO</span><input name="memberStatus" maxlength="160" readonly autofocus placeholder="Selecione uma sigla na escala"></label></div>
+    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>MEMBRO AUSENTE/ATRASADO</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
     <label class="event-type-field"><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="description"><span>Descrição do evento</span><textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
@@ -1924,8 +1924,8 @@ function resetEventEditor() {
   const title = document.querySelector('#event-launch-title');
   if (title) {
     title.textContent = 'LANÇAMENTO DO EVENTO';
-    title.removeAttribute('autofocus');
-    title.removeAttribute('tabindex');
+    title.setAttribute('autofocus', '');
+    title.setAttribute('tabindex', '-1');
   }
   if (dialog?.open) dialog.close();
 }
@@ -3592,7 +3592,7 @@ function launchEventSupport(day) {
   if (status) status.textContent = 'Evento de Suporte iniciado. Selecione o substituto e o turno.';
   const dialog = document.querySelector('#event-launch-dialog');
   if (dialog && !dialog.open) dialog.showModal();
-  form.elements.substitute.focus({preventScroll: true});
+  document.querySelector('#event-launch-title')?.focus({preventScroll: true});
 }
 
 async function launchEventFromSchedule(day, position) {
