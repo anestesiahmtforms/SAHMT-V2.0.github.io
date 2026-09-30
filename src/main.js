@@ -1582,8 +1582,7 @@ async function loadMonthlyChecklist(stations) {
       checklistReportOpen = true;
       const day = button.dataset.checklistOpenDay;
       const reportDayInput = document.querySelector('#checklist-report-day');
-      if (reportDayInput) reportDayInput.value = todayInputValue();
-      const day = todayInputValue();
+      if (reportDayInput) reportDayInput.value = day;
       const dialog = document.querySelector('#checklist-report-dialog');
       if (dialog && !dialog.open) dialog.showModal();
       const title = document.querySelector('#checklist-report-title');
