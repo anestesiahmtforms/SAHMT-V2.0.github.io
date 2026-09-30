@@ -52,3 +52,16 @@ test('confirmação não aparece para outra conta', async () => {
   const {context, submit} = setup(); await submit(); context.session.user.uid = 'user-2';
   assert.equal(vm.runInContext('renderLabelManualConfirmation()', context), '');
 });
+
+test('campos do registro usam fonte de 16px, sem bloquear zoom manual', () => {
+  const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
+  assert.match(css, /\.label-entry-dialog \.form-grid select\{font-size:16px!important\}/);
+  assert.match(css, /\.admin-user-actions button\{transform:none!important/);
+  assert.match(css, /\.label-manual-confirmation>small\{[^}]*white-space:nowrap;overflow-wrap:normal;word-break:normal/);
+  assert.doesNotMatch(source, /user-scalable=no/);
+});
+test('antes de salvar desfoca o campo; após confirmação devolve foco sem rolagem', () => {
+  assert.ok(source.indexOf('focusedControl.blur()', listener) < source.indexOf('submit.disabled = true;', listener));
+  assert.match(source, /if \(entryDialog\?\.open\) entryDialog.close\(\);/);
+  assert.match(source, /#label-manual-open'\)\?\.focus\?\.\(\{preventScroll: true\}\)/);
+});

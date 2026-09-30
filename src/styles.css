@@ -1465,3 +1465,10 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--labels .label-manual-confirmation>span{font-size:clamp(20px,3.5dvh,28px);font-weight:950}
 .app-shell--labels .label-manual-confirmation>small{font-size:.58rem;font-weight:900;line-height:1.1}
 .app-shell--labels .label-manual-confirmation--pending{color:#c62828}
+
+/* Safari: evita zoom automático no foco e escala no botão Salvar. */
+.app-shell--labels .label-entry-dialog .form-grid input:not([type="hidden"]),
+.app-shell--labels .label-entry-dialog .form-grid select{font-size:16px!important}
+.app-shell--labels .label-entry-dialog .admin-user-actions button{transform:none!important;transition:filter .16s ease,box-shadow .16s ease;touch-action:manipulation}
+.app-shell--labels .label-manual-confirmation{min-width:60px;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+.app-shell--labels .label-manual-confirmation>small{display:block;white-space:nowrap;overflow-wrap:normal;word-break:normal}

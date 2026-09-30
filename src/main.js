@@ -2692,6 +2692,9 @@ async function bindModuleForm(route) {
     event.preventDefault();
     const form = event.currentTarget;
     const submit = form.querySelector('[type="submit"]');
+    // Release editable focus before saving; Safari must not restore input zoom.
+    const focusedControl = document.activeElement;
+    if (route === 'labels' && focusedControl?.matches?.('input, select, textarea') && form.contains(focusedControl)) focusedControl.blur();
     submit.disabled = true;
     const values = Object.fromEntries(new FormData(form).entries());
     const actorUid = session.user.uid;
@@ -2814,6 +2817,9 @@ async function bindModuleForm(route) {
       if (manualLabelEntry) {
         updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
         notice = '';
+        const entryDialog = document.querySelector('#label-entry-dialog');
+        if (entryDialog?.open) entryDialog.close();
+        document.querySelector('#label-manual-open')?.focus?.({preventScroll: true});
       }
       await render();
     } catch (error) {
