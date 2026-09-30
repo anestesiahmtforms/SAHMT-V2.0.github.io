@@ -1867,9 +1867,13 @@ function beginEventEdit(item) {
   const dialog = document.querySelector('#event-launch-dialog');
   dialog?.classList.add('event-launch-dialog--editing');
   const title = document.querySelector('#event-launch-title');
-  if (title) title.textContent = 'EDITAR EVENTO';
+  if (title) {
+    title.textContent = 'EDITAR EVENTO';
+    title.setAttribute('tabindex', '-1');
+    title.setAttribute('autofocus', '');
+  }
   if (dialog && !dialog.open) dialog.showModal();
-  form.elements.memberStatus.focus({preventScroll: true});
+  title?.focus({preventScroll: true});
 }
 
 function resetEventEditor() {
@@ -1890,7 +1894,11 @@ function resetEventEditor() {
   const dialog = document.querySelector('#event-launch-dialog');
   dialog?.classList.remove('event-launch-dialog--editing');
   const title = document.querySelector('#event-launch-title');
-  if (title) title.textContent = 'LANÇAMENTO DO EVENTO';
+  if (title) {
+    title.textContent = 'LANÇAMENTO DO EVENTO';
+    title.removeAttribute('autofocus');
+    title.removeAttribute('tabindex');
+  }
   if (dialog?.open) dialog.close();
 }
 
