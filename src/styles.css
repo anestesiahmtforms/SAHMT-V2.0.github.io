@@ -1574,3 +1574,14 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 /* Primeira frase legível desde o início, com verde mais escuro. */
 .boot-card .boot-slogan__phrase:first-child{color:#08602c;font-weight:950;text-shadow:0 1px 0 #fff,0 2px 5px #0d32571f;opacity:1;animation-name:sahmt-slogan-first}
 @keyframes sahmt-slogan-first{0%{opacity:1;transform:scale(.96)}15%{opacity:1;transform:scale(1.05)}28%,85%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
+
+/* Cadastro da Escala: centralizado, sem altura vazia e com ações inteiras. */
+#schedule-contact-dialog{position:fixed;inset:0;box-sizing:border-box;width:min(90vw,440px);height:fit-content;min-height:0;max-height:min(85dvh,calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));margin:auto;padding:14px;overflow:hidden}
+#schedule-contact-dialog #schedule-contact-details{box-sizing:border-box;flex:0 1 auto;min-width:0;min-height:0;width:100%;padding:3px 4px 5px;overflow:auto;overscroll-behavior:contain}
+#schedule-contact-dialog #schedule-contact-heading{margin:0 0 9px;font-size:1.05rem;line-height:1.2;overflow-wrap:anywhere}
+#schedule-contact-dialog .schedule-release-status:empty{display:none}
+#schedule-contact-dialog .contact-detail-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:7px;margin-top:8px;padding:0 2px}
+#schedule-contact-dialog .contact-detail-actions .contact-action{box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;max-width:100%;min-width:0;min-height:44px;margin:0;padding:8px 10px;border:2px solid #bfd2db;border-radius:12px;overflow-wrap:anywhere;text-align:center}
+#schedule-contact-dialog>form{margin-top:0;padding-top:8px}
+#schedule-contact-dialog>form .secondary-button{min-height:40px;padding:6px 10px}
+@media(max-width:380px){#schedule-contact-dialog{padding:11px}#schedule-contact-dialog .contact-detail-actions .contact-action{font-size:.8rem}}
