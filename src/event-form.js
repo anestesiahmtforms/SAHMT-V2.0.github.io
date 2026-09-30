@@ -26,7 +26,7 @@ export function eventAmountToPay(eventType, delayMultiple, shift) {
   const {amountMode} = eventFieldRules(eventType);
   if (amountMode === 'delay') {
     const multiple = String(delayMultiple ?? '');
-    return /^[0-6]$/.test(multiple) ? Number(multiple) * 100 : null;
+    return /^[0-6]$/.test(multiple) ? Number(multiple) * 200 : null;
   }
   if (amountMode === 'shift') {
     const normalizedShift = normalizeEventType(shift);
