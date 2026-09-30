@@ -1504,3 +1504,29 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--events #event-report-dialog{grid-template-rows:auto auto minmax(0,1fr) auto}
 .app-shell--events #event-report-dialog:has(.event-report-footer[hidden]){grid-template-rows:auto auto minmax(0,1fr)}
 .app-shell--events #event-month-control{grid-template-columns:minmax(0,1fr)}
+
+/* Edição: dimensionamento uniforme inclusive no campo aninhado do membro. */
+.event-launch-dialog.event-launch-dialog--editing[open]{box-sizing:border-box;display:flex;flex-direction:column}
+.event-launch-dialog.event-launch-dialog--editing>header{position:relative;top:auto;min-height:0;margin:0 0 5px!important;padding:3px 2px 6px!important}
+.event-launch-dialog.event-launch-dialog--editing>form{flex:1 1 0!important;min-height:0!important;max-height:100%;margin:0;gap:4px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid{flex:1 1 0!important;min-height:0!important;grid-auto-flow:row dense;gap:4px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr)!important;align-content:center;align-items:center;gap:2px!important;min-width:0;min-height:0;max-height:100%;width:100%;margin:0;padding:3px 5px!important;border-radius:12px;font-size:clamp(.6rem,2vw,.72rem)!important;line-height:1.1}
+.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control>span{padding:2px 3px;font-size:clamp(.56rem,1.8vw,.68rem);line-height:1.1;text-align:center}
+.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control>input[name=memberStatus]{box-sizing:border-box;height:clamp(30px,4.7dvh,36px)!important;min-height:0!important;margin:0;padding:3px 6px!important;border-radius:10px;font-size:16px!important;line-height:1.1}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid input:not([type=hidden]),.event-launch-dialog.event-launch-dialog--editing>form>.form-grid select{height:clamp(30px,4.7dvh,36px)!important;min-height:0!important;padding:3px 6px!important;font-size:16px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid textarea{height:clamp(34px,5.6dvh,42px)!important;min-height:0!important;padding:3px 6px!important;font-size:16px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;flex:0 0 auto;margin:0;padding:0}
+.event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions button{box-sizing:border-box;width:100%!important;min-width:0;min-height:36px!important;height:40px;padding:4px 6px!important;font-size:.76rem;line-height:1.1;border-radius:12px}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>.event-type-field{border:2px solid #8cbada;background:#e3f2ff!important;color:#174e78}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>.event-type-field>span{font-weight:950;text-align:center;letter-spacing:.025em}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>.event-type-field select{background:#d5ebff!important;color:#163f60;font-weight:800}
+@media(orientation:landscape) and (max-height:520px){
+ .event-launch-dialog.event-launch-dialog--editing>header{margin-bottom:3px!important;padding-bottom:3px!important}
+ .event-launch-dialog.event-launch-dialog--editing>header #event-launch-title{font-size:.9rem}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:3px!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label[data-event-field=description]{grid-column:auto}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid input:not([type=hidden]),.event-launch-dialog.event-launch-dialog--editing>form>.form-grid select,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control>input[name=memberStatus]{height:28px!important;padding:2px 5px!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid textarea{height:30px!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control{padding:2px 3px!important;font-size:.58rem!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions button{min-height:32px!important;height:32px!important;padding:3px 5px!important}
+}
