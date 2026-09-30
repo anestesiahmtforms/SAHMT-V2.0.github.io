@@ -147,6 +147,26 @@ test('build com IA configurada inclui somente o SDK App Check necessário à ini
   assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/checklist-signature.js`));
 });
 
+test('inclui App Check com chave relativa ou gerada sem ampliar o cache a outros módulos', async () => {
+  const source = '../../node_modules/firebase/app-check/dist/esm/index.esm.js';
+  for (const key of [source, '_app-check-generated.js']) {
+    const configured = {
+      ...manifest,
+      [key]: {file: 'assets/app-check-core.js', src: source, imports: ['assets/shared.js']},
+      'unrelated/node_modules/firebase/app-check/dist/esm/index.esm.js': {file: 'assets/unrelated.js', imports: []},
+      '../../node_modules/firebase/app-check-extra/dist/esm/index.esm.js': {file: 'assets/app-check-extra.js', imports: []}
+    };
+    const worker = createWorker({manifestOverride: configured});
+    let install;
+    worker.handlers.get('install')({waitUntil(promise) {install = promise;}});
+    await install;
+    assert.ok(worker.entries.has(`https://sahmt.example${BASE}assets/app-check-core.js`));
+    assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/unrelated.js`));
+    assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/app-check-extra.js`));
+    assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/report-pdf.js`));
+  }
+});
+
 test('mantém o shell anterior para abas antigas e preserva os caches da fila offline', async () => {
   const worker = createWorker();
   const oldAssetUrl = `https://sahmt.example${BASE}assets/old-main.js`;

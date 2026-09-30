@@ -47,11 +47,12 @@ Na galeria, a versão atual solicita 589.219 bytes mesmo oculta, e a primeira im
 
 ## Testes e limites
 
-- Domínio: **126/126**, com regressões de A→B chegando fora de ordem, sessão/cache lentos, revogação, preservação do shell, banners, assinatura, consultas/herança e SW.
+- Domínio: **127/127**, com regressões de A→B chegando fora de ordem, sessão/cache lentos, revogação, preservação do shell, banners, assinatura, consultas/herança e SW. O SDK App Check também foi coberto com chave relativa ou gerada no manifesto, sem ampliar a seleção a outros módulos.
 - Firestore Rules: **40/40** no emulador.
 - Worker: **12/12**, com respostas de serviços simuladas.
 - Functions: **19/19** nos emuladores Auth/Firestore/Functions, Node 22 e Java 21. O primeiro teste local em Node 24 excedeu o tempo de descoberta; o teste final usou Node 22, correspondente ao CI, com descoberta de 60 s. Isso não implantou Functions.
 - Build e verificador do manifesto: passaram; `git diff --check` sem erros.
+- A combinação local dos PRs #1 e #2 não apresentou conflitos textuais e passou no build/verificador: 13 arquivos no grafo offline, 23 no precache integral/2.284.289 bytes. A validação conjunta também cobriu dependências ligadas por junction, que fazem o Vite emitir um caminho relativo para o SDK App Check.
 - PR visual: 40 combinações de cinco páginas, dois perfis e quatro viewports. Escala, Eventos, Etiquetas e Checklist sem rolagem da página nem controles cortados nos 32 cenários desses módulos. Gestão tem cabeçalho uniforme; seu conteúdo administrativo mantém a rolagem existente. Arsenal inteiro, com proporção 3:2, inclusive em 844×390.
 
 Não foi possível testar Android/iPhone físicos, Safari/WebKit, instalação nativa, câmera/QR físicos, login real, escrita autenticada fictícia ou assinatura validada por um consumidor de produção. Nenhum dado real de paciente foi usado. As capturas de layout usam dados fictícios e validam a composição do shell, não a autorização de cada operação.

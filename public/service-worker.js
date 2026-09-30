@@ -48,7 +48,15 @@ self.addEventListener('install', (event) => {
       if (!manifest[key]) throw new Error(`Módulo offline obrigatório ausente no manifest Vite: ${key}`);
       visitEntry(key);
     }
-    for (const key of OFFLINE_OPTIONAL_ENTRIES) if (manifest[key]) visitEntry(key);
+    // Linked dependency directories can give Vite a ../-prefixed source key.
+    // Match only the declared source path, never an arbitrary SDK/name prefix.
+    for (const source of OFFLINE_OPTIONAL_ENTRIES) {
+      for (const key of Object.keys(manifest)) {
+        const matchesSource = [key, manifest[key]?.src].some((value) =>
+          typeof value === 'string' && value.replace(/^(?:\.\.\/)+/, '') === source);
+        if (matchesSource) visitEntry(key);
+      }
+    }
     await Promise.all([...assets].map(async (assetUrl) => {
       const response = await fetch(assetUrl, {cache: 'reload'});
       if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);

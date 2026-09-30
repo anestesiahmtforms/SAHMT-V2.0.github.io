@@ -40,9 +40,11 @@ for (const key of offlineEntries) {
 const optionalMatch = serviceWorker.match(/const OFFLINE_OPTIONAL_ENTRIES = \[([^\]]*)\];/);
 if (!optionalMatch) throw new Error('A lista de módulos opcionais offline não foi encontrada.');
 const optionalEntries = [...optionalMatch[1].matchAll(/['"]([^'"]+)['"]/g)].map((item) => item[1]);
+const optionalKeysFor = (source) => Object.keys(manifest).filter((key) =>
+  [key, manifest[key]?.src].some((value) => typeof value === 'string' && value.replace(/^(?:\.\.\/)+/, '') === source));
 const appCheckEntry = 'node_modules/firebase/app-check/dist/esm/index.esm.js';
-if (manifest[appCheckEntry] && !optionalEntries.includes(appCheckEntry)) throw new Error('O SDK App Check emitido é necessário para a inicialização offline do Firestore.');
-for (const key of optionalEntries.filter((key) => manifest[key])) {
+if (optionalKeysFor(appCheckEntry).length && !optionalEntries.includes(appCheckEntry)) throw new Error('O SDK App Check emitido é necessário para a inicialização offline do Firestore.');
+for (const key of new Set(optionalEntries.flatMap(optionalKeysFor))) {
   const graph = collectGraph(key);
   for (const value of graph.visited) cachedEntries.add(value);
   for (const value of graph.files) cachedFiles.add(value);
