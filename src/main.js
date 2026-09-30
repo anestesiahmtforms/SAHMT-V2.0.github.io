@@ -1789,28 +1789,51 @@ function renderEventReportRecords({append = false} = {}) {
   const heading = eventReportMode === 'daily'
     ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
     : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
-  const recordMarkup = (item) => {
+  const recordMarkup = (item, index = records.indexOf(item)) => {
     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
-    const showHistory = eventReportMode === 'daily' && confirmed && Number(item.version) > 1;
+    const showHistory = eventReportMode === 'daily' && confirmed;
     const canEdit = can('admin') && confirmed;
     const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
     const status = item.pendingEdit && item.syncFailed ? 'Rascunho de edição não confirmado' : item.pendingEdit ? 'Edição aguardando confirmação' : item.syncFailed ? 'Registro recusado pelo Firestore' : item.pendingFirestore ? 'Aguardando confirmação do Firestore' : '';
     const amount = item.amountToPay != null && item.amountToPay !== '' ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : '';
+    if (eventReportMode === 'daily') {
+      const recordId = escapeHtml(item.id);
+      const fields = [
+        ['DATA', formatRecordDate(item.date)], ['MEMBRO / SITUAÇÃO', item.memberStatus],
+        ['TIPO DE EVENTO', item.eventType], ['DESCRIÇÃO', item.description],
+        ['TURNO', item.shift], ['SUBSTITUTO', item.substitute], ['PAGADOR', item.payer], ['CREDOR', item.creditor],
+        ...(item.delayMultiple != null && item.delayMultiple !== '' ? [['MÚLTIPLO DO ATRASO', String(item.delayMultiple)]] : []),
+        ...(item.amountToPay != null && item.amountToPay !== '' ? [['VALOR A PAGAR', 'R$ ' + Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})]] : [])
+      ];
+      return `<li class="label-daily-record event-daily-record${confirmed ? '' : ' event-daily-record--pending'}" data-event-record="${recordId}"><span class="label-record-index" aria-label="Registro ${index + 1}">${index + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div><div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')}</strong></div>${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}<div class="label-record-actions">${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${showHistory ? `<button class="secondary-button" type="button" data-event-history="${recordId}" aria-expanded="false" aria-controls="event-history-${recordId}">Histórico</button>` : ''}</div>${showHistory ? `<section class="label-history event-history" id="event-history-${recordId}" data-event-history-panel="${recordId}" aria-label="Histórico do evento" hidden></section>` : ''}</li>`;
+    }
     return `<li class="event-record-banner${confirmed ? '' : ' event-record-banner--pending'}" data-event-record="${escapeHtml(item.id)}"><div class="event-record-banner__heading"><div><strong>${escapeHtml(item.memberStatus || 'Evento')}</strong><span>${escapeHtml(item.eventType || 'Outros')}</span></div>${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><div class="event-record-banner__details"><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${amount}${registration}${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}</div></li>`;
   };
-  const bannerList = records.length ? `<ul class="event-record-banner-list">${records.map(recordMarkup).join('')}</ul>` : `<p class="empty-state">${empty}</p>`;
+  const bannerList = records.length ? `<ul class="event-record-banner-list${eventReportMode === 'daily' ? ' record-list' : ''}">${records.map(recordMarkup).join('')}</ul>` : `<p class="empty-state">${empty}</p>`;
   const moreButton = eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : '';
   if (append) {
     const visibleIds = new Set([...target.querySelectorAll('[data-event-record]')].map((element) => element.dataset.eventRecord));
     const newRecords = records.filter((item) => !visibleIds.has(item.id));
-    target.querySelector('.event-record-banner-list')?.insertAdjacentHTML('beforeend', newRecords.map(recordMarkup).join(''));
+    target.querySelector('.event-record-banner-list')?.insertAdjacentHTML('beforeend', newRecords.map(item => recordMarkup(item)).join(''));
     target.querySelector('#event-report-more')?.remove();
     target.insertAdjacentHTML('beforeend', moreButton);
   } else {
     target.innerHTML = `${heading}${syncNotice}${bannerList}${moreButton}`;
   }
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
-  if (eventReportMode === 'daily') void loadDailyEventEditNotes(records, target);
+  target.querySelectorAll('[data-event-history]').forEach((button) => {
+    if (button.dataset.historyBound === 'true') return;
+    button.dataset.historyBound = 'true';
+    button.addEventListener('click', async () => {
+      const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(button.dataset.eventHistory)}"]`);
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      button.setAttribute('aria-expanded', String(!panel.hidden));
+      button.textContent = panel.hidden ? 'Histórico' : 'Fechar histórico';
+      if (panel.hidden || panel.dataset.loaded === 'true' || panel.dataset.loading === 'true') return;
+      await loadDailyEventEditNotes(records.filter(item => item.id === button.dataset.eventHistory), target);
+    });
+  });
   target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
     event.currentTarget.disabled = true;
     loadEventReport({append: true});
@@ -1818,20 +1841,25 @@ function renderEventReportRecords({append = false} = {}) {
 }
 
 async function loadDailyEventEditNotes(records, target) {
-  const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed && Number(item.version) > 1);
+  const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed);
   if (!changed.length) return;
-  const {listEventHistory} = await import('./data.js');
   const labels = {date: 'Data', memberSigla: 'Sigla do membro', scheduleSigla: 'Sigla da escala', memberStatus: 'Membro / situação', eventType: 'Tipo de evento', description: 'Descrição', delayMultiple: 'Múltiplo do atraso', substitute: 'Substituto', shift: 'Turno', payer: 'Pagador', creditor: 'Credor', amountToPay: 'Valor', status: 'Status'};
   const value = (item) => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
   await Promise.all(changed.map(async (item) => {
     const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(item.id)}"]`);
     if (!panel) return;
+    panel.dataset.loading = 'true';
+    panel.innerHTML = '<small class="loading">Carregando histórico…</small>';
     try {
+      const {listEventHistory} = await import('./data.js');
       const history = await listEventHistory(item.id, {pageSize: 50});
       if (!panel.isConnected) return;
-      panel.innerHTML = history.length ? `<strong>Edições do registro</strong><ol>${history.map((entry) => `<li><strong>${escapeHtml(entry.actorName || entry.actorUid || 'Administrador')} · ${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><ul>${entry.changedFields.map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before[field]))}</small><small>Depois: ${escapeHtml(value(entry.after[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração encontrada.</small>';
+      panel.innerHTML = history.length ? `<ol>${history.map((entry) => `<li><strong>Versão ${escapeHtml(String(entry.version || '—'))} · ${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><small>Responsável: ${escapeHtml(entry.actorName || entry.actorUid || 'Não informado')}</small><ul>${(entry.changedFields || []).map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before?.[field]))}</small><small>Depois: ${escapeHtml(value(entry.after?.[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração registrada.</small>';
+      panel.dataset.loaded = 'true';
     } catch (error) {
       if (panel.isConnected) panel.innerHTML = `<small>Não foi possível carregar as edições. ${escapeHtml(error.message || '')}</small>`;
+    } finally {
+      panel.dataset.loading = 'false';
     }
   }));
 }

@@ -1396,19 +1396,19 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels #label-report-results{display:block;min-height:0;margin:0;padding:8px;overflow:auto;overscroll-behavior:contain;border:1px solid #d5e2dc;border-radius:22px;background:linear-gradient(145deg,#f8fcfa,#e8f3ef)}
 .app-shell--labels #label-report-results>.event-report-day-heading{display:none}
 .app-shell--labels #label-report-results .record-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
-.app-shell--labels #label-report-results .record-list>li.label-daily-record{position:relative;display:grid;gap:7px;padding:38px 12px 10px;border:1px solid #d8e4df;border-radius:20px;background:linear-gradient(145deg,#f8fcfb,#eaf4f0);box-shadow:0 2px 0 #d5e4dc;color:#173a43}
-.app-shell--labels .label-record-index{position:absolute;top:10px;left:12px;display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#16867d;color:#fff;font-size:.72rem;font-weight:950}
-.app-shell--labels .label-record-fields{display:grid;gap:4px}
-.app-shell--labels .label-record-field{display:grid;grid-template-columns:minmax(110px,38%) minmax(0,1fr);align-items:center;gap:8px;min-height:35px;padding:6px 10px;border:1px solid #e0ebe8;border-radius:16px;background:#fff;box-shadow:0 1px 2px #0d44310c}
-.app-shell--labels .label-record-field>span{color:#5e7078;font-size:.67rem;font-weight:900;line-height:1.05}
-.app-shell--labels .label-record-field>strong{overflow-wrap:anywhere;color:#293b43;font-size:.77rem;font-weight:850;line-height:1.1;text-align:right}
-.app-shell--labels .label-record-responsible{display:grid;grid-template-columns:minmax(120px,42%) minmax(0,1fr);align-items:center;gap:8px;min-height:40px;padding:7px 10px;border:1px solid #e0ebe8;border-radius:15px;background:#fff}
-.app-shell--labels .label-record-responsible>span{color:#5e7078;font-size:.65rem;font-weight:900;line-height:1.08}
-.app-shell--labels .label-record-responsible>strong{overflow-wrap:anywhere;color:#ad3b3b;font-size:.75rem;font-weight:900;text-align:right}
-.app-shell--labels .label-record-actions{display:flex;justify-content:flex-end;align-items:center;gap:7px;flex-wrap:wrap}
-.app-shell--labels .label-record-actions button{min-height:40px;padding:7px 12px;border:1px solid #b7cbd1;border-radius:13px;background:linear-gradient(145deg,#f8fcff,#deebf1);color:#173a56;font-size:.72rem;font-weight:950;box-shadow:0 2px 0 #c4d4da}
-.app-shell--labels .label-daily-record .label-history{margin:0;padding:9px;border-radius:12px;background:#f4f8f8}
-.app-shell--labels .label-daily-record .label-history[hidden]{display:none!important}
+:is(.app-shell--labels,.app-shell--events) :is(#label-report-results,#event-report-results) .record-list>li.label-daily-record{position:relative;display:grid;gap:7px;padding:38px 12px 10px;border:1px solid #d8e4df;border-radius:20px;background:linear-gradient(145deg,#f8fcfb,#eaf4f0);box-shadow:0 2px 0 #d5e4dc;color:#173a43}
+:is(.app-shell--labels,.app-shell--events) .label-record-index{position:absolute;top:10px;left:12px;display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#16867d;color:#fff;font-size:.72rem;font-weight:950}
+:is(.app-shell--labels,.app-shell--events) .label-record-fields{display:grid;gap:4px}
+:is(.app-shell--labels,.app-shell--events) .label-record-field{display:grid;grid-template-columns:minmax(110px,38%) minmax(0,1fr);align-items:center;gap:8px;min-height:35px;padding:6px 10px;border:1px solid #e0ebe8;border-radius:16px;background:#fff;box-shadow:0 1px 2px #0d44310c}
+:is(.app-shell--labels,.app-shell--events) .label-record-field>span{color:#5e7078;font-size:.67rem;font-weight:900;line-height:1.05}
+:is(.app-shell--labels,.app-shell--events) .label-record-field>strong{overflow-wrap:anywhere;color:#293b43;font-size:.77rem;font-weight:850;line-height:1.1;text-align:right}
+:is(.app-shell--labels,.app-shell--events) .label-record-responsible{display:grid;grid-template-columns:minmax(120px,42%) minmax(0,1fr);align-items:center;gap:8px;min-height:40px;padding:7px 10px;border:1px solid #e0ebe8;border-radius:15px;background:#fff}
+:is(.app-shell--labels,.app-shell--events) .label-record-responsible>span{color:#5e7078;font-size:.65rem;font-weight:900;line-height:1.08}
+:is(.app-shell--labels,.app-shell--events) .label-record-responsible>strong{overflow-wrap:anywhere;color:#ad3b3b;font-size:.75rem;font-weight:900;text-align:right}
+:is(.app-shell--labels,.app-shell--events) .label-record-actions{display:flex;justify-content:flex-end;align-items:center;gap:7px;flex-wrap:wrap}
+:is(.app-shell--labels,.app-shell--events) .label-record-actions button{min-height:40px;padding:7px 12px;border:1px solid #b7cbd1;border-radius:13px;background:linear-gradient(145deg,#f8fcff,#deebf1);color:#173a56;font-size:.72rem;font-weight:950;box-shadow:0 2px 0 #c4d4da}
+:is(.app-shell--labels,.app-shell--events) .label-daily-record .label-history{margin:0;padding:9px;border-radius:12px;background:#f4f8f8}
+:is(.app-shell--labels,.app-shell--events) .label-daily-record .label-history[hidden]{display:none!important}
 @media(max-width:520px){
  .app-shell--labels .label-report-dialog{gap:7px}
  .app-shell--labels .label-report-header{grid-template-columns:40px minmax(0,1fr) auto;gap:6px;min-height:68px;padding:6px 8px;border-radius:16px}
@@ -1422,17 +1422,17 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--labels .label-day-control input{height:42px;min-height:42px}
  .app-shell--labels #label-report-results{padding:5px;border-radius:17px}
  .app-shell--labels #label-report-results .record-list{gap:8px}
- .app-shell--labels #label-report-results .record-list>li.label-daily-record{gap:5px;padding:33px 7px 8px;border-radius:16px}
- .app-shell--labels .label-record-index{top:7px;left:8px;width:22px;height:22px;font-size:.65rem}
- .app-shell--labels .label-record-fields{gap:3px}
- .app-shell--labels .label-record-field{grid-template-columns:minmax(94px,38%) minmax(0,1fr);min-height:31px;gap:5px;padding:5px 7px;border-radius:14px}
- .app-shell--labels .label-record-field>span{font-size:.59rem}
- .app-shell--labels .label-record-field>strong{font-size:.68rem}
- .app-shell--labels .label-record-responsible{grid-template-columns:minmax(105px,40%) minmax(0,1fr);min-height:36px;gap:5px;padding:6px 7px}
- .app-shell--labels .label-record-responsible>span{font-size:.57rem}
- .app-shell--labels .label-record-responsible>strong{font-size:.65rem}
- .app-shell--labels .label-record-actions{gap:5px}
- .app-shell--labels .label-record-actions button{min-height:35px;padding:6px 9px;font-size:.65rem}
+ :is(.app-shell--labels,.app-shell--events) :is(#label-report-results,#event-report-results) .record-list>li.label-daily-record{gap:5px;padding:33px 7px 8px;border-radius:16px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-index{top:7px;left:8px;width:22px;height:22px;font-size:.65rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-fields{gap:3px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-field{grid-template-columns:minmax(94px,38%) minmax(0,1fr);min-height:31px;gap:5px;padding:5px 7px;border-radius:14px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-field>span{font-size:.59rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-field>strong{font-size:.68rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-responsible{grid-template-columns:minmax(105px,40%) minmax(0,1fr);min-height:36px;gap:5px;padding:6px 7px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-responsible>span{font-size:.57rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-responsible>strong{font-size:.65rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-actions{gap:5px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-actions button{min-height:35px;padding:6px 9px;font-size:.65rem}
 }
 .app-shell--labels .label-day-control label{grid-template-rows:auto auto!important}
 
@@ -1530,3 +1530,6 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control{padding:2px 3px!important;font-size:.58rem!important}
  .event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions button{min-height:32px!important;height:32px!important;padding:3px 5px!important}
 }
+
+.app-shell--events #event-report-results .event-daily-record--pending{border:2px solid #dcad54;background:linear-gradient(145deg,#fffdf5,#fff0d2)}
+.app-shell--events #event-report-results .event-daily-record .event-history{margin:0;overflow-wrap:anywhere}
