@@ -104,7 +104,7 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
-  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v101']);
+  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v100']);
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
