@@ -1164,3 +1164,15 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .checklist-report-calendar{padding:3px 6px}
  .checklist-report-dialog__header button{min-height:32px;padding:3px 7px}
 }
+
+/* Cabeçalho Checklist: marca à esquerda; nome e sincronismo à direita; título abaixo. */
+.app-shell--checklist .identity-card{display:grid;grid-template-columns:72px minmax(0,1fr);grid-template-rows:minmax(55px,1fr) auto;align-items:center;column-gap:12px;row-gap:8px;min-height:132px;padding:12px 14px 14px}
+.app-shell--checklist .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:.68rem;letter-spacing:.13em;line-height:1}
+.app-shell--checklist .identity-card .brand img{width:44px;height:44px;border-radius:7px}
+.app-shell--checklist .identity-card__user-row{grid-column:2;grid-row:1;display:flex;justify-content:flex-end;align-self:center;gap:7px;width:100%;min-width:0}
+.app-shell--checklist .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.7rem,2.6vw,.88rem);text-align:right}
+.app-shell--checklist .identity-card__user-row .sync-pill{flex:0 0 auto;min-width:32px}
+.app-shell--checklist .identity-card__user-row .sync-status-button--synced{width:32px;height:32px;min-height:32px;border:1px solid #ffffff80;background:linear-gradient(145deg,#35c477,#16844b);color:#fff;box-shadow:0 2px 0 #0c6738}
+.app-shell--checklist .sync-status-icon{color:#fff;font-size:1.05rem;line-height:1}
+.app-shell--checklist .events-header-operational.checklist-title{grid-column:1/-1;grid-row:2;display:grid;place-items:center;width:100%;min-height:30px;margin:0;padding:5px 8px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.75rem,3vw,.9rem);font-weight:950;letter-spacing:.16em;text-align:center}
+@media(max-width:420px){.app-shell--checklist .identity-card{grid-template-columns:62px minmax(0,1fr);min-height:122px;padding:8px 10px 13px;column-gap:8px;row-gap:6px}.app-shell--checklist .identity-card .brand img{width:40px;height:40px}}
