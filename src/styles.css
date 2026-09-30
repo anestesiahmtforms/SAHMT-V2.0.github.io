@@ -1242,3 +1242,43 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--labels .labels-home-button{min-height:38px}
  .app-shell--labels .app-footer{display:none}
 }
+
+/* Etiquetas: botões empilhados em largura total e título superior ampliado. */
+.app-shell--labels .identity-card{min-height:150px;padding-top:14px;padding-bottom:17px}
+.app-shell--labels .identity-card .brand img{width:48px;height:48px}
+.app-shell--labels .events-header-operational{min-height:38px;padding:6px 10px;font-size:clamp(.78rem,3vw,.98rem)}
+.app-shell--labels .module-view--labels{justify-content:space-between;gap:clamp(7px,1.1dvh,10px)}
+.app-shell--labels .module-view--labels>.label-workspace{display:flex;flex:1 1 54%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.6dvh,13px);gap:0}
+.app-shell--labels .label-workspace::before{content:none}
+.app-shell--labels .label-action-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(68px,1.35fr) repeat(2,minmax(48px,1fr));flex:1 1 auto;gap:clamp(6px,1dvh,10px);width:100%;height:100%}
+.app-shell--labels .label-action-grid #label-camera-open{grid-column:1;grid-row:1}
+.app-shell--labels .label-action-grid #label-read-ai{grid-column:1;grid-row:2}
+.app-shell--labels .label-action-grid #label-manual-open{grid-column:1;grid-row:3}
+.app-shell--labels .label-action-grid button{width:100%;min-height:0;height:100%;padding:7px;border-radius:14px;font-size:clamp(.72rem,2.6vw,.92rem)}
+.app-shell--labels .label-action-grid #label-camera-open{display:flex;align-items:center;justify-content:center;gap:14px;border-radius:28px;background:linear-gradient(145deg,#2377b9,#10518c);box-shadow:inset 0 0 0 2px #ffffff55,0 4px 0 #0b3e6d}
+.app-shell--labels .label-action-grid #label-camera-open::before{content:"";display:block;flex:0 0 auto;width:clamp(48px,8dvh,68px);aspect-ratio:1;border:5px solid #fff;border-radius:50%;background:radial-gradient(circle at 38% 35%,#bddfff 0 9%,#4085bc 12% 25%,#123c64 30% 57%,#071e35 60% 100%);box-shadow:0 0 0 4px #ffffff35,inset 0 0 0 2px #081e30}
+.app-shell--labels .label-action-grid #label-read-ai,.app-shell--labels .label-action-grid #label-manual-open{border-radius:13px}
+.app-shell--labels .label-report-launchers{display:flex;flex:1 1 38%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.4dvh,12px);gap:clamp(6px,1dvh,9px)}
+.app-shell--labels .label-report-launchers::before{content:none}
+.app-shell--labels .label-report-launchers button{flex:1 1 0;width:100%;min-height:0;max-height:50%;padding:6px;border-radius:14px;font-size:clamp(.68rem,2.5vw,.88rem)}
+.app-shell--labels .labels-home-button{margin-top:0}
+@media(max-width:520px){
+ .app-shell--labels .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.25fr) repeat(2,minmax(42px,1fr));gap:6px}
+ .app-shell--labels .label-action-grid #label-camera-open::before{width:50px}
+ .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2.9vw,.82rem)}
+ .app-shell--labels .label-report-launchers{gap:6px;padding:7px}
+ .app-shell--labels .label-report-launchers button{min-height:42px}
+}
+@media(max-height:680px){
+ .app-shell--labels .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}
+ .app-shell--labels .identity-card .brand img{width:40px;height:40px}
+ .app-shell--labels .events-header-operational{min-height:30px;padding:4px 8px}
+ .app-shell--labels .module-view--labels{gap:5px}
+ .app-shell--labels .module-view--labels>.label-workspace{padding:6px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) repeat(2,minmax(36px,1fr));gap:4px}
+ .app-shell--labels .label-action-grid #label-camera-open::before{width:38px;border-width:4px}
+ .app-shell--labels .label-report-launchers{gap:4px;padding:5px}
+ .app-shell--labels .label-report-launchers button{min-height:34px;padding:4px}
+ .app-shell--labels .labels-home-button{min-height:34px}
+}
