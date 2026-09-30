@@ -1458,3 +1458,29 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--checklist .checklist-report-launchers button{font-size:.66rem}
  .app-shell--checklist .checklist-home-button{font-size:.7rem}
 }
+
+/* Gestão compartilha a disposição do cabeçalho de Etiquetas. */
+.app-shell--management .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:150px;height:auto;padding:14px 12px 17px}
+.app-shell--management .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
+.app-shell--management .identity-card .brand img{width:48px;height:48px;border-radius:7px}
+.app-shell--management .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
+.app-shell--management .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
+.app-shell--management .identity-card__user-row .sync-pill{min-width:32px}
+@media(max-width:520px){.app-shell--management .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}}
+@media(max-width:420px){
+ .app-shell--management .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);column-gap:6px;row-gap:3px;padding-inline:9px}
+ .app-shell--management .identity-card .brand img{width:42px;height:42px}
+ .app-shell--management .identity-card__user-row{gap:5px}
+ .app-shell--management .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}
+}
+@media(max-height:680px){.app-shell--management .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}.app-shell--management .identity-card .brand img{width:40px;height:40px}}
+
+/* O título cresce sem esticar sua faixa até as laterais do cartão. */
+.app-shell .identity-card .module-title-chip{grid-column:1/-1;grid-row:2;justify-self:center;display:grid;place-items:center;box-sizing:border-box;width:max-content;max-width:100%;min-height:44px;margin:0;padding:4px clamp(14px,4vw,24px);border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(1.44rem,5.6vw,1.76rem);font-weight:950;letter-spacing:.12em;line-height:1.05;text-align:center;white-space:nowrap}
+.app-shell--labels .identity-card .module-title-chip,.app-shell--management .identity-card .module-title-chip{font-size:clamp(1.56rem,6vw,1.96rem)}
+.app-shell--checklist .identity-card .module-title-chip{font-size:clamp(1.5rem,6vw,1.8rem)}
+@media(max-height:580px){.app-shell--checklist .identity-card .module-title-chip{min-height:36px;padding-block:2px;font-size:1.36rem}}
+
+/* A lente desenhada e o logo de Etiquetas mantêm proporção dentro dos seus blocos. */
+.app-shell--labels .label-action-grid #label-camera-open::before{box-sizing:border-box;width:clamp(30px,5.5dvh,52px);aspect-ratio:1;border-width:clamp(3px,.5dvh,4px)}
+.app-shell--labels .identity-card .brand img,.app-shell--management .identity-card .brand img{width:clamp(40px,min(12vw,7dvh),48px);height:auto;aspect-ratio:1;object-fit:contain}
