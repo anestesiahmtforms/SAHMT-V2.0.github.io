@@ -1458,3 +1458,10 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--checklist .checklist-report-launchers button{font-size:.66rem}
  .app-shell--checklist .checklist-home-button{font-size:.7rem}
 }
+
+/* Confirmação do registro manual, sem aviso fora do botão. */
+.app-shell--labels #label-manual-open.label-manual--has-status{position:relative;padding-inline:70px}
+.app-shell--labels .label-manual-confirmation{position:absolute;right:9px;top:50%;transform:translateY(-50%);display:grid;justify-items:center;gap:1px;width:60px;color:#167b3d;line-height:1;pointer-events:none}
+.app-shell--labels .label-manual-confirmation>span{font-size:clamp(20px,3.5dvh,28px);font-weight:950}
+.app-shell--labels .label-manual-confirmation>small{font-size:.58rem;font-weight:900;line-height:1.1}
+.app-shell--labels .label-manual-confirmation--pending{color:#c62828}
