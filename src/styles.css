@@ -1094,24 +1094,24 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 
 
 /* Etiquetas: cabeçalho igual ao de Operacional e ações em faixas de largura total. */
-.app-shell--labels .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:116px;height:auto;padding:8px 12px 10px}
-.app-shell--labels .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
-.app-shell--labels .identity-card .brand img{width:clamp(40px,12vw,50px);height:clamp(40px,12vw,50px);border-radius:7px}
-.app-shell--labels .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
-.app-shell--labels .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
-.app-shell--labels .identity-card__user-row .sync-pill{min-width:32px}
-.app-shell--labels .events-header-operational{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
+:is(.app-shell--labels,.app-shell--management) .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:116px;height:auto;padding:8px 12px 10px}
+:is(.app-shell--labels,.app-shell--management) .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
+:is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:clamp(40px,12vw,50px);height:clamp(40px,12vw,50px);border-radius:7px}
+:is(.app-shell--labels,.app-shell--management) .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
+:is(.app-shell--labels,.app-shell--management) .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
+:is(.app-shell--labels,.app-shell--management) .identity-card__user-row .sync-pill{min-width:32px}
+:is(.app-shell--labels,.app-shell--management) .events-header-operational{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
 .app-shell--labels .module-view--labels>.label-workspace .label-action-grid{grid-template-columns:minmax(0,1fr)}
 .app-shell--labels .module-view--labels>.label-workspace .label-action-grid button{grid-column:1/-1;width:100%;min-height:clamp(48px,7dvh,60px)}
 .app-shell--labels .label-report-launchers{grid-template-columns:minmax(0,1fr);gap:clamp(7px,1.2dvh,11px);width:100%}
 .app-shell--labels .label-report-launchers button{width:100%;min-height:clamp(48px,7dvh,58px);border-radius:14px}
 .app-shell--labels .labels-home-button{display:block;width:100%;min-height:48px;margin:0;text-align:center;font-weight:950;letter-spacing:.04em}
 @media(max-width:420px){
-  .app-shell--labels .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}
-  .app-shell--labels .identity-card .brand img{width:42px;height:42px}
-  .app-shell--labels .identity-card__user-row{gap:5px}
-  .app-shell--labels .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}
-  .app-shell--labels .events-header-operational{min-height:27px;padding:3px 8px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:42px;height:42px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card__user-row{gap:5px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}
+  :is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:27px;padding:3px 8px}
 }
 
 /* Checklist: cabeçalho no padrão de Eventos, leitor central e ações em largura total. */
@@ -1224,7 +1224,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .labels-home-button{flex:0 0 auto;margin-top:0}
 .app-shell--labels .app-footer{flex:0 0 auto;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
 @media(max-width:520px){
- .app-shell--labels .identity-card{min-height:108px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:108px}
  .app-shell--labels .main-content{padding:6px 0 8px}
  .app-shell--labels .module-view--labels{gap:8px}
  .app-shell--labels .module-view--labels>.label-workspace{flex-basis:42%;max-height:47%;padding:9px}
@@ -1235,7 +1235,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--labels .labels-home-button{min-height:42px}
 }
 @media(max-height:680px){
- .app-shell--labels .identity-card{min-height:96px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:96px}
  .app-shell--labels .module-view--labels{gap:6px}
  .app-shell--labels .module-view--labels>.label-workspace{flex-basis:43%;padding:7px}
  .app-shell--labels .label-action-grid button{min-height:42px}
@@ -1246,9 +1246,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 }
 
 /* Etiquetas: botões empilhados em largura total e título superior ampliado. */
-.app-shell--labels .identity-card{min-height:150px;padding-top:14px;padding-bottom:17px}
-.app-shell--labels .identity-card .brand img{width:48px;height:48px}
-.app-shell--labels .events-header-operational{min-height:38px;padding:6px 10px;font-size:clamp(.78rem,3vw,.98rem)}
+:is(.app-shell--labels,.app-shell--management) .identity-card{min-height:150px;padding-top:14px;padding-bottom:17px}
+:is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:48px;height:48px}
+:is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:38px;padding:6px 10px;font-size:clamp(.78rem,3vw,.98rem)}
 .app-shell--labels .module-view--labels{justify-content:space-between;gap:clamp(7px,1.1dvh,10px)}
 .app-shell--labels .module-view--labels>.label-workspace{display:flex;flex:1 1 54%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.6dvh,13px);gap:0}
 .app-shell--labels .label-workspace::before{content:none}
@@ -1265,7 +1265,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .label-report-launchers button{flex:1 1 0;width:100%;min-height:0;max-height:50%;padding:6px;border-radius:14px;font-size:clamp(.68rem,2.5vw,.88rem)}
 .app-shell--labels .labels-home-button{margin-top:0}
 @media(max-width:520px){
- .app-shell--labels .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
  .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.25fr) repeat(2,minmax(42px,1fr));gap:6px}
  .app-shell--labels .label-action-grid #label-camera-open::before{width:50px}
  .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2.9vw,.82rem)}
@@ -1273,9 +1273,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--labels .label-report-launchers button{min-height:42px}
 }
 @media(max-height:680px){
- .app-shell--labels .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}
- .app-shell--labels .identity-card .brand img{width:40px;height:40px}
- .app-shell--labels .events-header-operational{min-height:30px;padding:4px 8px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:40px;height:40px}
+ :is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:30px;padding:4px 8px}
  .app-shell--labels .module-view--labels{gap:5px}
  .app-shell--labels .module-view--labels>.label-workspace{padding:6px}
  .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) repeat(2,minmax(36px,1fr));gap:4px}

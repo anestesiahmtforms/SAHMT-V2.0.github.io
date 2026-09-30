@@ -19,6 +19,15 @@ test('botão principal de Etiquetas exibe HOME e mantém destino inicial', () =>
   assert.match(source, /data-route="home">\$\{route === 'events' \|\| route === 'checklist' \? 'HOME' : route === 'labels' \? 'HOME'/);
   assert.doesNotMatch(source, /route === 'labels' \? 'VOLTAR'/);
 });
+test('Gestão usa o mesmo cabeçalho responsivo de Etiquetas', () => {
+  const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
+  assert.ok(source.includes("route === 'management' ? ' app-shell--management'"));
+  assert.ok(source.includes("route === 'management' ? '<h2 class=\"events-header-operational\">GESTÃO</h2>'"));
+  assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{display:grid;'));
+  assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{min-height:150px;'));
+  assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{min-height:140px;'));
+  assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{min-height:124px;'));
+});
 const helper = source.slice(source.indexOf('function renderLabelManualConfirmation()'), source.indexOf('function actionForm(route)'));
 const listener = source.indexOf("document.querySelector('[data-module-form]')?.addEventListener('submit'");
 const start = source.indexOf('async (event) => {', listener);
