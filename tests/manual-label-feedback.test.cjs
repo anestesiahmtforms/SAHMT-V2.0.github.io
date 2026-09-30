@@ -3,6 +3,12 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {readFileSync} = require('node:fs');
 const source = readFileSync(require('node:path').join(__dirname, '../src/main.js'), 'utf8');
+test('contêiner principal de Eventos fixo e dimensionado à tela', () => {
+  const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
+  assert.match(css, /html:has\(\.app-shell--events\),body:has\(\.app-shell--events\)\{overflow:hidden;overscroll-behavior:none\}/);
+  assert.match(css, /\.app-shell--events\{position:fixed;inset:0;width:100%;height:100dvh;[^}]*grid-template-rows:auto minmax\(0,1fr\) auto;overflow:hidden;overscroll-behavior:none/);
+  assert.match(css, /\.app-shell--events \.main-content\{width:90%!important/);
+});
 test('contêiner principal de Etiquetas fixo sem bloquear a rolagem dos relatórios', () => {
   const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
   assert.match(css, /html:has\(\.app-shell--labels\),body:has\(\.app-shell--labels\)\{overflow:hidden;overscroll-behavior:none\}/);
