@@ -355,7 +355,7 @@ function shellView() {
   const route = currentRoute();
   const profile = session.profile;
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
-  const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure>` : '';
+  const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" width="1536" height="1024" loading="lazy" decoding="async"></figure>` : '';
   const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
   const utilityCards = route === 'management' ? managementUtilityCards() : '';
   const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><h3>ACESSOS DE GESTÃO</h3><div class="module-grid">${utilityCards}</div></section>` : '';
