@@ -3,6 +3,12 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {readFileSync} = require('node:fs');
 const source = readFileSync(require('node:path').join(__dirname, '../src/main.js'), 'utf8');
+test('contêiner principal de Etiquetas fixo sem bloquear a rolagem dos relatórios', () => {
+  const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
+  assert.match(css, /html:has\(\.app-shell--labels\),body:has\(\.app-shell--labels\)\{overflow:hidden;overscroll-behavior:none\}/);
+  assert.match(css, /\.app-shell--labels\{position:fixed;inset:0;[^}]*width:100%;height:100dvh;[^}]*overflow:hidden;overscroll-behavior:none/);
+  assert.match(css, /\.app-shell--labels #label-report-results\{[^}]*overflow:auto/);
+});
 const helper = source.slice(source.indexOf('function renderLabelManualConfirmation()'), source.indexOf('function actionForm(route)'));
 const listener = source.indexOf("document.querySelector('[data-module-form]')?.addEventListener('submit'");
 const start = source.indexOf('async (event) => {', listener);
