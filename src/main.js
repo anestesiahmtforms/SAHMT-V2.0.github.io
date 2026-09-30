@@ -2698,7 +2698,7 @@ async function bindModuleForm(route) {
     submit.disabled = true;
     const values = Object.fromEntries(new FormData(form).entries());
     const actorUid = session.user.uid;
-    const manualLabelEntry = route === 'labels' && form.dataset.labelEntrySource === 'manual' && !values.editLabelId;
+    const manualLabelEntry = route === 'labels' && (form.dataset.labelEntrySource === 'manual' || Boolean(values.editLabelId));
     if (manualLabelEntry) updateLabelManualConfirmation('pending', actorUid);
     const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
     try {
@@ -2766,7 +2766,11 @@ async function bindModuleForm(route) {
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
           await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName, Number(values.editLabelVersion));
-          notice = 'Etiqueta atualizada no Firestore.';
+          updateLabelManualConfirmation('confirmed', actorUid);
+          notice = '';
+          const entryDialog = document.querySelector('#label-entry-dialog');
+          if (entryDialog?.open) entryDialog.close();
+          document.querySelector('#label-manual-open')?.focus?.({preventScroll: true});
           await render();
           return;
         }

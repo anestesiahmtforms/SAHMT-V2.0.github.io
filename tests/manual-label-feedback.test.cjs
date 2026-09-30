@@ -8,18 +8,18 @@ const listener = source.indexOf("document.querySelector('[data-module-form]')?.a
 const start = source.indexOf('async (event) => {', listener);
 const end = source.indexOf("\n  });\n  if (route === 'events')", start);
 const callback = source.slice(start, end).replaceAll("await import('./data.js')", 'mockData') + '\n}';
-function setup({pending = false, fail = false, origin = 'manual'} = {}) {
+function setup({pending = false, fail = false, origin = 'manual', editing = false} = {}) {
   const status = {textContent: ''};
   const button = {querySelector: () => null, classList: {toggle() {}}, insertAdjacentHTML() {}};
-  const form = {dataset: {labelEntrySource: origin}, elements: {staffSiglas: {value: ''}, creditor: {value: 'Caixa'}}, querySelector: () => ({disabled: false})};
-  const values = {date: '2026-09-30', type: 'Consulta Pré-anestésica', patientName: 'Paciente teste', encounterCode: '123', creditor: 'Caixa', insurance: ''};
+  const form = {dataset: {labelEntrySource: editing ? 'edit' : origin}, elements: {staffSiglas: {value: ''}, creditor: {value: 'Caixa'}}, querySelector: () => ({disabled: false})};
+  const values = {date: '2026-09-30', type: 'Consulta Pré-anestésica', patientName: 'Paciente teste', encounterCode: '123', creditor: 'Caixa', insurance: '', editLabelId: editing ? 'label-1' : '', editLabelVersion: editing ? '1' : ''};
   const context = vm.createContext({
     session: {user: {uid: 'user-1', displayName: 'Teste'}, profile: {displayName: 'Teste'}},
     labelManualConfirmation: {uid: '', status: ''}, notice: '', route: 'labels',
     loadedLabelStaffSiglas: [], loadedLabelRecords: [],
     document: {querySelector: (selector) => selector === '#label-form-status' ? status : selector === '#label-manual-open' ? button : null},
     FormData: class {entries() {return Object.entries(values);}},
-    mockData: {createOperationalRecord: async () => {if (fail) throw new Error('Não confirmado'); return {id: 'record-1', pendingFirestore: pending};}},
+    mockData: {updateLabelRecord: async () => {if (fail) throw new Error('Edição não confirmada');}, createOperationalRecord: async () => {if (fail) throw new Error('Não confirmado'); return {id: 'record-1', pendingFirestore: pending};}},
     render: async () => {}, Intl, Date, Set, Object, Number, String, JSON, Error
   });
   vm.runInContext(helper, context);
@@ -64,4 +64,19 @@ test('antes de salvar desfoca o campo; após confirmação devolve foco sem rola
   assert.ok(source.indexOf('focusedControl.blur()', listener) < source.indexOf('submit.disabled = true;', listener));
   assert.match(source, /if \(entryDialog\?\.open\) entryDialog.close\(\);/);
   assert.match(source, /#label-manual-open'\)\?\.focus\?\.\(\{preventScroll: true\}\)/);
+});
+
+test('edição confirmada: indicador no botão e nenhum aviso na página', async () => {
+  const {context, submit} = setup({editing: true}); await submit();
+  assert.equal(context.labelManualConfirmation.status, 'confirmed');
+  assert.equal(context.notice, '');
+  assert.match(vm.runInContext('renderLabelManualConfirmation()', context), /✓/);
+  assert.doesNotMatch(source, /Etiqueta atualizada no Firestore/);
+});
+test('edição recusada: X Pendente e erro somente no modal', async () => {
+  const {context, status, submit} = setup({editing: true, fail: true}); await submit();
+  assert.equal(context.labelManualConfirmation.status, 'pending');
+  assert.equal(context.notice, '');
+  assert.match(status.textContent, /Edição não confirmada/);
+  assert.match(vm.runInContext('renderLabelManualConfirmation()', context), /✕/);
 });
