@@ -1176,3 +1176,69 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--checklist .sync-status-icon{color:#fff;font-size:1.05rem;line-height:1}
 .app-shell--checklist .events-header-operational.checklist-title{grid-column:1/-1;grid-row:2;display:grid;place-items:center;width:100%;min-height:30px;margin:0;padding:5px 8px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.75rem,3vw,.9rem);font-weight:950;letter-spacing:.16em;text-align:center}
 @media(max-width:420px){.app-shell--checklist .identity-card{grid-template-columns:62px minmax(0,1fr);min-height:122px;padding:8px 10px 13px;column-gap:8px;row-gap:6px}.app-shell--checklist .identity-card .brand img{width:40px;height:40px}}
+
+/* Etiquetas: ações e relatórios separados, retorno ancorado ao rodapé. */
+.app-shell--labels .module-view--labels{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:clamp(10px,2dvh,18px);height:calc(100dvh - var(--labels-main-offset,220px));min-height:0;max-height:calc(100dvh - var(--labels-main-offset,220px));overflow:hidden}
+.app-shell--labels .module-view--labels>.label-workspace{display:grid;grid-template-rows:auto auto;align-content:center;gap:clamp(10px,2dvh,18px);flex:0 0 auto;width:100%;min-height:clamp(170px,31dvh,250px);margin:0;padding:clamp(14px,3vw,24px);border:2px solid #cbdde4;border-radius:22px;background:linear-gradient(145deg,#fff,#edf4f6);box-shadow:0 4px 0 #c8d9e0}
+.app-shell--labels .label-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(66px,1fr));gap:clamp(9px,2vw,16px);width:100%}
+.app-shell--labels .label-action-grid #label-camera-open{grid-column:1;grid-row:1}
+.app-shell--labels .label-action-grid #label-read-ai{grid-column:2;grid-row:1}
+.app-shell--labels .label-action-grid #label-manual-open{grid-column:1/-1;grid-row:2}
+.app-shell--labels .label-action-grid button{width:100%;min-height:clamp(60px,10dvh,82px);font-size:clamp(.78rem,2.8vw,1rem);border-radius:16px}
+.app-shell--labels .label-workspace::before{content:"AÇÕES DE ETIQUETAS";display:block;grid-row:1;color:#173957;font-size:clamp(.75rem,2.4vw,.9rem);font-weight:950;letter-spacing:.1em;text-align:center}
+.app-shell--labels .label-action-grid{grid-row:2}
+.app-shell--labels .label-report-launchers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(9px,2vw,16px);flex:0 0 auto;width:100%;margin:0;padding:clamp(14px,3vw,24px);border:2px solid #d9c893;border-radius:22px;background:linear-gradient(145deg,#fffdf6,#f4ead3);box-shadow:0 4px 0 #d6c493}
+.app-shell--labels .label-report-launchers::before{content:"RELATÓRIOS";grid-column:1/-1;color:#173957;font-size:clamp(.75rem,2.4vw,.9rem);font-weight:950;letter-spacing:.1em;text-align:center}
+.app-shell--labels .label-report-launchers button{min-height:clamp(58px,9dvh,76px);border-radius:16px;font-size:clamp(.72rem,2.5vw,.92rem)}
+.app-shell--labels .labels-home-button{flex:0 0 auto;width:100%;min-height:clamp(48px,7dvh,58px);margin-top:auto;border-radius:15px;font-size:.9rem;font-weight:950}
+@media(max-width:520px){
+ .app-shell--labels .module-view--labels{height:calc(100dvh - 238px);max-height:calc(100dvh - 238px);gap:clamp(8px,1.4dvh,12px)}
+ .app-shell--labels .module-view--labels>.label-workspace{min-height:0;flex:1 1 0;padding:11px}
+ .app-shell--labels .label-action-grid{grid-template-rows:repeat(2,minmax(56px,1fr));gap:8px}
+ .app-shell--labels .label-action-grid button{min-height:56px;padding:6px;font-size:clamp(.68rem,3vw,.84rem)}
+ .app-shell--labels .label-report-launchers{flex:1 1 0;min-height:0;padding:10px;gap:7px}
+ .app-shell--labels .label-report-launchers button{min-height:54px;padding:7px;font-size:clamp(.64rem,2.6vw,.8rem)}
+ .app-shell--labels .labels-home-button{min-height:44px}
+}
+@media(max-height:700px){
+ .app-shell--labels .module-view--labels{height:calc(100dvh - 205px);max-height:calc(100dvh - 205px);gap:7px}
+ .app-shell--labels .module-view--labels>.label-workspace{min-height:0;flex:1 1 0;padding:8px}
+ .app-shell--labels .label-report-launchers{flex:1 1 0;min-height:0;padding:8px}
+ .app-shell--labels .label-action-grid{grid-template-rows:repeat(2,minmax(45px,1fr));gap:6px}
+ .app-shell--labels .label-action-grid button,.app-shell--labels .label-report-launchers button{min-height:44px;padding:5px}
+ .app-shell--labels .labels-home-button{min-height:40px}
+}
+
+/* Etiquetas: ocupar a altura do visor e evitar rolagem da página. */
+.app-shell--labels{display:flex;flex-direction:column;height:100dvh;min-height:0;overflow:hidden}
+.app-shell--labels .topbar{position:relative;top:auto;flex:0 0 auto}
+.app-shell--labels .main-content{display:flex;flex:1 1 auto;flex-direction:column;width:90%!important;height:auto;min-height:0;max-height:none;margin:0 auto;padding:8px 0 10px;overflow:hidden;box-sizing:border-box}
+.app-shell--labels .module-view--labels{flex:1 1 auto;width:100%;height:100%;min-height:0;max-height:none;box-sizing:border-box;overflow:hidden;justify-content:space-between}
+.app-shell--labels .module-view--labels>.label-workspace{flex:0 0 42%;min-height:0;max-height:48%;box-sizing:border-box;align-content:center}
+.app-shell--labels .label-action-grid{grid-template-rows:repeat(2,minmax(0,1fr))}
+.app-shell--labels .label-action-grid button{min-height:clamp(54px,8dvh,78px)}
+.app-shell--labels .label-ai-status{display:none}
+.app-shell--labels .label-report-launchers{flex:1 1 auto;min-height:0;max-height:42%;box-sizing:border-box;align-content:center}
+.app-shell--labels .labels-home-button{flex:0 0 auto;margin-top:0}
+.app-shell--labels .app-footer{flex:0 0 auto;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
+@media(max-width:520px){
+ .app-shell--labels .identity-card{min-height:108px}
+ .app-shell--labels .main-content{padding:6px 0 8px}
+ .app-shell--labels .module-view--labels{gap:8px}
+ .app-shell--labels .module-view--labels>.label-workspace{flex-basis:42%;max-height:47%;padding:9px}
+ .app-shell--labels .label-action-grid{grid-template-rows:repeat(2,minmax(0,1fr));gap:7px}
+ .app-shell--labels .label-action-grid button{min-height:50px;padding:5px}
+ .app-shell--labels .label-report-launchers{max-height:42%;padding:9px;gap:7px}
+ .app-shell--labels .label-report-launchers button{min-height:50px}
+ .app-shell--labels .labels-home-button{min-height:42px}
+}
+@media(max-height:680px){
+ .app-shell--labels .identity-card{min-height:96px}
+ .app-shell--labels .module-view--labels{gap:6px}
+ .app-shell--labels .module-view--labels>.label-workspace{flex-basis:43%;padding:7px}
+ .app-shell--labels .label-action-grid button{min-height:42px}
+ .app-shell--labels .label-report-launchers{padding:7px;gap:5px}
+ .app-shell--labels .label-report-launchers button{min-height:40px}
+ .app-shell--labels .labels-home-button{min-height:38px}
+ .app-shell--labels .app-footer{display:none}
+}
