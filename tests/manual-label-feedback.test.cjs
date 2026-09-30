@@ -15,6 +15,10 @@ test('contêiner principal de Etiquetas fixo sem bloquear a rolagem dos relatór
   assert.match(css, /\.app-shell--labels\{position:fixed;inset:0;[^}]*width:100%;height:100dvh;[^}]*overflow:hidden;overscroll-behavior:none/);
   assert.match(css, /\.app-shell--labels #label-report-results\{[^}]*overflow:auto/);
 });
+test('botão principal de Etiquetas exibe HOME e mantém destino inicial', () => {
+  assert.match(source, /data-route="home">\$\{route === 'events' \|\| route === 'checklist' \? 'HOME' : route === 'labels' \? 'HOME'/);
+  assert.doesNotMatch(source, /route === 'labels' \? 'VOLTAR'/);
+});
 const helper = source.slice(source.indexOf('function renderLabelManualConfirmation()'), source.indexOf('function actionForm(route)'));
 const listener = source.indexOf("document.querySelector('[data-module-form]')?.addEventListener('submit'");
 const start = source.indexOf('async (event) => {', listener);
