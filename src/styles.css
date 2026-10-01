@@ -1657,3 +1657,13 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  #checklist-qr-dialog .checklist-qr-stage{grid-column:1;grid-row:2/4}
  #checklist-qr-dialog>#checklist-qr-manual{grid-column:2;grid-row:3}
 }
+
+/* Leitor QR compacto: evita a câmera ocupar quase todo o display. */
+#checklist-qr-dialog{height:auto;max-height:90dvh}
+#checklist-qr-dialog[open]{grid-template-rows:auto auto minmax(0,1fr) auto}
+#checklist-qr-dialog .checklist-qr-stage{height:clamp(180px,34dvh,300px);max-height:38dvh}
+@media(orientation:landscape) and (max-height:550px){
+ #checklist-qr-dialog{height:min(86dvh,380px);max-height:90dvh}
+ #checklist-qr-dialog[open]{grid-template-rows:auto minmax(0,1fr) auto}
+ #checklist-qr-dialog .checklist-qr-stage{height:100%;max-height:none}
+}
