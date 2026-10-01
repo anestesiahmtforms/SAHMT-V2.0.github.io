@@ -323,14 +323,17 @@
 .boot-card img{border-radius:18px;box-shadow:0 6px 15px #0d325733}
 .boot-card strong{font-size:1.35rem;letter-spacing:.08em}
 .boot-card>span:not(.boot-particles){font-size:.8rem;line-height:1.35;color:#526578}
-.boot-card .boot-slogan{position:relative;z-index:2;display:grid;place-items:center;min-height:2.8em;width:100%;font-size:1.38rem;font-weight:900;letter-spacing:.01em;line-height:1.15;color:#16803d;text-shadow:0 2px 10px rgba(13,50,87,.16);animation:sahmt-slogan-in 2.6s ease both}
+.boot-card>span.boot-slogan{position:relative;z-index:2;display:grid;place-items:center;min-height:2.8em;width:100%;font-size:1.38rem;font-weight:900;letter-spacing:.01em;line-height:1.15;text-shadow:0 2px 10px rgba(13,50,87,.16)}
+.boot-slogan__phrase{grid-area:1/1;display:grid;place-items:center;width:100%;min-height:2.8em;opacity:0;color:#16803d;animation:sahmt-slogan-in 1.333333s ease both}
+.boot-slogan__phrase:nth-child(2){color:#1762a1;animation-delay:1.333333s}
+.boot-slogan__phrase:nth-child(3){color:#d77713;animation-delay:2.666667s}
 .boot-particles{position:absolute;z-index:1;left:50%;top:48%;width:250px;height:130px;transform:translate(-50%,-50%);pointer-events:none}
-.boot-particle{position:absolute;left:50%;top:42%;display:block;width:6px;height:6px;border-radius:50%;background:var(--c);box-shadow:0 0 6px 2px var(--c),0 0 15px 3px color-mix(in srgb,var(--c) 65%,transparent);opacity:0;animation:boot-particle-burst 2.6s cubic-bezier(.18,.72,.28,1) infinite;animation-delay:var(--d)}
+.boot-particle{position:absolute;left:50%;top:42%;display:block;width:6px;height:6px;border-radius:50%;background:var(--c);box-shadow:0 0 6px 2px var(--c),0 0 15px 3px color-mix(in srgb,var(--c) 65%,transparent);opacity:0;animation:boot-particle-burst 1.333333s cubic-bezier(.18,.72,.28,1) infinite;animation-delay:var(--d)}
 .boot-spinner{width:28px;height:28px;border:3px solid #c6d6e6;border-top-color:#18b7b7;border-radius:50%;animation:sahmt-boot-spin .8s linear infinite}
 @keyframes sahmt-boot-spin{to{transform:rotate(360deg)}}
 @keyframes sahmt-slogan-in{0%{opacity:0;transform:scale(.62)}18%{opacity:1;transform:scale(1.08)}35%,75%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
 @keyframes boot-particle-burst{0%,8%{opacity:0;transform:translate(-50%,-50%) scale(.18)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}48%{opacity:.95}100%{opacity:0;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.72)}}
-@media(max-width:380px){.boot-card{width:min(90vw,310px);padding:24px 16px}.boot-card .boot-slogan{font-size:1.2rem}}
+@media(max-width:380px){.boot-card{width:min(90vw,310px);padding:24px 16px}.boot-card>span.boot-slogan{font-size:1.2rem}}
 .offline-view-tabs{display:flex;gap:7px;overflow-x:auto;padding:0 0 12px;scrollbar-width:none}.offline-view-tabs::-webkit-scrollbar{display:none}.offline-view-tabs button{flex:0 0 auto;min-height:38px;padding:8px 13px;border:1px solid #c5d6e3;border-radius:999px;background:#f2f7fa;color:#16486b;font:inherit;font-size:.78rem;font-weight:800;cursor:pointer}.offline-view-tabs button[aria-pressed="true"]{border-color:#0d567b;background:#0d567b;color:#fff}.offline-schedule-gallery{display:grid;gap:12px}.offline-schedule-gallery[hidden],#offline-sync-panel[hidden]{display:none!important}.offline-schedule-heading{position:sticky;z-index:2;top:calc(57px + env(safe-area-inset-top));display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 -2px;padding:12px 2px;color:#fff;background:linear-gradient(118deg,#0a3654,#08777d);border-radius:12px}.offline-schedule-heading .eyebrow,.offline-schedule-heading h3{margin:0;color:inherit}.offline-schedule-heading .eyebrow{font-size:.62rem;opacity:.78}.offline-schedule-heading h3{font-size:clamp(1rem,4.7vw,1.4rem)}.offline-schedule-heading .secondary-button{flex:0 0 auto;min-height:38px;padding:8px 11px;color:#072f50;background:#f8fbff;border-color:rgba(255,255,255,.74);font-size:.72rem}.offline-schedule-intro{margin:0;color:#496474;font-size:.78rem;line-height:1.45}.offline-schedule-nav{display:flex;gap:7px;overflow-x:auto;padding:0 1px 5px;scrollbar-width:none}.offline-schedule-nav::-webkit-scrollbar{display:none}.offline-schedule-nav a{flex:0 0 auto;padding:7px 11px;border-radius:999px;color:#0c5269;background:#d9eeea;font-size:.72rem;font-weight:800;text-decoration:none}.offline-schedule-image-card{margin:0;padding:10px;border:1px solid #d5e3e4;border-radius:16px;background:#fff;box-shadow:0 8px 22px rgba(10,61,76,.08);scroll-margin-top:100px}.offline-schedule-image-card h4{margin:1px 4px 9px;color:#145264;font-size:.88rem}.offline-schedule-image-card img{display:block;width:100%;height:auto;border-radius:10px;background:#f8f8f8}.offline-schedule-image-card--vacation h4{color:#9a6910}@media(max-width:370px){.offline-schedule-heading{gap:7px}.offline-schedule-heading .secondary-button{padding-inline:8px;font-size:.66rem}.offline-schedule-image-card{padding:7px;border-radius:13px}}
 @media(min-width:601px){.action-plan-item-form{grid-template-columns:minmax(0,1fr) minmax(130px,.45fr) minmax(0,1fr) auto}}.action-plan-item-form textarea{width:100%;min-height:42px;padding:8px;border:1px solid #b9ccd5;border-radius:9px;background:#fff;color:var(--ink);font:inherit}@media(max-width:600px){.action-plan-item-form label:nth-child(3){grid-column:1/-1}}
 .label-history{margin-top:.5rem;padding:.65rem;border-left:3px solid #0b3f3a;background:#f4f8f7}.label-history ol{margin:0;padding-left:1.2rem}.label-history li+li{margin-top:.6rem}.label-history small{display:block;overflow-wrap:anywhere}
@@ -379,7 +382,8 @@
 .event-report .event-month-control{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end}
 .event-report .event-month-control[hidden]{display:none}
 @media(max-width:520px){.event-report .event-month-control>*{grid-column:auto}.event-report .event-month-control{grid-template-columns:minmax(0,1fr) auto;align-items:end}.event-report .event-month-control button{width:auto;white-space:nowrap}}
-.app-shell--events{height:100dvh;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
+html:has(.app-shell--events),body:has(.app-shell--events){overflow:hidden;overscroll-behavior:none}
+.app-shell--events{position:fixed;inset:0;width:100%;height:100dvh;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;overscroll-behavior:none;box-sizing:border-box}
 .app-shell--events .main-content{width:min(100% - 20px,1040px);height:100%;min-height:0;margin:0 auto;padding:clamp(5px,1dvh,10px) 0;display:flex;flex-direction:column;gap:clamp(4px,.8dvh,8px);overflow:hidden}
 .app-shell--events .notice{flex:0 0 auto}
 .app-shell--events .module-view--events{flex:1 1 auto;width:100%;height:100%;min-height:0;margin:0;padding:clamp(7px,1.5dvh,14px);display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;align-content:stretch;gap:clamp(4px,.8dvh,8px);overflow:hidden}
@@ -999,8 +1003,8 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .event-launch-dialog.event-launch-dialog--editing>form>.form-grid{display:grid!important;flex:1 1 0;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-auto-rows:minmax(0,1fr)!important;align-content:stretch!important;gap:clamp(3px,.65dvh,6px)!important;overflow:hidden!important}
 .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label{display:grid;grid-template-columns:minmax(0,1fr)!important;align-content:center;justify-items:stretch;align-items:center;gap:2px!important;min-width:0;min-height:0;margin:0;padding:3px 5px!important;border-radius:13px;font-size:clamp(.54rem,1.65vw,.68rem)!important;line-height:1.04!important}
 .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label[data-event-field="description"]{grid-column:1/-1}
-.event-launch-dialog.event-launch-dialog--editing>form>.form-grid input:not([type=hidden]),.event-launch-dialog.event-launch-dialog--editing>form>.form-grid select{box-sizing:border-box;width:100%;min-width:0;height:clamp(31px,4.8dvh,39px)!important;min-height:0!important;margin:0;padding:3px 7px!important;border-radius:12px;font-size:clamp(.68rem,1.95vw,.82rem)!important;line-height:1.05}
-.event-launch-dialog.event-launch-dialog--editing>form>.form-grid textarea{box-sizing:border-box;width:100%;min-width:0;height:clamp(38px,6.6dvh,50px)!important;min-height:0!important;margin:0;padding:5px 7px!important;border-radius:12px;font-size:clamp(.68rem,1.95vw,.82rem)!important;line-height:1.15;resize:none!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid input:not([type=hidden]),.event-launch-dialog.event-launch-dialog--editing>form>.form-grid select{box-sizing:border-box;width:100%;min-width:0;height:clamp(31px,4.8dvh,39px)!important;min-height:0!important;margin:0;padding:3px 7px!important;border-radius:12px;font-size:16px!important;line-height:1.05}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid textarea{box-sizing:border-box;width:100%;min-width:0;height:clamp(38px,6.6dvh,50px)!important;min-height:0!important;margin:0;padding:5px 7px!important;border-radius:12px;font-size:16px!important;line-height:1.15;resize:none!important}
 .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label:first-child{padding:3px 5px!important}
 .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label:first-child input{height:clamp(31px,4.8dvh,39px)!important;min-height:0!important}
 .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label.event-member-control{padding:3px 5px!important;border-radius:13px}
@@ -1093,24 +1097,24 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 
 
 /* Etiquetas: cabeçalho igual ao de Operacional e ações em faixas de largura total. */
-.app-shell--labels .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:116px;height:auto;padding:8px 12px 10px}
-.app-shell--labels .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
-.app-shell--labels .identity-card .brand img{width:clamp(40px,12vw,50px);height:clamp(40px,12vw,50px);border-radius:7px}
-.app-shell--labels .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
-.app-shell--labels .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
-.app-shell--labels .identity-card__user-row .sync-pill{min-width:32px}
-.app-shell--labels .events-header-operational{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
+:is(.app-shell--labels,.app-shell--management) .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:116px;height:auto;padding:8px 12px 10px}
+:is(.app-shell--labels,.app-shell--management) .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
+:is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:clamp(40px,12vw,50px);height:clamp(40px,12vw,50px);border-radius:7px}
+:is(.app-shell--labels,.app-shell--management) .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
+:is(.app-shell--labels,.app-shell--management) .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
+:is(.app-shell--labels,.app-shell--management) .identity-card__user-row .sync-pill{min-width:32px}
+:is(.app-shell--labels,.app-shell--management) .events-header-operational{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
 .app-shell--labels .module-view--labels>.label-workspace .label-action-grid{grid-template-columns:minmax(0,1fr)}
 .app-shell--labels .module-view--labels>.label-workspace .label-action-grid button{grid-column:1/-1;width:100%;min-height:clamp(48px,7dvh,60px)}
 .app-shell--labels .label-report-launchers{grid-template-columns:minmax(0,1fr);gap:clamp(7px,1.2dvh,11px);width:100%}
 .app-shell--labels .label-report-launchers button{width:100%;min-height:clamp(48px,7dvh,58px);border-radius:14px}
 .app-shell--labels .labels-home-button{display:block;width:100%;min-height:48px;margin:0;text-align:center;font-weight:950;letter-spacing:.04em}
 @media(max-width:420px){
-  .app-shell--labels .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}
-  .app-shell--labels .identity-card .brand img{width:42px;height:42px}
-  .app-shell--labels .identity-card__user-row{gap:5px}
-  .app-shell--labels .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}
-  .app-shell--labels .events-header-operational{min-height:27px;padding:3px 8px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:108px;padding:7px 9px 8px;column-gap:6px;row-gap:3px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:42px;height:42px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card__user-row{gap:5px}
+  :is(.app-shell--labels,.app-shell--management) .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}
+  :is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:27px;padding:3px 8px}
 }
 
 /* Checklist: cabeçalho no padrão de Eventos, leitor central e ações em largura total. */
@@ -1210,7 +1214,8 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 }
 
 /* Etiquetas: ocupar a altura do visor e evitar rolagem da página. */
-.app-shell--labels{display:flex;flex-direction:column;height:100dvh;min-height:0;overflow:hidden}
+html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;overscroll-behavior:none}
+.app-shell--labels{position:fixed;inset:0;display:flex;flex-direction:column;width:100%;height:100dvh;min-height:0;overflow:hidden;overscroll-behavior:none;box-sizing:border-box}
 .app-shell--labels .topbar{position:relative;top:auto;flex:0 0 auto}
 .app-shell--labels .main-content{display:flex;flex:1 1 auto;flex-direction:column;width:90%!important;height:auto;min-height:0;max-height:none;margin:0 auto;padding:8px 0 10px;overflow:hidden;box-sizing:border-box}
 .app-shell--labels .module-view--labels{flex:1 1 auto;width:100%;height:100%;min-height:0;max-height:none;box-sizing:border-box;overflow:hidden;justify-content:space-between}
@@ -1222,7 +1227,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--labels .labels-home-button{flex:0 0 auto;margin-top:0}
 .app-shell--labels .app-footer{flex:0 0 auto;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
 @media(max-width:520px){
- .app-shell--labels .identity-card{min-height:108px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:108px}
  .app-shell--labels .main-content{padding:6px 0 8px}
  .app-shell--labels .module-view--labels{gap:8px}
  .app-shell--labels .module-view--labels>.label-workspace{flex-basis:42%;max-height:47%;padding:9px}
@@ -1233,7 +1238,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--labels .labels-home-button{min-height:42px}
 }
 @media(max-height:680px){
- .app-shell--labels .identity-card{min-height:96px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:96px}
  .app-shell--labels .module-view--labels{gap:6px}
  .app-shell--labels .module-view--labels>.label-workspace{flex-basis:43%;padding:7px}
  .app-shell--labels .label-action-grid button{min-height:42px}
@@ -1244,9 +1249,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 }
 
 /* Etiquetas: botões empilhados em largura total e título superior ampliado. */
-.app-shell--labels .identity-card{min-height:150px;padding-top:14px;padding-bottom:17px}
-.app-shell--labels .identity-card .brand img{width:48px;height:48px}
-.app-shell--labels .events-header-operational{min-height:38px;padding:6px 10px;font-size:clamp(.78rem,3vw,.98rem)}
+:is(.app-shell--labels,.app-shell--management) .identity-card{min-height:150px;padding-top:14px;padding-bottom:17px}
+:is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:48px;height:48px}
+:is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:38px;padding:6px 10px;font-size:clamp(.78rem,3vw,.98rem)}
 .app-shell--labels .module-view--labels{justify-content:space-between;gap:clamp(7px,1.1dvh,10px)}
 .app-shell--labels .module-view--labels>.label-workspace{display:flex;flex:1 1 54%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.6dvh,13px);gap:0}
 .app-shell--labels .label-workspace::before{content:none}
@@ -1263,7 +1268,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--labels .label-report-launchers button{flex:1 1 0;width:100%;min-height:0;max-height:50%;padding:6px;border-radius:14px;font-size:clamp(.68rem,2.5vw,.88rem)}
 .app-shell--labels .labels-home-button{margin-top:0}
 @media(max-width:520px){
- .app-shell--labels .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
  .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.25fr) repeat(2,minmax(42px,1fr));gap:6px}
  .app-shell--labels .label-action-grid #label-camera-open::before{width:50px}
  .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2.9vw,.82rem)}
@@ -1271,9 +1276,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--labels .label-report-launchers button{min-height:42px}
 }
 @media(max-height:680px){
- .app-shell--labels .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}
- .app-shell--labels .identity-card .brand img{width:40px;height:40px}
- .app-shell--labels .events-header-operational{min-height:30px;padding:4px 8px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}
+ :is(.app-shell--labels,.app-shell--management) .identity-card .brand img{width:40px;height:40px}
+ :is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:30px;padding:4px 8px}
  .app-shell--labels .module-view--labels{gap:5px}
  .app-shell--labels .module-view--labels>.label-workspace{padding:6px}
  .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) repeat(2,minmax(36px,1fr));gap:4px}
@@ -1357,7 +1362,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 
 .app-shell--labels .label-entry-dialog .form-grid:has(.label-entry-insurance[hidden]){--label-entry-field-rows:5}
 .app-shell--labels .label-entry-dialog .form-grid:has(.label-staff-field[hidden]){grid-template-rows:none;align-content:space-between}
-.app-shell--labels .label-entry-dialog .label-staff-field{grid-template-rows:auto minmax(0,1fr) auto;min-height:0;align-content:stretch}
+.app-shell--labels .label-entry-dialog .label-staff-field{grid-template-rows:auto minmax(0,1fr);min-height:0;align-content:stretch}
 .app-shell--labels .label-entry-dialog .label-staff-options{grid-template-columns:repeat(auto-fill,minmax(40px,1fr));grid-auto-rows:minmax(0,1fr);height:100%;min-height:0;gap:4px;overflow:hidden}
 .app-shell--labels .label-entry-dialog .label-staff-option{height:100%;min-height:0;padding:2px;border-radius:8px;font-size:clamp(.67rem,1.7vw,.78rem)}
 @media(max-width:420px){
@@ -1391,19 +1396,19 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--labels #label-report-results{display:block;min-height:0;margin:0;padding:8px;overflow:auto;overscroll-behavior:contain;border:1px solid #d5e2dc;border-radius:22px;background:linear-gradient(145deg,#f8fcfa,#e8f3ef)}
 .app-shell--labels #label-report-results>.event-report-day-heading{display:none}
 .app-shell--labels #label-report-results .record-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
-.app-shell--labels #label-report-results .record-list>li.label-daily-record{position:relative;display:grid;gap:7px;padding:38px 12px 10px;border:1px solid #d8e4df;border-radius:20px;background:linear-gradient(145deg,#f8fcfb,#eaf4f0);box-shadow:0 2px 0 #d5e4dc;color:#173a43}
-.app-shell--labels .label-record-index{position:absolute;top:10px;left:12px;display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#16867d;color:#fff;font-size:.72rem;font-weight:950}
-.app-shell--labels .label-record-fields{display:grid;gap:4px}
-.app-shell--labels .label-record-field{display:grid;grid-template-columns:minmax(110px,38%) minmax(0,1fr);align-items:center;gap:8px;min-height:35px;padding:6px 10px;border:1px solid #e0ebe8;border-radius:16px;background:#fff;box-shadow:0 1px 2px #0d44310c}
-.app-shell--labels .label-record-field>span{color:#5e7078;font-size:.67rem;font-weight:900;line-height:1.05}
-.app-shell--labels .label-record-field>strong{overflow-wrap:anywhere;color:#293b43;font-size:.77rem;font-weight:850;line-height:1.1;text-align:right}
-.app-shell--labels .label-record-responsible{display:grid;grid-template-columns:minmax(120px,42%) minmax(0,1fr);align-items:center;gap:8px;min-height:40px;padding:7px 10px;border:1px solid #e0ebe8;border-radius:15px;background:#fff}
-.app-shell--labels .label-record-responsible>span{color:#5e7078;font-size:.65rem;font-weight:900;line-height:1.08}
-.app-shell--labels .label-record-responsible>strong{overflow-wrap:anywhere;color:#ad3b3b;font-size:.75rem;font-weight:900;text-align:right}
-.app-shell--labels .label-record-actions{display:flex;justify-content:flex-end;align-items:center;gap:7px;flex-wrap:wrap}
-.app-shell--labels .label-record-actions button{min-height:40px;padding:7px 12px;border:1px solid #b7cbd1;border-radius:13px;background:linear-gradient(145deg,#f8fcff,#deebf1);color:#173a56;font-size:.72rem;font-weight:950;box-shadow:0 2px 0 #c4d4da}
-.app-shell--labels .label-daily-record .label-history{margin:0;padding:9px;border-radius:12px;background:#f4f8f8}
-.app-shell--labels .label-daily-record .label-history[hidden]{display:none!important}
+:is(.app-shell--labels,.app-shell--events) :is(#label-report-results,#event-report-results) .record-list>li.label-daily-record{position:relative;display:grid;gap:7px;padding:38px 12px 10px;border:1px solid #d8e4df;border-radius:20px;background:linear-gradient(145deg,#f8fcfb,#eaf4f0);box-shadow:0 2px 0 #d5e4dc;color:#173a43}
+:is(.app-shell--labels,.app-shell--events) .label-record-index{position:absolute;top:10px;left:12px;display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#16867d;color:#fff;font-size:.72rem;font-weight:950}
+:is(.app-shell--labels,.app-shell--events) .label-record-fields{display:grid;gap:4px}
+:is(.app-shell--labels,.app-shell--events) .label-record-field{display:grid;grid-template-columns:minmax(110px,38%) minmax(0,1fr);align-items:center;gap:8px;min-height:35px;padding:6px 10px;border:1px solid #e0ebe8;border-radius:16px;background:#fff;box-shadow:0 1px 2px #0d44310c}
+:is(.app-shell--labels,.app-shell--events) .label-record-field>span{color:#5e7078;font-size:.67rem;font-weight:900;line-height:1.05}
+:is(.app-shell--labels,.app-shell--events) .label-record-field>strong{overflow-wrap:anywhere;color:#293b43;font-size:.77rem;font-weight:850;line-height:1.1;text-align:right}
+:is(.app-shell--labels,.app-shell--events) .label-record-responsible{display:grid;grid-template-columns:minmax(120px,42%) minmax(0,1fr);align-items:center;gap:8px;min-height:40px;padding:7px 10px;border:1px solid #e0ebe8;border-radius:15px;background:#fff}
+:is(.app-shell--labels,.app-shell--events) .label-record-responsible>span{color:#5e7078;font-size:.65rem;font-weight:900;line-height:1.08}
+:is(.app-shell--labels,.app-shell--events) .label-record-responsible>strong{overflow-wrap:anywhere;color:#ad3b3b;font-size:.75rem;font-weight:900;text-align:right}
+:is(.app-shell--labels,.app-shell--events) .label-record-actions{display:flex;justify-content:flex-end;align-items:center;gap:7px;flex-wrap:wrap}
+:is(.app-shell--labels,.app-shell--events) .label-record-actions button{min-height:40px;padding:7px 12px;border:1px solid #b7cbd1;border-radius:13px;background:linear-gradient(145deg,#f8fcff,#deebf1);color:#173a56;font-size:.72rem;font-weight:950;box-shadow:0 2px 0 #c4d4da}
+:is(.app-shell--labels,.app-shell--events) .label-daily-record .label-history{margin:0;padding:9px;border-radius:12px;background:#f4f8f8}
+:is(.app-shell--labels,.app-shell--events) .label-daily-record .label-history[hidden]{display:none!important}
 @media(max-width:520px){
  .app-shell--labels .label-report-dialog{gap:7px}
  .app-shell--labels .label-report-header{grid-template-columns:40px minmax(0,1fr) auto;gap:6px;min-height:68px;padding:6px 8px;border-radius:16px}
@@ -1417,17 +1422,17 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--labels .label-day-control input{height:42px;min-height:42px}
  .app-shell--labels #label-report-results{padding:5px;border-radius:17px}
  .app-shell--labels #label-report-results .record-list{gap:8px}
- .app-shell--labels #label-report-results .record-list>li.label-daily-record{gap:5px;padding:33px 7px 8px;border-radius:16px}
- .app-shell--labels .label-record-index{top:7px;left:8px;width:22px;height:22px;font-size:.65rem}
- .app-shell--labels .label-record-fields{gap:3px}
- .app-shell--labels .label-record-field{grid-template-columns:minmax(94px,38%) minmax(0,1fr);min-height:31px;gap:5px;padding:5px 7px;border-radius:14px}
- .app-shell--labels .label-record-field>span{font-size:.59rem}
- .app-shell--labels .label-record-field>strong{font-size:.68rem}
- .app-shell--labels .label-record-responsible{grid-template-columns:minmax(105px,40%) minmax(0,1fr);min-height:36px;gap:5px;padding:6px 7px}
- .app-shell--labels .label-record-responsible>span{font-size:.57rem}
- .app-shell--labels .label-record-responsible>strong{font-size:.65rem}
- .app-shell--labels .label-record-actions{gap:5px}
- .app-shell--labels .label-record-actions button{min-height:35px;padding:6px 9px;font-size:.65rem}
+ :is(.app-shell--labels,.app-shell--events) :is(#label-report-results,#event-report-results) .record-list>li.label-daily-record{gap:5px;padding:33px 7px 8px;border-radius:16px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-index{top:7px;left:8px;width:22px;height:22px;font-size:.65rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-fields{gap:3px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-field{grid-template-columns:minmax(94px,38%) minmax(0,1fr);min-height:31px;gap:5px;padding:5px 7px;border-radius:14px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-field>span{font-size:.59rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-field>strong{font-size:.68rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-responsible{grid-template-columns:minmax(105px,40%) minmax(0,1fr);min-height:36px;gap:5px;padding:6px 7px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-responsible>span{font-size:.57rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-responsible>strong{font-size:.65rem}
+ :is(.app-shell--labels,.app-shell--events) .label-record-actions{gap:5px}
+ :is(.app-shell--labels,.app-shell--events) .label-record-actions button{min-height:35px;padding:6px 9px;font-size:.65rem}
 }
 .app-shell--labels .label-day-control label{grid-template-rows:auto auto!important}
 
@@ -1459,21 +1464,135 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--checklist .checklist-home-button{font-size:.7rem}
 }
 
-/* Gestão compartilha a disposição do cabeçalho de Etiquetas. */
-.app-shell--management .identity-card{display:grid;grid-template-columns:minmax(62px,22%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;align-items:center;column-gap:8px;row-gap:4px;min-height:150px;height:auto;padding:14px 12px 17px}
-.app-shell--management .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:clamp(.65rem,2.5vw,.78rem);letter-spacing:.13em;line-height:1}
-.app-shell--management .identity-card .brand img{width:48px;height:48px;border-radius:7px}
-.app-shell--management .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;min-height:0;gap:clamp(5px,1.5vw,10px);width:100%}
-.app-shell--management .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.58rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
-.app-shell--management .identity-card__user-row .sync-pill{min-width:32px}
-@media(max-width:520px){.app-shell--management .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}}
-@media(max-width:420px){
- .app-shell--management .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);column-gap:6px;row-gap:3px;padding-inline:9px}
- .app-shell--management .identity-card .brand img{width:42px;height:42px}
- .app-shell--management .identity-card__user-row{gap:5px}
- .app-shell--management .identity-card__user{font-size:clamp(.55rem,2vw,.68rem)}
+/* Confirmação do registro manual, sem aviso fora do botão. */
+.app-shell--labels #label-manual-open.label-manual--has-status{position:relative;padding-inline:70px}
+.app-shell--labels .label-manual-confirmation{position:absolute;right:9px;top:50%;transform:translateY(-50%);display:grid;justify-items:center;gap:1px;width:60px;color:#167b3d;line-height:1;pointer-events:none}
+.app-shell--labels .label-manual-confirmation>span{font-size:clamp(20px,3.5dvh,28px);font-weight:950}
+.app-shell--labels .label-manual-confirmation>small{font-size:.58rem;font-weight:900;line-height:1.1}
+.app-shell--labels .label-manual-confirmation--pending{color:#c62828}
+
+/* Safari: evita zoom automático no foco e escala no botão Salvar. */
+.app-shell--labels .label-entry-dialog .form-grid input:not([type="hidden"]),
+.app-shell--labels .label-entry-dialog .form-grid select{font-size:16px!important}
+.app-shell--labels .label-entry-dialog .admin-user-actions button{transform:none!important;transition:filter .16s ease,box-shadow .16s ease;touch-action:manipulation}
+.app-shell--labels .label-manual-confirmation{min-width:60px;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+.app-shell--labels .label-manual-confirmation>small{display:block;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+
+/* Áreas de Gestão abrem sobre a página, com cabeçalho e fechamento fixos. */
+.management-area-dialog{position:fixed;inset:max(8px,5dvh,env(safe-area-inset-top)) 5vw max(8px,5dvh,env(safe-area-inset-bottom));box-sizing:border-box;width:90vw;max-width:960px;height:auto;max-height:none;margin:0 auto;padding:clamp(8px,2vw,16px);overflow:hidden;overscroll-behavior:none;border:2px solid #fff;border-radius:20px;background:linear-gradient(145deg,#fffaf0,#e6eff2);color:var(--ink);box-shadow:0 22px 70px #001b3577}
+.management-area-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px}
+.management-area-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
+.management-area-dialog__header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:4px 2px 9px;border-bottom:1px solid #c7d9e1}
+.management-area-dialog__header h2{margin:0;font-size:clamp(.88rem,3.4vw,1.1rem);letter-spacing:.04em}
+.management-area-dialog__header form{flex:0 0 auto;margin:0}
+.management-area-dialog__header button{min-height:40px;padding:6px 10px}
+.management-area-dialog__body{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.management-area-dialog .management-area-detail{margin:0;padding:10px;border-radius:14px}
+.management-area-dialog .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.management-area-dialog input:not([type=checkbox]):not([type=hidden]),.management-area-dialog select,.management-area-dialog textarea{min-width:0;max-width:100%;font-size:16px}
+@media(max-width:520px){.management-area-dialog .form-grid{grid-template-columns:minmax(0,1fr)}.management-area-dialog .management-detail-heading{flex-wrap:wrap}.management-area-dialog .admin-user-actions{flex-wrap:wrap}}
+
+/* O PDF mensal permanece no rodapé enquanto somente os registros rolam. */
+.app-shell--labels .label-report-dialog{grid-template-rows:auto auto minmax(0,1fr) auto}
+.app-shell--labels .label-report-dialog:has(.label-report-footer[hidden]){grid-template-rows:auto auto minmax(0,1fr)}
+.app-shell--labels .label-month-control{grid-template-columns:minmax(0,1fr)}
+:is(.app-shell--labels,.app-shell--events) .monthly-report-footer{display:flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:0;margin:0;padding:7px 0 max(7px,env(safe-area-inset-bottom));border-top:1px solid #c7d9df;background:linear-gradient(145deg,#fffaf0,#e6eff2)}
+:is(.app-shell--labels,.app-shell--events) .monthly-report-footer[hidden]{display:none!important}
+:is(.app-shell--labels,.app-shell--events) .monthly-report-footer button{width:100%;min-height:44px;margin:0;padding:7px 10px;font-size:.85rem;font-weight:900;border-radius:14px}
+@media(max-height:680px){:is(.app-shell--labels,.app-shell--events) .monthly-report-footer{padding-top:5px;padding-bottom:max(5px,env(safe-area-inset-bottom))}:is(.app-shell--labels,.app-shell--events) .monthly-report-footer button{min-height:38px;padding:5px 8px;font-size:.78rem}}
+
+.app-shell--events #event-report-dialog{grid-template-rows:auto auto minmax(0,1fr) auto}
+.app-shell--events #event-report-dialog:has(.event-report-footer[hidden]){grid-template-rows:auto auto minmax(0,1fr)}
+.app-shell--events #event-month-control{grid-template-columns:minmax(0,1fr)}
+
+/* Edição: dimensionamento uniforme inclusive no campo aninhado do membro. */
+.event-launch-dialog.event-launch-dialog--editing[open]{box-sizing:border-box;display:flex;flex-direction:column}
+.event-launch-dialog.event-launch-dialog--editing>header{position:relative;top:auto;min-height:0;margin:0 0 5px!important;padding:3px 2px 6px!important}
+.event-launch-dialog.event-launch-dialog--editing>form{flex:1 1 0!important;min-height:0!important;max-height:100%;margin:0;gap:4px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid{flex:1 1 0!important;min-height:0!important;grid-auto-flow:row dense;gap:4px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr)!important;align-content:center;align-items:center;gap:2px!important;min-width:0;min-height:0;max-height:100%;width:100%;margin:0;padding:3px 5px!important;border-radius:12px;font-size:clamp(.6rem,2vw,.72rem)!important;line-height:1.1}
+.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control>span{padding:2px 3px;font-size:clamp(.56rem,1.8vw,.68rem);line-height:1.1;text-align:center}
+.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control>input[name=memberStatus]{box-sizing:border-box;height:clamp(30px,4.7dvh,36px)!important;min-height:0!important;margin:0;padding:3px 6px!important;border-radius:10px;font-size:16px!important;line-height:1.1}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid input:not([type=hidden]),.event-launch-dialog.event-launch-dialog--editing>form>.form-grid select{height:clamp(30px,4.7dvh,36px)!important;min-height:0!important;padding:3px 6px!important;font-size:16px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid textarea{height:clamp(34px,5.6dvh,42px)!important;min-height:0!important;padding:3px 6px!important;font-size:16px!important}
+.event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;flex:0 0 auto;margin:0;padding:0}
+.event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions button{box-sizing:border-box;width:100%!important;min-width:0;min-height:36px!important;height:40px;padding:4px 6px!important;font-size:.76rem;line-height:1.1;border-radius:12px}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>.event-type-field{border:2px solid #8cbada;background:#e3f2ff!important;color:#174e78}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>.event-type-field>span{font-weight:950;text-align:center;letter-spacing:.025em}
+.event-launch-dialog.event-launch-dialog--editing>form>.form-grid>.event-type-field select{background:#d5ebff!important;color:#163f60;font-weight:800}
+@media(orientation:landscape) and (max-height:520px){
+ .event-launch-dialog.event-launch-dialog--editing>header{margin-bottom:3px!important;padding-bottom:3px!important}
+ .event-launch-dialog.event-launch-dialog--editing>header #event-launch-title{font-size:.9rem}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:3px!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label[data-event-field=description]{grid-column:auto}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid input:not([type=hidden]),.event-launch-dialog.event-launch-dialog--editing>form>.form-grid select,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control>input[name=memberStatus]{height:28px!important;padding:2px 5px!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid textarea{height:30px!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.form-grid>label,.event-launch-dialog.event-launch-dialog--editing .form-grid .event-member-control{padding:2px 3px!important;font-size:.58rem!important}
+ .event-launch-dialog.event-launch-dialog--editing>form>.admin-user-actions button{min-height:32px!important;height:32px!important;padding:3px 5px!important}
 }
-@media(max-height:680px){.app-shell--management .identity-card{min-height:124px;padding-top:8px;padding-bottom:10px}.app-shell--management .identity-card .brand img{width:40px;height:40px}}
+
+.app-shell--events #event-report-results .event-daily-record--pending{border:2px solid #dcad54;background:linear-gradient(145deg,#fffdf5,#fff0d2)}
+.app-shell--events #event-report-results .event-daily-record .event-history{margin:0;overflow-wrap:anywhere}
+
+.event-launch-dialog:not(.event-launch-dialog--editing)[open]{position:fixed!important;inset:5dvh 5vw!important;width:90vw!important;height:90dvh!important;max-width:90vw!important;max-height:90dvh!important;margin:0!important;padding:clamp(7px,1.5vw,12px)!important;overflow:hidden!important;overscroll-behavior:none;box-sizing:border-box}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form{display:flex!important;flex-direction:column;overflow:hidden!important;overscroll-behavior:none}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-auto-rows:minmax(0,1fr)!important;align-content:stretch;overflow:hidden!important}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>label[data-event-field=description]{grid-column:1/-1}
+.event-launch-dialog:not(.event-launch-dialog--editing) #event-form-status,.event-launch-dialog:not(.event-launch-dialog--editing) #event-catalog-stale,.event-launch-dialog:not(.event-launch-dialog--editing) #event-members-missing{flex:0 0 auto;min-height:0;max-height:2.4em;margin:0;font-size:.65rem;line-height:1.15;overflow:auto}
+.event-launch-dialog:not(.event-launch-dialog--editing) #event-form-status:empty{display:none}
+.event-launch-dialog:not(.event-launch-dialog--editing) #event-conflict-refresh{flex:0 0 auto;min-height:30px;padding:3px 5px;font-size:.65rem}
+.event-launch-dialog:not(.event-launch-dialog--editing)>.event-launch-footer{flex:0 0 auto;margin:4px 0 0;padding:4px 0 0}
+.event-launch-dialog:not(.event-launch-dialog--editing)>.event-launch-footer .secondary-button{height:36px;min-height:36px!important;padding:4px 7px!important;border-radius:12px;font-size:.8rem}
+/* Lançamento: campos compactos, fixos e com fonte de 16 px. */
+.event-launch-dialog:not(.event-launch-dialog--editing)[open]{box-sizing:border-box;display:flex;flex-direction:column}
+.event-launch-dialog:not(.event-launch-dialog--editing)>header{position:relative;top:auto;min-height:0;margin:0 0 5px!important;padding:3px 2px 6px!important}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form{flex:1 1 0!important;min-height:0!important;max-height:100%;margin:0;gap:4px!important}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid{flex:1 1 0!important;min-height:0!important;grid-auto-flow:row dense;gap:4px!important}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>label,.event-launch-dialog:not(.event-launch-dialog--editing) .form-grid .event-member-control{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr)!important;align-content:center;align-items:center;gap:2px!important;min-width:0;min-height:0;max-height:100%;width:100%;margin:0;padding:3px 5px!important;border-radius:12px;font-size:clamp(.6rem,2vw,.72rem)!important;line-height:1.1}
+.event-launch-dialog:not(.event-launch-dialog--editing) .form-grid .event-member-control>span{padding:2px 3px;font-size:clamp(.56rem,1.8vw,.68rem);line-height:1.1;text-align:center}
+.event-launch-dialog:not(.event-launch-dialog--editing) .form-grid .event-member-control>input[name=memberStatus]{box-sizing:border-box;height:clamp(30px,4.7dvh,36px)!important;min-height:0!important;margin:0;padding:3px 6px!important;border-radius:10px;font-size:16px!important;line-height:1.1}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid input:not([type=hidden]),.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid select{height:clamp(30px,4.7dvh,36px)!important;min-height:0!important;padding:3px 6px!important;font-size:16px!important}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid textarea{height:clamp(34px,5.6dvh,42px)!important;min-height:0!important;padding:3px 6px!important;font-size:16px!important}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions{display:grid!important;grid-template-columns:minmax(0,1fr);gap:6px;flex:0 0 auto;margin:0;padding:0}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions button{box-sizing:border-box;width:100%!important;min-width:0;min-height:36px!important;height:40px;padding:4px 6px!important;font-size:.76rem;line-height:1.1;border-radius:12px}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>.event-type-field{border:2px solid #8cbada;background:#e3f2ff!important;color:#174e78}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>.event-type-field>span{font-weight:950;text-align:center;letter-spacing:.025em}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>.event-type-field select{background:#d5ebff!important;color:#163f60;font-weight:800}
+@media(orientation:landscape) and (max-height:520px){
+ .event-launch-dialog:not(.event-launch-dialog--editing)>header{margin-bottom:3px!important;padding-bottom:3px!important}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>header #event-launch-title{font-size:.9rem}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:3px!important}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>label[data-event-field=description]{grid-column:auto}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid input:not([type=hidden]),.event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid select,.event-launch-dialog:not(.event-launch-dialog--editing) .form-grid .event-member-control>input[name=memberStatus]{height:28px!important;padding:2px 5px!important}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid textarea{height:30px!important}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>form>.form-grid>label,.event-launch-dialog:not(.event-launch-dialog--editing) .form-grid .event-member-control{padding:2px 3px!important;font-size:.58rem!important}
+ .event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions button{min-height:32px!important;height:32px!important;padding:3px 5px!important}
+}
+
+@media(orientation:landscape) and (max-height:520px){.event-launch-dialog:not(.event-launch-dialog--editing)>.event-launch-footer{margin-top:3px;padding-top:3px}.event-launch-dialog:not(.event-launch-dialog--editing)>.event-launch-footer .secondary-button{height:30px;min-height:30px!important;padding:3px 5px!important}}
+
+/* Primeira frase legível desde o início, com verde mais escuro. */
+.boot-card .boot-slogan__phrase:first-child{color:#08602c;font-weight:950;text-shadow:0 1px 0 #fff,0 2px 5px #0d32571f;opacity:1;animation-name:sahmt-slogan-first}
+@keyframes sahmt-slogan-first{0%{opacity:1;transform:scale(.96)}15%{opacity:1;transform:scale(1.05)}28%,85%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
+
+/* Cadastro da Escala: centralizado, sem altura vazia e com ações inteiras. */
+#schedule-contact-dialog{position:fixed;inset:0;box-sizing:border-box;width:min(90vw,440px);height:fit-content;min-height:0;max-height:min(85dvh,calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));margin:auto;padding:14px;overflow:hidden}
+#schedule-contact-dialog #schedule-contact-details{box-sizing:border-box;flex:0 1 auto;min-width:0;min-height:0;width:100%;padding:3px 4px 5px;overflow:auto;overscroll-behavior:contain}
+#schedule-contact-dialog #schedule-contact-heading{margin:0 0 9px;font-size:1.05rem;line-height:1.2;overflow-wrap:anywhere}
+#schedule-contact-dialog .schedule-release-status:empty{display:none}
+#schedule-contact-dialog .contact-detail-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:7px;margin-top:8px;padding:0 2px}
+#schedule-contact-dialog .contact-detail-actions .contact-action{box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;max-width:100%;min-width:0;min-height:44px;margin:0;padding:8px 10px;border:2px solid #bfd2db;border-radius:12px;overflow-wrap:anywhere;text-align:center}
+#schedule-contact-dialog>form{margin-top:0;padding-top:8px}
+#schedule-contact-dialog>form .secondary-button{min-height:40px;padding:6px 10px}
+@media(max-width:380px){#schedule-contact-dialog{padding:11px}#schedule-contact-dialog .contact-detail-actions .contact-action{font-size:.8rem}}
+
+/* Espaço reservado ao botão evita que o formulário corte sua borda e sombra. */
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions{box-sizing:border-box;flex:0 0 auto!important;min-height:50px;padding:2px 3px 8px!important;overflow:visible;align-items:start}
+.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions .primary-button{box-sizing:border-box;height:40px!important;min-height:40px!important;margin:0!important;padding:5px 8px!important;box-shadow:0 3px 0 #064457!important;transform:none}
+@media(orientation:landscape) and (max-height:520px){.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions{min-height:42px;padding-bottom:8px!important}.event-launch-dialog:not(.event-launch-dialog--editing)>form>.admin-user-actions .primary-button{height:32px!important;min-height:32px!important;padding:3px 6px!important}}
+
+/* Posição explícita no centro do display, inclusive no Safari do iPhone. */
+#schedule-contact-dialog[open]{position:fixed!important;inset:auto!important;top:50dvh!important;left:50vw!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important;margin:0!important;height:auto!important;width:min(90vw,440px);min-height:0;max-height:min(85dvh,calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));align-self:center}
 
 /* O título cresce sem esticar sua faixa até as laterais do cartão. */
 .app-shell .identity-card .module-title-chip{grid-column:1/-1;grid-row:2;justify-self:center;display:grid;place-items:center;box-sizing:border-box;width:max-content;max-width:100%;min-height:44px;margin:0;padding:4px clamp(14px,4vw,24px);border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(1.44rem,5.6vw,1.76rem);font-weight:950;letter-spacing:.12em;line-height:1.05;text-align:center;white-space:nowrap}
@@ -1482,21 +1601,21 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 @media(max-height:580px){.app-shell--checklist .identity-card .module-title-chip{min-height:36px;padding-block:2px;font-size:1.36rem}}
 
 /* A foto horizontal do arsenal acompanha sua proporção no Checklist móvel. */
-@media(max-width:600px) and (orientation:portrait){
+@media(orientation:portrait){
  .app-shell--checklist .module-view--checklist{grid-template-rows:minmax(0,max-content) minmax(72px,1fr) clamp(38px,6.5dvh,56px) clamp(34px,5.8dvh,48px)}
 }
-@media(max-width:600px) and (orientation:portrait) and (max-height:580px){
+@media(orientation:portrait) and (max-height:580px){
  .app-shell--checklist .module-view--checklist{grid-template-rows:minmax(0,max-content) minmax(68px,1fr) 34px 30px}
 }
 
 /* No visor horizontal baixo, imagem/escala e ações dividem a área disponível. */
 @media(orientation:landscape) and (max-height:520px){
- .app-shell:is(.app-shell--events,.app-shell--checklist) .topbar{padding-block:max(4px,env(safe-area-inset-top)) 4px}
- .app-shell:is(.app-shell--events,.app-shell--checklist) .identity-card{grid-template-columns:52px max-content minmax(0,1fr);grid-template-rows:auto;min-height:64px;margin-block:0;padding:6px 10px;column-gap:10px}
- .app-shell:is(.app-shell--events,.app-shell--checklist) .identity-card .brand{grid-column:1;grid-row:1;min-height:0}
- .app-shell:is(.app-shell--events,.app-shell--checklist) .identity-card .brand img{width:34px;height:34px}
- .app-shell:is(.app-shell--events,.app-shell--checklist) .identity-card .module-title-chip{grid-column:2;grid-row:1}
- .app-shell:is(.app-shell--events,.app-shell--checklist) .identity-card__user-row{grid-column:3;grid-row:1;min-height:0}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .topbar{padding-block:max(4px,env(safe-area-inset-top)) 4px}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card{grid-template-columns:52px max-content minmax(0,1fr);grid-template-rows:auto;min-height:64px;margin-block:0;padding:6px 10px;column-gap:10px}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card .brand{grid-column:1;grid-row:1;min-height:0}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card .brand img{width:34px;height:34px}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card .module-title-chip{grid-column:2;grid-row:1}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card__user-row{grid-column:3;grid-row:1;min-height:0}
  .app-shell--events .module-view--events{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) 36px;gap:8px}
  .app-shell--events .event-schedule{grid-column:1;grid-row:1/-1;height:100%}
  .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -1509,4 +1628,62 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .app-shell--checklist .checklist-qr-launcher{grid-column:2;grid-row:1}
  .app-shell--checklist .checklist-report-launchers{grid-column:2;grid-row:2}
  .app-shell--checklist .checklist-home-button{grid-column:2;grid-row:3}
+}
+
+/* Escala e Etiquetas mantêm as ações visíveis quando o aparelho é girado. */
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell--home .content-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr)}
+ .app-shell--home .schedule-card{gap:4px}
+ .app-shell--home .schedule-date-block{padding:3px}
+ .app-shell--home .schedule-date-block .date-picker input{height:30px;min-height:30px}
+ .app-shell--home .schedule-date-block .schedule-day-nav{padding:3px;gap:4px}
+ .app-shell--home .schedule-date-block .schedule-day-nav button{min-height:28px;padding:3px 4px}
+ .app-shell--home .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;padding:2px}
+ .app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token{min-height:24px;padding:1px 3px;font-size:.62rem}
+ .app-shell--home .module-mark,.app-shell--home .module-icon{flex-basis:22px;width:22px;height:22px}
+ .app-shell--home .module-card{gap:4px;padding:3px 5px}
+ .app-shell--home .module-card strong{font-size:.6rem}
+ .app-shell--home .module-card small{display:none}
+ .app-shell--labels .module-view--labels{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) 36px;gap:8px}
+ .app-shell--labels .module-view--labels>.label-workspace{grid-column:1;grid-row:1/-1;height:100%;max-height:none;padding:6px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) repeat(2,minmax(36px,1fr));gap:6px}
+ .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2vw,.82rem)}
+ .app-shell--labels .label-action-grid #label-camera-open{gap:9px}
+ .app-shell--labels .label-action-grid #label-camera-open::before{width:32px}
+ .app-shell--labels .label-report-launchers{grid-column:2;grid-row:1;height:100%;max-height:none;margin:0;padding:5px;gap:6px}
+ .app-shell--labels .label-report-launchers button{min-height:34px}
+ .app-shell--labels .labels-home-button{grid-column:2;grid-row:2;min-height:0;height:100%;margin:0}
+}
+
+/* Cada sigla reserva sua linha de número, sem sobrepor os botões vizinhos. */
+:is(.app-shell--home,.app-shell--events) .schedule-content>.schedule-siglas-grid .sigla-item{grid-template-rows:minmax(0,1fr) auto;align-content:stretch;gap:1px}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token,.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid .sigla-token{min-height:0;height:100%}
+@media(orientation:portrait){.app-shell--home .content-grid{grid-template-columns:minmax(0,1fr)}}
+@media(orientation:portrait) and (max-height:600px){
+ .app-shell--events .event-schedule .schedule-day-nav button{min-height:30px;padding:4px;font-size:.68rem;white-space:nowrap}
+ .app-shell--events .identity-card{margin-block:0}
+ .app-shell--events .topbar{padding-block:max(5px,env(safe-area-inset-top)) 5px}
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:2px}
+ .app-shell--events .event-report-launchers button{min-height:40px!important}
+}
+
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell--events .event-schedule-heading .date-picker input{height:32px!important;min-height:32px!important;padding-block:3px}
+ .app-shell--events .event-schedule .schedule-day-nav button{min-height:28px;padding:3px 4px;font-size:.68rem;white-space:nowrap}
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{gap:4px;padding:2px}
+}
+@media(max-height:600px){
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token>strong{white-space:nowrap}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token__vacation-rank{font-size:.55rem}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token__vacation-number{font-size:.35rem}
+ :is(.app-shell--home,.app-shell--events) .schedule-content>.schedule-siglas-grid .sigla-index{min-height:8px;font-size:.48rem;line-height:1}
+ .app-shell--events .event-schedule .sigla-token--support{font-size:.55rem}
+}
+@media(orientation:landscape) and (max-height:350px){
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .app-shell--events .event-schedule .sigla-token--support{font-size:.48rem}
+ .app-shell--home .schedule-date-heading{padding-bottom:3px!important}
+ .app-shell--home .schedule-date-block .date-picker input{height:28px;min-height:28px}
+ .app-shell--home .schedule-date-block .schedule-day-nav{padding:2px}
+ .app-shell--home .schedule-date-block .schedule-day-nav button{min-height:24px}
 }

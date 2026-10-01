@@ -1,4 +1,6 @@
 import './styles.css';
+import {createStartupReportCache} from './startup-report-cache.js';
+import {labelReportPresentation, withLabelReportDeadline} from './label-report-state.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
@@ -16,6 +18,50 @@ import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 
 const app = document.querySelector('#app');
+const STARTUP_BANNER_DURATION_MS = 4000;
+let startupBannerActive = firebaseConfigured;
+const startupReports = createStartupReportCache();
+const startupReportKey = (kind, uid, day, scope = '') => JSON.stringify([kind, uid, day, scope]);
+
+function preloadStartupReports(user) {
+  if (!navigator.onLine || session.offline || session.status !== 'signed-in') return;
+  const uid = user.uid;
+  const day = todayInputValue();
+  const sigla = session.profile?.sigla || '';
+  const isAdmin = can('admin');
+  const canManageLabels = can('labelsManage');
+  const stillCurrent = () => session.status === 'signed-in' && session.user?.uid === uid;
+  const warm = (key, read) => startupReports.warm(key, () => withLabelReportDeadline(async () => {
+    if (!stillCurrent()) throw new Error('Sessão alterada.');
+    return read();
+  }));
+  if (featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)) {
+    warm(startupReportKey('labels', uid, day, [sigla, canManageLabels]), async () => {
+      const {listLabelRecords} = await import('./label-report-reader.js');
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      return listLabelRecords({from: day, to: day, uid, sigla, canManage: canManageLabels, pageSize: 50, cursor: null});
+    });
+  }
+  if (featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can)) {
+    warm(startupReportKey('events', uid, day, [sigla, isAdmin]), async () => {
+      const {listEventRecords} = await import('./data.js');
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      return listEventRecords({from: day, to: day, uid, sigla, isAdmin, cursor: null, includePending: true});
+    });
+  }
+  if (featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can)) {
+    warm(startupReportKey('checklist', uid, day), async () => {
+      const {listModuleRecords, listChecklistRecords} = await import('./data.js');
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      const stations = await listModuleRecords('checklist', uid);
+      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      const stationIds = stations.filter(station => stationIsInDateRange(station, day)).map(station => station.id).sort();
+      const result = await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
+      return {...result, startupStationIds: stationIds};
+    });
+  }
+  window.setTimeout(() => startupReports.clear(), 30000);
+}
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
@@ -69,10 +115,12 @@ let pendingEventPosition = null;
 let labelReportMode = 'daily';
 let labelReportOpen = false;
 let labelReportLoad = 0;
+let labelReportState = 'idle';
 let loadedLabelRecords = [];
 let labelReportCursor = null;
 let labelReportLoadingMore = false;
 let loadedLabelStaffSiglas = [];
+let labelManualConfirmation = {uid: '', status: ''};
 let reportPdfPromise = null;
 let checklistReportMode = 'daily';
 let checklistReportOpen = false;
@@ -138,7 +186,8 @@ function preloadOperationalDataWhenIdle(user) {
       scheduledDataPreloads.delete(preloadKey);
     }
   };
-  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
+  if (startupBannerActive) void preload();
+  else if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
   else window.setTimeout(preload, 700);
 }
 
@@ -299,14 +348,30 @@ function renderEventSupportTile(eventsWritable) {
   return `<div class="sigla-item"><button class="sigla-token sigla-button sigla-token--support" type="button" data-event-support ${eventsWritable ? '' : 'disabled'} aria-label="Lançar evento de Suporte" title="Lançar Suporte"><strong>SUPORTE</strong></button><div class="sigla-index" aria-hidden="true"></div></div>`;
 }
 
+function renderLabelManualConfirmation() {
+  if (labelManualConfirmation.uid !== session.user?.uid || !labelManualConfirmation.status) return '';
+  const confirmed = labelManualConfirmation.status === 'confirmed';
+  return `<span class="label-manual-confirmation${confirmed ? '' : ' label-manual-confirmation--pending'}" data-label-manual-confirmation role="status" aria-label="${confirmed ? 'Registro manual confirmado no Firestore' : 'Registro manual pendente de confirmação'}"><span aria-hidden="true">${confirmed ? '✓' : '✕'}</span><small>${confirmed ? 'Confirmado' : 'Pendente'}</small></span>`;
+}
+
+function updateLabelManualConfirmation(status, uid) {
+  labelManualConfirmation = {uid, status};
+  if (uid !== session.user?.uid) return;
+  const button = document.querySelector('#label-manual-open');
+  if (!button) return;
+  button.querySelector('[data-label-manual-confirmation]')?.remove();
+  button.classList.toggle('label-manual--has-status', Boolean(status));
+  if (status) button.insertAdjacentHTML('beforeend', renderLabelManualConfirmation());
+}
+
 function actionForm(route) {
   if (route === 'events') {
     if (!can('eventsWrite')) return '';
-    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><h3 id="event-launch-title">LANÇAMENTO DO EVENTO</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
+    return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><h3 id="event-launch-title" tabindex="-1" autofocus>LANÇAMENTO DO EVENTO</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
-    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>MEMBRO AUSENTE/ATRASADO</span><input name="memberStatus" maxlength="160" readonly autofocus placeholder="Selecione uma sigla na escala"></label></div>
+    <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>MEMBRO AUSENTE/ATRASADO</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
     <input name="scheduleSigla" type="hidden">
-    <label><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
+    <label class="event-type-field"><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="description"><span>Descrição do evento</span><textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
     <label data-event-field="delayMultiple"><span>Múltiplo do atraso</span><select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
     <label data-event-field="substitute"><span>Substituto</span><select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift"><span>Turno</span><select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
@@ -336,7 +401,7 @@ function actionForm(route) {
     <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
-  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" disabled>LER ETIQUETA</button><button class="secondary-button" type="button" id="label-manual-open">REGISTRO MANUAL</button></div><p id="label-ai-status" class="sr-only" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label class="label-entry-date"><input name="date" type="date" value="${todayInputValue()}" readonly required aria-readonly="true" aria-label="Data da leitura, preenchida automaticamente"></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label class="label-entry-insurance" data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label class="label-entry-attendance"><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label class="label-entry-procedure" data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label class="label-entry-type"><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label class="label-entry-creditor"><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><label class="label-entry-amount" data-label-field="amount" hidden><span>Valor em Real · opcional</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTAS</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div><small id="label-staff-catalog-note" class="record-meta">Selecione as siglas autorizadas.</small></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
+  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" disabled>LER ETIQUETA</button><button class="secondary-button${labelManualConfirmation.uid === session.user.uid ? ' label-manual--has-status' : ''}" type="button" id="label-manual-open"><span>REGISTRO MANUAL</span>${renderLabelManualConfirmation()}</button></div><p id="label-ai-status" class="sr-only" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label class="label-entry-date"><input name="date" type="date" value="${todayInputValue()}" readonly required aria-readonly="true" aria-label="Data da leitura, preenchida automaticamente"></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label class="label-entry-insurance" data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label class="label-entry-attendance"><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label class="label-entry-procedure" data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label class="label-entry-type"><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label class="label-entry-creditor"><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><label class="label-entry-amount" data-label-field="amount" hidden><span>Valor em Real · opcional</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTAS</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
   if (route === 'management' && (can('managementActivityWrite') || can('qualityManage'))) return `<details class="quick-form" open><summary>Nova atividade</summary><form data-module-form="activity">
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
@@ -356,24 +421,23 @@ function shellView() {
   const profile = session.profile;
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" width="1536" height="1024" loading="lazy" decoding="async"></figure>` : '';
-  const managementBrand = route === 'management' ? `<section class="management-brand-banner" aria-label="Segmento de Gestão SAHMT"><div><p>Segmento de Gestão</p><h2>SAHMT</h2></div><img src="${import.meta.env.BASE_URL}assets/selo-qga-accredited-qmentum-diamond.png" alt="Selo QGA Accredited Qmentum Diamond" width="80" height="80" loading="lazy" decoding="async"></section>` : '';
   const utilityCards = route === 'management' ? managementUtilityCards() : '';
-  const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><h3>ACESSOS DE GESTÃO</h3><div class="module-grid">${utilityCards}</div></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div></dialog>` : '';
+  const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><div class="module-grid">${utilityCards}</div></section>` : '';
+  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer event-report-footer" id="event-report-footer" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></footer></dialog>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const checklistCalendar = '';
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily">RELATÓRIO DIÁRIO</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title">RELATÓRIO DIÁRIO - CHECKLIST</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div></dialog>` : '';
-  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
+  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementBrand}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'VOLTAR' : 'Voltar para Home'}</button></section>`;
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : ''}">
-    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational module-title-chip">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational module-title-chip">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title module-title-chip">CHECKLIST</h2>' : route === 'management' ? '<h1 class="events-header-operational module-title-chip">GESTÃO</h1>' : route === 'home' ? '<h2 class="home-header-scale module-title-chip">ESCALA</h2>' : ''}</div></header>
+    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational module-title-chip">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational module-title-chip">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title module-title-chip">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale module-title-chip">ESCALA</h2>' : route === 'management' ? '<h1 class="events-header-operational module-title-chip">GESTÃO</h1>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title">Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><header><div><p class="eyebrow">ARSENAL ANESTÉSICO</p><h3 id="checklist-station-title">Checklist da estação</h3></div><button class="secondary-button" id="checklist-station-close" type="button">Fechar</button></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-actions" class="checklist-station-banner-actions"></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
@@ -600,6 +664,7 @@ async function loadModule(route) {
       if (eventReportMode === 'daily' && reportDay) reportDay.value = document.querySelector('#event-schedule-date')?.value || todayInputValue();
       document.querySelector('#event-day-control').hidden = eventReportMode !== 'daily';
       document.querySelector('#event-month-control').hidden = eventReportMode !== 'monthly';
+      document.querySelector('#event-report-footer').hidden = eventReportMode !== 'monthly';
       await loadEventReport();
     }));
     document.querySelector('#event-report-day')?.addEventListener('change', loadEventReport);
@@ -630,9 +695,14 @@ async function loadModule(route) {
   }
   if (route === 'labels') {
     content?.remove();
-    void loadReportPdfModule().catch(() => {});
     const reportDialog = document.querySelector('#label-report-dialog');
-    reportDialog?.addEventListener('close', () => { labelReportOpen = false; });
+    reportDialog?.addEventListener('close', () => {
+      labelReportOpen = false;
+      labelReportLoad++;
+      labelReportLoadingMore = false;
+      labelReportState = 'idle';
+      updateLabelReportSync();
+    });
     document.querySelectorAll('[data-label-report-launch]').forEach((button) => button.addEventListener('click', async () => {
       labelReportMode = button.dataset.labelReportLaunch;
       labelReportOpen = true;
@@ -645,6 +715,7 @@ async function loadModule(route) {
       if (labelReportMode === 'daily' && reportDay) reportDay.value = todayInputValue();
       document.querySelector('#label-day-control').hidden = labelReportMode !== 'daily';
       document.querySelector('#label-month-control').hidden = labelReportMode !== 'monthly';
+      document.querySelector('#label-report-footer').hidden = labelReportMode !== 'monthly';
       await loadLabelReport();
     }));
     document.querySelector('#label-report-day')?.addEventListener('change', loadLabelReport);
@@ -661,6 +732,12 @@ async function loadModule(route) {
     document.querySelector('#label-entry-close')?.addEventListener('click', resetLabelEditor);
     document.querySelector('#label-manual-open')?.addEventListener('click', () => {
       resetLabelEditor({keepOpen: true});
+      const form = document.querySelector('[data-module-form="labels"]');
+      if (form) form.dataset.labelEntrySource = 'manual';
+      labelManualConfirmation = {uid: '', status: ''};
+      const button = document.querySelector('#label-manual-open');
+      button?.classList.remove('label-manual--has-status');
+      button?.querySelector('[data-label-manual-confirmation]')?.remove();
       const dialog = document.querySelector('#label-entry-dialog');
       if (dialog?.showModal) dialog.showModal();
     });
@@ -837,7 +914,9 @@ async function loadModule(route) {
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Carregando atividades…</p></section>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      const areaDialog = content.querySelector('#management-area-dialog');
+      areaDialog?.addEventListener('close', () => { managementActivityLoad++; });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
         const button = event.currentTarget;
@@ -867,9 +946,9 @@ async function loadModule(route) {
           });
           const select = document.querySelector('#activity-area');
           if (select) select.value = selectedManagementAreaId;
+          if (areaDialog && !areaDialog.open) areaDialog.showModal();
           await loadManagementAreaActivities(items.find((area) => area.id === selectedManagementAreaId));
         }));
-        await loadManagementAreaActivities(items.find((area) => area.id === selectedManagementAreaId));
       }
     } else {
       const heading = (item) => route === 'events'
@@ -1217,7 +1296,13 @@ async function loadDailyChecklist(stations, suppliedDay) {
   content.innerHTML = '<p class="loading">Carregando registros do dia…</p>';
   try {
     const {listChecklistRecords} = await import('./data.js');
-    const result = await listChecklistRecords(day, session.user.uid, {pageSize: 1000, stationIds: applicableStations.map((station) => station.id)});
+    const uid = session.user.uid;
+    const stationIds = applicableStations.map(station => station.id).sort();
+    const preloaded = navigator.onLine ? startupReports.take(startupReportKey('checklist', uid, day)) : null;
+    const ready = preloaded ? await preloaded.catch(() => null) : null;
+    const result = ready && JSON.stringify(ready.startupStationIds) === JSON.stringify(stationIds)
+      ? ready : await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
+    if (session.user?.uid !== uid || !content.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue())) return;
     const records = result.records;
     const syncIndicator = document.querySelector('#checklist-report-sync');
     if (syncIndicator) {
@@ -1623,6 +1708,8 @@ async function loadEventReport({append = false} = {}) {
   const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
   if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
+    labelReportState = 'error';
+    updateLabelReportSync();
     return false;
   }
   let from = day;
@@ -1645,7 +1732,9 @@ async function loadEventReport({append = false} = {}) {
   if (pdfButton) pdfButton.disabled = true;
   try {
     const {listEventRecords} = await import('./data.js');
-    const report = await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
+    const preloaded = !append && eventReportMode === 'daily' && navigator.onLine
+      ? startupReports.take(startupReportKey('events', session.user.uid, day, [session.profile?.sigla || '', can('admin')])) : null;
+    const report = (preloaded ? await preloaded.catch(() => null) : null) || await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
     if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
     if (append) {
       const existingIds = new Set(eventReportSourceRecords.map((item) => item.id));
@@ -1700,28 +1789,51 @@ function renderEventReportRecords({append = false} = {}) {
   const heading = eventReportMode === 'daily'
     ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
     : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
-  const recordMarkup = (item) => {
+  const recordMarkup = (item, index = records.indexOf(item)) => {
     const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
-    const showHistory = eventReportMode === 'daily' && confirmed && Number(item.version) > 1;
-    const canEdit = can('admin') && confirmed;
+    const showHistory = eventReportMode === 'daily' && confirmed;
+    const canEdit = eventReportMode === 'daily' && can('admin') && confirmed;
     const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
     const status = item.pendingEdit && item.syncFailed ? 'Rascunho de edição não confirmado' : item.pendingEdit ? 'Edição aguardando confirmação' : item.syncFailed ? 'Registro recusado pelo Firestore' : item.pendingFirestore ? 'Aguardando confirmação do Firestore' : '';
     const amount = item.amountToPay != null && item.amountToPay !== '' ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : '';
-    return `<li class="event-record-banner${confirmed ? '' : ' event-record-banner--pending'}" data-event-record="${escapeHtml(item.id)}"><div class="event-record-banner__heading"><div><strong>${escapeHtml(item.memberStatus || 'Evento')}</strong><span>${escapeHtml(item.eventType || 'Outros')}</span></div>${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div><div class="event-record-banner__details"><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${amount}${registration}${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}</div></li>`;
+    if (eventReportMode === 'daily') {
+      const recordId = escapeHtml(item.id);
+      const fields = [
+        ['DATA', formatRecordDate(item.date)], ['MEMBRO / SITUAÇÃO', item.memberStatus],
+        ['TIPO DE EVENTO', item.eventType], ['DESCRIÇÃO', item.description],
+        ['TURNO', item.shift], ['SUBSTITUTO', item.substitute], ['PAGADOR', item.payer], ['CREDOR', item.creditor],
+        ...(item.delayMultiple != null && item.delayMultiple !== '' ? [['MÚLTIPLO DO ATRASO', String(item.delayMultiple)]] : []),
+        ...(item.amountToPay != null && item.amountToPay !== '' ? [['VALOR A PAGAR', 'R$ ' + Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})]] : [])
+      ];
+      return `<li class="label-daily-record event-daily-record${confirmed ? '' : ' event-daily-record--pending'}" data-event-record="${recordId}"><span class="label-record-index" aria-label="Registro ${index + 1}">${index + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div><div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')}</strong></div>${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}<div class="label-record-actions">${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${showHistory ? `<button class="secondary-button" type="button" data-event-history="${recordId}" aria-expanded="false" aria-controls="event-history-${recordId}">Histórico</button>` : ''}</div>${showHistory ? `<section class="label-history event-history" id="event-history-${recordId}" data-event-history-panel="${recordId}" aria-label="Histórico do evento" hidden></section>` : ''}</li>`;
+    }
+    return `<li class="event-record-banner${confirmed ? '' : ' event-record-banner--pending'}" data-event-record="${escapeHtml(item.id)}"><div class="event-record-banner__heading"><div><strong>${escapeHtml(item.memberStatus || 'Evento')}</strong><span>${escapeHtml(item.eventType || 'Outros')}</span></div></div><div class="event-record-banner__details"><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${amount}${registration}${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}</div></li>`;
   };
-  const bannerList = records.length ? `<ul class="event-record-banner-list">${records.map(recordMarkup).join('')}</ul>` : `<p class="empty-state">${empty}</p>`;
+  const bannerList = records.length ? `<ul class="event-record-banner-list${eventReportMode === 'daily' ? ' record-list' : ''}">${records.map(recordMarkup).join('')}</ul>` : `<p class="empty-state">${empty}</p>`;
   const moreButton = eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : '';
   if (append) {
     const visibleIds = new Set([...target.querySelectorAll('[data-event-record]')].map((element) => element.dataset.eventRecord));
     const newRecords = records.filter((item) => !visibleIds.has(item.id));
-    target.querySelector('.event-record-banner-list')?.insertAdjacentHTML('beforeend', newRecords.map(recordMarkup).join(''));
+    target.querySelector('.event-record-banner-list')?.insertAdjacentHTML('beforeend', newRecords.map(item => recordMarkup(item)).join(''));
     target.querySelector('#event-report-more')?.remove();
     target.insertAdjacentHTML('beforeend', moreButton);
   } else {
     target.innerHTML = `${heading}${syncNotice}${bannerList}${moreButton}`;
   }
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
-  if (eventReportMode === 'daily') void loadDailyEventEditNotes(records, target);
+  target.querySelectorAll('[data-event-history]').forEach((button) => {
+    if (button.dataset.historyBound === 'true') return;
+    button.dataset.historyBound = 'true';
+    button.addEventListener('click', async () => {
+      const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(button.dataset.eventHistory)}"]`);
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      button.setAttribute('aria-expanded', String(!panel.hidden));
+      button.textContent = panel.hidden ? 'Histórico' : 'Fechar histórico';
+      if (panel.hidden || panel.dataset.loaded === 'true' || panel.dataset.loading === 'true') return;
+      await loadDailyEventEditNotes(records.filter(item => item.id === button.dataset.eventHistory), target);
+    });
+  });
   target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
     event.currentTarget.disabled = true;
     loadEventReport({append: true});
@@ -1729,26 +1841,31 @@ function renderEventReportRecords({append = false} = {}) {
 }
 
 async function loadDailyEventEditNotes(records, target) {
-  const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed && Number(item.version) > 1);
+  const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed);
   if (!changed.length) return;
-  const {listEventHistory} = await import('./data.js');
   const labels = {date: 'Data', memberSigla: 'Sigla do membro', scheduleSigla: 'Sigla da escala', memberStatus: 'Membro / situação', eventType: 'Tipo de evento', description: 'Descrição', delayMultiple: 'Múltiplo do atraso', substitute: 'Substituto', shift: 'Turno', payer: 'Pagador', creditor: 'Credor', amountToPay: 'Valor', status: 'Status'};
   const value = (item) => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
   await Promise.all(changed.map(async (item) => {
     const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(item.id)}"]`);
     if (!panel) return;
+    panel.dataset.loading = 'true';
+    panel.innerHTML = '<small class="loading">Carregando histórico…</small>';
     try {
+      const {listEventHistory} = await import('./data.js');
       const history = await listEventHistory(item.id, {pageSize: 50});
       if (!panel.isConnected) return;
-      panel.innerHTML = history.length ? `<strong>Edições do registro</strong><ol>${history.map((entry) => `<li><strong>${escapeHtml(entry.actorName || entry.actorUid || 'Administrador')} · ${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><ul>${entry.changedFields.map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before[field]))}</small><small>Depois: ${escapeHtml(value(entry.after[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração encontrada.</small>';
+      panel.innerHTML = history.length ? `<ol>${history.map((entry) => `<li><strong>Versão ${escapeHtml(String(entry.version || '—'))} · ${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><small>Responsável: ${escapeHtml(entry.actorName || entry.actorUid || 'Não informado')}</small><ul>${(entry.changedFields || []).map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before?.[field]))}</small><small>Depois: ${escapeHtml(value(entry.after?.[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração registrada.</small>';
+      panel.dataset.loaded = 'true';
     } catch (error) {
       if (panel.isConnected) panel.innerHTML = `<small>Não foi possível carregar as edições. ${escapeHtml(error.message || '')}</small>`;
+    } finally {
+      panel.dataset.loading = 'false';
     }
   }));
 }
 
 function beginEventEdit(item) {
-  if (!can('admin')) return;
+  if (eventReportMode !== 'daily' || !can('admin')) return;
   const form = document.querySelector('[data-module-form="events"]');
   if (!form || !item) return;
   const status = document.querySelector('#event-form-status');
@@ -1778,9 +1895,13 @@ function beginEventEdit(item) {
   const dialog = document.querySelector('#event-launch-dialog');
   dialog?.classList.add('event-launch-dialog--editing');
   const title = document.querySelector('#event-launch-title');
-  if (title) title.textContent = 'EDITAR EVENTO';
+  if (title) {
+    title.textContent = 'EDITAR EVENTO';
+    title.setAttribute('tabindex', '-1');
+    title.setAttribute('autofocus', '');
+  }
   if (dialog && !dialog.open) dialog.showModal();
-  form.elements.memberStatus.focus({preventScroll: true});
+  title?.focus({preventScroll: true});
 }
 
 function resetEventEditor() {
@@ -1801,15 +1922,31 @@ function resetEventEditor() {
   const dialog = document.querySelector('#event-launch-dialog');
   dialog?.classList.remove('event-launch-dialog--editing');
   const title = document.querySelector('#event-launch-title');
-  if (title) title.textContent = 'LANÇAMENTO DO EVENTO';
+  if (title) {
+    title.textContent = 'LANÇAMENTO DO EVENTO';
+    title.setAttribute('autofocus', '');
+    title.setAttribute('tabindex', '-1');
+  }
   if (dialog?.open) dialog.close();
+}
+
+function updateLabelReportSync() {
+  const target = document.querySelector('#label-report-sync');
+  if (!target) return;
+  const status = labelReportPresentation(labelReportState, navigator.onLine);
+  target.classList.toggle('label-report-sync--synced', status.confirmed);
+  target.innerHTML = status.confirmed ? '<span aria-hidden="true">✓</span> Sincronizado' : escapeHtml(status.text);
 }
 
 async function loadLabelReport(options = {}) {
   const target = document.querySelector('#label-report-results');
   if (!target) return false;
   const append = options?.append === true;
+  if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
   const loadId = ++labelReportLoad;
+  const requestUid = session.user.uid;
+  labelReportState = 'loading';
+  updateLabelReportSync();
   const day = document.querySelector('#label-report-day')?.value || todayInputValue();
   const month = document.querySelector('#label-report-month')?.value || todayInputValue().slice(0, 7);
   if (labelReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || labelReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
@@ -1822,7 +1959,6 @@ async function loadLabelReport(options = {}) {
     from = `${month}-01`;
     to = `${year}-${String(monthNumber).padStart(2, '0')}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
   }
-  if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
   if (append) labelReportLoadingMore = true;
   else {
     target.innerHTML = '<p class="loading">Carregando registros…</p>';
@@ -1834,9 +1970,18 @@ async function loadLabelReport(options = {}) {
   const pdfButton = document.querySelector('#share-labels-pdf');
   if (pdfButton && !append) pdfButton.disabled = true;
   try {
-    const {listLabelRecords} = await import('./data.js');
-    const report = await listLabelRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), cursor: append ? labelReportCursor : null});
-    if (loadId !== labelReportLoad || !document.querySelector('#label-report-results')) return false;
+    const report = await withLabelReportDeadline(async () => {
+      if (!navigator.onLine) throw Object.assign(new Error('Conecte-se à internet para consultar as etiquetas.'), {code: 'unavailable'});
+      const preloaded = !append && labelReportMode === 'daily'
+        ? startupReports.take(startupReportKey('labels', requestUid, day, [session.profile?.sigla || '', can('labelsManage')])) : null;
+      if (preloaded) {
+        const ready = await preloaded.catch(() => null);
+        if (ready) return ready;
+      }
+      const {listLabelRecords} = await import('./label-report-reader.js');
+      return listLabelRecords({from, to, uid: requestUid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), pageSize: 50, cursor: append ? labelReportCursor : null});
+    });
+    if (loadId !== labelReportLoad || !target.isConnected || session.user?.uid !== requestUid) return false;
     if (append) {
       const existingIds = new Set(loadedLabelRecords.map((item) => item.id));
       loadedLabelRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
@@ -1849,7 +1994,7 @@ async function loadLabelReport(options = {}) {
     const reportHeading = labelReportMode === 'daily' ? `<h3 class="event-report-day-heading">Etiquetas · ${escapeHtml(formatRecordDate(day))}</h3>` : '';
     target.innerHTML = `${reportHeading}${records.length ? `<ul class="record-list">${records.map((item) => {
       const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
-      const mayEdit = (can('labelsWrite') || can('labelsManage')) &&
+      const mayEdit = labelReportMode === 'daily' && (can('labelsWrite') || can('labelsManage')) &&
         (item.createdByUid === session.user.uid || can('labelsManage') || (ownSigla && item.staffSiglas?.includes(ownSigla)));
       const daily = labelReportMode === 'daily';
       const recordId = escapeHtml(item.id);
@@ -1865,7 +2010,7 @@ async function loadLabelReport(options = {}) {
         ];
         return `<li class="label-daily-record"><span class="label-record-index" aria-label="Registro ${records.indexOf(item) + 1}">${records.indexOf(item) + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div>${registration}<div class="label-record-actions">${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${history}</div>${historyPanel}</li>`;
       }
-      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong><span>${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">Editar</button>` : ''}</span></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`;
+      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`;
     }).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
     target.querySelectorAll('[data-label-edit]').forEach((button) => button.addEventListener('click', () => beginLabelEdit(records.find((item) => item.id === button.dataset.labelEdit))));
     target.querySelectorAll('[data-label-history]').forEach((button) => button.addEventListener('click', async () => {
@@ -1903,9 +2048,13 @@ async function loadLabelReport(options = {}) {
       event.currentTarget.disabled = true;
       loadLabelReport({append: true});
     });
+    labelReportState = 'synced';
+    updateLabelReportSync();
     return true;
   } catch (error) {
-    if (loadId === labelReportLoad) {
+    if (loadId === labelReportLoad && target.isConnected && session.user?.uid === requestUid) {
+      labelReportState = 'error';
+      updateLabelReportSync();
       if (append) {
         target.insertAdjacentHTML('afterbegin', `<p class="empty-state">Não foi possível carregar mais etiquetas. ${escapeHtml(error.message || '')}</p>`);
         const moreButton = target.querySelector('#label-report-more');
@@ -1914,16 +2063,21 @@ async function loadLabelReport(options = {}) {
           moreButton.textContent = navigator.onLine ? 'Tentar carregar mais' : 'Conecte-se para carregar mais';
         }
       } else target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
+      target.querySelector('#label-report-retry')?.remove();
+      target.insertAdjacentHTML('beforeend', '<button class="secondary-button" type="button" id="label-report-retry">Tentar novamente</button>');
+      target.querySelector('#label-report-retry')?.addEventListener('click', () => void loadLabelReport({append}));
     }
     return false;
   } finally {
-    if (append) labelReportLoadingMore = false;
+    if (append && loadId === labelReportLoad) labelReportLoadingMore = false;
   }
 }
 
 function beginLabelEdit(item) {
+  if (labelReportMode !== 'daily') return;
   const form = document.querySelector('[data-module-form="labels"]');
   if (!form || !item) return;
+  form.dataset.labelEntrySource = 'edit';
   form.elements.editLabelId.value = item.id;
   form.elements.editLabelVersion.value = String(Math.max(1, Number(item.version) || 1));
   form.elements.type.value = item.type || '';
@@ -1946,6 +2100,7 @@ function beginLabelEdit(item) {
 function resetLabelEditor({keepOpen = false} = {}) {
   const form = document.querySelector('[data-module-form="labels"]');
   if (!form) return;
+  form.dataset.labelEntrySource = '';
   form.reset();
   setLabelStaffSiglas([]);
   form.elements.date.value = todayInputValue();
@@ -2061,6 +2216,7 @@ async function shareReportPdf(kind) {
 async function loadManagementAreaActivities(area) {
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
+  const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
   detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">ATIVIDADES</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header><p class="loading">Carregando atividades…</p>`;
@@ -2090,7 +2246,7 @@ async function loadManagementAreaActivities(area) {
       if (!itemsByPlan.has(item.planId)) itemsByPlan.set(item.planId, []);
       itemsByPlan.get(item.planId).push(item);
     }
-    if (loadId !== managementActivityLoad || !document.querySelector('#management-area-detail')) return;
+    if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
     const indicatorsView = indicators.length ? `<section class="management-indicators"><h4>Indicadores · ${indicators.length}</h4><div class="indicator-grid">${indicators.map((indicator, index) => {
       const recent = measurements[index] || [];
       const latest = recent[0];
@@ -2427,7 +2583,7 @@ async function loadManagementAreaActivities(area) {
       }
     }));
   } catch (error) {
-    if (loadId !== managementActivityLoad) return;
+    if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
     detail.innerHTML = `<p class="empty-state">Não foi possível carregar as atividades. ${escapeHtml(error.message || '')}</p>`;
   }
 }
@@ -2667,8 +2823,14 @@ async function bindModuleForm(route) {
     event.preventDefault();
     const form = event.currentTarget;
     const submit = form.querySelector('[type="submit"]');
+    // Release editable focus before saving; Safari must not restore input zoom.
+    const focusedControl = document.activeElement;
+    if (route === 'labels' && focusedControl?.matches?.('input, select, textarea') && form.contains(focusedControl)) focusedControl.blur();
     submit.disabled = true;
     const values = Object.fromEntries(new FormData(form).entries());
+    const actorUid = session.user.uid;
+    const manualLabelEntry = route === 'labels' && (form.dataset.labelEntrySource === 'manual' || Boolean(values.editLabelId));
+    if (manualLabelEntry) updateLabelManualConfirmation('pending', actorUid);
     const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
     try {
       if (route === 'people') {
@@ -2735,7 +2897,11 @@ async function bindModuleForm(route) {
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
           await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName, Number(values.editLabelVersion));
-          notice = 'Etiqueta atualizada no Firestore.';
+          updateLabelManualConfirmation('confirmed', actorUid);
+          notice = '';
+          const entryDialog = document.querySelector('#label-entry-dialog');
+          if (entryDialog?.open) entryDialog.close();
+          document.querySelector('#label-manual-open')?.focus?.({preventScroll: true});
           await render();
           return;
         }
@@ -2783,6 +2949,13 @@ async function bindModuleForm(route) {
       notice = result.pendingFirestore
         ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
+      if (manualLabelEntry) {
+        updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
+        notice = '';
+        const entryDialog = document.querySelector('#label-entry-dialog');
+        if (entryDialog?.open) entryDialog.close();
+        document.querySelector('#label-manual-open')?.focus?.({preventScroll: true});
+      }
       await render();
     } catch (error) {
       notice = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para esta ação.' : `Não foi possível salvar. ${error.message || ''}`;
@@ -2804,6 +2977,7 @@ async function bindModuleForm(route) {
           if (status) status.textContent = `${error.message} Seus dados continuam no formulário. Atualize o relatório e compare antes de tentar novamente.`;
           if (refresh) refresh.hidden = false;
         } else if (status) status.textContent = notice;
+        notice = '';
         submit.disabled = false;
         return;
       }
@@ -3219,6 +3393,7 @@ function bindLabelAi(workspace, form) {
       form.elements.creditor.dispatchEvent(new Event('change', {bubbles: true}));
       updateLabelEntryFields(form);
       form.elements.date.value = todayInputValue();
+      form.dataset.labelEntrySource = 'camera';
       dialog?.showModal();
       const names = {patientName: 'nome', insurance: 'convênio', procedureCode: 'cirurgia', encounterCode: 'atendimento'};
       const uncertain = (result.uncertain || []).map((field) => names[field] || field);
@@ -3417,7 +3592,7 @@ function launchEventSupport(day) {
   if (status) status.textContent = 'Evento de Suporte iniciado. Selecione o substituto e o turno.';
   const dialog = document.querySelector('#event-launch-dialog');
   if (dialog && !dialog.open) dialog.showModal();
-  form.elements.substitute.focus({preventScroll: true});
+  document.querySelector('#event-launch-title')?.focus({preventScroll: true});
 }
 
 async function launchEventFromSchedule(day, position) {
@@ -3609,6 +3784,9 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  labelReportLoad++;
+  labelReportLoadingMore = false;
+  labelReportState = 'idle';
   if (cleanupLabelMedia) {
     cleanupLabelMedia();
     cleanupLabelMedia = null;
@@ -3619,10 +3797,11 @@ async function render() {
     cleanupCurrentModule = null;
     await cleanup();
   }
-  if (session.status === 'checking' || session.status === 'loading-profile') {
+  if (startupBannerActive) {
+    if (app.querySelector('.boot-screen')) return;
     app.innerHTML = `<main class="boot-screen" role="status" aria-live="polite"><div class="boot-card">
       <img src="${import.meta.env.BASE_URL}assets/icon-192.png" width="76" height="76" alt="SAHMT">
-      <strong>SAHMT</strong><span>Iniciando o aplicativo…</span><span class="boot-slogan">Gestão Responsável!</span>
+      <strong>SAHMT</strong><span class="boot-slogan" aria-label="Gestão responsável! Gestão eficiente! Gestão na palma da mão!"><span class="boot-slogan__phrase" aria-hidden="true">Gestão responsável!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão eficiente!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão na palma da mão!</span></span>
       <span class="boot-particles" aria-hidden="true">${[
         [-92, 48, '.02s', '#46d98b'], [-68, 66, '.10s', '#43a5ff'], [-43, 38, '.18s', '#ffc857'], [-21, 78, '.26s', '#ff7a59'],
         [4, 52, '.34s', '#b88cff'], [28, 72, '.42s', '#5ee7d2'], [53, 43, '.50s', '#ffd166'], [80, 64, '.58s', '#ff8fb3'],
@@ -3630,6 +3809,10 @@ async function render() {
       ].map(([x, y, delay, color]) => `<i class="boot-particle" style="--x:${x}px;--y:${y}px;--d:${delay};--c:${color}"></i>`).join('')}</span>
       <i class="boot-spinner" aria-hidden="true"></i>
     </div></main>`;
+    return;
+  }
+  if (session.status === 'checking' || session.status === 'loading-profile') {
+    app.innerHTML = `<main class="login-gate"><section class="login-card" role="status" aria-live="polite"><h1>SAHMT</h1><p>Verificando acesso…</p><i class="boot-spinner" aria-hidden="true"></i></section></main>`;
     return;
   }
   if (session.status !== 'signed-in') {
@@ -3670,11 +3853,7 @@ async function updateOutboxStatus() {
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
-  const reportSync = document.querySelector('#label-report-sync');
-  if (reportSync) {
-    reportSync.classList.toggle('label-report-sync--synced', isSynced);
-    reportSync.innerHTML = isSynced ? '<span aria-hidden="true">✓</span> Sincronizado' : escapeHtml(syncLabel);
-  }
+  updateLabelReportSync();
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
     await retryFailedOperations(session.user.uid);
@@ -3767,7 +3946,11 @@ function bindLogin() {
 
 function sessionChanged(next) {
   const userChanged = session.user?.uid !== next.user?.uid;
-  if (next.status !== 'signed-in' || userChanged) scheduleOutboxRetry('', null);
+  if (userChanged || next.status !== 'signed-in') startupReports.clear();
+  if (next.status !== 'signed-in' || userChanged) {
+    labelManualConfirmation = {uid: '', status: ''};
+    scheduleOutboxRetry('', null);
+  }
   if (next.status !== 'signed-in') {
     appFeatures = {...DEFAULT_APP_FEATURES};
     appFeaturesUid = '';
@@ -3778,6 +3961,19 @@ function sessionChanged(next) {
   }
   session = next;
   notice = '';
+  if (startupBannerActive && next.status === 'signed-in') {
+    if (userChanged) preloadStartupReports(next.user);
+    preloadOperationalDataWhenIdle(next.user);
+    if (navigator.onLine) {
+      void syncOutbox();
+      if (userChanged && can('scheduleRead')) {
+        const uid = next.user.uid;
+        void import('./data-lite.js').then(async ({readSchedule}) => {
+          if (session.status === 'signed-in' && session.user.uid === uid) await readSchedule(todayInputValue(), uid);
+        }).catch((error) => console.warn('[SAHMT] Escala inicial será carregada na tela:', error.code || error.message));
+      }
+    }
+  }
   void render();
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
@@ -3799,6 +3995,7 @@ async function refreshAppFeatures(uid, force = false) {
 }
 window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
 window.addEventListener('online', () => {
+  startupReports.clear();
   if (session.status === 'signed-in') {
     void refreshAppFeatures(session.user.uid, true);
     void syncOutbox();
@@ -3806,17 +4003,25 @@ window.addEventListener('online', () => {
 });
 window.addEventListener('offline', () => { void updateOutboxStatus(); });
 window.addEventListener('sahmt-write-synced', (event) => {
+  startupReports.clear();
   void updateOutboxStatus();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
 window.addEventListener('sahmt-write-queued', () => {
+  startupReports.clear();
   void updateOutboxStatus();
   if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
 });
 window.addEventListener('sahmt-write-rejected', (event) => {
+  startupReports.clear();
   notice = `O Firestore recusou a gravação sincronizada; ela não foi confirmada. ${event.detail?.message || ''}`;
   void render();
 });
+void render();
+if (startupBannerActive) window.setTimeout(() => {
+  startupBannerActive = false;
+  void render();
+}, STARTUP_BANNER_DURATION_MS);
 watchSession(sessionChanged);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

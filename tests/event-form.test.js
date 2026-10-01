@@ -15,9 +15,11 @@ test('normaliza acentos para aplicar as condições de tipo da V1', () => {
   assert.deepEqual(eventFieldRules('Outros'), {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true, disableSubstitute: false, payerMode: 'manual', creditorMode: 'substitute', amountMode: 'manual'});
 });
 
-test('calcula atraso a R$ 100 por múltiplo e turnos pelo valor definido', () => {
-  assert.equal(eventAmountToPay('ATRASO', '0', ''), 0);
-  assert.equal(eventAmountToPay('ATRASO', '2', ''), 200);
+test('calcula atraso a R$ 200 por múltiplo e turnos pelo valor definido', () => {
+  for (let multiple = 0; multiple <= 6; multiple++) {
+    assert.equal(eventAmountToPay('ATRASO', String(multiple), ''), multiple * 200);
+  }
+  assert.equal(eventAmountToPay('ATRASO', '2', ''), 400);
   assert.equal(eventAmountToPay('ATRASO', '', ''), null);
   assert.equal(eventAmountToPay('ATRASO', '7', ''), null);
   assert.equal(eventAmountToPay('Suporte', '', 'Manhã'), 1000);
