@@ -1840,6 +1840,10 @@ function renderEventReportRecords({append = false} = {}) {
   });
 }
 
+function renderRecordEditHistory(history, labels, formatValue = (value) => value == null || value === '' ? '—' : Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value)) {
+  return history.length ? `<ol>${history.map((entry) => `<li><strong>${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><small>Responsável: ${escapeHtml(entry.actorName || entry.actorUid || 'Não informado')}</small><ul>${(entry.changedFields || []).map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(formatValue(entry.before?.[field], field))}</small><small>Depois: ${escapeHtml(formatValue(entry.after?.[field], field))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração registrada.</small>';
+}
+
 async function loadDailyEventEditNotes(records, target) {
   const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed);
   if (!changed.length) return;
@@ -1854,7 +1858,7 @@ async function loadDailyEventEditNotes(records, target) {
       const {listEventHistory} = await import('./data.js');
       const history = await listEventHistory(item.id, {pageSize: 50});
       if (!panel.isConnected) return;
-      panel.innerHTML = history.length ? `<ol>${history.map((entry) => `<li><strong>Versão ${escapeHtml(String(entry.version || '—'))} · ${escapeHtml(interactionDateTime(entry.createdAt) || 'Horário indisponível')}</strong><small>Responsável: ${escapeHtml(entry.actorName || entry.actorUid || 'Não informado')}</small><ul>${(entry.changedFields || []).map((field) => `<li><strong>${escapeHtml(labels[field] || field)}</strong><small>Antes: ${escapeHtml(value(entry.before?.[field]))}</small><small>Depois: ${escapeHtml(value(entry.after?.[field]))}</small></li>`).join('')}</ul></li>`).join('')}</ol>` : '<small>Nenhuma alteração registrada.</small>';
+      panel.innerHTML = renderRecordEditHistory(history, labels, value);
       panel.dataset.loaded = 'true';
     } catch (error) {
       if (panel.isConnected) panel.innerHTML = `<small>Não foi possível carregar as edições. ${escapeHtml(error.message || '')}</small>`;
@@ -2031,12 +2035,14 @@ async function loadLabelReport(options = {}) {
       try {
         const {listLabelHistory} = await import('./data.js');
         const history = await listLabelHistory(button.dataset.labelHistory);
-        historyTarget.innerHTML = history.length ? `<ol>${history.map((entry) => {
-          const date = entry.createdAt?.toDate?.() || (entry.createdAt ? new Date(entry.createdAt) : null);
-          const when = date && !Number.isNaN(date.getTime()) ? date.toLocaleString('pt-BR') : 'Horário indisponível';
-          const fields = entry.changedFields.map((field) => `${escapeHtml(field)}: ${escapeHtml(JSON.stringify(entry.before[field]))} → ${escapeHtml(JSON.stringify(entry.after[field]))}`).join('<br>');
-          return `<li><strong>Versão ${entry.version} · ${escapeHtml(when)}</strong><small>Responsável: ${escapeHtml(entry.actorName || entry.actorUid || 'Não informado')}</small><small>${fields}</small></li>`;
-        }).join('')}</ol>` : '<small>Nenhuma alteração registrada.</small>';
+        const labels = {date: 'Data', patientName: 'Nome do paciente', encounterCode: 'Atendimento', procedureCode: 'Cirurgia', type: 'Tipo de etiqueta', amount: 'Valor', insurance: 'Convênio', creditor: 'Credor', staffSiglas: 'Plantonistas', consultation: 'Consulta pré-anestésica', status: 'Status'};
+        historyTarget.innerHTML = renderRecordEditHistory(history, labels, (value, field) => {
+          if (value == null || value === '') return '—';
+          if (field === 'amount') return 'R$ ' + Number(value).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+          if (field === 'date') return formatRecordDate(value);
+          if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
+          return Array.isArray(value) ? value.join(', ') || '—' : String(value);
+        });
         historyTarget.dataset.loaded = 'true';
         historyTarget.dataset.loading = 'false';
       } catch (error) {
