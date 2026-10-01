@@ -55,4 +55,3 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
     nextCursor
   };
 }
-

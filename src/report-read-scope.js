@@ -39,4 +39,3 @@ export function captureReportReadScope({getSession, getPermissions = current => 
     }
   });
 }
-
