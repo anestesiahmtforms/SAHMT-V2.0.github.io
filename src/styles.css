@@ -1600,3 +1600,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--checklist .checklist-visual-frame .checklist-visual img{width:auto;height:auto;max-width:calc(100cqw - 12px);max-height:calc(100cqh - 28px);object-fit:contain}
 .app-shell--checklist .events-header-operational.checklist-title{width:fit-content;max-width:100%;justify-self:center;min-height:0;padding:4px 8px;font-size:clamp(1.5rem,6vw,1.8rem);line-height:1.1}
 @media(max-height:740px){.app-shell--checklist .events-header-operational.checklist-title{font-size:1.36rem;padding:3px 6px}}
+
+/* Evita ampliação automática do campo no Safari do iPhone. */
+#checklist-qr-dialog{touch-action:manipulation}
+#checklist-qr-dialog input,#checklist-qr-dialog select,#checklist-qr-dialog textarea{font-size:16px;line-height:1.25}
+#checklist-qr-title:focus{outline:none}
