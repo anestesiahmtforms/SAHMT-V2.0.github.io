@@ -1,7 +1,7 @@
 {
   "date": "2026-10-01",
-  "baseline": "ab630af420d38b89dd797aa2337b65e49b864eaf",
-  "validatedCodeCommit": "7a311571d33d0132d04ee07bcd8144f6e3cb129f",
+  "baseline": "f5c9f02c773e4cb18da8941f4bd65bfa624073f7",
+  "validatedCodeCommit": "b5d9bd9415a120a08fced6038efeaa2f7779484d",
   "tests": {
     "domain": 281,
     "rules": 41,
@@ -10,11 +10,11 @@
   },
   "build": {
     "shellFiles": 2,
-    "shellBytes": 522346,
+    "shellBytes": 523133,
     "offlineGraphFiles": 13,
-    "offlineGraphBytes": 1417327,
+    "offlineGraphBytes": 1418114,
     "precacheFiles": 23,
-    "precacheBytes": 2345730,
+    "precacheBytes": 2346517,
     "workerVersion": "V156",
     "baselineWorkerVersion": "V155"
   },
@@ -23,49 +23,49 @@
     "baseline": {
       "samples": [
         {
-          "openMs": 10261,
-          "firstInteractionMs": 556,
-          "labelsManualMs": 726
+          "openMs": 10140,
+          "firstInteractionMs": 341,
+          "labelsManualMs": 703
         },
         {
-          "openMs": 10124,
-          "firstInteractionMs": 547,
-          "labelsManualMs": 830
+          "openMs": 10258,
+          "firstInteractionMs": 480,
+          "labelsManualMs": 743
         },
         {
-          "openMs": 10273,
-          "firstInteractionMs": 425,
-          "labelsManualMs": 757
+          "openMs": 10175,
+          "firstInteractionMs": 476,
+          "labelsManualMs": 908
         }
       ],
       "medians": {
-        "openMs": 10261,
-        "firstInteractionMs": 547,
-        "labelsManualMs": 757
+        "openMs": 10175,
+        "firstInteractionMs": 476,
+        "labelsManualMs": 743
       }
     },
     "current": {
       "samples": [
         {
-          "openMs": 10561,
-          "firstInteractionMs": 402,
-          "labelsManualMs": 806
+          "openMs": 10268,
+          "firstInteractionMs": 518,
+          "labelsManualMs": 899
         },
         {
-          "openMs": 10367,
-          "firstInteractionMs": 340,
-          "labelsManualMs": 904
+          "openMs": 10278,
+          "firstInteractionMs": 451,
+          "labelsManualMs": 844
         },
         {
-          "openMs": 10364,
-          "firstInteractionMs": 328,
-          "labelsManualMs": 920
+          "openMs": 10252,
+          "firstInteractionMs": 390,
+          "labelsManualMs": 898
         }
       ],
       "medians": {
-        "openMs": 10367,
-        "firstInteractionMs": 340,
-        "labelsManualMs": 904
+        "openMs": 10268,
+        "firstInteractionMs": 451,
+        "labelsManualMs": 898
       }
     }
   },
@@ -135,7 +135,7 @@
       "qrDecoderOffline": true,
       "stableOutboxPreserved": true,
       "serverResponsesWhileOffline": 0,
-      "refusedBrowserUpdateChecks": 5,
+      "refusedBrowserUpdateChecks": 4,
       "cacheNames": [
         "sahmt-v2-shell-v156"
       ],
@@ -143,7 +143,7 @@
       "pageErrors": []
     },
     "oldTab": {
-      "oldTabEntry": "assets/index-q8_TwkUD.js",
+      "oldTabEntry": "assets/index-CludQLiq.js",
       "oldCamera": "assets/label-camera-BfsYUBmS.js",
       "oldTabLabelsAfterUpdate": true,
       "newOfflineNavigationUsesCurrentBuild": true,

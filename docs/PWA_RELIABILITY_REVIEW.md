@@ -2,7 +2,7 @@
 
 ## Fonte e entrega
 
-Base final desta conciliação: `main` v155 em `ab630af420d38b89dd797aa2337b65e49b864eaf`, com os 52 commits posteriores à base anterior `282272adc22b328d853d46630687cc06897d2cb3` preservados. O ZIP de Downloads contém 146 arquivos iguais ao commit histórico `1a2fb621c921ebeb3b8f0c776c2256c0f4f2c634`, sem diferenças de conteúdo; ele permanece apenas como referência histórica.
+Base final desta conciliação: `main` v155 em `f5c9f02c773e4cb18da8941f4bd65bfa624073f7`, com os 53 commits posteriores à base anterior `282272adc22b328d853d46630687cc06897d2cb3` preservados. O ZIP de Downloads contém 146 arquivos iguais ao commit histórico `1a2fb621c921ebeb3b8f0c776c2256c0f4f2c634`, sem diferenças de conteúdo; ele permanece apenas como referência histórica.
 
 O trabalho foi feito em checkout isolado. A cópia original permanece em `c7797f3`, com suas três modificações em `docs/LABEL_AI_WORKER.md`, `src/firebase-app.js` e `src/styles.css` preservadas.
 
@@ -45,7 +45,7 @@ Fixture local com 30 estações fictícias, cinco amostras e atraso de 90 ms por
 
 ## Build e experiências no navegador
 
-O build final consolidado sobre a v155 foi executado com as mesmas variáveis públicas do workflow atual. O grafo estático do shell tem dois arquivos/522.346 bytes; o grafo offline selecionado tem 13 arquivos/1.417.327 bytes. Incluindo HTML, manifestos, ícones, imagens fixas e o decoder QR, o precache integral tem **23 arquivos/2.345.730 bytes**. São tamanhos descompactados dos arquivos, sem contabilizar cabeçalhos; não são bytes transferidos com gzip. O aviso existente do chunk Firestore de 550,77 kB permanece.
+O build final consolidado sobre a v155 foi executado com as mesmas variáveis públicas do workflow atual. O grafo estático do shell tem dois arquivos/523.133 bytes; o grafo offline selecionado tem 13 arquivos/1.418.114 bytes. Incluindo HTML, manifestos, ícones, imagens fixas e o decoder QR, o precache integral tem **23 arquivos/2.346.517 bytes**. São tamanhos descompactados dos arquivos, sem contabilizar cabeçalhos; não são bytes transferidos com gzip. O aviso existente do chunk Firestore de 550,77 kB permanece.
 
 Uma fixture local serviu os builds reais anterior e atual em Edge/Chromium, com viewport 390×844, toque móvel, CPU 4×, latência de 150 ms e download de 1,6 Mbps. Cada medição de tempo usa três amostras. O perfil, a escala e a fila são fictícios; requisições externas são abortadas. Os tempos e as amostras estão em [benchmarks/pwa-2026-09-30.json](benchmarks/pwa-2026-09-30.json). Isso mede o shell com perfil local; não mede login Google, latência real do Firestore, câmera ou IA.
 
@@ -75,11 +75,11 @@ Os cenários offline foram repetidos com os builds reais V155 → V156: aba anti
 
 | Mediana da fixture móvel final | Main V155 | PR consolidado |
 | --- | ---: | ---: |
-| Abertura | 10.261 ms | 10.367 ms |
-| Primeira interação | 547 ms | 340 ms |
-| Troca para registro manual de Etiquetas | 757 ms | 904 ms |
+| Abertura | 10.175 ms | 10.268 ms |
+| Primeira interação | 476 ms | 451 ms |
+| Troca para registro manual de Etiquetas | 743 ms | 898 ms |
 
-São novamente três amostras por build, com os mesmos limites da fixture anterior. Abertura ficou 106 ms mais lenta, primeira interação 207 ms mais rápida e Etiquetas 147 ms mais lenta. Não há ganho geral de velocidade demonstrado, e as três amostras não distinguem efeito consistente de variação local. Por isso não foram aplicadas outras mudanças especulativas de pré-carregamento ou galeria. Build, emuladores e execução visual estavam encerrados durante a medição. Amostras, consultas, offline e resumo dos 112 cenários visuais estão em [pwa-v155-2026-10-01.json](benchmarks/pwa-v155-2026-10-01.json). Os benchmarks anteriores permanecem identificados como históricos.
+São novamente três amostras por build, com os mesmos limites da fixture anterior. Abertura ficou 93 ms mais lenta, primeira interação 25 ms mais rápida e Etiquetas 155 ms mais lenta. Não há ganho geral de velocidade demonstrado, e as três amostras não distinguem efeito consistente de variação local. Por isso não foram aplicadas outras mudanças especulativas de pré-carregamento ou galeria. Build, emuladores e execução visual estavam encerrados durante a medição. Amostras, consultas, offline e resumo dos 112 cenários visuais estão em [pwa-v155-2026-10-01.json](benchmarks/pwa-v155-2026-10-01.json). Os benchmarks anteriores permanecem identificados como históricos.
 
 ## Testes e limites
 
@@ -88,7 +88,7 @@ São novamente três amostras por build, com os mesmos limites da fixture anteri
 - Worker: **12/12**, com respostas de serviços simuladas.
 - Functions: **19/19** nos emuladores Auth/Firestore/Functions, Node 22 e Java 21, com descoberta de 60 s. Uma tentativa sem emuladores foi descartada; nas primeiras inicializações a porta 8080 ainda era ocupada pelo processo do teste de Rules. O processo de teste foi identificado e encerrado, e a execução final dos três emuladores passou. Isso não implantou Functions.
 - Build e verificador do manifesto: passaram; `git diff --check` sem erros.
-- A composição final preserva todo o main v155 e as mudanças visuais do PR #2: 13 arquivos no grafo offline, 23 no precache integral/2.345.730 bytes. A validação também cobriu dependências ligadas por junction, que fazem o Vite emitir um caminho relativo para o SDK App Check.
+- A composição final preserva todo o main v155 e as mudanças visuais do PR #2: 13 arquivos no grafo offline, 23 no precache integral/2.346.517 bytes. A validação também cobriu dependências ligadas por junction, que fazem o Vite emitir um caminho relativo para o SDK App Check.
 - Layout final consolidado: 70 combinações de cinco páginas, dois perfis e sete viewports (320×568, 375×667, 390×844, 844×390, 568×320, 667×375 e 768×1024). Escala, Eventos, Etiquetas e Checklist sem rolagem da página nem controles cortados nos 56 cenários desses módulos. Nos 28 de Escala/Eventos, célula, índice e férias são o mesmo botão nativo: mínimo de 32 px de altura/38,08 px de largura, sem sobreposição, inclusive DC com três aliases. Foram conferidos 1.470 pontos de toque e 126 ações de toque/Enter/SUPORTE. A regressão do candidato visual intermediário, que havia reduzido o alvo a 11,11 px, foi corrigida antes da entrega. Gestão tem cabeçalho uniforme; seu conteúdo administrativo mantém a rolagem existente. Arsenal inteiro, com proporção 3:2, inclusive em 844×390.
 
 Para reproduzir o layout, execute `node scripts/validate-mobile-layout.mjs` com Playwright disponível. `PLAYWRIGHT_MODULE_PATH` aponta para um `package.json` a partir do qual o módulo pode ser resolvido; `CHROME_EXECUTABLE_PATH` indica o Chromium/Edge instalado e `MOBILE_LAYOUT_OUTPUT` escolhe a pasta de capturas. A fixture usa os renderers e CSS reais com perfis fictícios, sem inicializar Firebase nem acessar serviços externos.
@@ -101,7 +101,7 @@ Além do shell, **42/42 cenários dos modais** passaram: relatório diário, con
 | 667×375 | 21,875 px | 43,875 px |
 | 844×390 | 25,25 px | 47,25 px |
 
-O ajuste usa `:has(#checklist-day-control:not([hidden]))` apenas no relatório diário em paisagem até 400 px de altura; o estilo mensal existente permanece. CSS nativo v155 foi conservado integralmente.
+O ajuste usa `:has(#checklist-day-control:not([hidden]))` apenas no relatório diário em paisagem até 400 px de altura; o estilo mensal existente permanece. CSS nativo v155, incluindo a distribuição mais recente da imagem e ações em f5c9f02, foi conservado integralmente em src/styles.css. Os ajustes de títulos, toque e relatório desta revisão estão em src/mobile-layout.css, importado logo depois. O build reúne os dois no mesmo CSS final. A imagem usa contain: conteúdo 3:2 inteiro, enquanto a caixa pode ter outra proporção; no menor visor horizontal o conteúdo mede 74,39×49,59 px.
 
 Não foi possível testar Android/iPhone físicos, Safari/WebKit, instalação nativa, câmera/QR físicos, login real, escrita autenticada fictícia ou assinatura validada por um consumidor de produção. Nenhum dado real de paciente foi usado. As capturas de layout usam dados fictícios e validam a composição do shell, não a autorização de cada operação.
 
@@ -109,7 +109,7 @@ Não foi possível testar Android/iPhone físicos, Safari/WebKit, instalação n
 
 Auditoria somente de leitura em 30/09: Worker `/health` HTTP 200, tráfego de 100% na versão `2f609917-ffa3-46ab-aea3-fc573541ffac`; presença do Secret confirmada sem ler seu valor. As variáveis atuais já têm IA habilitada, endpoint correto e site key presente. A Firebase CLI confirmou enforcement e proteção contra replay do App Check Firestore desligados, sem alteração anterior registrada; nenhuma configuração foi alterada. Os nove arquivos Apps Script remotos coincidem com o pacote local após normalização; deployments HEAD e versões 1/2 existem. Metadados de execução retornaram 403, portanto gatilhos, propriedades de runtime, IAM efetivo e execução dos validadores não foram confirmados. O relato do proprietário de leitura IA no iPhone em 29/09 é uma evidência histórica, não um novo teste desta revisão. Consulte [RELEASE_STATUS.md](RELEASE_STATUS.md).
 
-Em 01/10 o `/health` foi relido: `ok=true`, projeto `sahmt-17a16`, modelo `gpt-6-luna`. As variáveis públicas do workflow foram relidas para o build, sem alteração. Functions, Worker, Apps Script, Rules e índices são idênticos ao main v155; os testes usam emuladores ou serviços simulados.
+Em 01/10 o `/health` foi relido: `ok=true`, projeto `sahmt-17a16`, modelo `gpt-6-luna`. As variáveis públicas do workflow foram relidas para o build, sem alteração. A consulta somente de leitura `firebase functions:list --project sahmt-17a16 --non-interactive` falhou; portanto a presença/disponibilidade das Functions de produção não foi confirmada. Nenhuma Function foi invocada ou implantada por essa consulta. Functions, Worker, Apps Script, Rules e índices são idênticos ao main v155; os testes usam emuladores ou serviços simulados.
 
 **Dependência recebida da v154 e preservada:** o nome do responsável no rodapé é pré-requisito do botão. Para não administradores, o leitor usa a callable `checklistSignature`, que exige e-mail verificado, permissão de assinatura, dia atual e perfil V2 único do responsável. Se esse serviço estiver indisponível ou o perfil não puder ser resolvido, o rodapé permanece bloqueado. A alternativa administrativa lê escala/férias/contatos/eventos com a autorização existente. A homologação desse novo rodapé em produção continua necessária; esta revisão não ativa Functions ou consumidores de validação para resolver essa dependência.
 
