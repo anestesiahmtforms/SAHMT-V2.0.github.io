@@ -72,3 +72,13 @@ test('rodapé contém somente um botão com título e nome, e revisão fica em m
  assert.match(source,/confirmationDialog\.showModal\(\)/);
  assert.match(source,/getChecklistDayResponsible\(\{day, uid, isAdmin: can\('admin'\)\}\)/);
 });
+
+test('relatório diário tem Voltar no final do modal, sem botão de fechar no cabeçalho', () => {
+ const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+ const dialog=source.slice(source.indexOf('const checklistReportDialog ='),source.indexOf('  const labelReport =',source.indexOf('const checklistReportDialog =')));
+ const header=dialog.match(/<header class="checklist-report-dialog__header">([\s\S]*?)<\/header>/)?.[1];
+ assert.ok(header);
+ assert.doesNotMatch(header,/<button/);
+ assert.match(dialog,/<footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar<\/button><\/form><\/footer><\/dialog>/);
+ assert.ok(dialog.indexOf('class="checklist-report-footer"') > dialog.indexOf('class="module-content checklist-report-content"'));
+});

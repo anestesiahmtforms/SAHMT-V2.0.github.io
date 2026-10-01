@@ -1796,3 +1796,34 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .checklist-daily-layout>.checklist-station-grid{max-height:min(100%,calc(4*clamp(28px,10dvh,48px) + 9px))}
  .checklist-confirmation-footer>.checklist-confirmation-button{min-height:50px;padding:5px 8px;gap:2px}
 }
+
+/* Relatório do Checklist: título, data, arsenais e retorno em faixas uniformes. */
+.checklist-report-dialog{
+ box-sizing:border-box;grid-template-rows:auto auto minmax(0,1fr) auto;
+ gap:8px;padding:10px
+}
+.checklist-report-dialog>.checklist-report-dialog__header{display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;margin:0}
+.checklist-report-dialog>.checklist-report-dialog__header h2{grid-column:1;grid-row:1;width:100%;margin:0;text-align:center}
+.checklist-report-dialog>.checklist-report-periods{margin:0}
+.checklist-report-dialog>.checklist-report-content{margin:0;padding:0;min-width:0;min-height:0}
+.checklist-report-content>.checklist-daily-layout{gap:8px}
+.checklist-daily-layout>.checklist-station-grid{align-self:stretch;max-height:none;gap:4px}
+.checklist-report-footer{min-width:0;margin:0;padding:0 0 3px}
+.checklist-report-footer>form{margin:0}
+.checklist-report-footer button{
+ display:block;box-sizing:border-box;width:100%;min-height:40px;margin:0;
+ padding:6px 10px;border:2px solid #fff;border-radius:14px;
+ background:linear-gradient(145deg,#edf6fa,#d5e6ee);color:#173957;
+ font-size:.85rem;font-weight:950;line-height:1.2;box-shadow:0 3px 0 #9db4bc
+}
+@media(max-width:520px){
+ .checklist-report-dialog{padding:8px;gap:7px}
+ .checklist-report-dialog>.checklist-report-dialog__header h2{text-align:center}
+}
+@media(max-height:650px){
+ .checklist-report-dialog{padding:6px;gap:5px}
+ .checklist-report-content>.checklist-daily-layout{gap:5px}
+ .checklist-daily-layout>.checklist-station-grid{gap:3px}
+ .checklist-confirmation-footer>.checklist-confirmation-button{min-height:54px;padding:5px 8px}
+ .checklist-report-footer button{min-height:34px;padding:4px 8px}
+}
