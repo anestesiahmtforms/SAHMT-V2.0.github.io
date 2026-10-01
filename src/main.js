@@ -1,4 +1,5 @@
 import './styles.css';
+import './mobile-layout.css';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {labelReportPresentation, withLabelReportDeadline} from './label-report-state.js';
 import {firebaseConfigured} from './firebase-app.js';
