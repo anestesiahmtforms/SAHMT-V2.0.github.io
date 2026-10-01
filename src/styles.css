@@ -1752,3 +1752,16 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  top:8px;left:50%;transform:translateX(-50%);
  width:var(--qr-capture-size);height:var(--qr-capture-size)
 }
+
+/* Leitor na parte superior do modal, respeitando a área segura do iPhone. */
+#checklist-qr-dialog{
+ padding-top:calc(env(safe-area-inset-top,0px) + clamp(12px,4dvh,32px));
+ padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)
+}
+#checklist-qr-dialog[open]{place-items:start center}
+#checklist-qr-dialog>.checklist-qr-container{align-self:start;justify-self:center;margin:0}
+#checklist-qr-dialog video,#checklist-qr-dialog .checklist-qr-focus{top:0}
+@media(orientation:landscape) and (max-height:550px){
+ #checklist-qr-dialog{padding-top:calc(env(safe-area-inset-top,0px) + 10px)}
+ #checklist-qr-dialog>.checklist-qr-container{max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 20px)}
+}
