@@ -340,12 +340,12 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<button class="sigla-item sigla-button" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}"><span class="sigla-token${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</span><span class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</span></button>`;
   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
 }
 
 function renderEventSupportTile(eventsWritable) {
-  return `<div class="sigla-item"><button class="sigla-token sigla-button sigla-token--support" type="button" data-event-support ${eventsWritable ? '' : 'disabled'} aria-label="Lançar evento de Suporte" title="Lançar Suporte"><strong>SUPORTE</strong></button><div class="sigla-index" aria-hidden="true"></div></div>`;
+  return `<button class="sigla-item sigla-button" type="button" data-event-support ${eventsWritable ? '' : 'disabled'} aria-label="Lançar evento de Suporte" title="Lançar Suporte"><span class="sigla-token sigla-token--support"><strong>SUPORTE</strong></span><span class="sigla-index" aria-hidden="true"></span></button>`;
 }
 
 function renderLabelManualConfirmation() {
