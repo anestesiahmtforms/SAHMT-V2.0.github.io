@@ -35,7 +35,7 @@ const manifest = {
   'src/checklist-signature.js': {file: 'assets/checklist-signature.js', imports: []}
 };
 
-function createWorker({offline = false, manifestOverride = manifest, globalCacheMatch = null} = {}) {
+function createWorker({offline = false, manifestOverride = manifest, globalCacheMatch = null, warmHttpCache = false, unavailableInstallUrl = ''} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
@@ -43,16 +43,23 @@ function createWorker({offline = false, manifestOverride = manifest, globalCache
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
+  const fetchOptions = [];
   let skipWaitingCalls = 0;
   let claimCalls = 0;
   let deletes = [];
-  const manifestResponse = {json: async () => manifestOverride};
+  const responseFor = (url, options = {}) => {
+    const stale = warmHttpCache && options.cache !== 'reload';
+    const manifestValue = stale ? {...manifestOverride, 'assets/main.js': {...manifestOverride['assets/main.js'], file: 'assets/old-main.js'}} : manifestOverride;
+    return {ok: !unavailableInstallUrl || !url.endsWith(unavailableInstallUrl), type: 'basic', source: stale ? 'http-cache' : 'network',
+      url, json: async () => manifestValue, clone() {return this;}};
+  };
 
   const cache = {
     async addAll(urls) {
       cacheNames.push(...urls);
       for (const url of urls) {
-        const value = url.endsWith('assets-manifest.json') ? manifestResponse : {url};
+        const value = responseFor(url);
+        if (!value.ok) throw new Error(`addAll failed: ${url}`);
         entries.set(normalizeUrl(url), value);
       }
     },
@@ -87,13 +94,14 @@ function createWorker({offline = false, manifestOverride = manifest, globalCache
     addEventListener(type, handler) { handlers.set(type, handler); },
     async skipWaiting() { skipWaitingCalls++; }
   };
-  const fetch = async (request) => {
+  const fetch = async (request, options = {}) => {
     if (offline && typeof request !== 'string') throw new Error('offline');
     fetched.push(request instanceof URL ? request.href : request);
-    return {ok: true, type: 'basic', source: 'network', clone() { return this; }};
+    fetchOptions.push({url: normalizeUrl(request), cache: options.cache || request.cache || 'default'});
+    return responseFor(typeof request === 'string' ? request : request.url, options);
   };
   vm.runInNewContext(workerSource, {self, caches, URL, fetch, Promise, Set, Math});
-  return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
+  return {handlers, cacheNames, entries, fetched, fetchOptions, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
 test('instala shell V134 com símbolos e módulos offline selecionados do manifest Vite', async () => {
@@ -122,6 +130,30 @@ test('instala shell V134 com símbolos e módulos offline selecionados do manife
   assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/report-pdf.js`));
   assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/checklist-signature.js`));
   assert.equal(worker.skipWaiting(), 1);
+});
+
+test('instalação ignora HTTP cache quente para HTML, manifesto e arquivos fixos sem trocar URL', async () => {
+  const worker = createWorker({warmHttpCache: true});
+  let install;
+  worker.handlers.get('install')({waitUntil(promise) {install = promise;}});
+  await install;
+  assert.equal(worker.entries.get(`https://sahmt.example${BASE}`).source, 'network');
+  const installedManifest = await worker.entries.get(`https://sahmt.example${BASE}assets-manifest.json`).json();
+  assert.equal(installedManifest['assets/main.js'].file, 'assets/main.js');
+  assert.ok(!worker.entries.has(`https://sahmt.example${BASE}assets/old-main.js`));
+  for (const file of ['', 'assets-manifest.json', 'manifest.webmanifest', 'vendor/zxing.min.js']) {
+    assert.ok(worker.fetchOptions.some(item => item.url === `https://sahmt.example${BASE}${file}` && item.cache === 'reload'), file);
+  }
+});
+
+test('arquivo fixo indisponível também impede ativar o novo shell', async () => {
+  for (const unavailableInstallUrl of ['assets-manifest.json', 'vendor/zxing.min.js']) {
+    const worker = createWorker({unavailableInstallUrl});
+    let install;
+    worker.handlers.get('install')({waitUntil(promise) {install = promise;}});
+    await assert.rejects(install, /Asset do shell indisponível/);
+    assert.equal(worker.skipWaiting(), 0);
+  }
 });
 
 test('não ativa shell incompleto quando falta módulo essencial ou um import dele', async () => {

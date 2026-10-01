@@ -24,7 +24,14 @@ const PRECACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await cache.addAll(PRECACHE);
+    const cacheAsset = async (assetUrl) => {
+      const response = await fetch(assetUrl, {cache: 'reload'});
+      if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);
+      await cache.put(assetUrl, response);
+    };
+    // HTML and the manifest keep their URLs across builds. A warm HTTP cache
+    // must not install the previous build beneath the new worker version.
+    await Promise.all(PRECACHE.map(cacheAsset));
     const manifestResponse = await cache.match(`${BASE}assets-manifest.json`);
     if (!manifestResponse) throw new Error('Manifest Vite ausente no cache do shell.');
     const manifest = await manifestResponse.json();
@@ -57,11 +64,7 @@ self.addEventListener('install', (event) => {
         if (matchesSource) visitEntry(key);
       }
     }
-    await Promise.all([...assets].map(async (assetUrl) => {
-      const response = await fetch(assetUrl, {cache: 'reload'});
-      if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);
-      await cache.put(assetUrl, response);
-    }));
+    await Promise.all([...assets].map(cacheAsset));
     await self.skipWaiting();
   })());
 });

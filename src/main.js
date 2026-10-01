@@ -146,6 +146,7 @@ let checklistReportOpen = false;
 const checklistReportGate = createChecklistReportGate();
 const checklistBannerGate = createChecklistBannerGate();
 let checklistReportContext = null;
+let reloadOpenReportForScope = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
@@ -682,6 +683,10 @@ async function loadModule(route) {
     content.remove();
     if (can('eventsRead') || can('eventsWrite')) void loadReportPdfModule().catch(() => {});
     const reportDialog = document.querySelector('#event-report-dialog');
+    reloadOpenReportForScope = () => {
+      if (!eventReportOpen || !reportDialog?.open || !reportDialog.isConnected) return;
+      return loadEventReport();
+    };
     reportDialog?.addEventListener('close', () => { eventReportOpen = false; });
     document.querySelectorAll('[data-event-report-launch]').forEach((button) => button.addEventListener('click', async () => {
       eventReportMode = button.dataset.eventReportLaunch;
@@ -727,6 +732,10 @@ async function loadModule(route) {
   if (route === 'labels') {
     content?.remove();
     const reportDialog = document.querySelector('#label-report-dialog');
+    reloadOpenReportForScope = () => {
+      if (!labelReportOpen || !reportDialog?.open || !reportDialog.isConnected) return;
+      return loadLabelReport();
+    };
     reportDialog?.addEventListener('close', () => {
       labelReportOpen = false;
       labelReportLoad++;
@@ -890,6 +899,10 @@ async function loadModule(route) {
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
+      reloadOpenReportForScope = () => {
+        if (!checklistReportOpen || !reportDialog?.open || !reportDialog.isConnected) return;
+        return loadChecklistView(items);
+      };
       reportDialog?.addEventListener('close', () => { checklistReportOpen = false; checklistReportGate.invalidate(); stopChecklistQrScanner(false); });
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
@@ -1728,8 +1741,9 @@ async function loadMonthlyChecklist(stations) {
   if (!content) return;
   const month = todayInputValue().slice(0, 7);
   const uid = session.user?.uid || '';
+  const reportScope = captureReportScope('checklist');
   const request = checklistReportGate.begin({day: month, mode: 'monthly', route: currentRoute(), uid, reportOpen: checklistReportOpen});
-  const isCurrent = () => isCurrentChecklistReportRequest(request, content);
+  const isCurrent = () => reportScope.isCurrent() && isCurrentChecklistReportRequest(request, content);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     if (isCurrent()) content.innerHTML = '<p class="empty-state">Selecione um mês válido.</p>';
     return;
@@ -3948,6 +3962,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false, pres
 }
 
 async function render() {
+  reloadOpenReportForScope = null;
   labelReportLoad++;
   labelReportLoadingMore = false;
   labelReportState = 'idle';
@@ -4115,6 +4130,9 @@ function updateIdentityProfile(next) {
 
 function sessionChanged(next) {
   const previous = session;
+  const route = currentRoute();
+  const previousReportKey = previous.status === 'signed-in' && ['events', 'labels', 'checklist'].includes(route)
+    ? captureReportScope(route).key : '';
   const userChanged = previous.user?.uid !== next.user?.uid;
   const firstSignedIn = next.status === 'signed-in' && (previous.status !== 'signed-in' || userChanged);
   if (userChanged || next.status !== 'signed-in') startupReports.clear();
@@ -4154,6 +4172,10 @@ function sessionChanged(next) {
     void render();
   } else {
     updateIdentityProfile(next);
+    if (previousReportKey && next.status === 'signed-in' && captureReportScope(route).key !== previousReportKey) {
+      startupReports.clear();
+      void reloadOpenReportForScope?.();
+    }
   }
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
