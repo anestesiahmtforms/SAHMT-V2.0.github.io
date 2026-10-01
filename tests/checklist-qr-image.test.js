@@ -2,6 +2,40 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData} from '../src/checklist-qr.js';
 
+test('QR diferente, leitura ambígua, três perdas e intervalo vencido reiniciam a confirmação', () => {
+  let time = 0;
+  const confirm = createChecklistQrConfirmation({now: () => time});
+  assert.equal(confirm('A'), null);
+  time = 100; assert.equal(confirm(null), null);
+  time = 200; assert.equal(confirm(null), null);
+  time = 300; assert.equal(confirm('A'), 'A');
+  assert.equal(confirm('B'), null);
+  assert.equal(confirm(null, {reset: true}), null);
+  assert.equal(confirm('B'), null);
+  assert.equal(confirm(null), null);
+  assert.equal(confirm(null), null);
+  assert.equal(confirm(null), null);
+  assert.equal(confirm('B'), null);
+  time += 1100;
+  assert.equal(confirm('B'), null);
+  assert.equal(confirm('B'), 'B');
+});
+test('etiqueta apagada recebe normalização de contraste antes de uma nova tentativa', () => {
+  class RGBLuminanceSource { constructor(matrix) { this.matrix = matrix; } }
+  class HybridBinarizer { constructor(source) { this.source = source; } }
+  class BinaryBitmap { constructor(binarizer) { this.source = binarizer.source; } }
+  class QRCodeReader {
+    decode(bitmap) {
+      if (bitmap.source.matrix[1] - bitmap.source.matrix[0] < 100) throw new Error('Low contrast');
+      return {getText: () => '100170017'};
+    }
+  }
+  const api = {RGBLuminanceSource, HybridBinarizer, BinaryBitmap, QRCodeReader};
+  const data = new Uint8ClampedArray([120,120,120,255,140,140,140,255]);
+  assert.equal(decodeQrImageData({width:2,height:1,data}, api), '100170017');
+});
+
+
 function fakeZXing(decodeResult = 'SAHMT:CHK:0001') {
   let luminanceSource;
   class RGBLuminanceSource {
@@ -35,13 +69,12 @@ test('recorte acompanha a moldura visível em vídeo cover, não o quadro inteir
     focusRect: {left: 70, top: 80, width: 180, height: 180}}), {x: 216, y: 636, width: 648, height: 648});
   assert.equal(checklistQrCrop({videoWidth: 0, videoHeight: 0, videoRect}), null);
 });
-test('leitura só confirma após duas capturas iguais e reinicia ao mudar ou perder o QR', () => {
+test('leitura exige duas capturas iguais e tolera duas perdas breves sem contar como leitura', () => {
   const confirm = createChecklistQrConfirmation();
   assert.equal(confirm('100170017'), null);
   assert.equal(confirm('100170017'), '100170017');
   assert.equal(confirm('100170016'), null);
   assert.equal(confirm(null), null);
-  assert.equal(confirm('100170016'), null);
   assert.equal(confirm('100170016'), '100170016');
 });
 

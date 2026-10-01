@@ -54,6 +54,21 @@ export function decodeQrImageData(imageData, ZXing) {
       if (value) return value;
     } catch { /* A próxima estratégia usa os mesmos pixels da janela visível. */ }
   }
+  // Low-contrast labels need a wider luminance range before thresholding.
+  let minimum = 255, maximum = 0;
+  for (const value of luminance) { minimum = Math.min(minimum, value); maximum = Math.max(maximum, value); }
+  const range = maximum - minimum;
+  if (range >= 8 && range < 160) {
+    const adjusted = Uint8ClampedArray.from(luminance, (value) => (value - minimum) * 255 / range);
+    const adjustedSource = new ZXing.RGBLuminanceSource(adjusted, width, height);
+    for (const Binarizer of binarizers) {
+      try {
+        const bitmap = new ZXing.BinaryBitmap(new Binarizer(adjustedSource));
+        const value = new ZXing.QRCodeReader().decode(bitmap, hints).getText();
+        if (value) return value;
+      } catch { /* Still confined to the visible camera window. */ }
+    }
+  }
   return null;
 }
 
@@ -70,12 +85,20 @@ export function checklistQrCrop({videoWidth, videoHeight, videoRect, focusRect})
   return right > x && bottom > y ? {x, y, width: right - x, height: bottom - y} : null;
 }
 
-export function createChecklistQrConfirmation() {
-  let previous = '', count = 0;
-  return (value) => {
+export function createChecklistQrConfirmation({now = () => Date.now(), maxGapMs = 1000, maxMisses = 2} = {}) {
+  let previous = '', count = 0, lastSeen = 0, misses = 0;
+  return (value, {reset = false} = {}) => {
+    const currentTime = now();
+    if (reset || currentTime - lastSeen > maxGapMs) { previous = ''; count = 0; misses = 0; }
     const candidate = String(value || '').trim();
+    if (!candidate) {
+      if (++misses > maxMisses) { previous = ''; count = 0; }
+      return null;
+    }
     count = candidate && candidate === previous ? count + 1 : candidate ? 1 : 0;
     previous = candidate;
+    lastSeen = currentTime;
+    misses = 0;
     return count >= 2 ? candidate : null;
   };
 }

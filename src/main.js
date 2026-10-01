@@ -1575,6 +1575,8 @@ async function openChecklistQrScanner(stations, day) {
     return;
   }
   status.textContent = 'Solicitando acesso à câmera…';
+  // Load the Safari decoder while the camera permission/stream is opening.
+  const decoderReady = loadQrDecoder().then(() => null, (error) => error);
   try {
     stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}, width: {ideal: 1920}, height: {ideal: 1080}}, audio: false});
     if (!running) { stream.getTracks().forEach((track) => track.stop()); return; }
@@ -1590,7 +1592,10 @@ async function openChecklistQrScanner(stations, day) {
     if (typeof window.BarcodeDetector === 'function') {
       try { detector = new window.BarcodeDetector({formats: ['qr_code']}); } catch { detector = null; }
     }
-    if (!detector) await loadQrDecoder();
+    if (!detector) {
+      const decoderError = await decoderReady;
+      if (decoderError) throw decoderError;
+    }
     status.textContent = 'Coloque um único QR na moldura. Aproxime devagar até ficar nítido, deixando margem branca.';
     let detecting = false;
     let emptyNativeFrames = 0;
@@ -1622,12 +1627,12 @@ async function openChecklistQrScanner(stations, day) {
       }
       if (!running) return;
       const known = raw && findStationForQr(stations, raw, day, {includeInactive: can('checklistManage')});
-      const confirmed = confirmQr(known ? raw : null);
+      const confirmed = confirmQr(known ? raw : null, {reset: ambiguous || Boolean(raw && !known)});
       if (confirmed) { resolveChecklistQr(confirmed); return; }
       if (ambiguous) status.textContent = 'Há mais de um QR na moldura. Centralize somente o QR da estação desejada.';
       else if (raw && !known) status.textContent = 'QR não encontrado no catálogo desta data. Aponte para o QR do arsenal.';
       else if (known) status.textContent = 'QR reconhecido. Mantenha a câmera estável para confirmar.';
-      timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 150);
+      timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 100);
     };
     frame = requestAnimationFrame(scan);
   } catch (error) {
