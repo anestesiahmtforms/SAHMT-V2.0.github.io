@@ -39,7 +39,7 @@ function createWorker({offline = false, manifestOverride = manifest, globalCache
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
-  const names = new Set(['sahmt-v2-shell-v20', 'sahmt-v2-shell-v102', 'sahmt-v2-shell-v103', 'sahmt-v2-shell-v104', 'sahmt-v2-shell-v105', 'sahmt-v2-shell-v133', 'sahmt-v2-shell-v134', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
+  const names = new Set(['sahmt-v2-shell-v20', 'sahmt-v2-shell-v102', 'sahmt-v2-shell-v103', 'sahmt-v2-shell-v104', 'sahmt-v2-shell-v105', 'sahmt-v2-shell-v134', 'sahmt-v2-shell-v135', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
@@ -104,8 +104,8 @@ function createWorker({offline = false, manifestOverride = manifest, globalCache
   return {handlers, cacheNames, entries, fetched, fetchOptions, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
-test('instala shell V134 com símbolos e módulos offline selecionados do manifest Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v134';/);
+test('instala shell V135 com símbolos e módulos offline selecionados do manifest Vite', async () => {
+  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v135';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
@@ -202,15 +202,15 @@ test('inclui App Check com chave relativa ou gerada sem ampliar o cache a outros
 test('mantém o shell anterior para abas antigas e preserva os caches da fila offline', async () => {
   const worker = createWorker();
   const oldAssetUrl = `https://sahmt.example${BASE}assets/old-main.js`;
-  const oldAsset = {url: oldAssetUrl, source: 'shell-v133'};
+  const oldAsset = {url: oldAssetUrl, source: 'shell-v134'};
   worker.entries.set(oldAssetUrl, oldAsset);
   let activation;
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v20', 'sahmt-v2-shell-v102', 'sahmt-v2-shell-v103', 'sahmt-v2-shell-v104', 'sahmt-v2-shell-v105']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v133'));
   assert.ok(worker.names.has('sahmt-v2-shell-v134'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v135'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);

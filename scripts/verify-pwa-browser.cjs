@@ -66,7 +66,7 @@ const server = http.createServer((req, res) => {
   let body = fs.readFileSync(target);
   if (file === 'service-worker.js' && activeBuild === 'old') {
     // Only the cache name is varied; all app modules are the real baseline build.
-    body = Buffer.from(body.toString().replace(/sahmt-v2-shell-v\d+/, 'sahmt-v2-shell-v133'));
+    body = Buffer.from(body.toString().replace(/sahmt-v2-shell-v\d+/, 'sahmt-v2-shell-v134'));
   }
   res.writeHead(200, {'content-type':mime[path.extname(file)] || 'application/octet-stream', 'cache-control':'no-store'});
   res.end(body);
@@ -211,7 +211,7 @@ async function checkOldTab(browser) {
       });
     });
   });
-  await page.waitForFunction(async()=>{const names=await caches.keys();return names.includes('sahmt-v2-shell-v134');});
+  await page.waitForFunction(async()=>{const names=await caches.keys();return names.includes('sahmt-v2-shell-v135');});
   serverOnline=false;
   await context.setOffline(true);
   const networkBefore=requests.length;
@@ -220,8 +220,8 @@ async function checkOldTab(browser) {
   await page.locator('#label-entry-dialog[open]').waitFor();
   await page.evaluate(async file=>{await import(`/SAHMT-V2.0.github.io/${file}`);},oldCamera);
   const names=await page.evaluate(()=>caches.keys());
-  assert.ok(names.includes('sahmt-v2-shell-v133'),'cache da aba antiga deve permanecer');
-  assert.ok(names.includes('sahmt-v2-shell-v134'),'novo cache deve estar ativo');
+  assert.ok(names.includes('sahmt-v2-shell-v134'),'cache da aba antiga deve permanecer');
+  assert.ok(names.includes('sahmt-v2-shell-v135'),'novo cache deve estar ativo');
   assert.ok(requests.slice(networkBefore).every(r=>!r.served && r.path.endsWith('/service-worker.js')));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.locator('.identity-card__user').filter({hasText:'Usuário Fictício'}).waitFor();

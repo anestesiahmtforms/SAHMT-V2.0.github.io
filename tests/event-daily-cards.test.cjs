@@ -28,7 +28,7 @@ test('diário exibe campos e responsável no mesmo cartão de Etiquetas; histór
   assert.match(target.innerHTML, /R\$ 0,00/);
   assert.equal(reads(), 0); assert.equal(panel.hidden, true);
   await button.click(); assert.equal(reads(), 1); assert.equal(panel.hidden, false);
-  assert.match(panel.innerHTML, /Versão 2/); assert.match(panel.innerHTML, /Responsável: Editor/);
+  assert.doesNotMatch(panel.innerHTML, /Versão/); assert.match(panel.innerHTML, /Responsável: Editor/);
   assert.match(panel.innerHTML, /Antes: Pessoal/); assert.match(panel.innerHTML, /Depois: Férias/);
   await button.click(); assert.equal(panel.hidden, true);
   await button.click(); assert.equal(reads(), 1); assert.equal(panel.hidden, false);
@@ -43,4 +43,17 @@ test('mensal preserva a apresentação compacta e não busca histórico', () => 
   assert.match(target.innerHTML, /event-record-banner/);
   assert.doesNotMatch(target.innerHTML, /label-daily-record|data-event-history=|data-event-edit=/);
   assert.equal(reads(), 0);
+});
+
+test('histórico compartilhado apresenta campos antes/depois sem número de versão', () => {
+  const ctx = vm.createContext({escapeHtml: String, interactionDateTime: () => '30/09/2026 12:00'});
+  vm.runInContext(source.slice(source.indexOf('function renderRecordEditHistory('), source.indexOf('async function loadDailyEventEditNotes(')), ctx);
+  const html = ctx.renderRecordEditHistory([{version: 2, actorName: 'Editor', changedFields: ['patientName', 'staffSiglas'], before: {patientName: 'Antes', staffSiglas: ['AB']}, after: {patientName: 'Depois', staffSiglas: ['AB', 'CD']}}], {patientName: 'Nome do paciente', staffSiglas: 'Plantonistas'});
+  assert.match(html, /Nome do paciente/);
+  assert.match(html, /Antes: Antes/);
+  assert.match(html, /Depois: Depois/);
+  assert.match(html, /Depois: AB, CD/);
+  assert.match(html, /Responsável: Editor/);
+  assert.doesNotMatch(html, /Versão/);
+  assert.match(source, /historyTarget.innerHTML = renderRecordEditHistory\(history, labels,/);
 });
