@@ -1827,3 +1827,34 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .checklist-confirmation-footer>.checklist-confirmation-button{min-height:54px;padding:5px 8px}
  .checklist-report-footer button{min-height:34px;padding:4px 8px}
 }
+
+/* Página principal do Checklist: todos os blocos dividem o espaço disponível. */
+.app-shell--checklist .module-view--checklist{
+ flex:1 1 0;height:100%;max-height:100%;
+ grid-template-rows:minmax(0,3fr) minmax(56px,1fr) repeat(2,minmax(40px,.65fr));
+ align-content:stretch;gap:clamp(6px,1dvh,10px);padding:clamp(8px,1.2dvh,12px)
+}
+.app-shell--checklist .module-view--checklist:not(:has(>.checklist-qr-launcher)){
+ grid-template-rows:minmax(0,3fr) repeat(2,minmax(40px,.65fr))
+}
+.app-shell--checklist .module-view--checklist>.checklist-visual-frame{place-items:stretch}
+.app-shell--checklist .checklist-visual-frame>.checklist-visual{
+ width:100%;height:100%;max-width:100%;max-height:100%;
+ grid-template-rows:auto minmax(0,1fr);align-content:stretch;justify-items:stretch
+}
+.app-shell--checklist .checklist-visual-frame .checklist-visual img{
+ width:100%;height:100%;min-width:0;min-height:0;max-width:100%;max-height:100%;object-fit:contain
+}
+.app-shell--checklist .checklist-qr-launcher,
+.app-shell--checklist .checklist-report-launchers button,
+.app-shell--checklist .checklist-home-button{
+ display:grid;place-content:center;justify-items:center;width:100%;height:100%;margin:0;line-height:1.2
+}
+@media(max-height:580px){
+ .app-shell--checklist .module-view--checklist{
+  grid-template-rows:minmax(0,3fr) minmax(48px,1fr) repeat(2,minmax(32px,.65fr));gap:5px;padding:6px
+ }
+ .app-shell--checklist .module-view--checklist:not(:has(>.checklist-qr-launcher)){
+  grid-template-rows:minmax(0,3fr) repeat(2,minmax(32px,.65fr))
+ }
+}
