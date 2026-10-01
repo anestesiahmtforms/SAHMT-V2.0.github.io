@@ -50,3 +50,26 @@ export function decodeQrImageData(imageData, ZXing) {
     return null;
   }
 }
+
+/** Maps the visible guide to camera pixels with object-fit: cover at center. */
+export function checklistQrCrop({videoWidth, videoHeight, videoRect, focusRect}) {
+  if (!(videoWidth > 0 && videoHeight > 0 && videoRect?.width > 0 && videoRect?.height > 0 && focusRect?.width > 0 && focusRect?.height > 0)) return null;
+  const scale = Math.max(videoRect.width / videoWidth, videoRect.height / videoHeight);
+  const offsetX = (videoRect.width - videoWidth * scale) / 2;
+  const offsetY = (videoRect.height - videoHeight * scale) / 2;
+  const x = Math.max(0, Math.floor((focusRect.left - videoRect.left - offsetX) / scale));
+  const y = Math.max(0, Math.floor((focusRect.top - videoRect.top - offsetY) / scale));
+  const right = Math.min(videoWidth, Math.ceil((focusRect.left + focusRect.width - videoRect.left - offsetX) / scale));
+  const bottom = Math.min(videoHeight, Math.ceil((focusRect.top + focusRect.height - videoRect.top - offsetY) / scale));
+  return right > x && bottom > y ? {x, y, width: right - x, height: bottom - y} : null;
+}
+
+export function createChecklistQrConfirmation() {
+  let previous = '', count = 0;
+  return (value) => {
+    const candidate = String(value || '').trim();
+    count = candidate && candidate === previous ? count + 1 : candidate ? 1 : 0;
+    previous = candidate;
+    return count >= 2 ? candidate : null;
+  };
+}
