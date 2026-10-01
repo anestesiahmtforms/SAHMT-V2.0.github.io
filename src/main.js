@@ -1340,14 +1340,37 @@ async function loadDailyChecklist(stations, suppliedDay) {
         : !applicableStations.length
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
-    const signatureMarkup = dayMode === 'today' && can('checklistSign') ? `<section class="checklist-signature panel" aria-label="Assinatura interna do Checklist"><p>Assinatura do responsável</p><button class="secondary-button" id="checklist-signature-prepare" type="button" ${!navigator.onLine || result.stale || pendingChecklistWrites || !applicableStations.length ? 'disabled' : ''}>Revisar e assinar</button><small class="checklist-responsible-rule">Primeira posição disponível da escala, após férias e substituições.</small><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></section>` : '';
+    const canPrepareSignature = dayMode === 'today' && can('checklistSign') && navigator.onLine && !result.stale && !pendingChecklistWrites && applicableStations.length > 0;
+    const signatureMarkup = `<footer class="checklist-confirmation-footer"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Confirmação do Checklist</span><small id="checklist-responsible-name">Consultando responsável…</small></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Confirmação do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
     content.innerHTML = `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`;
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.addEventListener('click', () => {
       const station = displayStations.find((item) => item.id === button.dataset.checklistSelect);
       if (station) showChecklistStationBanner(station, resolvedRecordFor(station), day, stations, {fromQr: false});
     }));
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
+    const responsibleName = content.querySelector('#checklist-responsible-name');
+    const confirmationDialog = content.querySelector('#checklist-confirmation-dialog');
+    let responsibilityConfirmed = false;
+    if (prepareSignature) {
+      prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
+      void import('./checklist-responsibility-reader.js').then(({getChecklistDayResponsible}) =>
+        getChecklistDayResponsible({day, uid, isAdmin: can('admin')})
+      ).then((responsible) => {
+        if (!responsibleName?.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue()) || session.user?.uid !== uid) return;
+        responsibleName.textContent = responsible.name;
+        responsibilityConfirmed = true;
+        prepareSignature.disabled = !canPrepareSignature;
+      }).catch(() => {
+        if (!responsibleName?.isConnected) return;
+        responsibleName.textContent = 'Responsável não confirmado';
+        prepareSignature.title = 'Não foi possível conferir a escala e os eventos do dia. Atualize o relatório.';
+        prepareSignature.disabled = true;
+      });
+    }
     prepareSignature?.addEventListener('click', async () => {
+      if (!responsibilityConfirmed || !canPrepareSignature) return;
+      if (!confirmationDialog.open) confirmationDialog.showModal();
+      content.querySelector('#checklist-confirmation-title')?.focus({preventScroll: true});
       const status = content.querySelector('#checklist-signature-status');
       const previewTarget = content.querySelector('#checklist-signature-preview');
       prepareSignature.disabled = true;
@@ -1388,17 +1411,18 @@ async function loadDailyChecklist(stations, suppliedDay) {
             const {signChecklistReport} = await import('./checklist-signature.js');
             await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid: session.user.uid});
             status.textContent = 'Pedido registrado. Assinatura e pontuação aguardam validação.';
+            confirmationDialog.close();
             await loadDailyChecklist(stations, day);
           } catch (error) {
             status.textContent = error.message || 'Não foi possível assinar. Atualize o relatório e tente novamente.';
             previewTarget.replaceChildren();
-            prepareSignature.disabled = !navigator.onLine || pendingChecklistWrites;
+            prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
           }
         });
       } catch (error) {
         status.textContent = error.message || 'Não foi possível conferir a revisão do relatório.';
       } finally {
-        if (prepareSignature.isConnected) prepareSignature.disabled = !navigator.onLine || pendingChecklistWrites;
+        if (prepareSignature.isConnected) prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
       }
     });
   } catch (error) {

@@ -1765,3 +1765,34 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  #checklist-qr-dialog{padding-top:calc(env(safe-area-inset-top,0px) + 10px)}
  #checklist-qr-dialog>.checklist-qr-container{max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 20px)}
 }
+
+/* Relatório diário: arsenais compactos e apenas a confirmação no rodapé. */
+.checklist-daily-layout>.checklist-station-grid{
+ align-self:start;gap:3px;max-height:min(100%,calc(7*clamp(30px,7dvh,58px) + 18px))
+}
+.checklist-report-dialog .checklist-station-select{padding:1px;border-radius:8px;font-size:clamp(.46rem,1.65vw,.64rem)}
+.checklist-daily-layout>.checklist-confirmation-footer{grid-row:3;min-width:0;margin:0;padding:0}
+.checklist-confirmation-footer>.checklist-confirmation-button{
+ display:grid;justify-items:center;align-content:center;gap:4px;width:100%;
+ min-height:64px;margin:0;padding:8px 10px;border:2px solid #fff;border-radius:14px;
+ background:linear-gradient(145deg,#2a8bcc,#0d3257);color:#fff;box-shadow:0 3px 0 #092743;
+ font-size:clamp(.78rem,2.8vw,.98rem);font-weight:950;line-height:1.2
+}
+.checklist-confirmation-button>small{display:block;max-width:100%;font-size:clamp(.65rem,2.4vw,.82rem);font-weight:800;overflow-wrap:anywhere;line-height:1.2}
+.checklist-confirmation-dialog{
+ box-sizing:border-box;width:min(94vw,520px);max-height:calc(90dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+ margin:auto;padding:14px;border:2px solid #fff;border-radius:18px;background:#edf4f6;color:#173957;overflow:auto;overscroll-behavior:contain
+}
+.checklist-confirmation-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
+.checklist-confirmation-dialog>header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.checklist-confirmation-dialog h3{margin:0;font-size:1rem}
+.checklist-confirmation-dialog h3:focus{outline:none}
+.checklist-confirmation-dialog header button{min-height:36px;padding:5px 9px}
+.checklist-confirmation-dialog #checklist-signature-preview{max-height:none;overflow:visible}
+.checklist-confirmation-dialog .checklist-signature-review{display:grid;gap:10px}
+.checklist-confirmation-dialog .checklist-signature-review p{margin:0;font-size:.8rem;line-height:1.35}
+.checklist-confirmation-dialog textarea{font-size:16px}
+@media(orientation:landscape) and (max-height:500px){
+ .checklist-daily-layout>.checklist-station-grid{max-height:min(100%,calc(4*clamp(28px,10dvh,48px) + 9px))}
+ .checklist-confirmation-footer>.checklist-confirmation-button{min-height:50px;padding:5px 8px;gap:2px}
+}
