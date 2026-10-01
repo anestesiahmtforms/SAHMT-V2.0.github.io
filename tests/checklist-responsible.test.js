@@ -73,3 +73,28 @@ test('aplica férias pelo rótulo quando a lista de siglas da fonte está vazia'
   assert.equal(result.sigla, 'CR');
   assert.equal(result.position, 2);
 });
+
+test('avança até a terceira ou quarta posição após férias e substituições sucessivas', () => {
+  const base = {day: '2026-09-22', schedule: {positions: ['AD', 'CR', 'LH', 'LA']}, contacts,
+    vacations: [{active: true, start: '2026-09-22', end: '2026-09-22', siglas: ['AD']}],
+    events: [{date: '2026-09-22', active: true, memberStatus: 'CR', eventType: 'Pessoal', substitute: 'Outro membro'}]};
+  assert.equal(resolveChecklistResponsibility(base).position, 3);
+  assert.equal(resolveChecklistResponsibility(base).sigla, 'LH');
+  const next = resolveChecklistResponsibility({...base, vacations: [...base.vacations, {active: true, siglas: ['LH']}]});
+  assert.equal(next.position, 4);
+  assert.equal(next.sigla, 'LA');
+});
+
+test('validador do Apps Script mantém a mesma sequência de responsáveis', async () => {
+  const {readFileSync} = await import('node:fs');
+  const {runInNewContext} = await import('node:vm');
+  const source = readFileSync(new URL('../apps-script-v2/ChecklistValidation.gs', import.meta.url), 'utf8');
+  const context = {};
+  runInNewContext(source, context);
+  const input = {day: '2026-09-22', schedule: {positions: ['AD', 'CR', 'LH', 'LA']}, contacts,
+    vacations: [{active: true, siglas: ['AD']}],
+    events: [{date: '2026-09-22', active: true, memberStatus: 'CR', eventType: 'Pessoal', substitute: 'Outro membro'}]};
+  assert.equal(context.selectChecklistResponsible_(input).position, 3);
+  assert.equal(context.selectChecklistResponsible_(input).sigla, 'LH');
+  assert.equal(context.selectChecklistResponsible_({...input, vacations: [{siglas: ['AD', 'LH']}]}).position, 4);
+});

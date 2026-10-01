@@ -36,6 +36,11 @@ for (const [name, directory] of Object.entries(builds)) {
   }
 }
 fs.mkdirSync(artifactDir, {recursive: true});
+const cacheVersions = Object.fromEntries(Object.entries(builds).map(([name, directory]) => {
+  const match = fs.readFileSync(path.join(directory, 'service-worker.js'), 'utf8').match(/const CACHE = '(sahmt-v2-shell-v\d+)'/);
+  if (!match) throw new Error(`Versão do service worker ${name} ausente.`);
+  return [name, match[1]];
+}));
 let chromium;
 try {
   ({chromium} = require(process.env.SAHMT_PLAYWRIGHT_MODULE || 'playwright'));
@@ -64,10 +69,6 @@ const server = http.createServer((req, res) => {
   if (!target.startsWith(builds[activeBuild] + path.sep)) { res.writeHead(404); res.end(); return; }
   if (!fs.existsSync(target)) { res.writeHead(404); res.end(); return; }
   let body = fs.readFileSync(target);
-  if (file === 'service-worker.js' && activeBuild === 'old') {
-    // Only the cache name is varied; all app modules are the real baseline build.
-    body = Buffer.from(body.toString().replace(/sahmt-v2-shell-v\d+/, 'sahmt-v2-shell-v134'));
-  }
   res.writeHead(200, {'content-type':mime[path.extname(file)] || 'application/octet-stream', 'cache-control':'no-store'});
   res.end(body);
 });
@@ -211,7 +212,7 @@ async function checkOldTab(browser) {
       });
     });
   });
-  await page.waitForFunction(async()=>{const names=await caches.keys();return names.includes('sahmt-v2-shell-v135');});
+  await page.waitForFunction(async expected=>{const names=await caches.keys();return names.includes(expected);}, cacheVersions.current);
   serverOnline=false;
   await context.setOffline(true);
   const networkBefore=requests.length;
@@ -220,8 +221,8 @@ async function checkOldTab(browser) {
   await page.locator('#label-entry-dialog[open]').waitFor();
   await page.evaluate(async file=>{await import(`/SAHMT-V2.0.github.io/${file}`);},oldCamera);
   const names=await page.evaluate(()=>caches.keys());
-  assert.ok(names.includes('sahmt-v2-shell-v134'),'cache da aba antiga deve permanecer');
-  assert.ok(names.includes('sahmt-v2-shell-v135'),'novo cache deve estar ativo');
+  assert.ok(names.includes(cacheVersions.old),'cache da aba antiga deve permanecer');
+  assert.ok(names.includes(cacheVersions.current),'novo cache deve estar ativo');
   assert.ok(requests.slice(networkBefore).every(r=>!r.served && r.path.endsWith('/service-worker.js')));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.locator('.identity-card__user').filter({hasText:'Usuário Fictício'}).waitFor();

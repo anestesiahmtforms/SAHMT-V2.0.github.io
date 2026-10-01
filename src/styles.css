@@ -1594,19 +1594,212 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 /* Posição explícita no centro do display, inclusive no Safari do iPhone. */
 #schedule-contact-dialog[open]{position:fixed!important;inset:auto!important;top:50dvh!important;left:50vw!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important;margin:0!important;height:auto!important;width:min(90vw,440px);min-height:0;max-height:min(85dvh,calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));align-self:center}
 
-/* O título cresce sem esticar sua faixa até as laterais do cartão. */
-.app-shell .identity-card .module-title-chip{grid-column:1/-1;grid-row:2;justify-self:center;display:grid;place-items:center;box-sizing:border-box;width:max-content;max-width:100%;min-height:44px;margin:0;padding:4px clamp(14px,4vw,24px);border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(1.44rem,5.6vw,1.76rem);font-weight:950;letter-spacing:.12em;line-height:1.05;text-align:center;white-space:nowrap}
-.app-shell--labels .identity-card .module-title-chip,.app-shell--management .identity-card .module-title-chip{font-size:clamp(1.56rem,6vw,1.96rem)}
-.app-shell--checklist .identity-card .module-title-chip{font-size:clamp(1.5rem,6vw,1.8rem)}
-@media(max-height:580px){.app-shell--checklist .identity-card .module-title-chip{min-height:36px;padding-block:2px;font-size:1.36rem}}
+/* Caixa do Arsenal acompanha a imagem sem faixas vazias. */
+.app-shell--checklist .checklist-visual-frame{container-type:size;display:grid;place-items:center;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
+.app-shell--checklist .checklist-visual-frame>.checklist-visual{display:grid;grid-template-rows:auto auto;justify-items:center;gap:4px;width:fit-content;height:fit-content;max-width:100%;max-height:100%;min-height:0;margin:0;padding:5px;border-radius:16px;overflow:hidden}
+.app-shell--checklist .checklist-visual-frame .checklist-visual img{width:auto;height:auto;max-width:calc(100cqw - 12px);max-height:calc(100cqh - 28px);object-fit:contain}
+.app-shell--checklist .events-header-operational.checklist-title{width:fit-content;max-width:100%;justify-self:center;min-height:0;padding:4px 8px;font-size:clamp(1.5rem,6vw,1.8rem);line-height:1.1}
+@media(max-height:740px){.app-shell--checklist .events-header-operational.checklist-title{font-size:1.36rem;padding:3px 6px}}
 
-/* A foto horizontal do arsenal acompanha sua proporção no Checklist móvel. */
-@media(orientation:portrait){
- .app-shell--checklist .module-view--checklist{grid-template-rows:minmax(0,max-content) minmax(72px,1fr) clamp(38px,6.5dvh,56px) clamp(34px,5.8dvh,48px)}
+/* Evita ampliação automática do campo no Safari do iPhone. */
+#checklist-qr-dialog{touch-action:manipulation}
+#checklist-qr-dialog input,#checklist-qr-dialog select,#checklist-qr-dialog textarea{font-size:16px;line-height:1.25}
+#checklist-qr-title:focus{outline:none}
+
+.checklist-report-dialog .checklist-station-select .checklist-arsenal-function{display:block;margin:0;color:inherit;font-size:inherit;font-weight:950;line-height:1.05}
+
+/* A grade e a assinatura compartilham a altura disponível do relatório. */
+.checklist-report-content>.checklist-daily-layout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:5px;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
+.checklist-daily-layout>.checklist-daily-notices{grid-row:1;min-height:0;max-height:10dvh;overflow:auto}
+.checklist-daily-notices:empty{display:none}
+.checklist-daily-layout>.checklist-station-grid{grid-row:2;height:100%;min-height:0;margin:0}
+.checklist-daily-layout>.checklist-signature{grid-row:3;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 6px;min-height:0;margin:0;padding:6px 8px;box-shadow:none;border-radius:12px}
+.checklist-daily-layout>.checklist-signature>p:first-child{font-size:clamp(.65rem,2.4vw,.85rem);text-align:left}
+.checklist-daily-layout>.checklist-signature>button{width:auto;min-height:36px;padding:5px 9px;font-size:.75rem;border-radius:10px;box-shadow:0 2px 0 #092743}
+.checklist-signature .checklist-responsible-rule{grid-column:1/-1;font-size:.6rem;line-height:1.2;color:#526578;text-align:left}
+.checklist-daily-layout #checklist-signature-status{grid-column:1/-1;margin:0;font-size:.65rem}
+.checklist-daily-layout #checklist-signature-status:empty{display:none}
+.checklist-daily-layout #checklist-signature-preview{grid-column:1/-1;min-height:0;max-height:30dvh;overflow:auto;overscroll-behavior:contain}
+.checklist-daily-layout #checklist-signature-preview:empty{display:none}
+.checklist-daily-layout .checklist-signature-review textarea{font-size:16px}
+@media(orientation:landscape) and (max-height:500px){.checklist-daily-layout>.checklist-station-grid{grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr))}.checklist-signature .checklist-responsible-rule{font-size:.55rem}}
+
+/* Uma moldura individual e o recorte efetivo da câmera usam a mesma área. */
+#checklist-qr-dialog .checklist-qr-stage{aspect-ratio:1;min-height:0;height:auto;max-height:54dvh}
+#checklist-qr-dialog video{width:100%;height:100%;min-height:0;object-fit:cover;object-position:center;border-radius:0}
+#checklist-qr-dialog .checklist-qr-focus{width:min(64%,260px);max-height:78%;border-radius:12px}
+#checklist-qr-dialog .checklist-qr-focus::after{content:"";position:absolute;inset:12%;border:1px dashed #ffffffa8;border-radius:5px}
+#checklist-qr-dialog .checklist-qr-guide{position:absolute;z-index:2;bottom:7px;left:8px;right:8px;padding:5px 7px;border-radius:8px;background:#061a2acc;color:#fff;font-size:.7rem;line-height:1.25;text-align:center;pointer-events:none}
+
+/* Leitor QR: cabeçalho, estado, câmera e entrada manual distribuem a altura do bloco. */
+#checklist-qr-dialog{position:fixed;inset:0;box-sizing:border-box;width:min(92vw,560px);height:min(92dvh,900px);max-width:none;max-height:none;margin:auto;padding:clamp(10px,2vw,16px);overflow:hidden}
+#checklist-qr-dialog[open]{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:clamp(7px,1.2dvh,12px)}
+#checklist-qr-dialog>header{min-width:0;align-items:center;gap:10px;margin:0}
+#checklist-qr-dialog>header>div{min-width:0}
+#checklist-qr-dialog h3{font-size:clamp(.95rem,3.5vw,1.15rem);line-height:1.2}
+#checklist-qr-dialog>header button{flex:0 0 auto;min-height:38px;padding:6px 10px}
+#checklist-qr-dialog>#checklist-qr-status{min-height:0;max-height:3.9em;overflow:auto;margin:0;padding:0;font-size:.78rem;line-height:1.3}
+#checklist-qr-dialog .checklist-qr-stage{container-type:size;width:100%;height:100%;min-width:0;min-height:0;max-height:none;aspect-ratio:auto;border-radius:14px}
+#checklist-qr-dialog video{width:100%;height:100%;max-height:none}
+#checklist-qr-dialog .checklist-qr-focus{width:min(64cqw,64cqh,260px);max-height:none;aspect-ratio:1}
+#checklist-qr-dialog .checklist-qr-focus::after{width:auto;height:auto}
+#checklist-qr-dialog .checklist-qr-guide{left:8px;right:8px;bottom:8px;font-size:.72rem;line-height:1.25}
+#checklist-qr-dialog>#checklist-qr-manual{display:grid;grid-template-columns:minmax(0,1fr) minmax(100px,.55fr);align-items:end;gap:8px;margin:0;padding:0}
+#checklist-qr-dialog>#checklist-qr-manual[hidden]{display:none}
+#checklist-qr-manual label{min-width:0;gap:4px}
+#checklist-qr-manual input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;margin:0}
+#checklist-qr-manual button{width:100%;min-width:0;min-height:44px;padding:6px 8px;font-size:.78rem;line-height:1.15}
+@media(orientation:landscape) and (max-height:550px){
+ #checklist-qr-dialog{width:min(94vw,800px);height:94dvh;padding:8px}
+ #checklist-qr-dialog[open]{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:7px}
+ #checklist-qr-dialog>header{grid-column:1/-1;grid-row:1}
+ #checklist-qr-dialog>#checklist-qr-status{grid-column:2;grid-row:2;align-self:start;max-height:100%}
+ #checklist-qr-dialog .checklist-qr-stage{grid-column:1;grid-row:2/4}
+ #checklist-qr-dialog>#checklist-qr-manual{grid-column:2;grid-row:3}
 }
-@media(orientation:portrait) and (max-height:580px){
- .app-shell--checklist .module-view--checklist{grid-template-rows:minmax(0,max-content) minmax(68px,1fr) 34px 30px}
+
+/* Leitor QR compacto: evita a câmera ocupar quase todo o display. */
+#checklist-qr-dialog{height:auto;max-height:90dvh}
+#checklist-qr-dialog[open]{grid-template-rows:auto auto minmax(0,1fr) auto}
+#checklist-qr-dialog .checklist-qr-stage{height:clamp(180px,34dvh,300px);max-height:38dvh}
+@media(orientation:landscape) and (max-height:550px){
+ #checklist-qr-dialog{height:min(86dvh,380px);max-height:90dvh}
+ #checklist-qr-dialog[open]{grid-template-rows:auto minmax(0,1fr) auto}
+ #checklist-qr-dialog .checklist-qr-stage{height:100%;max-height:none}
 }
+
+/* Leitor sem textos ou entrada manual: câmera e retorno somente. */
+#checklist-qr-dialog{height:auto;max-height:90dvh}
+#checklist-qr-dialog[open]{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:10px}
+#checklist-qr-dialog>#checklist-qr-status[hidden]{display:none!important}
+#checklist-qr-dialog .checklist-qr-stage{grid-column:1;grid-row:1;height:clamp(160px,34dvh,300px);max-height:38dvh}
+#checklist-qr-dialog>#checklist-qr-close{grid-column:1;grid-row:2;width:100%;min-height:40px;margin:0;padding:7px 12px}
+
+/* Câmera e retorno em um bloco compacto, ancorado no centro do display. */
+#checklist-qr-dialog{position:fixed;inset:auto;top:50dvh;left:50vw;right:auto;bottom:auto;transform:translate(-50%,-50%);box-sizing:border-box;width:min(86vw,440px);height:auto;max-height:86dvh;margin:0;padding:8px;border-radius:16px}
+#checklist-qr-dialog[open]{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:7px}
+#checklist-qr-dialog .checklist-qr-stage{width:100%;height:clamp(170px,32dvh,280px);max-height:65dvh;border-radius:11px}
+#checklist-qr-dialog>#checklist-qr-close{justify-self:center;width:auto;min-width:96px;min-height:32px;height:32px;margin:0;padding:4px 14px;border-radius:9px;font-size:.78rem;line-height:1.2;box-shadow:none}
+@media(orientation:landscape) and (max-height:550px){#checklist-qr-dialog{width:min(68vw,440px);padding:7px}#checklist-qr-dialog .checklist-qr-stage{height:54dvh;max-height:calc(86dvh - 55px)}}
+
+/* Centralização nativa com dimensões explícitas evita deslocamento lateral do dialog. */
+#checklist-qr-dialog{
+ --qr-camera-height:clamp(170px,32dvh,280px);
+ position:fixed;inset:0;top:0;left:0;right:0;bottom:0;transform:none;
+ box-sizing:border-box;width:min(86vw,440px);max-width:calc(100vw - 20px);
+ height:calc(var(--qr-camera-height) + 59px);max-height:calc(100dvh - 20px);
+ margin:auto;padding:8px;overflow:hidden
+}
+#checklist-qr-dialog[open]{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 32px;gap:7px}
+#checklist-qr-dialog .checklist-qr-stage{width:100%;height:100%;min-width:0;min-height:0;max-height:none;grid-column:1;grid-row:1}
+#checklist-qr-dialog>#checklist-qr-close{grid-column:1;grid-row:2;justify-self:center;align-self:center;width:auto;max-width:100%;min-width:96px;height:32px;min-height:32px}
+@media(orientation:landscape) and (max-height:550px){
+ #checklist-qr-dialog{--qr-camera-height:54dvh;width:min(68vw,440px);height:calc(var(--qr-camera-height) + 57px);max-height:86dvh;padding:7px}
+ #checklist-qr-dialog .checklist-qr-stage{height:100%;max-height:none}
+}
+
+/* Exibe a câmera somente na mesma moldura central usada pelo leitor. */
+#checklist-qr-dialog .checklist-qr-stage{background:#061a2a}
+#checklist-qr-dialog video{clip-path:inset(calc(50% - min(32cqw,32cqh,130px)) round 12px)}
+#checklist-qr-dialog .checklist-qr-focus{box-sizing:border-box;width:min(64cqw,64cqh,260px);height:min(64cqw,64cqh,260px);box-shadow:0 0 0 999px #061a2a,0 0 12px #38f08b66}
+
+/* O fundo do dialog ocupa o display; o bloco visível fica no centro da grade. */
+#checklist-qr-dialog{position:fixed;inset:0;top:0;left:0;right:0;bottom:0;transform:none;box-sizing:border-box;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:10px;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:hidden}
+#checklist-qr-dialog[open]{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);place-items:center;gap:0}
+#checklist-qr-dialog>.checklist-qr-container{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 32px;gap:7px;width:min(86vw,440px);height:calc(clamp(170px,32dvh,280px) + 59px);max-width:100%;max-height:calc(100dvh - 20px);margin:0;padding:8px;border:2px solid #fff;border-radius:16px;background:linear-gradient(145deg,#fff,#e8f0f3);box-shadow:0 20px 60px #001b3577;overflow:hidden}
+#checklist-qr-dialog .checklist-qr-container>.checklist-qr-stage{grid-column:1;grid-row:1;width:100%;height:100%;min-width:0;min-height:0;max-height:none}
+#checklist-qr-dialog .checklist-qr-container>#checklist-qr-close{grid-column:1;grid-row:2;justify-self:center;align-self:center;width:auto;max-width:100%;min-width:96px;height:32px;min-height:32px;margin:0;padding:4px 14px;border-radius:9px;font-size:.78rem;line-height:1.2;box-shadow:none}
+@media(orientation:landscape) and (max-height:550px){#checklist-qr-dialog>.checklist-qr-container{width:min(68vw,440px);height:calc(54dvh + 57px);max-height:86dvh;padding:7px}}
+
+/* A captura acompanha a moldura na parte alta da câmera. */
+#checklist-qr-dialog .checklist-qr-focus{top:8px;left:50%;transform:translateX(-50%)}
+#checklist-qr-dialog video{clip-path:inset(8px calc(50% - min(32cqw,32cqh,130px)) calc(100% - 8px - min(64cqw,64cqh,260px)) round 12px)}
+
+/* Checklist: imagem no topo e ações próximas, em um bloco proporcional ao conteúdo. */
+.app-shell--checklist .module-view--checklist{
+ --checklist-menu-qr:clamp(68px,11dvh,96px);
+ --checklist-menu-report:clamp(38px,6dvh,52px);
+ --checklist-menu-home:clamp(34px,5dvh,44px);
+ --checklist-menu-gap:clamp(8px,1.4dvh,12px);
+ --checklist-menu-padding:clamp(8px,1.2dvh,12px);
+ flex:0 1 auto;
+ height:min(100%,calc((90vw - 40px)*.6666667 + 28px + var(--checklist-menu-qr) + var(--checklist-menu-report) + var(--checklist-menu-home) + 3*var(--checklist-menu-gap) + 2*var(--checklist-menu-padding)));
+ max-height:100%;
+ grid-template-rows:minmax(0,1fr) var(--checklist-menu-qr) var(--checklist-menu-report) var(--checklist-menu-home);
+ align-content:start;
+ gap:var(--checklist-menu-gap);
+ padding:var(--checklist-menu-padding)
+}
+.app-shell--checklist .module-view--checklist>.checklist-visual-frame{place-items:start center}
+.app-shell--checklist .checklist-qr-launcher svg{width:clamp(28px,4dvh,36px);height:clamp(28px,4dvh,36px)}
+@media(max-height:580px){
+ .app-shell--checklist .module-view--checklist{
+  --checklist-menu-qr:52px;--checklist-menu-report:34px;--checklist-menu-home:30px;
+  --checklist-menu-gap:6px;--checklist-menu-padding:6px;
+  flex:1 1 0;height:100%
+ }
+ .app-shell--checklist .checklist-qr-launcher svg{width:24px;height:24px}
+}
+
+/* A câmera e a captura usam a mesma janela; evita divergência do recorte no Safari. */
+#checklist-qr-dialog .checklist-qr-stage{--qr-capture-size:min(84cqw,84cqh,260px)}
+#checklist-qr-dialog video{
+ position:absolute;top:8px;left:50%;transform:translateX(-50%);
+ box-sizing:border-box;width:var(--qr-capture-size);height:var(--qr-capture-size);
+ max-width:none;max-height:none;clip-path:none;border-radius:12px;object-fit:cover;object-position:center
+}
+#checklist-qr-dialog .checklist-qr-focus{
+ top:8px;left:50%;transform:translateX(-50%);
+ width:var(--qr-capture-size);height:var(--qr-capture-size)
+}
+
+/* Leitor na parte superior do modal, respeitando a área segura do iPhone. */
+#checklist-qr-dialog{
+ padding-top:calc(env(safe-area-inset-top,0px) + clamp(12px,4dvh,32px));
+ padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)
+}
+#checklist-qr-dialog[open]{place-items:start center}
+#checklist-qr-dialog>.checklist-qr-container{align-self:start;justify-self:center;margin:0}
+#checklist-qr-dialog video,#checklist-qr-dialog .checklist-qr-focus{top:0}
+@media(orientation:landscape) and (max-height:550px){
+ #checklist-qr-dialog{padding-top:calc(env(safe-area-inset-top,0px) + 10px)}
+ #checklist-qr-dialog>.checklist-qr-container{max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 20px)}
+}
+
+/* Relatório diário: arsenais compactos e apenas a confirmação no rodapé. */
+.checklist-daily-layout>.checklist-station-grid{
+ align-self:start;gap:3px;max-height:min(100%,calc(7*clamp(30px,7dvh,58px) + 18px))
+}
+.checklist-report-dialog .checklist-station-select{padding:1px;border-radius:8px;font-size:clamp(.46rem,1.65vw,.64rem)}
+.checklist-daily-layout>.checklist-confirmation-footer{grid-row:3;min-width:0;margin:0;padding:0}
+.checklist-confirmation-footer>.checklist-confirmation-button{
+ display:grid;justify-items:center;align-content:center;gap:4px;width:100%;
+ min-height:64px;margin:0;padding:8px 10px;border:2px solid #fff;border-radius:14px;
+ background:linear-gradient(145deg,#2a8bcc,#0d3257);color:#fff;box-shadow:0 3px 0 #092743;
+ font-size:clamp(.78rem,2.8vw,.98rem);font-weight:950;line-height:1.2
+}
+.checklist-confirmation-button>small{display:block;max-width:100%;font-size:clamp(.65rem,2.4vw,.82rem);font-weight:800;overflow-wrap:anywhere;line-height:1.2}
+.checklist-confirmation-dialog{
+ box-sizing:border-box;width:min(94vw,520px);max-height:calc(90dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+ margin:auto;padding:14px;border:2px solid #fff;border-radius:18px;background:#edf4f6;color:#173957;overflow:auto;overscroll-behavior:contain
+}
+.checklist-confirmation-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
+.checklist-confirmation-dialog>header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.checklist-confirmation-dialog h3{margin:0;font-size:1rem}
+.checklist-confirmation-dialog h3:focus{outline:none}
+.checklist-confirmation-dialog header button{min-height:36px;padding:5px 9px}
+.checklist-confirmation-dialog #checklist-signature-preview{max-height:none;overflow:visible}
+.checklist-confirmation-dialog .checklist-signature-review{display:grid;gap:10px}
+.checklist-confirmation-dialog .checklist-signature-review p{margin:0;font-size:.8rem;line-height:1.35}
+.checklist-confirmation-dialog textarea{font-size:16px}
+@media(orientation:landscape) and (max-height:500px){
+ .checklist-daily-layout>.checklist-station-grid{max-height:min(100%,calc(4*clamp(28px,10dvh,48px) + 9px))}
+ .checklist-confirmation-footer>.checklist-confirmation-button{min-height:50px;padding:5px 8px;gap:2px}
+}
+
+/* O título cresce sem esticar sua faixa até as laterais do cartão. */
+.app-shell:where(:not(.app-shell--checklist)) .identity-card .module-title-chip{grid-column:1/-1;grid-row:2;justify-self:center;display:grid;place-items:center;box-sizing:border-box;width:max-content;max-width:100%;min-height:44px;margin:0;padding:4px clamp(14px,4vw,24px);border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(1.44rem,5.6vw,1.76rem);font-weight:950;letter-spacing:.12em;line-height:1.05;text-align:center;white-space:nowrap}
+.app-shell--labels .identity-card .module-title-chip,.app-shell--management .identity-card .module-title-chip{font-size:clamp(1.56rem,6vw,1.96rem)}
 
 /* No visor horizontal baixo, imagem/escala e ações dividem a área disponível. */
 @media(orientation:landscape) and (max-height:520px){
@@ -1622,12 +1815,6 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--events .event-report-launchers{grid-column:2;grid-row:1;height:100%;grid-template-rows:repeat(2,minmax(0,1fr));margin:0;gap:8px}
  .app-shell--events .event-report-launchers button{height:100%;min-height:36px}
  .app-shell--events .events-home-button{grid-column:2;grid-row:2;width:100%;height:100%;margin:0}
- .app-shell--checklist .module-view--checklist{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);grid-template-rows:minmax(0,1fr) 40px 34px;gap:8px}
- .app-shell--checklist .module-view--checklist>.checklist-visual{grid-column:1;grid-row:1/-1;grid-template-rows:auto auto;align-self:center;height:auto}
- .app-shell--checklist .checklist-visual img{height:auto;aspect-ratio:3/2}
- .app-shell--checklist .checklist-qr-launcher{grid-column:2;grid-row:1}
- .app-shell--checklist .checklist-report-launchers{grid-column:2;grid-row:2}
- .app-shell--checklist .checklist-home-button{grid-column:2;grid-row:3}
 }
 
 /* Escala e Etiquetas mantêm as ações visíveis quando o aparelho é girado. */
@@ -1726,4 +1913,14 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--home .schedule-card .sigla-token--dc,.app-shell--events .event-schedule .sigla-token--dc{padding:0 1px!important}
  :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token--dc>strong{font-size:.58rem;line-height:1.2}
  :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token--dc .sigla-token__aliases{font-size:.38rem;line-height:1.2}
+}
+
+
+/* A moldura atual do Checklist divide a área com as ações no visor horizontal baixo. */
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell--checklist .module-view--checklist{flex:1 1 0;height:100%;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);grid-template-rows:minmax(0,1fr) var(--checklist-menu-report) var(--checklist-menu-home);gap:var(--checklist-menu-gap)}
+ .app-shell--checklist .module-view--checklist>.checklist-visual-frame{grid-column:1;grid-row:1/-1;height:100%}
+ .app-shell--checklist .checklist-qr-launcher{grid-column:2;grid-row:1}
+ .app-shell--checklist .checklist-report-launchers{grid-column:2;grid-row:2}
+ .app-shell--checklist .checklist-home-button{grid-column:2;grid-row:3}
 }

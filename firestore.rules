@@ -557,10 +557,11 @@ service cloud.firestore {
         data.amountToPay == resource.data.amountToPay;
     }
     function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
+      let actorName = profile().displayName;
       return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdByName', 'updatedByName', 'createdAt', 'updatedAt', 'version']) &&
-        (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() <= 120 && data.createdByName == profile().displayName)) &&
-        (!data.keys().hasAny(['updatedByName']) || (data.updatedByName is string && data.updatedByName.size() <= 120 && data.updatedByName == profile().displayName)) &&
+        (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() <= 120 && data.createdByName == actorName)) &&
+        (!data.keys().hasAny(['updatedByName']) || (data.updatedByName is string && data.updatedByName.size() <= 120 && data.updatedByName == actorName)) &&
         data.id == eventId && data.clientMutationId == eventId && data.active == true && data.version is int && data.version > 0 &&
         data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
         data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
@@ -601,6 +602,9 @@ service cloud.firestore {
       let before = data.before;
       let after = data.after;
       let fields = data.changedFields;
+      let previousEvent = get(parentPath).data;
+      let updatedEvent = getAfter(parentPath).data;
+      let changedKeys = before.diff(after).affectedKeys();
       return exists(parentPath) && existsAfter(parentPath) &&
         can('admin') &&
         fields is list && fields.size() > 0 && fields.size() <= 13 &&
@@ -610,17 +614,17 @@ service cloud.firestore {
         before.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
         after.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
         before.keys().size() == 13 && after.keys().size() == 13 &&
-        fields.toSet() == before.diff(after).affectedKeys() &&
-        before == eventHistorySnapshot(get(parentPath).data) && after == eventHistorySnapshot(getAfter(parentPath).data) &&
+        fields.toSet() == changedKeys &&
+        before == eventHistorySnapshot(previousEvent) && after == eventHistorySnapshot(updatedEvent) &&
         data.keys().hasAll(['id', 'eventId', 'version', 'requestId', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
         data.keys().hasOnly(['id', 'eventId', 'version', 'requestId', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
         version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.eventId == eventId &&
         data.version is int && int(version) == data.version &&
         data.requestId is string && data.requestId.size() > 0 && data.requestId.size() <= 128 &&
         data.actorUid == request.auth.uid && data.actorName is string && data.actorName == profile().displayName && data.createdAt == request.time &&
-        get(parentPath).data.version == data.version - 1 &&
-        getAfter(parentPath).data.version == data.version && getAfter(parentPath).data.updatedByUid == request.auth.uid &&
-        before.diff(after).affectedKeys().size() > 0;
+        previousEvent.version == data.version - 1 &&
+        updatedEvent.version == data.version && updatedEvent.updatedByUid == request.auth.uid &&
+        changedKeys.size() > 0;
     }
     function eventHistoryExistsAfter(eventId, version) {
       let historyPath = /databases/$(database)/documents/events/$(eventId)/history/$(string(version));
