@@ -18,7 +18,7 @@ import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 
 const app = document.querySelector('#app');
-const STARTUP_BANNER_DURATION_MS = 6000;
+const STARTUP_BANNER_DURATION_MS = 4000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
 const startupReportKey = (kind, uid, day, scope = '') => JSON.stringify([kind, uid, day, scope]);
