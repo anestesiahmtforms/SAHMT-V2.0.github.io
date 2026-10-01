@@ -1714,3 +1714,29 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 /* A captura acompanha a moldura na parte alta da câmera. */
 #checklist-qr-dialog .checklist-qr-focus{top:8px;left:50%;transform:translateX(-50%)}
 #checklist-qr-dialog video{clip-path:inset(8px calc(50% - min(32cqw,32cqh,130px)) calc(100% - 8px - min(64cqw,64cqh,260px)) round 12px)}
+
+/* Checklist: imagem no topo e ações próximas, em um bloco proporcional ao conteúdo. */
+.app-shell--checklist .module-view--checklist{
+ --checklist-menu-qr:clamp(68px,11dvh,96px);
+ --checklist-menu-report:clamp(38px,6dvh,52px);
+ --checklist-menu-home:clamp(34px,5dvh,44px);
+ --checklist-menu-gap:clamp(8px,1.4dvh,12px);
+ --checklist-menu-padding:clamp(8px,1.2dvh,12px);
+ flex:0 1 auto;
+ height:min(100%,calc((90vw - 40px)*.6666667 + 28px + var(--checklist-menu-qr) + var(--checklist-menu-report) + var(--checklist-menu-home) + 3*var(--checklist-menu-gap) + 2*var(--checklist-menu-padding)));
+ max-height:100%;
+ grid-template-rows:minmax(0,1fr) var(--checklist-menu-qr) var(--checklist-menu-report) var(--checklist-menu-home);
+ align-content:start;
+ gap:var(--checklist-menu-gap);
+ padding:var(--checklist-menu-padding)
+}
+.app-shell--checklist .module-view--checklist>.checklist-visual-frame{place-items:start center}
+.app-shell--checklist .checklist-qr-launcher svg{width:clamp(28px,4dvh,36px);height:clamp(28px,4dvh,36px)}
+@media(max-height:580px){
+ .app-shell--checklist .module-view--checklist{
+  --checklist-menu-qr:52px;--checklist-menu-report:34px;--checklist-menu-home:30px;
+  --checklist-menu-gap:6px;--checklist-menu-padding:6px;
+  flex:1 1 0;height:100%
+ }
+ .app-shell--checklist .checklist-qr-launcher svg{width:24px;height:24px}
+}
