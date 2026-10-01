@@ -898,7 +898,7 @@ test('checklist aceita resposta própria e exige ocorrência em não conformidad
   await assertFails(setFirestoreRecord(user, 'checklists', 'check-inactive-station', {...record, id: 'check-inactive-station', clientMutationId: 'check-inactive-station', stationId: 'station-inactive'}, 'checker'));
   await assertFails(setFirestoreRecord(user, 'checklists', 'check-future-station', {...record, id: 'check-future-station', clientMutationId: 'check-future-station', stationId: 'station-future'}, 'checker'));
   await assertFails(setFirestoreRecord(user, 'checklists', 'check-malformed-station', {...record, id: 'check-malformed-station', clientMutationId: 'check-malformed-station', stationId: 'station-malformed'}, 'checker'));
-  await assertFails(setFirestoreRecord(user, 'checklists', 'check-outside-period', {...record, id: 'check-outside-period', clientMutationId: 'check-outside-period', date: '2026-10-01'}, 'checker'));
+  await assertFails(setFirestoreRecord(user, 'checklists', 'check-outside-period', {...record, id: 'check-outside-period', clientMutationId: 'check-outside-period', date: shiftDay(today, 10)}, 'checker'));
   await assertFails(setFirestoreRecord(user, 'checklists', 'check-past-day', {...record, id: 'check-past-day', clientMutationId: 'check-past-day', date: shiftDay(today, -1)}, 'checker'));
   await assertFails(setFirestoreRecord(user, 'checklists', 'check-future-day', {...record, id: 'check-future-day', clientMutationId: 'check-future-day', date: shiftDay(today, 1)}, 'checker'));
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
