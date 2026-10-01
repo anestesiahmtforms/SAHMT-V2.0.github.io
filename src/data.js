@@ -1,3 +1,4 @@
+import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db} from './firebase.js';
 import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
@@ -1655,7 +1656,7 @@ export async function saveChecklistStation(input, uid) {
       ...(end ? {end} : {}),
       order,
       active: input.active === true,
-      ...(current.exists() && typeof current.data().maintenance === 'string' ? {maintenance: current.data().maintenance} : {}),
+      ...(current.exists() && Object.hasOwn(current.data(), 'maintenance') ? {maintenance: current.data().maintenance} : {}),
       createdByUid: current.exists() ? current.data().createdByUid : uid,
       createdAt: current.exists() ? current.data().createdAt : serverTimestamp(),
       updatedByUid: uid,
@@ -2290,8 +2291,8 @@ export async function flushOutbox(uid, {requestId} = {}) {
 export async function saveChecklistStationMaintenance(stationId, value, uid) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para salvar a manutenção.');
-  const maintenance = String(value || '').trim();
-  if (!/^[^/]{1,128}$/.test(stationId || '') || maintenance.length > 1000) throw new Error('Confira o arsenal e limite a manutenção a 1000 caracteres.');
+  const maintenance = checklistMaintenanceForWrite(value);
+  if (!/^[^/]{1,128}$/.test(stationId || '')) throw new Error('Confira o arsenal informado para manutenção.');
   const ref = doc(db, 'stations', stationId);
   return runTransaction(db, async (transaction) => {
     const current = await transaction.get(ref);

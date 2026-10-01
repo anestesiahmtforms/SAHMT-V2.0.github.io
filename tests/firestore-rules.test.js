@@ -1327,3 +1327,141 @@ test('station maintenance is shared with checklist readers and editable only by 
   await assertFails(updateDoc(ref, {maintenance: 'x'.repeat(1001), updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 3}));
   await assertSucceeds(updateDoc(ref, {maintenance: '', updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 3}));
 });
+
+function stationRecord(id, uid, overrides = {}) {
+  return {
+    id, name: 'Arsenal fictício', qrCode: `QR-${id}`, order: 1, active: true,
+    createdByUid: uid, createdAt: serverTimestamp(), updatedByUid: uid,
+    updatedAt: serverTimestamp(), version: 1, ...overrides
+  };
+}
+
+test('station maintenance remains optional and legacy strings stay limited to 1000 characters', async () => {
+  const uid = 'station-manager';
+  await seedProfiles([accessProfile(uid, {checklistManage: true})]);
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  await assertSucceeds(setDoc(doc(db, 'stations', 'without-maintenance'), stationRecord('without-maintenance', uid)));
+  await assertSucceeds(setDoc(doc(db, 'stations', 'empty-maintenance'), stationRecord('empty-maintenance', uid, {maintenance: ''})));
+  const boundaryRef = doc(db, 'stations', 'maintenance-boundary');
+  await assertSucceeds(setDoc(boundaryRef, stationRecord('maintenance-boundary', uid, {maintenance: 'x'.repeat(1000)})));
+  assert.equal((await getDoc(boundaryRef)).data().maintenance.length, 1000);
+  await assertFails(setDoc(doc(db, 'stations', 'maintenance-too-long'), stationRecord('maintenance-too-long', uid, {maintenance: 'x'.repeat(1001)})));
+  for (const [index, maintenance] of [null, 0, false, [], {}].entries()) {
+    const id = `invalid-maintenance-${index}`;
+    await assertFails(setDoc(doc(db, 'stations', id), stationRecord(id, uid, {maintenance})));
+    await assertFails(updateDoc(boundaryRef, {maintenance, updatedByUid: uid, updatedAt: serverTimestamp(), version: 2}));
+  }
+  await assertSucceeds(updateDoc(boundaryRef, {maintenance: 'y'.repeat(1000), updatedByUid: uid, updatedAt: serverTimestamp(), version: 2}));
+});
+
+const maintenanceCalendars = (overrides = {}) => ({preventiveAnnual: '', electricalAnnual: '', calibrationSemiannual: '', ...overrides});
+
+test('station maintenance accepts the three fixed calendars with empty values or valid dates', async () => {
+  const uid = 'station-manager';
+  await seedProfiles([accessProfile(uid, {checklistManage: true}), accessProfile('station-reader', {checklistRead: true})]);
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  const reader = testEnvironment.authenticatedContext('station-reader').firestore();
+  const ref = doc(db, 'stations', 'station-calendars');
+  await assertSucceeds(setDoc(ref, stationRecord('station-calendars', uid, {maintenance: maintenanceCalendars()})));
+  assert.deepEqual((await getDoc(ref)).data().maintenance, maintenanceCalendars());
+  const dates = maintenanceCalendars({preventiveAnnual: '2028-02-29', electricalAnnual: '2026-12-31', calibrationSemiannual: '2026-10-01'});
+  await assertSucceeds(updateDoc(ref, {maintenance: dates, updatedByUid: uid, updatedAt: serverTimestamp(), version: 2}));
+  assert.deepEqual((await assertSucceeds(getDoc(doc(reader, 'stations', 'station-calendars')))).data().maintenance, dates);
+  // Century years are leap years only when divisible by 400.
+  await assertSucceeds(updateDoc(ref, {maintenance: maintenanceCalendars({preventiveAnnual: '2000-02-29'}), updatedByUid: uid, updatedAt: serverTimestamp(), version: 3}));
+  // HTML date inputs use positive, four-digit years for this persisted schema.
+  const yearLimits = maintenanceCalendars({preventiveAnnual: '0001-01-01', electricalAnnual: '0099-12-31', calibrationSemiannual: '9999-12-31'});
+  await assertSucceeds(updateDoc(ref, {maintenance: yearLimits, updatedByUid: uid, updatedAt: serverTimestamp(), version: 4}));
+  assert.deepEqual((await getDoc(ref)).data().maintenance, yearLimits);
+  await assertSucceeds(updateDoc(ref, {maintenance: maintenanceCalendars(), updatedByUid: uid, updatedAt: serverTimestamp(), version: 5}));
+  assert.deepEqual((await getDoc(ref)).data().maintenance, maintenanceCalendars());
+});
+
+test('station maintenance rejects missing or extra calendar keys, wrong value types and invalid dates', async () => {
+  const uid = 'station-manager';
+  await seedProfiles([accessProfile(uid, {checklistManage: true})]);
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  const ref = doc(db, 'stations', 'station-calendar-validation');
+  await assertSucceeds(setDoc(ref, stationRecord('station-calendar-validation', uid, {maintenance: maintenanceCalendars()})));
+  const invalidMaps = [maintenanceCalendars({unexpectedCalendar: ''})];
+  for (const key of Object.keys(maintenanceCalendars())) {
+    const missing = maintenanceCalendars(); delete missing[key]; invalidMaps.push(missing);
+    for (const value of [null, 0, false, [], {}, '0000-01-01', '0000-02-29', '2026-02-30', '2026-04-31', '2026-02-29', '1900-02-29', '2026-13-01', '2026-01-00', '01/10/2026', '2026-1-01', 'x'.repeat(1000)]) {
+      invalidMaps.push(maintenanceCalendars({[key]: value}));
+    }
+  }
+  for (const [index, maintenance] of invalidMaps.entries()) {
+    await assertFails(updateDoc(ref, {maintenance, updatedByUid: uid, updatedAt: serverTimestamp(), version: 2}));
+    const id = `invalid-calendar-${index}`;
+    await assertFails(setDoc(doc(db, 'stations', id), stationRecord(id, uid, {maintenance})));
+  }
+  assert.deepEqual((await getDoc(ref)).data().maintenance, maintenanceCalendars());
+  assert.equal((await getDoc(ref)).data().version, 1);
+});
+
+test('checklist read, write and sign permissions do not grant station maintenance writes', async () => {
+  const uid = 'station-manager';
+  const readers = [
+    accessProfile('station-viewer-only', {checklistRead: true}),
+    accessProfile('station-writer-only', {checklistWrite: true}),
+    accessProfile('station-signer-only', {checklistSign: true}),
+    accessProfile('station-disabled-manager', {checklistManage: true}, {access: false})
+  ];
+  await seedProfiles([accessProfile(uid, {checklistManage: true}), ...readers]);
+  const manager = testEnvironment.authenticatedContext(uid).firestore();
+  const ref = doc(manager, 'stations', 'restricted-maintenance');
+  await assertSucceeds(setDoc(ref, stationRecord('restricted-maintenance', uid, {maintenance: 'Texto fictício preservado'})));
+  for (const person of readers) {
+    const db = testEnvironment.authenticatedContext(person.uid).firestore();
+    if (person.access) await assertSucceeds(getDoc(doc(db, 'stations', 'restricted-maintenance')));
+    for (const maintenance of ['Tentativa não autorizada', maintenanceCalendars({preventiveAnnual: '2026-10-01'})]) {
+      await assertFails(updateDoc(doc(db, 'stations', 'restricted-maintenance'), {maintenance, updatedByUid: person.uid, updatedAt: serverTimestamp(), version: 2}));
+    }
+    const id = `created-by-${person.uid}`;
+    await assertFails(setDoc(doc(db, 'stations', id), stationRecord(id, person.uid, {maintenance: 'Tentativa não autorizada'})));
+    await assertFails(setDoc(doc(db, 'stations', `${id}-calendars`), stationRecord(`${id}-calendars`, person.uid, {maintenance: maintenanceCalendars()})));
+  }
+  const anonymous = testEnvironment.unauthenticatedContext().firestore();
+  await assertFails(updateDoc(doc(anonymous, 'stations', 'restricted-maintenance'), {maintenance: 'Tentativa não autorizada', updatedByUid: uid, updatedAt: serverTimestamp(), version: 2}));
+  assert.equal((await getDoc(ref)).data().maintenance, 'Texto fictício preservado');
+});
+
+test('station activation, deactivation and catalog replacement preserve legacy maintenance or calendars', async () => {
+  const uid = 'station-manager';
+  await seedProfiles([accessProfile(uid, {checklistManage: true})]);
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  for (const [index, maintenance] of ['Revisão fictícia agendada', maintenanceCalendars({electricalAnnual: '2026-10-01'})].entries()) {
+    const id = `station-lifecycle-${index}`;
+    const ref = doc(db, 'stations', id);
+    await assertSucceeds(setDoc(ref, stationRecord(id, uid, {maintenance})));
+    await assertSucceeds(updateDoc(ref, {active: false, updatedByUid: uid, updatedAt: serverTimestamp(), version: 2}));
+    let current = (await getDoc(ref)).data();
+    assert.deepEqual(current.maintenance, maintenance);
+    // saveChecklistStation uses a replacement transaction with the current maintenance.
+    await assertSucceeds(setDoc(ref, {...current, name: 'Arsenal fictício atualizado', qrCode: `QR-UPDATED-${index}`, order: 2, maintenance: current.maintenance, updatedByUid: uid, updatedAt: serverTimestamp(), version: 3}));
+    current = (await getDoc(ref)).data();
+    assert.deepEqual(current.maintenance, maintenance);
+    assert.equal(current.active, false);
+    await assertSucceeds(updateDoc(ref, {active: true, updatedByUid: uid, updatedAt: serverTimestamp(), version: 4}));
+    assert.deepEqual((await getDoc(ref)).data().maintenance, maintenance);
+  }
+});
+
+test('maintenance does not relax station version, authorship, allowed fields or delete rules', async () => {
+  const uid = 'station-manager';
+  await seedProfiles([accessProfile(uid, {checklistManage: true})]);
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  const ref = doc(db, 'stations', 'station-integrity');
+  await assertSucceeds(setDoc(ref, stationRecord('station-integrity', uid, {maintenance: 'Texto fictício'})));
+  const valid = {maintenance: 'Manutenção fictícia atualizada', updatedByUid: uid, updatedAt: serverTimestamp(), version: 2};
+  for (const invalid of [
+    {version: 1}, {version: 3}, {updatedByUid: 'other-user'}, {updatedAt: new Date(0)},
+    {createdByUid: 'other-user'}, {createdAt: new Date(0)}, {id: 'other-station'}, {unexpectedField: true}
+  ]) await assertFails(updateDoc(ref, {...valid, ...invalid}));
+  await assertFails(deleteDoc(ref));
+  await assertSucceeds(updateDoc(ref, valid));
+  const saved = (await getDoc(ref)).data();
+  assert.equal(saved.version, 2);
+  assert.equal(saved.createdByUid, uid);
+  assert.equal(saved.maintenance, valid.maintenance);
+});

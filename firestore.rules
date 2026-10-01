@@ -118,6 +118,21 @@ service cloud.firestore {
         (!station.keys().hasAny(['end']) || (validIsoDay(station.end) && station.end >= day)) &&
         (!(station.keys().hasAny(['start']) && station.keys().hasAny(['end'])) || station.start <= station.end);
     }
+    function validStationMaintenanceDate(value) {
+      return value is string && (value == '' || (validIsoDay(value) && !value.matches('^0000-.*$') &&
+        (!value.matches('^\\d{4}-02-29$') ||
+         (int(value.split('-')[0]) % 4 == 0 &&
+          (int(value.split('-')[0]) % 100 != 0 || int(value.split('-')[0]) % 400 == 0)))));
+    }
+    function validStationMaintenance(value) {
+      return (value is string && value.size() <= 1000) ||
+        (value is map &&
+         value.keys().hasAll(['preventiveAnnual', 'electricalAnnual', 'calibrationSemiannual']) &&
+         value.keys().hasOnly(['preventiveAnnual', 'electricalAnnual', 'calibrationSemiannual']) &&
+         validStationMaintenanceDate(value.preventiveAnnual) &&
+         validStationMaintenanceDate(value.electricalAnnual) &&
+         validStationMaintenanceDate(value.calibrationSemiannual));
+    }
     function validStation(data, stationId) {
       return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
         data.keys().hasOnly(['id', 'name', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
@@ -126,7 +141,7 @@ service cloud.firestore {
         (!data.keys().hasAny(['start']) || validIsoDay(data.start)) &&
         (!data.keys().hasAny(['end']) || validIsoDay(data.end)) &&
         (!(data.keys().hasAny(['start']) && data.keys().hasAny(['end'])) || data.start <= data.end) &&
-        (!data.keys().hasAny(['maintenance']) || (data.maintenance is string && data.maintenance.size() <= 1000)) &&
+        (!data.keys().hasAny(['maintenance']) || validStationMaintenance(data.maintenance)) &&
         data.order is int && data.order >= 0 && data.order <= 9999 && data.active is bool &&
         data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
         data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;

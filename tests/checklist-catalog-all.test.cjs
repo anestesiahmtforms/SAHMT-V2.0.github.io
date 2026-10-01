@@ -43,3 +43,15 @@ test('botões sem Arsenal mantêm os nomes específicos e inativos ficam ao fina
   assert.ok(main.includes('Number(right.active === true) - Number(left.active === true)'));
   assert.ok(main.includes('checklistArsenalButtonLabel(station)'));
 });
+
+test('Voltar permanece no rodapé visível do banner de arsenal com conteúdo longo', () => {
+  const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+  const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
+  const banner = main.match(/<dialog class="checklist-station-dialog"[\s\S]*?<\/dialog>/)[0];
+  assert.match(banner, /class="checklist-station-footer"[\s\S]*id="checklist-station-close"[\s\S]*Voltar<\/button><\/form><\/dialog>$/);
+  const footer = [...css.matchAll(/#checklist-station-dialog \.checklist-station-footer\s*\{([^}]+)\}/g)].at(-1)[1];
+  assert.match(footer, /position:\s*sticky/);
+  assert.match(footer, /bottom:\s*0(?:;|$)/);
+  assert.match(footer, /z-index:\s*2(?:;|$)/);
+  assert.match(footer, /background:\s*linear-gradient/);
+});

@@ -10,6 +10,7 @@ import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay} from './checklist-display.js';
+import {normalizeChecklistMaintenance, checklistMaintenanceOverdue} from './checklist-maintenance.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
@@ -1470,39 +1471,61 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const inherited = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}.</small>` : '';
   const occurrence = record?.occurrence ? `<div class="checklist-station-justification"><strong>Justificativa</strong><p>${escapeHtml(record.occurrence)}</p></div>` : '';
   const activeLabel = active ? 'Arsenal ativo' : 'Arsenal inativo';
-  result.innerHTML = `<div class="checklist-station-result__heading checklist-station-result--${!active ? 'inactive' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : active ? 'pending' : 'inactive'}"><span>Situação atual do arsenal</span><strong>${resultLabel}</strong><span>${activeLabel}</span></div><p>${escapeHtml(station.name || station.id || 'Estação')}</p>${inherited}${recordedAt}${occurrence}${!record?.occurrence && record?.condition === 'NAO' ? '<p>Justificativa não informada neste registro.</p>' : ''}`;
+  const maintenanceFields = [['preventiveAnnual', 'Preventiva Anual'], ['electricalAnnual', 'Elétrica Anual'], ['calibrationSemiannual', 'Calibração Semestral']];
+  const maintenance = normalizeChecklistMaintenance(station.maintenance);
+  const overdueMaintenance = checklistMaintenanceOverdue(maintenance, todayInputValue());
+  const manualMarkup = canManage && canWriteToday ? '<button class="secondary-button checklist-manual-button" type="button" data-checklist-station-manual>Fazer Checklist manual</button>' : '';
+  result.innerHTML = `<div class="checklist-station-result__heading checklist-station-result--${!active ? 'inactive' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : active ? 'pending' : 'inactive'}"><span>Situação atual do arsenal</span><strong>${resultLabel}</strong><span>${activeLabel}</span><span class="checklist-maintenance-alert" data-checklist-maintenance-alert ${Object.values(overdueMaintenance).some(Boolean) ? '' : 'hidden'}>MANUTENÇÃO EM ATRASO</span></div>${manualMarkup}${inherited}${recordedAt}${occurrence}${!record?.occurrence && record?.condition === 'NAO' ? '<p>Justificativa não informada neste registro.</p>' : ''}`;
   const showAnswers = canWriteToday && (fromQr || (canManage && dialog.dataset.manualChecklist === 'true'));
   const answerMarkup = canWriteToday ? `<div class="checklist-station-response" ${showAnswers ? '' : 'hidden'}><p>Registrar checklist</p><div><button class="checklist-answer-button checklist-answer-button--yes" type="button" data-checklist-banner-answer="SIM">Conforme</button><button class="checklist-answer-button checklist-answer-button--no" type="button" data-checklist-banner-answer="NAO">Não Conforme</button></div><label class="checklist-station-justification" data-checklist-justification hidden>Justificativa<textarea id="checklist-station-occurrence" rows="3" maxlength="500" placeholder="Descreva a não conformidade"></textarea></label><button class="primary-button" type="button" data-checklist-banner-save hidden>Salvar checklist</button></div>` : '';
-  const maintenanceMarkup = `<section class="checklist-maintenance"><label for="checklist-station-maintenance">Manutenção deste Equipamento</label><textarea id="checklist-station-maintenance" rows="3" maxlength="1000" readonly placeholder="Nenhuma informação de manutenção registrada.">${escapeHtml(station.maintenance || '')}</textarea><button class="primary-button" type="button" data-checklist-maintenance-save hidden>Salvar Manutenção</button></section>`;
-  const managementMarkup = canManage ? `<div class="checklist-admin-actions"><button class="secondary-button" type="button" data-checklist-station-active="true" ${active ? 'disabled' : ''}>Ativar</button><button class="secondary-button" type="button" data-checklist-station-active="false" ${!active ? 'disabled' : ''}>Desativar</button><button class="secondary-button" type="button" data-checklist-maintenance-edit>Editar Manutenção</button>${active && canWriteToday ? '<button class="secondary-button" type="button" data-checklist-station-manual>Fazer Checklist manual</button>' : ''}</div>` : '';
+  const maintenanceMarkup = `<section class="checklist-maintenance" aria-labelledby="checklist-maintenance-title"><h4 id="checklist-maintenance-title">Manutenção deste Equipamento</h4>${maintenanceFields.map(([key, label]) => `<label class="checklist-maintenance-date${overdueMaintenance[key] ? ' is-overdue' : ''}" data-checklist-maintenance-row="${key}"><span>${label}</span><input type="date" data-checklist-maintenance-date="${key}" value="${escapeHtml(maintenance[key])}" disabled></label>`).join('')}${canManage ? '<button class="secondary-button" type="button" data-checklist-maintenance-edit>Editar Manutenção</button>' : ''}<button class="primary-button" type="button" data-checklist-maintenance-save hidden>Salvar Manutenção</button></section>`;
+  const managementMarkup = canManage ? `<div class="checklist-admin-actions"><button class="secondary-button" type="button" data-checklist-station-active="true" ${active ? 'disabled' : ''}>Ativar Arsenal</button><button class="secondary-button" type="button" data-checklist-station-active="false" ${!active ? 'disabled' : ''}>Desativar Arsenal</button></div>` : '';
   actions.innerHTML = `${answerMarkup}${maintenanceMarkup}${managementMarkup}`;
-  const maintenanceInput = actions.querySelector('#checklist-station-maintenance');
+  const maintenanceUid = session.user?.uid;
+  const maintenanceBannerToken = {};
+  dialog.checklistStationBannerToken = maintenanceBannerToken;
+  const maintenanceBannerCurrent = () => dialog.open && dialog.checklistStationBannerToken === maintenanceBannerToken && session.user?.uid === maintenanceUid;
+  const maintenanceInputs = maintenanceFields.map(([key]) => actions.querySelector(`[data-checklist-maintenance-date="${key}"]`));
   const maintenanceSave = actions.querySelector('[data-checklist-maintenance-save]');
+  const updateMaintenanceDisplay = (value) => {
+    const dates = normalizeChecklistMaintenance(value);
+    const overdue = checklistMaintenanceOverdue(dates, todayInputValue());
+    const alert = result.querySelector('[data-checklist-maintenance-alert]');
+    if (alert) alert.hidden = !Object.values(overdue).some(Boolean);
+    maintenanceFields.forEach(([key], index) => {
+      maintenanceInputs[index].value = dates[key];
+      maintenanceInputs[index].disabled = true;
+      actions.querySelector(`[data-checklist-maintenance-row="${key}"]`)?.classList.toggle('is-overdue', overdue[key]);
+    });
+  };
   actions.querySelector('[data-checklist-maintenance-edit]')?.addEventListener('click', () => {
-    maintenanceInput.readOnly = false;
+    if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
+    maintenanceInputs.forEach((input) => { input.disabled = false; });
     maintenanceSave.hidden = false;
-    maintenanceInput.focus();
+    maintenanceInputs[0]?.focus();
   });
   maintenanceSave?.addEventListener('click', async () => {
-    if (!can('checklistManage')) return;
+    if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
+    const maintenanceValue = Object.fromEntries(maintenanceFields.map(([key], index) => [key, maintenanceInputs[index].value]));
     maintenanceSave.disabled = true;
     status.textContent = 'Salvando manutenção…';
     try {
       const {saveChecklistStationMaintenance} = await import('./data.js');
-      const saved = await saveChecklistStationMaintenance(station.id, maintenanceInput.value, session.user.uid);
+      if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
+      const saved = await saveChecklistStationMaintenance(station.id, maintenanceValue, maintenanceUid);
+      if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
       station.maintenance = saved.maintenance;
-      maintenanceInput.value = saved.maintenance;
-      maintenanceInput.readOnly = true;
+      updateMaintenanceDisplay(saved.maintenance);
       maintenanceSave.hidden = true;
       status.textContent = 'Manutenção salva.';
     } catch (error) {
-      status.textContent = error.code === 'permission-denied' ? 'Não foi possível salvar: confira a permissão administrativa e a publicação das regras do Firestore.' : error.message || 'Não foi possível salvar a manutenção.';
+      if (maintenanceBannerCurrent() && can('checklistManage')) status.textContent = error.code === 'permission-denied' ? 'Não foi possível salvar: confira a permissão administrativa e a publicação das regras do Firestore.' : error.message || 'Não foi possível salvar a manutenção.';
     } finally {
-      maintenanceSave.disabled = false;
+      if (maintenanceBannerCurrent() && can('checklistManage')) maintenanceSave.disabled = false;
     }
   });
   status.textContent = !dayIsToday ? 'Data histórica: consulta somente; alterações são feitas no Checklist de hoje.' : !active ? 'Arsenal inativo.' : '';
-  const manualButton = actions.querySelector('[data-checklist-station-manual]');
+  const manualButton = result.querySelector('[data-checklist-station-manual]');
   manualButton?.addEventListener('click', () => {
     dialog.dataset.manualChecklist = 'true';
     const response = actions.querySelector('.checklist-station-response');
@@ -1545,20 +1568,23 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   });
   actions.querySelector('[data-checklist-banner-save]')?.addEventListener('click', () => void saveAnswer('NAO'));
   actions.querySelectorAll('[data-checklist-station-active]').forEach((toggleButton) => toggleButton.addEventListener('click', async () => {
+    if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
     const nextActive = toggleButton.dataset.checklistStationActive === 'true';
     if (!nextActive && !window.confirm(`Confirma a inativação de ${station.name || station.id}?`)) return;
     toggleButton.disabled = true;
     status.textContent = nextActive ? 'Liberando arsenal…' : 'Inativando arsenal…';
     try {
       const {saveChecklistStation} = await import('./data.js');
-      await saveChecklistStation({stationId: station.id, name: station.name, qrCode: station.qrCode, start: station.start || '', end: station.end || '', order: Number(station.order) || 0, active: nextActive}, session.user.uid);
+      if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
+      await saveChecklistStation({stationId: station.id, name: station.name, qrCode: station.qrCode, start: station.start || '', end: station.end || '', order: Number(station.order) || 0, active: nextActive}, maintenanceUid);
+      if (!maintenanceBannerCurrent() || !can('checklistManage')) return;
       station.active = nextActive;
       dialog.close();
       ensureChecklistDailyReportOpen(day);
       await loadDailyChecklist(stations, day);
     } catch (error) {
-      status.textContent = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para alterar este arsenal.' : error.message || 'Não foi possível atualizar o arsenal.';
-      toggleButton.disabled = false;
+      if (maintenanceBannerCurrent() && can('checklistManage')) status.textContent = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para alterar este arsenal.' : error.message || 'Não foi possível atualizar o arsenal.';
+      if (maintenanceBannerCurrent() && can('checklistManage')) toggleButton.disabled = false;
     }
   }));
   document.querySelector('#checklist-station-close').onclick = () => dialog.close();
