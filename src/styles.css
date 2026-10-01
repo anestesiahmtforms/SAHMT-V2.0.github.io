@@ -1697,3 +1697,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  #checklist-qr-dialog{--qr-camera-height:54dvh;width:min(68vw,440px);height:calc(var(--qr-camera-height) + 57px);max-height:86dvh;padding:7px}
  #checklist-qr-dialog .checklist-qr-stage{height:100%;max-height:none}
 }
+
+/* Exibe a câmera somente na mesma moldura central usada pelo leitor. */
+#checklist-qr-dialog .checklist-qr-stage{background:#061a2a}
+#checklist-qr-dialog video{clip-path:inset(calc(50% - min(32cqw,32cqh,130px)) round 12px)}
+#checklist-qr-dialog .checklist-qr-focus{box-sizing:border-box;width:min(64cqw,64cqh,260px);height:min(64cqw,64cqh,260px);box-shadow:0 0 0 999px #061a2a,0 0 12px #38f08b66}
