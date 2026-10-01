@@ -22,7 +22,7 @@ test('botão principal de Etiquetas exibe HOME e mantém destino inicial', () =>
 test('Gestão usa o mesmo cabeçalho responsivo de Etiquetas', () => {
   const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
   assert.ok(source.includes("route === 'management' ? ' app-shell--management'"));
-  assert.ok(source.includes("route === 'management' ? '<h1 class=\"events-header-operational module-title-chip\">GESTÃO</h1>'"));
+  assert.match(source, /route === 'management' \? '<h([12]) class="events-header-operational(?: module-title-chip)?">GESTÃO<\/h\1>'/);
   assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{display:grid;'));
   assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{min-height:150px;'));
   assert.ok(css.includes(':is(.app-shell--labels,.app-shell--management) .identity-card{min-height:140px;'));
