@@ -1607,3 +1607,19 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 #checklist-qr-title:focus{outline:none}
 
 .checklist-report-dialog .checklist-station-select .checklist-arsenal-function{display:block;margin:0;color:inherit;font-size:inherit;font-weight:950;line-height:1.05}
+
+/* A grade e a assinatura compartilham a altura disponível do relatório. */
+.checklist-report-content>.checklist-daily-layout{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:5px;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
+.checklist-daily-layout>.checklist-daily-notices{grid-row:1;min-height:0;max-height:10dvh;overflow:auto}
+.checklist-daily-notices:empty{display:none}
+.checklist-daily-layout>.checklist-station-grid{grid-row:2;height:100%;min-height:0;margin:0}
+.checklist-daily-layout>.checklist-signature{grid-row:3;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 6px;min-height:0;margin:0;padding:6px 8px;box-shadow:none;border-radius:12px}
+.checklist-daily-layout>.checklist-signature>p:first-child{font-size:clamp(.65rem,2.4vw,.85rem);text-align:left}
+.checklist-daily-layout>.checklist-signature>button{width:auto;min-height:36px;padding:5px 9px;font-size:.75rem;border-radius:10px;box-shadow:0 2px 0 #092743}
+.checklist-signature .checklist-responsible-rule{grid-column:1/-1;font-size:.6rem;line-height:1.2;color:#526578;text-align:left}
+.checklist-daily-layout #checklist-signature-status{grid-column:1/-1;margin:0;font-size:.65rem}
+.checklist-daily-layout #checklist-signature-status:empty{display:none}
+.checklist-daily-layout #checklist-signature-preview{grid-column:1/-1;min-height:0;max-height:30dvh;overflow:auto;overscroll-behavior:contain}
+.checklist-daily-layout #checklist-signature-preview:empty{display:none}
+.checklist-daily-layout .checklist-signature-review textarea{font-size:16px}
+@media(orientation:landscape) and (max-height:500px){.checklist-daily-layout>.checklist-station-grid{grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr))}.checklist-signature .checklist-responsible-rule{font-size:.55rem}}
