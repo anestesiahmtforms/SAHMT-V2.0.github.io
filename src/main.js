@@ -439,7 +439,7 @@ function shellView() {
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
-    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-labelledby="checklist-qr-title"><header><div><p class="eyebrow">CHECKLIST</p><h3 id="checklist-qr-title" tabindex="-1" autofocus>Ler QR da estação</h3></div><button class="secondary-button" id="checklist-qr-close" type="button">Fechar</button></header><p id="checklist-qr-status" role="status">A leitura é feita neste aparelho; o código não é enviado para fora.</p><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><form id="checklist-qr-manual"><label>Código da estação<input name="qr" autocomplete="off" inputmode="text" required maxlength="500" placeholder="Digite o código do QR"></label><button class="primary-button" type="submit">Localizar estação</button></form></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><header><div><p class="eyebrow">ARSENAL ANESTÉSICO</p><h3 id="checklist-station-title">Checklist da estação</h3></div><button class="secondary-button" id="checklist-station-close" type="button">Fechar</button></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-actions" class="checklist-station-banner-actions"></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
+    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><p id="checklist-qr-status" role="status" hidden></p><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><header><div><p class="eyebrow">ARSENAL ANESTÉSICO</p><h3 id="checklist-station-title">Checklist da estação</h3></div><button class="secondary-button" id="checklist-station-close" type="button">Fechar</button></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-actions" class="checklist-station-banner-actions"></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">SAHMT · Hospital e equipe</footer>
@@ -1518,9 +1518,8 @@ async function openChecklistQrScanner(stations, day) {
   const dialog = document.querySelector('#checklist-qr-dialog');
   const video = document.querySelector('#checklist-qr-video');
   const status = document.querySelector('#checklist-qr-status');
-  const form = document.querySelector('#checklist-qr-manual');
   const focus = document.querySelector('#checklist-qr-focus');
-  if (!dialog || !video || !status || !form || !focus) return;
+  if (!dialog || !video || !status || !focus) return;
   stopChecklistQrScanner();
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d', {willReadFrequently: true});
@@ -1539,15 +1538,10 @@ async function openChecklistQrScanner(stations, day) {
     video.srcObject = null;
     video.hidden = true;
     focus.hidden = true;
-    form.hidden = false;
   };
   stopChecklistQrScan = cleanup;
   dialog.addEventListener('close', () => stopChecklistQrScanner(false), {once: true});
   document.querySelector('#checklist-qr-close').onclick = () => dialog.close();
-  form.onsubmit = (event) => {
-    event.preventDefault();
-    resolveChecklistQr(form.elements.qr.value);
-  };
   const resolveChecklistQr = (raw) => {
     cleanup();
     stopChecklistQrScan = null;
@@ -1555,11 +1549,9 @@ async function openChecklistQrScanner(stations, day) {
     const station = findStationForQr(stations, raw, day, {includeInactive: can('checklistManage')});
     if (!station) {
       status.textContent = 'Esse código não corresponde a uma estação ativa do catálogo V2.';
-      form.reset();
       dialog.showModal();
       return;
     }
-    form.reset();
     revealChecklistStation(station, day, stations);
   };
   const confirmQr = createChecklistQrConfirmation();
@@ -1577,10 +1569,9 @@ async function openChecklistQrScanner(stations, day) {
   const decodeWithFallback = () => window.ZXing && context
     ? decodeQrImageData(context.getImageData(0, 0, canvas.width, canvas.height), window.ZXing) : null;
   dialog.showModal();
-  document.querySelector('#checklist-qr-title')?.focus({preventScroll: true});
+  document.querySelector('#checklist-qr-close')?.focus({preventScroll: true});
   if (!navigator.mediaDevices?.getUserMedia) {
     status.textContent = 'A câmera exige HTTPS e permissão do navegador. Digite o código do QR para localizar a estação.';
-    form.elements.qr.focus({preventScroll: true});
     return;
   }
   status.textContent = 'Solicitando acesso à câmera…';
@@ -1590,7 +1581,6 @@ async function openChecklistQrScanner(stations, day) {
     video.srcObject = stream;
     video.hidden = false;
     focus.hidden = false;
-    form.hidden = false;
     await video.play();
     const cameraTrack = stream.getVideoTracks()[0];
     const capabilities = cameraTrack?.getCapabilities?.() || {};
@@ -1646,7 +1636,6 @@ async function openChecklistQrScanner(stations, day) {
     status.textContent = error.name === 'NotAllowedError'
       ? 'A permissão da câmera foi negada. Digite o código do QR para localizar a estação.'
       : `Não foi possível abrir a câmera. ${error.message || ''}`;
-    form.elements.qr.focus({preventScroll: true});
   }
 }
 

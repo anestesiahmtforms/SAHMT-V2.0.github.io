@@ -1667,3 +1667,10 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  #checklist-qr-dialog[open]{grid-template-rows:auto minmax(0,1fr) auto}
  #checklist-qr-dialog .checklist-qr-stage{height:100%;max-height:none}
 }
+
+/* Leitor sem textos ou entrada manual: câmera e retorno somente. */
+#checklist-qr-dialog{height:auto;max-height:90dvh}
+#checklist-qr-dialog[open]{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;gap:10px}
+#checklist-qr-dialog>#checklist-qr-status[hidden]{display:none!important}
+#checklist-qr-dialog .checklist-qr-stage{grid-column:1;grid-row:1;height:clamp(160px,34dvh,300px);max-height:38dvh}
+#checklist-qr-dialog>#checklist-qr-close{grid-column:1;grid-row:2;width:100%;min-height:40px;margin:0;padding:7px 12px}
