@@ -1858,3 +1858,18 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
   grid-template-rows:minmax(0,3fr) repeat(2,minmax(32px,.65fr))
  }
 }
+
+/* Relatório diário: preserva a área dos arsenais ao trocar a data. */
+.checklist-report-dialog>.checklist-report-content{
+ display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);
+ height:auto;align-self:stretch;overflow:hidden
+}
+.checklist-report-content>.checklist-daily-layout{
+ grid-template-rows:auto minmax(0,1fr) auto;
+ grid-template-areas:"notices" "stations" "confirmation";
+ height:auto;min-height:0;align-self:stretch
+}
+.checklist-daily-layout>.checklist-daily-notices{grid-area:notices}
+.checklist-daily-layout>.checklist-station-grid{grid-area:stations;height:auto;min-height:0;align-self:stretch}
+.checklist-daily-layout>.checklist-confirmation-footer{grid-area:confirmation}
+#checklist-report-title:focus{outline:none}
