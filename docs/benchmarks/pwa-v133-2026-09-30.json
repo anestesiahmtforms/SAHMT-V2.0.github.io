@@ -1,0 +1,1490 @@
+{
+  "date": "2026-09-30",
+  "baseline": "65944c5eda6b109eeb8e11519a067965b5ec811b",
+  "combinedTree": "0b8e0d0d586a90d16df875b23ab4acfc36939425",
+  "tests": {
+    "domain": 227,
+    "rules": 40,
+    "worker": 12,
+    "functions": 19
+  },
+  "performance": {
+    "fixture": "real builds; 390x844; CPU4x; 150ms/1.6Mbps; synthetic offline profile; external requests aborted",
+    "baseline": {
+      "samples": [
+        {
+          "openMs": 9949,
+          "firstInteractionMs": 493,
+          "labelsManualMs": 634
+        },
+        {
+          "openMs": 10079,
+          "firstInteractionMs": 408,
+          "labelsManualMs": 535
+        },
+        {
+          "openMs": 10198,
+          "firstInteractionMs": 539,
+          "labelsManualMs": 852
+        }
+      ],
+      "medians": {
+        "openMs": 10079,
+        "firstInteractionMs": 493,
+        "labelsManualMs": 634
+      }
+    },
+    "current": {
+      "samples": [
+        {
+          "openMs": 10078,
+          "firstInteractionMs": 458,
+          "labelsManualMs": 637
+        },
+        {
+          "openMs": 10321,
+          "firstInteractionMs": 340,
+          "labelsManualMs": 605
+        },
+        {
+          "openMs": 10061,
+          "firstInteractionMs": 533,
+          "labelsManualMs": 650
+        }
+      ],
+      "medians": {
+        "openMs": 10078,
+        "firstInteractionMs": 458,
+        "labelsManualMs": 637
+      }
+    }
+  },
+  "offline": {
+    "offline": {
+      "offlineOpen": true,
+      "cachedSchedule": true,
+      "labelsManualDialog": true,
+      "cameraModuleOffline": true,
+      "qrDecoderOffline": true,
+      "stableOutboxPreserved": true,
+      "serverResponsesWhileOffline": 0,
+      "refusedBrowserUpdateChecks": 5,
+      "cacheNames": [
+        "sahmt-v2-shell-v134"
+      ],
+      "externalRequestsBlocked": 2,
+      "pageErrors": []
+    },
+    "oldTab": {
+      "oldTabEntry": "assets/index-LNFL1vfp.js",
+      "oldCamera": "assets/label-camera-BfsYUBmS.js",
+      "oldTabLabelsAfterUpdate": true,
+      "newOfflineNavigationUsesCurrentBuild": true,
+      "cacheNames": [
+        "sahmt-v2-shell-v133",
+        "sahmt-v2-shell-v134"
+      ],
+      "serverResponsesWhileOffline": 0,
+      "externalRequestsBlocked": 3
+    },
+    "imageRefresh": {
+      "sameUrlCorrectedImage": true,
+      "correctedImageAvailableOfflineCache": true,
+      "stableOutboxPreserved": true,
+      "images": "local 8x8 synthetic red/green PNG; no patient data",
+      "offlineVerification": "CacheStorage body check; request/cache precedence covered by SW regression test"
+    }
+  },
+  "visual": {
+    "count": 70,
+    "viewports": [
+      "320x568",
+      "375x667",
+      "390x844",
+      "844x390",
+      "568x320",
+      "667x375",
+      "768x1024"
+    ],
+    "cases": [
+      {
+        "key": "home-admin-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 29,
+            "y": 181.078125,
+            "width": 262,
+            "height": 174.65625,
+            "right": 291,
+            "bottom": 355.734375
+          },
+          "figure": {
+            "x": 23,
+            "y": 160.875,
+            "width": 274,
+            "height": 200.859375,
+            "right": 297,
+            "bottom": 361.734375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 661,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-comum-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 568,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 29,
+            "y": 181.078125,
+            "width": 262,
+            "height": 174.65625,
+            "right": 291,
+            "bottom": 355.734375
+          },
+          "figure": {
+            "x": 23,
+            "y": 160.875,
+            "width": 274,
+            "height": 200.859375,
+            "right": 297,
+            "bottom": 361.734375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-320x568",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "docWidth": 320,
+        "docHeight": 661,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-admin-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "24px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 34.75,
+            "y": 217.90625,
+            "width": 305.5,
+            "height": 203.65625,
+            "right": 340.25,
+            "bottom": 421.5625
+          },
+          "figure": {
+            "x": 28.75,
+            "y": 197,
+            "width": 317.5,
+            "height": 230.5625,
+            "right": 346.25,
+            "bottom": 427.5625
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 760,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-comum-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 667,
+        "titleCount": 1,
+        "titleFont": "24px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 34.75,
+            "y": 217.90625,
+            "width": 305.5,
+            "height": 203.65625,
+            "right": 340.25,
+            "bottom": 421.5625
+          },
+          "figure": {
+            "x": 28.75,
+            "y": 197,
+            "width": 317.5,
+            "height": 230.5625,
+            "right": 346.25,
+            "bottom": 427.5625
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-375x667",
+        "viewport": {
+          "width": 375,
+          "height": 667
+        },
+        "docWidth": 375,
+        "docHeight": 760,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-admin-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "24px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 37.625,
+            "y": 220.03125,
+            "width": 314.75,
+            "height": 209.828125,
+            "right": 352.375,
+            "bottom": 429.859375
+          },
+          "figure": {
+            "x": 31.625,
+            "y": 199.125,
+            "width": 326.75,
+            "height": 236.734375,
+            "right": 358.375,
+            "bottom": 435.859375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 953,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-comum-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "23.04px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 844,
+        "titleCount": 1,
+        "titleFont": "24px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 37.625,
+            "y": 220.03125,
+            "width": 314.75,
+            "height": 209.828125,
+            "right": 352.375,
+            "bottom": 429.859375
+          },
+          "figure": {
+            "x": 31.625,
+            "y": 199.125,
+            "width": 326.75,
+            "height": 236.734375,
+            "right": 358.375,
+            "bottom": 435.859375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-390x844",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "docWidth": 390,
+        "docHeight": 953,
+        "titleCount": 1,
+        "titleFont": "24.96px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-admin-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 55.203125,
+            "y": 131.0625,
+            "width": 295.328125,
+            "height": 196.875,
+            "right": 350.53125,
+            "bottom": 327.9375
+          },
+          "figure": {
+            "x": 49.203125,
+            "y": 110.859375,
+            "width": 307.328125,
+            "height": 223.078125,
+            "right": 356.53125,
+            "bottom": 333.9375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 508,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [
+          {
+            "text": "Voltar para Home",
+            "rect": {
+              "x": 64.203125,
+              "y": 370.484375,
+              "width": 174.171875,
+              "height": 48,
+              "right": 238.375,
+              "bottom": 418.484375
+            },
+            "clipped": false,
+            "overflow": false
+          }
+        ],
+        "image": null
+      },
+      {
+        "key": "home-comum-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 390,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 55.203125,
+            "y": 131.0625,
+            "width": 295.328125,
+            "height": 196.875,
+            "right": 350.53125,
+            "bottom": 327.9375
+          },
+          "figure": {
+            "x": 49.203125,
+            "y": 110.859375,
+            "width": 307.328125,
+            "height": 223.078125,
+            "right": 356.53125,
+            "bottom": 333.9375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-844x390",
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "docWidth": 844,
+        "docHeight": 402,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-admin-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 41.40625,
+            "y": 130.5625,
+            "width": 191.8125,
+            "height": 127.875,
+            "right": 233.21875,
+            "bottom": 258.4375
+          },
+          "figure": {
+            "x": 35.40625,
+            "y": 110.359375,
+            "width": 203.8125,
+            "height": 154.078125,
+            "right": 239.21875,
+            "bottom": 264.4375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 459,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [
+          {
+            "text": "Voltar para Home",
+            "rect": {
+              "x": 48.40625,
+              "y": 331.484375,
+              "width": 174.171875,
+              "height": 48,
+              "right": 222.578125,
+              "bottom": 379.484375
+            },
+            "clipped": false,
+            "overflow": false
+          }
+        ],
+        "image": null
+      },
+      {
+        "key": "home-comum-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 320,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 41.40625,
+            "y": 130.5625,
+            "width": 191.8125,
+            "height": 127.875,
+            "right": 233.21875,
+            "bottom": 258.4375
+          },
+          "figure": {
+            "x": 35.40625,
+            "y": 110.359375,
+            "width": 203.8125,
+            "height": 154.078125,
+            "right": 239.21875,
+            "bottom": 264.4375
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-568x320",
+        "viewport": {
+          "width": 568,
+          "height": 320
+        },
+        "docWidth": 568,
+        "docHeight": 362,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-admin-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 46.34375,
+            "y": 145.6875,
+            "width": 228.953125,
+            "height": 152.625,
+            "right": 275.296875,
+            "bottom": 298.3125
+          },
+          "figure": {
+            "x": 40.34375,
+            "y": 125.484375,
+            "width": 240.953125,
+            "height": 178.828125,
+            "right": 281.296875,
+            "bottom": 304.3125
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 488,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [
+          {
+            "text": "Voltar para Home",
+            "rect": {
+              "x": 55.34375,
+              "y": 350.484375,
+              "width": 174.171875,
+              "height": 48,
+              "right": 229.515625,
+              "bottom": 398.484375
+            },
+            "clipped": false,
+            "overflow": false
+          }
+        ],
+        "image": null
+      },
+      {
+        "key": "home-comum-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 375,
+        "titleCount": 1,
+        "titleFont": "21.76px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 46.34375,
+            "y": 145.6875,
+            "width": 228.953125,
+            "height": 152.625,
+            "right": 275.296875,
+            "bottom": 298.3125
+          },
+          "figure": {
+            "x": 40.34375,
+            "y": 125.484375,
+            "width": 240.953125,
+            "height": 178.828125,
+            "right": 281.296875,
+            "bottom": 304.3125
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-667x375",
+        "viewport": {
+          "width": 667,
+          "height": 375
+        },
+        "docWidth": 667,
+        "docHeight": 392,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-admin-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-admin-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-admin-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-admin-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "28.8px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 58.40625,
+            "y": 233.59375,
+            "width": 651.1875,
+            "height": 434.125,
+            "right": 709.59375,
+            "bottom": 667.71875
+          },
+          "figure": {
+            "x": 52.40625,
+            "y": 209.875,
+            "width": 663.1875,
+            "height": 463.84375,
+            "right": 715.59375,
+            "bottom": 673.71875
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-admin-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1143,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "home-comum-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "events-comum-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "28.16px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "labels-comum-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      },
+      {
+        "key": "checklist-comum-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1024,
+        "titleCount": 1,
+        "titleFont": "28.8px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": {
+          "naturalWidth": 1536,
+          "naturalHeight": 1024,
+          "rect": {
+            "x": 58.40625,
+            "y": 233.59375,
+            "width": 651.1875,
+            "height": 434.125,
+            "right": 709.59375,
+            "bottom": 667.71875
+          },
+          "figure": {
+            "x": 52.40625,
+            "y": 209.875,
+            "width": 663.1875,
+            "height": 463.84375,
+            "right": 715.59375,
+            "bottom": 673.71875
+          },
+          "objectFit": "contain"
+        }
+      },
+      {
+        "key": "management-comum-768x1024",
+        "viewport": {
+          "width": 768,
+          "height": 1024
+        },
+        "docWidth": 768,
+        "docHeight": 1143,
+        "titleCount": 1,
+        "titleFont": "31.36px",
+        "tokenOverlaps": 0,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "image": null
+      }
+    ]
+  },
+  "limitations": [
+    "Chromium fixture with fictional local data; no real patient data or production writes",
+    "Synthetic offline profile; not Google login, authenticated Firestore latency or AI",
+    "Same-URL corrected image verified via CacheStorage body plus SW tests, not physical-device visual inspection",
+    "No Android/iPhone physical device or Safari/WebKit test"
+  ]
+}
