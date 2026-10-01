@@ -1,4 +1,5 @@
 import './styles.css';
+import './mobile-layout.css';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {labelReportPresentation, withLabelReportDeadline} from './label-report-state.js';
 import {firebaseConfigured} from './firebase-app.js';
@@ -12,6 +13,11 @@ import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findS
 import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay} from './checklist-display.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
+import {createChecklistReportGate} from './checklist-report-gate.js';
+import {createChecklistBannerGate} from './checklist-banner-gate.js';
+import {sessionChangeRequiresRender, sessionChangeGrantsAccess, sessionChangeRevokesAccess, featureChangeRequiresRender} from './session-refresh.js';
+import {createWriteSessionGuard} from './write-session.js';
+import {captureReportReadScope} from './report-read-scope.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -23,40 +29,54 @@ let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
 const startupReportKey = (kind, uid, day, scope = '') => JSON.stringify([kind, uid, day, scope]);
 
+function captureReportScope(route, isContextCurrent = () => true) {
+  const permissions = {
+    labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
+    events: ['eventsRead', 'eventsWrite', 'admin'],
+    checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'admin']
+  }[route] || [];
+  return captureReportReadScope({
+    getSession: () => session,
+    getPermissions: () => Object.fromEntries(permissions.map(permission => [permission, can(permission)])),
+    isAllowed: () => featureEnabledForRoute(route, appFeatures) && permissions.some(can),
+    isContextCurrent
+  });
+}
+
 function preloadStartupReports(user) {
-  if (!navigator.onLine || session.offline || session.status !== 'signed-in') return;
-  const uid = user.uid;
+  if (!navigator.onLine || session.offline || session.status !== 'signed-in' || session.user?.uid !== user?.uid) return;
   const day = todayInputValue();
-  const sigla = session.profile?.sigla || '';
-  const isAdmin = can('admin');
-  const canManageLabels = can('labelsManage');
-  const stillCurrent = () => session.status === 'signed-in' && session.user?.uid === uid;
-  const warm = (key, read) => startupReports.warm(key, () => withLabelReportDeadline(async () => {
-    if (!stillCurrent()) throw new Error('Sessão alterada.');
-    return read();
-  }));
+  const warm = (route, read) => {
+    const scope = captureReportScope(route);
+    return startupReports.warm(startupReportKey(route, scope.uid, day, scope.key), () => withLabelReportDeadline(async () => {
+      scope.assertCurrent();
+      const result = await read(scope);
+      scope.assertCurrent();
+      return result;
+    }));
+  };
   if (featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)) {
-    warm(startupReportKey('labels', uid, day, [sigla, canManageLabels]), async () => {
+    warm('labels', async (scope) => {
       const {listLabelRecords} = await import('./label-report-reader.js');
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      return listLabelRecords({from: day, to: day, uid, sigla, canManage: canManageLabels, pageSize: 50, cursor: null});
+      scope.assertCurrent();
+      return listLabelRecords({from: day, to: day, uid: scope.uid, sigla: scope.sigla, canManage: scope.permissions.labelsManage === true, pageSize: 50, cursor: null});
     });
   }
   if (featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can)) {
-    warm(startupReportKey('events', uid, day, [sigla, isAdmin]), async () => {
+    warm('events', async (scope) => {
       const {listEventRecords} = await import('./data.js');
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      return listEventRecords({from: day, to: day, uid, sigla, isAdmin, cursor: null, includePending: true});
+      scope.assertCurrent();
+      return listEventRecords({from: day, to: day, uid: scope.uid, sigla: scope.sigla, isAdmin: scope.permissions.admin === true, cursor: null, includePending: true});
     });
   }
   if (featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can)) {
-    warm(startupReportKey('checklist', uid, day), async () => {
+    warm('checklist', async (scope) => {
       const {listModuleRecords, listChecklistRecords} = await import('./data.js');
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      const stations = await listModuleRecords('checklist', uid);
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
+      scope.assertCurrent();
+      const stations = await listModuleRecords('checklist', scope.uid);
+      scope.assertCurrent();
       const stationIds = stations.filter(station => stationIsInDateRange(station, day)).map(station => station.id).sort();
-      const result = await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
+      const result = await listChecklistRecords(day, scope.uid, {pageSize: 1000, stationIds});
       return {...result, startupStationIds: stationIds};
     });
   }
@@ -124,8 +144,10 @@ let labelManualConfirmation = {uid: '', status: ''};
 let reportPdfPromise = null;
 let checklistReportMode = 'daily';
 let checklistReportOpen = false;
-let checklistReportLoad = 0;
+const checklistReportGate = createChecklistReportGate();
+const checklistBannerGate = createChecklistBannerGate();
 let checklistReportContext = null;
+let reloadOpenReportForScope = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
@@ -267,6 +289,17 @@ function can(permission) {
     session.profile?.permissions?.qualityManage === true && qualityAreaPermissions.includes(permission);
 }
 
+function captureWriteSession(moduleRoute, isAllowed, isContextCurrent) {
+  const guard = createWriteSessionGuard({
+    uid: session.user?.uid || '',
+    getSession: () => session,
+    isAllowed: () => featureEnabledForRoute(moduleRoute, appFeatures) && isAllowed(),
+    isContextCurrent
+  });
+  guard.assertCurrent();
+  return guard;
+}
+
 function vacationRankMarkup(sigla, classes, position) {
   return `<span class="sigla-token__vacation-rank"><span class="${classes.join(' ')}">${escapeHtml(sigla)}</span><small class="sigla-token__vacation-number" aria-label="Posição ${position} na escala de férias">${position}</small></span>`;
 }
@@ -340,12 +373,12 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<button class="sigla-item sigla-button" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}"><span class="sigla-token${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</span><span class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</span></button>`;
   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
 }
 
 function renderEventSupportTile(eventsWritable) {
-  return `<div class="sigla-item"><button class="sigla-token sigla-button sigla-token--support" type="button" data-event-support ${eventsWritable ? '' : 'disabled'} aria-label="Lançar evento de Suporte" title="Lançar Suporte"><strong>SUPORTE</strong></button><div class="sigla-index" aria-hidden="true"></div></div>`;
+  return `<button class="sigla-item sigla-button" type="button" data-event-support ${eventsWritable ? '' : 'disabled'} aria-label="Lançar evento de Suporte" title="Lançar Suporte"><span class="sigla-token sigla-token--support"><strong>SUPORTE</strong></span><span class="sigla-index" aria-hidden="true"></span></button>`;
 }
 
 function renderLabelManualConfirmation() {
@@ -420,7 +453,7 @@ function shellView() {
   const route = currentRoute();
   const profile = session.profile;
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
-  const checklistVisual = route === 'checklist' ? `<div class="checklist-visual-frame"><figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure></div>` : '';
+  const checklistVisual = route === 'checklist' ? `<div class="checklist-visual-frame"><figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" width="1536" height="1024" loading="lazy" decoding="async"></figure></div>` : '';
   const utilityCards = route === 'management' ? managementUtilityCards() : '';
   const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><div class="module-grid">${utilityCards}</div></section>` : '';
   const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer event-report-footer" id="event-report-footer" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></footer></dialog>` : '';
@@ -437,7 +470,7 @@ function shellView() {
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : ''}">
-    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
+    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational module-title-chip">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational module-title-chip">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title module-title-chip">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale module-title-chip">ESCALA</h2>' : route === 'management' ? '<h1 class="events-header-operational module-title-chip">GESTÃO</h1>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><p id="checklist-qr-status" role="status" hidden></p><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><header><div><p class="eyebrow">ARSENAL ANESTÉSICO</p><h3 id="checklist-station-title">Checklist da estação</h3></div><button class="secondary-button" id="checklist-station-close" type="button">Fechar</button></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-actions" class="checklist-station-banner-actions"></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
@@ -651,6 +684,10 @@ async function loadModule(route) {
     content.remove();
     if (can('eventsRead') || can('eventsWrite')) void loadReportPdfModule().catch(() => {});
     const reportDialog = document.querySelector('#event-report-dialog');
+    reloadOpenReportForScope = () => {
+      if (!eventReportOpen || !reportDialog?.open || !reportDialog.isConnected) return;
+      return loadEventReport();
+    };
     reportDialog?.addEventListener('close', () => { eventReportOpen = false; });
     document.querySelectorAll('[data-event-report-launch]').forEach((button) => button.addEventListener('click', async () => {
       eventReportMode = button.dataset.eventReportLaunch;
@@ -696,6 +733,10 @@ async function loadModule(route) {
   if (route === 'labels') {
     content?.remove();
     const reportDialog = document.querySelector('#label-report-dialog');
+    reloadOpenReportForScope = () => {
+      if (!labelReportOpen || !reportDialog?.open || !reportDialog.isConnected) return;
+      return loadLabelReport();
+    };
     reportDialog?.addEventListener('close', () => {
       labelReportOpen = false;
       labelReportLoad++;
@@ -859,7 +900,11 @@ async function loadModule(route) {
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
-      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; stopChecklistQrScanner(false); });
+      reloadOpenReportForScope = () => {
+        if (!checklistReportOpen || !reportDialog?.open || !reportDialog.isConnected) return;
+        return loadChecklistView(items);
+      };
+      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; checklistReportGate.invalidate(); stopChecklistQrScanner(false); });
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
         const value = day && day <= todayInputValue() ? day : todayInputValue();
@@ -1064,7 +1109,7 @@ async function loadOfflineView(target) {
         await cacheOfflineScheduleImages({
           baseUrl: import.meta.env.BASE_URL,
           fetchImage: async (url) => {
-            const response = await fetch(url);
+            const response = await fetch(url, {cache: 'reload'});
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             await imageCache.put(url, response.clone());
             if (!(await imageCache.match(url))) throw new Error('A imagem não ficou disponível no cache local.');
@@ -1283,28 +1328,57 @@ async function loadAdminModule(content) {
   }
 }
 
+function selectedChecklistReportPeriod(mode) {
+  return mode === 'monthly'
+    ? todayInputValue().slice(0, 7)
+    : document.querySelector('#checklist-report-day')?.value || todayInputValue();
+}
+
+function isCurrentChecklistReportRequest(request, content) {
+  const current = {
+    day: selectedChecklistReportPeriod(request?.mode),
+    mode: checklistReportMode,
+    route: currentRoute(),
+    uid: session.user?.uid || '',
+    reportOpen: checklistReportOpen
+  };
+  return Boolean(
+    content?.isConnected &&
+    document.querySelector('#module-content') === content &&
+    document.querySelector('#checklist-report-dialog')?.open === true &&
+    session.status === 'signed-in' &&
+    checklistReportGate.isCurrent(request, current)
+  );
+}
+
 async function loadDailyChecklist(stations, suppliedDay) {
   const content = document.querySelector('#module-content');
   if (!content) return;
   const day = suppliedDay || document.querySelector('#checklist-report-day')?.value || todayInputValue();
+  const uid = session.user?.uid || '';
+  const reportScope = captureReportScope('checklist');
+  const request = checklistReportGate.begin({day, mode: 'daily', route: currentRoute(), uid, reportOpen: checklistReportOpen});
+  const isCurrent = () => reportScope.isCurrent() && isCurrentChecklistReportRequest(request, content);
   const dayMode = checklistDayMode(day, todayInputValue());
   if (dayMode === 'invalid') return;
   if (dayMode === 'future') {
-    content.innerHTML = '<p class="empty-state">Não é possível consultar um Checklist futuro.</p>';
+    if (isCurrent()) content.innerHTML = '<p class="empty-state">Não é possível consultar um Checklist futuro.</p>';
     return;
   }
   const applicableStations = stations.filter((station) => stationIsInDateRange(station, day));
   const writableStations = applicableStations.filter((station) => stationIsValidOn(station, day));
+  if (!isCurrent()) return;
   content.innerHTML = '<p class="loading">Carregando registros do dia…</p>';
   try {
     const {listChecklistRecords} = await import('./data.js');
-    const uid = session.user.uid;
+    if (!isCurrent()) return;
     const stationIds = applicableStations.map(station => station.id).sort();
-    const preloaded = navigator.onLine ? startupReports.take(startupReportKey('checklist', uid, day)) : null;
+    const preloaded = navigator.onLine ? startupReports.take(startupReportKey('checklist', uid, day, reportScope.key)) : null;
     const ready = preloaded ? await preloaded.catch(() => null) : null;
+    if (!isCurrent()) return;
     const result = ready && JSON.stringify(ready.startupStationIds) === JSON.stringify(stationIds)
       ? ready : await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
-    if (session.user?.uid !== uid || !content.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue())) return;
+    if (!isCurrent()) return;
     const records = result.records;
     const syncIndicator = document.querySelector('#checklist-report-sync');
     if (syncIndicator) {
@@ -1352,25 +1426,40 @@ async function loadDailyChecklist(stations, suppliedDay) {
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
     const responsibleName = content.querySelector('#checklist-responsible-name');
     const confirmationDialog = content.querySelector('#checklist-confirmation-dialog');
+    let confirmationSequence = 0;
+    const invalidateConfirmation = () => {
+      confirmationSequence++;
+      if (isCurrent() && prepareSignature?.isConnected) prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
+    };
+    confirmationDialog?.addEventListener('close', () => { if (!confirmationDialog.open) invalidateConfirmation(); });
+    confirmationDialog?.addEventListener('cancel', invalidateConfirmation);
+    const responsibleIsAdmin = reportScope.permissions.admin === true;
     let responsibilityConfirmed = false;
     if (prepareSignature) {
       prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
-      void import('./checklist-responsibility-reader.js').then(({getChecklistDayResponsible}) =>
-        getChecklistDayResponsible({day, uid, isAdmin: can('admin')})
-      ).then((responsible) => {
-        if (!responsibleName?.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue()) || session.user?.uid !== uid) return;
+      void import('./checklist-responsibility-reader.js').then(({getChecklistDayResponsible}) => {
+        if (!isCurrent()) return null;
+        return getChecklistDayResponsible({day, uid, isAdmin: responsibleIsAdmin, assertCurrent: () => {
+          reportScope.assertCurrent();
+          if (!isCurrent()) throw Object.assign(new Error('Este relatório mudou. Abra a data atual novamente.'), {code: 'session-changed'});
+        }});
+      }).then((responsible) => {
+        if (!isCurrent() || !responsibleName?.isConnected || !responsible) return;
         responsibleName.textContent = responsible.name;
         responsibilityConfirmed = true;
         prepareSignature.disabled = !canPrepareSignature;
       }).catch(() => {
-        if (!responsibleName?.isConnected) return;
+        if (!isCurrent() || !responsibleName?.isConnected) return;
         responsibleName.textContent = 'Responsável não confirmado';
         prepareSignature.title = 'Não foi possível conferir a escala e os eventos do dia. Atualize o relatório.';
         prepareSignature.disabled = true;
       });
     }
     prepareSignature?.addEventListener('click', async () => {
+      if (!isCurrent() || !can('checklistSign')) return;
       if (!responsibilityConfirmed || !canPrepareSignature) return;
+      const confirmationRequest = ++confirmationSequence;
+      const isCurrentConfirmation = () => isCurrent() && confirmationDialog?.open === true && confirmationRequest === confirmationSequence;
       if (!confirmationDialog.open) confirmationDialog.showModal();
       content.querySelector('#checklist-confirmation-title')?.focus({preventScroll: true});
       const status = content.querySelector('#checklist-signature-status');
@@ -1379,7 +1468,9 @@ async function loadDailyChecklist(stations, suppliedDay) {
       status.textContent = 'Preparando o pedido de validação do relatório…';
       try {
         const {getChecklistSignaturePreview} = await import('./checklist-signature.js');
-        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid: session.user.uid});
+        if (!isCurrentConfirmation() || !can('checklistSign')) return;
+        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid});
+        if (!isCurrentConfirmation() || !can('checklistSign')) return;
         if (preview.requestStatus === 'PENDING_VALIDATION') {
           previewTarget.innerHTML = '<p class="sync-state">Este pedido já está registrado e aguarda validação. O responsável, a assinatura e os pontos ainda não foram confirmados.</p>';
           status.textContent = 'Pedido de validação pendente.';
@@ -1407,28 +1498,34 @@ async function loadDailyChecklist(stations, suppliedDay) {
         declaration.addEventListener('change', updateEnabled);
         justification?.addEventListener('input', updateEnabled);
         confirm.addEventListener('click', async () => {
+          if (!isCurrentConfirmation() || !can('checklistSign')) return;
           confirm.disabled = true;
           status.textContent = 'Registrando o pedido de validação no Firestore…';
           try {
+            const writeGuard = captureWriteSession('checklist', () => can('checklistSign'), isCurrentConfirmation);
             const {signChecklistReport} = await import('./checklist-signature.js');
-            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid: session.user.uid});
+            writeGuard.assertCurrent();
+            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid, assertCurrent: writeGuard.assertCurrent});
+            if (!writeGuard.isCurrent()) return;
             status.textContent = 'Pedido registrado. Assinatura e pontuação aguardam validação.';
             confirmationDialog.close();
             await loadDailyChecklist(stations, day);
           } catch (error) {
+            if (!isCurrentConfirmation()) return;
             status.textContent = error.message || 'Não foi possível assinar. Atualize o relatório e tente novamente.';
             previewTarget.replaceChildren();
             prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
           }
         });
       } catch (error) {
+        if (!isCurrentConfirmation()) return;
         status.textContent = error.message || 'Não foi possível conferir a revisão do relatório.';
       } finally {
-        if (prepareSignature.isConnected) prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
+        if (isCurrent() && confirmationRequest === confirmationSequence && prepareSignature.isConnected) prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
       }
     });
   } catch (error) {
-    content.innerHTML = `<p class="empty-state">Não foi possível carregar o checklist. ${escapeHtml(error.message || '')}</p>`;
+    if (isCurrent()) content.innerHTML = `<p class="empty-state">Não foi possível carregar o checklist. ${escapeHtml(error.message || '')}</p>`;
   }
 }
 
@@ -1459,6 +1556,14 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const actions = document.querySelector('#checklist-station-actions');
   const status = document.querySelector('#checklist-station-status');
   if (!dialog || !result || !actions || !status) return;
+  dialog.dataset.checklistDay = day;
+  dialog.dataset.checklistStationId = station.id;
+  const bannerRequest = checklistBannerGate.begin({day, stationId: station.id, uid: session.user?.uid || '', route: currentRoute(), dialogOpen: true});
+  const isCurrentBanner = () => Boolean(dialog.isConnected && document.querySelector('#checklist-station-dialog') === dialog &&
+    session.status === 'signed-in' && checklistBannerGate.isCurrent(bannerRequest, {
+      day: dialog.dataset.checklistDay, stationId: dialog.dataset.checklistStationId, uid: session.user?.uid || '',
+      route: currentRoute(), dialogOpen: dialog.open
+    }));
   const active = station.active === true;
   const dayIsToday = checklistDayMode(day, todayInputValue()) === 'today';
   const canWriteToday = can('checklistWrite') && dayIsToday && active && stationIsValidOn(station, day);
@@ -1496,7 +1601,8 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     answerButtons.forEach((button) => { button.disabled = true; });
     if (saveButton) saveButton.disabled = true;
     status.textContent = 'Salvando checklist…';
-    const outcome = await saveChecklistAnswer(station.id, condition, day, textarea?.value || '');
+    const outcome = await saveChecklistAnswer(station.id, condition, day, textarea?.value || '', {isContextCurrent: isCurrentBanner});
+    if (!isCurrentBanner()) return;
     if (!outcome.ok) {
       status.textContent = outcome.message;
       answerButtons.forEach((button) => { button.disabled = false; });
@@ -1524,14 +1630,19 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     if (!nextActive && !window.confirm(`Confirma a inativação de ${station.name || station.id}?`)) return;
     toggleButton.disabled = true;
     status.textContent = nextActive ? 'Liberando arsenal…' : 'Inativando arsenal…';
+    let writeGuard;
     try {
+      writeGuard = captureWriteSession('checklist', () => can('checklistManage'), isCurrentBanner);
       const {saveChecklistStation} = await import('./data.js');
-      await saveChecklistStation({stationId: station.id, name: station.name, qrCode: station.qrCode, start: station.start || '', end: station.end || '', order: Number(station.order) || 0, active: nextActive}, session.user.uid);
+      writeGuard.assertCurrent();
+      await saveChecklistStation({stationId: station.id, name: station.name, qrCode: station.qrCode, start: station.start || '', end: station.end || '', order: Number(station.order) || 0, active: nextActive}, writeGuard.uid, {assertCurrent: writeGuard.assertCurrent});
+      if (!writeGuard.isCurrent()) return;
       station.active = nextActive;
       dialog.close();
       ensureChecklistDailyReportOpen(day);
       await loadDailyChecklist(stations, day);
     } catch (error) {
+      if (writeGuard && !writeGuard.isCurrent()) return;
       status.textContent = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para alterar este arsenal.' : error.message || 'Não foi possível atualizar o arsenal.';
       toggleButton.disabled = false;
     }
@@ -1681,16 +1792,21 @@ async function loadMonthlyChecklist(stations) {
   const content = document.querySelector('#module-content');
   if (!content) return;
   const month = todayInputValue().slice(0, 7);
+  const uid = session.user?.uid || '';
+  const reportScope = captureReportScope('checklist');
+  const request = checklistReportGate.begin({day: month, mode: 'monthly', route: currentRoute(), uid, reportOpen: checklistReportOpen});
+  const isCurrent = () => reportScope.isCurrent() && isCurrentChecklistReportRequest(request, content);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    content.innerHTML = '<p class="empty-state">Selecione um mês válido.</p>';
+    if (isCurrent()) content.innerHTML = '<p class="empty-state">Selecione um mês válido.</p>';
     return;
   }
-  const loadId = ++checklistReportLoad;
+  if (!isCurrent()) return;
   content.innerHTML = '<p class="loading">Carregando registros do mês…</p>';
   try {
     const {listMonthlyChecklistRecords} = await import('./data.js');
-    const result = await listMonthlyChecklistRecords(month, session.user.uid, {stationIds: stations.map((station) => station.id)});
-    if (loadId !== checklistReportLoad || currentRoute() !== 'checklist' || checklistReportMode !== 'monthly') return;
+    if (!isCurrent()) return;
+    const result = await listMonthlyChecklistRecords(month, uid, {stationIds: stations.map((station) => station.id)});
+    if (!isCurrent()) return;
     const today = todayInputValue();
     const days = summarizeChecklistMonth(month, today, stations, result.records, result.priorRecords);
     const rows = days.map((summary) => {
@@ -1718,19 +1834,24 @@ async function loadMonthlyChecklist(stations) {
       await loadDailyChecklist(stations, day);
     }));
   } catch (error) {
-    if (loadId !== checklistReportLoad) return;
+    if (!isCurrent()) return;
     content.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório mensal. ${escapeHtml(error.message || '')}</p>`;
   }
 }
 
-async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '') {
+async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {isContextCurrent} = {}) {
   if (checklistDayMode(day, todayInputValue()) !== 'today') return {ok: false, message: 'O Checklist só pode ser registrado na data de hoje.'};
   const occurrence = condition === 'NAO' ? String(occurrenceValue || '').trim() : '';
   if (condition === 'NAO' && !occurrence) return {ok: false, message: 'Descreva a ocorrência antes de registrar a não conformidade.'};
   try {
+    const dialog = document.querySelector('#checklist-station-dialog');
+    const writeGuard = captureWriteSession('checklist', () => can('checklistWrite'), isContextCurrent || (() => dialog?.isConnected && dialog.open && currentRoute() === 'checklist'));
     const {createOperationalRecord} = await import('./data.js');
+    writeGuard.assertCurrent();
+    startupReports.clear();
     // A atribuição do responsável só é definida após validação no servidor.
-    const result = await createOperationalRecord('checklists', {stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid: session.user.uid});
+    const result = await createOperationalRecord('checklists', {stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid: writeGuard.uid, assertCurrent: writeGuard.assertCurrent});
+    writeGuard.assertCurrent();
     return {ok: true, pendingFirestore: result.pendingFirestore === true};
   } catch (error) {
     return {ok: false, message: error.code === 'permission-denied' ? 'Seu perfil não tem permissão para registrar checklist.' : `Não foi possível salvar. ${error.message || ''}`};
@@ -1743,10 +1864,17 @@ async function loadEventReport({append = false} = {}) {
   const loadId = ++eventReportLoad;
   const day = document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue();
   const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
+  const mode = eventReportMode;
+  const scope = captureReportScope('events', () => currentRoute() === 'events' &&
+    loadId === eventReportLoad && eventReportOpen && eventReportMode === mode &&
+    target.isConnected && document.querySelector('#event-report-results') === target &&
+    document.querySelector('#event-report-dialog')?.open === true &&
+    (mode === 'daily'
+      ? day === (document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue())
+      : month === (document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7))));
+  if (!scope.isCurrent()) return false;
   if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
-    labelReportState = 'error';
-    updateLabelReportSync();
     return false;
   }
   let from = day;
@@ -1769,10 +1897,13 @@ async function loadEventReport({append = false} = {}) {
   if (pdfButton) pdfButton.disabled = true;
   try {
     const {listEventRecords} = await import('./data.js');
+    scope.assertCurrent();
     const preloaded = !append && eventReportMode === 'daily' && navigator.onLine
-      ? startupReports.take(startupReportKey('events', session.user.uid, day, [session.profile?.sigla || '', can('admin')])) : null;
-    const report = (preloaded ? await preloaded.catch(() => null) : null) || await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
-    if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
+      ? startupReports.take(startupReportKey('events', scope.uid, day, scope.key)) : null;
+    const ready = preloaded ? await preloaded.catch(() => null) : null;
+    scope.assertCurrent();
+    const report = ready || await listEventRecords({from, to, uid: scope.uid, sigla: scope.sigla, isAdmin: scope.permissions.admin === true, cursor: append ? eventReportCursor : null, includePending: !append});
+    if (!scope.isCurrent()) return false;
     if (append) {
       const existingIds = new Set(eventReportSourceRecords.map((item) => item.id));
       eventReportSourceRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
@@ -1783,7 +1914,7 @@ async function loadEventReport({append = false} = {}) {
     renderEventReportRecords({append});
     return true;
   } catch (error) {
-    if (loadId === eventReportLoad) {
+    if (scope.isCurrent()) {
       if (append) {
         target.insertAdjacentHTML('afterbegin', `<p class="empty-state">Não foi possível carregar mais registros. ${escapeHtml(error.message || '')}</p>`);
         const moreButton = target.querySelector('#event-report-more');
@@ -1796,7 +1927,7 @@ async function loadEventReport({append = false} = {}) {
     }
     return false;
   } finally {
-    if (append) eventReportLoadingMore = false;
+    if (append && loadId === eventReportLoad) eventReportLoadingMore = false;
   }
 }
 
@@ -1929,6 +2060,7 @@ function beginEventEdit(item) {
   for (const [name, value] of Object.entries({eventDate: item.date, memberSigla: item.memberSigla || '', scheduleSigla: item.scheduleSigla || '', memberStatus: item.memberStatus, eventType: item.eventType, delayMultiple: item.delayMultiple ?? '', substitute: item.substitute, shift: item.shift, payer: item.payer, creditor: item.creditor, amountToPay: item.amountToPay, description: item.description})) {
     if (form.elements[name]) form.elements[name].value = value ?? '';
   }
+  form.dataset.eventAmountBasis = eventAmountBasis(form);
   form.elements.eventType.dispatchEvent(new Event('change', {bubbles: true}));
   form.querySelector('[type="submit"]').textContent = 'Atualizar evento';
   form.querySelector('#event-edit-cancel').hidden = false;
@@ -1985,13 +2117,24 @@ async function loadLabelReport(options = {}) {
   const append = options?.append === true;
   if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
   const loadId = ++labelReportLoad;
-  const requestUid = session.user.uid;
-  labelReportState = 'loading';
-  updateLabelReportSync();
+  const requestUid = session.user?.uid || '';
+  const mode = labelReportMode;
   const day = document.querySelector('#label-report-day')?.value || todayInputValue();
   const month = document.querySelector('#label-report-month')?.value || todayInputValue().slice(0, 7);
+  const scope = captureReportScope('labels', () => currentRoute() === 'labels' &&
+    loadId === labelReportLoad && labelReportOpen && labelReportMode === mode &&
+    target.isConnected && document.querySelector('#label-report-results') === target &&
+    document.querySelector('#label-report-dialog')?.open === true &&
+    (mode === 'daily'
+      ? day === (document.querySelector('#label-report-day')?.value || todayInputValue())
+      : month === (document.querySelector('#label-report-month')?.value || todayInputValue().slice(0, 7))));
+  if (!scope.isCurrent()) return false;
+  labelReportState = 'loading';
+  updateLabelReportSync();
   if (labelReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || labelReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
+    labelReportState = 'error';
+    updateLabelReportSync();
     return false;
   }
   let from = day; let to = day;
@@ -2012,17 +2155,20 @@ async function loadLabelReport(options = {}) {
   if (pdfButton && !append) pdfButton.disabled = true;
   try {
     const report = await withLabelReportDeadline(async () => {
+      scope.assertCurrent();
       if (!navigator.onLine) throw Object.assign(new Error('Conecte-se à internet para consultar as etiquetas.'), {code: 'unavailable'});
       const preloaded = !append && labelReportMode === 'daily'
-        ? startupReports.take(startupReportKey('labels', requestUid, day, [session.profile?.sigla || '', can('labelsManage')])) : null;
+        ? startupReports.take(startupReportKey('labels', requestUid, day, scope.key)) : null;
       if (preloaded) {
         const ready = await preloaded.catch(() => null);
+        scope.assertCurrent();
         if (ready) return ready;
       }
       const {listLabelRecords} = await import('./label-report-reader.js');
-      return listLabelRecords({from, to, uid: requestUid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), pageSize: 50, cursor: append ? labelReportCursor : null});
+      scope.assertCurrent();
+      return listLabelRecords({from, to, uid: scope.uid, sigla: scope.sigla, canManage: scope.permissions.labelsManage === true, pageSize: 50, cursor: append ? labelReportCursor : null});
     });
-    if (loadId !== labelReportLoad || !target.isConnected || session.user?.uid !== requestUid) return false;
+    if (!scope.isCurrent()) return false;
     if (append) {
       const existingIds = new Set(loadedLabelRecords.map((item) => item.id));
       loadedLabelRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
@@ -2095,7 +2241,7 @@ async function loadLabelReport(options = {}) {
     updateLabelReportSync();
     return true;
   } catch (error) {
-    if (loadId === labelReportLoad && target.isConnected && session.user?.uid === requestUid) {
+    if (scope.isCurrent()) {
       labelReportState = 'error';
       updateLabelReportSync();
       if (append) {
@@ -2875,7 +3021,19 @@ async function bindModuleForm(route) {
     const manualLabelEntry = route === 'labels' && (form.dataset.labelEntrySource === 'manual' || Boolean(values.editLabelId));
     if (manualLabelEntry) updateLabelManualConfirmation('pending', actorUid);
     const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
+    let writeGuard;
     try {
+      if (route === 'events') {
+        writeGuard = captureWriteSession(route, () => can('eventsWrite') && (!values.editEventId || can('admin')), () => form.isConnected && currentRoute() === route);
+      } else if (route === 'labels') {
+        const editingLabel = values.editLabelId ? loadedLabelRecords.find((item) => item.id === values.editLabelId) : null;
+        writeGuard = captureWriteSession(route, () => {
+          const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
+          return (can('labelsWrite') || can('labelsManage')) && (!values.editLabelId ||
+            can('labelsManage') || editingLabel?.createdByUid === session.user?.uid ||
+            (ownSigla && editingLabel?.staffSiglas?.includes(ownSigla)));
+        }, () => form.isConnected && currentRoute() === route);
+      }
       if (route === 'people') {
         const {saveContact} = await import('./data.js');
         await saveContact({...values, active: form.elements.active.checked}, session.user.uid);
@@ -2903,7 +3061,10 @@ async function bindModuleForm(route) {
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
-          const result = await updateEventRecord(values.editEventId, eventRecord, session.user.uid, Number(values.editEventVersion));
+          writeGuard.assertCurrent();
+          startupReports.clear();
+          const result = await updateEventRecord(values.editEventId, eventRecord, writeGuard.uid, Number(values.editEventVersion), undefined, {assertCurrent: writeGuard.assertCurrent});
+          writeGuard.assertCurrent();
           notice = result.pendingFirestore
             ? 'Edição salva neste aparelho com a versão base. Será enviada quando a conexão voltar; se o registro mudar, o rascunho ficará para comparação.'
             : 'Evento atualizado no Firestore.';
@@ -2939,7 +3100,10 @@ async function bindModuleForm(route) {
         record = {date: values.date, patientName: values.patientName.trim(), procedureCode: (values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : (values.insurance || '').trim(), creditor, staffSiglas: creditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
-          await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName, Number(values.editLabelVersion));
+          writeGuard.assertCurrent();
+          startupReports.clear();
+          await updateLabelRecord(values.editLabelId, record, writeGuard.uid, actorName, Number(values.editLabelVersion), {assertCurrent: writeGuard.assertCurrent});
+          writeGuard.assertCurrent();
           updateLabelManualConfirmation('confirmed', actorUid);
           notice = '';
           const entryDialog = document.querySelector('#label-entry-dialog');
@@ -2988,7 +3152,10 @@ async function bindModuleForm(route) {
       }
       delete record.sign;
       const {createOperationalRecord} = await import('./data.js');
-      const result = await createOperationalRecord(collectionName, record, {uid: session.user.uid});
+      writeGuard?.assertCurrent();
+      startupReports.clear();
+      const result = await createOperationalRecord(collectionName, record, {uid: writeGuard?.uid || session.user.uid, assertCurrent: writeGuard?.assertCurrent});
+      writeGuard?.assertCurrent();
       notice = result.pendingFirestore
         ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
@@ -3001,6 +3168,7 @@ async function bindModuleForm(route) {
       }
       await render();
     } catch (error) {
+      if (writeGuard && (!form.isConnected || currentRoute() !== route || session.status !== 'signed-in' || session.user?.uid !== writeGuard.uid)) return;
       notice = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para esta ação.' : `Não foi possível salvar. ${error.message || ''}`;
       if (route === 'events') {
         const status = document.querySelector('#event-form-status');
@@ -3494,8 +3662,12 @@ async function loadChecklistStationAdmin() {
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     if (status) status.textContent = 'Salvando estação…';
+    let writeGuard;
     try {
+      const route = currentRoute();
+      writeGuard = captureWriteSession('checklist', () => can('checklistManage'), () => form.isConnected && currentRoute() === route);
       const {saveChecklistStation, listModuleRecords} = await import('./data.js');
+      writeGuard.assertCurrent();
       await saveChecklistStation({
         stationId: form.elements.stationId.value,
         name: form.elements.name.value,
@@ -3504,13 +3676,17 @@ async function loadChecklistStationAdmin() {
         end: form.elements.end.value,
         order: Number(form.elements.order.value),
         active: form.elements.active.checked
-      }, session.user.uid);
+      }, writeGuard.uid, {assertCurrent: writeGuard.assertCurrent});
+      if (!writeGuard.isCurrent()) return;
       reset();
       if (status) status.textContent = 'Estação salva no Firestore.';
       await refresh();
-      const activeStations = await listModuleRecords('checklist', session.user.uid, {pageSize: 200});
+      if (!writeGuard.isCurrent()) return;
+      const activeStations = await listModuleRecords('checklist', writeGuard.uid, {pageSize: 200});
+      if (!writeGuard.isCurrent()) return;
       await loadChecklistView(activeStations);
     } catch (error) {
+      if (writeGuard && !writeGuard.isCurrent()) return;
       if (status) status.textContent = error.code === 'permission-denied'
         ? 'Seu perfil não tem permissão para manter o catálogo do Checklist.'
         : error.message || 'Não foi possível salvar a estação.';
@@ -3741,7 +3917,10 @@ function updateEventEntryFields(form) {
   applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
 
   const amount = eventAmountToPay(eventType, form.elements.delayMultiple.value, form.elements.shift.value);
-  applyEventAmountAutofill(form.elements.amountToPay, amount, editing, rules.amountMode !== 'manual');
+  const amountBasis = eventAmountBasis(form);
+  const preserveHistoricalAmount = editing && form.dataset.eventAmountBasis === amountBasis;
+  applyEventAmountAutofill(form.elements.amountToPay, amount, editing, rules.amountMode !== 'manual', preserveHistoricalAmount);
+  form.dataset.eventAmountBasis = amountBasis;
   const requiredByType = {eventDate: true, eventType: true, memberStatus: rules.memberStatus, description: rules.description, delayMultiple: rules.delayMultiple, substitute: rules.substitute, shift: rules.shift, payer: true, creditor: true, amountToPay: true};
   for (const [name, required] of Object.entries(requiredByType)) {
     const control = form.elements[name];
@@ -3795,10 +3974,24 @@ function applyEventSelectAutofill(select, value, editing) {
   if (select.name !== 'substitute') select.disabled = select.dataset.catalogEmpty === 'true';
 }
 
-function applyEventAmountAutofill(input, value, editing, automatic = false) {
+function eventAmountBasis(form) {
+  const type = form.elements.eventType.value;
+  const rules = eventFieldRules(type);
+  return JSON.stringify([normalizeEventOption(type),
+    rules.delayMultiple ? String(form.elements.delayMultiple.value) : '',
+    rules.shift ? normalizeEventOption(form.elements.shift.value) : '']);
+}
+
+function applyEventAmountAutofill(input, value, editing, automatic = false, preserveExisting = false) {
   if (!input) return;
   const wasAutofilled = input.dataset.eventAutofilled === 'true';
   if (automatic) {
+    // An edit of another field must not migrate a stored amount to today's rate.
+    if (preserveExisting && String(input.value).trim() !== '') {
+      input.dataset.eventAutofilled = 'true';
+      input.disabled = true;
+      return;
+    }
     if (Number.isFinite(value)) {
       input.value = String(value);
       input.dataset.eventAutofilled = 'true';
@@ -3827,6 +4020,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  reloadOpenReportForScope = null;
   labelReportLoad++;
   labelReportLoadingMore = false;
   labelReportState = 'idle';
@@ -3987,8 +4181,18 @@ function bindLogin() {
   });
 }
 
+function updateIdentityProfile(next) {
+  const identity = document.querySelector('.identity-card__user');
+  if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
+}
+
 function sessionChanged(next) {
-  const userChanged = session.user?.uid !== next.user?.uid;
+  const previous = session;
+  const route = currentRoute();
+  const previousReportKey = previous.status === 'signed-in' && ['events', 'labels', 'checklist'].includes(route)
+    ? captureReportScope(route).key : '';
+  const userChanged = previous.user?.uid !== next.user?.uid;
+  const firstSignedIn = next.status === 'signed-in' && (previous.status !== 'signed-in' || userChanged);
   if (userChanged || next.status !== 'signed-in') startupReports.clear();
   if (next.status !== 'signed-in' || userChanged) {
     labelManualConfirmation = {uid: '', status: ''};
@@ -4003,13 +4207,15 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
-  notice = '';
+  const permissionRevoked = sessionChangeRevokesAccess(previous, next);
+  if (permissionRevoked) app.innerHTML = '<main class="boot-screen" role="status" aria-live="polite"><strong>Atualizando o acesso…</strong></main>';
+  if (permissionRevoked) startupReports.clear();
   if (startupBannerActive && next.status === 'signed-in') {
-    if (userChanged) preloadStartupReports(next.user);
+    if (firstSignedIn) preloadStartupReports(next.user);
     preloadOperationalDataWhenIdle(next.user);
     if (navigator.onLine) {
       void syncOutbox();
-      if (userChanged && can('scheduleRead')) {
+      if (firstSignedIn && can('scheduleRead')) {
         const uid = next.user.uid;
         void import('./data-lite.js').then(async ({readSchedule}) => {
           if (session.status === 'signed-in' && session.user.uid === uid) await readSchedule(todayInputValue(), uid);
@@ -4017,7 +4223,18 @@ function sessionChanged(next) {
       }
     }
   }
-  void render();
+  const mustRender = sessionChangeRequiresRender(previous, next) ||
+    (currentRoute() === 'home' && sessionChangeGrantsAccess(previous, next));
+  if (mustRender) {
+    notice = '';
+    void render();
+  } else {
+    updateIdentityProfile(next);
+    if (previousReportKey && next.status === 'signed-in' && captureReportScope(route).key !== previousReportKey) {
+      startupReports.clear();
+      void reloadOpenReportForScope?.();
+    }
+  }
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
 async function refreshAppFeatures(uid, force = false) {
@@ -4028,11 +4245,15 @@ async function refreshAppFeatures(uid, force = false) {
     const {readAppFeatures} = await import('./data-lite.js');
     const features = normalizeAppFeatures(await readAppFeatures(uid));
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    const previous = appFeatures;
     appFeatures = features;
-    await render();
+    if (featureChangeRequiresRender(previous, features, currentRoute(), featureEnabledForRoute)) await render();
   } catch (error) {
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
-    appFeatures = {...DEFAULT_APP_FEATURES};
+    const previous = appFeatures;
+    const fallback = {...DEFAULT_APP_FEATURES};
+    appFeatures = fallback;
+    if (featureChangeRequiresRender(previous, fallback, currentRoute(), featureEnabledForRoute)) await render();
     console.warn('[SAHMT] Configuração de módulos indisponível; usando padrões locais:', error.code || error.message);
   }
 }

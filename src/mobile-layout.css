@@ -1,0 +1,137 @@
+
+/* O título cresce sem esticar sua faixa até as laterais do cartão. */
+.app-shell:where(:not(.app-shell--checklist)) .identity-card .module-title-chip{grid-column:1/-1;grid-row:2;justify-self:center;display:grid;place-items:center;box-sizing:border-box;width:max-content;max-width:100%;min-height:44px;margin:0;padding:4px clamp(14px,4vw,24px);border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(1.44rem,5.6vw,1.76rem);font-weight:950;letter-spacing:.12em;line-height:1.05;text-align:center;white-space:nowrap}
+.app-shell--labels .identity-card .module-title-chip,.app-shell--management .identity-card .module-title-chip{font-size:clamp(1.56rem,6vw,1.96rem)}
+
+/* No visor horizontal baixo, imagem/escala e ações dividem a área disponível. */
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .topbar{padding-block:max(4px,env(safe-area-inset-top)) 4px}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card{grid-template-columns:52px max-content minmax(0,1fr);grid-template-rows:auto;min-height:64px;margin-block:0;padding:6px 10px;column-gap:10px}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card .brand{grid-column:1;grid-row:1;min-height:0}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card .brand img{width:34px;height:34px}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card .module-title-chip{grid-column:2;grid-row:1}
+ .app-shell:is(.app-shell--home,.app-shell--events,.app-shell--labels,.app-shell--checklist,.app-shell--management) .identity-card__user-row{grid-column:3;grid-row:1;min-height:0}
+ .app-shell--events .module-view--events{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) 36px;gap:8px}
+ .app-shell--events .event-schedule{grid-column:1;grid-row:1/-1;height:100%}
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+ .app-shell--events .event-report-launchers{grid-column:2;grid-row:1;height:100%;grid-template-rows:repeat(2,minmax(0,1fr));margin:0;gap:8px}
+ .app-shell--events .event-report-launchers button{height:100%;min-height:36px}
+ .app-shell--events .events-home-button{grid-column:2;grid-row:2;width:100%;height:100%;margin:0}
+}
+
+/* Escala e Etiquetas mantêm as ações visíveis quando o aparelho é girado. */
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell--home .content-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr)}
+ .app-shell--home .schedule-card{gap:4px}
+ .app-shell--home .schedule-date-block{padding:3px}
+ .app-shell--home .schedule-date-block .date-picker input{height:30px;min-height:30px}
+ .app-shell--home .schedule-date-block .schedule-day-nav{padding:3px;gap:4px}
+ .app-shell--home .schedule-date-block .schedule-day-nav button{min-height:28px;padding:3px 4px}
+ .app-shell--home .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;padding:2px}
+ .app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token{min-height:24px;padding:1px 3px;font-size:.62rem}
+ .app-shell--home .module-mark,.app-shell--home .module-icon{flex-basis:22px;width:22px;height:22px}
+ .app-shell--home .module-card{gap:4px;padding:3px 5px}
+ .app-shell--home .module-card strong{font-size:.6rem}
+ .app-shell--home .module-card small{display:none}
+ .app-shell--labels .module-view--labels{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) 36px;gap:8px}
+ .app-shell--labels .module-view--labels>.label-workspace{grid-column:1;grid-row:1/-1;height:100%;max-height:none;padding:6px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) repeat(2,minmax(36px,1fr));gap:6px}
+ .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2vw,.82rem)}
+ .app-shell--labels .label-action-grid #label-camera-open{gap:9px}
+ .app-shell--labels .label-action-grid #label-camera-open::before{width:32px}
+ .app-shell--labels .label-report-launchers{grid-column:2;grid-row:1;height:100%;max-height:none;margin:0;padding:5px;gap:6px}
+ .app-shell--labels .label-report-launchers button{min-height:34px}
+ .app-shell--labels .labels-home-button{grid-column:2;grid-row:2;min-height:0;height:100%;margin:0}
+}
+
+@media(orientation:portrait){.app-shell--home .content-grid{grid-template-columns:minmax(0,1fr);align-items:stretch}.app-shell--home .schedule-card{position:static;top:auto}}
+@media(orientation:portrait) and (max-height:600px){
+ .app-shell--events .event-schedule .schedule-day-nav button{min-height:30px;padding:4px;font-size:.68rem;white-space:nowrap}
+ .app-shell--events .identity-card{margin-block:0}
+ .app-shell--events .topbar{padding-block:max(5px,env(safe-area-inset-top)) 5px}
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:2px}
+ .app-shell--events .event-report-launchers button{min-height:40px!important}
+}
+
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell--events .event-schedule-heading .date-picker input{height:32px!important;min-height:32px!important;padding-block:3px}
+ .app-shell--events .event-schedule .schedule-day-nav button{min-height:28px;padding:3px 4px;font-size:.68rem;white-space:nowrap}
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{gap:4px;padding:2px}
+}
+@media(max-height:600px){
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token>strong{white-space:nowrap}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token__vacation-rank{font-size:.55rem}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token__vacation-number{font-size:.35rem}
+ :is(.app-shell--home,.app-shell--events) .schedule-content>.schedule-siglas-grid .sigla-index{min-height:8px;font-size:.48rem;line-height:1}
+ .app-shell--events .event-schedule .sigla-token--support{font-size:.55rem}
+}
+@media(orientation:landscape) and (max-height:350px){
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .app-shell--events .event-schedule .sigla-token--support{font-size:.48rem}
+ .app-shell--home .schedule-date-heading{padding-bottom:3px!important}
+ .app-shell--home .schedule-date-block .date-picker input{height:28px;min-height:28px}
+ .app-shell--home .schedule-date-block .schedule-day-nav{padding:2px}
+ .app-shell--home .schedule-date-block .schedule-day-nav button{min-height:24px}
+}
+
+/* O botão ocupa a célula inteira, incluindo o número da posição. */
+.app-shell :is(.schedule-card,.event-schedule) .schedule-content>.schedule-siglas-grid>button.sigla-item{display:grid;grid-template-rows:minmax(0,1fr) auto;align-content:stretch;gap:1px;width:100%;height:100%;min-width:32px;min-height:32px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;text-shadow:none;touch-action:manipulation}
+.schedule-siglas-grid>button.sigla-item:is(:hover,:active,:disabled){transform:none;box-shadow:none}
+.schedule-siglas-grid>button.sigla-item:disabled{cursor:default}
+.schedule-siglas-grid>button.sigla-item:disabled>.sigla-token{opacity:.62;transform:none}
+.schedule-siglas-grid>button.sigla-item:not(:disabled):hover>.sigla-token{filter:brightness(1.045)}
+.schedule-siglas-grid>button.sigla-item:not(:disabled):active>.sigla-token{transform:translateY(1px)}
+/* A grade compacta preserva o alvo de toque e os números visíveis. */
+@media(orientation:portrait) and (max-height:700px){
+ :is(.app-shell--home,.app-shell--events) .identity-card{margin-block:0}
+ :is(.app-shell--home,.app-shell--events) .topbar{padding-block:max(5px,env(safe-area-inset-top)) 5px}
+ .app-shell--home .schedule-content>.schedule-siglas-grid,.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:2px}
+}
+@media(max-height:700px){
+ .app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token,.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid .sigla-token{min-height:0;height:100%}
+ :is(.app-shell--home,.app-shell--events) .schedule-content>.schedule-siglas-grid .sigla-index{min-height:8px;font-size:.48rem;line-height:1}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token>strong{white-space:nowrap}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token__vacation-rank{font-size:.55rem}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token__vacation-number{font-size:.35rem}
+}
+@media(orientation:landscape) and (max-height:350px){
+ :is(.app-shell--home,.app-shell--events) .app-footer{display:none}
+ .app-shell--home .schedule-content>.schedule-siglas-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+ .app-shell--home .schedule-date-block .date-picker input{height:32px;min-height:32px}
+ .app-shell--home .schedule-date-block .schedule-day-nav button,.app-shell--events .event-schedule .schedule-day-nav button{min-height:32px}
+ .app-shell--events .event-schedule>.schedule-day-nav{margin-bottom:3px}
+ .app-shell--events .event-schedule-heading{padding-top:2px;padding-bottom:2px}
+ .app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid{gap:3px}
+}
+
+/* O conteúdo visual pertence ao mesmo alvo nativo da célula. */
+.schedule-siglas-grid>button.sigla-item>*{pointer-events:none}
+@media(orientation:landscape) and (max-height:350px){
+ .app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token{width:100%;padding-inline:0}
+ .app-shell--home .content-grid{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}
+}
+
+@media(max-height:700px){
+ .app-shell--home .schedule-card .sigla-token--dc,.app-shell--events .event-schedule .sigla-token--dc{padding:0 1px!important}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token--dc>strong{font-size:.58rem;line-height:1.2}
+ :is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token--dc .sigla-token__aliases{font-size:.38rem;line-height:1.2}
+}
+
+
+/* O relatório diário mantém os 28 alvos e o retorno no visor horizontal baixo. */
+@media(orientation:landscape) and (max-height:400px){
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))[open]{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:3px;padding:4px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-dialog__header{grid-column:1;grid-row:1;padding:0;border-bottom:0}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-dialog__header h2{line-height:1.15}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-periods{grid-column:2;grid-row:1}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-calendar{padding:2px;gap:1px;border-radius:10px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-calendar>input{min-height:32px;height:32px;font-size:16px;padding:2px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-sync{font-size:.55rem;line-height:1.1}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-content{grid-column:1/-1;grid-row:2}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-content>.checklist-daily-layout{gap:3px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-station-select{min-height:32px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-confirmation-footer>.checklist-confirmation-button{min-height:34px;padding:2px 6px;gap:1px;font-size:.72rem;line-height:1.15}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-confirmation-button>small{font-size:.6rem;line-height:1.15}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-footer{grid-column:1/-1;grid-row:3;padding:0}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-footer button{min-height:32px;padding:3px 8px}
+}

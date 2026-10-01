@@ -1,5 +1,6 @@
 import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
+import {createProfileStatePublisher} from './profile-state.js';
 
 let retryCurrentProfile = null;
 let authApiPromise = null;
@@ -13,8 +14,9 @@ function loadAuthApi() {
   return authApiPromise;
 }
 
-async function showCachedSession(user, onState) {
+async function showCachedSession(user, onState, isCurrent) {
   const profile = await readCachedProfile(user.uid);
+  if (!isCurrent()) return;
   if (!profile) {
     onState({status: 'profile-error', user, error: new Error('Perfil offline ausente ou expirado.')});
     return;
@@ -54,14 +56,14 @@ export function watchSession(onState) {
     onState({status: 'loading-profile', user});
     try {
       if (!navigator.onLine) {
-        await showCachedSession(user, onState);
+        await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
         scheduleReconnect(user, currentGeneration);
         return;
       }
       await onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
     } catch (error) {
       if (currentGeneration !== generation) return;
-      if (!navigator.onLine) await showCachedSession(user, onState);
+      if (!navigator.onLine) await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
       else onState({status: 'profile-error', user, error});
     }
     scheduleReconnect(user, currentGeneration);
@@ -90,6 +92,7 @@ export function watchSession(onState) {
   }).catch((error) => { if (!disposed) onState({status: 'auth-error', error}); });
   return () => {
     disposed = true;
+    generation++;
     clearOnlineHandler();
     authUnsubscribe?.();
     profileUnsubscribe?.();
@@ -102,6 +105,13 @@ export function retryAuthenticatedProfile() {
 }
 
 async function onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe) {
+  const publisher = createProfileStatePublisher({
+    user,
+    isCurrent: () => currentGeneration === getGeneration(),
+    onState,
+    cacheProfile,
+    onCacheError: (error) => console.warn('[SAHMT] Não foi possível salvar o perfil offline:', error.code || error.name)
+  });
   const [{doc, getDoc}, {db}] = await Promise.all([import('firebase/firestore/lite'), import('./firebase-lite.js')]);
   if (currentGeneration !== getGeneration()) return;
   const profileRef = doc(db, 'users', user.uid);
@@ -116,17 +126,16 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     }
     const profile = snapshot.data();
     if (profile.uid !== user.uid) throw new Error('O UID do perfil não corresponde à identidade autenticada.');
-    await cacheProfile(user.uid, profile);
-    onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile, offline: false});
-    deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
+    void publisher.publish(profile);
+    deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe, publisher);
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
-    if (!navigator.onLine) await showCachedSession(user, onState);
+    if (!navigator.onLine) await showCachedSession(user, onState, () => currentGeneration === getGeneration());
     else onState({status: 'profile-error', user, error});
   }
 }
 
-function deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe) {
+function deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe, publisher) {
   let cancelled = false;
   let listenerUnsubscribe = null;
   let idleHandle = null;
@@ -146,7 +155,7 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
     try {
       const [{doc, onSnapshot}, {db}] = await Promise.all([import('firebase/firestore'), import('./firebase.js')]);
       if (cancelled || currentGeneration !== getGeneration()) return;
-      listenerUnsubscribe = onSnapshot(doc(db, 'users', user.uid), async (latest) => {
+      listenerUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (latest) => {
         if (currentGeneration !== getGeneration()) return;
         if (!latest.exists()) {
           onState({status: 'profile-missing', user});
@@ -157,12 +166,13 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
           onState({status: 'profile-error', user, error: new Error('O UID do perfil não corresponde à identidade autenticada.')});
           return;
         }
-        await cacheProfile(user.uid, updatedProfile);
-        onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: updatedProfile, offline: !navigator.onLine});
+        void publisher.publish(updatedProfile, {offline: !navigator.onLine});
       }, (error) => {
         if (currentGeneration !== getGeneration()) return;
         if (!navigator.onLine) {
-          showCachedSession(user, onState).catch((cacheError) => onState({status: 'profile-error', user, error: cacheError}));
+          showCachedSession(user, onState, () => currentGeneration === getGeneration()).catch((cacheError) => {
+            if (currentGeneration === getGeneration()) onState({status: 'profile-error', user, error: cacheError});
+          });
         } else {
           onState({status: 'profile-error', user, error});
         }

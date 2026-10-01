@@ -22,8 +22,27 @@ export function buildOperationalWrite({collectionName, data, uid, requestId, now
   return {record};
 }
 
-export function stageOperationalWrite(batch, {collectionName, data, uid, requestId, now, recordRef}) {
+export function stageOperationalWrite(batch, {collectionName, data, uid, requestId, now, recordRef, assertCurrent}) {
+  assertCurrent?.();
   const write = buildOperationalWrite({collectionName, data, uid, requestId, now});
   batch.set(recordRef, write.record);
   return write;
+}
+
+export async function runGuardedOperationalWrite({write, confirmCommitted, queue, canQueue, assertCurrent = () => {}}) {
+  assertCurrent();
+  try {
+    return await write();
+  } catch (error) {
+    assertCurrent();
+    if (['stale-version', 'session-changed'].includes(error.code)) throw error;
+    let confirmed;
+    try {
+      confirmed = await confirmCommitted();
+    } catch { /* A failed confirmation must not create a second mutation ID. */ }
+    assertCurrent();
+    if (confirmed) return confirmed;
+    if (!canQueue(error)) throw error;
+    return queue(error);
+  }
 }

@@ -3,7 +3,11 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
-const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
+const scopeSource = readFileSync(join(__dirname, '../src/report-read-scope.js'), 'utf8').replaceAll('export ', '');
+const featureSource = readFileSync(join(__dirname, '../src/feature-flags.js'), 'utf8').replaceAll('export ', '');
+const canSource = main.slice(main.indexOf('function can(permission)'), main.indexOf('function captureWriteSession('));
+const reportScopeSource = main.slice(main.indexOf('function captureReportScope('), main.indexOf('function preloadStartupReports('));
 const stateSource = readFileSync(join(__dirname, '../src/label-report-state.js'), 'utf8').replaceAll('export ', '');
 function deferred() {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};}
 function setup(read, {online = true, timeout = 50} = {}) {
@@ -11,13 +15,17 @@ function setup(read, {online = true, timeout = 50} = {}) {
   const target = {isConnected: true, innerHTML: '', querySelectorAll: () => [], querySelector: selector => selector === '#label-report-retry' ? retry : null, insertAdjacentHTML(position, html) {this.innerHTML += html;}};
   const sync = {innerHTML: '', classList: {toggle(name, value) {sync.confirmed = value;}}};
   const day = {value: '2026-09-30'};
+  const dialog = {open: true, isConnected: true};
   const ctx = vm.createContext({
     setTimeout, clearTimeout, Promise, Error, navigator: {onLine: online},
     labelReportState: 'idle', labelReportLoad: 0, labelReportMode: 'daily', labelReportCursor: null,
-    labelReportLoadingMore: false, loadedLabelRecords: [], session: {user: {uid: 'user-1'}, profile: {}},
+    labelReportOpen: true, labelReportLoadingMore: false, loadedLabelRecords: [],
+    session: {status: 'signed-in', user: {uid: 'user-1', email: 'teste@nome.invalid'},
+      profile: {active: true, access: true, role: 'anestesiologista', sigla: 'FX', permissions: {labelsRead: true}}},
+    currentRoute: () => 'labels', appFeatures: {labels: true},
     startupReports: {take: () => null}, startupReportKey: () => '',
-    document: {querySelector: selector => selector === '#label-report-results' ? target : selector === '#label-report-sync' ? sync : selector === '#label-report-day' ? day : null},
-    escapeHtml: String, formatRecordDate: String, todayInputValue: () => '2026-09-30', can: () => true,
+    document: {querySelector: selector => selector === '#label-report-results' ? target : selector === '#label-report-sync' ? sync : selector === '#label-report-day' ? day : selector === '#label-report-dialog' ? dialog : null},
+    escapeHtml: String, formatRecordDate: String, todayInputValue: () => '2026-09-30',
     mockReader: {listLabelRecords: read}, reportTimestamp: () => 0
   });
   vm.runInContext(stateSource, ctx);
@@ -26,7 +34,7 @@ function setup(read, {online = true, timeout = 50} = {}) {
   const helper = main.slice(main.indexOf('function updateLabelReportSync()'), main.indexOf('async function loadLabelReport'));
   const loader = main.slice(main.indexOf('async function loadLabelReport'), main.indexOf('function beginLabelEdit'))
     .replaceAll("await import('./label-report-reader.js')", 'mockReader');
-  vm.runInContext(helper + loader, ctx);
+  vm.runInContext(scopeSource + featureSource + canSource + reportScopeSource + helper + loader, ctx);
   return {ctx, target, sync, retry, day, load: () => vm.runInContext('loadLabelReport()', ctx)};
 }
 test('verde só após a resposta do servidor, inclusive relatório vazio', async () => {

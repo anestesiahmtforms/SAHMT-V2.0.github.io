@@ -1,0 +1,369 @@
+{
+  "date": "2026-09-30",
+  "baselineCommit": "282272adc22b328d853d46630687cc06897d2cb3",
+  "configuration": "Mesmas variáveis públicas do GitHub Actions em ambos os builds; nenhum serviço alterado",
+  "checklist": {
+    "fixture": "30 estações fictícias; 5 amostras; atraso controlado de 90 ms por chamada; duração do controlador, não de aparelho/Firestore",
+    "measurements": [
+      {
+        "scenario": "diário completo",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 1030,
+          "medianDurationMs": 94
+        },
+        "after": {
+          "serverQueries": 1,
+          "documentsRead": 1000,
+          "medianDurationMs": 96
+        }
+      },
+      {
+        "scenario": "diário com cinco estações sem resposta",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 1030,
+          "medianDurationMs": 94
+        },
+        "after": {
+          "serverQueries": 6,
+          "documentsRead": 1005,
+          "medianDurationMs": 192
+        }
+      },
+      {
+        "scenario": "diário vazio",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 30,
+          "medianDurationMs": 95
+        },
+        "after": {
+          "serverQueries": 31,
+          "documentsRead": 30,
+          "medianDurationMs": 190
+        }
+      },
+      {
+        "scenario": "mensal completo no dia 1, com sentinela de truncamento",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 2031,
+          "medianDurationMs": 94
+        },
+        "after": {
+          "serverQueries": 1,
+          "documentsRead": 2001,
+          "medianDurationMs": 95
+        }
+      }
+    ]
+  },
+  "mobile": {
+    "fixture": "real builds; 390x844; CPU4x; 150ms/1.6Mbps; synthetic offline profile; external requests aborted",
+    "baseline": {
+      "samples": [
+        {
+          "openMs": 9578,
+          "firstInteractionMs": 262,
+          "labelsManualMs": 534
+        },
+        {
+          "openMs": 9498,
+          "firstInteractionMs": 205,
+          "labelsManualMs": 482
+        },
+        {
+          "openMs": 9559,
+          "firstInteractionMs": 214,
+          "labelsManualMs": 627
+        }
+      ],
+      "medians": {
+        "openMs": 9559,
+        "firstInteractionMs": 214,
+        "labelsManualMs": 534
+      }
+    },
+    "current": {
+      "samples": [
+        {
+          "openMs": 10108,
+          "firstInteractionMs": 272,
+          "labelsManualMs": 680
+        },
+        {
+          "openMs": 10043,
+          "firstInteractionMs": 296,
+          "labelsManualMs": 664
+        },
+        {
+          "openMs": 10006,
+          "firstInteractionMs": 192,
+          "labelsManualMs": 774
+        }
+      ],
+      "medians": {
+        "openMs": 10043,
+        "firstInteractionMs": 272,
+        "labelsManualMs": 680
+      }
+    }
+  },
+  "offline": {
+    "offline": {
+      "offlineOpen": true,
+      "cachedSchedule": true,
+      "labelsManualDialog": true,
+      "cameraModuleOffline": true,
+      "qrDecoderOffline": true,
+      "stableOutboxPreserved": true,
+      "serverResponsesWhileOffline": 0,
+      "refusedBrowserUpdateChecks": 4,
+      "cacheNames": [
+        "sahmt-v2-shell-v107"
+      ],
+      "externalRequestsBlocked": 2,
+      "pageErrors": []
+    },
+    "oldTab": {
+      "oldTabEntry": "assets/index-B1ka-GfN.js",
+      "oldCamera": "assets/label-camera-BfsYUBmS.js",
+      "oldTabLabelsAfterUpdate": true,
+      "newOfflineNavigationUsesCurrentBuild": true,
+      "cacheNames": [
+        "sahmt-v2-shell-v106",
+        "sahmt-v2-shell-v107"
+      ],
+      "serverResponsesWhileOffline": 0,
+      "externalRequestsBlocked": 3
+    },
+    "imageRefresh": {
+      "sameUrlCorrectedImage": true,
+      "correctedImageAvailableOfflineCache": true,
+      "stableOutboxPreserved": true,
+      "images": "local 8x8 synthetic red/green PNG; no patient data",
+      "offlineVerification": "CacheStorage body check; request/cache precedence covered by SW regression test"
+    }
+  },
+  "gallery": {
+    "environment": {
+      "browser": "Edge Chromium headless",
+      "viewport": "390x844",
+      "latencyMs": 150,
+      "downloadMbps": 1.6,
+      "cpuThrottle": 4,
+      "noServiceWorker": true,
+      "noExternalRequests": true
+    },
+    "results": [
+      {
+        "variant": "baseline",
+        "sample": 1,
+        "hidden": {
+          "downloads": 1,
+          "bytes": 589219
+        },
+        "afterOpen": {
+          "downloads": 7,
+          "bytes": 3871697
+        },
+        "firstImage": {
+          "elapsed": 254.09999999962747,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "baseline",
+        "sample": 2,
+        "hidden": {
+          "downloads": 1,
+          "bytes": 589219
+        },
+        "afterOpen": {
+          "downloads": 7,
+          "bytes": 3871697
+        },
+        "firstImage": {
+          "elapsed": 199.60000000149012,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "baseline",
+        "sample": 3,
+        "hidden": {
+          "downloads": 1,
+          "bytes": 589219
+        },
+        "afterOpen": {
+          "downloads": 7,
+          "bytes": 3871697
+        },
+        "firstImage": {
+          "elapsed": 244.69999999925494,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "lazy",
+        "sample": 1,
+        "hidden": {
+          "downloads": 0,
+          "bytes": 0
+        },
+        "afterOpen": {
+          "downloads": 7,
+          "bytes": 3871697
+        },
+        "firstImage": {
+          "elapsed": 16961.5,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "lazy",
+        "sample": 2,
+        "hidden": {
+          "downloads": 0,
+          "bytes": 0
+        },
+        "afterOpen": {
+          "downloads": 7,
+          "bytes": 3871697
+        },
+        "firstImage": {
+          "elapsed": 16907.5,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "lazy",
+        "sample": 3,
+        "hidden": {
+          "downloads": 0,
+          "bytes": 0
+        },
+        "afterOpen": {
+          "downloads": 7,
+          "bytes": 3871697
+        },
+        "firstImage": {
+          "elapsed": 16859.400000000373,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "lazy-sized",
+        "sample": 1,
+        "hidden": {
+          "downloads": 0,
+          "bytes": 0
+        },
+        "afterOpen": {
+          "downloads": 4,
+          "bytes": 2345191
+        },
+        "firstImage": {
+          "elapsed": 11574.400000000373,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "lazy-sized",
+        "sample": 2,
+        "hidden": {
+          "downloads": 0,
+          "bytes": 0
+        },
+        "afterOpen": {
+          "downloads": 4,
+          "bytes": 2345191
+        },
+        "firstImage": {
+          "elapsed": 11482.800000000745,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      },
+      {
+        "variant": "lazy-sized",
+        "sample": 3,
+        "hidden": {
+          "downloads": 0,
+          "bytes": 0
+        },
+        "afterOpen": {
+          "downloads": 4,
+          "bytes": 2345191
+        },
+        "firstImage": {
+          "elapsed": 11408.700000001118,
+          "naturalWidth": 1654,
+          "naturalHeight": 2339,
+          "width": 368,
+          "height": 520.40625
+        }
+      }
+    ],
+    "summary": [
+      {
+        "variant": "baseline",
+        "samples": 3,
+        "hiddenDownloads": 1,
+        "hiddenRequestedBytes": 589219,
+        "afterOpenDownloads": 7,
+        "afterOpenRequestedBytes": 3871697,
+        "firstImageReadyMsMedian": 244.69999999925494
+      },
+      {
+        "variant": "lazy",
+        "samples": 3,
+        "hiddenDownloads": 0,
+        "hiddenRequestedBytes": 0,
+        "afterOpenDownloads": 7,
+        "afterOpenRequestedBytes": 3871697,
+        "firstImageReadyMsMedian": 16907.5
+      },
+      {
+        "variant": "lazy-sized",
+        "samples": 3,
+        "hiddenDownloads": 0,
+        "hiddenRequestedBytes": 0,
+        "afterOpenDownloads": 4,
+        "afterOpenRequestedBytes": 2345191,
+        "firstImageReadyMsMedian": 11482.800000000745
+      }
+    ],
+    "decision": "Do not implement loading=lazy alone: it removes the hidden first-image request but increases gallery-opening wait. Sized placeholders improve lazy layout but still defer first-image download. Keep current source until activation/priority design is measured.",
+    "limitations": [
+      "Server request counts and original response body sizes are requested byte budget, not completed bytes at every measurement.",
+      "Baseline opening timing excludes the eager first-image wait during initial hidden view load.",
+      "Chromium emulation only, no physical Android/iPhone or authenticated data.",
+      "Original JPG URL and pixels unchanged in all variants."
+    ]
+  }
+}

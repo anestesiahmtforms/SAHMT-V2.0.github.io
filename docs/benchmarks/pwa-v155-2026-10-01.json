@@ -1,0 +1,3133 @@
+{
+  "date": "2026-10-01",
+  "baseline": "f5c9f02c773e4cb18da8941f4bd65bfa624073f7",
+  "validatedCodeCommit": "b5d9bd9415a120a08fced6038efeaa2f7779484d",
+  "tests": {
+    "domain": 281,
+    "rules": 41,
+    "worker": 12,
+    "functions": 19
+  },
+  "build": {
+    "shellFiles": 2,
+    "shellBytes": 523133,
+    "offlineGraphFiles": 13,
+    "offlineGraphBytes": 1418114,
+    "precacheFiles": 23,
+    "precacheBytes": 2346517,
+    "workerVersion": "V156",
+    "baselineWorkerVersion": "V155"
+  },
+  "performance": {
+    "fixture": "real builds; 390x844; CPU4x; 150ms/1.6Mbps; synthetic offline profile; external requests aborted",
+    "baseline": {
+      "samples": [
+        {
+          "openMs": 10140,
+          "firstInteractionMs": 341,
+          "labelsManualMs": 703
+        },
+        {
+          "openMs": 10258,
+          "firstInteractionMs": 480,
+          "labelsManualMs": 743
+        },
+        {
+          "openMs": 10175,
+          "firstInteractionMs": 476,
+          "labelsManualMs": 908
+        }
+      ],
+      "medians": {
+        "openMs": 10175,
+        "firstInteractionMs": 476,
+        "labelsManualMs": 743
+      }
+    },
+    "current": {
+      "samples": [
+        {
+          "openMs": 10268,
+          "firstInteractionMs": 518,
+          "labelsManualMs": 899
+        },
+        {
+          "openMs": 10278,
+          "firstInteractionMs": 451,
+          "labelsManualMs": 844
+        },
+        {
+          "openMs": 10252,
+          "firstInteractionMs": 390,
+          "labelsManualMs": 898
+        }
+      ],
+      "medians": {
+        "openMs": 10268,
+        "firstInteractionMs": 451,
+        "labelsManualMs": 898
+      }
+    }
+  },
+  "checklistReads": {
+    "fixture": "30 estações fictícias; 5 amostras; atraso controlado de 90 ms por chamada; duração do controlador, não de aparelho/Firestore",
+    "measurements": [
+      {
+        "scenario": "diário completo",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 1030,
+          "medianDurationMs": 97
+        },
+        "after": {
+          "serverQueries": 1,
+          "documentsRead": 1000,
+          "medianDurationMs": 96
+        }
+      },
+      {
+        "scenario": "diário com cinco estações sem resposta",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 1030,
+          "medianDurationMs": 100
+        },
+        "after": {
+          "serverQueries": 6,
+          "documentsRead": 1005,
+          "medianDurationMs": 192
+        }
+      },
+      {
+        "scenario": "diário vazio",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 30,
+          "medianDurationMs": 98
+        },
+        "after": {
+          "serverQueries": 31,
+          "documentsRead": 30,
+          "medianDurationMs": 198
+        }
+      },
+      {
+        "scenario": "mensal completo no dia 1, com sentinela de truncamento",
+        "before": {
+          "serverQueries": 31,
+          "documentsRead": 2031,
+          "medianDurationMs": 94
+        },
+        "after": {
+          "serverQueries": 1,
+          "documentsRead": 2001,
+          "medianDurationMs": 104
+        }
+      }
+    ]
+  },
+  "offline": {
+    "offline": {
+      "offlineOpen": true,
+      "cachedSchedule": true,
+      "labelsManualDialog": true,
+      "cameraModuleOffline": true,
+      "qrDecoderOffline": true,
+      "stableOutboxPreserved": true,
+      "serverResponsesWhileOffline": 0,
+      "refusedBrowserUpdateChecks": 4,
+      "cacheNames": [
+        "sahmt-v2-shell-v156"
+      ],
+      "externalRequestsBlocked": 2,
+      "pageErrors": []
+    },
+    "oldTab": {
+      "oldTabEntry": "assets/index-CludQLiq.js",
+      "oldCamera": "assets/label-camera-BfsYUBmS.js",
+      "oldTabLabelsAfterUpdate": true,
+      "newOfflineNavigationUsesCurrentBuild": true,
+      "cacheNames": [
+        "sahmt-v2-shell-v155",
+        "sahmt-v2-shell-v156"
+      ],
+      "serverResponsesWhileOffline": 0,
+      "externalRequestsBlocked": 3
+    },
+    "imageRefresh": {
+      "sameUrlCorrectedImage": true,
+      "correctedImageAvailableOfflineCache": true,
+      "stableOutboxPreserved": true,
+      "images": "local 8x8 synthetic red/green PNG; no patient data",
+      "offlineVerification": "CacheStorage body check; request/cache precedence covered by SW regression test"
+    }
+  },
+  "visual": {
+    "shellCases": 70,
+    "shellPassed": 70,
+    "fixedShellCases": 56,
+    "touchCases": 28,
+    "minTouchHeight": 32,
+    "minTouchWidth": 38.078125,
+    "nativeTouchActions": 126,
+    "hitChecks": 1470,
+    "cases": [
+      {
+        "key": "home-admin-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "ESCALA",
+          "font": "23.04px",
+          "rect": {
+            "x": 91.984375,
+            "y": 71.40625,
+            "width": 136.015625,
+            "height": 44,
+            "right": 228,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 16,
+            "y": 5,
+            "width": 288,
+            "height": 120.40625,
+            "right": 304,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 33.328125,
+          "minWidth": 47.15625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "23.04px",
+          "rect": {
+            "x": 45.25,
+            "y": 71.40625,
+            "width": 229.5,
+            "height": 44,
+            "right": 274.75,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 16,
+            "y": 5,
+            "width": 288,
+            "height": 120.40625,
+            "right": 304,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 32,
+          "minWidth": 44.828125,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "24.96px",
+          "rect": {
+            "x": 61.234375,
+            "y": 93,
+            "width": 197.53125,
+            "height": 44,
+            "right": 258.765625,
+            "bottom": 137
+          },
+          "card": {
+            "x": 16,
+            "y": 25,
+            "width": 288,
+            "height": 124,
+            "right": 304,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 77.5625,
+            "y": 80.875,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 242.4375,
+            "bottom": 114.8125
+          },
+          "card": {
+            "x": 22.3125,
+            "y": 21,
+            "width": 275.390625,
+            "height": 103.8125,
+            "right": 297.703125,
+            "bottom": 124.8125
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-320x568",
+        "docWidth": 320,
+        "docHeight": 661,
+        "title": {
+          "text": "GESTÃO",
+          "font": "24.96px",
+          "rect": {
+            "x": 85.0625,
+            "y": 93,
+            "width": 149.875,
+            "height": 44,
+            "right": 234.9375,
+            "bottom": 137
+          },
+          "card": {
+            "x": 16,
+            "y": 25,
+            "width": 288,
+            "height": 124,
+            "right": 304,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-comum-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "ESCALA",
+          "font": "23.04px",
+          "rect": {
+            "x": 91.984375,
+            "y": 71.40625,
+            "width": 136.015625,
+            "height": 44,
+            "right": 228,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 16,
+            "y": 5,
+            "width": 288,
+            "height": 120.40625,
+            "right": 304,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 33.328125,
+          "minWidth": 47.15625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "23.04px",
+          "rect": {
+            "x": 45.25,
+            "y": 71.40625,
+            "width": 229.5,
+            "height": 44,
+            "right": 274.75,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 16,
+            "y": 5,
+            "width": 288,
+            "height": 120.40625,
+            "right": 304,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 32,
+          "minWidth": 44.828125,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "24.96px",
+          "rect": {
+            "x": 61.234375,
+            "y": 93,
+            "width": 197.53125,
+            "height": 44,
+            "right": 258.765625,
+            "bottom": 137
+          },
+          "card": {
+            "x": 16,
+            "y": 25,
+            "width": 288,
+            "height": 124,
+            "right": 304,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-320x568",
+        "docWidth": 320,
+        "docHeight": 568,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 77.5625,
+            "y": 80.875,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 242.4375,
+            "bottom": 114.8125
+          },
+          "card": {
+            "x": 22.3125,
+            "y": 21,
+            "width": 275.390625,
+            "height": 103.8125,
+            "right": 297.703125,
+            "bottom": 124.8125
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-320x568",
+        "docWidth": 320,
+        "docHeight": 661,
+        "title": {
+          "text": "GESTÃO",
+          "font": "24.96px",
+          "rect": {
+            "x": 85.0625,
+            "y": 93,
+            "width": 149.875,
+            "height": 44,
+            "right": 234.9375,
+            "bottom": 137
+          },
+          "card": {
+            "x": 16,
+            "y": 25,
+            "width": 288,
+            "height": 124,
+            "right": 304,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-admin-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "ESCALA",
+          "font": "23.04px",
+          "rect": {
+            "x": 118.484375,
+            "y": 71.40625,
+            "width": 138.015625,
+            "height": 44,
+            "right": 256.5,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 18.75,
+            "y": 5,
+            "width": 337.5,
+            "height": 120.40625,
+            "right": 356.25,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 48.046875,
+          "minWidth": 55.765625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "23.04px",
+          "rect": {
+            "x": 71.75,
+            "y": 71.40625,
+            "width": 231.5,
+            "height": 44,
+            "right": 303.25,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 18.75,
+            "y": 5,
+            "width": 337.5,
+            "height": 120.40625,
+            "right": 356.25,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 49.578125,
+          "minWidth": 53.890625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "24.96px",
+          "rect": {
+            "x": 87.734375,
+            "y": 93,
+            "width": 199.53125,
+            "height": 44,
+            "right": 287.265625,
+            "bottom": 137
+          },
+          "card": {
+            "x": 18.75,
+            "y": 25,
+            "width": 337.5,
+            "height": 124,
+            "right": 356.25,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 105.0625,
+            "y": 98.0625,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 269.9375,
+            "bottom": 132
+          },
+          "card": {
+            "x": 25.0625,
+            "y": 25,
+            "width": 324.890625,
+            "height": 122,
+            "right": 349.953125,
+            "bottom": 147
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-375x667",
+        "docWidth": 375,
+        "docHeight": 760,
+        "title": {
+          "text": "GESTÃO",
+          "font": "24.96px",
+          "rect": {
+            "x": 111.5625,
+            "y": 93,
+            "width": 151.875,
+            "height": 44,
+            "right": 263.4375,
+            "bottom": 137
+          },
+          "card": {
+            "x": 18.75,
+            "y": 25,
+            "width": 337.5,
+            "height": 124,
+            "right": 356.25,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-comum-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "ESCALA",
+          "font": "23.04px",
+          "rect": {
+            "x": 118.484375,
+            "y": 71.40625,
+            "width": 138.015625,
+            "height": 44,
+            "right": 256.5,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 18.75,
+            "y": 5,
+            "width": 337.5,
+            "height": 120.40625,
+            "right": 356.25,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 48.046875,
+          "minWidth": 55.765625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "23.04px",
+          "rect": {
+            "x": 71.75,
+            "y": 71.40625,
+            "width": 231.5,
+            "height": 44,
+            "right": 303.25,
+            "bottom": 115.40625
+          },
+          "card": {
+            "x": 18.75,
+            "y": 5,
+            "width": 337.5,
+            "height": 120.40625,
+            "right": 356.25,
+            "bottom": 125.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 49.578125,
+          "minWidth": 53.890625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "24.96px",
+          "rect": {
+            "x": 87.734375,
+            "y": 93,
+            "width": 199.53125,
+            "height": 44,
+            "right": 287.265625,
+            "bottom": 137
+          },
+          "card": {
+            "x": 18.75,
+            "y": 25,
+            "width": 337.5,
+            "height": 124,
+            "right": 356.25,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-375x667",
+        "docWidth": 375,
+        "docHeight": 667,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 105.0625,
+            "y": 98.0625,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 269.9375,
+            "bottom": 132
+          },
+          "card": {
+            "x": 25.0625,
+            "y": 25,
+            "width": 324.890625,
+            "height": 122,
+            "right": 349.953125,
+            "bottom": 147
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-375x667",
+        "docWidth": 375,
+        "docHeight": 760,
+        "title": {
+          "text": "GESTÃO",
+          "font": "24.96px",
+          "rect": {
+            "x": 111.5625,
+            "y": 93,
+            "width": 151.875,
+            "height": 44,
+            "right": 263.4375,
+            "bottom": 137
+          },
+          "card": {
+            "x": 18.75,
+            "y": 25,
+            "width": 337.5,
+            "height": 124,
+            "right": 356.25,
+            "bottom": 149
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-admin-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "ESCALA",
+          "font": "23.04px",
+          "rect": {
+            "x": 125.390625,
+            "y": 87.40625,
+            "width": 139.203125,
+            "height": 44,
+            "right": 264.59375,
+            "bottom": 131.40625
+          },
+          "card": {
+            "x": 19.5,
+            "y": 21,
+            "width": 351,
+            "height": 120.40625,
+            "right": 370.5,
+            "bottom": 141.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 51.765625,
+          "minWidth": 69.484375,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "23.04px",
+          "rect": {
+            "x": 78.65625,
+            "y": 91.40625,
+            "width": 232.6875,
+            "height": 44,
+            "right": 311.34375,
+            "bottom": 135.40625
+          },
+          "card": {
+            "x": 19.5,
+            "y": 25,
+            "width": 351,
+            "height": 120.40625,
+            "right": 370.5,
+            "bottom": 145.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 53.921875,
+          "minWidth": 63.96875,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "24.96px",
+          "rect": {
+            "x": 94.640625,
+            "y": 105,
+            "width": 200.71875,
+            "height": 44,
+            "right": 295.359375,
+            "bottom": 149
+          },
+          "card": {
+            "x": 19.5,
+            "y": 25,
+            "width": 351,
+            "height": 140,
+            "right": 370.5,
+            "bottom": 165
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "24px",
+          "rect": {
+            "x": 102.90625,
+            "y": 96,
+            "width": 184.203125,
+            "height": 38.390625,
+            "right": 287.109375,
+            "bottom": 134.390625
+          },
+          "card": {
+            "x": 25.8125,
+            "y": 25,
+            "width": 338.390625,
+            "height": 124.390625,
+            "right": 364.203125,
+            "bottom": 149.390625
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-390x844",
+        "docWidth": 390,
+        "docHeight": 953,
+        "title": {
+          "text": "GESTÃO",
+          "font": "24.96px",
+          "rect": {
+            "x": 118.46875,
+            "y": 105,
+            "width": 153.0625,
+            "height": 44,
+            "right": 271.53125,
+            "bottom": 149
+          },
+          "card": {
+            "x": 19.5,
+            "y": 25,
+            "width": 351,
+            "height": 140,
+            "right": 370.5,
+            "bottom": 165
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-comum-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "ESCALA",
+          "font": "23.04px",
+          "rect": {
+            "x": 125.390625,
+            "y": 87.40625,
+            "width": 139.203125,
+            "height": 44,
+            "right": 264.59375,
+            "bottom": 131.40625
+          },
+          "card": {
+            "x": 19.5,
+            "y": 21,
+            "width": 351,
+            "height": 120.40625,
+            "right": 370.5,
+            "bottom": 141.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 51.765625,
+          "minWidth": 69.484375,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "23.04px",
+          "rect": {
+            "x": 78.65625,
+            "y": 91.40625,
+            "width": 232.6875,
+            "height": 44,
+            "right": 311.34375,
+            "bottom": 135.40625
+          },
+          "card": {
+            "x": 19.5,
+            "y": 25,
+            "width": 351,
+            "height": 120.40625,
+            "right": 370.5,
+            "bottom": 145.40625
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 53.921875,
+          "minWidth": 63.96875,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "24.96px",
+          "rect": {
+            "x": 94.640625,
+            "y": 105,
+            "width": 200.71875,
+            "height": 44,
+            "right": 295.359375,
+            "bottom": 149
+          },
+          "card": {
+            "x": 19.5,
+            "y": 25,
+            "width": 351,
+            "height": 140,
+            "right": 370.5,
+            "bottom": 165
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-390x844",
+        "docWidth": 390,
+        "docHeight": 844,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "24px",
+          "rect": {
+            "x": 102.90625,
+            "y": 96,
+            "width": 184.203125,
+            "height": 38.390625,
+            "right": 287.109375,
+            "bottom": 134.390625
+          },
+          "card": {
+            "x": 25.8125,
+            "y": 25,
+            "width": 338.390625,
+            "height": 124.390625,
+            "right": 364.203125,
+            "bottom": 149.390625
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-390x844",
+        "docWidth": 390,
+        "docHeight": 953,
+        "title": {
+          "text": "GESTÃO",
+          "font": "24.96px",
+          "rect": {
+            "x": 118.46875,
+            "y": 105,
+            "width": 153.0625,
+            "height": 44,
+            "right": 271.53125,
+            "bottom": 149
+          },
+          "card": {
+            "x": 19.5,
+            "y": 25,
+            "width": 351,
+            "height": 140,
+            "right": 370.5,
+            "bottom": 165
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-admin-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 116.203125,
+            "y": 14.234375,
+            "width": 179.140625,
+            "height": 44,
+            "right": 295.34375,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 42.640625,
+          "minWidth": 66.546875,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 116.203125,
+            "y": 14.234375,
+            "width": 293.375,
+            "height": 44,
+            "right": 409.578125,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 37.546875,
+          "minWidth": 76.609375,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 116.203125,
+            "y": 13.78125,
+            "width": 259.984375,
+            "height": 44.921875,
+            "right": 376.1875,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 128.359375,
+            "y": 19.03125,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 293.234375,
+            "bottom": 52.96875
+          },
+          "card": {
+            "x": 54.359375,
+            "y": 4,
+            "width": 735.296875,
+            "height": 64,
+            "right": 789.65625,
+            "bottom": 68
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-844x390",
+        "docWidth": 844,
+        "docHeight": 508,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 116.203125,
+            "y": 13.78125,
+            "width": 200.09375,
+            "height": 44.921875,
+            "right": 316.296875,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [
+          {
+            "text": "Voltar para Home",
+            "rect": {
+              "x": 64.203125,
+              "y": 370.484375,
+              "width": 174.171875,
+              "height": 48,
+              "right": 238.375,
+              "bottom": 418.484375
+            },
+            "clipped": false,
+            "overflow": false
+          }
+        ],
+        "failures": []
+      },
+      {
+        "key": "home-comum-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 116.203125,
+            "y": 14.234375,
+            "width": 179.140625,
+            "height": 44,
+            "right": 295.34375,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 42.640625,
+          "minWidth": 66.546875,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 116.203125,
+            "y": 14.234375,
+            "width": 293.375,
+            "height": 44,
+            "right": 409.578125,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 37.546875,
+          "minWidth": 76.609375,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 116.203125,
+            "y": 13.78125,
+            "width": 259.984375,
+            "height": 44.921875,
+            "right": 376.1875,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-844x390",
+        "docWidth": 844,
+        "docHeight": 390,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 128.359375,
+            "y": 19.03125,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 293.234375,
+            "bottom": 52.96875
+          },
+          "card": {
+            "x": 54.359375,
+            "y": 4,
+            "width": 735.296875,
+            "height": 64,
+            "right": 789.65625,
+            "bottom": 68
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-844x390",
+        "docWidth": 844,
+        "docHeight": 402,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 116.203125,
+            "y": 13.78125,
+            "width": 200.09375,
+            "height": 44.921875,
+            "right": 316.296875,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 42.203125,
+            "y": 4,
+            "width": 759.59375,
+            "height": 64.484375,
+            "right": 801.796875,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-admin-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 102.40625,
+            "y": 14.234375,
+            "width": 176.578125,
+            "height": 44,
+            "right": 278.984375,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 39.5,
+          "minWidth": 38.078125,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 102.40625,
+            "y": 14.234375,
+            "width": 290.8125,
+            "height": 44,
+            "right": 393.21875,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 34.5,
+          "minWidth": 39.859375,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 102.40625,
+            "y": 13.78125,
+            "width": 257.421875,
+            "height": 44.921875,
+            "right": 359.828125,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 110.578125,
+            "y": 19.03125,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 275.453125,
+            "bottom": 52.96875
+          },
+          "card": {
+            "x": 36.578125,
+            "y": 4,
+            "width": 494.859375,
+            "height": 64,
+            "right": 531.4375,
+            "bottom": 68
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-568x320",
+        "docWidth": 568,
+        "docHeight": 459,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 102.40625,
+            "y": 13.78125,
+            "width": 197.53125,
+            "height": 44.921875,
+            "right": 299.9375,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [
+          {
+            "text": "Voltar para Home",
+            "rect": {
+              "x": 48.40625,
+              "y": 331.484375,
+              "width": 174.171875,
+              "height": 48,
+              "right": 222.578125,
+              "bottom": 379.484375
+            },
+            "clipped": false,
+            "overflow": false
+          }
+        ],
+        "failures": []
+      },
+      {
+        "key": "home-comum-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 102.40625,
+            "y": 14.234375,
+            "width": 176.578125,
+            "height": 44,
+            "right": 278.984375,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 39.5,
+          "minWidth": 38.078125,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 102.40625,
+            "y": 14.234375,
+            "width": 290.8125,
+            "height": 44,
+            "right": 393.21875,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 34.5,
+          "minWidth": 39.859375,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 102.40625,
+            "y": 13.78125,
+            "width": 257.421875,
+            "height": 44.921875,
+            "right": 359.828125,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-568x320",
+        "docWidth": 568,
+        "docHeight": 320,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 110.578125,
+            "y": 19.03125,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 275.453125,
+            "bottom": 52.96875
+          },
+          "card": {
+            "x": 36.578125,
+            "y": 4,
+            "width": 494.859375,
+            "height": 64,
+            "right": 531.4375,
+            "bottom": 68
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-568x320",
+        "docWidth": 568,
+        "docHeight": 362,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 102.40625,
+            "y": 13.78125,
+            "width": 197.53125,
+            "height": 44.921875,
+            "right": 299.9375,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 28.40625,
+            "y": 4,
+            "width": 511.1875,
+            "height": 64.484375,
+            "right": 539.59375,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-admin-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 107.359375,
+            "y": 14.234375,
+            "width": 179.140625,
+            "height": 44,
+            "right": 286.5,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 38.890625,
+          "minWidth": 50.625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 107.359375,
+            "y": 14.234375,
+            "width": 293.375,
+            "height": 44,
+            "right": 400.734375,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 33.796875,
+          "minWidth": 58.03125,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 107.359375,
+            "y": 13.78125,
+            "width": 259.984375,
+            "height": 44.921875,
+            "right": 367.34375,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 116.96875,
+            "y": 19.03125,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 281.84375,
+            "bottom": 52.96875
+          },
+          "card": {
+            "x": 42.96875,
+            "y": 4,
+            "width": 581.078125,
+            "height": 64,
+            "right": 624.046875,
+            "bottom": 68
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-667x375",
+        "docWidth": 667,
+        "docHeight": 488,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 107.359375,
+            "y": 13.78125,
+            "width": 200.09375,
+            "height": 44.921875,
+            "right": 307.453125,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [
+          {
+            "text": "Voltar para Home",
+            "rect": {
+              "x": 55.34375,
+              "y": 350.484375,
+              "width": 174.171875,
+              "height": 48,
+              "right": 229.515625,
+              "bottom": 398.484375
+            },
+            "clipped": false,
+            "overflow": false
+          }
+        ],
+        "failures": []
+      },
+      {
+        "key": "home-comum-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 107.359375,
+            "y": 14.234375,
+            "width": 179.140625,
+            "height": 44,
+            "right": 286.5,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 38.890625,
+          "minWidth": 50.625,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 107.359375,
+            "y": 14.234375,
+            "width": 293.375,
+            "height": 44,
+            "right": 400.734375,
+            "bottom": 58.234375
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 33.796875,
+          "minWidth": 58.03125,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 107.359375,
+            "y": 13.78125,
+            "width": 259.984375,
+            "height": 44.921875,
+            "right": 367.34375,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-667x375",
+        "docWidth": 667,
+        "docHeight": 375,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "21.76px",
+          "rect": {
+            "x": 116.96875,
+            "y": 19.03125,
+            "width": 164.875,
+            "height": 33.9375,
+            "right": 281.84375,
+            "bottom": 52.96875
+          },
+          "card": {
+            "x": 42.96875,
+            "y": 4,
+            "width": 581.078125,
+            "height": 64,
+            "right": 624.046875,
+            "bottom": 68
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-667x375",
+        "docWidth": 667,
+        "docHeight": 392,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 107.359375,
+            "y": 13.78125,
+            "width": 200.09375,
+            "height": 44.921875,
+            "right": 307.453125,
+            "bottom": 58.703125
+          },
+          "card": {
+            "x": 33.359375,
+            "y": 4,
+            "width": 600.296875,
+            "height": 64.484375,
+            "right": 633.65625,
+            "bottom": 68.484375
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-admin-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 294.421875,
+            "y": 99.484375,
+            "width": 179.140625,
+            "height": 44,
+            "right": 473.5625,
+            "bottom": 143.484375
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 21,
+            "width": 691.1875,
+            "height": 134.484375,
+            "right": 729.59375,
+            "bottom": 155.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 55.640625,
+          "minWidth": 205.5,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-admin-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 237.3125,
+            "y": 103.484375,
+            "width": 293.375,
+            "height": 44,
+            "right": 530.6875,
+            "bottom": 147.484375
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 25,
+            "width": 691.1875,
+            "height": 134.484375,
+            "right": 729.59375,
+            "bottom": 159.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 80,
+          "minWidth": 146.6875,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-admin-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 254,
+            "y": 111.078125,
+            "width": 259.984375,
+            "height": 44.921875,
+            "right": 513.984375,
+            "bottom": 156
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 25,
+            "width": 691.1875,
+            "height": 150,
+            "right": 729.59375,
+            "bottom": 175
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "28.8px",
+          "rect": {
+            "x": 275.484375,
+            "y": 103.875,
+            "width": 217.03125,
+            "height": 43.671875,
+            "right": 492.515625,
+            "bottom": 147.546875
+          },
+          "card": {
+            "x": 49.453125,
+            "y": 25,
+            "width": 669.09375,
+            "height": 138.546875,
+            "right": 718.546875,
+            "bottom": 163.546875
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-admin-768x1024",
+        "docWidth": 768,
+        "docHeight": 1143,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 283.953125,
+            "y": 111.078125,
+            "width": 200.09375,
+            "height": 44.921875,
+            "right": 484.046875,
+            "bottom": 156
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 25,
+            "width": 691.1875,
+            "height": 150,
+            "right": 729.59375,
+            "bottom": 175
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "home-comum-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "ESCALA",
+          "font": "28.16px",
+          "rect": {
+            "x": 294.421875,
+            "y": 99.484375,
+            "width": 179.140625,
+            "height": 44,
+            "right": 473.5625,
+            "bottom": 143.484375
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 21,
+            "width": 691.1875,
+            "height": 134.484375,
+            "right": 729.59375,
+            "bottom": 155.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 55.640625,
+          "minWidth": 205.5,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 4
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "events-comum-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "OPERACIONAL",
+          "font": "28.16px",
+          "rect": {
+            "x": 237.3125,
+            "y": 103.484375,
+            "width": 293.375,
+            "height": 44,
+            "right": 530.6875,
+            "bottom": 147.484375
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 25,
+            "width": 691.1875,
+            "height": 134.484375,
+            "right": 729.59375,
+            "bottom": 159.484375
+          },
+          "count": 1
+        },
+        "touch": {
+          "minHeight": 80,
+          "minWidth": 146.6875,
+          "overlaps": 0,
+          "clipped": 0,
+          "nativeActions": 5
+        },
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "labels-comum-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "ETIQUETAS",
+          "font": "31.36px",
+          "rect": {
+            "x": 254,
+            "y": 111.078125,
+            "width": 259.984375,
+            "height": 44.921875,
+            "right": 513.984375,
+            "bottom": 156
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 25,
+            "width": 691.1875,
+            "height": 150,
+            "right": 729.59375,
+            "bottom": 175
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-768x1024",
+        "docWidth": 768,
+        "docHeight": 1024,
+        "title": {
+          "text": "CHECKLIST",
+          "font": "28.8px",
+          "rect": {
+            "x": 275.484375,
+            "y": 103.875,
+            "width": 217.03125,
+            "height": 43.671875,
+            "right": 492.515625,
+            "bottom": 147.546875
+          },
+          "card": {
+            "x": 49.453125,
+            "y": 25,
+            "width": 669.09375,
+            "height": 138.546875,
+            "right": 718.546875,
+            "bottom": 163.546875
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      },
+      {
+        "key": "management-comum-768x1024",
+        "docWidth": 768,
+        "docHeight": 1143,
+        "title": {
+          "text": "GESTÃO",
+          "font": "31.36px",
+          "rect": {
+            "x": 283.953125,
+            "y": 111.078125,
+            "width": 200.09375,
+            "height": 44.921875,
+            "right": 484.046875,
+            "bottom": 156
+          },
+          "card": {
+            "x": 38.40625,
+            "y": 25,
+            "width": 691.1875,
+            "height": 150,
+            "right": 729.59375,
+            "bottom": 175
+          },
+          "count": 1
+        },
+        "touch": null,
+        "clippedControls": [],
+        "controlsOutside": [],
+        "failures": []
+      }
+    ],
+    "modalCases": 42,
+    "modalPassed": 42,
+    "minArsenalHeight": 32,
+    "minConfirmationHeight": 34,
+    "minReturnHeight": 32,
+    "dailyLandscapeBeforeAfter": [
+      {
+        "viewport": "568x320",
+        "before": 9.5,
+        "after": 32
+      },
+      {
+        "viewport": "667x375",
+        "before": 21.875,
+        "after": 43.875
+      },
+      {
+        "viewport": "844x390",
+        "before": 25.25,
+        "after": 47.25
+      }
+    ],
+    "modalMeasurements": [
+      {
+        "key": "checklist-admin-320x568-report",
+        "mode": "report",
+        "minArsenalHeight": 36.171875,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 57.9375,
+        "returnHeight": 34,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-320x568-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-320x568-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-320x568-report",
+        "mode": "report",
+        "minArsenalHeight": 36.171875,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 57.9375,
+        "returnHeight": 34,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-320x568-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-320x568-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-375x667-report",
+        "mode": "report",
+        "minArsenalHeight": 43.171875,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 64,
+        "returnHeight": 40,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-375x667-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-375x667-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-375x667-report",
+        "mode": "report",
+        "minArsenalHeight": 43.171875,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 64,
+        "returnHeight": 40,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-375x667-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-375x667-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-390x844-report",
+        "mode": "report",
+        "minArsenalHeight": 64.59375,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 64,
+        "returnHeight": 40,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-390x844-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-390x844-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-390x844-report",
+        "mode": "report",
+        "minArsenalHeight": 64.59375,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 64,
+        "returnHeight": 40,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-390x844-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-390x844-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-844x390-report",
+        "mode": "report",
+        "minArsenalHeight": 47.25,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 34,
+        "returnHeight": 32,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-844x390-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-844x390-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-844x390-report",
+        "mode": "report",
+        "minArsenalHeight": 47.25,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 34,
+        "returnHeight": 32,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-844x390-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-844x390-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-568x320-report",
+        "mode": "report",
+        "minArsenalHeight": 32,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 34,
+        "returnHeight": 32,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-568x320-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-568x320-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-568x320-report",
+        "mode": "report",
+        "minArsenalHeight": 32,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 34,
+        "returnHeight": 32,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-568x320-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-568x320-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-667x375-report",
+        "mode": "report",
+        "minArsenalHeight": 43.875,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 34,
+        "returnHeight": 32,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-667x375-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-667x375-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-667x375-report",
+        "mode": "report",
+        "minArsenalHeight": 43.875,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 34,
+        "returnHeight": 32,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-667x375-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-667x375-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-768x1024-report",
+        "mode": "report",
+        "minArsenalHeight": 84.5,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 64,
+        "returnHeight": 40,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-768x1024-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-admin-768x1024-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-768x1024-report",
+        "mode": "report",
+        "minArsenalHeight": 84.5,
+        "arsenalCount": 28,
+        "inactiveCount": 5,
+        "functionCount": 6,
+        "confirmationHeight": 64,
+        "returnHeight": 40,
+        "focusId": "100170001",
+        "nativeArsenalClick": [
+          "100170001"
+        ],
+        "returnClosed": true,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-768x1024-confirmation",
+        "mode": "confirmation",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-confirmation-title",
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      },
+      {
+        "key": "checklist-comum-768x1024-qr",
+        "mode": "qr",
+        "minArsenalHeight": null,
+        "arsenalCount": 0,
+        "inactiveCount": 0,
+        "functionCount": 0,
+        "focusId": "checklist-qr-close",
+        "nativeQrClick": 1,
+        "cutControls": [],
+        "cutText": [],
+        "failures": []
+      }
+    ]
+  },
+  "integrationChecks": {
+    "healthRecheckedOn": "2026-10-01",
+    "health": {
+      "ok": true,
+      "service": "sahmt-label-ai",
+      "firebaseProject": "sahmt-17a16",
+      "model": "gpt-6-luna"
+    },
+    "configurationModified": false,
+    "appsScriptRuntimeMetadata": "403 on readonly audit 2026-09-30; triggers/IAM/runtime properties not confirmed"
+  },
+  "limitations": [
+    "Local Edge/Chromium fixtures and emulators with fictional data; no physical Android/iPhone, Safari or camera",
+    "Mobile fixture has synthetic offline profile and aborts external requests; not production login or authenticated preloads",
+    "Three timing samples do not establish a general speed improvement",
+    "Corrected image offline check compares CacheStorage bytes; not physical display",
+    "Management retains existing vertical scrolling; compact touch targets need physical usability validation",
+    "Responsible-name prerequisite received from main v154 requires callable checklistSignature for nonadmins; production availability not homologated",
+    "No service, trigger, production merge or deployment was activated by this review"
+  ]
+}
