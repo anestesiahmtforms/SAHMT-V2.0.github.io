@@ -1319,7 +1319,7 @@ async function loadDailyChecklist(stations, suppliedDay) {
     checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation};
     const summary = summarizeChecklistDay(day, todayInputValue(), applicableStations, records);
     const resolvedRecordFor = (station) => resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
-    const displayStations = sortChecklistStationsForDisplay(applicableStations, resolvedRecordFor)
+    const displayStations = sortChecklistStationsForDisplay(stations, resolvedRecordFor)
       .sort((left, right) => Number(left.active === true) - Number(right.active === true));
     const cards = displayStations.map((station) => {
       const record = resolvedRecordFor(station);

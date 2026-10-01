@@ -120,16 +120,17 @@ export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} 
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
   const maxPageSize = module === 'checklist' ? 200 : MAX_PAGE_SIZE;
-  const constraints = [where('active', '==', true), orderBy(config.order, config.direction), limit(Math.min(maxPageSize, Math.max(1, pageSize)))];
+  const cacheKey = module === 'checklist' ? 'all' : 'active';
+  const constraints = [...(module === 'checklist' ? [] : [where('active', '==', true)]), orderBy(config.order, config.direction), limit(Math.min(maxPageSize, Math.max(1, pageSize)))];
   try {
     const result = await getDocsFromServer(query(collection(db, config.name), ...constraints));
     const items = result.docs.map((item) => ({id: item.id, ...item.data()}));
-    if (uid && SAFE_CACHE_MODULES.has(module)) await writeSafeCache(uid, config.name, 'active', items);
+    if (uid && SAFE_CACHE_MODULES.has(module)) await writeSafeCache(uid, config.name, cacheKey, items);
     return items;
   } catch (error) {
     if (!mayUseOfflineCache(error)) throw error;
     if (uid && SAFE_CACHE_MODULES.has(module)) {
-      const cached = await readSafeCache(uid, config.name, 'active');
+      const cached = await readSafeCache(uid, config.name, cacheKey);
       if (Array.isArray(cached?.data)) return cached.data.map((item) => ({...item, stale: true}));
     }
     throw error;
