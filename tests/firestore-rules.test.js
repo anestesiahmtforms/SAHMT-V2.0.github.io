@@ -1276,3 +1276,35 @@ test('coleções não declaradas ficam fechadas por padrão', async () => {
     id: 'forged-report-job', resourceType: 'events', resourceId: 'event-1', status: 'pending'
   }));
 });
+
+test('admin autor original edita Outros com nome de autoria e histórico completo', async () => {
+  const uid = 'outros-admin';
+  await seedProfiles([accessProfile(uid, {admin: true}, {role: 'administrador_app'})]);
+  await seedEventCatalog(['Carlos'], ['Adelson']);
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  const id = 'outros-author-edit';
+  const event = {
+    id, clientMutationId: id, date: '2026-09-30', memberSigla: 'CM', scheduleSigla: 'CM',
+    memberStatus: 'Carlos', eventType: 'Outros', description: 'Ffggggg', delayMultiple: 2,
+    substitute: 'Adelson', shift: 'Manhã', payer: 'Carlos', creditor: 'Adelson', amountToPay: 1000,
+    status: 'OPEN', active: true, createdByUid: uid, updatedByUid: uid,
+    createdByName: uid, updatedByName: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1
+  };
+  await assertSucceeds(setDoc(doc(db, 'events', id), event));
+  const saved = (await getDoc(doc(db, 'events', id))).data();
+  await assertSucceeds(updateEventWithHistory(db, {
+    eventId: id, event: saved, uid, updates: {description: 'Descrição corrigida'}, requestId: 'outros-description-edit'
+  }));
+  const edited = (await getDoc(doc(db, 'events', id))).data();
+  await assertSucceeds(updateEventWithHistory(db, {
+    eventId: id, event: edited, uid, updates: {amountToPay: 1200, delayMultiple: 3}, requestId: 'outros-values-edit'
+  }));
+  const final = (await getDoc(doc(db, 'events', id))).data();
+  assert.equal(final.createdByUid, uid);
+  assert.equal(final.createdByName, uid);
+  assert.equal(final.version, 3);
+  await assertFails(updateDoc(doc(db, 'events', id), {createdByName: 'Outra pessoa', updatedByUid: uid, updatedAt: serverTimestamp(), version: 4}));
+  await assertFails(updateEventWithHistory(db, {
+    eventId: id, event: final, uid, updates: {description: ''}, requestId: 'outros-empty-description'
+  }));
+});
