@@ -439,7 +439,7 @@ function shellView() {
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
-    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><p id="checklist-qr-status" role="status" hidden></p><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><header><div><p class="eyebrow">ARSENAL ANESTÉSICO</p><h3 id="checklist-station-title">Checklist da estação</h3></div><button class="secondary-button" id="checklist-station-close" type="button">Fechar</button></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-actions" class="checklist-station-banner-actions"></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
+    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><p id="checklist-qr-status" role="status" hidden></p><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><header><div><p class="eyebrow">ARSENAL ANESTÉSICO</p><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></div></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-actions" class="checklist-station-banner-actions"></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">SAHMT · Hospital e equipe</footer>
@@ -1464,17 +1464,43 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const canWriteToday = can('checklistWrite') && dayIsToday && active && stationIsValidOn(station, day);
   const canManage = can('checklistManage');
   dialog.dataset.manualChecklist = fromQr ? 'true' : 'false';
-  const resultLabel = record?.condition === 'SIM' ? 'CONFORME' : record?.condition === 'NAO' ? 'NÃO CONFORME' : 'PENDENTE';
+  const resultLabel = !active ? 'Inativo' : record?.condition === 'SIM' ? 'Conforme' : record?.condition === 'NAO' ? 'Não conforme' : 'Pendente de checagem';
   if (title) title.textContent = station.name || station.id || 'Checklist da estação';
   const recordedAt = record?.createdAt ? `<small>Último registro: ${escapeHtml(interactionDateTime(record.createdAt))}</small>` : '';
   const inherited = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}.</small>` : '';
   const occurrence = record?.occurrence ? `<div class="checklist-station-justification"><strong>Justificativa</strong><p>${escapeHtml(record.occurrence)}</p></div>` : '';
   const activeLabel = active ? 'Arsenal ativo' : 'Arsenal inativo';
-  result.innerHTML = `<div class="checklist-station-result__heading checklist-station-result--${record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : active ? 'pending' : 'inactive'}"><strong>${resultLabel}</strong><span>${activeLabel}</span></div><p>${escapeHtml(station.name || station.id || 'Estação')}</p>${inherited}${recordedAt}${occurrence}${!record?.occurrence && record?.condition === 'NAO' ? '<p>Justificativa não informada neste registro.</p>' : ''}`;
+  result.innerHTML = `<div class="checklist-station-result__heading checklist-station-result--${!active ? 'inactive' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : active ? 'pending' : 'inactive'}"><span>Situação atual do arsenal</span><strong>${resultLabel}</strong><span>${activeLabel}</span></div><p>${escapeHtml(station.name || station.id || 'Estação')}</p>${inherited}${recordedAt}${occurrence}${!record?.occurrence && record?.condition === 'NAO' ? '<p>Justificativa não informada neste registro.</p>' : ''}`;
   const showAnswers = canWriteToday && (fromQr || (canManage && dialog.dataset.manualChecklist === 'true'));
   const answerMarkup = canWriteToday ? `<div class="checklist-station-response" ${showAnswers ? '' : 'hidden'}><p>Registrar checklist</p><div><button class="checklist-answer-button checklist-answer-button--yes" type="button" data-checklist-banner-answer="SIM">Conforme</button><button class="checklist-answer-button checklist-answer-button--no" type="button" data-checklist-banner-answer="NAO">Não Conforme</button></div><label class="checklist-station-justification" data-checklist-justification hidden>Justificativa<textarea id="checklist-station-occurrence" rows="3" maxlength="500" placeholder="Descreva a não conformidade"></textarea></label><button class="primary-button" type="button" data-checklist-banner-save hidden>Salvar checklist</button></div>` : '';
-  const managementMarkup = canManage ? `<div class="checklist-admin-actions"><button class="secondary-button" type="button" data-checklist-station-active="${active ? 'false' : 'true'}">${active ? 'Inativar Arsenal' : 'Liberar arsenal'}</button>${active && canWriteToday ? `<button class="secondary-button" type="button" data-checklist-station-manual>Fazer Checklist manual</button>` : ''}</div>` : '';
-  actions.innerHTML = `${answerMarkup}${managementMarkup}`;
+  const maintenanceMarkup = `<section class="checklist-maintenance"><label for="checklist-station-maintenance">Manutenção deste Equipamento</label><textarea id="checklist-station-maintenance" rows="3" maxlength="1000" readonly placeholder="Nenhuma informação de manutenção registrada.">${escapeHtml(station.maintenance || '')}</textarea><button class="primary-button" type="button" data-checklist-maintenance-save hidden>Salvar Manutenção</button></section>`;
+  const managementMarkup = canManage ? `<div class="checklist-admin-actions"><button class="secondary-button" type="button" data-checklist-station-active="true" ${active ? 'disabled' : ''}>Ativar</button><button class="secondary-button" type="button" data-checklist-station-active="false" ${!active ? 'disabled' : ''}>Desativar</button><button class="secondary-button" type="button" data-checklist-maintenance-edit>Editar Manutenção</button>${active && canWriteToday ? '<button class="secondary-button" type="button" data-checklist-station-manual>Fazer Checklist manual</button>' : ''}</div>` : '';
+  actions.innerHTML = `${answerMarkup}${maintenanceMarkup}${managementMarkup}`;
+  const maintenanceInput = actions.querySelector('#checklist-station-maintenance');
+  const maintenanceSave = actions.querySelector('[data-checklist-maintenance-save]');
+  actions.querySelector('[data-checklist-maintenance-edit]')?.addEventListener('click', () => {
+    maintenanceInput.readOnly = false;
+    maintenanceSave.hidden = false;
+    maintenanceInput.focus();
+  });
+  maintenanceSave?.addEventListener('click', async () => {
+    if (!can('checklistManage')) return;
+    maintenanceSave.disabled = true;
+    status.textContent = 'Salvando manutenção…';
+    try {
+      const {saveChecklistStationMaintenance} = await import('./data.js');
+      const saved = await saveChecklistStationMaintenance(station.id, maintenanceInput.value, session.user.uid);
+      station.maintenance = saved.maintenance;
+      maintenanceInput.value = saved.maintenance;
+      maintenanceInput.readOnly = true;
+      maintenanceSave.hidden = true;
+      status.textContent = 'Manutenção salva.';
+    } catch (error) {
+      status.textContent = error.code === 'permission-denied' ? 'Não foi possível salvar: confira a permissão administrativa e a publicação das regras do Firestore.' : error.message || 'Não foi possível salvar a manutenção.';
+    } finally {
+      maintenanceSave.disabled = false;
+    }
+  });
   status.textContent = !dayIsToday ? 'Data histórica: consulta somente; alterações são feitas no Checklist de hoje.' : !active ? 'Arsenal inativo.' : '';
   const manualButton = actions.querySelector('[data-checklist-station-manual]');
   manualButton?.addEventListener('click', () => {
@@ -1518,8 +1544,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     actions.querySelector('#checklist-station-occurrence')?.focus();
   });
   actions.querySelector('[data-checklist-banner-save]')?.addEventListener('click', () => void saveAnswer('NAO'));
-  const toggleButton = actions.querySelector('[data-checklist-station-active]');
-  toggleButton?.addEventListener('click', async () => {
+  actions.querySelectorAll('[data-checklist-station-active]').forEach((toggleButton) => toggleButton.addEventListener('click', async () => {
     const nextActive = toggleButton.dataset.checklistStationActive === 'true';
     if (!nextActive && !window.confirm(`Confirma a inativação de ${station.name || station.id}?`)) return;
     toggleButton.disabled = true;
@@ -1535,9 +1560,10 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
       status.textContent = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para alterar este arsenal.' : error.message || 'Não foi possível atualizar o arsenal.';
       toggleButton.disabled = false;
     }
-  });
+  }));
   document.querySelector('#checklist-station-close').onclick = () => dialog.close();
   if (!dialog.open) dialog.showModal();
+  title?.focus({preventScroll: true});
 }
 
 async function openChecklistQrScanner(stations, day) {

@@ -120,12 +120,13 @@ service cloud.firestore {
     }
     function validStation(data, stationId) {
       return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['id', 'name', 'qrCode', 'start', 'end', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['id', 'name', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
         data.id == stationId && data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
         data.qrCode is string && data.qrCode.size() > 0 && data.qrCode.size() <= 300 &&
         (!data.keys().hasAny(['start']) || validIsoDay(data.start)) &&
         (!data.keys().hasAny(['end']) || validIsoDay(data.end)) &&
         (!(data.keys().hasAny(['start']) && data.keys().hasAny(['end'])) || data.start <= data.end) &&
+        (!data.keys().hasAny(['maintenance']) || (data.maintenance is string && data.maintenance.size() <= 1000)) &&
         data.order is int && data.order >= 0 && data.order <= 9999 && data.active is bool &&
         data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
         data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;
@@ -1070,7 +1071,7 @@ service cloud.firestore {
         request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
         request.resource.data.version == resource.data.version + 1 &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'qrCode', 'start', 'end', 'order', 'active', 'updatedByUid', 'updatedAt', 'version']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'updatedByUid', 'updatedAt', 'version']);
       allow delete: if false;
     }
     match /checklists/{checklistId} {

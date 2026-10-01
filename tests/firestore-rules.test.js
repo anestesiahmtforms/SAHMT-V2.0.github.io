@@ -1308,3 +1308,22 @@ test('admin autor original edita Outros com nome de autoria e histórico complet
     eventId: id, event: final, uid, updates: {description: ''}, requestId: 'outros-empty-description'
   }));
 });
+
+test('station maintenance is shared with checklist readers and editable only by managers', async () => {
+  await seedProfiles([accessProfile('station-manager', {checklistManage: true}), accessProfile('station-reader', {checklistRead: true})]);
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'stations', 'maintenance-station'), {
+      id: 'maintenance-station', name: 'Arsenal', qrCode: 'QR-MAINTENANCE', order: 1, active: true,
+      createdByUid: 'station-manager', createdAt: new Date(), updatedByUid: 'station-manager', updatedAt: new Date(), version: 1
+    });
+  });
+  const manager = testEnvironment.authenticatedContext('station-manager').firestore();
+  const reader = testEnvironment.authenticatedContext('station-reader').firestore();
+  const ref = doc(manager, 'stations', 'maintenance-station');
+  await assertSucceeds(updateDoc(ref, {maintenance: 'Revisão agendada', updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 2}));
+  const visible = await assertSucceeds(getDoc(doc(reader, 'stations', 'maintenance-station')));
+  assert.equal(visible.data().maintenance, 'Revisão agendada');
+  await assertFails(updateDoc(doc(reader, 'stations', 'maintenance-station'), {maintenance: 'Alteração indevida', updatedByUid: 'station-reader', updatedAt: serverTimestamp(), version: 3}));
+  await assertFails(updateDoc(ref, {maintenance: 'x'.repeat(1001), updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 3}));
+  await assertSucceeds(updateDoc(ref, {maintenance: '', updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 3}));
+});

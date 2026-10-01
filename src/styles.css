@@ -1873,3 +1873,29 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .checklist-daily-layout>.checklist-station-grid{grid-area:stations;height:auto;min-height:0;align-self:stretch}
 .checklist-daily-layout>.checklist-confirmation-footer{grid-area:confirmation}
 #checklist-report-title:focus{outline:none}
+
+/* Banner do arsenal centralizado, com manutenção e retorno no rodapé. */
+#checklist-station-dialog{
+ position:fixed;inset:0;width:min(90vw,520px);height:fit-content;
+ max-height:calc(90dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+ margin:auto;padding:18px;border:2px solid #fff;border-radius:22px;
+ overflow:auto;overscroll-behavior:contain;box-shadow:0 24px 70px #001b3570
+}
+#checklist-station-dialog[open]{display:grid;gap:12px}
+#checklist-station-title:focus{outline:none}
+#checklist-station-dialog .checklist-station-result__heading{display:grid;gap:5px;padding:14px;border-radius:14px;text-align:center}
+#checklist-station-dialog .checklist-station-result__heading>strong{font-size:1.2rem}
+#checklist-station-dialog .checklist-station-result--complete{background:#ddf2e5;color:#17633b}
+#checklist-station-dialog .checklist-station-result--nonconforming{background:#fff0c8;color:#785313}
+#checklist-station-dialog .checklist-station-result--inactive{background:#dfecf8;color:#22547d}
+#checklist-station-dialog .checklist-maintenance{display:grid;gap:7px;width:100%}
+#checklist-station-dialog .checklist-maintenance label{font-size:.9rem;font-weight:850}
+#checklist-station-dialog .checklist-maintenance textarea{box-sizing:border-box;width:100%;min-height:88px;padding:10px;border:1px solid #a8c3d4;border-radius:12px;background:#fff;color:#143254;font:inherit;font-size:16px;line-height:1.4;resize:vertical}
+#checklist-station-dialog .checklist-maintenance textarea[readonly]{background:#f4f8fb}
+#checklist-station-dialog .checklist-station-banner-actions{display:grid;gap:12px}
+#checklist-station-dialog .checklist-admin-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#checklist-station-dialog [data-checklist-maintenance-edit]{grid-column:1/-1}
+#checklist-station-dialog .checklist-admin-actions button{min-height:44px;font-size:.85rem}
+#checklist-station-dialog button:disabled{opacity:.5;cursor:default}
+#checklist-station-dialog #checklist-station-status:empty{display:none}
+#checklist-station-dialog .checklist-station-footer{margin:0;padding-top:10px}

@@ -1655,6 +1655,7 @@ export async function saveChecklistStation(input, uid) {
       ...(end ? {end} : {}),
       order,
       active: input.active === true,
+      ...(current.exists() && typeof current.data().maintenance === 'string' ? {maintenance: current.data().maintenance} : {}),
       createdByUid: current.exists() ? current.data().createdByUid : uid,
       createdAt: current.exists() ? current.data().createdAt : serverTimestamp(),
       updatedByUid: uid,
@@ -2283,5 +2284,20 @@ export async function flushOutbox(uid, {requestId} = {}) {
       }
     }
     return {synced, pending: await pendingOperationCount(uid)};
+  });
+}
+
+export async function saveChecklistStationMaintenance(stationId, value, uid) {
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  if (!navigator.onLine) throw new Error('Conecte-se para salvar a manutenção.');
+  const maintenance = String(value || '').trim();
+  if (!/^[^/]{1,128}$/.test(stationId || '') || maintenance.length > 1000) throw new Error('Confira o arsenal e limite a manutenção a 1000 caracteres.');
+  const ref = doc(db, 'stations', stationId);
+  return runTransaction(db, async (transaction) => {
+    const current = await transaction.get(ref);
+    if (!current.exists()) throw new Error('Arsenal não encontrado.');
+    const update = {maintenance, updatedByUid: uid, updatedAt: serverTimestamp(), version: Math.max(1, Number(current.data().version) || 1) + 1};
+    transaction.update(ref, update);
+    return {...current.data(), ...update};
   });
 }
