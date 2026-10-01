@@ -1465,3 +1465,56 @@ test('maintenance does not relax station version, authorship, allowed fields or 
   assert.equal(saved.createdByUid, uid);
   assert.equal(saved.maintenance, valid.maintenance);
 });
+
+test('autoria do Checklist aceita nome opcional fiel ao perfil e mantém os registros legados', async () => {
+  const day = saoPauloDay();
+  const maxName = 'N'.repeat(120);
+  await seedProfiles([
+    accessProfile('named-checker', {checklistRead: true, checklistWrite: true}, {displayName: 'Pessoa Fictícia Teste'}),
+    accessProfile('max-name-checker', {checklistWrite: true}, {displayName: maxName}),
+    accessProfile('long-name-checker', {checklistWrite: true}, {displayName: 'N'.repeat(121)}),
+    accessProfile('checklist-reader', {checklistRead: true})
+  ]);
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'stations', 'author-station'), {id: 'author-station', name: 'Arsenal fictício', qrCode: 'QR-FICTICIO', active: true});
+  });
+  const checker = testEnvironment.authenticatedContext('named-checker').firestore();
+  const maxChecker = testEnvironment.authenticatedContext('max-name-checker').firestore();
+  const longChecker = testEnvironment.authenticatedContext('long-name-checker').firestore();
+  const reader = testEnvironment.authenticatedContext('checklist-reader').firestore();
+  const record = (id, uid, extra = {}) => ({
+    id, clientMutationId: id, stationId: 'author-station', date: day, condition: 'SIM', status: 'COMPLETED', occurrence: '',
+    responsibleUid: null, responsibleName: null, responsibleEmail: null, active: true,
+    createdByUid: uid, updatedByUid: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1,
+    ...extra
+  });
+  await assertSucceeds(setDoc(doc(checker, 'checklists', 'author-legacy'), record('author-legacy', 'named-checker')));
+  await assertSucceeds(setDoc(doc(checker, 'checklists', 'author-valid'), record('author-valid', 'named-checker', {createdByName: 'Pessoa Fictícia Teste'})));
+  assert.equal((await getDoc(doc(reader, 'checklists', 'author-valid'))).data().createdByName, 'Pessoa Fictícia Teste');
+  await assertSucceeds(setDoc(doc(maxChecker, 'checklists', 'author-max'), record('author-max', 'max-name-checker', {createdByName: maxName})));
+  for (const [id, createdByName] of [['forged', 'Outra Pessoa'], ['empty', ''], ['number', 42], ['null', null]]) {
+    await assertFails(setDoc(doc(checker, 'checklists', `author-${id}`), record(`author-${id}`, 'named-checker', {createdByName})));
+  }
+  await assertFails(setDoc(doc(longChecker, 'checklists', 'author-long'), record('author-long', 'long-name-checker', {createdByName: 'N'.repeat(121)})));
+  await assertFails(setDoc(doc(reader, 'checklists', 'author-reader-denied'), record('author-reader-denied', 'checklist-reader', {createdByName: 'checklist-reader'})));
+  await assertFails(setDoc(doc(checker, 'checklists', 'author-forged-uid'), record('author-forged-uid', 'checklist-reader', {createdByName: 'Pessoa Fictícia Teste'})));
+  await assertFails(updateDoc(doc(checker, 'checklists', 'author-valid'), {createdByName: 'Outra Pessoa'}));
+});
+
+test('consulta de autoria legada conserva a leitura de users restrita ao próprio perfil ou usersManage', async () => {
+  await seedProfiles([
+    accessProfile('author-profile', {}, {displayName: 'Pessoa Fictícia Teste'}),
+    accessProfile('ordinary-checklist-reader', {checklistRead: true, checklistWrite: true}),
+    accessProfile('checklist-only-manager', {checklistManage: true}),
+    accessProfile('authorized-user-manager', {usersManage: true})
+  ]);
+  const creator = testEnvironment.authenticatedContext('author-profile').firestore();
+  const ordinary = testEnvironment.authenticatedContext('ordinary-checklist-reader').firestore();
+  const checklistManager = testEnvironment.authenticatedContext('checklist-only-manager').firestore();
+  const usersManager = testEnvironment.authenticatedContext('authorized-user-manager').firestore();
+  await assertSucceeds(getDoc(doc(creator, 'users', 'author-profile')));
+  await assertFails(getDoc(doc(ordinary, 'users', 'author-profile')));
+  await assertFails(getDoc(doc(checklistManager, 'users', 'author-profile')));
+  await assertSucceeds(getDoc(doc(usersManager, 'users', 'author-profile')));
+  await assertFails(getDoc(doc(testEnvironment.unauthenticatedContext().firestore(), 'users', 'author-profile')));
+});

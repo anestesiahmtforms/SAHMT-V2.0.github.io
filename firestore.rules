@@ -279,8 +279,9 @@ service cloud.firestore {
     }
     function validChecklistRecord(data, checklistId) {
       return data.keys().hasAll(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
-        data.keys().hasOnly(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+        data.keys().hasOnly(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'createdByName', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
         data.id == checklistId && data.clientMutationId == checklistId && data.active == true && data.version == 1 &&
+        (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() > 0 && data.createdByName.size() <= 120 && data.createdByName == profile().displayName)) &&
         data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
         data.createdAt == request.time && data.updatedAt == request.time &&
         data.stationId is string && stationValidForChecklist(data.stationId, data.date) &&

@@ -68,3 +68,37 @@ Na conferência autenticada do app atualizado:
 2. Em arsenal reservado para conferência, verificar ativação/desativação preservando as datas e um vencimento anterior a hoje produzindo vermelho/aviso amarelo; restaurar a programação/situação correta.
 3. Limpar um calendário, salvar e confirmar que somente essa data foi removida.
 4. Com leitor comum, confirmar consulta das datas e ausência de edição; verificar calendário nativo, centralização e Voltar no aparelho.
+## Respostas no banner, autoria e compromisso — 01/10/2026
+
+Base deste complemento: `e92151af6bd85945be936a91dbc80228b8d1a86e`. O primeiro bloco agora contém nome do arsenal, situação centralizada, Conforme/Não Conforme lado a lado e, no final, nome resumido de quem efetivamente checou e data/hora em São Paulo. O texto exibido na não conformidade, imediatamente acima da autoria, é: **Me comprometo a comunicar imediatamente à equipe e ao setor responsável pela manutenção.**
+
+O QR já usava este banner completo; a regressão confirma scanner → resolução validada → banner com origem QR. Administradores com checklistManage e checklistWrite têm as duas respostas disponíveis diretamente; o botão manual intermediário foi substituído por essas respostas. Usuários comuns respondem somente após QR validado, com checklistWrite. Consulta direta comum permanece sem botões de resposta ou administração. Rota, banner, sessão, data, validade do arsenal e revogação continuam verificados antes/depois das operações assíncronas. Não foi ampliada nenhuma permissão de leitura ou escrita.
+
+Novos registros podem armazenar `createdByName`, opcional, até 120 caracteres e exatamente igual ao displayName do perfil autenticado. As Rules preservam o vínculo por createdByUid, timestamps do servidor, imutabilidade e compatibilidade com payloads legados sem nome. O nome do responsável definido pela escala não é usado como autoria da checagem. Registro pendente identifica horário local e sincronização pendente/falha; não é apresentado como confirmação do servidor. Se um nome legado não estiver disponível, não há inferência; a consulta de perfil continua sujeita às permissões existentes de users.
+
+IDs, reconciliação, conteúdo da fila offline e projeções de assinatura/relatório foram preservados. A sincronização de um payload com nome pode ser recusada se o displayName do perfil mudar antes de confirmar a operação, pois o contrato exige igualdade com o perfil vigente; nenhuma fila é apagada ou reescrita silenciosamente. Esse risco é separado da autoria por UID e da indicação de registro pendente.
+
+Calendários recebem limites de largura e tamanho lógico, mantendo o ano completo dentro do bloco. O rodapé Voltar continua visível. Conteúdo extenso pode rolar internamente para conservar texto legível e controles acessíveis em telas pequenas. Cache do shell: v158; IndexedDB e pendências preservados.
+
+Verificações deste complemento:
+
+- `npm run test:domain`: 203/203.
+- `npm run test:rules`: 50/50, incluindo nome válido, falsificação recusada, compatibilidade legada e permissões existentes.
+- `npm run test:label-ai-worker`: 12/12, sem IA de produção.
+- `npm run build`: sucesso, com as variáveis existentes do repositório; aviso de chunk Firebase preexistente.
+- 32/32 cenários móveis Chromium emulados: 320×568, 375×667, 390×844 e 844×390, administrador/comum, conteúdo curto/longo, botão direto/QR; mais dois salvamentos QR comuns SIM/NAO e um caso local pendente. Calendários contidos, compromisso antes da autoria e rodapé visível.
+- Script de complemento legado revisado e nove verificações puras com dados fictícios; sem chamadas de produção nesse teste.
+
+A auditoria somente de leitura identificou oito checklists antigos sem nome, todos vinculados inequivocamente a um UID com perfil válido. A operação de complemento usa somente createdByName, backup privado ignorado pelo Git, precondição updateTime e verificação profunda de todos os demais campos. Em eventual conflito, interrompe e permite retomada sem sobrescrever nomes existentes. Assinaturas não incluem esse campo nem updateTime do documento; createdAt, version, condition e demais respostas não mudam. Se um gatilho de escrita existente estiver ativo, ele pode produzir um job com a mesma projeção; nenhum gatilho é criado ou ativado por esta operação.
+
+A API Cloud Functions retornou SERVICE_DISABLED nos GETs v1/v2 de auditoria. Isso não permite afirmar a ausência de Functions históricas; a API permaneceu como encontrada. Nenhum Worker, Apps Script, IA ou integração foi ativado por este complemento.
+
+Persistência, QR/câmera e calendário nativo em Safari/iPhone/Android físicos, além de interação autenticada no PWA de produção, não foram testados: o controle do navegador do usuário falhou ao inicializar por apply deny-read ACLs. Os testes de fluxo usam conta/dados fictícios e backend simulado; a verificação das Rules publicadas e dos assets do Pages é independente desse limite.
+
+Publicação deste complemento confirmada:
+
+- Ruleset ativo: `projects/sahmt-17a16/rulesets/54198dd9-e61c-4b2d-a052-85abe5866d9f`.
+- Release atualizada em `10/01/2026 23:47:16`; GET confirmado em `10/01/2026 23:47:54`.
+- SHA-256 normalizado: `9f992d0eb4c514f3ac400070e3238fe6e7f98514d2194393c00d343dc8790c9a`, igual ao arquivo testado.
+- Complemento legado: 8/8 registros verificados em `10/01/2026 23:47:59`, máscara exclusiva `createdByName`, zero outros campos alterados.
+- Somente Firestore Rules foram implantadas pelo Firebase; o PWA segue a publicação da main por GitHub Actions.

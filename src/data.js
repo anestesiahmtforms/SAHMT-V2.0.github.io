@@ -1668,6 +1668,14 @@ export async function saveChecklistStation(input, uid) {
   });
 }
 
+export async function getChecklistCreatorName(creatorUid) {
+  if (typeof creatorUid !== 'string' || !/^[^/]{1,128}$/.test(creatorUid)) return '';
+  const snapshot = await getDocFromServer(doc(db, 'users', creatorUid));
+  if (!snapshot.exists()) return '';
+  const name = snapshot.data().displayName;
+  return typeof name === 'string' ? name : '';
+}
+
 export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds = []} = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Informe uma data válida para o checklist.');
   const currentLimit = Math.min(1000, Math.max(1, pageSize));
@@ -1708,7 +1716,7 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
     const unsettled = await listUnsettledOperations(uid);
     const pending = unsettled
       .filter((item) => item.payload?.collectionName === 'checklists' && item.payload.data?.date === day)
-      .map((item) => ({id: item.requestId, ...item.payload.data, createdAt: new Date(item.createdAt), pendingSync: item.status === 'queued', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
+      .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: item.status === 'queued', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
     const seen = new Set(records.map((item) => item.id));
     records.push(...pending.filter((item) => !seen.has(item.id)));
   }
@@ -1763,7 +1771,7 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
     const unsettled = await listUnsettledOperations(uid);
     const pending = unsettled
       .filter((item) => item.payload?.collectionName === 'checklists' && item.payload.data?.date >= from && item.payload.data?.date <= to)
-      .map((item) => ({id: item.requestId, ...item.payload.data, createdAt: new Date(item.createdAt), pendingSync: item.status === 'queued', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
+      .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: item.status === 'queued', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
     const seen = new Set(records.map((item) => item.id));
     records.push(...pending.filter((item) => !seen.has(item.id)));
   }
