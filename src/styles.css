@@ -1797,6 +1797,37 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .checklist-confirmation-footer>.checklist-confirmation-button{min-height:50px;padding:5px 8px;gap:2px}
 }
 
+/* Relatório do Checklist: título, data, arsenais e retorno em faixas uniformes. */
+.checklist-report-dialog{
+ box-sizing:border-box;grid-template-rows:auto auto minmax(0,1fr) auto;
+ gap:8px;padding:10px
+}
+.checklist-report-dialog>.checklist-report-dialog__header{display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;margin:0}
+.checklist-report-dialog>.checklist-report-dialog__header h2{grid-column:1;grid-row:1;width:100%;margin:0;text-align:center}
+.checklist-report-dialog>.checklist-report-periods{margin:0}
+.checklist-report-dialog>.checklist-report-content{margin:0;padding:0;min-width:0;min-height:0}
+.checklist-report-content>.checklist-daily-layout{gap:8px}
+.checklist-daily-layout>.checklist-station-grid{align-self:stretch;max-height:none;gap:4px}
+.checklist-report-footer{min-width:0;margin:0;padding:0 0 3px}
+.checklist-report-footer>form{margin:0}
+.checklist-report-footer button{
+ display:block;box-sizing:border-box;width:100%;min-height:40px;margin:0;
+ padding:6px 10px;border:2px solid #fff;border-radius:14px;
+ background:linear-gradient(145deg,#edf6fa,#d5e6ee);color:#173957;
+ font-size:.85rem;font-weight:950;line-height:1.2;box-shadow:0 3px 0 #9db4bc
+}
+@media(max-width:520px){
+ .checklist-report-dialog{padding:8px;gap:7px}
+ .checklist-report-dialog>.checklist-report-dialog__header h2{text-align:center}
+}
+@media(max-height:650px){
+ .checklist-report-dialog{padding:6px;gap:5px}
+ .checklist-report-content>.checklist-daily-layout{gap:5px}
+ .checklist-daily-layout>.checklist-station-grid{gap:3px}
+ .checklist-confirmation-footer>.checklist-confirmation-button{min-height:54px;padding:5px 8px}
+ .checklist-report-footer button{min-height:34px;padding:4px 8px}
+}
+
 /* O título cresce sem esticar sua faixa até as laterais do cartão. */
 .app-shell:where(:not(.app-shell--checklist)) .identity-card .module-title-chip{grid-column:1/-1;grid-row:2;justify-self:center;display:grid;place-items:center;box-sizing:border-box;width:max-content;max-width:100%;min-height:44px;margin:0;padding:4px clamp(14px,4vw,24px);border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(1.44rem,5.6vw,1.76rem);font-weight:950;letter-spacing:.12em;line-height:1.05;text-align:center;white-space:nowrap}
 .app-shell--labels .identity-card .module-title-chip,.app-shell--management .identity-card .module-title-chip{font-size:clamp(1.56rem,6vw,1.96rem)}
@@ -1923,4 +1954,22 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--checklist .checklist-qr-launcher{grid-column:2;grid-row:1}
  .app-shell--checklist .checklist-report-launchers{grid-column:2;grid-row:2}
  .app-shell--checklist .checklist-home-button{grid-column:2;grid-row:3}
+}
+
+/* O relatório diário mantém os 28 alvos e o retorno no visor horizontal baixo. */
+@media(orientation:landscape) and (max-height:400px){
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))[open]{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:3px;padding:4px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-dialog__header{grid-column:1;grid-row:1;padding:0;border-bottom:0}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-dialog__header h2{line-height:1.15}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-periods{grid-column:2;grid-row:1}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-calendar{padding:2px;gap:1px;border-radius:10px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-calendar>input{min-height:32px;height:32px;font-size:16px;padding:2px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-sync{font-size:.55rem;line-height:1.1}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-content{grid-column:1/-1;grid-row:2}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-content>.checklist-daily-layout{gap:3px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-station-select{min-height:32px}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-confirmation-footer>.checklist-confirmation-button{min-height:34px;padding:2px 6px;gap:1px;font-size:.72rem;line-height:1.15}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-confirmation-button>small{font-size:.6rem;line-height:1.15}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden]))>.checklist-report-footer{grid-column:1/-1;grid-row:3;padding:0}
+ .checklist-report-dialog:has(#checklist-day-control:not([hidden])) .checklist-report-footer button{min-height:32px;padding:3px 8px}
 }

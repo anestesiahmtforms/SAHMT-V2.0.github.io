@@ -96,7 +96,7 @@ const browser = await chromium.launch({headless: true, ...(process.env.CHROME_EX
 const results = [];
 const checklistModals = [];
 try {
-  for (const viewport of [{width:320,height:568},{width:375,height:667},{width:390,height:844},{width:844,height:390},{width:568,height:320},{width:667,height:375},{width:768,height:1024}]) {
+  for (const viewport of [{width:320,height:568},{width:375,height:667},{width:390,height:844},{width:844,height:390},{width:568,height:320},{width:667,height:375},{width:768,height:1024}].filter(v=>!process.env.MOBILE_LAYOUT_VIEWPORT||process.env.MOBILE_LAYOUT_VIEWPORT===v.width+'x'+v.height)) {
     const context = await browser.newContext({viewport, deviceScaleFactor:1, isMobile:true, hasTouch:true, serviceWorkers:'block'});
     const page = await context.newPage();
     await page.route('**/*', route => route.request().url().startsWith(origin) ? route.continue() : route.abort());
@@ -178,22 +178,40 @@ try {
           },mode);
           const detail=await page.evaluate(mode=>{
             const box=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
-            const clip=(e,r=e.getBoundingClientRect())=>{for(let p=e;p;p=p.parentElement){const s=getComputedStyle(p),q=p.getBoundingClientRect();if(/hidden|clip/.test(s.overflowX)&&(r.left<q.left-1||r.right>q.right+1))return true;if(/hidden|clip/.test(s.overflowY)&&(r.top<q.top-1||r.bottom>q.bottom+1))return true;}return false;};
+            const clip=(e,r=e.getBoundingClientRect())=>{for(let p=e;p;p=p.parentElement){const s=getComputedStyle(p),q=p.getBoundingClientRect();if(/hidden|clip/.test(s.overflowX)&&(r.left<q.left-1||r.right>q.right+1))return true;if(/hidden|clip/.test(s.overflowY)&&(r.top<q.top-1||r.bottom>q.bottom+1))return true;if(p.tagName==='DIALOG'&&p.open)break;}return false;};
             const dialog=document.querySelector(mode==='qr'?'#checklist-qr-dialog':mode==='confirmation'?'#checklist-confirmation-dialog':'#checklist-report-dialog');
             const controls=[...dialog.querySelectorAll('button,input,textarea')].filter(e=>e.getClientRects().length&&!e.closest('dialog:not([open])'));
             const cutControls=controls.filter(e=>clip(e)||e.scrollWidth>e.clientWidth+1||e.getBoundingClientRect().right>innerWidth+1||e.getBoundingClientRect().bottom>innerHeight+1).map(e=>e.id||e.textContent.trim());
             const texts=[...dialog.querySelectorAll('.checklist-station-select>span,.checklist-confirmation-button>span,.checklist-confirmation-button>small')].filter(e=>e.getClientRects().length&&e.textContent.trim());
             const cutText=texts.filter(e=>{const range=document.createRange();range.selectNodeContents(e);return clip(e,range.getBoundingClientRect());}).map(e=>e.textContent);
             const buttons=[...dialog.querySelectorAll('.checklist-station-select')];
+            const buttonRects=buttons.map(box);const arsenalOverlaps=buttonRects.flatMap((a,i)=>buttonRects.slice(i+1).filter(b=>a.x<b.right-1&&a.right>b.x+1&&a.y<b.bottom-1&&a.bottom>b.y+1)).length;
             const badHits=buttons.filter(e=>{const r=e.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('.checklist-station-select')!==e;}).map(e=>e.dataset.checklistSelect);
             const video=document.querySelector('#checklist-qr-video'),focus=document.querySelector('#checklist-qr-focus'),container=document.querySelector('.checklist-qr-container');
-            return {mode,dialog:box(dialog),docWidth:document.documentElement.scrollWidth,docHeight:document.documentElement.scrollHeight,cutControls,cutText,focusId:document.activeElement?.id||document.activeElement?.dataset?.checklistSelect,arsenalCount:buttons.length,inactiveCount:dialog.querySelectorAll('.checklist-station-inactive').length,functionCount:dialog.querySelectorAll('.checklist-arsenal-function').length,minArsenalHeight:buttons.length?Math.min(...buttons.map(e=>e.getBoundingClientRect().height)):null,badHits,confirmationButton:mode==='report'?box(dialog.querySelector('#checklist-signature-prepare')):null,qr:mode==='qr'?{video:box(video),focus:box(focus),container:box(container),clipPath:getComputedStyle(video).clipPath,objectFit:getComputedStyle(video).objectFit,close:box(document.querySelector('#checklist-qr-close'))}:null};
+            return {mode,dialog:box(dialog),docWidth:document.documentElement.scrollWidth,docHeight:document.documentElement.scrollHeight,cutControls,cutText,focusId:document.activeElement?.id||document.activeElement?.dataset?.checklistSelect,arsenalCount:buttons.length,inactiveCount:dialog.querySelectorAll('.checklist-station-inactive').length,functionCount:dialog.querySelectorAll('.checklist-arsenal-function').length,arsenalOverlaps,minArsenalHeight:buttons.length?Math.min(...buttons.map(e=>e.getBoundingClientRect().height)):null,badHits,returnButton:mode==='report'?box(dialog.querySelector('.checklist-report-footer button')):null,confirmationButton:mode==='report'?box(dialog.querySelector('#checklist-signature-prepare')):null,qr:mode==='qr'?{video:box(video),focus:box(focus),container:box(container),clipPath:getComputedStyle(video).clipPath,objectFit:getComputedStyle(video).objectFit,close:box(document.querySelector('#checklist-qr-close'))}:null};
           },mode);
           const modalKey=key+'-'+mode;
           await page.screenshot({path:path.join(output,modalKey+'.png'),fullPage:true});
           detail.key=modalKey;detail.failures=[];
+          if(mode==='report') {
+            await page.evaluate(()=>{window.__arsenalClicks=[];document.querySelectorAll('.checklist-station-select').forEach(b=>b.addEventListener('click',()=>window.__arsenalClicks.push(b.dataset.checklistSelect)));});
+            const first=page.locator('#checklist-report-dialog .checklist-station-select').first();
+            const expected=await first.getAttribute('data-checklist-select');await first.tap();
+            detail.nativeArsenalClick=await page.evaluate(()=>window.__arsenalClicks);
+            await page.locator('#checklist-report-dialog .checklist-report-footer button').tap();
+            detail.returnClosed=await page.evaluate(()=>!document.querySelector('#checklist-report-dialog').open);
+            if(detail.nativeArsenalClick.length!==1||detail.nativeArsenalClick[0]!==expected||!detail.returnClosed) detail.failures.push('native Arsenal/return click');
+          }
+          if(mode==='qr') {
+            await page.evaluate(()=>{window.__qrClicks=0;document.querySelector('#checklist-qr-close').addEventListener('click',()=>window.__qrClicks++,{once:true});});
+            await page.locator('#checklist-qr-close').tap();
+            detail.nativeQrClick=await page.evaluate(()=>window.__qrClicks);
+            if(detail.nativeQrClick!==1) detail.failures.push('native QR return click');
+          }
           if(detail.cutControls.length||detail.cutText.length) detail.failures.push('clipped modal control/text');
-          if(mode==='report'&&(detail.arsenalCount!==28||detail.inactiveCount!==5||detail.functionCount!==6||detail.badHits.length)) detail.failures.push('Arsenal count/function/hit');
+          if(mode==='report'&&(detail.arsenalCount!==28||detail.inactiveCount!==5||detail.functionCount!==6||detail.badHits.length||detail.arsenalOverlaps)) detail.failures.push('Arsenal count/function/hit');
+          if(mode==='report'&&detail.minArsenalHeight<31.99) detail.failures.push('Arsenal target below 32px');
+          if(mode==='report'&&detail.returnButton.height<32) detail.failures.push('daily return target');
           if(mode==='confirmation'&&detail.focusId!=='checklist-confirmation-title') detail.failures.push('confirmation focus');
           if(mode==='qr'&&(detail.focusId!=='checklist-qr-close'||detail.qr.close.height<32||detail.qr.clipPath!=='none'||Math.abs(detail.qr.video.width-detail.qr.focus.width)>1||Math.abs(detail.qr.video.height-detail.qr.focus.height)>1||Math.abs(detail.qr.video.y-detail.qr.focus.y)>1)) detail.failures.push('QR focus/crop/return target');
           checklistModals.push(detail);
