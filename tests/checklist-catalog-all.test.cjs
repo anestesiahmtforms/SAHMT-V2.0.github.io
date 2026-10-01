@@ -27,3 +27,19 @@ test('Checklist consulta os 28 arsenais ativos e inativos e usa cache próprio',
   assert.ok(main.includes('sortChecklistStationsForDisplay(stations, resolvedRecordFor)'));
   assert.ok(main.includes('const writableStations = applicableStations.filter((station) => stationIsValidOn(station, day));'));
 });
+
+test('botões sem Arsenal mantêm os nomes específicos e inativos ficam ao final', () => {
+  const source = readFileSync(join(__dirname, '../src/checklist-display.js'), 'utf8');
+  const ctx = vm.createContext({});
+  vm.runInContext(source.replaceAll('export ', ''), ctx);
+  assert.equal(ctx.checklistArsenalButtonLabel({id: '100170010', name: 'Arsenal 100170010'}), '100170010');
+  assert.equal(ctx.checklistArsenalFunction({id: '100170010'}), 'Endoscopia');
+  assert.equal(ctx.checklistArsenalFunction({id: '100170030'}), 'Hemod sl.1');
+  assert.equal(ctx.checklistArsenalFunction({id: '100170015'}), 'Ressonância');
+  const stations = [{id: '100170004', active: false}, {id: '100170010', active: true}, {id: '100170001', active: true}];
+  const sorted = ctx.sortChecklistStationsForDisplay(stations, () => null).sort((left, right) => Number(right.active === true) - Number(left.active === true));
+  assert.equal(sorted[sorted.length - 1].id, '100170004');
+  const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+  assert.ok(main.includes('Number(right.active === true) - Number(left.active === true)'));
+  assert.ok(main.includes('checklistArsenalButtonLabel(station)'));
+});

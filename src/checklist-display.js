@@ -40,3 +40,7 @@ export function sortChecklistStationsForDisplay(stations, recordForStation) {
     return Number(left.order || 0) - Number(right.order || 0) || String(left.id || '').localeCompare(String(right.id || ''));
   });
 }
+
+export function checklistArsenalButtonLabel(station) {
+  return String(station?.name || station?.id || '').replace(/\barsenal\b\s*[:–—-]?\s*/gi, '').trim() || String(station?.id || '');
+}

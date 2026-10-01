@@ -1605,3 +1605,5 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 #checklist-qr-dialog{touch-action:manipulation}
 #checklist-qr-dialog input,#checklist-qr-dialog select,#checklist-qr-dialog textarea{font-size:16px;line-height:1.25}
 #checklist-qr-title:focus{outline:none}
+
+.checklist-report-dialog .checklist-station-select .checklist-arsenal-function{display:block;margin:0;color:inherit;font-size:inherit;font-weight:950;line-height:1.05}
