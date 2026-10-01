@@ -1740,3 +1740,15 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  }
  .app-shell--checklist .checklist-qr-launcher svg{width:24px;height:24px}
 }
+
+/* A câmera e a captura usam a mesma janela; evita divergência do recorte no Safari. */
+#checklist-qr-dialog .checklist-qr-stage{--qr-capture-size:min(84cqw,84cqh,260px)}
+#checklist-qr-dialog video{
+ position:absolute;top:8px;left:50%;transform:translateX(-50%);
+ box-sizing:border-box;width:var(--qr-capture-size);height:var(--qr-capture-size);
+ max-width:none;max-height:none;clip-path:none;border-radius:12px;object-fit:cover;object-position:center
+}
+#checklist-qr-dialog .checklist-qr-focus{
+ top:8px;left:50%;transform:translateX(-50%);
+ width:var(--qr-capture-size);height:var(--qr-capture-size)
+}

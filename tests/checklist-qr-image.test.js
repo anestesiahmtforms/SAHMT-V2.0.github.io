@@ -44,3 +44,27 @@ test('leitura só confirma após duas capturas iguais e reinicia ao mudar ou per
   assert.equal(confirm('100170016'), null);
   assert.equal(confirm('100170016'), '100170016');
 });
+
+test('decodificador tenta contraste global quando a primeira leitura não encontra o QR', () => {
+  let calls = 0;
+  class RGBLuminanceSource { constructor(data, width, height) { this.width = width; this.height = height; } }
+  class HybridBinarizer {}
+  class GlobalHistogramBinarizer {}
+  class BinaryBitmap { constructor(binarizer) { this.binarizer = binarizer; } }
+  class QRCodeReader {
+    decode(bitmap, hints) {
+      calls++;
+      assert.equal(hints.get(3), true);
+      if (bitmap.binarizer instanceof HybridBinarizer) throw new Error('Not found');
+      return {getText: () => '100170017'};
+    }
+  }
+  const api = {RGBLuminanceSource, HybridBinarizer, GlobalHistogramBinarizer, BinaryBitmap, QRCodeReader, DecodeHintType: {TRY_HARDER: 3}};
+  assert.equal(decodeQrImageData({width: 1, height: 1, data: new Uint8ClampedArray([120, 120, 120, 255])}, api), '100170017');
+  assert.equal(calls, 2);
+});
+test('captura coincide com a janela de vídeo deslocada para o topo', () => {
+  const rect = {left: 90, top: 108, width: 200, height: 200};
+  assert.deepEqual(checklistQrCrop({videoWidth: 1920, videoHeight: 1080, videoRect: rect, focusRect: rect}),
+    {x: 420, y: 0, width: 1080, height: 1080});
+});

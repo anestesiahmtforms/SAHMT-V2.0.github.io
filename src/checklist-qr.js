@@ -43,12 +43,18 @@ export function decodeQrImageData(imageData, ZXing) {
     const pixel = index * 4;
     luminance[index] = (rgba[pixel] + 2 * rgba[pixel + 1] + rgba[pixel + 2]) / 4;
   }
-  const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.RGBLuminanceSource(luminance, width, height)));
-  try {
-    return new ZXing.QRCodeReader().decode(bitmap).getText() || null;
-  } catch {
-    return null;
+  const hints = new Map();
+  if (ZXing.DecodeHintType?.TRY_HARDER != null) hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  const source = new ZXing.RGBLuminanceSource(luminance, width, height);
+  const binarizers = [ZXing.HybridBinarizer, ZXing.GlobalHistogramBinarizer].filter(Boolean);
+  for (const Binarizer of binarizers) {
+    try {
+      const bitmap = new ZXing.BinaryBitmap(new Binarizer(source));
+      const value = new ZXing.QRCodeReader().decode(bitmap, hints).getText();
+      if (value) return value;
+    } catch { /* A próxima estratégia usa os mesmos pixels da janela visível. */ }
   }
+  return null;
 }
 
 /** Maps the visible guide to camera pixels with object-fit: cover at center. */
