@@ -1,61 +1,71 @@
 {
-  "date": "2026-09-30",
-  "baseline": "65944c5eda6b109eeb8e11519a067965b5ec811b",
-  "combinedTree": "0b8e0d0d586a90d16df875b23ab4acfc36939425",
+  "date": "2026-10-01",
+  "baseline": "b2f61a1aad21488f151e821b1cee1dfe43ded3b8",
+  "validatedCodeCommit": "5fa7e9affe120d75f69612607c633ed3dca5e04a",
   "tests": {
-    "domain": 227,
+    "domain": 251,
     "rules": 40,
     "worker": 12,
     "functions": 19
+  },
+  "build": {
+    "shellFiles": 2,
+    "shellBytes": 500160,
+    "offlineGraphFiles": 13,
+    "offlineGraphBytes": 1395093,
+    "precacheFiles": 23,
+    "precacheBytes": 2322726,
+    "workerVersion": "V135",
+    "baselineWorkerVersion": "V134"
   },
   "performance": {
     "fixture": "real builds; 390x844; CPU4x; 150ms/1.6Mbps; synthetic offline profile; external requests aborted",
     "baseline": {
       "samples": [
         {
-          "openMs": 9949,
-          "firstInteractionMs": 493,
-          "labelsManualMs": 634
+          "openMs": 10133,
+          "firstInteractionMs": 514,
+          "labelsManualMs": 1239
         },
         {
-          "openMs": 10079,
-          "firstInteractionMs": 408,
-          "labelsManualMs": 535
+          "openMs": 10070,
+          "firstInteractionMs": 462,
+          "labelsManualMs": 888
         },
         {
-          "openMs": 10198,
-          "firstInteractionMs": 539,
-          "labelsManualMs": 852
+          "openMs": 10063,
+          "firstInteractionMs": 627,
+          "labelsManualMs": 997
         }
       ],
       "medians": {
-        "openMs": 10079,
-        "firstInteractionMs": 493,
-        "labelsManualMs": 634
+        "openMs": 10070,
+        "firstInteractionMs": 514,
+        "labelsManualMs": 997
       }
     },
     "current": {
       "samples": [
         {
-          "openMs": 10078,
-          "firstInteractionMs": 458,
-          "labelsManualMs": 637
+          "openMs": 10247,
+          "firstInteractionMs": 258,
+          "labelsManualMs": 743
         },
         {
-          "openMs": 10321,
-          "firstInteractionMs": 340,
-          "labelsManualMs": 605
+          "openMs": 10249,
+          "firstInteractionMs": 868,
+          "labelsManualMs": 850
         },
         {
-          "openMs": 10061,
-          "firstInteractionMs": 533,
-          "labelsManualMs": 650
+          "openMs": 10830,
+          "firstInteractionMs": 592,
+          "labelsManualMs": 988
         }
       ],
       "medians": {
-        "openMs": 10078,
-        "firstInteractionMs": 458,
-        "labelsManualMs": 637
+        "openMs": 10249,
+        "firstInteractionMs": 592,
+        "labelsManualMs": 850
       }
     }
   },
@@ -68,21 +78,21 @@
       "qrDecoderOffline": true,
       "stableOutboxPreserved": true,
       "serverResponsesWhileOffline": 0,
-      "refusedBrowserUpdateChecks": 5,
+      "refusedBrowserUpdateChecks": 4,
       "cacheNames": [
-        "sahmt-v2-shell-v134"
+        "sahmt-v2-shell-v135"
       ],
       "externalRequestsBlocked": 2,
       "pageErrors": []
     },
     "oldTab": {
-      "oldTabEntry": "assets/index-LNFL1vfp.js",
+      "oldTabEntry": "assets/index-BCXmIfgp.js",
       "oldCamera": "assets/label-camera-BfsYUBmS.js",
       "oldTabLabelsAfterUpdate": true,
       "newOfflineNavigationUsesCurrentBuild": true,
       "cacheNames": [
-        "sahmt-v2-shell-v133",
-        "sahmt-v2-shell-v134"
+        "sahmt-v2-shell-v134",
+        "sahmt-v2-shell-v135"
       ],
       "serverResponsesWhileOffline": 0,
       "externalRequestsBlocked": 3
@@ -97,14 +107,98 @@
   },
   "visual": {
     "count": 70,
-    "viewports": [
-      "320x568",
-      "375x667",
-      "390x844",
-      "844x390",
-      "568x320",
-      "667x375",
-      "768x1024"
+    "fixedModuleCases": 56,
+    "scheduleCases": 28,
+    "minTargetHeight": 32,
+    "minTargetWidth": 38.078125,
+    "hitChecks": 1470,
+    "nativeActions": 126,
+    "beforeFixSource": "Intermediate visual candidate based on v133; not production",
+    "beforeAfter": [
+      {
+        "key": "home-admin-320x568",
+        "beforeHeight": 11.109375,
+        "afterHeight": 33.328125,
+        "afterWidth": 47.15625
+      },
+      {
+        "key": "events-admin-320x568",
+        "beforeHeight": 22.03125,
+        "afterHeight": 32,
+        "afterWidth": 44.828125
+      },
+      {
+        "key": "home-admin-375x667",
+        "beforeHeight": 21.625,
+        "afterHeight": 48.046875,
+        "afterWidth": 55.765625
+      },
+      {
+        "key": "events-admin-375x667",
+        "beforeHeight": 13.40625,
+        "afterHeight": 49.578125,
+        "afterWidth": 53.890625
+      },
+      {
+        "key": "home-admin-390x844",
+        "beforeHeight": 41.765625,
+        "afterHeight": 51.765625,
+        "afterWidth": 69.484375
+      },
+      {
+        "key": "events-admin-390x844",
+        "beforeHeight": 40.921875,
+        "afterHeight": 53.921875,
+        "afterWidth": 63.96875
+      },
+      {
+        "key": "home-admin-844x390",
+        "beforeHeight": 33.640625,
+        "afterHeight": 42.640625,
+        "afterWidth": 66.546875
+      },
+      {
+        "key": "events-admin-844x390",
+        "beforeHeight": 28.546875,
+        "afterHeight": 37.546875,
+        "afterWidth": 76.609375
+      },
+      {
+        "key": "home-admin-568x320",
+        "beforeHeight": 18.390625,
+        "afterHeight": 39.5,
+        "afterWidth": 38.078125
+      },
+      {
+        "key": "events-admin-568x320",
+        "beforeHeight": 19.078125,
+        "afterHeight": 34.5,
+        "afterWidth": 39.859375
+      },
+      {
+        "key": "home-admin-667x375",
+        "beforeHeight": 29.890625,
+        "afterHeight": 38.890625,
+        "afterWidth": 50.625
+      },
+      {
+        "key": "events-admin-667x375",
+        "beforeHeight": 24.796875,
+        "afterHeight": 33.796875,
+        "afterWidth": 58.03125
+      },
+      {
+        "key": "home-admin-768x1024",
+        "beforeHeight": 45.640625,
+        "afterHeight": 55.640625,
+        "afterWidth": 205.5
+      },
+      {
+        "key": "events-admin-768x1024",
+        "beforeHeight": 67,
+        "afterHeight": 80,
+        "afterWidth": 146.6875
+      }
     ],
     "cases": [
       {
@@ -120,7 +214,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 33.328125,
+          "minWidth": 47.15625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-320x568",
@@ -135,7 +238,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 32,
+          "minWidth": 44.828125,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-320x568",
@@ -150,7 +262,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-320x568",
@@ -185,7 +306,16 @@
             "bottom": 361.734375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-320x568",
@@ -200,7 +330,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-320x568",
@@ -215,7 +354,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 33.328125,
+          "minWidth": 47.15625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-320x568",
@@ -230,7 +378,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 32,
+          "minWidth": 44.828125,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-320x568",
@@ -245,7 +402,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-320x568",
@@ -280,7 +446,16 @@
             "bottom": 361.734375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-320x568",
@@ -295,7 +470,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-admin-375x667",
@@ -310,7 +494,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 48.046875,
+          "minWidth": 55.765625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-375x667",
@@ -325,7 +518,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 49.578125,
+          "minWidth": 53.890625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-375x667",
@@ -340,7 +542,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-375x667",
@@ -375,7 +586,16 @@
             "bottom": 427.5625
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-375x667",
@@ -390,7 +610,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-375x667",
@@ -405,7 +634,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 48.046875,
+          "minWidth": 55.765625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-375x667",
@@ -420,7 +658,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 49.578125,
+          "minWidth": 53.890625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-375x667",
@@ -435,7 +682,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-375x667",
@@ -470,7 +726,16 @@
             "bottom": 427.5625
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-375x667",
@@ -485,7 +750,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-admin-390x844",
@@ -500,7 +774,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 51.765625,
+          "minWidth": 69.484375,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-390x844",
@@ -515,7 +798,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 53.921875,
+          "minWidth": 63.96875,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-390x844",
@@ -530,7 +822,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-390x844",
@@ -565,7 +866,16 @@
             "bottom": 435.859375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-390x844",
@@ -580,7 +890,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-390x844",
@@ -595,7 +914,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 51.765625,
+          "minWidth": 69.484375,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-390x844",
@@ -610,7 +938,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 53.921875,
+          "minWidth": 63.96875,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-390x844",
@@ -625,7 +962,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-390x844",
@@ -660,7 +1006,16 @@
             "bottom": 435.859375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-390x844",
@@ -675,7 +1030,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-admin-844x390",
@@ -690,7 +1054,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 42.640625,
+          "minWidth": 66.546875,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-844x390",
@@ -705,7 +1078,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 37.546875,
+          "minWidth": 76.609375,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-844x390",
@@ -720,7 +1102,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-844x390",
@@ -755,7 +1146,16 @@
             "bottom": 333.9375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-844x390",
@@ -784,7 +1184,16 @@
             "overflow": false
           }
         ],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-844x390",
@@ -799,7 +1208,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 42.640625,
+          "minWidth": 66.546875,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-844x390",
@@ -814,7 +1232,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 37.546875,
+          "minWidth": 76.609375,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-844x390",
@@ -829,7 +1256,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-844x390",
@@ -864,7 +1300,16 @@
             "bottom": 333.9375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-844x390",
@@ -879,7 +1324,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-admin-568x320",
@@ -894,7 +1348,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 39.5,
+          "minWidth": 38.078125,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-568x320",
@@ -909,7 +1372,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 34.5,
+          "minWidth": 39.859375,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-568x320",
@@ -924,7 +1396,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-568x320",
@@ -959,7 +1440,16 @@
             "bottom": 264.4375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-568x320",
@@ -988,7 +1478,16 @@
             "overflow": false
           }
         ],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-568x320",
@@ -1003,7 +1502,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 39.5,
+          "minWidth": 38.078125,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-568x320",
@@ -1018,7 +1526,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 34.5,
+          "minWidth": 39.859375,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-568x320",
@@ -1033,7 +1550,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-568x320",
@@ -1068,7 +1594,16 @@
             "bottom": 264.4375
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-568x320",
@@ -1083,7 +1618,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-admin-667x375",
@@ -1098,7 +1642,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 38.890625,
+          "minWidth": 50.625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-667x375",
@@ -1113,7 +1666,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 33.796875,
+          "minWidth": 58.03125,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-667x375",
@@ -1128,7 +1690,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-667x375",
@@ -1163,7 +1734,16 @@
             "bottom": 304.3125
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-667x375",
@@ -1192,7 +1772,16 @@
             "overflow": false
           }
         ],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-667x375",
@@ -1207,7 +1796,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 38.890625,
+          "minWidth": 50.625,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-667x375",
@@ -1222,7 +1820,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 33.796875,
+          "minWidth": 58.03125,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-667x375",
@@ -1237,7 +1844,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-667x375",
@@ -1272,7 +1888,16 @@
             "bottom": 304.3125
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-667x375",
@@ -1287,7 +1912,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-admin-768x1024",
@@ -1302,7 +1936,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 55.640625,
+          "minWidth": 205.5,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-admin-768x1024",
@@ -1317,7 +1960,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 80,
+          "minWidth": 146.6875,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-admin-768x1024",
@@ -1332,7 +1984,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-admin-768x1024",
@@ -1367,7 +2028,16 @@
             "bottom": 673.71875
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-admin-768x1024",
@@ -1382,7 +2052,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "home-comum-768x1024",
@@ -1397,7 +2076,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 17,
+          "minHeight": 55.640625,
+          "minWidth": 205.5,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 4
+        },
+        "failures": []
       },
       {
         "key": "events-comum-768x1024",
@@ -1412,7 +2100,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 18,
+          "minHeight": 80,
+          "minWidth": 146.6875,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 5
+        },
+        "failures": []
       },
       {
         "key": "labels-comum-768x1024",
@@ -1427,7 +2124,16 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "checklist-comum-768x1024",
@@ -1462,7 +2168,16 @@
             "bottom": 673.71875
           },
           "objectFit": "contain"
-        }
+        },
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       },
       {
         "key": "management-comum-768x1024",
@@ -1477,14 +2192,25 @@
         "tokenOverlaps": 0,
         "clippedControls": [],
         "controlsOutside": [],
-        "image": null
+        "image": null,
+        "touch": {
+          "count": 0,
+          "minHeight": null,
+          "minWidth": null,
+          "overlaps": 0,
+          "clipped": [],
+          "nativeActions": 1
+        },
+        "failures": []
       }
     ]
   },
   "limitations": [
-    "Chromium fixture with fictional local data; no real patient data or production writes",
-    "Synthetic offline profile; not Google login, authenticated Firestore latency or AI",
-    "Same-URL corrected image verified via CacheStorage body plus SW tests, not physical-device visual inspection",
-    "No Android/iPhone physical device or Safari/WebKit test"
+    "Edge/Chromium local fixtures with fictional data; no physical Android/iPhone or Safari",
+    "Mobile measurements use synthetic offline profile with external requests aborted; not real login or authenticated preloads",
+    "Three samples cannot establish a general speed improvement",
+    "Corrected image offline verification reads CacheStorage bytes; not a physical display check",
+    "Management content retains existing vertical scrolling",
+    "App Script runtime metadata returned 403; no triggers or services activated"
   ]
 }
