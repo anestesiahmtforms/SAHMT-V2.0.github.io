@@ -40,6 +40,24 @@ O compilador confirmou sucesso; manteve avisos preexistentes de funções de esc
 
 As evidências locais ficam em `.local-preview/`, sem credenciais nem dados reais de pacientes. A suíte completa do GitHub Actions acompanha o push à main e publica o PWA somente após os checks.
 
+## Complemento do banner — 01/10/2026
+
+O banner foi organizado em três blocos: nome centralizado, situação e checklist manual; calendários e edição da manutenção; ativação/desativação. O texto “ARSENAL ANESTÉSICO” foi removido. Voltar permanece no rodapé, fora dos blocos.
+
+Fazer Checklist Manual, Editar Manutenção, Salvar Manutenção e Ativar/Desativar Arsenal são renderizados somente quando o perfil tem acesso administrativo (`can('admin')`) e a autorização existente de gestão do Checklist. Usuários comuns, inclusive perfis com gestão delegada sem acesso administrativo, veem somente a situação e os calendários desabilitados. O preenchimento por QR continua seguindo `checklistWrite`.
+
+Os callbacks validam também a origem QR/manual, a rota, o banner atual e o UID capturado; perder acesso administrativo bloqueia o fluxo manual, inclusive durante a importação dos dados. Uma resposta antiga não fecha um novo banner. Os calendários têm largura mínima de 155px e fonte de 16px, com redução de margens nas telas estreitas para mostrar o ano completo.
+
+Essa atualização altera somente o banner, suas regressões e a versão do cache do shell (v157). O esquema de manutenção, as transações, as Rules publicadas acima e as integrações de produção permanecem os mesmos. Não houve nova implantação das Rules nesta atualização visual.
+
+Verificação deste complemento:
+
+- Domínio: 178/178 testes; banner/catálogo: 42/42 incluídos na suíte.
+- Rules: 48/48 no emulador; Worker: 12/12 sem IA de produção.
+- Build com as variáveis atuais do repositório: sucesso; aviso de tamanho do chunk Firebase preexistente.
+- 16/16 cenários móveis Chromium com perfis comum/administrador e conteúdo curto/longo, nas dimensões já listadas; mais um caso de QR comum salvo pelo wrapper real com backend fictício. Nome e banner centralizados, campos dentro dos blocos e Voltar visível/clicável. Datas completas conferidas visualmente em 320 e 390px.
+- Persistência/reabertura usa serviço simulado. Safari/iPhone/Android físicos e login/gravação reais continuam com as limitações abaixo.
+
 ## Conferência que depende de dispositivo e sessão reais
 
 O acesso automatizado ao navegador do usuário não iniciou por erro `apply deny-read ACLs`. Não foi possível realizar login/interação autenticada no PWA de produção nem testar Safari/iPhone/Android físicos. Deploy e conteúdo ativo das Rules foram confirmados independentemente dessa limitação.

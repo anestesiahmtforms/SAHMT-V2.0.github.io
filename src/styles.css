@@ -1883,6 +1883,12 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 }
 #checklist-station-dialog[open]{display:grid;gap:12px}
 #checklist-station-title:focus{outline:none}
+#checklist-station-dialog .checklist-station-block{min-width:0;padding:12px;border:1px solid #fff;border-radius:16px;background:linear-gradient(145deg,#ffffffb8,#e9f1f5ba);box-shadow:0 3px 8px #14325410}
+#checklist-station-dialog .checklist-station-block--status{display:grid;gap:10px}
+#checklist-station-dialog .checklist-station-block--status>header{text-align:center}
+#checklist-station-dialog .checklist-station-block--status h3{margin:0;color:#173957;font-size:clamp(1rem,4vw,1.3rem);font-weight:950;overflow-wrap:anywhere}
+#checklist-station-dialog #checklist-station-controls{display:grid;gap:12px;min-width:0}
+#checklist-station-dialog #checklist-station-responses:empty{display:none}
 #checklist-station-dialog .checklist-station-result__heading{display:grid;gap:5px;padding:14px;border-radius:14px;text-align:center}
 #checklist-station-dialog .checklist-station-result__heading>strong{font-size:1.2rem}
 #checklist-station-dialog .checklist-station-result--complete{background:#ddf2e5;color:#17633b}
@@ -1890,7 +1896,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 #checklist-station-dialog .checklist-station-result--inactive{background:#dfecf8;color:#22547d}
 #checklist-station-dialog .checklist-maintenance{display:grid;gap:7px;width:100%}
 #checklist-station-dialog .checklist-maintenance h4{margin:0;font-size:.9rem;font-weight:850}
-#checklist-station-dialog .checklist-maintenance-date{display:grid;grid-template-columns:minmax(0,1fr) minmax(125px,.85fr);align-items:center;gap:8px;font-size:.8rem;font-weight:850}
+#checklist-station-dialog .checklist-maintenance-date{display:grid;grid-template-columns:minmax(0,1fr) minmax(155px,.85fr);align-items:center;gap:8px;font-size:.8rem;font-weight:850}
+#checklist-station-dialog .checklist-maintenance-date>span{overflow-wrap:anywhere}
 #checklist-station-dialog .checklist-maintenance-date input{box-sizing:border-box;width:100%;min-width:0;min-height:42px;padding:7px;border:1px solid #a8c3d4;border-radius:10px;background:#fff;color:#143254;font:inherit;font-size:16px}
 #checklist-station-dialog .checklist-maintenance-date input:disabled{opacity:1;background:#f4f8fb;color:#143254;-webkit-text-fill-color:#143254}
 #checklist-station-dialog .checklist-maintenance-date.is-overdue{color:#b42323}
@@ -1905,3 +1912,4 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 #checklist-station-dialog button:disabled{opacity:.5;cursor:default}
 #checklist-station-dialog #checklist-station-status:empty{display:none}
 #checklist-station-dialog .checklist-station-footer{position:sticky;bottom:0;z-index:2;margin:0;padding-top:10px;background:linear-gradient(145deg,#f5ecdb,#dce8ee);box-shadow:0 18px 0 #dce8ee}
+@media(max-width:380px){#checklist-station-dialog{padding:12px}#checklist-station-dialog .checklist-station-block{padding:8px}}

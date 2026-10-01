@@ -55,3 +55,22 @@ test('Voltar permanece no rodapé visível do banner de arsenal com conteúdo lo
   assert.match(footer, /z-index:\s*2(?:;|$)/);
   assert.match(footer, /background:\s*linear-gradient/);
 });
+
+test('banner organiza situação, manutenção e administração em blocos com Voltar fora deles', () => {
+  const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+  const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
+  const banner = main.match(/<dialog class="checklist-station-dialog"[\s\S]*?<\/dialog>/)[0];
+  assert.ok(!banner.includes('ARSENAL ANESTÉSICO'));
+  assert.match(banner, /checklist-station-block--status[\s\S]*id="checklist-station-title"[\s\S]*id="checklist-station-result"[\s\S]*id="checklist-station-responses"[\s\S]*id="checklist-station-controls"/);
+  assert.match(banner, /id="checklist-station-controls"><\/div><\/div><p id="checklist-station-status"[\s\S]*class="checklist-station-footer"/);
+  assert.match(css, /\.checklist-station-block--status>header\s*\{text-align:center\}/);
+  assert.ok(main.includes("const canManage = can('admin') && can('checklistManage');"));
+});
+
+test('calendários mantêm ano legível, fonte de toque e item em frente em telas estreitas', () => {
+  const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
+  assert.match(css, /\.checklist-maintenance-date\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(155px,\.85fr\)/);
+  assert.match(css, /\.checklist-maintenance-date>span\{overflow-wrap:anywhere\}/);
+  assert.match(css, /\.checklist-maintenance-date input\{[^}]*font-size:16px/);
+  assert.match(css, /@media\(max-width:380px\)\{#checklist-station-dialog\{padding:12px\}#checklist-station-dialog \.checklist-station-block\{padding:8px\}\}/);
+});
