@@ -17,18 +17,20 @@ const state = (value = profile) => ({status: 'signed-in', user: {uid: 'fictional
 
 function fixture(route) {
   let replacements = 0;
+  let clearedReports = 0;
   const identity = {textContent: profile.displayName};
   const draft = {value: 'rascunho fictício', photo: 'local-fictional-photo', focused: true, dialogOpen: true};
   const context = vm.createContext({
     session: state(), appFeatures: {...DEFAULT_APP_FEATURES}, appFeaturesUid: 'fictional-user', appFeaturesLoadSequence: 0,
     DEFAULT_APP_FEATURES, notice: '', sessionChangeRevokesAccess, sessionChangeRequiresRender, sessionChangeGrantsAccess,
+    startupBannerActive: false, startupReports: {clear() {clearedReports++;}}, labelManualConfirmation: {uid: '', status: ''},
     currentRoute: () => route, scheduleOutboxRetry: () => {}, refreshAppFeatures: () => {},
     updateIdentityProfile: (next) => { identity.textContent = next.profile.displayName; },
     render: () => { replacements++; },
     app: {set innerHTML(value) { replacements++; draft.dialogOpen = false; draft.focused = false; draft.value = ''; draft.photo = null; }}
   });
   vm.runInContext(callback, context);
-  return {context, draft, identity, replacements: () => replacements};
+  return {context, draft, identity, replacements: () => replacements, clearedReports: () => clearedReports};
 }
 
 test('primeiro observador repetido preserva rascunho, foto, foco e diálogo de Eventos/Etiquetas', () => {
@@ -37,6 +39,7 @@ test('primeiro observador repetido preserva rascunho, foto, foco e diálogo de E
     value.context.sessionChanged({...state(), offline: false});
     value.context.sessionChanged(state({...profile, displayName: 'Nome fictício atualizado'}));
     assert.equal(value.replacements(), 0);
+    assert.equal(value.clearedReports(), 0);
     assert.deepEqual(value.draft, {value: 'rascunho fictício', photo: 'local-fictional-photo', focused: true, dialogOpen: true});
     assert.equal(value.identity.textContent, 'Nome fictício atualizado');
   }
@@ -47,7 +50,24 @@ test('revogação real limpa o shell imediatamente; nova sigla também exige nov
     const value = fixture('labels');
     value.context.sessionChanged(state(next));
     assert.equal(value.replacements(), 2);
+    assert.equal(value.clearedReports(), 1);
     assert.equal(value.draft.dialogOpen, false);
     assert.equal(value.draft.photo, null);
   }
+});
+
+test('loading-profile com UID já conhecido inicia pré-consultas uma vez ao autenticar', () => {
+  const value = fixture('home');
+  let preloads = 0;
+  Object.assign(value.context, {
+    session: {status: 'loading-profile', user: {uid: 'fictional-user'}},
+    startupBannerActive: true, navigator: {onLine: false},
+    preloadStartupReports() {preloads++;}, preloadOperationalDataWhenIdle() {}
+  });
+  value.context.sessionChanged(state());
+  assert.equal(preloads, 1);
+  value.context.sessionChanged(state());
+  value.context.sessionChanged(state({...profile, displayName: 'Nome atualizado'}));
+  assert.equal(preloads, 1);
+  assert.equal(value.replacements(), 1);
 });

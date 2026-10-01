@@ -2,7 +2,7 @@
 
 ## Fonte e entrega
 
-Base confirmada por Git e pela API GitHub: `main` em `282272adc22b328d853d46630687cc06897d2cb3`. O ZIP de Downloads contém 146 arquivos iguais ao commit `1a2fb621c921ebeb3b8f0c776c2256c0f4f2c634`, sem diferenças de conteúdo. A base atual tem 147 arquivos e cinco diferenças em relação ao ZIP; o código atual prevaleceu.
+Base desta conciliação confirmada por Git e pela API GitHub: `main` v133 em `65944c5eda6b109eeb8e11519a067965b5ec811b`, com os 27 commits posteriores à base anterior `282272adc22b328d853d46630687cc06897d2cb3` preservados. O ZIP de Downloads contém 146 arquivos iguais ao commit histórico `1a2fb621c921ebeb3b8f0c776c2256c0f4f2c634`, sem diferenças de conteúdo; ele permanece apenas como referência histórica.
 
 O trabalho foi feito em checkout isolado. A cópia original permanece em `c7797f3`, com suas três modificações em `docs/LABEL_AI_WORKER.md`, `src/firebase-app.js` e `src/styles.css` preservadas.
 
@@ -10,9 +10,17 @@ PRs para revisão: [confiabilidade e desempenho #1](https://github.com/anestesia
 
 ## Correções, na ordem solicitada
 
+### Conciliação com as atualizações da v133
+
+Foram mantidos o banner inicial intencional de quatro segundos e seus três textos, os relatórios/cartões novos, edição somente diária, confirmação do registro manual, mudanças de Gestão, estilos dos modais e atraso a R$200 por múltiplo. Os testes novos da v133 continuam no comando de domínio; fixtures de Windows normalizam CRLF.
+
+A revisão corrigiu a primeira transição `loading-profile` → `signed-in` com o mesmo UID, que antes não iniciava as pré-consultas. As respostas iniciais têm chave de escopo efetivo, e os relatórios de Eventos/Etiquetas conferem sessão, permissão, período, diálogo, rota e identidade do alvo antes e depois de imports/leituras. Alteração apenas do nome não invalida o preenchimento. Gravações diretas limpam o cache inicial antes da escrita autorizada, evitando mostrar um relatório anterior ao registro como sincronizado. A edição de um valor histórico preserva o valor gravado; somente mudar tipo/múltiplo/turno recalcula pela regra atual, sem migração de registros existentes.
+
+O cache candidato avança de V133 para V134. A atualização local com aba antiga e a fila pendente foi validada usando os builds reais dessas versões; nenhuma publicação de produção foi feita.
+
 1. **Checklist:** cada consulta captura geração, data, rota, UID, período e abertura do relatório. Resultados e erros antigos não substituem o relatório atual. Preparação e transação de assinatura repetem a validação, inclusive após a leitura da transação. O banner da estação também possui geração própria: salvar, fechar ou reutilizar o banner não permite que callbacks antigos fechem outro banner ou reabram outro dia.
 2. **Sessão:** snapshots repetidos atualizam a identidade sem reconstruir formulários. Eventos e Etiquetas mantêm preenchimento, foto, foco e diálogo. A entrega de uma revogação precede a escrita opcional em IndexedDB; cache lento ou com falha não adia o bloqueio. Mudança de sigla do usuário comum exige nova consulta do escopo pessoal. Guardas de escrita revalidam sessão/permissão após imports e leituras e antes de persistir ou enfileirar. As Rules continuam sendo a autoridade no servidor.
-3. **Offline:** o SW V107 deriva o grafo necessário do manifesto emitido pelo Vite. Auth, projeções Lite, dados operacionais, controlador de câmera e decoder QR ZXing entram no precache. O decoder é necessário em aparelhos sem `BarcodeDetector`, incluindo Safari. Quando emitido pelo build com IA configurada, o pequeno SDK App Check também entra: a inicialização Firestore existente aguarda esse módulo, inclusive no fluxo de perfil/cache local. A sequência de proteção foi preservada. PDF, IA e assinatura ficam fora. Instalação incompleta falha. O shell anterior permanece para imports de abas antigas, e a navegação offline seguinte prefere o shell atual. Reload offline recupera JS/CSS com hash e o decoder essencial; imagens pedidas com `reload` continuam exigindo o servidor, evitando confirmar uma imagem antiga como atualizada. A galeria preparada tem prioridade sobre cópias da mesma URL em shells anteriores.
+3. **Offline:** o SW V134 deriva o grafo necessário do manifesto emitido pelo Vite. Auth, projeções Lite, dados operacionais, controlador de câmera e decoder QR ZXing entram no precache. O decoder é necessário em aparelhos sem `BarcodeDetector`, incluindo Safari. Quando emitido pelo build com IA configurada, o pequeno SDK App Check também entra: a inicialização Firestore existente aguarda esse módulo, inclusive no fluxo de perfil/cache local. A sequência de proteção foi preservada. PDF, IA e assinatura ficam fora. Instalação incompleta falha. O shell anterior permanece para imports de abas antigas, e a navegação offline seguinte prefere o shell atual. Reload offline recupera JS/CSS com hash e o decoder essencial; imagens pedidas com `reload` continuam exigindo o servidor, evitando confirmar uma imagem antiga como atualizada. A galeria preparada tem prioridade sobre cópias da mesma URL em shells anteriores.
 4. **Consultas:** pedidos idênticos em andamento são compartilhados por UID, período, estações e limite. Depois de ler o intervalo atual, só se busca histórico anterior para estações sem resposta no primeiro dia. A sentinela de truncamento mensal não é usada como resposta retida. Vigência, herança do último NÃO, autorização, assinatura e aviso de histórico incompleto permanecem.
 5. **Desempenho móvel:** abertura, primeira interação, troca para Etiquetas e alternativas de galeria foram medidas. Não houve ganho consistente que justificasse acrescentar pré-carregamento. As alternativas de lazy loading da galeria reduziram bytes ocultos, mas aumentaram a espera pela primeira imagem; foram descartadas. As imagens originais e a legibilidade foram preservadas.
 
@@ -33,7 +41,7 @@ Fixture local com 30 estações fictícias, cinco amostras e atraso de 90 ms por
 
 ## Build e experiências no navegador
 
-O build final foi executado com as mesmas variáveis públicas do workflow atual. O grafo estático do shell tem dois arquivos/456.764 bytes; o grafo offline selecionado tem 13 arquivos/1.351.697 bytes. Incluindo HTML, manifestos, ícones, imagens fixas e o decoder QR, o precache integral tem **23 arquivos/2.278.834 bytes**. São tamanhos descompactados dos arquivos, sem contabilizar cabeçalhos; não são bytes transferidos com gzip. O aviso existente do chunk Firestore de 550,77 kB permanece.
+O build final foi executado com as mesmas variáveis públicas do workflow atual. O grafo estático do shell tem dois arquivos/488.528 bytes; o grafo offline selecionado tem 13 arquivos/1.383.461 bytes. Incluindo HTML, manifestos, ícones, imagens fixas e o decoder QR, o precache integral tem **23 arquivos/2.311.094 bytes**. São tamanhos descompactados dos arquivos, sem contabilizar cabeçalhos; não são bytes transferidos com gzip. O aviso existente do chunk Firestore de 550,77 kB permanece.
 
 Uma fixture local serviu os builds reais anterior e atual em Edge/Chromium, com viewport 390×844, toque móvel, CPU 4×, latência de 150 ms e download de 1,6 Mbps. Cada medição de tempo usa três amostras. O perfil, a escala e a fila são fictícios; requisições externas são abortadas. Os tempos e as amostras estão em [benchmarks/pwa-2026-09-30.json](benchmarks/pwa-2026-09-30.json). Isso mede o shell com perfil local; não mede login Google, latência real do Firestore, câmera ou IA.
 
@@ -47,7 +55,7 @@ Na galeria, a versão atual solicita 589.219 bytes mesmo oculta, e a primeira im
 
 ## Testes e limites
 
-- Domínio: **127/127**, com regressões de A→B chegando fora de ordem, sessão/cache lentos, revogação, preservação do shell, banners, assinatura, consultas/herança e SW. O SDK App Check também foi coberto com chave relativa ou gerada no manifesto, sem ampliar a seleção a outros módulos.
+- Domínio: **227/227**, com regressões de A→B chegando fora de ordem, sessão/cache lentos, revogação, preservação do shell, banners, assinatura, consultas/herança e SW. O SDK App Check também foi coberto com chave relativa ou gerada no manifesto, sem ampliar a seleção a outros módulos.
 - Firestore Rules: **40/40** no emulador.
 - Worker: **12/12**, com respostas de serviços simuladas.
 - Functions: **19/19** nos emuladores Auth/Firestore/Functions, Node 22 e Java 21. O primeiro teste local em Node 24 excedeu o tempo de descoberta; o teste final usou Node 22, correspondente ao CI, com descoberta de 60 s. Isso não implantou Functions.
@@ -66,7 +74,7 @@ Auditoria somente de leitura em 30/09: Worker `/health` HTTP 200, tráfego de 10
 1. Revisar os dois PRs, principalmente a troca entre menos leituras e uma etapa adicional de rede no relatório parcial/vazio.
 2. Aprovar e integrar os PRs, resolvendo eventuais alterações posteriores em `main`; repetir CI/build do resultado integrado.
 3. Executar o workflow **Build and deploy SAHMT V2** para Pages. O workflow de PR testa e constrói, com deploy ignorado.
-4. Em uma conta e dados fictícios, verificar abertura online/offline, A→B, revogação, assinatura, Eventos/Etiquetas preservados, imagem corrigida e atualização com aba antiga em Android e iPhone. Confirmar que o SW é V107 e que a fila pendente foi preservada.
+4. Em uma conta e dados fictícios, verificar abertura online/offline, A→B, revogação, assinatura, Eventos/Etiquetas preservados, imagem corrigida e atualização com aba antiga em Android e iPhone. Confirmar que o SW é V134 e que a fila pendente foi preservada.
 5. Monitorar erros e leituras, sem ativar gatilhos, IA adicional, Functions, faturamento ou integrações como consequência deste release.
 
 Em caso de regressão, preparar um commit de reversão com nova versão de SW; preservar IndexedDB e ações pendentes. Não orientar limpeza dos dados do aparelho como procedimento de atualização.

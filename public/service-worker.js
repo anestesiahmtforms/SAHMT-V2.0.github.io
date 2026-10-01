@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v107';
+const CACHE = 'sahmt-v2-shell-v134';
 // Cached Auth must initialize before a saved profile can open the PWA. Home's
 // cached projections use data-lite, and Labels binds its manual dialog after
 // loading the camera controller even when no camera/AI action is requested.
