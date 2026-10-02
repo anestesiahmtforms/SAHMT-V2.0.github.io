@@ -1828,20 +1828,18 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .checklist-report-footer button{min-height:34px;padding:4px 8px}
 }
 
-/* Checklist: a moldura acompanha a imagem e os dois relatórios têm linhas próprias. */
+/* Checklist: imagem proporcional e botões distribuídos até o rodapé do contêiner. */
 .app-shell--checklist .identity-card{margin-block:0}
 .app-shell--checklist .module-view--checklist{
  --checklist-menu-report-gap:6px;
  --checklist-menu-reports:calc(2*var(--checklist-menu-report) + var(--checklist-menu-report-gap));
- flex:0 1 auto;
- height:min(100%,calc((90vw - 40px)*.6666667 + 28px + var(--checklist-menu-qr) + var(--checklist-menu-reports) + var(--checklist-menu-home) + 3*var(--checklist-menu-gap) + 2*var(--checklist-menu-padding)));
- max-height:100%;
- grid-template-rows:minmax(0,1fr) var(--checklist-menu-qr) var(--checklist-menu-reports) var(--checklist-menu-home);
- align-content:start;gap:var(--checklist-menu-gap);padding:var(--checklist-menu-padding)
+ --checklist-menu-image:calc((90vw - 2*var(--checklist-menu-padding) - 16px)*.6666667 + 28px);
+ flex:1 1 0;height:100%;max-height:100%;
+ grid-template-rows:minmax(0,var(--checklist-menu-image)) minmax(var(--checklist-menu-qr),1fr) minmax(var(--checklist-menu-reports),2fr) minmax(var(--checklist-menu-home),1fr);
+ align-content:stretch;gap:var(--checklist-menu-gap);padding:var(--checklist-menu-padding)
 }
 .app-shell--checklist .module-view--checklist:not(:has(>.checklist-qr-launcher)){
- height:min(100%,calc((90vw - 40px)*.6666667 + 28px + var(--checklist-menu-reports) + var(--checklist-menu-home) + 2*var(--checklist-menu-gap) + 2*var(--checklist-menu-padding)));
- grid-template-rows:minmax(0,1fr) var(--checklist-menu-reports) var(--checklist-menu-home)
+ grid-template-rows:minmax(0,var(--checklist-menu-image)) minmax(var(--checklist-menu-reports),2fr) minmax(var(--checklist-menu-home),1fr)
 }
 .app-shell--checklist .module-view--checklist>.checklist-visual-frame{place-items:start center}
 .app-shell--checklist .checklist-visual-frame>.checklist-visual{
