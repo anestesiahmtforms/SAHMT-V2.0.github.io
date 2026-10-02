@@ -244,3 +244,28 @@ test('integração main: render ao sair de Etiquetas elimina dados transitórios
   vm.runInContext(source.slice(start,end)+'\n}',h.ctx);await h.ctx.render();
   assert.equal(h.ctx.testReports.reportPayloads.has('labels'),false);assert.equal(h.ctx.testReports.reportPaintKeys.has('labels'),false);assert.equal(h.ctx.testReports.reportStates.has('labels'),false);assert.equal(h.ctx.loadedLabelRecords.length,0);h.close();
 });
+
+
+test('Checklist: indicador fica na faixa da data sem ocupar a linha expansível dos arsenais',()=>{
+  const shell=source.slice(source.indexOf('function shellView()'),source.indexOf('async function loadHome()')).replaceAll('import.meta.env.BASE_URL',"'/SAHMT-V2.0.github.io/'");
+  for(const mode of ['daily','monthly'])for(const write of [true,false]) {
+    const context=vm.createContext({currentRoute:()=> 'checklist',session:{profile:{displayName:'Pessoa fictícia'},user:{uid:'fixture',displayName:'Pessoa fictícia'}},labels:{checklist:['Checklist','']},can:permission=>permission!=='checklistWrite'||write,todayInputValue:()=> '2026-10-02',escapeHtml:String,checklistReportMode:mode,notice:''});
+    vm.runInContext(shell,context);const html=context.shellView();
+    const dialog=html.slice(html.indexOf('<dialog class="checklist-report-dialog"'),html.indexOf('</dialog>',html.indexOf('<dialog class="checklist-report-dialog"'))+9);
+    const root={children:[]},stack=[root],voidTags=new Set(['input','img','br','hr','meta','link']);let indicator;
+    for(const match of dialog.matchAll(/<(\/?)([a-z][a-z0-9-]*)([^>]*)>/gi)) {
+      const [,close,tag,attrs]=match;
+      if(close){stack.pop();continue;}
+      const node={tag,attrs,children:[],parent:stack.at(-1)};node.parent.children.push(node);
+      if(attrs.includes('id="checklist-report-sync"'))indicator=node;
+      if(!voidTags.has(tag)&&!attrs.endsWith('/'))stack.push(node);
+    }
+    assert.deepEqual(root.children[0].children.map(node=>node.tag),['header','div','div','footer']);
+    assert.match(indicator.parent.attrs,/class="checklist-report-periods"/);
+    assert.doesNotMatch(indicator.parent.attrs,/\bhidden\b/);
+    const direct=root.children[0].children;
+    assert.match(direct[2].attrs,/id="module-content"/);
+    assert.equal((html.match(/data-checklist-report-launch="/g)||[]).length,2);
+    assert.equal(html.includes('id="checklist-scan-qr"'),write);
+  }
+});
