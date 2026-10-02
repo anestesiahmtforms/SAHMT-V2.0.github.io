@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData} from '../src/checklist-qr.js';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findStationForQr} from '../src/checklist-qr.js';
 
 test('QR diferente, leitura ambígua, três perdas e intervalo vencido reiniciam a confirmação', () => {
   let time = 0;
@@ -100,4 +102,83 @@ test('captura coincide com a janela de vídeo deslocada para o topo', () => {
   const rect = {left: 90, top: 108, width: 200, height: 200};
   assert.deepEqual(checklistQrCrop({videoWidth: 1920, videoHeight: 1080, videoRect: rect, focusRect: rect}),
     {x: 420, y: 0, width: 1080, height: 1080});
+});
+
+
+// Exercise the browser bundle shipped to the PWA, including its real binarizers.
+const browserContext = vm.createContext({Uint8ClampedArray, Uint8Array, Int32Array, TextEncoder, TextDecoder, BigInt});
+browserContext.window = browserContext;
+vm.runInContext(readFileSync(new URL('../public/vendor/zxing.min.js', import.meta.url), 'utf8'), browserContext);
+const realZXing = browserContext.ZXing;
+const syntheticQrValue = 'SAHMT:CHK:TESTE-0001';
+
+function syntheticQrImage({value = syntheticQrValue, scale = 10, dark = 0, light = 255, dotted = false, rotated = false} = {}) {
+  const matrix = new realZXing.QRCodeWriter().encode(value, realZXing.BarcodeFormat.QR_CODE, 1, 1, new Map());
+  const modules = matrix.getWidth();
+  const width = modules * scale;
+  const data = new Uint8ClampedArray(width * width * 4);
+  for (let y = 0; y < width; y++) {
+    for (let x = 0; x < width; x++) {
+      const imageX = rotated ? y : x;
+      const imageY = rotated ? width - 1 - x : y;
+      const moduleX = Math.floor(imageX / scale);
+      const moduleY = Math.floor(imageY / scale);
+      // Printed dotted labels retain solid finder patterns in their three corners.
+      const finder = (moduleX < 11 && moduleY < 11)
+        || (moduleX >= modules - 11 && moduleY < 11)
+        || (moduleX < 11 && moduleY >= modules - 11);
+      const dot = Math.hypot(imageX % scale + 0.5 - scale / 2, imageY % scale + 0.5 - scale / 2) <= scale * 0.45;
+      const black = matrix.get(moduleX, moduleY) && (!dotted || finder || dot);
+      const pixel = (y * width + x) * 4;
+      data[pixel] = data[pixel + 1] = data[pixel + 2] = black ? dark : light;
+      data[pixel + 3] = 255;
+    }
+  }
+  return {width, height: width, data};
+}
+
+test('ZXing distribuído lê QR fictício quadrado e pontilhado com o decodificador real', () => {
+  assert.equal(decodeQrImageData(syntheticQrImage(), realZXing), syntheticQrValue);
+  assert.equal(decodeQrImageData(syntheticQrImage({dotted: true}), realZXing), syntheticQrValue);
+});
+
+test('ZXing real lê QR pontilhado apagado e rotacionado', () => {
+  const faded = {dotted: true, dark: 120, light: 140};
+  assert.equal(decodeQrImageData(syntheticQrImage(faded), realZXing), syntheticQrValue);
+  assert.equal(decodeQrImageData(syntheticQrImage({...faded, rotated: true}), realZXing), syntheticQrValue);
+});
+
+test('QR que contém link é retornado como identificador da estação fictícia', () => {
+  const value = 'https://example.invalid/arsenal/qr-ficticio';
+  const station = {id: 'arsenal-ficticio', qrCode: value, active: true};
+  const decoded = decodeQrImageData(syntheticQrImage({value}), realZXing);
+  assert.equal(decoded, value);
+  assert.equal(findStationForQr([station], decoded, '2026-10-01'), station);
+});
+
+test('ZXing real recusa imagem uniforme e QR recortado sem os padrões completos', () => {
+  const uniform = {width: 160, height: 160, data: new Uint8ClampedArray(160 * 160 * 4).fill(255)};
+  assert.equal(decodeQrImageData(uniform, realZXing), null);
+  const original = syntheticQrImage();
+  const width = Math.floor(original.width / 2);
+  const data = new Uint8ClampedArray(width * original.height * 4);
+  for (let y = 0; y < original.height; y++) {
+    data.set(original.data.subarray(y * original.width * 4, (y * original.width + width) * 4), y * width * 4);
+  }
+  assert.equal(decodeQrImageData({width, height: original.height, data}, realZXing), null);
+});
+
+test('confirmação configurada para câmera lenta aceita duas capturas iguais após dois segundos', () => {
+  let time = 0;
+  const slow = createChecklistQrConfirmation({now: () => time, maxGapMs: 5000});
+  const normal = createChecklistQrConfirmation({now: () => time});
+  assert.equal(slow(syntheticQrValue), null);
+  assert.equal(normal(syntheticQrValue), null);
+  time = 2000;
+  assert.equal(slow(syntheticQrValue), syntheticQrValue);
+  assert.equal(normal(syntheticQrValue), null);
+  time = 4000;
+  assert.equal(normal(syntheticQrValue), null);
+  time += 5001;
+  assert.equal(slow(syntheticQrValue), null);
 });

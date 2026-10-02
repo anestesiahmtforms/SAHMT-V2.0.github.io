@@ -203,20 +203,30 @@ function loadReportPdfModule() {
 }
 
 function loadQrDecoder() {
-  if (window.ZXing) return Promise.resolve();
+  const available = () => ['BinaryBitmap', 'HybridBinarizer', 'RGBLuminanceSource', 'QRCodeReader'].every((name) => typeof window.ZXing?.[name] === 'function');
+  if (available()) return Promise.resolve();
   if (qrDecoderPromise) return qrDecoderPromise;
-  qrDecoderPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = `${import.meta.env.BASE_URL}vendor/zxing.min.js`;
-    script.onload = resolve;
-    script.onerror = () => {
-      qrDecoderPromise = null;
+  const script = document.createElement('script');
+  script.src = `${import.meta.env.BASE_URL}vendor/zxing.min.js`;
+  let timeout;
+  const promise = new Promise((resolve, reject) => {
+    const fail = () => {
+      clearTimeout(timeout);
+      if (qrDecoderPromise === promise) qrDecoderPromise = null;
       script.remove();
-      reject(new Error('Não foi possível carregar o leitor QR neste aparelho.'));
+      reject(new Error('Não foi possível carregar o leitor QR. Feche e abra o leitor para tentar novamente.'));
     };
-    document.head.append(script);
+    script.onload = () => {
+      if (!available()) { fail(); return; }
+      clearTimeout(timeout);
+      resolve();
+    };
+    script.onerror = fail;
+    timeout = window.setTimeout(fail, 10000);
   });
-  return qrDecoderPromise;
+  qrDecoderPromise = promise;
+  document.head.append(script);
+  return promise;
 }
 
 function loginView() {
@@ -441,7 +451,7 @@ function shellView() {
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
-    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><p id="checklist-qr-status" role="status" hidden></p><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
+    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">SAHMT · Hospital e equipe</footer>
@@ -882,9 +892,12 @@ async function loadModule(route) {
         const writableStations = items.filter((station) => stationIsInDateRange(station, day) && (can('checklistManage') || stationIsValidOn(station, day)));
         if (writableStations.length) void openChecklistQrScanner(writableStations, day);
         else {
+          stopChecklistQrScanner();
           const status = document.querySelector('#checklist-qr-status');
-          if (status) status.textContent = 'Nenhuma estação disponível para leitura nesta data.';
+          if (status) { status.hidden = false; status.textContent = 'Nenhuma estação disponível para leitura nesta data.'; }
           const dialog = document.querySelector('#checklist-qr-dialog');
+          const close = document.querySelector('#checklist-qr-close');
+          if (close) close.onclick = () => dialog?.close();
           dialog?.showModal();
         }
       };
@@ -1616,6 +1629,7 @@ async function openChecklistQrScanner(stations, day) {
   const focus = document.querySelector('#checklist-qr-focus');
   if (!dialog || !video || !status || !focus) return;
   stopChecklistQrScanner();
+  const scannerUid = session.user?.uid;
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d', {willReadFrequently: true});
   let stream = null;
@@ -1624,38 +1638,51 @@ async function openChecklistQrScanner(stations, day) {
   let running = true;
   let detector = null;
   const cleanup = () => {
+    if (!running) return;
     running = false;
     cancelAnimationFrame(frame);
     clearTimeout(timer);
+    dialog.removeEventListener('close', handleClose);
     stream?.getTracks().forEach((track) => track.stop());
+    if (stream && video.srcObject === stream) {
+      video.pause();
+      video.srcObject = null;
+      video.hidden = true;
+      focus.hidden = true;
+    }
     stream = null;
-    video.pause();
-    video.srcObject = null;
-    video.hidden = true;
-    focus.hidden = true;
+    if (stopChecklistQrScan === cleanup) stopChecklistQrScan = null;
+  };
+  const handleClose = () => {
+    // close is queued: an earlier close must not stop a reopened dialog.
+    if (!dialog.open && stopChecklistQrScan === cleanup) cleanup();
   };
   stopChecklistQrScan = cleanup;
-  dialog.addEventListener('close', () => stopChecklistQrScanner(false), {once: true});
-  document.querySelector('#checklist-qr-close').onclick = () => dialog.close();
-  const resolveChecklistQr = (raw) => {
+  dialog.checklistQrScannerToken = cleanup;
+  const scannerCurrent = () => running && dialog.open && stopChecklistQrScan === cleanup &&
+    document.querySelector('#checklist-qr-dialog') === dialog && currentRoute() === 'checklist' &&
+    Boolean(scannerUid) && session.user?.uid === scannerUid && can('checklistWrite') && day === todayInputValue();
+  dialog.addEventListener('close', handleClose);
+  document.querySelector('#checklist-qr-close').onclick = () => {
+    if (document.querySelector('#checklist-qr-dialog') !== dialog || dialog.checklistQrScannerToken !== cleanup || (stopChecklistQrScan && stopChecklistQrScan !== cleanup)) return;
     cleanup();
-    stopChecklistQrScan = null;
     if (dialog.open) dialog.close();
+  };
+  const resolveChecklistQr = (raw) => {
+    if (!scannerCurrent()) return;
     const station = findStationForQr(stations, raw, day, {includeInactive: can('checklistManage')});
-    if (!station) {
-      status.textContent = 'Esse código não corresponde a uma estação ativa do catálogo V2.';
-      dialog.showModal();
-      return;
-    }
+    if (!station) { status.textContent = 'QR lido, mas não cadastrado no catálogo desta data.'; return; }
+    cleanup();
+    if (dialog.open) dialog.close();
     revealChecklistStation(station, day, stations);
   };
-  const confirmQr = createChecklistQrConfirmation();
-  const captureGuide = () => {
-    if (!context || !video.videoWidth || !video.videoHeight) return false;
+  const confirmQr = createChecklistQrConfirmation({maxGapMs: 5000});
+  const captureGuide = (maxSize = 640) => {
+    if (!context || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
     const crop = checklistQrCrop({videoWidth: video.videoWidth, videoHeight: video.videoHeight,
       videoRect: video.getBoundingClientRect(), focusRect: focus.getBoundingClientRect()});
     if (!crop) return false;
-    const scale = Math.min(1, 1280 / Math.max(crop.width, crop.height));
+    const scale = Math.min(1, maxSize / Math.max(crop.width, crop.height));
     canvas.width = Math.max(1, Math.round(crop.width * scale));
     canvas.height = Math.max(1, Math.round(crop.height * scale));
     context.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
@@ -1663,39 +1690,50 @@ async function openChecklistQrScanner(stations, day) {
   };
   const decodeWithFallback = () => window.ZXing && context
     ? decodeQrImageData(context.getImageData(0, 0, canvas.width, canvas.height), window.ZXing) : null;
+  status.hidden = false;
+  status.textContent = 'Solicitando acesso à câmera…';
   dialog.showModal();
   document.querySelector('#checklist-qr-close')?.focus({preventScroll: true});
+  if (!scannerCurrent()) { cleanup(); return; }
   if (!navigator.mediaDevices?.getUserMedia) {
-    status.textContent = 'A câmera exige HTTPS e permissão do navegador. Digite o código do QR para localizar a estação.';
+    status.textContent = 'A câmera exige HTTPS e permissão do navegador. Abra o app no Safari ou Chrome e autorize a câmera.';
+    cleanup();
     return;
   }
-  status.textContent = 'Solicitando acesso à câmera…';
   // Load the Safari decoder while the camera permission/stream is opening.
   const decoderReady = loadQrDecoder().then(() => null, (error) => error);
   try {
     stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}, width: {ideal: 1920}, height: {ideal: 1080}}, audio: false});
-    if (!running) { stream.getTracks().forEach((track) => track.stop()); return; }
+    if (!scannerCurrent()) { stream.getTracks().forEach((track) => track.stop()); stream = null; return; }
     video.srcObject = stream;
+    video.muted = true;
+    video.playsInline = true;
     video.hidden = false;
     focus.hidden = false;
     await video.play();
-    const cameraTrack = stream.getVideoTracks()[0];
-    const capabilities = cameraTrack?.getCapabilities?.() || {};
-    if (capabilities.focusMode?.includes('continuous')) {
-      await cameraTrack.applyConstraints({advanced: [{focusMode: 'continuous'}]}).catch(() => {});
-    }
+    if (!scannerCurrent()) { cleanup(); return; }
+    // Autofocus is optional; device capability errors must not disable decoding.
+    try {
+      const cameraTrack = stream.getVideoTracks()[0];
+      const capabilities = cameraTrack?.getCapabilities?.() || {};
+      if (capabilities.focusMode?.includes('continuous') && typeof cameraTrack.applyConstraints === 'function') {
+        void Promise.resolve(cameraTrack.applyConstraints({advanced: [{focusMode: 'continuous'}]})).catch(() => {});
+      }
+    } catch { /* Keep reading with the camera's supported settings. */ }
+    if (!scannerCurrent()) { cleanup(); return; }
     if (typeof window.BarcodeDetector === 'function') {
       try { detector = new window.BarcodeDetector({formats: ['qr_code']}); } catch { detector = null; }
     }
     if (!detector) {
       const decoderError = await decoderReady;
+      if (!scannerCurrent()) { cleanup(); return; }
       if (decoderError) throw decoderError;
     }
-    status.textContent = 'Coloque um único QR na moldura. Aproxime devagar até ficar nítido, deixando margem branca.';
+    status.textContent = 'Centralize o QR e mantenha a câmera estável.';
     let detecting = false;
-    let emptyNativeFrames = 0;
     const scan = async () => {
-      if (!running || detecting) return;
+      if (!scannerCurrent()) { cleanup(); return; }
+      if (detecting) return;
       detecting = true;
       let raw = null;
       let ambiguous = false;
@@ -1704,38 +1742,43 @@ async function openChecklistQrScanner(stations, day) {
         if (detector) {
           try {
             const results = await detector.detect(canvas);
+            if (!scannerCurrent()) { cleanup(); return; }
             const values = [...new Set(results.map(item => item.rawValue).filter(Boolean))];
             ambiguous = values.length > 1;
             raw = values.length === 1 ? values[0] : null;
-            if (!raw && ++emptyNativeFrames >= 12 && !window.ZXing) void loadQrDecoder().catch(() => {});
           } catch {
             detector = null;
-            await loadQrDecoder();
+            const decoderError = await decoderReady;
+            if (!scannerCurrent()) { cleanup(); return; }
+            if (decoderError) throw decoderError;
           }
         }
-        if (!raw && !detector && !window.ZXing) await loadQrDecoder();
-        if (!raw && !ambiguous && window.ZXing) raw = decodeWithFallback();
+        if (!raw && !ambiguous && window.ZXing) {
+          raw = decodeWithFallback();
+          // Keep a larger fallback for small or damaged codes without taxing every frame.
+          if (!raw && captureGuide(1280)) raw = decodeWithFallback();
+        }
       } catch (error) {
-        status.textContent = error.message || 'Não foi possível ler a imagem da câmera.';
+        if (scannerCurrent()) status.textContent = error.message || 'Não foi possível ler a imagem da câmera.';
       } finally {
         detecting = false;
       }
-      if (!running) return;
+      if (!scannerCurrent()) { cleanup(); return; }
       const known = raw && findStationForQr(stations, raw, day, {includeInactive: can('checklistManage')});
       const confirmed = confirmQr(known ? raw : null, {reset: ambiguous || Boolean(raw && !known)});
       if (confirmed) { resolveChecklistQr(confirmed); return; }
       if (ambiguous) status.textContent = 'Há mais de um QR na moldura. Centralize somente o QR da estação desejada.';
-      else if (raw && !known) status.textContent = 'QR não encontrado no catálogo desta data. Aponte para o QR do arsenal.';
+      else if (raw && !known) status.textContent = 'QR lido, mas não cadastrado no catálogo desta data.';
       else if (known) status.textContent = 'QR reconhecido. Mantenha a câmera estável para confirmar.';
       timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 100);
     };
     frame = requestAnimationFrame(scan);
   } catch (error) {
+    if (!scannerCurrent()) { cleanup(); return; }
     cleanup();
-    stopChecklistQrScan = null;
     status.textContent = error.name === 'NotAllowedError'
-      ? 'A permissão da câmera foi negada. Digite o código do QR para localizar a estação.'
-      : `Não foi possível abrir a câmera. ${error.message || ''}`;
+      ? 'Permissão da câmera negada. Autorize a câmera para este app nos ajustes do navegador.'
+      : `Não foi possível iniciar o leitor. ${error.message || ''}`;
   }
 }
 
