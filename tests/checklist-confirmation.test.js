@@ -70,7 +70,11 @@ test('rodapé contém somente um botão com título e nome, e revisão fica em m
  assert.match(footer,/<span>Confirmação do Checklist<\/span><small id="checklist-responsible-name">/);
  assert.doesNotMatch(footer,/checklist-signature-status|checklist-signature-preview|Revisar e assinar|Assinatura do responsável/);
  assert.match(source,/confirmationDialog\.showModal\(\)/);
- assert.match(source,/getChecklistDayResponsible\(\{day, uid, isAdmin: can\('admin'\)\}\)/);
+ assert.match(source,/if \(scope\.isAdmin\)/);
+ assert.match(source,/watchChecklistResponsibility\(scope, acceptResponsibility/);
+ assert.match(source,/getChecklistDayResponsible\(scope\)/);
+ assert.match(source,/checklistSignatureCurrent\(scope,/);
+ assert.match(source,/checklistResponsibilityLive\?\.confirmed === true/);
 });
 
 test('relatório diário tem Voltar no final do modal, sem botão de fechar no cabeçalho', () => {

@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v160';
+const CACHE = 'sahmt-v2-shell-v161';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -37,6 +37,15 @@ self.addEventListener('install', (event) => {
       for (const imported of entry.imports || []) visitEntry(imported);
     };
     visitEntry(entryKey);
+    // Only the report/offline adapters and their static dependencies are essential.
+    // PDF, camera processing and other optional module graphs remain fetched on demand.
+    const reportEssentials = new Set([
+      'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
+      'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js'
+    ]);
+    for (const [key, entry] of Object.entries(manifest)) {
+      if (reportEssentials.has(entry.src || key)) visitEntry(key);
+    }
     await Promise.all([...assets].map(async (assetUrl) => {
       const response = await fetch(assetUrl, {cache: 'reload'});
       if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);

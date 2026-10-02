@@ -13,6 +13,9 @@ const manifest = {
     assets: ['assets/logo.svg'],
     imports: ['assets/shared.js']
   },
+  'src/checklist-report-listener.js': {src: 'src/checklist-report-listener.js', file: 'assets/checklist-listener.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
+  'src/firebase.js': {src: 'src/firebase.js', file: 'assets/firebase-full.js', imports: ['assets/shared.js']},
+  'optional-pdf': {file: 'assets/report-pdf.js', imports: []},
   'assets/shared.js': {
     file: 'assets/shared.js',
     css: ['assets/shared.css'],
@@ -25,7 +28,7 @@ function createWorker({offline = false} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
-  const names = new Set(['sahmt-v2-shell-v160', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
+  const names = new Set(['sahmt-v2-shell-v161', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
@@ -83,7 +86,7 @@ function createWorker({offline = false} = {}) {
 }
 
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v160';/);
+  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v161';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
@@ -107,7 +110,7 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v160'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v161'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
@@ -138,4 +141,17 @@ test('deixa páginas auxiliares fora do cache do shell para não substituir o HT
 
   assert.equal(intercepted, false);
   assert.equal(worker.fetched.length, 0);
+});
+
+
+test('precache report adapters from the build graph without PDF or all dynamic imports', async () => {
+  const worker = createWorker(); let install;
+  worker.handlers.get('install')({waitUntil(promise) {install = promise;}});
+  await install;
+  assert.ok(worker.entries.has('https://sahmt.example' + BASE + 'assets/checklist-listener.js'));
+  assert.ok(worker.entries.has('https://sahmt.example' + BASE + 'assets/firebase-full.js'));
+  assert.ok(!worker.entries.has('https://sahmt.example' + BASE + 'assets/report-pdf.js'));
+  let response;
+  worker.handlers.get('fetch')({request: {method: 'GET', mode: 'cors', url: 'https://sahmt.example' + BASE + 'assets/checklist-listener.js'}, respondWith(promise) {response = promise;}});
+  assert.ok(await response);
 });

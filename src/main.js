@@ -1,6 +1,9 @@
 import './styles.css';
 import {createStartupReportCache} from './startup-report-cache.js';
-import {labelReportPresentation, withLabelReportDeadline} from './label-report-state.js';
+import {createReportRuntime} from './report-runtime.js';
+import {mergeReportPendingRecords} from './report-pending.js';
+import {confirmedLiveReportRecords} from './live-report-session.js';
+import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
@@ -23,44 +26,13 @@ const app = document.querySelector('#app');
 const STARTUP_BANNER_DURATION_MS = 4000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
-const startupReportKey = (kind, uid, day, scope = '') => JSON.stringify([kind, uid, day, scope]);
 
 function preloadStartupReports(user) {
   if (!navigator.onLine || session.offline || session.status !== 'signed-in') return;
-  const uid = user.uid;
-  const day = todayInputValue();
-  const sigla = session.profile?.sigla || '';
-  const isAdmin = can('admin');
-  const canManageLabels = can('labelsManage');
-  const stillCurrent = () => session.status === 'signed-in' && session.user?.uid === uid;
-  const warm = (key, read) => startupReports.warm(key, () => withLabelReportDeadline(async () => {
-    if (!stillCurrent()) throw new Error('Sessão alterada.');
-    return read();
-  }));
-  if (featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)) {
-    warm(startupReportKey('labels', uid, day, [sigla, canManageLabels]), async () => {
-      const {listLabelRecords} = await import('./label-report-reader.js');
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      return listLabelRecords({from: day, to: day, uid, sigla, canManage: canManageLabels, pageSize: 50, cursor: null});
-    });
-  }
-  if (featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can)) {
-    warm(startupReportKey('events', uid, day, [sigla, isAdmin]), async () => {
-      const {listEventRecords} = await import('./data.js');
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      return listEventRecords({from: day, to: day, uid, sigla, isAdmin, cursor: null, includePending: true});
-    });
-  }
-  if (featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can)) {
-    warm(startupReportKey('checklist', uid, day), async () => {
-      const {listModuleRecords, listChecklistRecords} = await import('./data.js');
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      const stations = await listModuleRecords('checklist', uid);
-      if (!stillCurrent()) throw new Error('Sessão alterada.');
-      const stationIds = stations.filter(station => stationIsInDateRange(station, day)).map(station => station.id).sort();
-      const result = await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
-      return {...result, startupStationIds: stationIds};
-    });
+  for (const kind of ['events', 'labels', 'checklist']) {
+    if (!reportAllowed(kind)) continue;
+    const scope = makeReportScope(kind, {warm: true});
+    startupReports.holdLive(scope.key, liveReports.warm(kind, scope));
   }
   window.setTimeout(() => startupReports.clear(), 30000);
 }
@@ -138,6 +110,274 @@ let offlineViewMode = 'sync';
 let appFeatures = {...DEFAULT_APP_FEATURES};
 let appFeaturesUid = '';
 let appFeaturesLoadSequence = 0;
+
+// Report state is transient and belongs to a single authenticated scope.
+const reportStates = new Map();
+const reportPayloads = new Map();
+const reportPaintKeys = new Map();
+const reportWaiters = new Map();
+let checklistCatalogLive = null;
+let checklistModuleStations = [];
+let checklistResponsibilityLive = null;
+let suspendedReportScopes = [];
+const reportPermissions = {
+  events: ['eventsRead', 'eventsWrite'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
+  checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage']
+};
+function reportAllowed(kind) {
+  return session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) && reportPermissions[kind].some(can);
+}
+function reportPermissionKey(kind) {
+  return JSON.stringify([session.profile?.role, session.profile?.active, session.profile?.access,
+    String(session.profile?.sigla || '').trim().toUpperCase(), can('admin'), ...reportPermissions[kind].map(can)]);
+}
+function makeReportScope(kind, {warm = false, append = false, suppliedDay} = {}) {
+  const mode = warm ? 'daily' : kind === 'events' ? eventReportMode : kind === 'labels' ? labelReportMode : checklistReportMode;
+  const prefix = kind === 'events' ? 'event' : kind === 'labels' ? 'label' : 'checklist';
+  const day = warm ? todayInputValue() : suppliedDay || document.querySelector('#' + prefix + '-report-day')?.value || todayInputValue();
+  const month = warm ? todayInputValue().slice(0, 7) : document.querySelector(kind === 'checklist' ? '#checklist-month' : '#' + prefix + '-report-month')?.value || todayInputValue().slice(0, 7);
+  if (mode === 'daily' && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || new Date(day + 'T00:00:00Z').toISOString().slice(0, 10) !== day) ||
+      mode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Selecione uma data ou mês válido.');
+  if (kind === 'checklist' && (mode === 'daily' ? day > todayInputValue() : month > todayInputValue().slice(0, 7))) throw new Error('Não é possível consultar um Checklist futuro.');
+  const from = mode === 'daily' ? day : month + '-01';
+  const to = mode === 'daily' ? day : (() => { const [year, number] = month.split('-').map(Number); return month + '-' + String(new Date(year, number, 0).getDate()).padStart(2, '0'); })();
+  const pageSize = kind === 'labels' ? 50 : kind === 'events' ? 100 : mode === 'monthly' ? 2000 : 1000;
+  const previous = liveReports.get(kind)?.snapshot().scope;
+  const cursor = kind === 'events' ? eventReportCursor : kind === 'labels' ? labelReportCursor : reportPayloads.get('checklist')?.report?.nextCursor;
+  const permissionKey = reportPermissionKey(kind);
+  const samePeriod = previous?.uid === session.user?.uid && previous.from === from && previous.to === to && previous.mode === mode && previous.permissionKey === permissionKey;
+  const loadedLimit = append && samePeriod && cursor?.nextLimit ? cursor.nextLimit : samePeriod ? previous.loadedLimit : pageSize;
+  const targetNode = warm ? null : document.querySelector(kind === 'checklist' ? '#module-content' : '#' + prefix + '-report-results');
+  const scope = {kind, module: kind, uid: session.user.uid, mode, day: mode === 'daily' ? day : from, month: mode === 'monthly' ? month : day.slice(0, 7), from, to, pageSize, loadedLimit,
+    sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage'), canWrite: can('labelsWrite'),
+    permissionKey, authorized: reportAllowed(kind), warm, targetNode, target: targetNode,
+    sourceKeys: kind === 'checklist' ? ['catalog', 'report'] : ['report']};
+  scope.key = JSON.stringify([kind, scope.uid, mode, from, to, permissionKey, loadedLimit]);
+  return scope;
+}
+function reportScopeCurrent(scope) {
+  if (!scope || !reportAllowed(scope.kind) || session.user.uid !== scope.uid || reportPermissionKey(scope.kind) !== scope.permissionKey) return false;
+  if (scope.warm) return true;
+  if (currentRoute() !== scope.kind || !scope.targetNode?.isConnected) return false;
+  const prefix = scope.kind === 'events' ? 'event' : scope.kind === 'labels' ? 'label' : 'checklist';
+  if (!document.querySelector('#' + prefix + '-report-dialog')?.open) return false;
+  if ((scope.kind === 'events' ? eventReportMode : scope.kind === 'labels' ? labelReportMode : checklistReportMode) !== scope.mode) return false;
+  const target = document.querySelector(scope.kind === 'checklist' ? '#module-content' : '#' + prefix + '-report-results');
+  if (target !== scope.targetNode) return false;
+  return scope.mode === 'daily' ? (document.querySelector('#' + prefix + '-report-day')?.value || todayInputValue()) === scope.day
+    : (document.querySelector(scope.kind === 'checklist' ? '#checklist-month' : '#' + prefix + '-report-month')?.value || todayInputValue().slice(0, 7)) === scope.month;
+}
+function reportFingerprint(value) {
+  return JSON.stringify(value, (key, item) => ['changes', 'changedStationIds', 'changedSources', 'fromCache', 'hasPendingWrites', 'serverConfirmed', 'confirmed', 'ready'].includes(key) ? undefined : item);
+}
+const liveReports = createReportRuntime({
+  isCurrent: reportScopeCurrent,
+  isOnline: () => navigator.onLine,
+  readPending: listUnsettledOperations,
+  mergePending: (kind, payload, operations, scope) => {
+    const report = kind === 'checklist' ? payload.report : payload;
+    const records = mergeReportPendingRecords(kind === 'checklist' ? 'checklists' : kind, report.records, operations, scope);
+    const waiting = records.some(item => item.pendingSync || item.pendingFirestore || item.pendingEdit || item.syncFailed || item.syncConflict || item.hasPendingWrites);
+    const merged = {...report, records, localPending: waiting};
+    return kind === 'checklist' ? {...payload, report: merged} : merged;
+  },
+  subscribe: subscribeLiveReport,
+  onData: receiveLiveReport,
+  onState: (kind, state) => {
+    reportStates.set(kind, state);
+    updateReportSync(kind);
+    if (state.state !== 'server' && kind === 'checklist') invalidateChecklistSignature('Aguarde a conferência atual do relatório.');
+    if (state.state === 'error' && !state.scope?.warm && state.scope && reportScopeCurrent(state.scope)) {
+      if (state.error?.code === 'permission-denied') {
+        reportPayloads.delete(kind); reportPaintKeys.delete(kind);
+        state.scope.targetNode.replaceChildren();
+        if (kind === 'events') loadedEventReportRecords = [];
+        if (kind === 'labels') loadedLabelRecords = [];
+      }
+      let retry = state.scope.targetNode.querySelector('[data-report-retry]');
+      if (!retry) { retry = document.createElement('button'); retry.type = 'button'; retry.className = 'secondary-button'; retry.dataset.reportRetry = kind; retry.textContent = 'Tentar atualizar novamente'; state.scope.targetNode.append(retry); }
+      retry.onclick = () => liveReports.refresh(kind, 'retry');
+      settleReportWaiter(kind, state.scope.key, false);
+    }
+  }
+});
+function settleReportWaiter(kind, key, ok) {
+  const waiter = reportWaiters.get(kind);
+  if (!waiter || waiter.key !== key) return;
+  clearTimeout(waiter.timer); reportWaiters.delete(kind); waiter.resolve(ok);
+}
+function updateReportSync(kind) {
+  const state = reportStates.get(kind);
+  if (!state?.scope || state.scope.warm || !reportScopeCurrent(state.scope)) return;
+  const payload = state.data || reportPayloads.get(kind);
+  const report = kind === 'checklist' ? payload?.report : payload;
+  const incomplete = report?.historyIncomplete || report?.truncated || payload?.catalog?.truncated;
+  const confirmed = state.confirmed && !report?.localPending && !incomplete;
+  const text = state.state === 'offline' ? 'Sem conexão' : state.state === 'error' ? 'Falha de atualização' : report?.localPending || state.state === 'pending' ? 'Alterações pendentes de envio'
+    : confirmed ? 'Confirmado pelo servidor' : incomplete && state.ready ? 'Relatório incompleto · carregar mais' : 'Atualizando';
+  const prefix = kind === 'events' ? 'event' : kind === 'labels' ? 'label' : 'checklist';
+  const indicator = document.querySelector('#' + prefix + '-report-sync');
+  if (indicator) {
+    indicator.classList.toggle('label-report-sync--synced', confirmed);
+    indicator.classList.toggle('is-stale', !confirmed);
+    indicator.textContent = (confirmed ? '✓ ' : '') + text;
+  }
+  if (kind === 'checklist') updateChecklistResponsibilityUI();
+}
+function closeReportLive(kind, reason = 'close') {
+  liveReports.close(kind, reason);
+  reportStates.delete(kind); reportPayloads.delete(kind); reportPaintKeys.delete(kind);
+  const waiter = reportWaiters.get(kind); if (waiter) settleReportWaiter(kind, waiter.key, false);
+  if (kind === 'labels') { loadedLabelRecords = []; if (reason === 'close') document.querySelector('#label-report-results')?.replaceChildren(); }
+  if (kind === 'events') { loadedEventReportRecords = []; eventReportSourceRecords = []; if (reason === 'close') document.querySelector('#event-report-results')?.replaceChildren(); }
+  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; }
+}
+function invalidateChecklistSignature(message) {
+  const dialog = document.querySelector('#checklist-confirmation-dialog');
+  if (dialog) dialog._checklistSignatureRequest = null;
+  const confirm = document.querySelector('#checklist-signature-confirm');
+  if (confirm) confirm.disabled = true;
+  const prepare = document.querySelector('#checklist-signature-prepare');
+  if (prepare) prepare.disabled = true;
+  if (document.querySelector('#checklist-confirmation-dialog')?.open) {
+    const status = document.querySelector('#checklist-signature-status');
+    if (status) status.textContent = message;
+  }
+}
+function checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint = null) {
+  const state = liveReports.get('checklist')?.snapshot();
+  const result = reportPayloads.get('checklist')?.report;
+  return reportScopeCurrent(scope) && state?.confirmed && !result?.truncated && !result?.historyIncomplete && !result?.localPending &&
+    !reportPayloads.get('checklist')?.catalog?.truncated && checklistResponsibilityLive?.key === scope.key && checklistResponsibilityLive?.confirmed === true &&
+    checklistReportContext?.fingerprint === fingerprint && (responsibilityFingerprint === null || responsibilityFingerprint === reportFingerprint(checklistResponsibilityLive?.responsible)) && can('checklistSign') && scope.day === todayInputValue() && navigator.onLine;
+}
+function updateChecklistResponsibilityUI() {
+  const state = reportStates.get('checklist'), scope = state?.scope;
+  if (!scope || scope.warm || !reportScopeCurrent(scope) || scope.mode !== 'daily') return;
+  const responsible = checklistResponsibilityLive?.key === scope.key ? checklistResponsibilityLive : null;
+  const name = document.querySelector('#checklist-responsible-name');
+  if (name) name.textContent = responsible?.responsible?.name || (responsible?.error ? 'Responsável não confirmado' : 'Consultando responsável…');
+  const prepare = document.querySelector('#checklist-signature-prepare');
+  if (prepare) prepare.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
+}
+async function subscribeLiveReport(kind, scope, callbacks) {
+  if (kind === 'events' || kind === 'labels') {
+    const module = kind === 'events' ? await import('./report-live-data.js') : await import('./label-report-reader.js');
+    if (!callbacks.isCurrent()) return () => {};
+    const watcher = kind === 'events' ? module.watchEventRecords : module.watchLabelRecords;
+    return watcher(scope, payload => callbacks.next('report', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites}), callbacks.error);
+  }
+  const [{watchChecklistStations}, {watchChecklistReport}, {readSafeCache, writeSafeCache}] = await Promise.all([
+    import('./report-live-data.js'), import('./checklist-report-listener.js'), import('./outbox.js')
+  ]);
+  if (!callbacks.isCurrent()) return () => {};
+  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, sequence = 0, idsKey = null;
+  const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
+  const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
+  let catalogServerSeen = false, writtenCatalog = '', catalogWriteSequence = 0;
+  const current = () => !stopped && callbacks.isCurrent();
+  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); };
+  const error = failure => { if (current()) { stop(); callbacks.error(failure); } };
+  const acceptResponsibility = payload => {
+    if (!current()) return;
+    const previous = checklistResponsibilityLive;
+    checklistResponsibilityLive = {...payload, key: scope.key};
+    if (previous?.key === scope.key && reportFingerprint(previous.responsible) !== reportFingerprint(payload.responsible)) invalidateChecklistSignature('A escala ou a responsabilidade mudou. Revise o relatório antes de enviar.');
+    updateChecklistResponsibilityUI();
+  };
+  if (scope.mode === 'daily' && can('checklistSign')) {
+    if (scope.isAdmin) {
+      void import('./checklist-responsibility-listener.js').then(module => current() ? module.watchChecklistResponsibility(scope, acceptResponsibility, failure => acceptResponsibility({confirmed: false, error: failure})) : null)
+        .then(unsubscribe => { if (!current()) unsubscribe?.(); else responsibilityStop = unsubscribe; }).catch(failure => acceptResponsibility({confirmed: false, error: failure}));
+    } else {
+      void import('./checklist-responsibility-reader.js').then(module => current() ? module.getChecklistDayResponsible(scope) : null)
+        .then(responsible => { if (responsible) acceptResponsibility({responsible, confirmed: true}); }).catch(failure => acceptResponsibility({confirmed: false, error: failure}));
+    }
+  }
+  if (!current()) return stop;
+  try {
+    catalogStop = await watchChecklistStations(payload => {
+      if (!current()) return;
+      const serverConfirmed = payload.fromCache === false && payload.hasPendingWrites === false;
+      if (serverConfirmed) catalogServerSeen = true;
+      if (!catalogServerSeen && initialCatalog.length) {
+        const merged = new Map(initialCatalog.map(station => [station.id, {...station}]));
+        for (const station of payload.records) merged.set(station.id, station);
+        payload = {...payload, records: [...merged.values()].sort((left, right) => Number(left.order || 0) - Number(right.order || 0)), fromCache: true, serverConfirmed: false};
+      }
+      if (serverConfirmed && !payload.truncated) {
+        const fingerprint = JSON.stringify(payload.records);
+        if (fingerprint !== writtenCatalog) {
+          writtenCatalog = fingerprint; const ownWrite = ++catalogWriteSequence;
+          void Promise.resolve().then(() => current() && ownWrite === catalogWriteSequence ? writeSafeCache(scope.uid, 'stations', 'all', payload.records) : null).catch(() => {});
+        }
+      }
+      checklistCatalogLive = {...payload, uid: scope.uid};
+      const stationIds = payload.records.filter(station => scope.mode === 'monthly' || stationIsInDateRange(station, scope.day)).map(station => station.id).sort();
+      const key = JSON.stringify(stationIds);
+      callbacks.next('catalog', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites});
+      if (key === idsKey) return;
+      idsKey = key;
+      const ownSequence = ++sequence; reportStop?.(); reportStop = null;
+      callbacks.next('report', {data: null, complete: false, fromCache: true, hasPendingWrites: false});
+      void readSafeCache(scope.uid, 'checklists', scope.mode === 'daily' ? scope.day : 'month:' + scope.month).catch(() => null).then(cached => {
+        if (!current() || sequence !== ownSequence) return null;
+        const value = cached?.data || cached?.value || cached;
+        const initial = value && JSON.stringify(value.stationIds || []) === key ? value : null;
+        return watchChecklistReport({...scope, day: scope.mode === 'daily' ? scope.day : null, month: scope.mode === 'monthly' ? scope.month : null, stationIds, initial}, report => {
+          if (!current() || sequence !== ownSequence) return;
+          callbacks.next('report', {data: report, complete: true, fromCache: report.fromCache || !report.ready, hasPendingWrites: report.hasPendingWrites});
+        }, error);
+      }).then(unsubscribe => { if (!current() || sequence !== ownSequence) unsubscribe?.(); else reportStop = unsubscribe; }).catch(error);
+    }, error);
+    if (!current()) catalogStop?.();
+    return stop;
+  } catch (failure) { stop(); throw failure; }
+}
+function receiveLiveReport(kind, payload, scope) {
+  if (!reportScopeCurrent(scope)) return;
+  reportPayloads.set(kind, payload);
+  if (kind === 'checklist' && payload?.catalog) {
+    checklistCatalogLive = {...payload.catalog, uid: scope.uid};
+    if (checklistModuleStations.length || currentRoute() === 'checklist') checklistModuleStations.splice(0, checklistModuleStations.length, ...payload.catalog.records);
+  }
+  if (scope.warm) return;
+  const fingerprint = reportFingerprint(payload);
+  updateReportSync(kind);
+  if (reportPaintKeys.get(kind) !== fingerprint || kind === 'checklist' && checklistReportContext?.scopeKey !== scope.key) {
+    reportPaintKeys.set(kind, fingerprint);
+    if (kind === 'events') {
+      eventReportSourceRecords = payload.records; eventReportStale = !navigator.onLine; eventReportCursor = payload.nextCursor;
+      renderEventReportRecords();
+    } else if (kind === 'labels') renderLiveLabelReport(payload, scope);
+    else if (scope.mode === 'monthly') void loadMonthlyChecklist(checklistModuleStations, payload.report, scope);
+    else void loadDailyChecklist(checklistModuleStations, scope.day, payload.report, scope);
+  }
+  updateReportSync(kind);
+  if (!reportWaiters.get(kind)?.requireServer || liveReports.get(kind)?.snapshot().confirmed) settleReportWaiter(kind, scope.key, true);
+}
+async function startReportLive(kind, options = {}) {
+  let scope;
+  try { scope = makeReportScope(kind, options); }
+  catch (error) { closeReportLive(kind, 'invalid-period'); const target = document.querySelector(kind === 'checklist' ? '#module-content' : kind === 'labels' ? '#label-report-results' : '#event-report-results'); if (target) target.innerHTML = '<p class="empty-state">' + escapeHtml(error.message) + '</p>'; return false; }
+  if (!reportScopeCurrent(scope)) { closeReportLive(kind, 'scope-changed'); return false; }
+  const previous = liveReports.get(kind)?.snapshot().scope;
+  if (previous?.key !== scope.key) {
+    reportPaintKeys.delete(kind); reportPayloads.delete(kind);
+    if (!options.append) { scope.targetNode.innerHTML = '<p class="loading">Atualizando registros…</p>'; if (kind === 'events') loadedEventReportRecords = []; if (kind === 'labels') loadedLabelRecords = []; }
+  }
+  const lease = startupReports.takeLive(scope.key);
+  // Runtime owns the same controller before and after the startup lease handoff.
+  void lease;
+  const pending = new Promise(resolve => {
+    const old = reportWaiters.get(kind); if (old) settleReportWaiter(kind, old.key, false);
+    const timer = setTimeout(() => { settleReportWaiter(kind, scope.key, false); }, 12000);
+    reportWaiters.set(kind, {key: scope.key, resolve, timer, requireServer: options.force === true});
+  });
+  liveReports.open(kind, {...scope, warm: false}, {force: options.force === true});
+  return pending;
+}
+
 const preloadedDataUsers = new Set();
 const scheduledDataPreloads = new Set();
 
@@ -435,12 +675,12 @@ function shellView() {
   const checklistVisual = route === 'checklist' ? `<div class="checklist-visual-frame"><figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure></div>` : '';
   const utilityCards = route === 'management' ? managementUtilityCards() : '';
   const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><div class="module-grid">${utilityCards}</div></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer event-report-footer" id="event-report-footer" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></footer></dialog>` : '';
+  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title">RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="event-report-sync" class="label-report-sync" role="status" aria-live="polite">Atualizando</p><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer event-report-footer" id="event-report-footer" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></footer></dialog>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const checklistCalendar = '';
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
-  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily">RELATÓRIO DIÁRIO</button></div>` : '';
-  const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
+  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly">RELATÓRIO MENSAL</button></div>` : '';
+  const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section></div><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
   const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
@@ -663,7 +903,7 @@ async function loadModule(route) {
     content.remove();
     if (can('eventsRead') || can('eventsWrite')) void loadReportPdfModule().catch(() => {});
     const reportDialog = document.querySelector('#event-report-dialog');
-    reportDialog?.addEventListener('close', () => { eventReportOpen = false; });
+    reportDialog?.addEventListener('close', () => { eventReportOpen = false; closeReportLive('events'); });
     document.querySelectorAll('[data-event-report-launch]').forEach((button) => button.addEventListener('click', async () => {
       eventReportMode = button.dataset.eventReportLaunch;
       eventReportOpen = true;
@@ -710,6 +950,7 @@ async function loadModule(route) {
     const reportDialog = document.querySelector('#label-report-dialog');
     reportDialog?.addEventListener('close', () => {
       labelReportOpen = false;
+      closeReportLive('labels');
       labelReportLoad++;
       labelReportLoadingMore = false;
       labelReportState = 'idle';
@@ -841,7 +1082,8 @@ async function loadModule(route) {
       items = [];
     } else {
       loadedTrainingCatalog = [];
-      items = await data.listModuleRecords(route, session.user.uid, {pageSize: route === 'checklist' ? 200 : 50});
+      items = route === 'checklist' && checklistCatalogLive?.uid === session.user.uid ? [...checklistCatalogLive.records] : await data.listModuleRecords(route, session.user.uid, {pageSize: route === 'checklist' ? 200 : 50});
+      if (route === 'checklist') checklistModuleStations = items;
     }
     if (route === 'training') {
       let learningActivities = [];
@@ -871,7 +1113,7 @@ async function loadModule(route) {
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
-      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; stopChecklistQrScanner(false); });
+      reportDialog?.addEventListener('close', () => { checklistReportOpen = false; closeReportLive('checklist'); stopChecklistQrScanner(false); });
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
         const value = day && day <= todayInputValue() ? day : todayInputValue();
@@ -902,15 +1144,15 @@ async function loadModule(route) {
         }
       };
       document.querySelectorAll('[data-checklist-report-launch]').forEach((button) => button.addEventListener('click', async () => {
-        checklistReportMode = 'daily';
+        checklistReportMode = button.dataset.checklistReportLaunch === 'monthly' ? 'monthly' : 'daily';
         checklistReportOpen = true;
         updateDayControls(todayInputValue());
         if (reportDialog && !reportDialog.open) reportDialog.showModal();
         const title = document.querySelector('#checklist-report-title');
         title?.focus({preventScroll: true});
-        if (title) title.textContent = 'RELATÓRIO DIÁRIO - CHECKLIST';
-        document.querySelector('#checklist-day-control').hidden = false;
-        document.querySelector('#checklist-month-control').hidden = true;
+        if (title) title.textContent = checklistReportMode === 'monthly' ? 'RELATÓRIO MENSAL - CHECKLIST' : 'RELATÓRIO DIÁRIO - CHECKLIST';
+        document.querySelector('#checklist-day-control').hidden = checklistReportMode !== 'daily';
+        document.querySelector('#checklist-month-control').hidden = checklistReportMode !== 'monthly';
         updateDayControls(todayInputValue());
         await loadChecklistView(items);
       }));
@@ -918,6 +1160,7 @@ async function loadModule(route) {
       document.querySelector('#checklist-report-previous')?.addEventListener('click', () => setReportDay(shiftDateKey(reportDay?.value || todayInputValue(), -1)));
       document.querySelector('#checklist-report-next')?.addEventListener('click', () => setReportDay(shiftDateKey(reportDay?.value || todayInputValue(), 1)));
       document.querySelector('#checklist-report-today')?.addEventListener('click', () => setReportDay(todayInputValue()));
+      document.querySelector('#checklist-month')?.addEventListener('change', () => { if (checklistReportOpen && checklistReportMode === 'monthly') void loadMonthlyChecklist(items); });
       if (checklistReportOpen) {
         if (reportDialog && !reportDialog.open) reportDialog.showModal();
         await loadChecklistView(items);
@@ -1298,7 +1541,7 @@ async function loadAdminModule(content) {
   }
 }
 
-async function loadDailyChecklist(stations, suppliedDay) {
+async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, scope = null) {
   const content = document.querySelector('#module-content');
   if (!content) return;
   const day = suppliedDay || document.querySelector('#checklist-report-day')?.value || todayInputValue();
@@ -1310,30 +1553,20 @@ async function loadDailyChecklist(stations, suppliedDay) {
   }
   const applicableStations = stations.filter((station) => stationIsInDateRange(station, day));
   const writableStations = applicableStations.filter((station) => stationIsValidOn(station, day));
-  content.innerHTML = '<p class="loading">Carregando registros do dia…</p>';
+  if (!suppliedResult) return startReportLive('checklist', {suppliedDay: day});
+  if (!reportScopeCurrent(scope)) return;
   try {
-    const {listChecklistRecords} = await import('./data.js');
-    const uid = session.user.uid;
-    const stationIds = applicableStations.map(station => station.id).sort();
-    const preloaded = navigator.onLine ? startupReports.take(startupReportKey('checklist', uid, day)) : null;
-    const ready = preloaded ? await preloaded.catch(() => null) : null;
-    const result = ready && JSON.stringify(ready.startupStationIds) === JSON.stringify(stationIds)
-      ? ready : await listChecklistRecords(day, uid, {pageSize: 1000, stationIds});
-    if (session.user?.uid !== uid || !content.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue())) return;
+    const uid = scope.uid;
+    const result = suppliedResult;
     const records = result.records;
-    const syncIndicator = document.querySelector('#checklist-report-sync');
-    if (syncIndicator) {
-      const waiting = records.some((record) => record.pendingSync || record.syncFailed);
-      const stale = result.stale || waiting;
-      syncIndicator.classList.toggle('is-stale', stale);
-      syncIndicator.querySelector('span')?.classList.toggle('is-stale', stale);
-      syncIndicator.lastChild.textContent = result.stale ? ' Sem conexão · dados salvos' : waiting ? ' Aguardando sincronização' : ' Sincronizado';
-    }
+    const fingerprint = reportFingerprint({day, stations, records, priorRecords: result.priorRecords});
+    const previousFingerprint = checklistReportContext?.fingerprint;
+    if (previousFingerprint && previousFingerprint !== fingerprint) invalidateChecklistSignature('O relatório mudou. Revise os dados antes de enviar para validação.');
     const latestByStation = new Map();
     for (const record of records) if (!latestByStation.has(record.stationId)) latestByStation.set(record.stationId, record);
     const priorByStation = new Map();
     for (const record of result.priorRecords || []) if (!priorByStation.has(record.stationId)) priorByStation.set(record.stationId, record);
-    checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation};
+    checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation, fingerprint, scopeKey: scope.key};
     const summary = summarizeChecklistDay(day, todayInputValue(), applicableStations, records);
     const resolvedRecordFor = (station) => resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
     const displayStations = sortChecklistStationsForDisplay(stations, resolvedRecordFor)
@@ -1349,7 +1582,7 @@ async function loadDailyChecklist(stations, suppliedDay) {
     }).join('');
     const summaryCards = '';
     const stationGrid = cards ? `<section class="checklist-station-grid" aria-label="Estações do Checklist">${cards}</section>` : '<p class="empty-state">Nenhuma estação vigente está cadastrada para esta data.</p>';
-    const pendingChecklistWrites = records.some((record) => record.pendingSync || record.syncFailed);
+    const pendingChecklistWrites = records.some((record) => record.pendingSync || record.pendingFirestore || record.syncFailed || record.syncConflict || record.hasPendingWrites);
     const signatureUnavailableReason = pendingChecklistWrites
       ? 'Resolva as respostas locais pendentes antes da assinatura.'
       : result.stale
@@ -1357,44 +1590,42 @@ async function loadDailyChecklist(stations, suppliedDay) {
         : !applicableStations.length
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
-    const canPrepareSignature = dayMode === 'today' && can('checklistSign') && navigator.onLine && !result.stale && !pendingChecklistWrites && applicableStations.length > 0;
+    const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
     const signatureMarkup = `<footer class="checklist-confirmation-footer"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Confirmação do Checklist</span><small id="checklist-responsible-name">Consultando responsável…</small></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Confirmação do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
-    content.innerHTML = `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`;
-    content.querySelectorAll('[data-checklist-select]').forEach((button) => button.addEventListener('click', () => {
+    reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
+    content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
+      if (!reportScopeCurrent(scope)) return;
       const station = displayStations.find((item) => item.id === button.dataset.checklistSelect);
       if (station) showChecklistStationBanner(station, resolvedRecordFor(station), day, stations, {fromQr: false});
-    }));
+    });
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
     const responsibleName = content.querySelector('#checklist-responsible-name');
     const confirmationDialog = content.querySelector('#checklist-confirmation-dialog');
-    let responsibilityConfirmed = false;
-    if (prepareSignature) {
-      prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
-      void import('./checklist-responsibility-reader.js').then(({getChecklistDayResponsible}) =>
-        getChecklistDayResponsible({day, uid, isAdmin: can('admin')})
-      ).then((responsible) => {
-        if (!responsibleName?.isConnected || day !== (document.querySelector('#checklist-report-day')?.value || todayInputValue()) || session.user?.uid !== uid) return;
-        responsibleName.textContent = responsible.name;
-        responsibilityConfirmed = true;
-        prepareSignature.disabled = !canPrepareSignature;
-      }).catch(() => {
-        if (!responsibleName?.isConnected) return;
-        responsibleName.textContent = 'Responsável não confirmado';
-        prepareSignature.title = 'Não foi possível conferir a escala e os eventos do dia. Atualize o relatório.';
-        prepareSignature.disabled = true;
-      });
-    }
-    prepareSignature?.addEventListener('click', async () => {
-      if (!responsibilityConfirmed || !canPrepareSignature) return;
+    updateChecklistResponsibilityUI();
+    if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
+    if (prepareSignature) prepareSignature.onclick = async () => {
+      if (!canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint)) return;
       if (!confirmationDialog.open) confirmationDialog.showModal();
       content.querySelector('#checklist-confirmation-title')?.focus({preventScroll: true});
       const status = content.querySelector('#checklist-signature-status');
       const previewTarget = content.querySelector('#checklist-signature-preview');
+      const previewToken = confirmationDialog._checklistSignatureRequest = {};
+      const previewCurrent = () => confirmationDialog._checklistSignatureRequest === previewToken && confirmationDialog.isConnected && document.querySelector('#checklist-confirmation-dialog') === confirmationDialog && reportScopeCurrent(scope) && checklistReportContext?.fingerprint === fingerprint;
       prepareSignature.disabled = true;
       status.textContent = 'Preparando o pedido de validação do relatório…';
       try {
+        if (!scope.isAdmin) {
+          const {getChecklistDayResponsible} = await import('./checklist-responsibility-reader.js');
+          const responsible = await getChecklistDayResponsible(scope);
+          if (!reportScopeCurrent(scope)) return;
+          checklistResponsibilityLive = {key: scope.key, responsible, confirmed: true};
+        }
+        const responsibilityFingerprint = reportFingerprint(checklistResponsibilityLive?.responsible);
         const {getChecklistSignaturePreview} = await import('./checklist-signature.js');
-        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid: session.user.uid});
+        if (!checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint)) return;
+        const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid});
+        if (!previewCurrent()) return;
+        if (!checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint)) { invalidateChecklistSignature('O relatório mudou durante a conferência. Revise novamente.'); return; }
         if (preview.requestStatus === 'PENDING_VALIDATION') {
           previewTarget.innerHTML = '<p class="sync-state">Este pedido já está registrado e aguarda validação. O responsável, a assinatura e os pontos ainda não foram confirmados.</p>';
           status.textContent = 'Pedido de validação pendente.';
@@ -1418,31 +1649,36 @@ async function loadDailyChecklist(stations, suppliedDay) {
         const declaration = previewTarget.querySelector('#checklist-signature-declaration');
         const justification = previewTarget.querySelector('#checklist-signature-justification');
         const confirm = previewTarget.querySelector('#checklist-signature-confirm');
-        const updateEnabled = () => { confirm.disabled = !declaration.checked || justification.value.trim().length < 8 || !navigator.onLine; };
+        const updateEnabled = () => { confirm.disabled = !declaration.checked || justification.value.trim().length < 8 || !checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint); };
         declaration.addEventListener('change', updateEnabled);
         justification?.addEventListener('input', updateEnabled);
         confirm.addEventListener('click', async () => {
+          if (!previewCurrent() || !checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint)) return;
           confirm.disabled = true;
           status.textContent = 'Registrando o pedido de validação no Firestore…';
           try {
             const {signChecklistReport} = await import('./checklist-signature.js');
-            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid: session.user.uid});
+            if (!checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint)) return;
+            await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, justification: justification.value, uid});
+            if (!previewCurrent()) return;
             status.textContent = 'Pedido registrado. Assinatura e pontuação aguardam validação.';
             confirmationDialog.close();
             await loadDailyChecklist(stations, day);
           } catch (error) {
+            if (!previewCurrent()) return;
             status.textContent = error.message || 'Não foi possível assinar. Atualize o relatório e tente novamente.';
-            previewTarget.replaceChildren();
-            prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
+            prepareSignature.disabled = !canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint);
           }
         });
       } catch (error) {
+        if (!previewCurrent()) return;
         status.textContent = error.message || 'Não foi possível conferir a revisão do relatório.';
       } finally {
-        if (prepareSignature.isConnected) prepareSignature.disabled = !responsibilityConfirmed || !canPrepareSignature || !navigator.onLine;
+        if (previewCurrent() && prepareSignature.isConnected) prepareSignature.disabled = !canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint);
       }
-    });
+    };
   } catch (error) {
+    if (!reportScopeCurrent(scope)) return;
     content.innerHTML = `<p class="empty-state">Não foi possível carregar o checklist. ${escapeHtml(error.message || '')}</p>`;
   }
 }
@@ -1789,20 +2025,18 @@ function stopChecklistQrScanner(closeDialog = true) {
   if (closeDialog && dialog?.open) dialog.close();
 }
 
-async function loadMonthlyChecklist(stations) {
+async function loadMonthlyChecklist(stations, suppliedResult = null, scope = null) {
   const content = document.querySelector('#module-content');
   if (!content) return;
-  const month = todayInputValue().slice(0, 7);
+  const month = document.querySelector('#checklist-month')?.value || todayInputValue().slice(0, 7);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     content.innerHTML = '<p class="empty-state">Selecione um mês válido.</p>';
     return;
   }
-  const loadId = ++checklistReportLoad;
-  content.innerHTML = '<p class="loading">Carregando registros do mês…</p>';
+  if (!suppliedResult) return startReportLive('checklist');
+  if (!reportScopeCurrent(scope)) return;
   try {
-    const {listMonthlyChecklistRecords} = await import('./data.js');
-    const result = await listMonthlyChecklistRecords(month, session.user.uid, {stationIds: stations.map((station) => station.id)});
-    if (loadId !== checklistReportLoad || currentRoute() !== 'checklist' || checklistReportMode !== 'monthly') return;
+    const result = suppliedResult;
     const today = todayInputValue();
     const days = summarizeChecklistMonth(month, today, stations, result.records, result.priorRecords);
     const rows = days.map((summary) => {
@@ -1810,8 +2044,11 @@ async function loadMonthlyChecklist(stations) {
       const sync = summary.pendingSync ? '<small class="record-meta">Há ação(ões) aguardando sincronização</small>' : '';
       return `<button class="checklist-month-row" type="button" data-checklist-open-day="${day}" ${summary.mode === 'future' ? 'disabled' : ''}><strong>${escapeHtml(formatRecordDate(day))}</strong><span>${summary.text}</span>${sync}<span class="arrow" aria-hidden="true">›</span></button>`;
     }).join('');
-      content.innerHTML = `${result.stale ? '<p class="sync-state">Sem conexão: exibindo o resumo salvo neste aparelho.</p>' : ''}${result.truncated ? '<p class="sync-state">O volume do mês excede o limite desta consulta; este resumo pode estar incompleto.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">O histórico anterior não está completo neste cache; respostas herdadas podem faltar.</p>' : ''}<p class="checklist-report-note">Resumo dos registros encontrados no Firestore. Um NÃO anterior permanece indicado até nova resposta, conforme a regra do Checklist. A assinatura é feita no relatório diário do dia atual.</p><div class="checklist-month-list">${rows}</div>`;
-    content.querySelectorAll('[data-checklist-open-day]').forEach((button) => button.addEventListener('click', async () => {
+      reconcileReportMarkup(content, `${result.stale ? '<p class="sync-state">Sem conexão: exibindo o resumo salvo neste aparelho.</p>' : ''}${result.truncated ? '<p class="sync-state">O volume do mês excede o limite desta consulta; este resumo pode estar incompleto.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">O histórico anterior não está completo neste cache; respostas herdadas podem faltar.</p>' : ''}<p class="checklist-report-note">Resumo dos registros encontrados no Firestore. Um NÃO anterior permanece indicado até nova resposta, conforme a regra do Checklist. A assinatura é feita no relatório diário do dia atual.</p><div class="checklist-month-list">${rows}</div>${result.nextCursor ? '<button class="secondary-button" type="button" id="checklist-report-more">Carregar mais registros do mês</button>' : ''}`);
+    const more = content.querySelector('#checklist-report-more');
+    if (more) more.onclick = () => void startReportLive('checklist', {append: true});
+    content.querySelectorAll('[data-checklist-open-day]').forEach((button) => button.onclick = async () => {
+      if (!reportScopeCurrent(scope)) return;
       checklistReportMode = 'daily';
       checklistReportOpen = true;
       const day = button.dataset.checklistOpenDay;
@@ -1828,9 +2065,9 @@ async function loadMonthlyChecklist(stations) {
       const today = document.querySelector('#checklist-report-today');
       if (today) today.disabled = day === todayInputValue();
       await loadDailyChecklist(stations, day);
-    }));
+    });
   } catch (error) {
-    if (loadId !== checklistReportLoad) return;
+    if (!reportScopeCurrent(scope)) return;
     content.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório mensal. ${escapeHtml(error.message || '')}</p>`;
   }
 }
@@ -1854,67 +2091,8 @@ async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = 
   }
 }
 
-async function loadEventReport({append = false} = {}) {
-  const target = document.querySelector('#event-report-results');
-  if (!target) return false;
-  const loadId = ++eventReportLoad;
-  const day = document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue();
-  const month = document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7);
-  if (eventReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || eventReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
-    labelReportState = 'error';
-    updateLabelReportSync();
-    return false;
-  }
-  let from = day;
-  let to = day;
-  if (eventReportMode === 'monthly') {
-    const [year, monthNumber] = month.split('-').map(Number);
-    from = `${month}-01`;
-    to = `${year}-${String(monthNumber).padStart(2, '0')}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
-  }
-  if (append && (!eventReportCursor || eventReportLoadingMore)) return false;
-  if (append) eventReportLoadingMore = true;
-  else {
-    target.innerHTML = '<p class="loading">Carregando registros…</p>';
-    loadedEventReportRecords = [];
-    eventReportSourceRecords = [];
-    eventReportCursor = null;
-    eventReportStale = false;
-  }
-  const pdfButton = document.querySelector('#share-events-pdf');
-  if (pdfButton) pdfButton.disabled = true;
-  try {
-    const {listEventRecords} = await import('./data.js');
-    const preloaded = !append && eventReportMode === 'daily' && navigator.onLine
-      ? startupReports.take(startupReportKey('events', session.user.uid, day, [session.profile?.sigla || '', can('admin')])) : null;
-    const report = (preloaded ? await preloaded.catch(() => null) : null) || await listEventRecords({from, to, uid: session.user.uid, sigla: session.profile?.sigla, isAdmin: can('admin'), cursor: append ? eventReportCursor : null, includePending: !append});
-    if (loadId !== eventReportLoad || !document.querySelector('#event-report-results')) return false;
-    if (append) {
-      const existingIds = new Set(eventReportSourceRecords.map((item) => item.id));
-      eventReportSourceRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
-    } else eventReportSourceRecords = report.records;
-    eventReportSourceRecords.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || eventCreatedAtValue(right.createdAt) - eventCreatedAtValue(left.createdAt));
-    eventReportStale = eventReportStale || report.stale;
-    eventReportCursor = report.nextCursor;
-    renderEventReportRecords({append});
-    return true;
-  } catch (error) {
-    if (loadId === eventReportLoad) {
-      if (append) {
-        target.insertAdjacentHTML('afterbegin', `<p class="empty-state">Não foi possível carregar mais registros. ${escapeHtml(error.message || '')}</p>`);
-        const moreButton = target.querySelector('#event-report-more');
-        if (moreButton) {
-          moreButton.disabled = !navigator.onLine;
-          moreButton.textContent = navigator.onLine ? 'Tentar carregar mais' : 'Conecte-se para carregar mais';
-        }
-      }
-      else target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
-    }
-    return false;
-  } finally {
-    if (append) eventReportLoadingMore = false;
-  }
+async function loadEventReport(options = {}) {
+  return startReportLive('events', options);
 }
 
 function eventCreatedAtValue(value) {
@@ -1928,8 +2106,8 @@ function renderEventReportRecords({append = false} = {}) {
   const target = document.querySelector('#event-report-results');
   if (!target) return;
   const records = eventReportSourceRecords;
-  const hasPending = eventReportSourceRecords.some((item) => item.pendingFirestore || item.syncFailed);
-  loadedEventReportRecords = records.filter((item) => !item.pendingFirestore && !item.syncFailed);
+  const hasPending = eventReportSourceRecords.some((item) => item.pendingEdit || item.pendingSync || item.pendingFirestore || item.syncFailed || item.syncConflict || item.hasPendingWrites);
+  loadedEventReportRecords = confirmedLiveReportRecords(records).filter(item => !item.pendingEdit);
   const pdfButton = document.querySelector('#share-events-pdf');
   if (pdfButton) pdfButton.disabled = loadedEventReportRecords.length === 0;
   const syncNotice = eventReportStale && eventReportSourceRecords.some((item) => !item.pendingFirestore && !item.syncFailed)
@@ -1944,7 +2122,7 @@ function renderEventReportRecords({append = false} = {}) {
     ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
     : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
   const recordMarkup = (item, index = records.indexOf(item)) => {
-    const confirmed = !item.pendingEdit && !item.pendingFirestore && !item.syncFailed;
+    const confirmed = !item.pendingEdit && !item.pendingSync && !item.pendingFirestore && !item.syncFailed && !item.syncConflict && !item.hasPendingWrites;
     const showHistory = eventReportMode === 'daily' && confirmed;
     const canEdit = eventReportMode === 'daily' && can('admin') && confirmed;
     const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
@@ -1959,39 +2137,36 @@ function renderEventReportRecords({append = false} = {}) {
         ...(item.delayMultiple != null && item.delayMultiple !== '' ? [['MÚLTIPLO DO ATRASO', String(item.delayMultiple)]] : []),
         ...(item.amountToPay != null && item.amountToPay !== '' ? [['VALOR A PAGAR', 'R$ ' + Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})]] : [])
       ];
-      return `<li class="label-daily-record event-daily-record${confirmed ? '' : ' event-daily-record--pending'}" data-event-record="${recordId}"><span class="label-record-index" aria-label="Registro ${index + 1}">${index + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div><div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')}</strong></div>${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}<div class="label-record-actions">${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${showHistory ? `<button class="secondary-button" type="button" data-event-history="${recordId}" aria-expanded="false" aria-controls="event-history-${recordId}">Histórico</button>` : ''}</div>${showHistory ? `<section class="label-history event-history" id="event-history-${recordId}" data-event-history-panel="${recordId}" aria-label="Histórico do evento" hidden></section>` : ''}</li>`;
+      return `<li class="label-daily-record event-daily-record${confirmed ? '' : ' event-daily-record--pending'}" data-event-record="${recordId}" data-record-version="${Number(item.version) || 1}"><span class="label-record-index" aria-label="Registro ${index + 1}">${index + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div><div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')}</strong></div>${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}<div class="label-record-actions">${canEdit ? `<button class="secondary-button" type="button" data-event-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${showHistory ? `<button class="secondary-button" type="button" data-event-history="${recordId}" aria-expanded="false" aria-controls="event-history-${recordId}">Histórico</button>` : ''}</div>${showHistory ? `<section class="label-history event-history" id="event-history-${recordId}" data-event-history-panel="${recordId}" aria-label="Histórico do evento" hidden></section>` : ''}</li>`;
     }
     return `<li class="event-record-banner${confirmed ? '' : ' event-record-banner--pending'}" data-event-record="${escapeHtml(item.id)}"><div class="event-record-banner__heading"><div><strong>${escapeHtml(item.memberStatus || 'Evento')}</strong><span>${escapeHtml(item.eventType || 'Outros')}</span></div></div><div class="event-record-banner__details"><small>${escapeHtml(formatRecordDate(item.date))}${item.shift ? ` · ${escapeHtml(item.shift)}` : ''}${item.substitute ? ` · Substituto: ${escapeHtml(item.substitute)}` : ''}</small>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}${amount}${registration}${status ? `<small class="sync-state">${escapeHtml(status)}${item.syncError ? ` · ${escapeHtml(item.syncError)}` : ''}</small>` : ''}${showHistory ? `<section class="event-history" data-event-history-panel="${escapeHtml(item.id)}" aria-label="Edições do evento">Carregando edições…</section>` : ''}</div></li>`;
   };
   const bannerList = records.length ? `<ul class="event-record-banner-list${eventReportMode === 'daily' ? ' record-list' : ''}">${records.map(recordMarkup).join('')}</ul>` : `<p class="empty-state">${empty}</p>`;
   const moreButton = eventReportCursor ? `<button class="secondary-button" type="button" id="event-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : '';
-  if (append) {
-    const visibleIds = new Set([...target.querySelectorAll('[data-event-record]')].map((element) => element.dataset.eventRecord));
-    const newRecords = records.filter((item) => !visibleIds.has(item.id));
-    target.querySelector('.event-record-banner-list')?.insertAdjacentHTML('beforeend', newRecords.map(item => recordMarkup(item)).join(''));
-    target.querySelector('#event-report-more')?.remove();
-    target.insertAdjacentHTML('beforeend', moreButton);
-  } else {
-    target.innerHTML = `${heading}${syncNotice}${bannerList}${moreButton}`;
-  }
-  target.querySelectorAll('[data-event-edit]').forEach((button) => button.addEventListener('click', () => beginEventEdit(records.find((item) => item.id === button.dataset.eventEdit))));
+  const scope = liveReports.get('events')?.snapshot().scope;
+  const changedHistory = [...target.querySelectorAll('[data-event-record]')].filter(card => {
+    const item = records.find(record => record.id === card.dataset.eventRecord);
+    const panel = card.querySelector('[data-event-history-panel]');
+    return item && (Number(card.dataset.recordVersion) !== (Number(item.version) || 1) || panel?.dataset.loading === 'true' && panel._eventHistoryScopeKey !== liveReports.get('events')?.snapshot().scope?.key);
+  }).map(card => card.dataset.eventRecord);
+  const incomplete = eventReportCursor ? '<p class="sync-state">Há mais registros. Totais e PDF correspondem somente aos registros carregados.</p>' : '';
+  reconcileReportMarkup(target, `${heading}${syncNotice}${bannerList}${incomplete}${moreButton}`, {preserveSelectors: ['[data-event-history-panel]', '[data-event-history][aria-expanded="true"]', '.report-export-status']});
+  target.querySelectorAll('[data-event-edit]').forEach((button) => button.onclick = () => { if (reportScopeCurrent(scope)) beginEventEdit(eventReportSourceRecords.find((item) => item.id === button.dataset.eventEdit)); });
   target.querySelectorAll('[data-event-history]').forEach((button) => {
-    if (button.dataset.historyBound === 'true') return;
-    button.dataset.historyBound = 'true';
-    button.addEventListener('click', async () => {
+    button.onclick = async () => {
+      if (!reportScopeCurrent(scope)) return;
       const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(button.dataset.eventHistory)}"]`);
       if (!panel) return;
       panel.hidden = !panel.hidden;
       button.setAttribute('aria-expanded', String(!panel.hidden));
       button.textContent = panel.hidden ? 'Histórico' : 'Fechar histórico';
       if (panel.hidden || panel.dataset.loaded === 'true' || panel.dataset.loading === 'true') return;
-      await loadDailyEventEditNotes(records.filter(item => item.id === button.dataset.eventHistory), target);
-    });
+      await loadDailyEventEditNotes(eventReportSourceRecords.filter(item => item.id === button.dataset.eventHistory), target);
+    };
   });
-  target.querySelector('#event-report-more')?.addEventListener('click', (event) => {
-    event.currentTarget.disabled = true;
-    loadEventReport({append: true});
-  });
+  const more = target.querySelector('#event-report-more');
+  if (more) more.onclick = event => { event.currentTarget.disabled = true; void loadEventReport({append: true}); };
+  for (const id of changedHistory) { const panel = target.querySelector('[data-event-history-panel="' + CSS.escape(id) + '"]'); if (panel) { delete panel.dataset.loaded; delete panel.dataset.loading; if (!panel.hidden) void loadDailyEventEditNotes(records.filter(item => item.id === id), target); } }
 }
 
 function renderRecordEditHistory(history, labels, formatValue = (value) => value == null || value === '' ? '—' : Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value)) {
@@ -1999,25 +2174,34 @@ function renderRecordEditHistory(history, labels, formatValue = (value) => value
 }
 
 async function loadDailyEventEditNotes(records, target) {
-  const changed = records.filter((item) => !item.pendingEdit && !item.pendingFirestore && !item.syncFailed);
-  if (!changed.length) return;
+  const scope = liveReports.get('events')?.snapshot().scope;
+  const uid = session.user?.uid;
+  const changed = confirmedLiveReportRecords(records).filter(item => !item.pendingEdit);
+  if (!changed.length || !reportScopeCurrent(scope)) return;
   const labels = {date: 'Data', memberSigla: 'Sigla do membro', scheduleSigla: 'Sigla da escala', memberStatus: 'Membro / situação', eventType: 'Tipo de evento', description: 'Descrição', delayMultiple: 'Múltiplo do atraso', substitute: 'Substituto', shift: 'Turno', payer: 'Pagador', creditor: 'Credor', amountToPay: 'Valor', status: 'Status'};
-  const value = (item) => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
-  await Promise.all(changed.map(async (item) => {
-    const panel = target.querySelector(`[data-event-history-panel="${CSS.escape(item.id)}"]`);
+  const value = item => item == null || item === '' ? '—' : typeof item === 'object' ? JSON.stringify(item) : String(item);
+  await Promise.all(changed.map(async item => {
+    const panel = target.querySelector('[data-event-history-panel="' + CSS.escape(item.id) + '"]');
     if (!panel) return;
+    const token = {};
+    panel._eventHistoryRequest = token;
+    panel._eventHistoryScopeKey = scope.key;
+    const current = () => panel._eventHistoryRequest === token && panel.isConnected && target.isConnected &&
+      session.user?.uid === uid && reportScopeCurrent(scope) && liveReports.get('events')?.snapshot().scope?.key === scope.key &&
+      Number(eventReportSourceRecords.find(record => record.id === item.id)?.version || 0) === Number(item.version || 1);
     panel.dataset.loading = 'true';
     panel.innerHTML = '<small class="loading">Carregando histórico…</small>';
     try {
       const {listEventHistory} = await import('./data.js');
+      if (!current()) return;
       const history = await listEventHistory(item.id, {pageSize: 50});
-      if (!panel.isConnected) return;
+      if (!current()) return;
       panel.innerHTML = renderRecordEditHistory(history, labels, value);
       panel.dataset.loaded = 'true';
     } catch (error) {
-      if (panel.isConnected) panel.innerHTML = `<small>Não foi possível carregar as edições. ${escapeHtml(error.message || '')}</small>`;
+      if (current()) panel.innerHTML = '<small>Não foi possível carregar as edições. ' + escapeHtml(error.message || '') + '</small>';
     } finally {
-      panel.dataset.loading = 'false';
+      if (current()) panel.dataset.loading = 'false';
     }
   }));
 }
@@ -2089,106 +2273,83 @@ function resetEventEditor() {
 }
 
 function updateLabelReportSync() {
-  const target = document.querySelector('#label-report-sync');
-  if (!target) return;
-  const status = labelReportPresentation(labelReportState, navigator.onLine);
-  target.classList.toggle('label-report-sync--synced', status.confirmed);
-  target.innerHTML = status.confirmed ? '<span aria-hidden="true">✓</span> Sincronizado' : escapeHtml(status.text);
+  updateReportSync('labels');
 }
 
 async function loadLabelReport(options = {}) {
-  const target = document.querySelector('#label-report-results');
-  if (!target) return false;
-  const append = options?.append === true;
-  if (append && (!labelReportCursor || labelReportLoadingMore)) return false;
-  const loadId = ++labelReportLoad;
-  const requestUid = session.user.uid;
-  labelReportState = 'loading';
-  updateLabelReportSync();
-  const day = document.querySelector('#label-report-day')?.value || todayInputValue();
-  const month = document.querySelector('#label-report-month')?.value || todayInputValue().slice(0, 7);
-  if (labelReportMode === 'daily' && !/^\d{4}-\d{2}-\d{2}$/.test(day) || labelReportMode === 'monthly' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    target.innerHTML = '<p class="empty-state">Selecione uma data ou mês válido.</p>';
-    return false;
-  }
-  let from = day; let to = day;
-  if (labelReportMode === 'monthly') {
-    const [year, monthNumber] = month.split('-').map(Number);
-    from = `${month}-01`;
-    to = `${year}-${String(monthNumber).padStart(2, '0')}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}`;
-  }
-  if (append) labelReportLoadingMore = true;
-  else {
-    target.innerHTML = '<p class="loading">Carregando registros…</p>';
-    loadedLabelRecords = [];
-    labelReportCursor = null;
-  }
-  const exportButton = document.querySelector('#export-labels');
-  if (exportButton && !append) exportButton.disabled = true;
-  const pdfButton = document.querySelector('#share-labels-pdf');
-  if (pdfButton && !append) pdfButton.disabled = true;
-  try {
-    const report = await withLabelReportDeadline(async () => {
-      if (!navigator.onLine) throw Object.assign(new Error('Conecte-se à internet para consultar as etiquetas.'), {code: 'unavailable'});
-      const preloaded = !append && labelReportMode === 'daily'
-        ? startupReports.take(startupReportKey('labels', requestUid, day, [session.profile?.sigla || '', can('labelsManage')])) : null;
-      if (preloaded) {
-        const ready = await preloaded.catch(() => null);
-        if (ready) return ready;
-      }
-      const {listLabelRecords} = await import('./label-report-reader.js');
-      return listLabelRecords({from, to, uid: requestUid, sigla: session.profile?.sigla || '', canManage: can('labelsManage'), pageSize: 50, cursor: append ? labelReportCursor : null});
+  return startReportLive('labels', options);
+}
+
+function renderLiveLabelReport(result, scope) {
+  const target = scope?.targetNode || scope?.target || document.querySelector('#label-report-results');
+  if (!target || !target.isConnected || document.querySelector('#label-report-results') !== target || !reportScopeCurrent(scope) || session.user?.uid !== scope.uid) return false;
+  const records = [...(result.records || [])].sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || reportTimestamp(right.createdAt) - reportTimestamp(left.createdAt));
+  const confirmed = (item) => !item.pendingEdit && !item.pendingSync && !item.pendingFirestore && !item.syncFailed && !item.syncConflict && item.hasPendingWrites !== true && item.metadata?.hasPendingWrites !== true;
+  const mayEdit = (item) => scope.mode === 'daily' && confirmed(item) && (scope.canWrite || scope.canManage) &&
+    (item.createdByUid === scope.uid || scope.canManage || (scope.sigla && item.staffSiglas?.includes(String(scope.sigla).trim().toUpperCase())));
+  const viewKey = JSON.stringify([scope.uid, scope.mode, scope.from, scope.to, scope.day, scope.month, scope.sigla, scope.canManage, scope.canWrite, scope.isAdmin]);
+  const scopeChanged = target._labelReportScopeKey !== viewKey;
+  const previousVersions = new Map([...target.querySelectorAll('[data-label-record]')].map(card => [card.dataset.labelRecord, card.dataset.recordVersion]));
+  if (scopeChanged) {
+    target.querySelectorAll('[data-label-history-content]').forEach(panel => {
+      panel._labelHistoryRequest = null;
+      delete panel.dataset.historyLoaded;
+      delete panel.dataset.historyLoading;
     });
-    if (loadId !== labelReportLoad || !target.isConnected || session.user?.uid !== requestUid) return false;
-    if (append) {
-      const existingIds = new Set(loadedLabelRecords.map((item) => item.id));
-      loadedLabelRecords.push(...report.records.filter((item) => !existingIds.has(item.id)));
-    } else loadedLabelRecords = report.records;
-    loadedLabelRecords.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) || reportTimestamp(right.createdAt) - reportTimestamp(left.createdAt));
-    labelReportCursor = report.nextCursor;
-    const records = loadedLabelRecords;
-    if (exportButton) exportButton.disabled = records.length === 0;
-    if (pdfButton) pdfButton.disabled = records.length === 0;
-    const reportHeading = labelReportMode === 'daily' ? `<h3 class="event-report-day-heading">Etiquetas · ${escapeHtml(formatRecordDate(day))}</h3>` : '';
-    target.innerHTML = `${reportHeading}${records.length ? `<ul class="record-list">${records.map((item) => {
-      const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
-      const mayEdit = labelReportMode === 'daily' && (can('labelsWrite') || can('labelsManage')) &&
-        (item.createdByUid === session.user.uid || can('labelsManage') || (ownSigla && item.staffSiglas?.includes(ownSigla)));
-      const daily = labelReportMode === 'daily';
-      const recordId = escapeHtml(item.id);
-      const history = daily ? `<button class="secondary-button" type="button" data-label-history="${recordId}" aria-expanded="false" aria-controls="label-history-${recordId}">Histórico</button>` : '';
-      const registration = daily ? `<div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || 'Não informado')}</strong></div>` : '';
-      const historyPanel = daily ? `<div id="label-history-${recordId}" class="label-history" data-label-history-content="${recordId}" hidden></div>` : '';
-      if (daily) {
-        const fields = [
-          ['DATA', formatRecordDate(item.date)], ['NOME DO PACIENTE', item.patientName], ['CONVÊNIO', item.insurance],
-          ['CIRURGIA', item.procedureCode], ['ATENDIMENTO', item.encounterCode], ['TIPO', item.type],
-          ['CREDOR', item.creditor], ['PLANTONISTA(S)', item.staffSiglas?.join(', ')],
-          ...(item.amount != null ? [['VALOR EM REAL', `R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`]] : [])
-        ];
-        return `<li class="label-daily-record"><span class="label-record-index" aria-label="Registro ${records.indexOf(item) + 1}">${records.indexOf(item) + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div>${registration}<div class="label-record-actions">${mayEdit ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${history}</div>${historyPanel}</li>`;
-      }
-      return `<li><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}</li>`;
-    }).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
-    target.querySelectorAll('[data-label-edit]').forEach((button) => button.addEventListener('click', () => beginLabelEdit(records.find((item) => item.id === button.dataset.labelEdit))));
-    target.querySelectorAll('[data-label-history]').forEach((button) => button.addEventListener('click', async () => {
-      const historyTarget = target.querySelector(`[data-label-history-content="${CSS.escape(button.dataset.labelHistory)}"]`);
-      if (!historyTarget) return;
-      if (!historyTarget.hidden) {
-        historyTarget.hidden = true;
-        button.setAttribute('aria-expanded', 'false');
-        button.textContent = 'Histórico';
-        return;
-      }
-      historyTarget.hidden = false;
-      button.setAttribute('aria-expanded', 'true');
-      button.textContent = 'Fechar histórico';
-      if (historyTarget.dataset.loaded === 'true' || historyTarget.dataset.loading === 'true') return;
-      historyTarget.dataset.loading = 'true';
+  }
+  loadedLabelRecords = records.filter(confirmed);
+  labelReportCursor = result.nextCursor || null;
+  const exportButton = document.querySelector('#export-labels');
+  const pdfButton = document.querySelector('#share-labels-pdf');
+  if (exportButton) exportButton.disabled = loadedLabelRecords.length === 0;
+  if (pdfButton) pdfButton.disabled = loadedLabelRecords.length === 0;
+  const daily = scope.mode === 'daily';
+  const reportHeading = daily ? `<h3 class="event-report-day-heading">Etiquetas · ${escapeHtml(formatRecordDate(scope.day || scope.from))}</h3>` : '';
+  const markup = `${reportHeading}${records.length ? `<ul class="record-list">${records.map((item) => {
+    const recordId = escapeHtml(item.id);
+    const history = daily && confirmed(item) ? `<button class="secondary-button" type="button" data-label-history="${recordId}" aria-expanded="false" aria-controls="label-history-${recordId}">Histórico</button>` : '';
+    const registration = daily ? `<div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || 'Não informado')}</strong></div>` : '';
+    const historyPanel = daily && confirmed(item) ? `<div id="label-history-${recordId}" class="label-history" data-label-history-content="${recordId}" hidden></div>` : '';
+    const syncText = item.syncFailed || item.syncConflict ? 'Registro não confirmado · revisar sincronização' : !confirmed(item) ? 'Aguardando confirmação do Firestore' : '';
+    const pending = syncText ? `<small class="sync-state">${escapeHtml(syncText)}</small>` : '';
+    if (daily) {
+      const fields = [
+        ['DATA', formatRecordDate(item.date)], ['NOME DO PACIENTE', item.patientName], ['CONVÊNIO', item.insurance],
+        ['CIRURGIA', item.procedureCode], ['ATENDIMENTO', item.encounterCode], ['TIPO', item.type],
+        ['CREDOR', item.creditor], ['PLANTONISTA(S)', item.staffSiglas?.join(', ')],
+        ...(item.amount != null ? [['VALOR EM REAL', `R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`]] : [])
+      ];
+      return `<li class="label-daily-record" data-label-record="${recordId}" data-record-version="${escapeHtml(item.version || 1)}"><span class="label-record-index" aria-label="Registro ${records.indexOf(item) + 1}">${records.indexOf(item) + 1}</span><div class="label-record-fields">${fields.map(([label, value]) => `<div class="label-record-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('')}</div>${registration}${pending}<div class="label-record-actions">${mayEdit(item) ? `<button class="secondary-button" type="button" data-label-edit="${recordId}">EDITAR REGISTRO</button>` : ''}${history}</div>${historyPanel}</li>`;
+    }
+    return `<li data-label-record="${recordId}" data-record-version="${escapeHtml(item.version || 1)}"><div class="contact-list-heading"><strong>${escapeHtml(item.patientName || 'Etiqueta')} · ${escapeHtml(formatRecordDate(item.date))}</strong></div><small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}${item.procedureCode ? ` · Cirurgia ${escapeHtml(item.procedureCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}${item.insurance ? ` · ${escapeHtml(item.insurance)}` : ''}</small>${item.amount != null ? `<small class="record-meta">Valor: R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : ''}${pending}</li>`;
+  }).join('')}</ul>` : '<p class="empty-state">Nenhuma etiqueta neste período.</p>'}${labelReportCursor ? `<p class="sync-state">Há mais registros. Totais e PDF correspondem somente aos registros carregados.</p><button class="secondary-button" type="button" id="label-report-more" ${navigator.onLine ? '' : 'disabled'}>${navigator.onLine ? 'Carregar mais registros' : 'Conecte-se para carregar mais'}</button>` : ''}`;
+  reconcileReportMarkup(target, markup, {preserveSelectors: scopeChanged ? [] : ['[data-label-history-content]', '[data-label-history][aria-expanded="true"]']});
+  target._labelReportScopeKey = viewKey;
+  target.querySelectorAll('[data-label-edit]').forEach((button) => {
+    button.onclick = () => {
+      if (!reportScopeCurrent(scope) || session.user?.uid !== scope.uid || !button.isConnected) return;
+      const item = loadedLabelRecords.find((record) => record.id === button.dataset.labelEdit);
+      if (item && mayEdit(item)) beginLabelEdit(item);
+    };
+  });
+  target.querySelectorAll('[data-label-history]').forEach((button) => {
+    const recordId = button.dataset.labelHistory;
+    const historyTarget = target.querySelector(`[data-label-history-content="${CSS.escape(recordId)}"]`);
+    const card = target.querySelector(`[data-label-record="${CSS.escape(recordId)}"]`);
+    const revision = String(records.find(item => item.id === recordId)?.version || 1);
+    const current = () => reportScopeCurrent(scope) && session.user?.uid === scope.uid && target.isConnected && button.isConnected && historyTarget?.isConnected && document.querySelector('#label-report-results') === target && target.querySelector(`[data-label-history-content="${CSS.escape(recordId)}"]`) === historyTarget && card?.dataset.recordVersion === revision;
+    const loadHistory = async () => {
+      if (!current() || historyTarget.hidden || historyTarget.dataset.historyLoaded === 'true' || historyTarget.dataset.historyLoading === 'true') return;
+      const request = historyTarget._labelHistoryRequest = {};
+      historyTarget._labelHistoryScopeKey = scope.key;
+      const ownsRequest = () => current() && historyTarget._labelHistoryRequest === request;
+      historyTarget.dataset.historyLoading = 'true';
       historyTarget.innerHTML = '<small class="loading">Carregando histórico…</small>';
       try {
         const {listLabelHistory} = await import('./data.js');
-        const history = await listLabelHistory(button.dataset.labelHistory);
+        if (!ownsRequest()) return;
+        const history = await listLabelHistory(recordId);
+        if (!ownsRequest()) return;
         const labels = {date: 'Data', patientName: 'Nome do paciente', encounterCode: 'Atendimento', procedureCode: 'Cirurgia', type: 'Tipo de etiqueta', amount: 'Valor', insurance: 'Convênio', creditor: 'Credor', staffSiglas: 'Plantonistas', consultation: 'Consulta pré-anestésica', status: 'Status'};
         historyTarget.innerHTML = renderRecordEditHistory(history, labels, (value, field) => {
           if (value == null || value === '') return '—';
@@ -2197,40 +2358,36 @@ async function loadLabelReport(options = {}) {
           if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
           return Array.isArray(value) ? value.join(', ') || '—' : String(value);
         });
-        historyTarget.dataset.loaded = 'true';
-        historyTarget.dataset.loading = 'false';
+        historyTarget.dataset.historyLoaded = 'true';
       } catch (error) {
-        historyTarget.dataset.loading = 'false';
-        historyTarget.innerHTML = `<small>Não foi possível carregar o histórico. ${escapeHtml(error.message || '')}</small>`;
+        if (ownsRequest()) historyTarget.innerHTML = `<small>Não foi possível carregar o histórico. ${escapeHtml(error.message || '')}</small>`;
+      } finally {
+        if (ownsRequest()) historyTarget.dataset.historyLoading = 'false';
       }
-    }));
-    target.querySelector('#label-report-more')?.addEventListener('click', (event) => {
-      event.currentTarget.disabled = true;
-      loadLabelReport({append: true});
-    });
-    labelReportState = 'synced';
-    updateLabelReportSync();
-    return true;
-  } catch (error) {
-    if (loadId === labelReportLoad && target.isConnected && session.user?.uid === requestUid) {
-      labelReportState = 'error';
-      updateLabelReportSync();
-      if (append) {
-        target.insertAdjacentHTML('afterbegin', `<p class="empty-state">Não foi possível carregar mais etiquetas. ${escapeHtml(error.message || '')}</p>`);
-        const moreButton = target.querySelector('#label-report-more');
-        if (moreButton) {
-          moreButton.disabled = !navigator.onLine;
-          moreButton.textContent = navigator.onLine ? 'Tentar carregar mais' : 'Conecte-se para carregar mais';
-        }
-      } else target.innerHTML = `<p class="empty-state">Não foi possível carregar o relatório. ${escapeHtml(error.message || '')}</p>`;
-      target.querySelector('#label-report-retry')?.remove();
-      target.insertAdjacentHTML('beforeend', '<button class="secondary-button" type="button" id="label-report-retry">Tentar novamente</button>');
-      target.querySelector('#label-report-retry')?.addEventListener('click', () => void loadLabelReport({append}));
+    };
+    button.onclick = () => {
+      if (!current()) return;
+      historyTarget.hidden = !historyTarget.hidden;
+      button.setAttribute('aria-expanded', String(!historyTarget.hidden));
+      button.textContent = historyTarget.hidden ? 'Histórico' : 'Fechar histórico';
+      if (!historyTarget.hidden) void loadHistory();
+    };
+    const historyOwnerChanged = historyTarget?.dataset.historyLoading === 'true' && historyTarget._labelHistoryScopeKey !== scope.key;
+    if (!scopeChanged && historyTarget && (previousVersions.get(recordId) !== revision || historyOwnerChanged)) {
+      historyTarget._labelHistoryRequest = null;
+      delete historyTarget.dataset.historyLoaded;
+      delete historyTarget.dataset.historyLoading;
+      if (!historyTarget.hidden) void loadHistory();
     }
-    return false;
-  } finally {
-    if (append && loadId === labelReportLoad) labelReportLoadingMore = false;
-  }
+  });
+  const moreButton = target.querySelector('#label-report-more');
+  if (moreButton) moreButton.onclick = () => {
+    if (!reportScopeCurrent(scope) || session.user?.uid !== scope.uid || !moreButton.isConnected || !labelReportCursor || !navigator.onLine) return;
+    moreButton.disabled = true;
+    void loadLabelReport({append: true});
+  };
+  updateLabelReportSync();
+  return true;
 }
 
 function beginLabelEdit(item) {
@@ -2312,7 +2469,10 @@ async function shareReportPdf(kind) {
   const isLabel = kind === 'labels';
   const button = document.querySelector(isLabel ? '#share-labels-pdf' : '#share-events-pdf');
   const target = document.querySelector(isLabel ? '#label-report-results' : '#event-report-results');
-  const records = isLabel ? loadedLabelRecords : loadedEventReportRecords;
+  const records = confirmedLiveReportRecords(isLabel ? loadedLabelRecords : loadedEventReportRecords);
+  const reportScope = liveReports.get(kind)?.snapshot().scope;
+  if (!reportScopeCurrent(reportScope)) return;
+  const partial = Boolean((kind === 'labels' ? labelReportCursor : eventReportCursor));
   if (!button || !target || !records.length) return;
   const period = isLabel
     ? (labelReportMode === 'daily' ? document.querySelector('#label-report-day')?.value : document.querySelector('#label-report-month')?.value)
@@ -2361,9 +2521,10 @@ async function shareReportPdf(kind) {
   status.textContent = 'Preparando PDF…';
   try {
     const {createAndSharePdf} = await loadReportPdfModule();
+    if (!reportScopeCurrent(reportScope)) return;
     const title = isLabel ? 'ETIQUETAS SAHMT' : 'SAHMT · EVENTOS';
     const periodLabel = isLabel && mode === 'monthly' ? formatReportMonth(period) : period;
-    const reportPeriod = `${mode === 'daily' ? 'Relatório diário' : 'Relatório mensal'} de ${periodLabel} · ${pdfRecords.length} entrada(s)${isLabel ? ` · ${alertCount} alerta(s)` : ''}`;
+    const reportPeriod = `${mode === 'daily' ? 'Relatório diário' : 'Relatório mensal'} de ${periodLabel} · ${pdfRecords.length} entrada(s)${isLabel ? ` · ${alertCount} alerta(s)` : ''}${partial ? ' · PARCIAL: há registros ainda não carregados' : ''}`;
     const result = await createAndSharePdf({title, period: reportPeriod, fileName: `SAHMT-${isLabel ? 'Etiquetas' : 'Eventos'}-${period}`, columns, rows, orientation: isLabel ? 'landscape' : undefined, alertRowIndexes, labelDateGroups});
     status.textContent = result === 'shared' ? 'PDF aberto no compartilhamento do aparelho.' : 'PDF gerado e baixado neste aparelho.';
   } catch (error) {
@@ -3166,7 +3327,7 @@ async function bindModuleForm(route) {
     document.querySelector('#event-conflict-refresh')?.addEventListener('click', async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
-      const refreshed = await loadEventReport();
+      const refreshed = await loadEventReport({force: true});
       const status = document.querySelector('#event-form-status');
       if (status) status.textContent = refreshed
         ? 'Relatório atualizado. Compare com os valores preservados no formulário antes de salvar novamente.'
@@ -3201,7 +3362,7 @@ async function bindModuleForm(route) {
     document.querySelector('#label-conflict-refresh')?.addEventListener('click', async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
-      const refreshed = await loadLabelReport();
+      const refreshed = await loadLabelReport({force: true});
       const status = document.querySelector('#label-form-status');
       if (status) status.textContent = refreshed
         ? 'Relatório atualizado. Compare com os valores preservados no formulário antes de salvar novamente.'
@@ -3944,6 +4105,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  for (const kind of ['events', 'labels', 'checklist']) { const scope = liveReports.get(kind)?.snapshot().scope; if (scope?.warm !== true && (scope || reportStates.has(kind) || reportPayloads.has(kind))) closeReportLive(kind, 'render'); }
   labelReportLoad++;
   labelReportLoadingMore = false;
   labelReportState = 'idle';
@@ -4105,8 +4267,14 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
+  const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
+  const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
+  const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
-  if (userChanged || next.status !== 'signed-in') startupReports.clear();
+  if (userChanged || next.status !== 'signed-in') {
+    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
+    for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
+  }
   if (next.status !== 'signed-in' || userChanged) {
     labelManualConfirmation = {uid: '', status: ''};
     scheduleOutboxRetry('', null);
@@ -4134,7 +4302,8 @@ function sessionChanged(next) {
       }
     }
   }
-  void render();
+  if (!unchangedPresentation) void render();
+  else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
 async function refreshAppFeatures(uid, force = false) {
@@ -4145,8 +4314,9 @@ async function refreshAppFeatures(uid, force = false) {
     const {readAppFeatures} = await import('./data-lite.js');
     const features = normalizeAppFeatures(await readAppFeatures(uid));
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    const unchanged = JSON.stringify(appFeatures) === JSON.stringify(features);
     appFeatures = features;
-    await render();
+    if (!unchanged) await render();
   } catch (error) {
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
     appFeatures = {...DEFAULT_APP_FEATURES};
@@ -4155,27 +4325,41 @@ async function refreshAppFeatures(uid, force = false) {
 }
 window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
 window.addEventListener('online', () => {
-  startupReports.clear();
+  liveReports.setOnline(true);
   if (session.status === 'signed-in') {
+    for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'reconnect');
     void refreshAppFeatures(session.user.uid, true);
     void syncOutbox();
   }
 });
-window.addEventListener('offline', () => { void updateOutboxStatus(); });
-window.addEventListener('sahmt-write-synced', (event) => {
-  startupReports.clear();
+window.addEventListener('offline', () => { liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de assinar.'); void updateOutboxStatus(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    suspendedReportScopes = ['events', 'labels', 'checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
+    for (const scope of suspendedReportScopes) { liveReports.close(scope.kind, 'suspend'); reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false}); updateReportSync(scope.kind); }
+    startupReports.clear();
+    invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
+  } else {
+    const scopes = suspendedReportScopes; suspendedReportScopes = [];
+    for (const scope of scopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, scope, {force: true});
+  }
+});
+function refreshLivePending() {
+  if (session.status === 'signed-in') void liveReports.invalidatePending(session.user.uid);
   void updateOutboxStatus();
+}
+window.addEventListener('sahmt-write-synced', (event) => {
+  refreshLivePending();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
 window.addEventListener('sahmt-write-queued', () => {
-  startupReports.clear();
-  void updateOutboxStatus();
+  refreshLivePending();
   if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
 });
 window.addEventListener('sahmt-write-rejected', (event) => {
-  startupReports.clear();
-  notice = `O Firestore recusou a gravação sincronizada; ela não foi confirmada. ${event.detail?.message || ''}`;
-  void render();
+  notice = 'O Firestore recusou a gravação; ela não foi confirmada. ' + (event.detail?.message || '');
+  refreshLivePending();
+  if (!['events', 'labels', 'checklist'].includes(currentRoute())) void render();
 });
 void render();
 if (startupBannerActive) window.setTimeout(() => {

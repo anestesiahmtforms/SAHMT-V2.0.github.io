@@ -56,3 +56,106 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
   };
 }
 
+
+
+function labelWatchLimit(value, fallback) {
+  const count = value == null ? fallback : Number(value);
+  if (!Number.isSafeInteger(count) || count < 1) throw new Error('Informe um limite válido para acompanhar as etiquetas.');
+  return count;
+}
+
+function labelWatchTime(value) {
+  const time = dateSortValue(value);
+  return Number.isFinite(time) && value ? time : 0;
+}
+
+function newerLabelWatchRecord(left, right) {
+  if (!left) return right;
+  const version = Number(right.version || 0) - Number(left.version || 0);
+  if (version) return version > 0 ? right : left;
+  const updated = labelWatchTime(right.updatedAt || right.createdAt) - labelWatchTime(left.updatedAt || left.createdAt);
+  if (updated) return updated > 0 ? right : left;
+  if (right.hasPendingWrites !== left.hasPendingWrites) return right.hasPendingWrites ? right : left;
+  return right;
+}
+
+/** Watches a growing, bounded prefix for each authorized query. No patient data is persisted. */
+export async function watchLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 50, loadedLimit = null} = {}, onNext, onError) {
+  if (!from || !to || from > to) throw new Error('Informe um período válido para consultar as etiquetas.');
+  if (!uid) throw new Error('A sessão expirou. Entre novamente para consultar etiquetas.');
+  if (typeof onNext !== 'function') throw new Error('O relatório de etiquetas não está disponível.');
+  const page = Math.min(100, labelWatchLimit(pageSize, 50));
+  const count = labelWatchLimit(loadedLimit, page);
+  const [{db: realtimeDb}, realtime] = await Promise.all([import('./firebase.js'), import('firebase/firestore')]);
+  if (!realtimeDb) throw new Error('O Firestore não está disponível para atualizar as etiquetas.');
+  const dateFilters = from === to ? [realtime.where('date', '==', from)] : [realtime.where('date', '>=', from), realtime.where('date', '<=', to)];
+  const base = [realtime.where('active', '==', true), ...dateFilters];
+  const filters = canManage ? [[]] : [
+    [realtime.where('createdByUid', '==', uid)],
+    ...(sigla ? [[realtime.where('staffSiglas', 'array-contains', sigla)]] : [])
+  ];
+  const sources = filters.map(() => ({snapshot: null}));
+  let closed = false;
+  const unsubscribes = [];
+  let previous = new Map();
+  const stop = () => {
+    if (closed) return;
+    closed = true;
+    for (const unsubscribe of unsubscribes.splice(0)) unsubscribe();
+    for (const source of sources) source.snapshot = null;
+    previous.clear();
+  };
+  const fail = error => {
+    if (closed) return;
+    stop();
+    onError?.(error);
+  };
+  const emit = () => {
+    if (closed || sources.some(source => !source.snapshot)) return;
+    const records = new Map();
+    let hasMore = false, fromCache = false, hasPendingWrites = false;
+    for (const source of sources) {
+      const snapshot = source.snapshot;
+      fromCache ||= snapshot.metadata?.fromCache !== false;
+      hasPendingWrites ||= snapshot.metadata?.hasPendingWrites === true;
+      hasMore ||= snapshot.docs.length > count;
+      for (const item of snapshot.docs) hasPendingWrites ||= item.metadata?.hasPendingWrites === true;
+      for (const item of snapshot.docs.slice(0, count)) {
+        const value = item.data();
+        // These guards also discard a late contribution after it leaves the selected scope.
+        if (value.active !== true || typeof value.date !== 'string' || value.date < from || value.date > to ||
+          (!canManage && value.createdByUid !== uid && !(sigla && value.staffSiglas?.includes(sigla)))) continue;
+        const record = {...value, id: item.id, hasPendingWrites: item.metadata?.hasPendingWrites === true};
+        records.set(item.id, newerLabelWatchRecord(records.get(item.id), record));
+      }
+    }
+    const values = [...records.values()].sort((left, right) => String(right.date).localeCompare(String(left.date)) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt) || String(left.id).localeCompare(String(right.id)));
+    const changes = [];
+    for (const value of values) {
+      const older = previous.get(value.id);
+      if (!older) changes.push({type: 'added', id: value.id, data: value});
+      else if (JSON.stringify(older) !== JSON.stringify(value)) changes.push({type: 'modified', id: value.id, data: value});
+    }
+    for (const [id, value] of previous) if (!records.has(id)) changes.push({type: 'removed', id, data: value});
+    previous = records;
+    onNext({records: values, changes, hasMore, loadedLimit: count,
+      nextCursor: hasMore ? {mode: canManage ? 'admin' : 'staff', live: true, loadedLimit: count, nextLimit: count + page} : null,
+      fromCache, hasPendingWrites, serverConfirmed: !fromCache && !hasPendingWrites});
+  };
+  try {
+    filters.forEach((extra, index) => {
+      if (closed) return;
+      const scopedQuery = realtime.query(realtime.collection(realtimeDb, 'labels'), ...base, ...extra, realtime.orderBy('date', 'desc'), realtime.limit(count + 1));
+      const unsubscribe = realtime.onSnapshot(scopedQuery, {includeMetadataChanges: true}, snapshot => {
+        if (closed) return;
+        sources[index].snapshot = snapshot;
+        emit();
+      }, fail);
+      if (closed) unsubscribe(); else unsubscribes.push(unsubscribe);
+    });
+  } catch (error) {
+    stop();
+    throw error;
+  }
+  return stop;
+}

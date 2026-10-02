@@ -106,14 +106,22 @@ test('edição recusada: X Pendente e erro somente no modal', async () => {
   assert.match(vm.runInContext('renderLabelManualConfirmation()', context), /✕/);
 });
 
-function reportRecordHtml(mode, allowed) {
-  const start = source.indexOf('records.map((item) => {', source.indexOf('const reportHeading = labelReportMode'));
-  const end = source.indexOf("}).join('')", start);
-  const records = [{id: 'label-1', createdByUid: 'user-1', patientName: 'Paciente teste', date: '2026-09-30', staffSiglas: []}];
-  return vm.runInNewContext(source.slice(start, end + 2), {
-    records, labelReportMode: mode, session: {user: {uid: 'user-1'}, profile: {}},
-    can: () => allowed, escapeHtml: String, formatRecordDate: String
-  }).join('');
+function reportRecordHtml(mode, allowed, {record = {}, access = {}} = {}) {
+  const start = source.indexOf('function renderLiveLabelReport(');
+  const end = source.indexOf('function beginLabelEdit(', start);
+  assert.ok(start >= 0 && end > start);
+  const records = [{id: 'label-1', createdByUid: 'user-1', patientName: 'Paciente fictício', date: '2026-09-30', staffSiglas: [], ...record}];
+  const target = {isConnected: true, innerHTML: '', querySelectorAll: () => [], querySelector: () => null};
+  const scope = {key: 'labels:test', mode, uid: 'user-1', sigla: 'AA', canWrite: allowed, canManage: false, day: '2026-09-30', from: '2026-09-30', to: '2026-09-30', month: '2026-09', targetNode: target, ...access};
+  const context = vm.createContext({
+    session: {user: {uid: 'user-1'}, profile: {}}, loadedLabelRecords: [], labelReportCursor: null,
+    document: {querySelector: selector => selector === '#label-report-results' ? target : null},
+    navigator: {onLine: true}, reportScopeCurrent: () => true, reportTimestamp: () => 0,
+    escapeHtml: String, formatRecordDate: String, reconcileReportMarkup(node, markup) {node.innerHTML = markup;}, updateLabelReportSync() {}
+  });
+  vm.runInContext(source.slice(start, end), context);
+  context.renderLiveLabelReport({records, nextCursor: null}, scope);
+  return target.innerHTML;
 }
 test('relatório mensal não apresenta Editar para nenhum perfil', () => {
   for (const allowed of [true, false]) assert.doesNotMatch(reportRecordHtml('monthly', allowed), /data-label-edit|EDITAR REGISTRO|>Editar</);
@@ -127,4 +135,14 @@ test('abertura da edição também fica bloqueada no modo mensal', () => {
   const ctx = vm.createContext({labelReportMode: 'monthly', document: {querySelector() {throw new Error('Não deveria abrir editor');}}});
   vm.runInContext(fn, ctx);
   vm.runInContext('beginLabelEdit({id: "label-1"})', ctx);
+});
+
+test('edição diária de Etiquetas exige envolvimento ou gestão e somente registros confirmados', () => {
+  assert.doesNotMatch(reportRecordHtml('daily', true, {record: {createdByUid: 'outra-conta'}}), /data-label-edit/);
+  assert.match(reportRecordHtml('daily', true, {record: {createdByUid: 'outra-conta', staffSiglas: ['AA']}}), /data-label-edit/);
+  assert.match(reportRecordHtml('daily', false, {record: {createdByUid: 'outra-conta'}, access: {canManage: true}}), /data-label-edit/);
+  for (const flags of [{pendingFirestore: true}, {pendingSync: true}, {pendingEdit: true}, {syncFailed: true}, {syncConflict: true}, {hasPendingWrites: true}, {metadata: {hasPendingWrites: true}}]) {
+    assert.doesNotMatch(reportRecordHtml('daily', true, {record: flags}), /data-label-edit|data-label-history=/, JSON.stringify(flags));
+  }
+  assert.doesNotMatch(reportRecordHtml('monthly', true, {access: {canManage: true}}), /data-label-edit|data-label-history=/);
 });

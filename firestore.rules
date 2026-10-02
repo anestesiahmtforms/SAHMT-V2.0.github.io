@@ -473,8 +473,8 @@ service cloud.firestore {
         data.consultation == (data.type == 'Consulta Pré-anestésica') && data.status == 'CONFIRMED';
     }
     function labelActorAccess(data) {
-      return data.createdByUid == request.auth.uid ||
-        (profile().sigla is string && profile().sigla != '' && data.staffSiglas is list && data.staffSiglas.hasAny([profile().sigla]));
+      return data.get('createdByUid', '') == request.auth.uid ||
+        (profile().sigla is string && profile().sigla != '' && data.get('staffSiglas', []).hasAny([profile().sigla]));
     }
     function labelRecordAccess() {
       return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) && labelActorAccess(resource.data));
@@ -483,10 +483,9 @@ service cloud.firestore {
       let parent = get(/databases/$(database)/documents/labels/$(labelId)).data;
       return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) && labelActorAccess(parent));
     }
-    function labelHistoryFieldMatches(labelId, fields, before, after, field) {
-      let parentPath = /databases/$(database)/documents/labels/$(labelId);
-      let oldValue = get(parentPath).data[field];
-      let newValue = getAfter(parentPath).data[field];
+    function labelHistoryFieldMatches(original, updated, fields, before, after, field) {
+      let oldValue = original[field];
+      let newValue = updated[field];
       return fields.hasAny([field])
         ? (before[field] == oldValue && after[field] == newValue && before[field] != after[field])
         : oldValue == newValue;
@@ -496,8 +495,10 @@ service cloud.firestore {
       let before = data.before;
       let after = data.after;
       let fields = data.changedFields;
+      let original = get(parentPath).data;
+      let updated = getAfter(parentPath).data;
       return exists(parentPath) && existsAfter(parentPath) &&
-        (can('labelsManage') || labelActorAccess(get(parentPath).data)) &&
+        (can('labelsManage') || labelActorAccess(original)) &&
         fields is list && fields.size() > 0 && fields.size() <= 10 &&
         fields.hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation']) &&
         before is map && after is map && before.keys().hasOnly(fields) && after.keys().hasOnly(fields) &&
@@ -507,17 +508,17 @@ service cloud.firestore {
         version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.labelId == labelId &&
         data.version is int && int(version) == data.version &&
         data.actorUid == request.auth.uid && (!data.keys().hasAny(['actorName']) || (data.actorName is string && data.actorName.size() <= 120 && data.actorName == profile().displayName)) && data.createdAt == request.time &&
-        getAfter(parentPath).data.version == data.version && getAfter(parentPath).data.updatedByUid == request.auth.uid &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'date') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'patientName') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'procedureCode') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'encounterCode') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'type') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'amount') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'insurance') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'creditor') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'staffSiglas') &&
-        labelHistoryFieldMatches(labelId, fields, before, after, 'consultation');
+        updated.version == data.version && updated.updatedByUid == request.auth.uid &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'date') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'patientName') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'procedureCode') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'encounterCode') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'type') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'amount') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'insurance') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'creditor') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'staffSiglas') &&
+        labelHistoryFieldMatches(original, updated, fields, before, after, 'consultation');
     }
     function labelStaffAllowed(siglas, labelId) {
       let catalogPath = /databases/$(database)/documents/appConfig/labelStaff;
