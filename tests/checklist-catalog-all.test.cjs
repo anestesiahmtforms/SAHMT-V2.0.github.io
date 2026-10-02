@@ -69,8 +69,47 @@ test('banner organiza situação, manutenção e administração em blocos com V
 
 test('calendários mantêm ano legível, fonte de toque e item em frente em telas estreitas', () => {
   const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
-  assert.match(css, /\.checklist-maintenance-date\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(155px,\.85fr\)/);
-  assert.match(css, /\.checklist-maintenance-date>span\{overflow-wrap:anywhere\}/);
+  assert.match(css, /\.checklist-maintenance-date\{[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(0,155px\)/);
+  assert.match(css, /\.checklist-maintenance-date>span\{[^}]*min-width:0[^}]*overflow-wrap:anywhere\}/);
   assert.match(css, /\.checklist-maintenance-date input\{[^}]*font-size:16px/);
   assert.match(css, /@media\(max-width:380px\)\{#checklist-station-dialog\{padding:12px\}#checklist-station-dialog \.checklist-station-block\{padding:8px\}\}/);
+});
+
+
+test('banner usa altura natural, centralização explícita e limite da área segura', () => {
+  const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
+  const dialog = css.match(/#checklist-station-dialog\{\r?\n([\s\S]*?)\r?\n\}/)[1];
+  assert.match(dialog, /box-sizing:border-box/);
+  assert.match(dialog, /inset:auto;top:50%;left:50%;transform:translate\(-50%,-50%\)/);
+  assert.match(dialog, /height:auto;min-width:0;min-height:0/);
+  assert.match(dialog, /margin:0;/);
+  assert.match(dialog, /width:min\(90vw,520px\)/);
+  assert.match(dialog, /max-width:calc\(100vw - 24px - env\(safe-area-inset-left,0px\) - env\(safe-area-inset-right,0px\)\)/);
+  assert.match(dialog, /max-height:calc\(90vh - env\(safe-area-inset-top,0px\) - env\(safe-area-inset-bottom,0px\)\)/);
+  assert.match(dialog, /max-height:calc\(90dvh - env\(safe-area-inset-top,0px\) - env\(safe-area-inset-bottom,0px\)\)/);
+  assert.match(css, /#checklist-station-dialog\[open\]\{[^}]*grid-auto-rows:max-content[^}]*align-content:start/);
+  assert.match(css, /#checklist-station-dialog \.checklist-station-banner-actions\{[^}]*min-width:0[^}]*max-width:100%/);
+  assert.ok(!dialog.includes('fit-content'));
+});
+
+test('largura intrínseca do calendário não estica a coluna e preserva o input date', () => {
+  const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
+  const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+  const input = css.match(/#checklist-station-dialog \.checklist-maintenance-date input\{([^}]+)\}/)[1];
+  assert.match(input, /box-sizing:border-box/);
+  assert.match(input, /-webkit-appearance:none;appearance:none/);
+  assert.match(input, /width:0;inline-size:0;min-width:100%;min-inline-size:100%;max-width:100%;max-inline-size:100%/);
+  assert.match(input, /font-size:16px/);
+  assert.match(input, /min-height:44px/);
+  assert.match(css, /#checklist-station-dialog \.checklist-maintenance-date input::-webkit-date-and-time-value\{[^}]*min-width:0[^}]*max-width:100%/);
+  assert.ok(!/overflow:\s*hidden|text-overflow:\s*ellipsis/.test(input));
+  assert.match(main, /<input type="date" data-checklist-maintenance-date=/);
+});
+
+
+test('banner exclui a altura fixa global sem aumentar a especificidade dos outros modais', () => {
+  const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
+  assert.match(css, /\.app-shell dialog:not\(:where\(#checklist-station-dialog\)\)\{[^}]*height:90dvh!important/);
+  assert.ok(!/\.app-shell dialog\{[^}]*height:[^;}]+!important/.test(css));
+  assert.ok(!css.includes('.app-shell dialog:not(#checklist-station-dialog){'));
 });

@@ -102,3 +102,21 @@ Publicação deste complemento confirmada:
 - SHA-256 normalizado: `9f992d0eb4c514f3ac400070e3238fe6e7f98514d2194393c00d343dc8790c9a`, igual ao arquivo testado.
 - Complemento legado: 8/8 registros verificados em `10/01/2026 23:47:59`, máscara exclusiva `createdByName`, zero outros campos alterados.
 - Somente Firestore Rules foram implantadas pelo Firebase; o PWA segue a publicação da main por GitHub Actions.
+
+## Altura do banner e contenção dos calendários — 01/10/2026
+
+Base: `aee1f8f5baa4d006b913d51e3fc34985af449e42`. A captura do iPhone mostrou calendários ultrapassando o bloco e espaço vazio após Voltar. A regra global `.app-shell dialog` impunha altura de 90dvh com `!important`; o banner do arsenal foi excluído somente dessa regra de dimensões. O seletor usa `:where` para preservar a especificidade aplicada aos demais modais.
+
+O banner passa a usar altura natural, centralização explícita e linhas de grade ajustadas ao conteúdo. A altura acompanha o perfil e as seções abertas, limitada à área segura do visor. Em telas pequenas ou conteúdo longo, a rolagem interna preserva a legibilidade e permite alcançar todos os controles; Voltar permanece no rodapé. Os calendários continuam nativos, com item à esquerda, data em frente, fonte de 16px e área de toque de pelo menos 44px. Sua coluna tem mínimo zero e largura limitada; o controle não usa o tamanho intrínseco para alargar o bloco, sem esconder ou abreviar o ano.
+
+Verificações desta atualização:
+
+- Domínio: 238/238 testes, incluindo três regressões novas de altura natural, contenção do calendário e exclusão da regra global sem alterar a especificidade de outros modais.
+- Worker: 12/12 testes, sem chamada à IA de produção.
+- Build com as variáveis atuais do repositório: sucesso; aviso preexistente do chunk Firebase acima de 500 kB.
+- 70 cenários de navegador com dados fictícios, 35 transições de justificativa/edição/salvamento/reabertura e quatro redimensionamentos no mesmo banner. Viewports: 320×568, 360×640, 375×667, 390×844, 393×852, 414×896 e 844×390. Perfis comum/administrativo, acesso direto/QR, datas vazias/preenchidas, texto longo e escala de fonte raiz de 125%/150%. Todos sem rolagem horizontal, campos fora do bloco, espaço vazio excessivo após Voltar ou erros de página.
+- Medida em 393×852, conteúdo curto e datas preenchidas: antes, todos os perfis tinham 766,80px de altura. Depois, comum em consulta direta: 545,89px; comum por QR: 603,89px; administrador: 740,89px. Espaço excedente após o rodapé caiu de 226,91px na consulta comum para zero. As três datas medem 155px e terminam exatamente na margem interna do bloco.
+- A execução anterior do fixture sem `.app-shell` foi descartada. As medições acima usam a estrutura real `.app-shell.app-shell--checklist`; o comparativo conserva o CSS anterior à exclusão da regra global.
+- Cache do shell: v160, preservando a fila offline e os demais caches. Não houve mudança em JavaScript de autorização, respostas, manutenção ou QR, nem implantação de Rules, Functions, Worker, IA ou Apps Script.
+
+As evidências locais ficam em `.local-preview/banner-sizing/`. A verificação visual usa Edge/Chromium com viewport móvel e backend fictício. WebKit não estava instalado; Safari/iPhone/Android físicos e gravação autenticada de produção não foram executados nesta atualização. A confirmação no iPhone deve conferir sobretudo o seletor nativo de datas. A publicação da main só ocorre após a suíte completa do GitHub Actions.
