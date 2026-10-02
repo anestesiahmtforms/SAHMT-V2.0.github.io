@@ -39,7 +39,11 @@
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]},
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"managerUids","arrayConfig":"CONTAINS"}]},
     {"collectionGroup":"notificationGroups","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]},
-    {"collectionGroup":"syncQueue","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"nextAttemptAt","order":"ASCENDING"}]}
+    {"collectionGroup":"syncQueue","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"nextAttemptAt","order":"ASCENDING"}]},
+    {"collectionGroup":"documentGroups","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"allowedEmails","arrayConfig":"CONTAINS"}]},
+    {"collectionGroup":"documentGroups","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"managerEmails","arrayConfig":"CONTAINS"}]},
+    {"collectionGroup":"documents","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"documentGroupId","order":"ASCENDING"},{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]},
+    {"collectionGroup":"documents","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"documentGroupId","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]}
   ],
   "fieldOverrides": []
 }

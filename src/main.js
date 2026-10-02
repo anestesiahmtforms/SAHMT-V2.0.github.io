@@ -16,6 +16,7 @@ import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStat
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue} from './checklist-maintenance.js';
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
+import {normalizeManagementEmails, verifiedManagementEmail, isManagementDocumentAreaManager, canManageManagementDocument} from './management-document-access.js';
 import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
@@ -2548,17 +2549,30 @@ async function loadManagementAreaActivities(area) {
     document.querySelector('[data-module-form] input[name="title"]')?.focus({preventScroll: true});
   });
   try {
-    const {listManagementActivities, listManagementIndicators, listIndicatorMeasurements, listManagementActionPlans, listManagementActionPlanItems, listManagementDocuments, getManagementTaskScoringRule, listManagementActivityScoreReviews} = await import('./data.js');
+    const {listManagementActivities, listManagementIndicators, listIndicatorMeasurements, listManagementActionPlans, listManagementActionPlanItems, listManagementDocuments, listManagementDocumentGroups, getManagementTaskScoringRule, listManagementActivityScoreReviews} = await import('./data.js');
     const canReviewActivityPoints = can('managementManage') || (can('qualityManage') && area.id === 'area-gestao-da-qualidade') ||
       (can('managementRead') && Array.isArray(area.managerUids) && area.managerUids.includes(session.user.uid));
-    const [activities, indicators, plans, documents, scoringRule, scoreReviews] = await Promise.all([
+    const isGroupedDocumentArea = area.id === 'area-gestao-de-documentos';
+    const canManageAllDocuments = can('documentsManage');
+    const isDocumentAreaManager = isGroupedDocumentArea && isManagementDocumentAreaManager(area, requestUid);
+    const documentAccessOptions = {uid: requestUid, email: verifiedManagementEmail(session.user), canManageAll: canManageAllDocuments, areaManager: isDocumentAreaManager};
+    const documentBundleRequest = ['managementRead', 'documentsManage'].some(can) ? (async () => {
+      const groups = isGroupedDocumentArea ? await listManagementDocumentGroups(area.id, documentAccessOptions) : [];
+      const documents = await listManagementDocuments(area.id, {...documentAccessOptions, groups, includeInactive: canManageAllDocuments || isDocumentAreaManager || groups.some((group) => group.managerEmails?.includes(documentAccessOptions.email)), pageSize: 100});
+      return {groups, documents};
+    })() : Promise.resolve({groups: [], documents: []});
+    const [activities, indicators, plans, documentBundle, scoringRule, scoreReviews] = await Promise.all([
       ['managementRead', 'managementActivityWrite'].some(can) ? listManagementActivities(area.id) : Promise.resolve([]),
       ['managementRead', 'managementIndicatorsRead', 'managementIndicatorsWrite'].some(can) ? listManagementIndicators(area.id, {pageSize: 12}) : Promise.resolve([]),
       ['managementRead', 'managementPlansManage'].some(can) ? listManagementActionPlans(area.id, {pageSize: 20}) : Promise.resolve([]),
-      ['managementRead', 'documentsManage'].some(can) ? listManagementDocuments(area.id, {includeInactive: can('documentsManage'), pageSize: 100}) : Promise.resolve([]),
+      documentBundleRequest,
       can('managementManage') ? getManagementTaskScoringRule() : Promise.resolve(null),
       canReviewActivityPoints ? listManagementActivityScoreReviews(area.id, {pageSize: 50}) : Promise.resolve([])
     ]);
+    const {groups: documentGroups, documents} = documentBundle;
+    const documentAccess = (item) => ({document: item, area, groups: documentGroups, user: session.user, canManageAll: can('documentsManage'), canReadLegacy: can('managementRead')});
+    const canEditDocument = (item) => isGroupedDocumentArea ? canManageManagementDocument(documentAccess(item)) : can('documentsManage');
+    const canShowDocumentEditor = canManageAllDocuments || documents.some(canEditDocument);
     const scoreReviewByActivity = new Map(scoreReviews.map((review) => [review.activityId, review]));
     const measurements = await Promise.all(indicators.map((indicator) => listIndicatorMeasurements(indicator.id, {pageSize: 6})));
     const planItems = plans.length ? await listManagementActionPlanItems(plans.map((plan) => plan.id)) : [];
@@ -2590,12 +2604,20 @@ async function loadManagementAreaActivities(area) {
       const itemForm = can('managementPlansManage') && plan.responsibleUid === session.user.uid && plan.status !== 'COMPLETED' ? `<form class="action-plan-item-form" data-plan-item-form="${escapeHtml(plan.id)}"><label>Próxima ação<input name="description" required maxlength="500" placeholder="Descreva uma ação objetiva"></label><label>Prazo<input name="dueAt" type="date"></label><label>UIDs dos responsáveis · até 20 membros desta área<textarea name="responsibleUids" rows="2" maxlength="2600">${escapeHtml(session.user.uid)}</textarea></label><button class="secondary-button" type="submit">Adicionar ação</button></form>` : '';
       return `<li><strong>${escapeHtml(plan.title)}</strong>${plan.description ? `<small>${escapeHtml(plan.description)}</small>` : ''}<small class="record-meta">${escapeHtml(plan.status)} · ${escapeHtml(plan.priority)}${plan.dueAt ? ` · Prazo ${escapeHtml(formatRecordDate(plan.dueAt))}` : ''} · ${items.length} ação(ões)</small>${itemRows}${itemForm}${action}</li>`;
     }).join('')}</ul>` : '<p class="empty-state">Nenhum plano de ação nesta área.</p>'}</section>`;
-    const documentForm = can('documentsManage') ? `<details class="quick-form" id="management-document-editor"><summary>Adicionar ou editar documento</summary><form id="management-document-form"><input type="hidden" name="managementAreaId" value="${escapeHtml(area.id)}"><input type="hidden" name="documentId"><input type="hidden" name="version" value="0"><div class="form-grid"><label>Título<input name="title" required maxlength="160"></label><label>Categoria<input name="category" required maxlength="80" placeholder="Protocolo, política, formulário…"></label><label>Link do Google Drive ou Docs<input name="driveUrl" type="url" required maxlength="800" placeholder="https://drive.google.com/file/d/…/view"></label><label class="contact-active-field"><input name="requiredReading" type="checkbox"> Leitura requerida</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Documento ativo</label></div><label>Descrição<textarea name="description" rows="2" maxlength="1200"></textarea></label><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar documento</button><button class="secondary-button" type="button" id="management-document-reset">Novo documento</button></div><p id="management-document-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
-    const documentsView = `<section class="management-documents"><h4>Documentos · ${documents.length}</h4>${documents.length ? `<ul class="record-list">${documents.map((item) => `<li><div class="contact-list-heading"><a class="management-document-link" href="${escapeHtml(item.driveUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>${can('documentsManage') ? `<button class="secondary-button" type="button" data-document-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}<small class="record-meta">${escapeHtml(item.category)} · v${escapeHtml(item.version)} · ${item.active ? 'Ativo' : 'Inativo'}${item.requiredReading ? ' · Leitura requerida' : ''}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum documento publicado nesta área.</p>'}</section>`;
+    const documentGroupEditor = isGroupedDocumentArea && canManageAllDocuments ? `<details class="quick-form management-document-group-editor" id="management-document-group-editor"><summary>Grupos de acesso aos documentos</summary><p>Use o e-mail da conta Google, um por linha. O acesso exige uma conta aprovada no SAHMT.</p>${documentGroups.length ? `<ul class="record-list">${documentGroups.map((group) => `<li><div class="contact-list-heading"><strong>${escapeHtml(group.name)}</strong><button class="secondary-button" type="button" data-document-group-edit="${escapeHtml(group.id)}">Editar grupo</button></div><small>${escapeHtml(group.category)} · ${group.allowedEmails.length} leitor(es) · ${group.managerEmails.length} gestor(es) · ${group.active ? 'Ativo' : 'Inativo'}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum grupo cadastrado nesta área.</p>'}<form id="management-document-group-form"><input type="hidden" name="managementAreaId" value="${escapeHtml(area.id)}"><input type="hidden" name="groupId"><input type="hidden" name="version" value="0"><div class="form-grid"><label>Nome do grupo<input name="name" required maxlength="100" placeholder="ACESSO GERAL ou ACESSO RESTRITO"></label><label>Categoria<input name="category" required maxlength="80" placeholder="POLITICAS E REGIMENTOS"></label><label>Tipo de acesso<select name="accessMode"><option value="GENERAL">ACESSO GERAL</option><option value="RESTRICTED">ACESSO RESTRITO</option></select></label><label>ID da pasta no Drive<input name="sourceFolderId" maxlength="200"></label><label>Leitores · um e-mail por linha<textarea name="allowedEmails" rows="5" maxlength="25699" required></textarea></label><label>Gestores · um e-mail por linha<textarea name="managerEmails" rows="3" maxlength="5139"></textarea></label><label class="contact-active-field"><input name="active" type="checkbox" checked> Grupo ativo</label></div><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar grupo</button><button class="secondary-button" type="button" id="management-document-group-reset">Novo grupo</button></div><p id="management-document-group-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
+    const documentGroupField = isGroupedDocumentArea ? `<label>Grupo de acesso<select name="documentGroupId" required ${canManageAllDocuments ? '' : 'disabled'}><option value="">Selecione o grupo</option>${documentGroups.map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)}${group.active ? '' : ' · Inativo'}</option>`).join('')}</select></label>` : '';
+    const documentForm = canShowDocumentEditor ? `<details class="quick-form" id="management-document-editor"><summary>${canManageAllDocuments ? 'Adicionar ou editar documento' : 'Editar documento'}</summary><form id="management-document-form"><input type="hidden" name="managementAreaId" value="${escapeHtml(area.id)}"><input type="hidden" name="documentId"><input type="hidden" name="version" value="0"><div class="form-grid"><label>Título<input name="title" required maxlength="160"></label>${documentGroupField}<label>Categoria<input name="category" required maxlength="80" placeholder="Protocolo, política, formulário…" ${canManageAllDocuments ? '' : 'readonly'}></label><label>Link do Google Drive ou Docs<input name="driveUrl" type="url" required maxlength="800" placeholder="https://drive.google.com/file/d/…/view"></label><label class="contact-active-field"><input name="requiredReading" type="checkbox"> Leitura requerida</label><label class="contact-active-field"><input name="active" type="checkbox" ${isGroupedDocumentArea ? '' : 'checked'}> Documento ativo</label></div><label>Descrição<textarea name="description" rows="2" maxlength="1200"></textarea></label><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar documento</button>${canManageAllDocuments ? '<button class="secondary-button" type="button" id="management-document-reset">Novo documento</button>' : ''}</div><p id="management-document-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
+    const documentRows = (items) => items.map((item) => `<li><div class="contact-list-heading"><a class="management-document-link" href="${escapeHtml(item.driveUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>${canEditDocument(item) ? `<button class="secondary-button" type="button" data-document-edit="${escapeHtml(item.id)}">Editar</button>` : ''}</div>${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}<small class="record-meta">${escapeHtml(item.category)} · v${escapeHtml(item.version)} · ${item.active ? 'Ativo' : 'Inativo'}${item.requiredReading ? ' · Leitura requerida' : ''}</small></li>`).join('');
+    const documentSections = documentGroups.map((group) => {
+      const items = documents.filter((item) => item.documentGroupId === group.id);
+      return `<section class="management-document-group"><h5>${escapeHtml(group.name)} · ${items.length}</h5>${items.length ? `<ul class="record-list">${documentRows(items)}</ul>` : '<p class="empty-state">Nenhum documento publicado neste grupo.</p>'}</section>`;
+    }).join('');
+    const ungroupedDocuments = documents.filter((item) => !documentGroups.some((group) => group.id === item.documentGroupId));
+    const documentsView = `<section class="management-documents"><h4>Documentos · ${documents.length}</h4>${documentSections}${ungroupedDocuments.length ? `${documentGroups.length ? '<h5>Documentos sem grupo</h5>' : ''}<ul class="record-list">${documentRows(ungroupedDocuments)}</ul>` : !documentGroups.length ? '<p class="empty-state">Nenhum documento publicado nesta área.</p>' : ''}</section>`;
     const equipmentView = area.id === 'area-gestao-de-equipamentos'
       ? can('equipmentManage') ? '<div id="equipment-management-root"></div>' : '<section class="equipment-manager"><h4>Equipamentos</h4><p class="empty-state">Esta área exige a permissão Gerenciar equipamentos.</p></section>'
       : '';
-    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
+    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentGroupEditor}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
       const responsible = item.responsibleUids?.includes(session.user.uid);
       const scoreReview = scoreReviewByActivity.get(item.id);
       const action = responsible && item.status === 'OPEN' ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="IN_PROGRESS">Iniciar</button>` :
@@ -2653,7 +2675,84 @@ async function loadManagementAreaActivities(area) {
         button.disabled = false;
       }
     });
+    const assertDocumentScope = () => {
+      if (session.status !== 'signed-in' || session.user?.uid !== requestUid || session.profile?.active !== true || session.profile?.access !== true ||
+          currentRoute() !== 'management' || !featureEnabledForRoute('management', appFeatures) || selectedManagementAreaId !== area.id ||
+          loadId !== managementActivityLoad || !detail.isConnected || document.querySelector('#management-area-detail') !== detail) {
+        throw new Error('O acesso ou a área mudou. Abra novamente a área antes de salvar.');
+      }
+    };
+    const groupEditor = detail.querySelector('#management-document-group-form');
+    const resetGroupEditor = () => {
+      if (!groupEditor) return;
+      groupEditor.reset();
+      groupEditor.elements.groupId.value = '';
+      groupEditor.elements.version.value = '0';
+      groupEditor.elements.managementAreaId.value = area.id;
+      groupEditor.dataset.mutationId = '';
+      groupEditor.querySelector('#management-document-group-status').textContent = '';
+    };
+    detail.querySelector('#management-document-group-reset')?.addEventListener('click', () => {if (groupEditor?.dataset.saving !== 'true') resetGroupEditor();});
+    groupEditor?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      if (form.dataset.saving === 'true') return;
+      const submit = form.querySelector('[type="submit"]');
+      const status = form.querySelector('#management-document-group-status');
+      const assertCurrent = () => {
+        assertDocumentScope();
+        if (!can('documentsManage')) throw new Error('Seu acesso para gerenciar os grupos foi revogado.');
+      };
+      try {
+        assertCurrent();
+        const values = Object.fromEntries(new FormData(form).entries());
+        values.groupId = values.groupId || (form.dataset.mutationId ||= crypto.randomUUID());
+        values.active = form.elements.active.checked;
+        values.allowedEmails = normalizeManagementEmails(values.allowedEmails);
+        values.managerEmails = normalizeManagementEmails(values.managerEmails, {maxItems: 20});
+        form.dataset.saving = 'true';
+        submit.disabled = true;
+        status.textContent = 'Salvando o grupo de acesso no Firestore…';
+        const {saveManagementDocumentGroup} = await import('./data.js');
+        assertCurrent();
+        await saveManagementDocumentGroup(values, requestUid, {assertCurrent});
+        assertCurrent();
+        notice = 'Grupo de acesso aos documentos atualizado.';
+        await render();
+      } catch (error) {
+        if (form.isConnected && session.user?.uid === requestUid) {
+          submit.disabled = false;
+          status.textContent = error.message || 'Não foi possível salvar o grupo.';
+        }
+      } finally {
+        form.dataset.saving = '';
+      }
+    });
+    detail.querySelectorAll('[data-document-group-edit]').forEach((button) => button.addEventListener('click', () => {
+      const group = documentGroups.find((item) => item.id === button.dataset.documentGroupEdit);
+      if (!group || !groupEditor || groupEditor.dataset.saving === 'true' || !can('documentsManage')) return;
+      groupEditor.elements.groupId.value = group.id;
+      groupEditor.elements.version.value = String(group.version);
+      groupEditor.elements.managementAreaId.value = group.managementAreaId;
+      for (const name of ['name', 'category', 'accessMode', 'sourceFolderId']) groupEditor.elements[name].value = group[name] || '';
+      groupEditor.elements.allowedEmails.value = group.allowedEmails.join('\n');
+      groupEditor.elements.managerEmails.value = group.managerEmails.join('\n');
+      groupEditor.elements.active.checked = group.active === true;
+      groupEditor.dataset.mutationId = '';
+      groupEditor.querySelector('#management-document-group-status').textContent = '';
+      detail.querySelector('#management-document-group-editor').open = true;
+      groupEditor.scrollIntoView({behavior: 'smooth', block: 'center'});
+      groupEditor.elements.name.focus({preventScroll: true});
+    }));
     const documentEditor = detail.querySelector('#management-document-form');
+    const setDocumentGroupCategory = ({setCategory = false} = {}) => {
+      if (!documentEditor || !isGroupedDocumentArea) return;
+      const group = documentGroups.find((item) => item.id === documentEditor.elements.documentGroupId.value);
+      if (group && setCategory && canManageAllDocuments) documentEditor.elements.category.value = group.category;
+      documentEditor.elements.category.readOnly = Boolean(group) || !canManageAllDocuments;
+    };
+    documentEditor?.elements.documentGroupId?.addEventListener('change', () => setDocumentGroupCategory({setCategory: true}));
+    if (documentEditor && !canManageAllDocuments) documentEditor.querySelector('[type="submit"]').disabled = true;
     const resetDocumentEditor = () => {
       documentEditor?.reset();
       if (!documentEditor) return;
@@ -2661,47 +2760,71 @@ async function loadManagementAreaActivities(area) {
       documentEditor.elements.version.value = '0';
       documentEditor.elements.managementAreaId.value = area.id;
       documentEditor.dataset.mutationId = '';
-      documentEditor.elements.active.checked = true;
+      documentEditor.elements.active.checked = !isGroupedDocumentArea;
+      setDocumentGroupCategory();
       const status = documentEditor.querySelector('#management-document-status');
       if (status) status.textContent = '';
       const editor = detail.querySelector('#management-document-editor');
       if (editor) editor.open = false;
     };
-    detail.querySelector('#management-document-reset')?.addEventListener('click', resetDocumentEditor);
+    detail.querySelector('#management-document-reset')?.addEventListener('click', () => {if (documentEditor?.dataset.saving !== 'true') resetDocumentEditor();});
     documentEditor?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
+      if (form.dataset.saving === 'true') return;
       const submit = form.querySelector('[type="submit"]');
       const status = form.querySelector('#management-document-status');
-      submit.disabled = true;
-      if (status) status.textContent = 'Salvando metadados no Firestore…';
+      const documentId = form.elements.documentId.value;
+      const item = documents.find((document) => document.id === documentId);
+      const assertCurrent = () => {
+        assertDocumentScope();
+        if (documentId ? !item || !canEditDocument(item) : !can('documentsManage')) {
+          throw new Error('Seu acesso para editar este documento foi revogado.');
+        }
+      };
       try {
-        const {saveManagementDocument} = await import('./data.js');
+        assertCurrent();
         const values = Object.fromEntries(new FormData(form).entries());
         values.documentId = values.documentId || (form.dataset.mutationId ||= crypto.randomUUID());
+        if (isGroupedDocumentArea && (can('documentsManage') || item?.documentGroupId)) values.documentGroupId = form.elements.documentGroupId.value;
         values.active = form.elements.active.checked;
         values.requiredReading = form.elements.requiredReading.checked;
-        await saveManagementDocument(values, session.user.uid);
+        form.dataset.saving = 'true';
+        submit.disabled = true;
+        if (status) status.textContent = 'Salvando metadados no Firestore…';
+        const {saveManagementDocument} = await import('./data.js');
+        assertCurrent();
+        await saveManagementDocument(values, requestUid, {assertCurrent});
+        assertCurrent();
         resetDocumentEditor();
         notice = 'Documento vinculado à área no Firestore. O arquivo permanece no Drive.';
         await render();
       } catch (error) {
-        submit.disabled = false;
-        if (status) status.textContent = error.message || 'Não foi possível salvar o documento.';
+        if (form.isConnected && session.user?.uid === requestUid) {
+          submit.disabled = false;
+          if (status) status.textContent = error.message || 'Não foi possível salvar o documento.';
+        }
+      } finally {
+        form.dataset.saving = '';
       }
     });
     detail.querySelectorAll('[data-document-edit]').forEach((button) => button.addEventListener('click', () => {
       const item = documents.find((document) => document.id === button.dataset.documentEdit);
-      if (!item || !documentEditor) return;
+      if (!item || !documentEditor || documentEditor.dataset.saving === 'true' || !canEditDocument(item)) return;
       documentEditor.elements.documentId.value = item.id;
       documentEditor.elements.version.value = String(item.version);
       documentEditor.elements.managementAreaId.value = item.managementAreaId;
       documentEditor.elements.title.value = item.title;
       documentEditor.elements.description.value = item.description || '';
       documentEditor.elements.driveUrl.value = item.driveUrl;
+      if (isGroupedDocumentArea) documentEditor.elements.documentGroupId.value = item.documentGroupId || '';
       documentEditor.elements.category.value = item.category;
+      setDocumentGroupCategory();
       documentEditor.elements.active.checked = item.active === true;
       documentEditor.elements.requiredReading.checked = item.requiredReading === true;
+      documentEditor.dataset.mutationId = '';
+      documentEditor.querySelector('[type="submit"]').disabled = false;
+      documentEditor.querySelector('#management-document-status').textContent = '';
       detail.querySelector('#management-document-editor').open = true;
       documentEditor.scrollIntoView({behavior: 'smooth', block: 'center'});
       documentEditor.elements.title.focus({preventScroll: true});

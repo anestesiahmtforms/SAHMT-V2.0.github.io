@@ -199,10 +199,87 @@ service cloud.firestore {
         data.activityId is string && data.activityId.matches('^[A-Za-z0-9_-]{1,64}$') && exists(activityPath) &&
         validLearningActivityReceiptForActivity(data, receiptId, get(activityPath).data);
     }
+    // Document operations check activeUser once before using these scoped permissions.
+    function documentPermission(permission) {
+      let permissions = profile().permissions;
+      return profile().role == 'administrador_app' || permissions.get('admin', false) == true || permissions.get(permission, false) == true;
+    }
+    function documentQualityManager(areaId) {
+      return areaId == 'area-gestao-da-qualidade' && documentPermission('qualityManage');
+    }
+    function verifiedDocumentEmail() {
+      return request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.get('email', '') is string && request.auth.token.get('email', '').size() > 0;
+    }
+    function documentEmail() { return request.auth.token.get('email', '').lower(); }
+    function documentAreaManager(areaId) {
+      let path = /databases/$(database)/documents/managementAreas/$(areaId);
+      return areaId == 'area-gestao-de-documentos' && documentPermission('managementRead') && exists(path) &&
+        get(path).data.active == true && get(path).data.get('managerUids', []).hasAny([request.auth.uid]);
+    }
+    function documentGroupEmailManager(group) {
+      return group.managementAreaId == 'area-gestao-de-documentos' && group.active == true &&
+        documentPermission('managementRead') && activeManagementArea(group.managementAreaId) && verifiedDocumentEmail() &&
+        group.get('managerEmails', []).hasAny([documentEmail()]);
+    }
+    function documentGroupAudience(group) {
+      return group.managementAreaId == 'area-gestao-de-documentos' && group.active == true &&
+        documentPermission('managementRead') && activeManagementArea(group.managementAreaId) && verifiedDocumentEmail() &&
+        group.get('allowedEmails', []).hasAny([documentEmail()]);
+    }
+    function managementDocumentGroupRead(group) {
+      return documentPermission('documentsManage') || documentAreaManager(group.managementAreaId) ||
+        (group.managementAreaId == 'area-gestao-de-documentos' && group.active == true &&
+          documentPermission('managementRead') && activeManagementArea(group.managementAreaId) && verifiedDocumentEmail() &&
+          (group.get('managerEmails', []).hasAny([documentEmail()]) || group.get('allowedEmails', []).hasAny([documentEmail()])));
+    }
+    function managementDocumentScopedManager(data) {
+      let groupId = data.get('documentGroupId', '');
+      let groupPath = /databases/$(database)/documents/documentGroups/$(groupId);
+      return documentAreaManager(data.managementAreaId) ||
+        (groupId is string && groupId.size() > 0 && exists(groupPath) &&
+          get(groupPath).data.managementAreaId == data.managementAreaId && documentGroupEmailManager(get(groupPath).data));
+    }
+    function managementDocumentRead(data) {
+      let groupId = data.get('documentGroupId', '');
+      let groupPath = /databases/$(database)/documents/documentGroups/$(groupId);
+      return documentPermission('documentsManage') || documentQualityManager(data.managementAreaId) ||
+        (data.managementAreaId != 'area-gestao-de-documentos' && documentPermission('managementRead')) ||
+        managementDocumentScopedManager(data) ||
+        (data.active == true && groupId is string && groupId.size() > 0 && exists(groupPath) &&
+          get(groupPath).data.managementAreaId == data.managementAreaId && documentGroupAudience(get(groupPath).data));
+    }
+    function validDocumentGroupAssociation(data) {
+      let groupId = data.get('documentGroupId', '');
+      let groupPath = /databases/$(database)/documents/documentGroups/$(groupId);
+      return (groupId == '' && !data.keys().hasAny(['documentGroupId'])) ||
+        (data.managementAreaId == 'area-gestao-de-documentos' && groupId is string && groupId.matches('^[A-Za-z0-9_-]{1,128}$') &&
+          exists(groupPath) && get(groupPath).data.managementAreaId == data.managementAreaId);
+    }
+    function validDocumentEmails(emails, maxItems) {
+      let joined = emails.join(',');
+      return emails is list && emails.size() <= maxItems && emails.toSet().size() == emails.size() &&
+        (emails.size() == 0 || (joined.size() <= 254 * emails.size() && joined == joined.lower() &&
+          joined.split(',').size() == emails.size() &&
+          joined.matches('^[^@,;\\s]+@[^@,;\\s]+[.][^@,;\\s]+(,[^@,;\\s]+@[^@,;\\s]+[.][^@,;\\s]+)*$')));
+    }
+    function validManagementDocumentGroup(data, groupId) {
+      return data.keys().hasAll(['id', 'managementAreaId', 'name', 'category', 'accessMode', 'sourceFolderId', 'allowedEmails', 'managerEmails', 'active', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'managementAreaId', 'name', 'category', 'accessMode', 'sourceFolderId', 'allowedEmails', 'managerEmails', 'active', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.id == groupId && groupId.matches('^[A-Za-z0-9_-]{1,128}$') && data.managementAreaId == 'area-gestao-de-documentos' &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.category is string && data.category.size() > 0 && data.category.size() <= 80 &&
+        data.accessMode in ['GENERAL', 'RESTRICTED'] && data.sourceFolderId is string &&
+        (data.sourceFolderId == '' || data.sourceFolderId.matches('^[A-Za-z0-9_-]{10,200}$')) &&
+        validDocumentEmails(data.allowedEmails, 100) && validDocumentEmails(data.managerEmails, 20) &&
+        data.active is bool && data.version is int && data.version >= 1 &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+    }
     function validManagementDocument(data, documentId) {
       return data.keys().hasAll(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
-        data.keys().hasOnly(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
-        data.id == documentId && data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
+        data.keys().hasOnly(['id', 'managementAreaId', 'documentGroupId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        validDocumentGroupAssociation(data) && data.id == documentId && data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
         data.title is string && data.title.size() > 0 && data.title.size() <= 160 && data.description is string && data.description.size() <= 1200 &&
         data.driveFileId is string && data.driveFileId.matches('^[A-Za-z0-9_-]{10,200}$') &&
         data.driveUrl == 'https://drive.google.com/file/d/' + data.driveFileId + '/view' &&
@@ -1223,17 +1300,35 @@ service cloud.firestore {
       allow update: if (can('managementPlansManage') || qualityPlanManage(resource.data.planId)) && validActionPlanItemTransition(itemId);
       allow delete: if false;
     }
+    match /documentGroups/{groupId} {
+      allow read: if activeUser() && managementDocumentGroupRead(resource.data);
+      allow create: if activeUser() && documentPermission('documentsManage') && activeManagementArea(request.resource.data.managementAreaId) &&
+        validManagementDocumentGroup(request.resource.data, groupId) && request.resource.data.version == 1 &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time;
+      allow update: if activeUser() && documentPermission('documentsManage') && activeManagementArea(resource.data.managementAreaId) &&
+        validManagementDocumentGroup(request.resource.data, groupId) &&
+        request.resource.data.managementAreaId == resource.data.managementAreaId &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'category', 'accessMode', 'sourceFolderId', 'allowedEmails', 'managerEmails', 'active', 'version', 'updatedByUid', 'updatedAt']);
+      allow delete: if false;
+    }
     match /documents/{documentId} {
-      allow read: if can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId);
-      allow create: if (can('documentsManage') || qualityManageArea(request.resource.data.managementAreaId)) && activeManagementArea(request.resource.data.managementAreaId) &&
-        validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
+      allow read: if activeUser() && managementDocumentRead(resource.data);
+      allow create: if activeUser() && (documentPermission('documentsManage') || documentQualityManager(request.resource.data.managementAreaId)) && activeManagementArea(request.resource.data.managementAreaId) &&
+        validManagementDocument(request.resource.data, documentId) &&
+        (request.resource.data.managementAreaId != 'area-gestao-de-documentos' || request.resource.data.get('documentGroupId', '').size() > 0) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
         request.resource.data.createdByUid == request.auth.uid;
-      allow update: if (can('documentsManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementDocument(request.resource.data, documentId) &&
+      allow update: if activeUser() && (documentPermission('documentsManage') || documentQualityManager(resource.data.managementAreaId) || managementDocumentScopedManager(resource.data)) &&
+        validManagementDocument(request.resource.data, documentId) &&
         request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
         request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.version == resource.data.version + 1 &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading', 'updatedByUid', 'updatedAt', 'version']);
+        (resource.data.get('documentGroupId', '') == '' || request.resource.data.get('documentGroupId', '').size() > 0) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'driveFileId', 'driveUrl', 'category', 'documentGroupId', 'active', 'requiredReading', 'updatedByUid', 'updatedAt', 'version']) &&
+        ((documentPermission('documentsManage') || documentQualityManager(resource.data.managementAreaId)) ||
+          (request.resource.data.get('documentGroupId', '') == resource.data.get('documentGroupId', '') && request.resource.data.category == resource.data.category));
       allow delete: if false;
     }
     match /equipment/{equipmentId} {
