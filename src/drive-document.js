@@ -1,7 +1,11 @@
+import {normalizeGoogleFormLink} from './form-links.js';
+
 export function normalizeDriveDocumentUrl(value) {
+  const form = normalizeGoogleFormLink(value);
+  if (form) return {driveFileId: form.formId || form.aliasKey.replace(':', '_'), driveUrl: form.normalizedUrl};
   let url;
   try { url = new URL(String(value || '').trim()); } catch { throw new Error('Cole um link válido do Google Drive ou Google Docs.'); }
-  if (url.protocol !== 'https:' || !['drive.google.com', 'docs.google.com'].includes(url.hostname)) {
+  if (url.protocol !== 'https:' || url.username || url.password || !['drive.google.com', 'docs.google.com'].includes(url.hostname)) {
     throw new Error('O documento precisa estar no Google Drive ou Google Docs.');
   }
   const match = url.pathname.match(/\/(?:file|document|spreadsheets|presentation)\/d\/([A-Za-z0-9_-]{10,200})(?:\/|$)/);

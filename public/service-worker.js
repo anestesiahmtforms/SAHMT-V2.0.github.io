@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v167';
+const CACHE = 'sahmt-v2-shell-v168';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -41,7 +41,8 @@ self.addEventListener('install', (event) => {
     // PDF, camera processing and other optional module graphs remain fetched on demand.
     const reportEssentials = new Set([
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
-      'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js'
+      'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
+      'src/performance-ui.js', 'src/evaluation-data.js'
     ]);
     for (const [key, entry] of Object.entries(manifest)) {
       if (reportEssentials.has(entry.src || key)) visitEntry(key);

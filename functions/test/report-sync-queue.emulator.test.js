@@ -11,20 +11,25 @@ const db = getFirestore(app);
 after(async () => deleteApp(app));
 
 async function waitForJob(resourceId, operation) {
-  const deadline = Date.now() + 10000;
+  // Prior callable tests enqueue many triggers; cold emulator workers may start late.
+  const startedAt = Date.now();
+  const deadline = startedAt + 60000;
+  let polls = 0;
   while (Date.now() < deadline) {
     const result = await db.collection('syncQueue')
       .where('resourceId', '==', resourceId)
       .where('operation', '==', operation)
       .get();
+    polls += 1;
     if (!result.empty) return result.docs[0];
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  assert.fail(`Cloud Function did not enqueue ${operation} for ${resourceId}.`);
+  const observedJobs = await db.collection('syncQueue').where('resourceId', '==', resourceId).get();
+  assert.fail(`Cloud Function did not enqueue ${operation} for ${resourceId} after ${Date.now() - startedAt} ms (${polls} polls). Observed jobs: ${JSON.stringify(observedJobs.docs.map((job) => ({operation: job.get('operation'), status: job.get('status')})))}.`);
 }
 
 describe('Firestore report sync queue trigger', () => {
-  it('creates metadata-only idempotent jobs for source creation and deletion', async () => {
+  it('creates metadata-only idempotent jobs for source creation and deletion', {timeout: 150000}, async () => {
     const resourceId = `sync-test-${randomUUID()}`;
     const resourceRef = db.collection('events').doc(resourceId);
     await resourceRef.set({id: resourceId, version: 1, amountToPay: 25});

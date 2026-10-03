@@ -1,4 +1,5 @@
 import './styles.css';
+import './performance-ui.css';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {createReportRuntime} from './report-runtime.js';
 import {mergeReportPendingRecords} from './report-pending.js';
@@ -44,7 +45,7 @@ const labels = {
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
   management: ['Gestão', 'Áreas, atividades e indicadores'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
-  training: ['Treinamentos', 'Catálogo, progresso e atividades'],
+  training: ['Desempenho', 'Pontuação, participações e atividades'],
   notifications: ['Notificações', 'Comunicados do SAHMT'],
   people: ['Pessoas', 'Contatos e cadastros da equipe'],
   admin: ['Administração', 'Usuários e configurações'],
@@ -61,7 +62,7 @@ const userPermissions = [
   ['labelsRead', 'Consultar etiquetas'], ['labelsWrite', 'Registrar etiquetas'], ['labelsManage', 'Gerenciar etiquetas'],
   ['checklistRead', 'Consultar checklist'], ['checklistWrite', 'Registrar checklist'], ['checklistSign', 'Assinar checklist'], ['checklistManage', 'Gerenciar estações'],
   ['managementRead', 'Consultar Gestão'], ['managementActivityWrite', 'Gerenciar atividades'], ['managementIndicatorsRead', 'Consultar indicadores'], ['managementIndicatorsWrite', 'Gerenciar indicadores'], ['managementPlansManage', 'Gerenciar planos de ação'], ['managementManage', 'Administrar áreas'],
-  ['trainingsRead', 'Consultar treinamentos'], ['trainingsManage', 'Gerenciar treinamentos'],
+  ['trainingsRead', 'Consultar desempenho'], ['trainingsManage', 'Gerenciar materiais legados'],
   ['documentsManage', 'Gerenciar documentos'], ['qualityManage', 'Gerenciar qualidade'], ['equipmentManage', 'Gerenciar equipamentos'], ['peopleManage', 'Gerenciar pessoas'],
   ['financeRead', 'Consultar financeiro'], ['financeWrite', 'Registrar financeiro'], ['financeManage', 'Administrar financeiro'],
   ['notificationsRead', 'Consultar notificações'], ['notificationsManage', 'Gerenciar notificações'],
@@ -103,6 +104,7 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
+let evaluationModuleGeneration = 0;
 let cleanupLabelMedia = null;
 let loadedTrainingCatalog = [];
 let loadedLearningActivityCatalog = [];
@@ -417,7 +419,7 @@ function preloadOperationalDataWhenIdle(user) {
       preloadedDataUsers.add(preloadKey);
       const imports = [];
       if (modules.includes('data')) imports.push(import('./data.js'));
-      if (modules.includes('training')) imports.push(import('./training.js'));
+      if (modules.includes('training')) imports.push(import('./performance-ui.js'));
       if (modules.includes('equipment')) imports.push(import('./equipment.js'));
       if (modules.includes('label-camera')) imports.push(import('./label-camera.js'));
       void Promise.all(imports).catch((error) => {
@@ -501,7 +503,7 @@ function moduleCards() {
   const commonModules = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true ? ['training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg'};
   return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && (commonModules.includes(route) || permissionFor[route]?.some(can)) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
-    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'TR',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
+    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
 }
@@ -660,7 +662,7 @@ function actionForm(route) {
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
     <label>Descrição<textarea name="description" rows="3" maxlength="1200"></textarea></label><button class="primary-button" type="submit">Criar atividade</button></form></details>`;
   if (route === 'notifications' && can('notificationsManage')) return `<details class="quick-form" open><summary>Novo comunicado</summary><form data-module-form="notifications">
-    <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Tipo<select name="type"><option value="INFO">Informação</option><option value="WARNING">Atenção</option><option value="ACTION">Ação</option></select></label><label>Público<select name="audienceType" id="notification-audience"><option value="ALL">Todos</option><option value="ROLE">Função</option><option value="USER">UID</option><option value="SIGLA">Sigla</option><option value="MANAGEMENT_AREA">Área de Gestão</option><option value="GROUP">Grupo</option></select></label><label id="notification-audience-value-wrap" hidden>Identificador do público<input name="audienceValue" maxlength="128"></label><label>Início<input name="startAt" type="date" required value="${todayInputValue()}"></label><label>Fim<input name="endAt" type="date" required value="${todayInputValue()}"></label><label>Prioridade<select name="priority"><option value="0">Normal</option><option value="1">Baixa</option><option value="2">Média</option><option value="3">Alta</option><option value="4">Urgente</option><option value="5">Crítica</option></select></label><label>Ação ao abrir<select name="actionRoute"><option value="">Nenhuma</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="management">Gestão</option><option value="checklist">Checklist</option><option value="training">Treinamentos</option></select></label></div>
+    <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Tipo<select name="type"><option value="INFO">Informação</option><option value="WARNING">Atenção</option><option value="ACTION">Ação</option></select></label><label>Público<select name="audienceType" id="notification-audience"><option value="ALL">Todos</option><option value="ROLE">Função</option><option value="USER">UID</option><option value="SIGLA">Sigla</option><option value="MANAGEMENT_AREA">Área de Gestão</option><option value="GROUP">Grupo</option></select></label><label id="notification-audience-value-wrap" hidden>Identificador do público<input name="audienceValue" maxlength="128"></label><label>Início<input name="startAt" type="date" required value="${todayInputValue()}"></label><label>Fim<input name="endAt" type="date" required value="${todayInputValue()}"></label><label>Prioridade<select name="priority"><option value="0">Normal</option><option value="1">Baixa</option><option value="2">Média</option><option value="3">Alta</option><option value="4">Urgente</option><option value="5">Crítica</option></select></label><label>Ação ao abrir<select name="actionRoute"><option value="">Nenhuma</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="management">Gestão</option><option value="checklist">Checklist</option><option value="training">Desempenho</option></select></label></div>
     <label>Mensagem<textarea name="message" rows="3" required maxlength="1200"></textarea></label><button class="primary-button" type="submit">Publicar comunicado</button></form></details>`;
   if (route === 'people' && can('peopleManage')) return `<details class="quick-form" open><summary>Cadastro de contato</summary><form data-module-form="people">
     <div class="form-grid"><label>Sigla<input name="sigla" required pattern="(?:[A-Z]{2}|L2)" maxlength="2" autocomplete="off"></label><label>Nome<input name="name" required maxlength="120"></label>
@@ -688,9 +690,9 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : ''}">
-    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">TREINAMENTOS</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
+    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational">OPERACIONAL</h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
     <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
@@ -901,6 +903,18 @@ async function loadModule(route) {
     await loadOfflineView(content);
     return;
   }
+  if (route === 'training') {
+    const requestUid = session.user?.uid;
+    const generation = evaluationModuleGeneration;
+    const current = () => generation === evaluationModuleGeneration && content.isConnected && currentRoute() === 'training' &&
+      session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true && session.profile?.access === true &&
+      featureEnabledForRoute('training', appFeatures) && (can('trainingsRead') || can('trainingsManage'));
+    const {mountPerformanceModule} = await import('./performance-ui.js');
+    if (!current()) return;
+    cleanupCurrentModule = mountPerformanceModule(content, {uid: requestUid, profile: session.profile, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: current,
+      onOpenGovernance: () => { if (current() && featureEnabledForRoute('management', appFeatures)) navigate('management'); }});
+    return;
+  }
   if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {
     content.innerHTML = '<section class="management-area-detail"><header class="management-detail-heading"><div><p class="eyebrow">ACESSO RESTRITO</p><h3>Gestão Financeira</h3></div></header><p>Seu perfil tem acesso à área financeira. Os campos, relatórios e operações ainda não foram configurados; nenhum dado financeiro está disponível nesta versão.</p></section>';
     return;
@@ -1076,11 +1090,7 @@ async function loadModule(route) {
   try {
     const data = await import('./data.js');
     let items;
-    if (route === 'training' && can('trainingsManage')) {
-      loadedTrainingCatalog = await data.listTrainingCatalogForAdmin();
-      renderTrainingAdminList(loadedTrainingCatalog);
-      items = loadedTrainingCatalog.filter((item) => item.active === true);
-    } else if (route === 'management' && session.profile?.permissions?.qualityManage === true &&
+    if (route === 'management' && session.profile?.permissions?.qualityManage === true &&
       !['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage'].some((permission) => session.profile?.permissions?.[permission] === true)) {
       const qualityArea = await data.getManagementArea('area-gestao-da-qualidade');
       items = qualityArea ? [qualityArea] : [];
@@ -1090,32 +1100,6 @@ async function loadModule(route) {
       loadedTrainingCatalog = [];
       items = route === 'checklist' && checklistCatalogLive?.uid === session.user.uid ? [...checklistCatalogLive.records] : await data.listModuleRecords(route, session.user.uid, {pageSize: route === 'checklist' ? 200 : 50});
       if (route === 'checklist') checklistModuleStations = items;
-    }
-    if (route === 'training') {
-      let learningActivities = [];
-      let learningReceipts = [];
-      let learningError = '';
-      try {
-        learningActivities = await data.listLearningActivities(session.profile, session.user.uid);
-        learningReceipts = await data.listLearningActivityReceipts(session.user.uid, learningActivities);
-      } catch (error) {
-        learningError = error.message || 'Verifique a conexão e as permissões Firestore.';
-      }
-      if (can('trainingsManage')) {
-        try {
-          loadedLearningActivityCatalog = await data.listLearningActivitiesForAdmin();
-          renderLearningActivityAdminList(loadedLearningActivityCatalog);
-        } catch (error) {
-          loadedLearningActivityCatalog = [];
-          const target = document.querySelector('#learning-activity-admin-list');
-          if (target) target.innerHTML = `<p class="empty-state">Não foi possível carregar o catálogo. ${escapeHtml(error.message || '')}</p>`;
-        }
-      } else {
-        loadedLearningActivityCatalog = [];
-      }
-      const {mountTrainingModule} = await import('./training.js');
-      cleanupCurrentModule = await mountTrainingModule(content, {uid: session.user.uid, trainings: items, learningActivities, learningReceipts, learningError});
-      return;
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
@@ -1180,7 +1164,15 @@ async function loadModule(route) {
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      const evaluationHost = content.querySelector('#management-evaluation-access');
+      const requestUid = session.user?.uid;
+      const generation = evaluationModuleGeneration;
+      const evaluationCurrent = () => generation === evaluationModuleGeneration && content.isConnected && currentRoute() === 'management' &&
+        session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true && session.profile?.access === true && featureEnabledForRoute('management', appFeatures);
+      const {mountManagementEvaluationAccess} = await import('./performance-ui.js');
+      if (!evaluationCurrent()) return;
+      cleanupCurrentModule = mountManagementEvaluationAccess(evaluationHost, {uid: requestUid, profile: session.profile, areas: items, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: evaluationCurrent});
       const areaDialog = content.querySelector('#management-area-dialog');
       areaDialog?.addEventListener('close', () => { managementActivityLoad++; });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
@@ -1418,7 +1410,7 @@ async function loadAdminModule(content) {
     }
     const permissions = userPermissions.map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="permission" value="${id}" ${['trainingsRead', 'notificationsRead'].includes(id) ? 'checked' : ''} ${['admin', 'usersManage'].includes(id) && !can('admin') ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('');
     const featureSettings = can('admin') ? `<section class="admin-user-form panel"><h3>Disponibilidade dos módulos</h3><p>Ative ou oculte áreas na Home sem editar o código. As regras de acesso do Firestore continuam valendo mesmo para uma área oculta.</p><form id="app-feature-form"><fieldset><legend>Módulos do SAHMT</legend><div class="permission-grid">${[
-      ['checklist', 'Checklist'], ['labels', 'Etiquetas'], ['trainings', 'Treinamentos'], ['management', 'Gestão'], ['notifications', 'Notificações'],
+      ['checklist', 'Checklist'], ['labels', 'Etiquetas'], ['trainings', 'Desempenho'], ['management', 'Gestão'], ['notifications', 'Notificações'],
       ['esg', 'ESG · preparado'], ['innovation', 'Inovação · preparada']
     ].map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="feature" value="${id}" ${configuredFeatures[id] ? 'checked' : ''} ${['esg', 'innovation'].includes(id) ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('')}</div></fieldset><p class="record-meta">ESG e Inovação ficam desativadas enquanto não houver uma área publicada. Eventos, Pessoas, Administração, Home e Sincronização permanecem disponíveis conforme as permissões.</p><div class="admin-user-actions"><button class="secondary-button" type="submit">Salvar disponibilidade</button></div><p id="app-feature-status" class="record-meta" role="status" aria-live="polite"></p></form></section>` : '';
     const entries = profiles.map((profile) => {
@@ -1435,7 +1427,7 @@ async function loadAdminModule(content) {
       ${featureSettings}
       <details id="admin-user-editor" class="quick-form admin-user-form"><summary id="user-form-summary">Configurar um pedido ou editar perfil</summary><section class="panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Ao abrir um pedido, UID, e-mail e nome são preenchidos automaticamente. O cadastro manual sem pedido fica reservado a casos administrativos excepcionais.</p>
         <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Preenchido pelo pedido ou manualmente"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'temporario' ? 'selected' : ''} ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
-          <fieldset><legend>Permissões SAHMT</legend><p class="record-meta">Treinamentos e Notificações são liberados para todos os perfis aprovados. As demais permissões seguem a seleção abaixo.</p><div class="permission-grid">${permissions}</div></fieldset>
+          <fieldset><legend>Permissões SAHMT</legend><p class="record-meta">Desempenho e Notificações são liberados para todos os perfis aprovados. As demais permissões seguem a seleção abaixo.</p><div class="permission-grid">${permissions}</div></fieldset>
           <div class="admin-user-flags"><label><input type="checkbox" name="active" checked> Perfil ativo</label><label><input type="checkbox" name="access" checked> Acesso ao SAHMT</label></div>
           <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar perfil</button><button class="secondary-button" id="cancel-user-edit" type="button" hidden>Cancelar edição</button></div><p id="admin-user-status" class="record-meta" role="status" aria-live="polite"></p>
         </form>
@@ -2989,6 +2981,7 @@ async function populateSelect(selector, items, prompt) {
 }
 
 async function bindModuleForm(route) {
+  if (route === 'training') return; // Desempenho owns its request forms; legacy video editors remain preserved below.
   if (route === 'people') bindContactImport();
   if (route === 'training' && can('trainingsManage')) {
     const form = document.querySelector('#training-catalog-form');
@@ -4111,6 +4104,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  evaluationModuleGeneration++;
   for (const kind of ['events', 'labels', 'checklist']) { const scope = liveReports.get(kind)?.snapshot().scope; if (scope?.warm !== true && (scope || reportStates.has(kind) || reportPayloads.has(kind))) closeReportLive(kind, 'render'); }
   labelReportLoad++;
   labelReportLoadingMore = false;
@@ -4273,6 +4267,7 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
+  const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const generalReadPermissions = ['trainingsRead', 'notificationsRead'];
@@ -4316,7 +4311,11 @@ function sessionChanged(next) {
       }
     }
   }
-  if (!unchangedPresentation && !preserveCurrentModule) void render();
+  if (!unchangedPresentation && !preserveCurrentModule && !preserveEvaluationModule) void render();
+  else if (preserveEvaluationModule) {
+    cleanupCurrentModule?.revalidate?.(); cleanupCurrentModule?.updateProfile?.(next.profile);
+    const identity = document.querySelector?.('.identity-card__user'); if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
+  }
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
@@ -4329,8 +4328,10 @@ async function refreshAppFeatures(uid, force = false) {
     const features = normalizeAppFeatures(await readAppFeatures(uid));
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
     const unchanged = JSON.stringify(appFeatures) === JSON.stringify(features);
+    const preserveEvaluationModule = Boolean(cleanupCurrentModule?.canPreserveSession) && featureEnabledForRoute(currentRoute(), features);
     appFeatures = features;
-    if (!unchanged) await render();
+    if (!unchanged && !preserveEvaluationModule) await render();
+    else if (preserveEvaluationModule) cleanupCurrentModule?.revalidate?.();
   } catch (error) {
     if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
     appFeatures = {...DEFAULT_APP_FEATURES};
@@ -4339,6 +4340,7 @@ async function refreshAppFeatures(uid, force = false) {
 }
 window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
 window.addEventListener('online', () => {
+  cleanupCurrentModule?.setOnline?.(true);
   liveReports.setOnline(true);
   if (session.status === 'signed-in') {
     for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'reconnect');
@@ -4346,14 +4348,16 @@ window.addEventListener('online', () => {
     void syncOutbox();
   }
 });
-window.addEventListener('offline', () => { liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de assinar.'); void updateOutboxStatus(); });
+window.addEventListener('offline', () => { cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de assinar.'); void updateOutboxStatus(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    cleanupCurrentModule?.suspend?.();
     suspendedReportScopes = ['events', 'labels', 'checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
     for (const scope of suspendedReportScopes) { liveReports.close(scope.kind, 'suspend'); reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false}); updateReportSync(scope.kind); }
     startupReports.clear();
     invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
   } else {
+    cleanupCurrentModule?.resume?.();
     const scopes = suspendedReportScopes; suspendedReportScopes = [];
     for (const scope of scopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, scope, {force: true});
   }

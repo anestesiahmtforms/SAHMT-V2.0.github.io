@@ -737,6 +737,7 @@ export async function saveManagementDocument(input, uid) {
         ...content, id, version: 1, publishedAt: serverTimestamp(), createdByUid: uid,
         createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp()
       });
+      queueEvaluationReconciliation(transaction, uid);
       return;
     }
     const existing = snapshot.data();
@@ -744,8 +745,16 @@ export async function saveManagementDocument(input, uid) {
         ['managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading'].every((key) => existing[key] === content[key])) return;
     if (existing.version !== currentVersion || currentVersion < 1) throw new Error('Este documento foi atualizado por outra pessoa. Atualize a lista antes de editar.');
     transaction.update(ref, {...content, updatedByUid: uid, updatedAt: serverTimestamp(), version: currentVersion + 1});
+    queueEvaluationReconciliation(transaction, uid);
   });
   return id;
+}
+
+function queueEvaluationReconciliation(transaction, uid) {
+  const id = crypto.randomUUID().replaceAll('-', '');
+  transaction.set(doc(db, 'evaluationRequests', id), {
+    id, type: 'RECONCILE_LINKS', actorUid: uid, status: 'PENDING', payload: {}, createdAt: serverTimestamp()
+  });
 }
 
 export async function listEquipmentForArea(managementAreaId, {pageSize = 100} = {}) {
@@ -1599,6 +1608,7 @@ export async function saveLearningActivity(input, uid) {
       updatedByUid: uid, updatedAt: serverTimestamp()
     };
     transaction.set(activityRef, record);
+    queueEvaluationReconciliation(transaction, uid);
     return record;
   });
 }

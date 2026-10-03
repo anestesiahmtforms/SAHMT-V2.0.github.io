@@ -18,6 +18,93 @@ service cloud.firestore {
       return can('managementRead') || can('managementManage') || can('managementActivityWrite') ||
         can('managementIndicatorsRead') || can('managementIndicatorsWrite') || can('managementPlansManage');
     }
+    function evaluationOwn(data) { return activeUser() && (isAdmin() || data.uid == request.auth.uid); }
+    function evaluationId(value) { return value is string && value.matches('^[A-Za-z0-9_-]{1,200}$'); }
+    function evaluationText(value, minimum, maximum) { return value is string && value.size() >= minimum && value.size() <= maximum; }
+    function evaluationHttpsAt(values, index) { return values.size() <= index || (values[index] is string && values[index].size() <= 1500 && values[index].matches('^https://[^/@: ]+[/].*')); }
+    function evaluationEvidence(values) {
+      return values is list && values.size() <= 10 && evaluationHttpsAt(values, 0) && evaluationHttpsAt(values, 1) &&
+        evaluationHttpsAt(values, 2) && evaluationHttpsAt(values, 3) && evaluationHttpsAt(values, 4) && evaluationHttpsAt(values, 5) &&
+        evaluationHttpsAt(values, 6) && evaluationHttpsAt(values, 7) && evaluationHttpsAt(values, 8) && evaluationHttpsAt(values, 9);
+    }
+    function evaluationConfiguration(p) {
+      return p.keys().hasAll(['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'managerAreaId', 'expectedVersion']) &&
+        p.keys().hasOnly(['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'managerAreaId', 'expectedVersion', 'acknowledgementValue', 'materialUrls']) &&
+        evaluationId(p.activityId) && evaluationId(p.creditScopeId) && evaluationId(p.managerAreaId) &&
+        p.version is int && p.version > 0 && p.expectedVersion is int && p.expectedVersion >= 0 &&
+        p.modalities is map && p.modalities.keys().hasAll(['acknowledgement', 'suggestion', 'test']) && p.modalities.keys().hasOnly(['acknowledgement', 'suggestion', 'test']) &&
+        p.modalities.acknowledgement is bool && p.modalities.suggestion is bool && p.modalities.test is bool &&
+        (p.modalities.acknowledgement || p.modalities.suggestion || p.modalities.test) &&
+        evaluationText(p.acknowledgementItemId, 0, 200) && evaluationText(p.suggestionProblemItemId, 0, 200) && evaluationText(p.suggestionProposalItemId, 0, 200) && evaluationText(p.suggestionBenefitItemId, 0, 200) &&
+        p.validFrom is string && p.validFrom.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && p.validUntil is string && p.validUntil.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && p.validFrom <= p.validUntil &&
+        p.eligibleUids is list && p.eligibleUids.size() > 0 && p.eligibleUids.size() <= 500 &&
+        (!p.keys().hasAny(['acknowledgementValue']) || evaluationText(p.acknowledgementValue, 1, 200)) &&
+        (!p.keys().hasAny(['materialUrls']) || evaluationEvidence(p.materialUrls));
+    }
+    function evaluationGovernanceRequest(p) {
+      let assignmentPath = /databases/$(database)/documents/evaluationAssignments/$(p.areaId);
+      return p.keys().hasAll(['activityId', 'areaId', 'assignmentId', 'previousVersion', 'newVersion', 'summary', 'components', 'materialEvidence', 'questionEvidence']) &&
+        p.keys().hasOnly(['activityId', 'areaId', 'assignmentId', 'previousVersion', 'newVersion', 'summary', 'components', 'materialEvidence', 'questionEvidence']) &&
+        evaluationId(p.activityId) && evaluationId(p.areaId) && evaluationId(p.assignmentId) &&
+        exists(assignmentPath) && get(assignmentPath).data.uid == request.auth.uid &&
+        p.previousVersion is int && p.previousVersion >= 0 && p.newVersion is int && p.newVersion > p.previousVersion &&
+        evaluationText(p.summary, 8, 2000) && p.components is list && p.components.size() >= 1 && p.components.size() <= 2 && p.components.toSet().size() == p.components.size() && p.components.hasOnly(['MATERIAL', 'QUESTIONS']) &&
+        evaluationEvidence(p.materialEvidence) && evaluationEvidence(p.questionEvidence) &&
+        (!p.components.hasAny(['MATERIAL']) || p.materialEvidence.size() > 0) && (!p.components.hasAny(['QUESTIONS']) || p.questionEvidence.size() > 0);
+    }
+    function evaluationSuggestionReview(p) {
+      let path = /databases/$(database)/documents/evaluationParticipations/$(p.participationId);
+      let authorizedReviewer = isAdmin() || can('managementManage') ||
+        (can('qualityManage') && get(path).data.areaIds.hasAny(['area-gestao-da-qualidade'])) ||
+        get(path).data.managerUid == request.auth.uid;
+      return p.keys().hasAll(['participationId', 'decision', 'note']) && p.keys().hasOnly(['participationId', 'decision', 'note']) &&
+        evaluationId(p.participationId) && p.decision in ['APPROVE', 'REJECT'] && evaluationText(p.note, 8, 1000) &&
+        exists(path) && get(path).data.uid != request.auth.uid && authorizedReviewer;
+    }
+    function evaluationGovernanceReview(p) {
+      let path = /databases/$(database)/documents/evaluationGovernanceRevisions/$(p.revisionId);
+      return isAdmin() && p.keys().hasAll(['revisionId', 'decision', 'note']) && p.keys().hasOnly(['revisionId', 'decision', 'note']) &&
+        evaluationId(p.revisionId) && p.decision in ['APPROVE', 'REJECT'] && evaluationText(p.note, 8, 1000) && exists(path) && get(path).data.uid != request.auth.uid;
+    }
+    function evaluationCorrection(p) {
+      let path = /databases/$(database)/documents/evaluationAwards/$(p.awardId);
+      return isAdmin() && p.keys().hasAll(['awardId', 'category', 'expectedAwardVersion', 'correctedPoints', 'reason']) &&
+        p.keys().hasOnly(['awardId', 'category', 'expectedAwardVersion', 'correctedPoints', 'reason']) && evaluationId(p.awardId) &&
+        p.category in ['PERFORMANCE', 'GOVERNANCE'] && exists(path) && get(path).data.category == p.category &&
+        p.expectedAwardVersion is int && p.expectedAwardVersion >= 0 && p.correctedPoints is number && p.correctedPoints >= -100000 && p.correctedPoints <= 100000 && evaluationText(p.reason, 8, 1000);
+    }
+    function validEvaluationRequest(data, id) {
+      return activeUser() && request.auth.token.email_verified == true &&
+        data.keys().hasAll(['id', 'type', 'actorUid', 'createdAt', 'status', 'payload']) && data.keys().hasOnly(['id', 'type', 'actorUid', 'createdAt', 'status', 'payload']) &&
+        data.id == id && evaluationId(id) && data.actorUid == request.auth.uid && data.createdAt == request.time && data.status == 'PENDING' && data.payload is map &&
+        ((data.type == 'ASSIGN_MANAGER' && isAdmin() && data.payload.keys().hasAll(['areaId', 'managerUid', 'expectedVersion']) && data.payload.keys().hasOnly(['areaId', 'managerUid', 'expectedVersion']) && evaluationId(data.payload.areaId) && evaluationId(data.payload.managerUid) && data.payload.expectedVersion is int && data.payload.expectedVersion >= 0) ||
+         (data.type == 'CONFIGURE_ACTIVITY' && isAdmin() && evaluationConfiguration(data.payload)) ||
+         (data.type == 'REQUEST_GOVERNANCE' && evaluationGovernanceRequest(data.payload)) ||
+         (data.type == 'REVIEW_SUGGESTION' && evaluationSuggestionReview(data.payload)) ||
+         (data.type == 'REVIEW_GOVERNANCE' && evaluationGovernanceReview(data.payload)) ||
+         (data.type == 'CORRECT_SCORE' && evaluationCorrection(data.payload)) ||
+         (data.type == 'RECONCILE_LINKS' && (isAdmin() || can('documentsManage') || can('managementManage') || can('qualityManage') || can('trainingsManage')) && data.payload.keys().size() == 0));
+    }
+    match /evaluationActivities/{id} {
+      allow read: if activeUser() && (isAdmin() || resource.data.eligibleUids.hasAny([request.auth.uid]) || resource.data.managerUid == request.auth.uid);
+      allow write: if false;
+    }
+    match /evaluationAwards/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
+    match /evaluationLedger/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
+    match /evaluationSummaries/{uid} { allow read: if activeUser() && (request.auth.uid == uid || isAdmin()); allow write: if false; }
+    match /evaluationReference/{id} { allow read: if activeUser() && id == 'team'; allow write: if false; }
+    match /evaluationAssignments/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
+    match /evaluationAssignmentHistory/{id} { allow read: if activeUser() && isAdmin(); allow write: if false; }
+    match /evaluationGovernanceRevisions/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
+    match /evaluationParticipations/{id} { allow read: if evaluationOwn(resource.data) || (activeUser() && (resource.data.managerUid == request.auth.uid || can('managementManage') || (can('qualityManage') && resource.data.areaIds.hasAny(['area-gestao-da-qualidade'])))); allow write: if false; }
+    match /evaluationLinks/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /evaluationRequests/{id} {
+      allow get: if activeUser() && (resource == null || isAdmin() || resource.data.actorUid == request.auth.uid);
+      allow list: if activeUser() && (isAdmin() || resource.data.actorUid == request.auth.uid);
+      allow create: if validEvaluationRequest(request.resource.data, id);
+      allow update, delete: if false;
+    }
+    match /checklistResponsibilities/{day} { allow read: if checklistAccess(); allow write: if false; }
     function qualityManageArea(areaId) { return can('qualityManage') && areaId == 'area-gestao-da-qualidade'; }
     function activityPointsReviewer(areaId) {
       let areaPath = /databases/$(database)/documents/managementAreas/$(areaId);
@@ -205,7 +292,9 @@ service cloud.firestore {
         data.id == documentId && data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
         data.title is string && data.title.size() > 0 && data.title.size() <= 160 && data.description is string && data.description.size() <= 1200 &&
         data.driveFileId is string && data.driveFileId.matches('^[A-Za-z0-9_-]{10,200}$') &&
-        data.driveUrl == 'https://drive.google.com/file/d/' + data.driveFileId + '/view' &&
+        (data.driveUrl == 'https://drive.google.com/file/d/' + data.driveFileId + '/view' ||
+          data.driveUrl.matches('^https://docs[.]google[.]com/forms/d/(e/)?[A-Za-z0-9_-]{10,200}/(edit|viewform)$') ||
+          data.driveUrl.matches('^https://forms[.]gle/[A-Za-z0-9_-]{4,200}$')) &&
         data.category is string && data.category.size() > 0 && data.category.size() <= 80 && data.active is bool && data.requiredReading is bool &&
         data.publishedAt is timestamp && data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
         data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version is int && data.version >= 1;
