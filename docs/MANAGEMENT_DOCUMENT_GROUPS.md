@@ -7,7 +7,7 @@ A implementação está em checkout isolado. As três alterações do checkout o
 
 A Gestão de Documentos passa a separar **ACESSO GERAL** e **ACESSO RESTRITO**. A categoria do grupo restrito é **POLITICAS E REGIMENTOS**. A seleção usa e-mails normalizados da conta autenticada, sem inventar UIDs e sem criar perfis ou conceder permissões globais.
 
-O inventário privado contém 55 leitores gerais, 31 restritos (também presentes no geral) e dois gestores. São cinco documentos gerais e nove restritos. Todos devem permanecer **inativos** até a decisão de publicação do gestor. Os e-mails reais e os inventários ficam fora do Git.
+O inventário privado contém 56 leitores gerais, 31 restritos (também presentes no geral) e dois gestores. São cinco documentos gerais e nove restritos. Todos devem permanecer **inativos** até a decisão de publicação do gestor. Os e-mails reais e os inventários ficam fora do Git.
 
 ## Autorização
 
