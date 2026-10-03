@@ -17,6 +17,7 @@ function harness(){
   const ctx=vm.createContext({Date,Map,Set,JSON,Number,Object,Array,String,RegExp,Error,Math,encodeURIComponent,decodeURIComponent,
     Utilities:{DigestAlgorithm:{SHA_256:'SHA_256'},Charset:{UTF_8:'UTF_8'},getUuid:()=> 'test-uuid-'+(++serial),computeDigest:(_,text)=>Array.from(createHash('sha256').update(text).digest()),formatDate:date=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(date)},
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key)||null,setProperty:(key,value)=>props.set(key,value),deleteProperty:key=>props.delete(key)})},
+    Logger:{log:()=>{}},
     LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
     ScriptApp:{getOAuthToken:()=> 'fake-no-live-token',getProjectTriggers:()=>[],newTrigger:()=>{throw Error('No real triggers in tests');}},
     FormApp:{openById:id=>{if(!forms.has(id))throw Error('Missing mocked form');return forms.get(id);},openByUrl:url=>{const form=Array.from(forms.values()).find(f=>f.responderUrl===url);if(!form)throw Error('Unknown public alias');return form;}}});
@@ -98,13 +99,180 @@ test('gate de homologação deixa revisão pendente para retomar depois sem desc
 test('modelo com respostas ou ID original é recusado antes de editar qualquer campo',()=>{const h=harness();const form=h.fakeForm();let changes=0;form.getResponses=()=>[{id:'do-not-touch'}];form.setAcceptingResponses=()=>{changes++;return form;};assert.throws(()=>h.ctx.prepareEvaluationTemplate(FORM,FORM),/distinta/);assert.throws(()=>h.ctx.prepareEvaluationTemplate(FORM,'OriginalFixture123456'),/possui respostas/);assert.equal(changes,0);});
 test('atalho de configuração protege original explícito e nunca instala gatilhos',()=>{const h=harness();const called=[];h.ctx.prepareEvaluationTemplate=(model,original)=>{called.push({model,original});return{prepared:true,published:false};};const result=h.ctx.configurarModeloAvaliacaoSahmtV2();assert.equal(result.published,false);assert.equal(called[0].original,'1NFqJHXOiHInHtQlmZMOTKHgjgmeYB4TxJ9s2p8xRTmc');assert.equal(called[0].model,'1z-T7EL_FN1blDQa9Cn8SybHV_pJOr1dnVObVtHXtcmc');assert.equal(h.props.get('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS'),called[0].original);assert.equal(h.commits.length,0);});
 
-test('preparação completa mantém ROPs/gabarito/pesos, zero nativo dos adicionais e modelo fechado idempotente',()=>{
-  const h=harness();h.seedFixture();const meta=metadata();h.google.set(`https://forms.googleapis.com/v1/forms/${FORM}`,()=>meta);const form=h.forms.get(FORM);let description='Descrição original',published=true,accepting=true,sequence=0;const opened=[];const originalOpen=h.ctx.FormApp.openById;h.ctx.FormApp.openById=id=>{opened.push(id);return originalOpen(id);};
-  const wrap=entry=>{const item={getTitle:()=>entry.title||'',setTitle:value=>{entry.title=value;return item;},setHelpText:value=>{entry.description=value;return item;},setRequired:value=>{entry.questionItem.question.required=value;return item;},setPoints:value=>{entry.questionItem.question.grading={pointValue:value};return item;},setChoiceValues:values=>{entry.questionItem.question.choiceQuestion={type:entry._checkbox?'CHECKBOX':'RADIO',options:values.map(value=>({value}))};delete entry.questionItem.question.textQuestion;return item;},asParagraphTextItem:()=>item,asMultipleChoiceItem:()=>item,asCheckboxItem:()=>item,_entry:entry};return item;};
-  const create=(questionItem,checkbox=false)=>{const entry={itemId:`added-${++sequence}`,title:'',...(questionItem?{questionItem:{question:{questionId:`q-added-${sequence}`,textQuestion:{paragraph:true},grading:{pointValue:0}}}}:{})};if(checkbox)entry._checkbox=true;meta.items.push(entry);return wrap(entry);};
-  form.getResponses=()=>[];form.getItems=()=>meta.items.map(wrap);form.getDescription=()=>description;form.setDescription=value=>{description=value;return form;};form.setAcceptingResponses=value=>{accepting=value;return form;};form.setPublished=value=>{published=value;return form;};for(const name of ['setAllowResponseEdits','setLimitOneResponsePerUser','setCollectEmail','setPublishingSummary'])form[name]=()=>form;form.setIsQuiz=value=>{meta.settings.quizSettings.isQuiz=value;return form;};form.addSectionHeaderItem=()=>create(false);form.addParagraphTextItem=()=>create(true);form.addMultipleChoiceItem=()=>create(true);form.addCheckboxItem=()=>create(true,true);form.moveItem=(item,index)=>{const from=meta.items.indexOf(item._entry);meta.items.splice(from,1);meta.items.splice(index,0,item._entry);};
-  const google=h.ctx.formsEvaluationGoogleRequest_;h.ctx.formsEvaluationGoogleRequest_=(url,options)=>{if(url.endsWith(':batchUpdate')){const request=JSON.parse(options.payload);assert.equal(request.requests[0].updateSettings.settings.emailCollectionType,'VERIFIED');meta.settings.emailCollectionType='VERIFIED';return{};}return google(url,options);};
-  const original=clone(meta.items.find(item=>item.itemId==='item-test'));const first=h.ctx.prepareEvaluationTemplate(FORM,'OriginalFixture123456');assert.equal(first.published,false);assert.equal(published,false);assert.equal(accepting,false);assert.deepEqual(meta.items.find(item=>item.itemId==='item-test'),original);assert.equal(first.questionsPreserved,1);assert.ok(meta.items.filter(item=>item.questionItem&&item.title.startsWith('[SAHMT:')).every(item=>item.questionItem.question.grading.pointValue===0));assert.ok(first.mapping.review);const count=meta.items.length,firstDescription=description;h.ctx.prepareEvaluationTemplate(FORM,'OriginalFixture123456');assert.equal(meta.items.length,count);assert.equal(description,firstDescription);assert.ok(opened.every(id=>id===FORM));assert.equal(h.values('evaluationAwards').length,0);
+// Applies the public Forms REST request semantics instead of simulating native item setters.
+// All material is fictitious; this mock never calls Google, Firestore or FormApp remotely.
+const templateMarkers={
+  '[SAHMT:IDENTIFICATION]':'HEADER','[SAHMT:MATERIAL]':'HEADER','[SAHMT:ACK]':'RADIO',
+  '[SAHMT:SUGGESTION]':'HEADER','[SAHMT:SUGGESTION_PROBLEM]':'PARAGRAPH',
+  '[SAHMT:SUGGESTION_PROPOSAL]':'PARAGRAPH','[SAHMT:SUGGESTION_BENEFIT]':'PARAGRAPH',
+  '[SAHMT:REVIEW]':'HEADER','[SAHMT:REVIEW_COMPONENTS]':'CHECKBOX',
+  '[SAHMT:PREVIOUS_VERSION]':'PARAGRAPH','[SAHMT:NEW_VERSION]':'PARAGRAPH',
+  '[SAHMT:CHANGE_SUMMARY]':'PARAGRAPH','[SAHMT:MATERIAL_EVIDENCE]':'PARAGRAPH',
+  '[SAHMT:QUESTION_EVIDENCE]':'PARAGRAPH'
+};
+function applyFormsFieldMask(target,incoming,mask){
+  assert.equal(typeof mask,'string');assert.ok(mask.length>0);
+  for(const path of mask.split(',')){
+    const keys=path.trim().split('.');assert.ok(keys.every(Boolean));
+    let destination=target,value=incoming;
+    for(const key of keys.slice(0,-1)){
+      if(!destination[key])destination[key]={};
+      destination=destination[key];value=value&&value[key];
+    }
+    const key=keys.at(-1);
+    if(value&&Object.hasOwn(value,key))destination[key]=clone(value[key]);
+    else delete destination[key];
+  }
+}
+function templateFixture(options={}){
+  const h=harness();h.seedFixture();let meta=clone(options.metadata||metadata());
+  meta.info.description??='Descrição original fictícia';meta.revisionId??='revision-0';
+  for(const item of meta.items||[]){const q=item.questionItem?.question;if(q?.choiceQuestion)delete q.textQuestion;}
+  const form=h.forms.get(FORM),events=[],batches=[],opened=[],flags={accepting:true,published:true,edits:true,one:false};
+  let revision=0,itemSequence=0,metadataReads=0;
+  const bump=()=>{meta.revisionId='revision-'+(++revision);};
+  const getterUrl='https://forms.googleapis.com/v1/forms/'+FORM;
+  const nativeOpen=h.ctx.FormApp.openById;
+  h.ctx.FormApp.openById=id=>{opened.push(id);assert.equal(id,FORM,'The protected original is never opened');return nativeOpen(id);};
+  form.getResponses=()=>options.responses||[];
+  form.supportsAdvancedResponderPermissions=()=>true;
+  form.isAcceptingResponses=()=>flags.accepting;form.isPublished=()=>flags.published;
+  form.canEditResponse=()=>flags.edits;form.hasLimitOneResponsePerUser=()=>flags.one;
+  for(const [method,key]of Object.entries({setAcceptingResponses:'accepting',setPublished:'published',setAllowResponseEdits:'edits',setLimitOneResponsePerUser:'one',setCollectEmail:'collect',setPublishingSummary:'summary',setIsQuiz:'quiz'})){
+    form[method]=value=>{if(key==='quiz')assert.equal(value,true,'Never disable quiz and discard existing grading');
+      events.push({type:'flag',method,value});flags[key]=value;
+      if(key==='quiz')meta.settings.quizSettings={...meta.settings.quizSettings,isQuiz:value};
+      bump();if(options.onFlag)options.onFlag(method,meta,flags);return form;};
+  }
+  for(const method of ['getItems','setDescription','addSectionHeaderItem','addParagraphTextItem','addMultipleChoiceItem','addCheckboxItem','moveItem'])
+    form[method]=()=>{throw Error('Native item mutation forbidden: '+method);};
+  h.ctx.formsEvaluationGoogleRequest_=(url,requestOptions)=>{
+    if(url===getterUrl){metadataReads++;events.push({type:'read',revision:meta.revisionId});const result=clone(meta);if(options.onRead)options.onRead(result,metadataReads);return result;}
+    assert.equal(url,getterUrl+':batchUpdate','Only the reusable model content endpoint is allowed');
+    assert.equal(requestOptions.method,'post');assert.equal(requestOptions.contentType,'application/json');
+    const request=JSON.parse(requestOptions.payload);batches.push(clone(request));events.push({type:'batch',revision:meta.revisionId});
+    if(options.beforeBatch)options.beforeBatch(meta,flags,request);
+    assert.equal(typeof request.writeControl?.requiredRevisionId,'string','A conditional write is mandatory');
+    assert.ok(request.writeControl.requiredRevisionId.length>0);
+    assert.equal(request.writeControl.targetRevisionId,undefined,'Do not merge concurrent edits with a target revision');
+    if(request.writeControl.requiredRevisionId!==meta.revisionId)throw Error('409 revision CAS stale; no requests applied');
+    if(options.failBatch)throw Error('400 batchUpdate rejected; no requests applied');
+    const draft=clone(meta),replies=[];
+    const checkIndex=(index,allowEnd=false)=>{assert.ok(Number.isInteger(index)&&index>=0&&index<draft.items.length+(allowEnd?1:0),'Valid item index');};
+    for(const operation of request.requests){
+      assert.equal(Object.keys(operation).length,1,'Each Forms request has exactly one operation');
+      if(operation.updateSettings){const update=operation.updateSettings;applyFormsFieldMask(draft.settings,update.settings,update.updateMask);assert.equal(draft.settings.quizSettings.isQuiz,true);replies.push({});}
+      else if(operation.updateFormInfo){const update=operation.updateFormInfo;applyFormsFieldMask(draft.info,update.info,update.updateMask);replies.push({});}
+      else if(operation.createItem){const create=operation.createItem;checkIndex(create.location.index,true);const item=clone(create.item);item.itemId||='created-item-'+(++itemSequence);if(item.questionItem)item.questionItem.question.questionId||='created-question-'+itemSequence;draft.items.splice(create.location.index,0,item);replies.push({createItem:{itemId:item.itemId,questionId:item.questionItem?[item.questionItem.question.questionId]:[]}});}
+      else if(operation.updateItem){const update=operation.updateItem;checkIndex(update.location.index);const existing=draft.items[update.location.index];assert.ok(!update.item.itemId||update.item.itemId===existing.itemId,'The addressed stable item ID is preserved');const oldQuestionId=existing.questionItem?.question.questionId;applyFormsFieldMask(existing,update.item,update.updateMask);assert.equal(existing.questionItem?.question.questionId,oldQuestionId,'An update cannot replace a stable question ID');replies.push({});}
+      else if(operation.moveItem){const move=operation.moveItem;checkIndex(move.originalLocation.index);checkIndex(move.newLocation.index);const [item]=draft.items.splice(move.originalLocation.index,1);draft.items.splice(move.newLocation.index,0,item);replies.push({});}
+      else assert.fail('Unsupported or destructive Forms request: '+Object.keys(operation).join(','));
+    }
+    for(const item of draft.items){
+      const marker=Object.keys(templateMarkers).find(key=>item.title?.startsWith(key));if(!marker)continue;
+      const q=item.questionItem?.question;
+      if(templateMarkers[marker]==='HEADER'){assert.deepEqual(item.textItem,{});assert.equal(item.questionItem,undefined);continue;}
+      assert.ok(q);assert.equal(q.grading,undefined,'Auxiliary questions are ungraded in native Forms; omission is effective zero');
+      assert.equal(Object.hasOwn(q,'textQuestion')+Object.hasOwn(q,'choiceQuestion'),1,'A question has one valid native type');
+      if(q.choiceQuestion){assert.ok(['RADIO','CHECKBOX'].includes(q.choiceQuestion.type));assert.ok(q.choiceQuestion.options.every(option=>typeof option.value==='string'));}
+    }
+    meta=draft;bump();if(options.afterBatch)options.afterBatch(meta,flags);
+    return{replies,writeControl:{requiredRevisionId:meta.revisionId}};
+  };
+  return{h,form,events,batches,opened,flags,options,get meta(){return meta;},prepare:()=>h.ctx.prepareEvaluationTemplate(FORM,'OriginalFixture123456')};
+}
+function templateAux(meta,marker){return meta.items.find(item=>item.title?.startsWith(marker));}
+function assertTemplatePrepared(fixture){
+  const {meta,flags,h}=fixture;
+  for(const [marker,kind]of Object.entries(templateMarkers)){
+    const entries=meta.items.filter(item=>item.title?.startsWith(marker));assert.equal(entries.length,1,marker+' is unique');
+    const item=entries[0],q=item.questionItem?.question;assert.ok(item.itemId);
+    if(kind==='HEADER'){assert.deepEqual(item.textItem,{});assert.equal(item.questionItem,undefined);continue;}
+    assert.ok(q.questionId);assert.equal(q.grading,undefined);assert.equal(Number(q.grading?.pointValue||0),0);
+    assert.equal(q.required,marker==='[SAHMT:ACK]');
+    if(kind==='PARAGRAPH'){assert.deepEqual(q.textQuestion,{paragraph:true});assert.equal(q.choiceQuestion,undefined);}
+    else{assert.equal(q.choiceQuestion.type,kind);assert.deepEqual(q.choiceQuestion.options.map(option=>option.value),kind==='RADIO'?['SIM','NÃO']:['MATERIAL','QUESTIONS']);assert.equal(q.textQuestion,undefined);}
+  }
+  assert.equal(meta.settings.emailCollectionType,'VERIFIED');assert.equal(meta.settings.quizSettings.isQuiz,true);
+  assert.equal(flags.accepting,false);assert.equal(flags.published,false);assert.equal(flags.edits,false);assert.equal(flags.one,true);
+  assert.equal(h.commits.length,0);assert.equal(h.values('evaluationAwards').length,0);
+}
+test('preparação REST mantém ROPs/gabaritos/pesos e IDs; auxiliares sem grading e modelo fechado idempotente',()=>{
+  const f=templateFixture(),originals=clone(f.meta.items.filter(item=>!Object.keys(templateMarkers).some(marker=>item.title.startsWith(marker))));
+  const auxiliaryIds=Object.fromEntries(f.meta.items.filter(item=>item.title.startsWith('[SAHMT:')).map(item=>[item.title.split(' ')[0],{itemId:item.itemId,questionId:item.questionItem.question.questionId}]));
+  const first=f.prepare();assert.equal(first.prepared,true);assert.equal(first.published,false);assert.equal(first.questionsPreserved,1);assertTemplatePrepared(f);
+  assert.deepEqual(f.meta.items.filter(item=>!Object.keys(templateMarkers).some(marker=>item.title.startsWith(marker))),originals);
+  for(const [marker,ids]of Object.entries(auxiliaryIds)){const item=templateAux(f.meta,marker);assert.equal(item.itemId,ids.itemId);assert.equal(item.questionItem.question.questionId,ids.questionId);}
+  assert.deepEqual(f.meta.items.slice(0,3).map(item=>item.title.split(' ')[0]),['[SAHMT:IDENTIFICATION]','[SAHMT:MATERIAL]','[SAHMT:ACK]']);
+  const count=f.meta.items.length,description=f.meta.info.description,ids=f.meta.items.map(item=>({itemId:item.itemId,questionId:item.questionItem?.question.questionId}));
+  const second=f.prepare();assert.equal(second.prepared,true);assert.equal(f.meta.items.length,count);assert.equal(f.meta.info.description,description);
+  assert.deepEqual(f.meta.items.map(item=>({itemId:item.itemId,questionId:item.questionItem?.question.questionId})),ids);assertTemplatePrepared(f);
+  assert.equal(f.batches.length,2);assert.ok(f.opened.every(id=>id===FORM));
+});
+test('preparação preserva perguntas, cabeçalhos e mídia originais inclusive marcador desconhecido e ordem',()=>{
+  const meta=metadata();meta.items.push(question('second-rop','ROP fictício de múltiplas escolhas',7,{choiceQuestion:{type:'CHECKBOX',options:[{value:'A'},{value:'B'}]},grading:{pointValue:7,correctAnswers:{answers:[{value:'A'},{value:'B'}]},whenRight:{text:'Explicação original'}}}),{itemId:'original-header',title:'[SAHMT:UNRELATED] Cabeçalho autoral',textItem:{}},{itemId:'original-image',title:'Ilustração fictícia',imageItem:{image:{sourceUri:'https://example.invalid/source.png',contentUri:'https://example.invalid/temporary.png',properties:{width:320}}}});
+  const f=templateFixture({metadata:meta}),originals=clone(f.meta.items.filter(item=>!Object.keys(templateMarkers).some(marker=>item.title.startsWith(marker))));const result=f.prepare();
+  assert.equal(result.questionsPreserved,2);assert.deepEqual(f.meta.items.slice(3,3+originals.length),originals);assertTemplatePrepared(f);
+});
+test('CAS usa revisão lida depois das flags nativas, nunca revisão inicial nem targetRevisionId',()=>{
+  const f=templateFixture();f.prepare();const batchIndex=f.events.findIndex(event=>event.type==='batch'),lastFlagIndex=f.events.slice(0,batchIndex).findLastIndex(event=>event.type==='flag');
+  assert.ok(lastFlagIndex>=0);assert.ok(f.events.slice(lastFlagIndex+1,batchIndex).some(event=>event.type==='read'));
+  assert.notEqual(f.batches[0].writeControl.requiredRevisionId,'revision-0');assert.equal(f.batches[0].writeControl.requiredRevisionId,f.events[batchIndex].revision);
+});
+test('sem revisionId fresca não envia batch nem altera conteúdo',()=>{
+  const f=templateFixture({onRead:copy=>{delete copy.revisionId;}}),items=clone(f.meta.items),info=clone(f.meta.info);
+  assert.throws(()=>f.prepare(),/Revisão Forms ausente/);assert.equal(f.batches.length,0);assert.deepEqual(f.meta.items,items);assert.deepEqual(f.meta.info,info);
+});
+test('CAS rejeita revisão antiga sem aplicar qualquer request; retry é seguro',()=>{
+  const f=templateFixture({beforeBatch:meta=>{meta.revisionId='concurrent-revision';}}),items=clone(f.meta.items),info=clone(f.meta.info);
+  assert.throws(()=>f.prepare(),/revision CAS stale/);assert.deepEqual(f.meta.items,items);assert.deepEqual(f.meta.info,info);assert.equal(f.flags.accepting,false);assert.equal(f.flags.published,false);
+  delete f.options.beforeBatch;assert.equal(f.prepare().prepared,true);assertTemplatePrepared(f);
+});
+test('falha atômica do batch mantém conteúdo original e modelo fechado; repetir não duplica itens',()=>{
+  const f=templateFixture({failBatch:true}),items=clone(f.meta.items),info=clone(f.meta.info);
+  assert.throws(()=>f.prepare(),/batchUpdate rejected/);assert.deepEqual(f.meta.items,items);assert.deepEqual(f.meta.info,info);assert.equal(f.flags.accepting,false);assert.equal(f.flags.published,false);assert.equal(f.h.commits.length,0);
+  f.options.failBatch=false;f.prepare();const count=f.meta.items.length;f.prepare();assert.equal(f.meta.items.length,count);assertTemplatePrepared(f);
+});
+test('retomar ACK criado parcialmente preserva seus IDs e não cria outra ciência',()=>{
+  const meta=metadata();meta.items=meta.items.filter(item=>['item-test','item-ack'].includes(item.itemId));delete meta.items.find(item=>item.itemId==='item-ack').questionItem.question.grading;
+  const f=templateFixture({metadata:meta}),ackIds={itemId:'item-ack',questionId:'ack'};f.prepare();f.prepare();
+  const ack=templateAux(f.meta,'[SAHMT:ACK]');assert.equal(ack.itemId,ackIds.itemId);assert.equal(ack.questionItem.question.questionId,ackIds.questionId);
+  assert.ok(f.batches.every(batch=>batch.requests.filter(request=>request.createItem).every(request=>!request.createItem.item.title.startsWith('[SAHMT:ACK]'))));assertTemplatePrepared(f);
+});
+for(const marker of Object.keys(templateMarkers))test('marcador duplicado impede alteração de conteúdo: '+marker,()=>{
+  const meta=metadata();const kind=templateMarkers[marker],aux=kind==='HEADER'?{itemId:'fixture-header',title:marker+' Parcial',textItem:{}}:question('fixture-aux',marker+' Parcial',0,kind==='PARAGRAPH'?{}:{choiceQuestion:{type:kind,options:[{value:'A'},{value:'B'}]}});
+  meta.items=meta.items.filter(item=>!item.title.startsWith(marker));meta.items.push(aux,{...clone(aux),itemId:'duplicate-header',...(aux.questionItem?{questionItem:{question:{...clone(aux.questionItem.question),questionId:'duplicate-question'}}}:{})});
+  const f=templateFixture({metadata:meta}),items=clone(f.meta.items),info=clone(f.meta.info);assert.throws(()=>f.prepare(),/Marcador duplicado/);assert.equal(f.batches.length,0);assert.equal(f.events.filter(event=>event.type==='flag').length,0);assert.deepEqual(f.meta.items,items);assert.deepEqual(f.meta.info,info);
+});
+for(const [name,wrong]of Object.entries({ACK:question('ack','[SAHMT:ACK] Texto'),REVIEW_COMPONENTS:question('review','[SAHMT:REVIEW_COMPONENTS] Uma opção',0,{choiceQuestion:{type:'RADIO',options:[{value:'MATERIAL'},{value:'QUESTIONS'}]}}),SUGGESTION_PROBLEM:question('problem','[SAHMT:SUGGESTION_PROBLEM] Curto',0,{textQuestion:{paragraph:false}}),IDENTIFICATION:{itemId:'invalid-header',title:'[SAHMT:IDENTIFICATION] Questão',questionItem:{question:{questionId:'header-question',textQuestion:{paragraph:true}}}}}))test('tipo incompatível é recusado antes de conteúdo ou flags: '+name,()=>{
+  const marker='[SAHMT:'+name+']',meta=metadata();meta.items=meta.items.filter(item=>!item.title.startsWith(marker));meta.items.push(wrong);const f=templateFixture({metadata:meta}),items=clone(f.meta.items),info=clone(f.meta.info);
+  assert.throws(()=>f.prepare(),/Tipo incompatível/);assert.equal(f.batches.length,0);assert.equal(f.events.filter(event=>event.type==='flag').length,0);assert.deepEqual(f.meta.items,items);assert.deepEqual(f.meta.info,info);
+});
+test('auxiliar que já pontua é recusado antes de alteração; não apaga gabarito indevidamente',()=>{
+  const meta=metadata();meta.items.find(item=>item.itemId==='item-ack').questionItem.question.grading={pointValue:1,correctAnswers:{answers:[{value:'SIM'}]}};
+  const f=templateFixture({metadata:meta}),items=clone(f.meta.items);assert.throws(()=>f.prepare(),/Campo auxiliar pontuado/);assert.deepEqual(f.meta.items,items);assert.equal(f.batches.length,0);
+});
+test('mudança autoral durante ajuste das flags bloqueia conteúdo antes do batch',()=>{
+  const f=templateFixture({onFlag:(method,meta)=>{if(method==='setPublished')meta.items.find(item=>item.itemId==='item-test').title='ROP alterado simultaneamente';}});
+  assert.throws(()=>f.prepare(),/Modelo alterado durante/);assert.equal(f.batches.length,0);assert.equal(f.meta.items.length,5);assert.equal(f.flags.accepting,false);assert.equal(f.flags.published,false);
+});
+for(const [name,corrupt]of Object.entries({itemId:item=>{item.itemId='changed-item';},questionId:item=>{item.questionItem.question.questionId='changed-question';},missingItemId:item=>{delete item.itemId;},missingQuestionId:item=>{delete item.questionItem.question.questionId;}}))test('verificação posterior detecta perda ou troca do ID auxiliar: '+name,()=>{
+  const f=templateFixture({afterBatch:meta=>corrupt(templateAux(meta,'[SAHMT:ACK]'))});assert.throws(()=>f.prepare(),/Identidade do campo alterada|ID ausente/);assert.equal(f.flags.accepting,false);assert.equal(f.flags.published,false);assert.equal(f.h.commits.length,0);
+});
+for(const [name,corrupt]of Object.entries({pointValue:item=>{item.questionItem.question.grading.pointValue=99;},answerKey:item=>{item.questionItem.question.grading.correctAnswers.answers[0].value='B';},questionId:item=>{item.questionItem.question.questionId='replaced-rop';},itemId:item=>{item.itemId='replaced-rop-item';},missingQuestion:item=>{delete item.questionItem;}}))test('verificação posterior detecta snapshot original alterado: '+name,()=>{
+  const f=templateFixture({afterBatch:meta=>corrupt(meta.items.find(item=>item.itemId==='item-test'))});assert.throws(()=>f.prepare(),/Conferir questões ROPs/);assert.equal(f.flags.accepting,false);assert.equal(f.flags.published,false);assert.equal(f.h.commits.length,0);
+});
+for(const [name,corrupt]of Object.entries({missing:meta=>{meta.items=meta.items.filter(item=>!item.title.startsWith('[SAHMT:NEW_VERSION]'));},required:meta=>{templateAux(meta,'[SAHMT:ACK]').questionItem.question.required=false;},options:meta=>{templateAux(meta,'[SAHMT:REVIEW_COMPONENTS]').questionItem.question.choiceQuestion.options=[{value:'UNRELATED'}];},grading:meta=>{templateAux(meta,'[SAHMT:ACK]').questionItem.question.grading={pointValue:0,correctAnswers:{answers:[{value:'SIM'}]}};},duplicateId:meta=>{templateAux(meta,'[SAHMT:NEW_VERSION]').questionItem.question.questionId=templateAux(meta,'[SAHMT:ACK]').questionItem.question.questionId;},published:(meta,flags)=>{flags.published=true;}}))test('confirmação posterior recusa auxiliar ou fechamento divergente: '+name,()=>{
+  const f=templateFixture({afterBatch:corrupt});assert.throws(()=>f.prepare(),/Campo não confirmado|Campo auxiliar divergente|Opções divergentes|IDs duplicados|Fechamento ou configuração/);assert.equal(f.h.commits.length,0);assert.equal(f.h.values('evaluationAwards').length,0);
+});
+test('verificação posterior recusa ordem auxiliar alterada mesmo quando ROPs estão preservados',()=>{
+  const f=templateFixture({afterBatch:meta=>{const index=meta.items.findIndex(item=>item.title.startsWith('[SAHMT:ACK]'));const [ack]=meta.items.splice(index,1);meta.items.push(ack);}});
+  assert.throws(()=>f.prepare(),/Ordem|ordem|posição|Posição/);assert.equal(f.flags.accepting,false);assert.equal(f.flags.published,false);assert.equal(f.h.commits.length,0);
+});
+test('atalho registra somente resumo seguro e mantém a cópia fechada',()=>{
+  const h=harness(),logs=[];h.ctx.Logger.log=value=>logs.push(value);h.ctx.prepareEvaluationTemplate=()=>({prepared:true,published:false,questionsPreserved:2,mapping:{acknowledgement:{questionId:'private-question'},review:{}}});
+  const result=h.ctx.configurarModeloAvaliacaoSahmtV2();assert.equal(result.prepared,true);assert.equal(logs.length,1);const summary=typeof logs[0]==='string'?JSON.parse(logs[0]):plain(logs[0]);
+  assert.deepEqual(summary,{prepared:true,published:false,questionsPreserved:2,auxiliaryFields:14});assert.doesNotMatch(JSON.stringify(summary),/private-question|@|docs.google|questionId|mapping/);assert.equal(h.commits.length,0);
 });
 test('alias curto só segue redirecionamentos Google Forms reconhecidos',()=>{const h=harness();h.seedFixture();let redirect=`https://docs.google.com/forms/d/e/${ALIAS}/viewform`;h.ctx.UrlFetchApp={fetch:()=>({getResponseCode:()=>302,getAllHeaders:()=>({Location:redirect})})};assert.equal(h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_('https://forms.gle/TestAlias'),{}).formId,FORM);redirect='https://evil.invalid/steal';assert.throws(()=>h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_('https://forms.gle/TestAlias'),{}),/fora do Google Forms/);});
 test('UID de documento incompatível não vira identidade de outra conta',()=>{const h=harness();assert.equal(h.ctx.formsEvaluationResolveIdentity_(metadata(),h.response(),[profile('person',{id:'different-document'})]).status,'NEEDS_REVIEW');});
