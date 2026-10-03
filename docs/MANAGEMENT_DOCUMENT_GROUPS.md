@@ -20,7 +20,7 @@ O inventário privado contém 56 leitores gerais, 31 restritos (também presente
 - Registros legados desta área sem grupo ficam disponíveis à gestão para classificação, sem acesso de leitores comuns. Outras áreas mantêm o comportamento anterior.
 - IDs estáveis, autoria de criação e publicação, timestamps, revisão concorrente e proteção após mudança de sessão permanecem preservados.
 
-O arquivo continua no Google Drive. O controle no PWA não substitui o compartilhamento do Drive. As pastas e os 14 arquivos foram conferidos: as duas listas fornecidas correspondem à leitura nas pastas; os dois gestores já têm edição/propriedade dos arquivos. Nenhuma permissão do Drive foi alterada.
+O arquivo continua no Google Drive. O controle no PWA não substitui o compartilhamento do Drive. As pastas e os 14 arquivos foram conferidos: as listas iniciais de 55 leitores gerais e 31 restritos correspondem à leitura nas pastas; os dois gestores já têm edição/propriedade dos arquivos. O leitor acrescentado posteriormente ao acesso geral ainda precisa de compartilhamento no Drive. Nenhuma permissão do Drive foi alterada.
 
 ## Como usar depois da implantação
 
