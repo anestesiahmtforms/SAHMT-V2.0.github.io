@@ -1118,13 +1118,13 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 }
 
 /* Checklist: cabeçalho no padrão de Eventos, leitor central e ações em largura total. */
-.app-shell--checklist .topbar{padding-inline:clamp(7px,1.6vw,16px)}
-.app-shell--checklist .identity-card{width:100%;min-height:128px;height:auto;padding:14px 20px 24px;border-radius:20px}
-.app-shell--checklist .identity-card .brand{min-height:50px;gap:12px;font-size:clamp(1.2rem,4.2vw,1.45rem);letter-spacing:.12em}
-.app-shell--checklist .identity-card .brand img{width:46px;height:46px;border-radius:7px}
-.app-shell--checklist .identity-card__user-row{min-width:0}
-.app-shell--checklist .identity-card__user{font-size:clamp(.68rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
-.app-shell--checklist .events-header-operational{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
+:is(.app-shell--checklist,.app-shell--training) .topbar{padding-inline:clamp(7px,1.6vw,16px)}
+:is(.app-shell--checklist,.app-shell--training) .identity-card{width:100%;min-height:128px;height:auto;padding:14px 20px 24px;border-radius:20px}
+:is(.app-shell--checklist,.app-shell--training) .identity-card .brand{min-height:50px;gap:12px;font-size:clamp(1.2rem,4.2vw,1.45rem);letter-spacing:.12em}
+:is(.app-shell--checklist,.app-shell--training) .identity-card .brand img{width:46px;height:46px;border-radius:7px}
+:is(.app-shell--checklist,.app-shell--training) .identity-card__user-row{min-width:0}
+:is(.app-shell--checklist,.app-shell--training) .identity-card__user{font-size:clamp(.68rem,2.25vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
+:is(.app-shell--checklist,.app-shell--training) .events-header-operational{grid-column:1/-1;grid-row:2;display:grid;place-items:center;min-height:29px;margin:0;padding:4px 9px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;letter-spacing:.16em;text-align:center}
 .app-shell--checklist .module-view--checklist{grid-template-rows:auto auto auto}
 .app-shell--checklist .checklist-qr-launcher{width:100%;min-height:clamp(145px,24dvh,230px);border-radius:24px}
 .app-shell--checklist .checklist-report-launchers{display:grid;grid-template-columns:minmax(0,1fr)}
@@ -1135,7 +1135,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .checklist-qr-focus::after{right:-3px;bottom:-3px;left:auto;top:auto;border-width:0 4px 4px 0;width:32px;height:32px;border-radius:0 0 18px}
 .checklist-qr-dialog{position:relative}
 .checklist-qr-dialog .checklist-qr-focus[hidden]{display:none}
-@media(max-width:420px){.app-shell--checklist .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:116px;padding:8px 12px 23px;column-gap:6px;row-gap:3px}.app-shell--checklist .identity-card .brand{min-height:46px;gap:7px;font-size:clamp(.66rem,2.5vw,.78rem)}.app-shell--checklist .identity-card .brand img{width:41px;height:41px}.app-shell--checklist .events-header-operational{min-height:27px;padding:3px 8px}}
+@media(max-width:420px){:is(.app-shell--checklist,.app-shell--training) .identity-card{grid-template-columns:minmax(54px,21%) minmax(0,1fr);min-height:116px;padding:8px 12px 23px;column-gap:6px;row-gap:3px}:is(.app-shell--checklist,.app-shell--training) .identity-card .brand{min-height:46px;gap:7px;font-size:clamp(.66rem,2.5vw,.78rem)}:is(.app-shell--checklist,.app-shell--training) .identity-card .brand img{width:41px;height:41px}:is(.app-shell--checklist,.app-shell--training) .events-header-operational{min-height:27px;padding:3px 8px}}
 
 /* Relatório diário: modal estável, sem barra de rolagem; grade comprimida para caber. */
 .checklist-report-dialog{position:fixed;inset:0;display:none;grid-template-rows:auto auto minmax(0,1fr);width:min(96vw,920px);height:min(96dvh,980px);max-width:none;max-height:none;margin:auto;overflow:hidden;overscroll-behavior:none}
@@ -1169,17 +1169,17 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
  .checklist-report-dialog__header button{min-height:32px;padding:3px 7px}
 }
 
-/* Cabeçalho Checklist: marca à esquerda; nome e sincronismo à direita; título abaixo. */
-.app-shell--checklist .identity-card{display:grid;grid-template-columns:72px minmax(0,1fr);grid-template-rows:minmax(55px,1fr) auto;align-items:center;column-gap:12px;row-gap:8px;min-height:132px;padding:12px 14px 14px}
-.app-shell--checklist .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:.68rem;letter-spacing:.13em;line-height:1}
-.app-shell--checklist .identity-card .brand img{width:44px;height:44px;border-radius:7px}
-.app-shell--checklist .identity-card__user-row{grid-column:2;grid-row:1;display:flex;justify-content:flex-end;align-self:center;gap:7px;width:100%;min-width:0}
-.app-shell--checklist .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.7rem,2.6vw,.88rem);text-align:right}
-.app-shell--checklist .identity-card__user-row .sync-pill{flex:0 0 auto;min-width:32px}
-.app-shell--checklist .identity-card__user-row .sync-status-button--synced{width:32px;height:32px;min-height:32px;border:1px solid #ffffff80;background:linear-gradient(145deg,#35c477,#16844b);color:#fff;box-shadow:0 2px 0 #0c6738}
-.app-shell--checklist .sync-status-icon{color:#fff;font-size:1.05rem;line-height:1}
-.app-shell--checklist .events-header-operational.checklist-title{grid-column:1/-1;grid-row:2;display:grid;place-items:center;width:100%;min-height:30px;margin:0;padding:5px 8px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.75rem,3vw,.9rem);font-weight:950;letter-spacing:.16em;text-align:center}
-@media(max-width:420px){.app-shell--checklist .identity-card{grid-template-columns:62px minmax(0,1fr);min-height:122px;padding:8px 10px 13px;column-gap:8px;row-gap:6px}.app-shell--checklist .identity-card .brand img{width:40px;height:40px}}
+/* Checklist e Treinamentos: marca à esquerda; nome e sincronismo à direita; título abaixo. */
+:is(.app-shell--checklist,.app-shell--training) .identity-card{display:grid;grid-template-columns:72px minmax(0,1fr);grid-template-rows:minmax(55px,1fr) auto;align-items:center;column-gap:12px;row-gap:8px;min-height:132px;padding:12px 14px 14px}
+:is(.app-shell--checklist,.app-shell--training) .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:.68rem;letter-spacing:.13em;line-height:1}
+:is(.app-shell--checklist,.app-shell--training) .identity-card .brand img{width:44px;height:44px;border-radius:7px}
+:is(.app-shell--checklist,.app-shell--training) .identity-card__user-row{grid-column:2;grid-row:1;display:flex;justify-content:flex-end;align-self:center;gap:7px;width:100%;min-width:0}
+:is(.app-shell--checklist,.app-shell--training) .identity-card__user{max-width:calc(100% - 42px);font-size:clamp(.7rem,2.6vw,.88rem);text-align:right}
+:is(.app-shell--checklist,.app-shell--training) .identity-card__user-row .sync-pill{flex:0 0 auto;min-width:32px}
+:is(.app-shell--checklist,.app-shell--training) .identity-card__user-row .sync-status-button--synced{width:32px;height:32px;min-height:32px;border:1px solid #ffffff80;background:linear-gradient(145deg,#35c477,#16844b);color:#fff;box-shadow:0 2px 0 #0c6738}
+:is(.app-shell--checklist,.app-shell--training) .sync-status-icon{color:#fff;font-size:1.05rem;line-height:1}
+:is(.app-shell--checklist,.app-shell--training) .events-header-operational:is(.checklist-title,.training-title){grid-column:1/-1;grid-row:2;display:grid;place-items:center;width:100%;min-height:30px;margin:0;padding:5px 8px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 rgba(8,31,52,.42),inset 0 1px 0 rgba(255,255,255,.5);color:#fff;font-size:clamp(.75rem,3vw,.9rem);font-weight:950;letter-spacing:.16em;text-align:center}
+@media(max-width:420px){:is(.app-shell--checklist,.app-shell--training) .identity-card{grid-template-columns:62px minmax(0,1fr);min-height:122px;padding:8px 10px 13px;column-gap:8px;row-gap:6px}:is(.app-shell--checklist,.app-shell--training) .identity-card .brand img{width:40px;height:40px}}
 
 /* Etiquetas: ações e relatórios separados, retorno ancorado ao rodapé. */
 .app-shell--labels .module-view--labels{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:clamp(10px,2dvh,18px);height:calc(100dvh - var(--labels-main-offset,220px));min-height:0;max-height:calc(100dvh - var(--labels-main-offset,220px));overflow:hidden}
@@ -1452,10 +1452,10 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--checklist .checklist-home-button{width:100%;height:100%;min-height:0;margin:0;padding:4px 7px;border-radius:13px;font-size:.78rem}
 .app-shell--checklist .app-footer{flex:0 0 auto;margin:0;padding:2px 6px max(3px,env(safe-area-inset-bottom));font-size:.58rem;line-height:1.1}
 @media(max-height:580px){
- .app-shell--checklist .identity-card{min-height:102px;padding:6px 10px 8px;grid-template-rows:minmax(44px,1fr) auto;row-gap:5px}
- .app-shell--checklist .identity-card .brand img{width:34px;height:34px}
- .app-shell--checklist .events-header-operational.checklist-title{min-height:25px;padding:3px 6px;font-size:.68rem}
- .app-shell--checklist .topbar{padding-top:max(5px,env(safe-area-inset-top));padding-bottom:5px}
+ :is(.app-shell--checklist,.app-shell--training) .identity-card{min-height:102px;padding:6px 10px 8px;grid-template-rows:minmax(44px,1fr) auto;row-gap:5px}
+ :is(.app-shell--checklist,.app-shell--training) .identity-card .brand img{width:34px;height:34px}
+ :is(.app-shell--checklist,.app-shell--training) .events-header-operational:is(.checklist-title,.training-title){min-height:25px;padding:3px 6px;font-size:.68rem}
+ :is(.app-shell--checklist,.app-shell--training) .topbar{padding-top:max(5px,env(safe-area-inset-top));padding-bottom:5px}
  .app-shell--checklist .module-view--checklist{grid-template-rows:minmax(0,1fr) 68px 34px 30px;gap:4px;padding:5px}
  .app-shell--checklist .checklist-visual figcaption{font-size:.58rem}
  .app-shell--checklist .checklist-qr-launcher svg{width:26px;height:26px}
@@ -1598,8 +1598,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--checklist .checklist-visual-frame{container-type:size;display:grid;place-items:center;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
 .app-shell--checklist .checklist-visual-frame>.checklist-visual{display:grid;grid-template-rows:auto auto;justify-items:center;gap:4px;width:fit-content;height:fit-content;max-width:100%;max-height:100%;min-height:0;margin:0;padding:5px;border-radius:16px;overflow:hidden}
 .app-shell--checklist .checklist-visual-frame .checklist-visual img{width:auto;height:auto;max-width:calc(100cqw - 12px);max-height:calc(100cqh - 28px);object-fit:contain}
-.app-shell--checklist .events-header-operational.checklist-title{width:fit-content;max-width:100%;justify-self:center;min-height:0;padding:4px 8px;font-size:clamp(1.5rem,6vw,1.8rem);line-height:1.1}
-@media(max-height:740px){.app-shell--checklist .events-header-operational.checklist-title{font-size:1.36rem;padding:3px 6px}}
+:is(.app-shell--checklist,.app-shell--training) .events-header-operational:is(.checklist-title,.training-title){width:fit-content;max-width:100%;justify-self:center;min-height:0;padding:4px 8px;font-size:clamp(1.5rem,6vw,1.8rem);line-height:1.1}
+@media(max-height:740px){:is(.app-shell--checklist,.app-shell--training) .events-header-operational:is(.checklist-title,.training-title){font-size:1.36rem;padding:3px 6px}}
 
 /* Evita ampliação automática do campo no Safari do iPhone. */
 #checklist-qr-dialog{touch-action:manipulation}
@@ -1829,7 +1829,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 }
 
 /* Checklist: imagem proporcional e botões distribuídos até o rodapé do contêiner. */
-.app-shell--checklist .identity-card{margin-block:0}
+:is(.app-shell--checklist,.app-shell--training) .identity-card{margin-block:0}
 .app-shell--checklist .module-view--checklist{
  --checklist-menu-report-gap:6px;
  --checklist-menu-reports:calc(2*var(--checklist-menu-report) + var(--checklist-menu-report-gap));
