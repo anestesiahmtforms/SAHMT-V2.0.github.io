@@ -75,3 +75,12 @@ Materiais nativos com imagens, desenhos ou outros elementos sem bytes estáveis 
 Execução manual observada às 14:43 de 03/10/2026: configurarModeloAvaliacaoSahmtV2 iniciou, mas a consulta de metadados Forms recebeu HTTP 403. A configuração real do modelo não foi validada. O diagnóstico distingue API desativada, escopo insuficiente e acesso negado; não é motivo para ativar pontuação ou ampliar IAM.
 
 Diagnóstico remoto confirmado às 15:01 de 03/10/2026: forms.googleapis.com não está ativada no projeto consumidor Apps Script 134600706457, diferente do número Firebase 1072832154794. A ativação deve ocorrer no projeto consumidor correto. Caso ele seja padrão gerenciado e inacessível, revisar o vínculo GCP e consentimento antes de qualquer mudança; não ativar outra API, conceder IAM amplo ou habilitar Blaze por tentativa. Leitura atual de acesso: quatro identidades Google em Authentication, mas somente dois perfis users/{uid}; lista de emails de grupo não equivale a perfil com permissões SAHMT. Nenhum perfil foi criado nesta auditoria.
+
+
+### Retomada da preparação do modelo — 03/10/2026
+
+Após ativação da API Forms e vínculo do executor ao projeto SAHMT (número 1072832154794), a execução manual das 17:14 chegou à edição da pergunta de ciência, mas falhou com `Invalid data updating form` na cadeia de setters nativos. A cadeia não identifica qual setter foi recusado.
+
+A preparação dos 14 auxiliares usa agora `forms.batchUpdate`: perguntas adicionais sem grading (zero efetivo no quiz), IDs existentes preservados, validação de tipos e marcadores, revisão obrigatória lida após o fechamento do modelo e comparação dos itens ROP completos e de sua ordem relativa. Gabaritos e pesos das perguntas originais não são regravados; apenas URLs temporárias `contentUri` são desconsideradas na comparação. Uma execução parcial pode ser retomada sem criar duplicatas. A verificação posterior confirma que o modelo está fechado, não publicado, sem respostas, com e-mail VERIFIED e quiz ativo.
+
+Depois de atualizar o editor, executar novamente `configurarModeloAvaliacaoSahmtV2`. O registro de sucesso apresenta `prepared:true`, `published:false`, a quantidade de questões preservadas e `auxiliaryFields:14`. Publicar o código não comprova que essa execução real terminou; a confirmação manual do modelo e a homologação com três contas continuam necessárias antes dos gatilhos financeiros.

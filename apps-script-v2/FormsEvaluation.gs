@@ -956,6 +956,111 @@ function installEvaluationTriggers() {
   return {installed: true, formTriggers: forms.length, pollingOnly: pollingOnly, reason: pollingOnly.length ? 'Limite de gatilhos: reconciliação periódica mantém processamento dos demais formulários.' : ''};
 }
 
+function formsEvaluationTemplateSpecs_() {
+  function header(marker, title, help) { return {marker: marker, kind: 'HEADER', title: marker + ' ' + title, description: help}; }
+  function paragraph(marker, title, help) { return {marker: marker, kind: 'PARAGRAPH', title: marker + ' ' + title, description: help}; }
+  return [
+    header('[SAHMT:IDENTIFICATION]', 'Identificação, versão e critérios', 'O administrador registra matéria, versão e critérios. E-mail da conta Google é coletado automaticamente; não informar UID/e-mail livre como identidade.'),
+    header('[SAHMT:MATERIAL]', 'Material de apoio', 'Vincular vídeo, PDF, Docs ou planilhas autorizados. Modelo permanece não publicado até material real e critérios completos.'),
+    {marker: SAHMT_V2_EVALUATION_FORMS.markers.ack, kind: 'RADIO', title: SAHMT_V2_EVALUATION_FORMS.markers.ack + ' Declaro leitura ou visualização e ciência do conteúdo', required: true, options: ['SIM', 'NÃO'], description: 'SIM:1 ponto de desempenho após validação. Declaração do participante; não comprova leitura integral.'},
+    header('[SAHMT:SUGGESTION]', 'Sugestão opcional', 'Contribuição válida e pertinente:2 pontos de desempenho somente após aprovação independente da gestão, uma por matéria/versão. Não exige implementação.'),
+    paragraph(SAHMT_V2_EVALUATION_FORMS.markers.problem, 'Problema identificado', 'Opcional; descreva situação relacionada à matéria.'),
+    paragraph(SAHMT_V2_EVALUATION_FORMS.markers.proposal, 'Proposta', 'Opcional; explique a contribuição.'),
+    paragraph(SAHMT_V2_EVALUATION_FORMS.markers.benefit, 'Benefício esperado', 'Opcional; explique o resultado esperado.'),
+    header('[SAHMT:REVIEW]', 'Registro opcional de revisão pelo gestor', 'Material1, questões1, ambos2 exclusivamente em governança. Designação, alteração efetiva, versões, evidência e aprovação administrativa independente são obrigatórias; pedido não concede pontos.'),
+    {marker: '[SAHMT:REVIEW_COMPONENTS]', kind: 'CHECKBOX', title: '[SAHMT:REVIEW_COMPONENTS] Componentes alterados', required: false, options: ['MATERIAL', 'QUESTIONS'], description: ''},
+    paragraph('[SAHMT:PREVIOUS_VERSION]', 'Versão anterior', 'Opcional: registrar versão de referência.'),
+    paragraph('[SAHMT:NEW_VERSION]', 'Nova versão', 'Opcional: registrar versão após alteração efetiva.'),
+    paragraph('[SAHMT:CHANGE_SUMMARY]', 'Resumo das mudanças', 'Descrever alterações; renomeação ou reenvio não pontua.'),
+    paragraph('[SAHMT:MATERIAL_EVIDENCE]', 'Evidências de materiais', 'URLs HTTPS dos arquivos alterados, uma por linha.'),
+    paragraph('[SAHMT:QUESTION_EVIDENCE]', 'Evidências de questões', 'URL do formulário e referências da alteração, uma por linha.')
+  ];
+}
+function formsEvaluationTemplateMatches_(metadata, specs) {
+  const matches = {};
+  specs.forEach(function (spec) {
+    const found = (metadata.items || []).filter(function (item) { return String(item.title || '').startsWith(spec.marker); });
+    if (found.length > 1) throw new Error('Marcador duplicado no modelo: ' + spec.marker + '. Nenhum campo será alterado.');
+    if (!found.length) return;
+    const item = found[0], question = item.questionItem && item.questionItem.question;
+    const compatible = spec.kind === 'HEADER' ? !!item.textItem && !question : question && (spec.kind === 'PARAGRAPH' ? question.textQuestion && question.textQuestion.paragraph === true : question.choiceQuestion && question.choiceQuestion.type === spec.kind);
+    if (!compatible) throw new Error('Tipo incompatível no modelo: ' + spec.marker + '. Nenhum campo será alterado.');
+    if (!formsEvaluationId_(item.itemId) || question && !formsEvaluationId_(question.questionId)) throw new Error('ID ausente no campo ' + spec.marker + '; conferir o modelo antes de repetir.');
+    if (question && Number(question.grading && question.grading.pointValue || 0) !== 0) throw new Error('Campo auxiliar pontuado no modelo: ' + spec.marker + '. Revisão manual necessária.');
+    matches[spec.marker] = item;
+  });
+  return matches;
+}
+function formsEvaluationTemplateOriginalItems_(metadata, specs) {
+  // contentUri is an expiring, server-generated image URL; all authored content and IDs remain in the comparison.
+  function stable(value) {
+    if (Array.isArray(value)) return value.map(stable);
+    if (!value || typeof value !== 'object') return value;
+    const result = {};
+    Object.keys(value).filter(function (key) { return key !== 'contentUri'; }).forEach(function (key) { result[key] = stable(value[key]); });
+    return result;
+  }
+  return (metadata.items || []).filter(function (item) { return !specs.some(function (spec) { return String(item.title || '').startsWith(spec.marker); }); }).map(stable);
+}
+function formsEvaluationTemplateItem_(spec, old) {
+  const item = {title: spec.title, description: spec.description};
+  if (old) item.itemId = old.itemId;
+  if (spec.kind === 'HEADER') item.textItem = {};
+  else {
+    const question = {required: spec.required === true};
+    if (old) question.questionId = old.questionItem.question.questionId;
+    if (spec.kind === 'PARAGRAPH') question.textQuestion = {paragraph: true};
+    else question.choiceQuestion = {type: spec.kind, options: spec.options.map(function (value) { return {value: value}; })};
+    // Ungraded auxiliary fields contribute zero. Grading requires an answer key in the REST schema.
+    item.questionItem = {question: question};
+  }
+  return item;
+}
+function formsEvaluationTemplateBatch_(metadata, specs) {
+  if (typeof metadata.revisionId !== 'string' || !metadata.revisionId.trim()) throw new Error('Revisão Forms ausente; nenhum campo será alterado.');
+  const matches = formsEvaluationTemplateMatches_(metadata, specs), virtual = (metadata.items || []).slice();
+  const requests = [{updateSettings: {settings: {emailCollectionType: 'VERIFIED', quizSettings: {isQuiz: true}}, updateMask: 'emailCollectionType,quizSettings.isQuiz'}}];
+  const prefix = '[SAHMT:TEMPLATE] Ciência, sugestões aprovadas e testes pontuam DESEMPENHO. Revisões do gestor pontuam exclusivamente GOVERNANÇA. Solicitar revisão não concede pontos. Ciência é declaração do participante e não prova leitura integral. Configurar matéria, versão, vigência, público, materiais e IDs reais antes de publicar.';
+  const description = String(metadata.info && metadata.info.description || '');
+  if (!description.startsWith('[SAHMT:TEMPLATE]')) requests.push({updateFormInfo: {info: {description: prefix + '\n\n' + description}, updateMask: 'description'}});
+  specs.forEach(function (spec) {
+    const old = matches[spec.marker], item = formsEvaluationTemplateItem_(spec, old);
+    if (old) {
+      // Explicit grading mask clears a partial native quiz field without changing either stable ID.
+      const questionMask = spec.kind === 'PARAGRAPH' ? 'textQuestion' : 'choiceQuestion';
+      requests.push({updateItem: {item: item, location: {index: virtual.indexOf(old)}, updateMask: 'title,description' + (spec.kind === 'HEADER' ? '' : ',questionItem.question.required,questionItem.question.' + questionMask + ',questionItem.question.grading')}});
+    } else {
+      requests.push({createItem: {item: item, location: {index: 0}}});
+      virtual.unshift(item); matches[spec.marker] = item;
+    }
+  });
+  const auxiliary = specs.map(function (spec) { return matches[spec.marker]; });
+  const originals = virtual.filter(function (item) { return !auxiliary.includes(item); });
+  const ordered = auxiliary.slice(0, 3).concat(originals, auxiliary.slice(3));
+  ordered.forEach(function (item, target) {
+    const from = virtual.indexOf(item);
+    if (from !== target) { requests.push({moveItem: {originalLocation: {index: from}, newLocation: {index: target}}}); virtual.splice(from, 1); virtual.splice(target, 0, item); }
+  });
+  return {requests: requests, writeControl: {requiredRevisionId: metadata.revisionId}};
+}
+function formsEvaluationVerifyTemplate_(before, after, specs, form) {
+  const previous = formsEvaluationTemplateMatches_(before, specs), current = formsEvaluationTemplateMatches_(after, specs);
+  specs.forEach(function (spec) {
+    const item = current[spec.marker];
+    if (!item) throw new Error('Campo não confirmado no modelo: ' + spec.marker + '. Modelo permanece fechado.');
+    const question = item.questionItem && item.questionItem.question;
+    if (item.title !== spec.title || String(item.description || '') !== spec.description || question && (question.required === true) !== (spec.required === true) || question && question.grading && (question.grading.correctAnswers || question.grading.whenRight || question.grading.whenWrong || question.grading.generalFeedback)) throw new Error('Campo auxiliar divergente: ' + spec.marker + '. Modelo permanece fechado.');
+    if (spec.options && (formsEvaluationStable_((question.choiceQuestion.options || []).map(function (option) { return option.value; })) !== formsEvaluationStable_(spec.options) || question.choiceQuestion.shuffle === true || question.choiceQuestion.options.some(function (option) { return option.isOther === true || option.goToSectionId || option.goToAction; }))) throw new Error('Opções divergentes: ' + spec.marker + '. Modelo permanece fechado.');
+    if (previous[spec.marker] && (previous[spec.marker].itemId !== item.itemId || question && previous[spec.marker].questionItem.question.questionId !== question.questionId)) throw new Error('Identidade do campo alterada: ' + spec.marker + '. Modelo permanece fechado.');
+  });
+  if (formsEvaluationStable_(formsEvaluationTemplateOriginalItems_(before, specs)) !== formsEvaluationStable_(formsEvaluationTemplateOriginalItems_(after, specs))) throw new Error('Conferir questões ROPs; modelo permanece fechado e não publicado.');
+  const ids = (after.items || []).map(function (item) { return item.itemId; });
+  const expectedOrder = specs.slice(0, 3).map(function (spec) { return current[spec.marker].itemId; }).concat(formsEvaluationTemplateOriginalItems_(before, specs).map(function (item) { return item.itemId; }), specs.slice(3).map(function (spec) { return current[spec.marker].itemId; }));
+  if (formsEvaluationStable_(ids) !== formsEvaluationStable_(expectedOrder)) throw new Error('Ordem dos campos não confirmada; modelo permanece fechado.');
+  const questionIds = (after.items || []).filter(function (item) { return item.questionItem; }).map(function (item) { return item.questionItem.question.questionId; });
+  if (new Set(ids).size !== ids.length || new Set(questionIds).size !== questionIds.length) throw new Error('IDs duplicados no modelo; conferir antes de publicar.');
+  if (!after.settings || after.settings.emailCollectionType !== 'VERIFIED' || !after.settings.quizSettings || after.settings.quizSettings.isQuiz !== true || form.isAcceptingResponses() || form.canEditResponse() || !form.hasLimitOneResponsePerUser() || form.getResponses().length || form.supportsAdvancedResponderPermissions && form.supportsAdvancedResponderPermissions() && form.isPublished()) throw new Error('Fechamento ou configuração do modelo não confirmado; nenhuma publicação foi autorizada.');
+}
 function prepareEvaluationTemplate(templateFormId, originalFormId) {
   evaluationAssertOperator_(false);
   if (!formsEvaluationId_(templateFormId) || !formsEvaluationId_(originalFormId) || templateFormId === originalFormId) throw new Error('Use somente a cópia reutilizável, distinta do original protegido.');
@@ -963,48 +1068,18 @@ function prepareEvaluationTemplate(templateFormId, originalFormId) {
   if (protectedIds.includes(templateFormId)) throw new Error('O modelo informado está na lista de originais protegidos.');
   const form = FormApp.openById(templateFormId);
   if (form.getResponses().length) throw new Error('O modelo possui respostas; nenhuma alteração será realizada.');
-  const before = formsEvaluationMetadata_(templateFormId);
-  const originalQuestions = formsEvaluationQuestionSnapshot_(before);
+  const specs = formsEvaluationTemplateSpecs_(), before = formsEvaluationMetadata_(templateFormId);
+  formsEvaluationTemplateMatches_(before, specs);
   form.setAcceptingResponses(false).setAllowResponseEdits(false).setLimitOneResponsePerUser(true).setCollectEmail(true).setPublishingSummary(false).setIsQuiz(true);
   if (form.supportsAdvancedResponderPermissions && form.supportsAdvancedResponderPermissions()) form.setPublished(false);
-  if (!String(form.getDescription() || '').startsWith('[SAHMT:TEMPLATE]')) form.setDescription('[SAHMT:TEMPLATE] Ciência, sugestões aprovadas e testes pontuam DESEMPENHO. Revisões do gestor pontuam exclusivamente GOVERNANÇA. Solicitar revisão não concede pontos. Ciência é declaração do participante e não prova leitura integral. Configurar matéria, versão, vigência, público, materiais e IDs reais antes de publicar.\n\n' + (form.getDescription() || ''));
-  function existing(marker) { return form.getItems().find(function (item) { return String(item.getTitle() || '').startsWith(marker); }); }
-  function paragraph(marker, title, help) {
-    const old = existing(marker);
-    const item = old ? old.asParagraphTextItem() : form.addParagraphTextItem();
-    item.setTitle(marker + ' ' + title).setRequired(false).setHelpText(help).setPoints(0);
-    return item;
-  }
-  let identification = existing('[SAHMT:IDENTIFICATION]');
-  if (!identification) identification = form.addSectionHeaderItem().setTitle('[SAHMT:IDENTIFICATION] Identificação, versão e critérios').setHelpText('O administrador registra matéria, versão e critérios. E-mail da conta Google é coletado automaticamente; não informar UID/e-mail livre como identidade.');
-  let material = existing('[SAHMT:MATERIAL]');
-  if (!material) material = form.addSectionHeaderItem().setTitle('[SAHMT:MATERIAL] Material de apoio').setHelpText('Vincular vídeo, PDF, Docs ou planilhas autorizados. Modelo permanece não publicado até material real e critérios completos.');
-  let ack = existing(SAHMT_V2_EVALUATION_FORMS.markers.ack);
-  ack = ack ? ack.asMultipleChoiceItem() : form.addMultipleChoiceItem();
-  ack.setTitle(SAHMT_V2_EVALUATION_FORMS.markers.ack + ' Declaro leitura ou visualização e ciência do conteúdo').setChoiceValues(['SIM', 'NÃO']).setRequired(true).setPoints(0).setHelpText('SIM:1 ponto de desempenho após validação. Declaração do participante; não comprova leitura integral.');
-  form.moveItem(identification, 0); form.moveItem(material, 1); form.moveItem(ack, 2);
-  let suggestionHeader = existing('[SAHMT:SUGGESTION]');
-  if (!suggestionHeader) suggestionHeader = form.addSectionHeaderItem().setTitle('[SAHMT:SUGGESTION] Sugestão opcional').setHelpText('Contribuição válida e pertinente:2 pontos de desempenho somente após aprovação independente da gestão, uma por matéria/versão. Não exige implementação.');
-  paragraph(SAHMT_V2_EVALUATION_FORMS.markers.problem, 'Problema identificado', 'Opcional; descreva situação relacionada à matéria.');
-  paragraph(SAHMT_V2_EVALUATION_FORMS.markers.proposal, 'Proposta', 'Opcional; explique a contribuição.');
-  paragraph(SAHMT_V2_EVALUATION_FORMS.markers.benefit, 'Benefício esperado', 'Opcional; explique o resultado esperado.');
-  let reviewHeader = existing('[SAHMT:REVIEW]');
-  if (!reviewHeader) reviewHeader = form.addSectionHeaderItem().setTitle('[SAHMT:REVIEW] Registro opcional de revisão pelo gestor').setHelpText('Material1, questões1, ambos2 exclusivamente em governança. Designação, alteração efetiva, versões, evidência e aprovação administrativa independente são obrigatórias; pedido não concede pontos.');
-  let components = existing('[SAHMT:REVIEW_COMPONENTS]');
-  components = components ? components.asCheckboxItem() : form.addCheckboxItem();
-  components.setTitle('[SAHMT:REVIEW_COMPONENTS] Componentes alterados').setChoiceValues(['MATERIAL', 'QUESTIONS']).setRequired(false).setPoints(0);
-  paragraph('[SAHMT:PREVIOUS_VERSION]', 'Versão anterior', 'Opcional: registrar versão de referência.');
-  paragraph('[SAHMT:NEW_VERSION]', 'Nova versão', 'Opcional: registrar versão após alteração efetiva.');
-  paragraph('[SAHMT:CHANGE_SUMMARY]', 'Resumo das mudanças', 'Descrever alterações; renomeação ou reenvio não pontua.');
-  paragraph('[SAHMT:MATERIAL_EVIDENCE]', 'Evidências de materiais', 'URLs HTTPS dos arquivos alterados, uma por linha.');
-  paragraph('[SAHMT:QUESTION_EVIDENCE]', 'Evidências de questões', 'URL do formulário e referências da alteração, uma por linha.');
-  formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/' + encodeURIComponent(templateFormId) + ':batchUpdate', {method: 'post', contentType: 'application/json',
-    payload: JSON.stringify({requests: [{updateSettings: {settings: {emailCollectionType: 'VERIFIED', quizSettings: {isQuiz: true}}, updateMask: 'emailCollectionType,quizSettings.isQuiz'}}]})});
+  // Native flags advance the revision. Read again before making the single conditional content update.
+  const fresh = formsEvaluationMetadata_(templateFormId);
+  if (formsEvaluationStable_(formsEvaluationTemplateOriginalItems_(before, specs)) !== formsEvaluationStable_(formsEvaluationTemplateOriginalItems_(fresh, specs)) || form.getResponses().length) throw new Error('Modelo alterado durante a preparação; conferir e repetir com o modelo fechado.');
+  const batch = formsEvaluationTemplateBatch_(fresh, specs);
+  formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/' + encodeURIComponent(templateFormId) + ':batchUpdate', {method: 'post', contentType: 'application/json', payload: JSON.stringify(batch)});
   const after = formsEvaluationMetadata_(templateFormId);
-  const preserved = originalQuestions.filter(function (item) { return !String(item.title).startsWith('[SAHMT:'); });
-  const afterQuestions = formsEvaluationQuestionSnapshot_(after);
-  if (!preserved.every(function (item) { const current = afterQuestions.find(function (next) { return next.itemId === item.itemId; }); return current && formsEvaluationStable_(current) === formsEvaluationStable_(item); })) throw new Error('Conferir questões ROPs; modelo permanece fechado e não publicado.');
-  return {prepared: true, published: false, questionsPreserved: preserved.length, mapping: formsEvaluationConfiguration_(after, {modalities: {acknowledgement: true, suggestion: true, test: false}}).mapping};
+  formsEvaluationVerifyTemplate_(before, after, specs, FormApp.openById(templateFormId));
+  return {prepared: true, published: false, questionsPreserved: formsEvaluationQuestionSnapshot_({items: formsEvaluationTemplateOriginalItems_(before, specs)}).length, mapping: formsEvaluationConfiguration_(after, {modalities: {acknowledgement: true, suggestion: true, test: false}}).mapping};
 }
 
 function configurarModeloAvaliacaoSahmtV2() {
@@ -1015,7 +1090,9 @@ function configurarModeloAvaliacaoSahmtV2() {
   const protectedIds = String(properties.getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (!protectedIds.includes(originalId)) protectedIds.push(originalId);
   properties.setProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS', protectedIds.join(','));
-  return prepareEvaluationTemplate(templateId, originalId);
+  const result = prepareEvaluationTemplate(templateId, originalId);
+  Logger.log(JSON.stringify({prepared: result.prepared, published: result.published, questionsPreserved: result.questionsPreserved, auxiliaryFields: 14}));
+  return result;
 }
 
 /** Read actual test inputs without enabling evaluation, processing responses or changing any Google Form. */
