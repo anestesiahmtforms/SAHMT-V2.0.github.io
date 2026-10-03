@@ -181,7 +181,8 @@
 .label-camera-target { position: absolute; top: 50%; left: 50%; width: min(84%, 420px); aspect-ratio: 2.1 / 1; transform: translate(-50%, -50%); display: grid; place-items: center; border: 2px solid #fff; border-radius: 14px; box-shadow: 0 0 0 999px rgb(2 15 27 / 28%); pointer-events: none; }
 .label-camera-target::before { position: absolute; inset: 0; border: 1px dashed rgb(255 255 255 / 78%); border-radius: 12px; content: ""; }
 .label-camera-target span { align-self: end; margin-bottom: 9px; padding: 5px 9px; border-radius: 999px; background: rgb(4 24 42 / 78%); color: white; font-size: .72rem; font-weight: 850; }
-.label-camera-dialog #label-camera-capture { width: 100%; margin-top: 12px; }
+.label-camera-actions { display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; margin-top: 12px; }
+.label-camera-dialog .label-camera-actions > button { width: 100%; min-height: 48px; margin: 0; }
 .label-crop-selection { position: absolute; z-index: 1; border: 2px solid #ffd54f; background: rgb(10 35 56 / 22%); pointer-events: none; }
 .label-crop-selection[hidden] { display: none; }
 
@@ -250,7 +251,7 @@
 @media (orientation: landscape) and (max-height: 520px) {
   .label-camera-dialog { max-height: 96dvh; overflow-y: auto; }
   .label-camera-dialog>p { margin-block: 5px; }
-  .label-camera-stage { height: 56dvh; min-height: 160px; }
+  .label-camera-stage { height: 32dvh; min-height: 100px; }
   .checklist-qr-dialog,.training-dialog { max-height: 96dvh; }
 }
 
@@ -453,10 +454,9 @@ html:has(.app-shell--events),body:has(.app-shell--events){overflow:hidden;oversc
 .app-shell--labels .page-title--labels h1{margin:0;text-transform:uppercase;letter-spacing:.04em}
 .app-shell--labels .module-view--labels{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:clamp(8px,1.4dvh,14px)}
 .app-shell--labels .module-view--labels>.label-workspace{display:grid;gap:8px;margin:0;padding:clamp(10px,2vw,16px);border:1px solid #d3e1e7;border-radius:18px;background:linear-gradient(145deg,#fff,#edf4f6);box-shadow:0 3px 0 #c8d9e0}
-.app-shell--labels .label-action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(6px,1.4vw,12px)}
+.app-shell--labels .label-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(6px,1.4vw,12px)}
 .app-shell--labels .label-action-grid button{min-width:0;min-height:clamp(48px,7dvh,60px);padding:8px;white-space:normal;font-size:clamp(.68rem,2vw,.88rem);font-weight:900}
 .app-shell--labels #label-camera-open{border-color:#115fa0;background:linear-gradient(145deg,#2377b9,#10518c);color:#fff;box-shadow:0 3px 0 #0b3e6d}
-.app-shell--labels #label-read-ai{border-color:#17877d;background:linear-gradient(145deg,#d8f4ee,#a8ded3);color:#07554d;box-shadow:0 3px 0 #64b0a4}
 .app-shell--labels #label-manual-open{border-color:#c6d8df;background:#fff;color:#164b73;box-shadow:0 3px 0 #c5d5da}
 .app-shell--labels #label-ai-status{margin:0;min-height:1.25em;font-size:.76rem}
 .app-shell--labels .label-report-launchers{margin:0}
@@ -1186,7 +1186,6 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--labels .module-view--labels>.label-workspace{display:grid;grid-template-rows:auto auto;align-content:center;gap:clamp(10px,2dvh,18px);flex:0 0 auto;width:100%;min-height:clamp(170px,31dvh,250px);margin:0;padding:clamp(14px,3vw,24px);border:2px solid #cbdde4;border-radius:22px;background:linear-gradient(145deg,#fff,#edf4f6);box-shadow:0 4px 0 #c8d9e0}
 .app-shell--labels .label-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(66px,1fr));gap:clamp(9px,2vw,16px);width:100%}
 .app-shell--labels .label-action-grid #label-camera-open{grid-column:1;grid-row:1}
-.app-shell--labels .label-action-grid #label-read-ai{grid-column:2;grid-row:1}
 .app-shell--labels .label-action-grid #label-manual-open{grid-column:1/-1;grid-row:2}
 .app-shell--labels .label-action-grid button{width:100%;min-height:clamp(60px,10dvh,82px);font-size:clamp(.78rem,2.8vw,1rem);border-radius:16px}
 .app-shell--labels .label-workspace::before{content:"AÇÕES DE ETIQUETAS";display:block;grid-row:1;color:#173957;font-size:clamp(.75rem,2.4vw,.9rem);font-weight:950;letter-spacing:.1em;text-align:center}
@@ -1222,7 +1221,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .module-view--labels>.label-workspace{flex:0 0 42%;min-height:0;max-height:48%;box-sizing:border-box;align-content:center}
 .app-shell--labels .label-action-grid{grid-template-rows:repeat(2,minmax(0,1fr))}
 .app-shell--labels .label-action-grid button{min-height:clamp(54px,8dvh,78px)}
-.app-shell--labels .label-ai-status{display:none}
+.app-shell--labels #label-ai-status:not(.sr-only){flex:0 0 auto;padding-top:6px;min-height:0;color:#294e67;font-size:.76rem;line-height:1.3;overflow-wrap:anywhere}
 .app-shell--labels .label-report-launchers{flex:1 1 auto;min-height:0;max-height:42%;box-sizing:border-box;align-content:center}
 .app-shell--labels .labels-home-button{flex:0 0 auto;margin-top:0}
 .app-shell--labels .app-footer{flex:0 0 auto;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
@@ -1255,21 +1254,20 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .module-view--labels{justify-content:space-between;gap:clamp(7px,1.1dvh,10px)}
 .app-shell--labels .module-view--labels>.label-workspace{display:flex;flex:1 1 54%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.6dvh,13px);gap:0}
 .app-shell--labels .label-workspace::before{content:none}
-.app-shell--labels .label-action-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(68px,1.35fr) repeat(2,minmax(48px,1fr));flex:1 1 auto;gap:clamp(6px,1dvh,10px);width:100%;height:100%}
+.app-shell--labels .label-action-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(68px,1.35fr) minmax(48px,1fr);flex:1 1 auto;gap:clamp(6px,1dvh,10px);width:100%;height:100%}
 .app-shell--labels .label-action-grid #label-camera-open{grid-column:1;grid-row:1}
-.app-shell--labels .label-action-grid #label-read-ai{grid-column:1;grid-row:2}
-.app-shell--labels .label-action-grid #label-manual-open{grid-column:1;grid-row:3}
+.app-shell--labels .label-action-grid #label-manual-open{grid-column:1;grid-row:2}
 .app-shell--labels .label-action-grid button{width:100%;min-height:0;height:100%;padding:7px;border-radius:14px;font-size:clamp(.72rem,2.6vw,.92rem)}
 .app-shell--labels .label-action-grid #label-camera-open{display:flex;align-items:center;justify-content:center;gap:14px;border-radius:28px;background:linear-gradient(145deg,#2377b9,#10518c);box-shadow:inset 0 0 0 2px #ffffff55,0 4px 0 #0b3e6d}
 .app-shell--labels .label-action-grid #label-camera-open::before{content:"";display:block;flex:0 0 auto;width:clamp(48px,8dvh,68px);aspect-ratio:1;border:5px solid #fff;border-radius:50%;background:radial-gradient(circle at 38% 35%,#bddfff 0 9%,#4085bc 12% 25%,#123c64 30% 57%,#071e35 60% 100%);box-shadow:0 0 0 4px #ffffff35,inset 0 0 0 2px #081e30}
-.app-shell--labels .label-action-grid #label-read-ai,.app-shell--labels .label-action-grid #label-manual-open{border-radius:13px}
+.app-shell--labels .label-action-grid #label-manual-open{border-radius:13px}
 .app-shell--labels .label-report-launchers{display:flex;flex:1 1 38%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.4dvh,12px);gap:clamp(6px,1dvh,9px)}
 .app-shell--labels .label-report-launchers::before{content:none}
 .app-shell--labels .label-report-launchers button{flex:1 1 0;width:100%;min-height:0;max-height:50%;padding:6px;border-radius:14px;font-size:clamp(.68rem,2.5vw,.88rem)}
 .app-shell--labels .labels-home-button{margin-top:0}
 @media(max-width:520px){
  :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
- .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.25fr) repeat(2,minmax(42px,1fr));gap:6px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.25fr) minmax(42px,1fr);gap:6px}
  .app-shell--labels .label-action-grid #label-camera-open::before{width:50px}
  .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2.9vw,.82rem)}
  .app-shell--labels .label-report-launchers{gap:6px;padding:7px}
@@ -1281,7 +1279,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  :is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:30px;padding:4px 8px}
  .app-shell--labels .module-view--labels{gap:5px}
  .app-shell--labels .module-view--labels>.label-workspace{padding:6px}
- .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) repeat(2,minmax(36px,1fr));gap:4px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) minmax(36px,1fr);gap:4px}
  .app-shell--labels .label-action-grid #label-camera-open::before{width:38px;border-width:4px}
  .app-shell--labels .label-report-launchers{gap:4px;padding:5px}
  .app-shell--labels .label-report-launchers button{min-height:34px;padding:4px}
