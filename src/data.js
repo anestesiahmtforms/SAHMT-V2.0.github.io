@@ -10,6 +10,7 @@ import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
 import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
+import {withGeneralReadPermissions} from './general-access.js';
 
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
@@ -487,8 +488,8 @@ export async function saveUserProfile(input, actorUid) {
     throw new Error('Confira UID, e-mail, nome, sigla, telefone e função antes de salvar.');
   }
   if (uid === actorUid && input.permissions) throw new Error('O administrador não pode alterar as próprias permissões por este formulário.');
-  const permissions = Object.fromEntries(Object.entries(input.permissions || {})
-    .filter(([permission, enabled]) => permissionIds.includes(permission) && enabled === true));
+  const permissions = withGeneralReadPermissions(Object.fromEntries(Object.entries(input.permissions || {})
+    .filter(([permission, enabled]) => permissionIds.includes(permission) && enabled === true)), input);
   const ref = doc(db, 'users', uid);
   const current = await getDocFromServer(ref);
   const record = {

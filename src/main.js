@@ -498,8 +498,9 @@ function loginView() {
 
 function moduleCards() {
   const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage', 'admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
+  const commonModules = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true ? ['training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && permissionFor[route]?.some(can) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
+  return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && (commonModules.includes(route) || permissionFor[route]?.some(can)) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'TR',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
@@ -889,6 +890,11 @@ async function loadModule(route) {
   if (!content && route !== 'labels') return;
   if (!featureEnabledForRoute(route, appFeatures)) {
     navigate('home');
+    return;
+  }
+  const contentPermissions = {training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage']};
+  if (contentPermissions[route] && !contentPermissions[route].some(can)) {
+    content.innerHTML = '<p class="empty-state" role="status">Seu perfil ainda não tem acesso ao conteúdo desta área. Peça ao administrador para liberar a consulta.</p>';
     return;
   }
   if (route === 'offline') {
@@ -1410,7 +1416,7 @@ async function loadAdminModule(content) {
       try { configuredFeatures = normalizeAppFeatures(await (await import('./data-lite.js')).readAppFeatures(session.user.uid)); }
       catch { configuredFeatures = appFeatures; }
     }
-    const permissions = userPermissions.map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="permission" value="${id}" ${['admin', 'usersManage'].includes(id) && !can('admin') ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('');
+    const permissions = userPermissions.map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="permission" value="${id}" ${['trainingsRead', 'notificationsRead'].includes(id) ? 'checked' : ''} ${['admin', 'usersManage'].includes(id) && !can('admin') ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('');
     const featureSettings = can('admin') ? `<section class="admin-user-form panel"><h3>Disponibilidade dos módulos</h3><p>Ative ou oculte áreas na Home sem editar o código. As regras de acesso do Firestore continuam valendo mesmo para uma área oculta.</p><form id="app-feature-form"><fieldset><legend>Módulos do SAHMT</legend><div class="permission-grid">${[
       ['checklist', 'Checklist'], ['labels', 'Etiquetas'], ['trainings', 'Treinamentos'], ['management', 'Gestão'], ['notifications', 'Notificações'],
       ['esg', 'ESG · preparado'], ['innovation', 'Inovação · preparada']
@@ -1429,7 +1435,7 @@ async function loadAdminModule(content) {
       ${featureSettings}
       <details id="admin-user-editor" class="quick-form admin-user-form"><summary id="user-form-summary">Configurar um pedido ou editar perfil</summary><section class="panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Ao abrir um pedido, UID, e-mail e nome são preenchidos automaticamente. O cadastro manual sem pedido fica reservado a casos administrativos excepcionais.</p>
         <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Preenchido pelo pedido ou manualmente"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'temporario' ? 'selected' : ''} ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
-          <fieldset><legend>Permissões SAHMT</legend><div class="permission-grid">${permissions}</div></fieldset>
+          <fieldset><legend>Permissões SAHMT</legend><p class="record-meta">Treinamentos e Notificações são liberados para todos os perfis aprovados. As demais permissões seguem a seleção abaixo.</p><div class="permission-grid">${permissions}</div></fieldset>
           <div class="admin-user-flags"><label><input type="checkbox" name="active" checked> Perfil ativo</label><label><input type="checkbox" name="access" checked> Acesso ao SAHMT</label></div>
           <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar perfil</button><button class="secondary-button" id="cancel-user-edit" type="button" hidden>Cancelar edição</button></div><p id="admin-user-status" class="record-meta" role="status" aria-live="polite"></p>
         </form>
@@ -1484,7 +1490,7 @@ async function loadAdminModule(content) {
       form.elements.active.checked = profile.active === true;
       form.elements.access.checked = profile.access === true;
       form.dataset.editingUid = profile.uid;
-      form.querySelectorAll('input[name="permission"]').forEach((input) => { input.checked = profile.permissions?.[input.value] === true; });
+      form.querySelectorAll('input[name="permission"]').forEach((input) => { input.checked = profile.permissions?.[input.value] === true || (profile.active === true && profile.access === true && ['trainingsRead', 'notificationsRead'].includes(input.value)); });
       content.querySelector('#user-form-title').textContent = `Editar perfil · ${profile.displayName || profile.uid}`;
       content.querySelector('#user-form-summary').textContent = 'Editando perfil existente';
       form.querySelector('[type="submit"]').textContent = 'Atualizar perfil';
@@ -4269,6 +4275,14 @@ function bindLogin() {
 function sessionChanged(next) {
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
+  const generalReadPermissions = ['trainingsRead', 'notificationsRead'];
+  const presentationWithoutGeneralReads = (value) => JSON.stringify([value.status, value.user?.uid, value.profile?.displayName, value.profile?.sigla, value.profile?.role, value.profile?.active, value.profile?.access, Object.entries(value.profile?.permissions || {}).filter(([key]) => !generalReadPermissions.includes(key)).sort(([left], [right]) => left.localeCompare(right))]);
+  const onlyGeneralReadGrant = session.status === 'signed-in' && next.status === 'signed-in' &&
+    Boolean(session.user?.uid) && session.profile?.active === true && session.profile?.access === true &&
+    presentationWithoutGeneralReads(session) === presentationWithoutGeneralReads(next) &&
+    generalReadPermissions.some((key) => session.profile?.permissions?.[key] !== true && next.profile?.permissions?.[key] === true) &&
+    generalReadPermissions.every((key) => session.profile?.permissions?.[key] === next.profile?.permissions?.[key] || next.profile?.permissions?.[key] === true);
+  const preserveCurrentModule = onlyGeneralReadGrant && !['home', 'training', 'notifications'].includes(currentRoute());
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (userChanged || next.status !== 'signed-in') {
@@ -4302,7 +4316,7 @@ function sessionChanged(next) {
       }
     }
   }
-  if (!unchangedPresentation) void render();
+  if (!unchangedPresentation && !preserveCurrentModule) void render();
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
   if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
