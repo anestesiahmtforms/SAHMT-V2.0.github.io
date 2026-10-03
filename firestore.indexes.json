@@ -39,7 +39,11 @@
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]},
     {"collectionGroup":"managementAreas","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"managerUids","arrayConfig":"CONTAINS"}]},
     {"collectionGroup":"notificationGroups","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"memberUids","arrayConfig":"CONTAINS"}]},
-    {"collectionGroup":"syncQueue","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"nextAttemptAt","order":"ASCENDING"}]}
+    {"collectionGroup":"syncQueue","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"nextAttemptAt","order":"ASCENDING"}]},
+    {"collectionGroup":"evaluationLedger","queryScope":"COLLECTION","fields":[{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"category","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
+    {"collectionGroup":"evaluationAwards","queryScope":"COLLECTION","fields":[{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"category","order":"ASCENDING"}]},
+    {"collectionGroup":"evaluationRequests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"createdAt","order":"ASCENDING"}]},
+    {"collectionGroup":"checklistSignatureRequests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"validatedAt","order":"DESCENDING"}]}
   ],
   "fieldOverrides": []
 }

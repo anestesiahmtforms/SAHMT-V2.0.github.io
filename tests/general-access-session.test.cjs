@@ -29,7 +29,7 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     offline: false
   };
   const ctx = vm.createContext({
-    session, currentRoute: () => route, document, navigator: {onLine: false},
+    session, cleanupCurrentModule: null, currentRoute: () => route, document, navigator: {onLine: false},
     appFeatures: {labels: true, trainings: true, notifications: true}, appFeaturesUid: session.user.uid,
     appFeaturesLoadSequence: 0, DEFAULT_APP_FEATURES: {labels: true, trainings: true, notifications: true},
     startupReports: {clear() {}}, liveReports: {clear: (reason) => liveClears.push(reason)},

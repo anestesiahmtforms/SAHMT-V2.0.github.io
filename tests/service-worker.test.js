@@ -15,6 +15,8 @@ const manifest = {
   },
   'src/checklist-report-listener.js': {src: 'src/checklist-report-listener.js', file: 'assets/checklist-listener.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
   'src/firebase.js': {src: 'src/firebase.js', file: 'assets/firebase-full.js', imports: ['assets/shared.js']},
+  'src/performance-ui.js': {src: 'src/performance-ui.js', file: 'assets/performance-ui.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
+  'src/evaluation-data.js': {src: 'src/evaluation-data.js', file: 'assets/evaluation-data.js', imports: ['assets/shared.js']},
   'optional-pdf': {file: 'assets/report-pdf.js', imports: []},
   'assets/shared.js': {
     file: 'assets/shared.js',
@@ -28,7 +30,7 @@ function createWorker({offline = false} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
-  const names = new Set(['sahmt-v2-shell-v167', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
+  const names = new Set(['sahmt-v2-shell-v168', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
@@ -86,7 +88,7 @@ function createWorker({offline = false} = {}) {
 }
 
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v167';/);
+  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v168';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
@@ -110,7 +112,7 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v167'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v168'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
@@ -154,4 +156,11 @@ test('precache report adapters from the build graph without PDF or all dynamic i
   let response;
   worker.handlers.get('fetch')({request: {method: 'GET', mode: 'cors', url: 'https://sahmt.example' + BASE + 'assets/checklist-listener.js'}, respondWith(promise) {response = promise;}});
   assert.ok(await response);
+});
+
+test('Desempenho abre offline com adaptadores leves, sem pré-cache de PDF/material', async () => {
+  const worker=createWorker();let install;worker.handlers.get('install')({waitUntil(value){install=value;}});await install;
+  assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/performance-ui.js'));
+  assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/evaluation-data.js'));
+  assert.equal(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/report-pdf.js'),false);
 });

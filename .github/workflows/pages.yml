@@ -40,7 +40,11 @@ jobs:
         run: npm run test:label-ai-worker
       - name: Run Firestore Rules tests
         run: npm run test:rules
+      - name: Run isolated evaluation transactions
+        run: npm run test:evaluation-integration
       - name: Run Cloud Functions Emulator tests
+        env:
+          FUNCTIONS_DISCOVERY_TIMEOUT: '60'
         run: npx firebase emulators:exec --project demo-sahmt-v2 --only auth,firestore,functions "npm --prefix functions test -- --test-concurrency=1"
       - name: Build PWA
         env:

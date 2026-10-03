@@ -24,7 +24,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   const imports = [];
   const queries = [];
   const navigations = [];
-  const content = {innerHTML: '', querySelectorAll: () => []};
+  const content = {isConnected: true, innerHTML: '', querySelectorAll: () => []};
   const data = {
     listModuleRecords: async (...args) => { queries.push({name: 'listModuleRecords', args}); return []; },
     listNotifications: async (...args) => { queries.push({name: 'listNotifications', args}); return []; },
@@ -32,7 +32,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
   const context = vm.createContext({
-    session, appFeatures, selectedManagementAreaId: '', route,
+    session, appFeatures, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     currentRoute: () => context.route,
     document: {querySelector: (selector) => selector === '#module-content' && hasContent ? content : null},
     navigate: (target) => navigations.push(target),
@@ -42,7 +42,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     fakeImport: async (path) => {
       imports.push(path);
       if (path === './data.js') return data;
-      if (path === './training.js') return {mountTrainingModule: async () => () => {}};
+      if (path === './performance-ui.js') return {mountPerformanceModule: () => {queries.push({name:'mountPerformanceModule'}); return () => {};}};
       throw new Error(`Importação inesperada no teste: ${path}`);
     }
   });
@@ -68,7 +68,7 @@ test('Escala mostra Treinamentos e Notificações para um perfil comum aprovado 
   const before = structuredClone(session);
   const h = harness({session});
   assert.deepEqual(visibleRoutes(h), ['training', 'notifications']);
-  assert.match(h.ui.moduleCards(), /<strong>Treinamentos<\/strong>/);
+  assert.match(h.ui.moduleCards(), /<strong>Desempenho<\/strong>/);
   assert.match(h.ui.moduleCards(), /<strong>Notificações<\/strong>/);
   for (const permission of ['trainingsRead', 'trainingsManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) {
     assert.equal(h.ui.can(permission), false, `${permission} continua sem concessão`);
@@ -162,7 +162,8 @@ for (const route of ['training', 'notifications']) {
   test(`${route}: leitura previamente autorizada conserva a consulta do fluxo existente`, async () => {
     const h = harness({session: approved({[route === 'training' ? 'trainingsRead' : 'notificationsRead']: true}), route});
     await h.ui.loadModule(route);
-    assert.ok(h.imports.includes('./data.js'));
+    assert.ok(h.imports.includes(route === 'training' ? './performance-ui.js' : './data.js'));
+    if(route === 'training') {assert.equal(h.imports.includes('./training.js'),false); assert.equal(h.queries.some(query=>query.name==='listModuleRecords'),false);}
     assert.ok(h.queries.length > 0);
     assert.doesNotMatch(h.content.innerHTML, /ainda não tem acesso/);
     assert.deepEqual(h.navigations, []);

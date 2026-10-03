@@ -6,6 +6,7 @@ const SAHMT_V2_DC_ALIASES = Object.freeze({
 const SAHMT_V2_DC_FALLBACK = Object.freeze(['AD', 'CR', 'LA', 'LH']);
 
 function validatePendingChecklistSignatureRequests() {
+  evaluationAssertOperator_(true);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {skipped: 'another run holds the lock'};
   try {
@@ -30,6 +31,7 @@ function validatePendingChecklistSignatureRequests() {
 }
 
 function installChecklistValidationTrigger() {
+  evaluationAssertOperator_(true);
   listPendingChecklistSignatureRequests_();
   const existing = ScriptApp.getProjectTriggers().filter(function (trigger) {
     return trigger.getHandlerFunction() === 'validatePendingChecklistSignatureRequests';
@@ -58,111 +60,88 @@ function listPendingChecklistSignatureRequests_() {
 }
 
 function validateChecklistSignatureRequest_(request) {
-  if (!request.day || !/^[a-f0-9]{64}$/.test(request.revision || '') || !request.signerUid ||
-      request.id !== request.day + '_' + request.revision + '_' + request.signerUid || request.declaration !== true ||
-      request.status !== 'PENDING_VALIDATION' || String(request.justification || '').trim().length < 8) {
-    return updateChecklistRequestStatus_(request, 'REJECTED', {validationMessage: 'Solicitação fora do contrato.'});
-  }
-  const signer = getFirestoreDocument_('users', request.signerUid, [
-    'uid', 'active', 'access', 'role', 'permissions.admin', 'permissions.checklistSign', 'displayName', 'email'
-  ]);
-  if (!signer || signer.uid !== request.signerUid || signer.active !== true || signer.access !== true || !hasChecklistSignPermission_(signer)) {
-    return updateChecklistRequestStatus_(request, 'REJECTED', {validationMessage: 'Perfil do solicitante inativo ou sem permissão atual.'});
-  }
-  let snapshot;
-  try {
-    snapshot = readTrustedChecklistSnapshot_(request.day);
-  } catch (error) {
-    if (error.status) throw error;
-    return updateChecklistRequestStatus_(request, 'NEEDS_REVIEW', {
-      validationMessage: String(error && error.message || 'Dados operacionais indisponíveis para validar.').slice(0, 300)
-    });
-  }
-  if (snapshot.fingerprint !== request.revision) {
-    return updateChecklistRequestStatus_(request, 'STALE', {validationMessage: 'O Checklist mudou depois do pedido. Atualize e solicite nova revisão.'});
-  }
-  const signatureId = request.day + '_' + snapshot.revision;
-  const existingSignature = getFirestoreDocument_('checklistSignatures', signatureId, ['id']);
-  if (existingSignature) {
-    return updateChecklistRequestStatus_(request, 'DUPLICATE', {
-      finalSignatureId: signatureId, validatedAt: new Date(), pointsAwarded: 0, responsibleAdjustment: 0,
+  evaluationAssertOperator_(true);
+  return evaluationRunTransaction_(function (transaction) {
+    const current = evaluationGet_('checklistSignatureRequests', request.id, transaction);
+    if (!current || current.status !== 'PENDING_VALIDATION') return {writes: [], result: 'DUPLICATE'};
+    function reject(status, message) {
+      return {writes: [evaluationWrite_('checklistSignatureRequests', current.id, {status: status, validationMessage: message}, current, ['validatedAt'])], result: status};
+    }
+    if (!current.day || !/^[a-f0-9]{64}$/.test(current.revision || '') || !current.signerUid ||
+        current.id !== current.day + '_' + current.revision + '_' + current.signerUid || current.declaration !== true ||
+        String(current.justification || '').trim().length < 8 || String(current.justification || '').length > 500) {
+      return reject('REJECTED', 'Solicitação fora do contrato.');
+    }
+    const signer = evaluationGet_('users', current.signerUid, transaction);
+    if (!evaluationActiveProfile_(signer, current.signerUid) || !hasChecklistSignPermission_(signer)) {
+      return reject('REJECTED', 'Perfil do solicitante inativo ou sem permissão atual.');
+    }
+    let snapshot;
+    try { snapshot = readTrustedChecklistSnapshot_(current.day, transaction); }
+    catch (error) {
+      if (error.status) throw error;
+      return reject('NEEDS_REVIEW', String(error && error.message || 'Dados indisponíveis para validar.').slice(0, 300));
+    }
+    const projection = evaluationGet_('checklistResponsibilities', current.day, transaction);
+    const projectionWrite = checklistResponsibilityProjectionWrite_(current.day, snapshot, projection);
+    if (snapshot.fingerprint !== current.revision) {
+      const result = reject('STALE', 'O Checklist mudou depois do pedido. Atualize e solicite nova revisão.');
+      result.writes.push(projectionWrite); return result;
+    }
+    const signatureId = current.day + '_' + snapshot.revision;
+    const existing = evaluationGet_('checklistSignatures', signatureId, transaction);
+    if (existing) return {writes: [projectionWrite, evaluationWrite_('checklistSignatureRequests', current.id, {
+      status: 'DUPLICATE', finalSignatureId: signatureId, pointsAwarded: 0, responsibleAdjustment: 0,
       validationMessage: 'Esta revisão já possui assinatura válida.'
-    });
-  }
-  const now = new Date();
-  const signature = {
-    id: signatureId, date: request.day, checklistId: request.day,
-    responsibleUid: snapshot.responsible.responsibleUid,
-    responsibleName: snapshot.responsible.responsibleName,
-    responsibleEmail: snapshot.responsible.responsibleEmail,
-    signerUid: request.signerUid, signerName: signer.displayName || '', signerEmail: signer.email || '',
-    declaration: true, revision: snapshot.revision, snapshot: snapshot.snapshot,
-    missing: snapshot.missing, justification: request.justification, signedAt: now
-  };
-  const awarded = snapshot.missing === 0;
-  const isSubstitute = snapshot.responsible.responsibleUid !== request.signerUid;
-  const scoreEntries = awarded ? [
-    {uid: snapshot.responsible.responsibleUid, ruleId: 'checklist-daily-responsible-v1', points: 1, suffix: 'responsible'},
-    ...(isSubstitute ? [
-      {uid: request.signerUid, ruleId: 'checklist-daily-substitute-v1', points: 1, suffix: 'substitute'},
-      {uid: snapshot.responsible.responsibleUid, ruleId: 'checklist-daily-substitution-adjustment-v1', points: -1, suffix: 'substitution-adjustment'}
-    ] : [])
-  ] : [];
-  const writes = [{
-    update: {name: firestoreDocumentName_('checklistSignatures', signatureId), fields: firestoreFieldsFromJs_(signature)},
-    currentDocument: {exists: false}
-  }];
-  scoreEntries.forEach(function (entry) {
-    const scoreId = 'checklist-' + signatureId + '-' + entry.suffix;
-    writes.push({
-      update: {name: firestoreDocumentName_('scores', scoreId), fields: firestoreFieldsFromJs_({
-        id: scoreId, uid: entry.uid, sourceType: 'checklistSignature', sourceId: signatureId,
-        ruleId: entry.ruleId, points: entry.points, createdByUid: request.signerUid, createdAt: now
-      })},
-      currentDocument: {exists: false}
-    });
+    }, current, ['validatedAt'])], result: 'DUPLICATE'};
+    const signature = {
+      id: signatureId, date: current.day, checklistId: current.day,
+      responsibleUid: snapshot.responsible.responsibleUid, responsibleName: snapshot.responsible.responsibleName,
+      responsibleEmail: snapshot.responsible.responsibleEmail,
+      signerUid: current.signerUid, signerName: signer.displayName || '', signerEmail: signer.email || '',
+      declaration: true, revision: snapshot.revision, snapshot: snapshot.snapshot,
+      missing: snapshot.missing, justification: current.justification
+    };
+    let transfer;
+    try { transfer = evaluationApplyChecklistTransfer_(current.day, snapshot.responsible.responsibleUid, current.signerUid, signatureId, {transaction: transaction}); }
+    catch (error) {
+      if (error.status) throw error;
+      return reject('NEEDS_REVIEW', String(error && error.message || 'Pontuação pendente de revisão.').slice(0, 300));
+    }
+    const applied = transfer.status === 'APPLIED' && snapshot.responsible.responsibleUid !== current.signerUid;
+    transfer.writes.push(evaluationWrite_('checklistSignatures', signatureId, signature, null, ['signedAt']));
+    transfer.writes.push(projectionWrite);
+    transfer.writes.push(evaluationWrite_('checklistSignatureRequests', current.id, {
+      status: 'VALIDATED', finalSignatureId: signatureId, pointsAwarded: applied ? 1 : 0,
+      responsibleAdjustment: applied ? -1 : 0, evaluationStatus: transfer.status, validationMessage: ''
+    }, current, ['validatedAt']));
+    return {writes: transfer.writes, result: 'VALIDATED'};
   });
-  writes.push(checklistRequestUpdateWrite_(request, {
-    status: 'VALIDATED', validatedAt: now, finalSignatureId: signatureId,
-    pointsAwarded: awarded ? 1 : 0, responsibleAdjustment: awarded && isSubstitute ? -1 : 0,
-    validationMessage: ''
-  }));
-  try {
-    firestoreRequest_(firestoreDocumentsUrl_(':commit'), {
-      method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
-    });
-    return 'VALIDATED';
-  } catch (error) {
-    const latest = getFirestoreDocument_('checklistSignatures', signatureId, ['id']);
-    if (latest) return updateChecklistRequestStatus_(request, 'DUPLICATE', {
-      finalSignatureId: signatureId, validatedAt: new Date(), pointsAwarded: 0, responsibleAdjustment: 0,
-      validationMessage: 'Esta revisão já possui assinatura válida.'
-    });
-    throw error;
-  }
 }
 
-function readTrustedChecklistSnapshot_(day) {
+function readTrustedChecklistSnapshot_(day, transaction) {
   if (day !== checklistSaoPauloDay_()) throw new Error('O pedido não corresponde ao dia atual em São Paulo.');
-  const schedule = getFirestoreDocument_('scheduleDays', day, ['positions', 'vacationLabel']);
+  const getTrusted = function (collectionId, id, fields) { return transaction ? evaluationGet_(collectionId, id, transaction) : getFirestoreDocument_(collectionId, id, fields); };
+  const queryTrusted = function (collectionId, filters, order, maximum, fields) { return transaction ? evaluationQuery_(collectionId, filters, order, maximum, fields, transaction) : queryFirestore_(collectionId, filters, order, maximum, fields); };
+  const schedule = getTrusted('scheduleDays', day, ['positions', 'vacationLabel']);
   if (!schedule) throw new Error('Escala do dia indisponível.');
-  const stations = queryFirestore_('stations', [
+  const stations = queryTrusted('stations', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
   ], [{fieldPath: 'order', direction: 'ASCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxStations + 1,
   ['active', 'start', 'end', 'order', 'name']);
-  const vacations = queryFirestore_('vacations', [
+  const vacations = queryTrusted('vacations', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
     firestoreFilter_('start', 'LESS_THAN_OR_EQUAL', {stringValue: day}),
     firestoreFilter_('end', 'GREATER_THAN_OR_EQUAL', {stringValue: day})
   ], [{fieldPath: 'start', direction: 'ASCENDING'}], 101, ['active', 'start', 'end', 'siglas', 'label']);
-  const events = queryFirestore_('events', [
+  const events = queryTrusted('events', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
     firestoreFilter_('date', 'EQUAL', {stringValue: day})
   ], [], 201, ['active', 'date', 'eventType', 'memberStatus', 'substitute']);
-  const contacts = queryFirestore_('contacts', [
+  const contacts = queryTrusted('contacts', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
   ], [], 201, ['active', 'sigla', 'name']);
-  const records = queryFirestore_('checklists', [
+  const records = queryTrusted('checklists', [
     firestoreFilter_('date', 'EQUAL', {stringValue: day})
   ], [{fieldPath: 'createdAt', direction: 'DESCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords + 1,
   ['date', 'createdAt', 'stationId', 'condition', 'occurrence']);
@@ -191,14 +170,15 @@ function readTrustedChecklistSnapshot_(day) {
   })}));
   const selection = selectChecklistResponsible_({schedule: schedule, day: day, vacations: vacations, events: events, contacts: contacts});
   if (!selection.ok) throw new Error(selection.reason);
-  const matchedProfiles = queryFirestore_('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
+  const matchedProfiles = queryTrusted('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
     ['uid', 'active', 'access', 'displayName', 'email']);
-  if (matchedProfiles.length !== 1 || matchedProfiles[0].active !== true || matchedProfiles[0].access !== true || !matchedProfiles[0].uid) {
+  if (matchedProfiles.length !== 1 || matchedProfiles[0].active !== true || matchedProfiles[0].access !== true || !matchedProfiles[0].uid ||
+      transaction && matchedProfiles[0].uid !== matchedProfiles[0].id) {
     throw new Error('Não há perfil ativo e único para a sigla responsável ' + selection.sigla + '.');
   }
   const contactMatches = contacts.filter(function (contact) { return normalizeChecklistText_(contact.sigla) === selection.sigla; });
   const responsibleContact = contactMatches.length === 1
-    ? getFirestoreDocument_('contacts', contactMatches[0].id, ['name', 'email'])
+    ? getTrusted('contacts', contactMatches[0].id, ['name', 'email'])
     : null;
   const responsible = {
     responsibleUid: matchedProfiles[0].uid,

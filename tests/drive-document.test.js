@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {normalizeDriveDocumentUrl} from '../src/drive-document.js';
 
+test('Forms mantém URL de formulário; alias público/curto nunca é convertido em arquivo Drive', () => {
+  assert.deepEqual(normalizeDriveDocumentUrl('https://docs.google.com/forms/d/FormFixture123456/edit?usp=sharing'), {driveFileId: 'FormFixture123456', driveUrl: 'https://docs.google.com/forms/d/FormFixture123456/edit'});
+  assert.equal(normalizeDriveDocumentUrl('https://forms.gle/Fixture123456').driveUrl, 'https://forms.gle/Fixture123456');
+  assert.equal(normalizeDriveDocumentUrl('https://docs.google.com/forms/d/e/PublicFixture123456/viewform').driveFileId, 'responder_PublicFixture123456');
+  assert.throws(() => normalizeDriveDocumentUrl('https://user:secret@drive.google.com/file/d/DriveFixture123456/view'));
+});
+
 test('normaliza links de arquivo do Drive e Google Docs para uma URL canônica', () => {
   const id = 'DriveFile_A1234567';
   const expected = {driveFileId: id, driveUrl: `https://drive.google.com/file/d/${id}/view`};
