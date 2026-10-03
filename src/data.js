@@ -4,6 +4,7 @@ import {db} from './firebase.js';
 import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
+import {normalizeManagementEmails} from './management-document-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
@@ -705,32 +706,86 @@ export async function cancelManagementActivity(activityId, uid) {
   });
 }
 
-export async function listManagementDocuments(managementAreaId, {includeInactive = false, pageSize = 50} = {}) {
-  if (!managementAreaId) return [];
-  const constraints = [where('managementAreaId', '==', managementAreaId)];
-  if (!includeInactive) constraints.push(where('active', '==', true));
-  constraints.push(orderBy('publishedAt', 'desc'));
-  constraints.push(limit(Math.min(100, Math.max(1, pageSize))));
-  const snapshot = await getDocsFromServer(query(collection(db, 'documents'), ...constraints));
-  return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
+const PROTECTED_DOCUMENT_AREA = 'area-gestao-de-documentos';
+
+export async function listManagementDocumentGroups(managementAreaId, {uid = '', email = '', canManageAll = false, areaManager = false} = {}) {
+  if (managementAreaId !== PROTECTED_DOCUMENT_AREA) return [];
+  const base = [where('managementAreaId', '==', managementAreaId)];
+  if (canManageAll || (areaManager && uid)) {
+    const snapshot = await getDocsFromServer(query(collection(db, 'documentGroups'), ...base));
+    return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+  }
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!uid || !normalizedEmail) return [];
+  const snapshots = await Promise.all(['allowedEmails', 'managerEmails'].map((field) => getDocsFromServer(query(
+    collection(db, 'documentGroups'), ...base, where('active', '==', true), where(field, 'array-contains', normalizedEmail)
+  ))));
+  const groups = new Map();
+  snapshots.forEach((snapshot) => snapshot.docs.forEach((item) => groups.set(item.id, {id: item.id, ...item.data()})));
+  return [...groups.values()].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
 }
 
-export async function saveManagementDocument(input, uid) {
+export async function listManagementDocuments(managementAreaId, {includeInactive = false, pageSize = 50, groups = [], uid = '', email = '', canManageAll = false, areaManager = false} = {}) {
+  if (!managementAreaId) return [];
+  const pageLimit = Math.min(100, Math.max(1, pageSize));
+  const base = [where('managementAreaId', '==', managementAreaId)];
+  const privileged = canManageAll || (areaManager && uid);
+  const readQuery = async (constraints, inactive) => {
+    const snapshot = await getDocsFromServer(query(collection(db, 'documents'), ...constraints,
+      ...(inactive ? [] : [where('active', '==', true)]), orderBy('publishedAt', 'desc'), limit(pageLimit)));
+    return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
+  };
+  if (privileged || managementAreaId !== PROTECTED_DOCUMENT_AREA) {
+    return readQuery(base, includeInactive);
+  }
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!uid || !normalizedEmail) return [];
+  const accessibleGroups = groups.filter((group) => group.managementAreaId === managementAreaId && group.active === true &&
+    (group.allowedEmails?.includes(normalizedEmail) || group.managerEmails?.includes(normalizedEmail)));
+  const snapshots = await Promise.all(accessibleGroups.map((group) => readQuery(
+    [...base, where('documentGroupId', '==', group.id)], includeInactive && group.managerEmails?.includes(normalizedEmail)
+  )));
+  const documents = new Map();
+  snapshots.flat().forEach((item) => documents.set(item.id, item));
+  const publishedMillis = (value) => value?.toMillis?.() ?? ((value?.seconds || 0) * 1000);
+  return [...documents.values()].sort((left, right) => publishedMillis(right.publishedAt) - publishedMillis(left.publishedAt) || left.id.localeCompare(right.id)).slice(0, pageLimit);
+}
+
+export async function saveManagementDocument(input, uid, {assertCurrent = () => {}} = {}) {
+  assertCurrent();
   const id = String(input.documentId || '').trim() || crypto.randomUUID();
   const managementAreaId = String(input.managementAreaId || '').trim();
   const title = String(input.title || '').trim();
   const description = String(input.description || '').trim();
   const category = String(input.category || '').trim();
+  const requestedGroupId = input.documentGroupId === undefined ? undefined : String(input.documentGroupId || '').trim();
   const {driveFileId, driveUrl} = normalizeDriveDocumentUrl(input.driveUrl);
   const currentVersion = Number(input.version || 0);
-  if (!/^[A-Za-z0-9_-]{10,200}$/.test(id) || !uid || !managementAreaId || !title || title.length > 160 || description.length > 1200 || !category || category.length > 80 || !Number.isInteger(currentVersion) || currentVersion < 0 || currentVersion > 100) {
-    throw new Error('Confira a área, o título, a categoria e o link do documento.');
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(id) || !uid || !managementAreaId || managementAreaId.length > 128 || !title || title.length > 160 || description.length > 1200 || !category || category.length > 80 ||
+      (requestedGroupId && !/^[A-Za-z0-9_-]{1,128}$/.test(requestedGroupId)) || !Number.isInteger(currentVersion) || currentVersion < 0 || currentVersion > 100) {
+    throw new Error('Confira a área, o grupo de acesso, o título, a categoria e o link do documento.');
   }
   const ref = doc(db, 'documents', id);
-  const content = {managementAreaId, title, description, driveFileId, driveUrl, category, active: input.active !== false, requiredReading: input.requiredReading === true};
   await runTransaction(db, async (transaction) => {
+    assertCurrent();
     const snapshot = await transaction.get(ref);
-    if (!snapshot.exists()) {
+    const existing = snapshot.exists() ? snapshot.data() : null;
+    const documentGroupId = requestedGroupId === undefined ? String(existing?.documentGroupId || '') : requestedGroupId;
+    const content = {managementAreaId, title, description, driveFileId, driveUrl, category, active: input.active !== false, requiredReading: input.requiredReading === true};
+    if (documentGroupId) {
+      if (managementAreaId !== PROTECTED_DOCUMENT_AREA) throw new Error('Os grupos de acesso são exclusivos da Gestão de Documentos.');
+      const groupSnapshot = await transaction.get(doc(db, 'documentGroups', documentGroupId));
+      if (!groupSnapshot.exists() || groupSnapshot.data().managementAreaId !== managementAreaId) {
+        throw new Error('Escolha um grupo de acesso desta área.');
+      }
+      content.documentGroupId = documentGroupId;
+    } else if (managementAreaId === PROTECTED_DOCUMENT_AREA && !existing) {
+      throw new Error('Escolha o grupo de acesso deste documento.');
+    } else if (existing?.documentGroupId) {
+      throw new Error('Um documento agrupado precisa permanecer em um grupo de acesso.');
+    }
+    assertCurrent();
+    if (!existing) {
       if (currentVersion !== 0) throw new Error('O documento foi removido ou mudou. Atualize a lista.');
       transaction.set(ref, {
         ...content, id, version: 1, publishedAt: serverTimestamp(), createdByUid: uid,
@@ -738,10 +793,47 @@ export async function saveManagementDocument(input, uid) {
       });
       return;
     }
-    const existing = snapshot.data();
+    if (existing.managementAreaId !== managementAreaId) throw new Error('O documento não pertence a esta área. Atualize a lista.');
     if (currentVersion === 0 && existing.version === 1 && existing.createdByUid === uid &&
-        ['managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading'].every((key) => existing[key] === content[key])) return;
+        ['managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading', 'documentGroupId'].every((key) => existing[key] === content[key])) return;
     if (existing.version !== currentVersion || currentVersion < 1) throw new Error('Este documento foi atualizado por outra pessoa. Atualize a lista antes de editar.');
+    transaction.update(ref, {...content, updatedByUid: uid, updatedAt: serverTimestamp(), version: currentVersion + 1});
+  });
+  return id;
+}
+
+export async function saveManagementDocumentGroup(input, uid, {assertCurrent = () => {}} = {}) {
+  assertCurrent();
+  const id = String(input.groupId || input.id || '').trim() || crypto.randomUUID();
+  const managementAreaId = String(input.managementAreaId || '').trim();
+  const name = String(input.name || '').trim();
+  const category = String(input.category || '').trim();
+  const sourceFolderId = String(input.sourceFolderId || '').trim();
+  const accessMode = String(input.accessMode || 'GENERAL');
+  const allowedEmails = normalizeManagementEmails(input.allowedEmails ?? '');
+  const managerEmails = normalizeManagementEmails(input.managerEmails ?? '', {maxItems: 20});
+  const currentVersion = Number(input.version || 0);
+  if (!uid || !/^[A-Za-z0-9_-]{1,128}$/.test(id) || managementAreaId !== PROTECTED_DOCUMENT_AREA || !name || name.length > 120 || !category || category.length > 80 ||
+      (sourceFolderId && !/^[A-Za-z0-9_-]{10,200}$/.test(sourceFolderId)) || !['GENERAL', 'RESTRICTED'].includes(accessMode) || !Number.isInteger(currentVersion) || currentVersion < 0) {
+    throw new Error('Confira a área, o nome, a categoria e os e-mails do grupo.');
+  }
+  const ref = doc(db, 'documentGroups', id);
+  const content = {managementAreaId, name, category, accessMode, sourceFolderId, allowedEmails, managerEmails, active: input.active !== false};
+  await runTransaction(db, async (transaction) => {
+    assertCurrent();
+    const snapshot = await transaction.get(ref);
+    assertCurrent();
+    if (!snapshot.exists()) {
+      if (currentVersion !== 0) throw new Error('O grupo foi removido ou mudou. Atualize a lista.');
+      transaction.set(ref, {...content, id, version: 1, createdByUid: uid, createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp()});
+      return;
+    }
+    const existing = snapshot.data();
+    if (existing.managementAreaId !== managementAreaId) throw new Error('O grupo não pertence a esta área.');
+    const sameContent = ['managementAreaId', 'name', 'category', 'accessMode', 'sourceFolderId', 'active'].every((key) => existing[key] === content[key]) &&
+      JSON.stringify(existing.allowedEmails) === JSON.stringify(allowedEmails) && JSON.stringify(existing.managerEmails) === JSON.stringify(managerEmails);
+    if (currentVersion === 0 && existing.version === 1 && existing.createdByUid === uid && sameContent) return;
+    if (existing.version !== currentVersion || currentVersion < 1) throw new Error('Este grupo foi atualizado por outra pessoa. Atualize a lista antes de editar.');
     transaction.update(ref, {...content, updatedByUid: uid, updatedAt: serverTimestamp(), version: currentVersion + 1});
   });
   return id;
