@@ -1,5 +1,6 @@
 import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
+import {profileForPresentation} from './profile-presentation.js';
 
 let retryCurrentProfile = null;
 let authApiPromise = null;
@@ -19,7 +20,7 @@ async function showCachedSession(user, onState) {
     onState({status: 'profile-error', user, error: new Error('Perfil offline ausente ou expirado.')});
     return;
   }
-  onState({status: profile.active && profile.access ? 'signed-in' : 'blocked', user, profile, offline: true});
+  onState({status: profile.active && profile.access ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: true});
 }
 
 export function watchSession(onState) {
@@ -117,7 +118,7 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     const profile = snapshot.data();
     if (profile.uid !== user.uid) throw new Error('O UID do perfil não corresponde à identidade autenticada.');
     await cacheProfile(user.uid, profile);
-    onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile, offline: false});
+    onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: false});
     deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
@@ -158,7 +159,7 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
           return;
         }
         await cacheProfile(user.uid, updatedProfile);
-        onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: updatedProfile, offline: !navigator.onLine});
+        onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(updatedProfile, user), offline: !navigator.onLine});
       }, (error) => {
         if (currentGeneration !== getGeneration()) return;
         if (!navigator.onLine) {
