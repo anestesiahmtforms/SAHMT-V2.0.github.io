@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {readFileSync} = require('node:fs');
-const source = readFileSync(require('node:path').join(__dirname, '../src/main.js'), 'utf8');
+const source = readFileSync(require('node:path').join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 test('contêiner principal de Eventos fixo e dimensionado à tela', () => {
   const css = readFileSync(require('node:path').join(__dirname, '../src/styles.css'), 'utf8');
   assert.match(css, /html:has\(\.app-shell--events\),body:has\(\.app-shell--events\)\{overflow:hidden;overscroll-behavior:none\}/);
@@ -32,6 +32,7 @@ const helper = source.slice(source.indexOf('function renderLabelManualConfirmati
 const listener = source.indexOf("document.querySelector('[data-module-form]')?.addEventListener('submit'");
 const start = source.indexOf('async (event) => {', listener);
 const end = source.indexOf("\n  });\n  if (route === 'events')", start);
+assert.ok(listener >= 0 && start >= listener && end > start, 'Trecho do formulário de Etiquetas não localizado no fixture VM.');
 const callback = source.slice(start, end).replaceAll("await import('./data.js')", 'mockData') + '\n}';
 function setup({pending = false, fail = false, origin = 'manual', editing = false, commitGate = null} = {}) {
   let now = 10000;
