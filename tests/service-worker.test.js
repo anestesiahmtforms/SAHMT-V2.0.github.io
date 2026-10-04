@@ -88,11 +88,11 @@ function createWorker({offline = false} = {}) {
 }
 
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {
-  assert.match(workerSource, /const CACHE = 'sahmt-v2-shell-v168';/);
   const worker = createWorker();
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
+  assert.ok(worker.names.has('sahmt-v2-shell-v169'));
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
@@ -106,13 +106,16 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
 
 test('mantém os caches de férias e externos ao atualizar o shell', async () => {
   const worker = createWorker();
+  let install;
+  worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
+  await install;
   worker.names.add('sahmt-v2-shell-v159');
   let activation;
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
-  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v168'));
+  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v168', 'sahmt-v2-shell-v159']);
+  assert.ok(worker.names.has('sahmt-v2-shell-v169'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);

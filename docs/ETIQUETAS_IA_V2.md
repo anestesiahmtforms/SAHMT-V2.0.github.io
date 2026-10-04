@@ -5,10 +5,11 @@
 O PWA mantém Firebase Authentication, App Check e Firestore no plano Spark. A leitura assistida usa o Cloudflare Worker `sahmt-label-ai`; a chave `OPENAI_API_KEY` fica somente como Secret no Worker.
 
 1. A pessoa captura ou seleciona uma etiqueta. O aparelho preserva o enquadramento atual, reduz a imagem e prepara os recortes numéricos em memória.
-2. Ao tocar em **LER ETIQUETA**, o PWA obtém o Firebase ID Token da sessão ativa e um token da instância App Check já inicializada. Envia `imageDataUrl` e `numericImageDataUrls` por HTTPS ao Worker.
+2. Ao tocar em **CAPTURAR E LER ETIQUETA**, o PWA fecha a câmera e inicia a leitura da imagem recortada. Obtém o Firebase ID Token da sessão ativa e um token da instância App Check já inicializada. Envia `imageDataUrl` e `numericImageDataUrls` por HTTPS ao Worker. A seleção de uma foto alternativa ainda exige confirmar seu enquadramento com esse mesmo botão.
 3. O Worker valida assinatura, algoritmo, emissor, audiência, validade e identidade dos dois JWTs com os JWKS públicos oficiais. Em seguida consulta `users/{uid}` pelo Firestore REST usando o ID Token do próprio usuário, para que as Security Rules continuem valendo. Exige perfil ativo e acesso habilitado com `labelsWrite`, `labelsManage`, `admin` ou o perfil `administrador_app`.
 4. O Worker envia a imagem à OpenAI Responses API usando GPT-6 Luna, `store:false` e Structured Outputs. O resultado é validado e devolvido como rascunho; a pessoa confere e salva pelo formulário normal.
 5. O Worker não grava etiquetas nem imagens no Firestore, Storage, cache ou outbox. A gravação continua sendo uma ação humana explícita no PWA.
+6. Após conferir e salvar o rascunho, a confirmação do Firestore fecha o formulário e retorna à tela inicial de Etiquetas. Uma área compacta entre **ABRIR CÂMERA** e **REGISTRO MANUAL**, no espaço do antigo botão de leitura, mostra **✓ Feito!** em verde, sem aviso de sucesso no modal ou na página. Falhas preservam os dados no formulário e não mostram esse indicador. O indicador é da sessão atual e é limpo ao iniciar outra captura ou trocar de conta. Respostas atrasadas de leitura ou salvamento não substituem nem fecham uma nova entrada ou edição.
 
 A função Firebase `readLabelImage` não é mais chamada nem necessária para Etiquetas. Cloud Functions e plano Blaze não são requisitos deste fluxo. Outras funções Firebase, se existirem para módulos diferentes, seguem seus próprios requisitos.
 

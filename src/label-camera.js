@@ -8,7 +8,6 @@ export function bindLabelCamera(form) {
   let photoPreview = null;
   const status = form.querySelector('#label-camera-status');
   const fileInput = form.querySelector('#label-image-file');
-  const readButton = form.querySelector('#label-read-ai');
   if (!openButton || !dialog || !video || !captureButton || !fileInput) return () => {};
   try {
     photoPreview = document.createElement('img');
@@ -73,7 +72,6 @@ export function bindLabelCamera(form) {
   const onOpen = () => {
     fileInput.value = '';
     generatedCapture = null;
-    if (readButton) readButton.disabled = true;
     clearPhotoPreview();
     video.hidden = false;
     if (!dialog.open) dialog.showModal();
@@ -86,7 +84,6 @@ export function bindLabelCamera(form) {
       if (file === generatedCapture) generatedCapture = null;
       return;
     }
-    if (readButton) readButton.disabled = true;
     if (!photoPreview) {
       status.textContent = 'Não foi possível mostrar a prévia para enquadrar a foto. Use a câmera direta ou o registro manual.';
       return;
@@ -99,7 +96,7 @@ export function bindLabelCamera(form) {
     photoPreview.onload = () => {
       if (!dialog.open) return;
       captureButton.disabled = false;
-      status.textContent = 'Confira o enquadramento da foto na moldura central e toque em CAPTURAR.';
+      status.textContent = 'Confira o enquadramento da foto na moldura central e toque em CAPTURAR E LER ETIQUETA.';
     };
     photoPreview.onerror = () => {
       captureButton.disabled = true;
@@ -155,10 +152,11 @@ export function bindLabelCamera(form) {
     }
     context.drawImage(source, sourceLeft, sourceTop, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
     captureButton.disabled = true;
+    const generation = requestGeneration;
     canvas.toBlob((blob) => {
       canvas.width = 0;
       canvas.height = 0;
-      if (!fileInput.isConnected) return;
+      if (generation !== requestGeneration || !dialog.open || !fileInput.isConnected) return;
       if (!blob) {
         status.textContent = 'Não foi possível preparar a captura. Tente novamente ou escolha uma foto.';
         captureButton.disabled = false;
@@ -173,6 +171,7 @@ export function bindLabelCamera(form) {
       fileInput.files = transfer.files;
       generatedCapture = file;
       fileInput.dispatchEvent(new Event('change', {bubbles: true}));
+      fileInput.dispatchEvent(new Event('label-captured', {bubbles: true}));
     }, 'image/jpeg', 0.92);
   };
   const onDialogClose = () => {

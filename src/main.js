@@ -96,6 +96,8 @@ let labelReportCursor = null;
 let labelReportLoadingMore = false;
 let loadedLabelStaffSiglas = [];
 let labelManualConfirmation = {uid: '', status: ''};
+let labelCameraConfirmation = {uid: '', status: ''};
+let labelEntryGeneration = 0;
 let reportPdfPromise = null;
 let checklistReportMode = 'daily';
 let checklistReportOpen = false;
@@ -619,6 +621,18 @@ function updateLabelManualConfirmation(status, uid) {
   if (status) button.insertAdjacentHTML('beforeend', renderLabelManualConfirmation());
 }
 
+function renderLabelCameraConfirmation() {
+  if (labelCameraConfirmation.uid !== session.user?.uid || labelCameraConfirmation.status !== 'confirmed') return '';
+  return '<span class="label-camera-confirmation" data-label-camera-confirmation role="status" aria-label="Registro de etiqueta concluído"><span aria-hidden="true">✓</span><small>Feito!</small></span>';
+}
+
+function updateLabelCameraConfirmation(status, uid) {
+  labelCameraConfirmation = {uid, status};
+  if (uid !== session.user?.uid) return;
+  const result = document.querySelector('#label-camera-result');
+  if (result) result.innerHTML = renderLabelCameraConfirmation();
+}
+
 function actionForm(route) {
   if (route === 'events') {
     if (!can('eventsWrite')) return '';
@@ -656,7 +670,7 @@ function actionForm(route) {
     <label class="contact-active-field"><input name="showInTraining" type="checkbox" checked> Mostrar em Treinamentos</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Publicada</label></div><input name="activityId" type="hidden">
     <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar atividade</button><button class="secondary-button" id="learning-activity-reset" type="button">Nova atividade</button></div><p id="learning-activity-status" class="record-meta" role="status" aria-live="polite"></p></form>
     <div id="learning-activity-admin-list" class="module-content"><p class="loading">Carregando atividades…</p></div></details>`;
-  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open">ABRIR CÂMERA</button><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button" type="button" id="label-read-ai" disabled>LER ETIQUETA</button><button class="secondary-button${labelManualConfirmation.uid === session.user.uid ? ' label-manual--has-status' : ''}" type="button" id="label-manual-open"><span>REGISTRO MANUAL</span>${renderLabelManualConfirmation()}</button></div><p id="label-ai-status" class="sr-only" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera, capture a etiqueta e toque em Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label class="label-entry-date"><input name="date" type="date" value="${todayInputValue()}" readonly required aria-readonly="true" aria-label="Data da leitura, preenchida automaticamente"></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label class="label-entry-insurance" data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label class="label-entry-attendance"><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label class="label-entry-procedure" data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label class="label-entry-type"><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label class="label-entry-creditor"><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><label class="label-entry-amount" data-label-field="amount" hidden><span>Valor em Real · opcional</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTAS</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
+  if (route === 'labels' && (can('labelsWrite') || can('labelsManage'))) return `<section class="label-workspace" aria-label="Ações de Etiquetas"><div class="label-action-grid"><button class="primary-button" type="button" id="label-camera-open"><span class="label-camera-label">ABRIR CÂMERA</span></button><div class="label-camera-result" id="label-camera-result" aria-live="polite">${renderLabelCameraConfirmation()}</div><input id="label-image-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" tabindex="-1" aria-label="Capturar imagem da etiqueta"><button class="secondary-button${labelManualConfirmation.uid === session.user.uid ? ' label-manual--has-status' : ''}" type="button" id="label-manual-open"><span>REGISTRO MANUAL</span>${renderLabelManualConfirmation()}</button></div><p id="label-ai-status" class="sr-only" role="status" aria-live="polite">${labelAiEnabled ? 'Abra a câmera e toque em Capturar e Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.'}</p><dialog class="label-camera-dialog" id="label-camera-dialog" aria-labelledby="label-camera-title"><header><div><h3 id="label-camera-title">CAPTURAR ETIQUETA</h3></div><button class="secondary-button" id="label-camera-close" type="button">Fechar</button></header><p id="label-camera-status" role="status" aria-live="polite">Centralize a etiqueta na moldura.</p><div class="label-camera-stage"><video id="label-camera-video" playsinline muted></video><div class="label-camera-target" aria-hidden="true"><span>Centralize a etiqueta</span></div></div><button class="primary-button" id="label-camera-capture" type="button" disabled>CAPTURAR E LER ETIQUETA</button></dialog></section><dialog class="label-entry-dialog" id="label-entry-dialog" aria-labelledby="label-entry-title"><header><h3 id="label-entry-title">REGISTRO DE ETIQUETA</h3><button class="secondary-button" type="button" id="label-entry-close" aria-label="Fechar registro">Fechar</button></header><form data-module-form="labels" autocomplete="off" novalidate><div class="form-grid"><label class="label-entry-date"><input name="date" type="date" value="${todayInputValue()}" readonly required aria-readonly="true" aria-label="Data da leitura, preenchida automaticamente"></label><label class="label-entry-patient"><span>Nome do Paciente</span><input name="patientName" autocomplete="off" required maxlength="160"></label><label class="label-entry-insurance" data-label-field="insurance"><span>Convênio</span><input name="insurance" maxlength="120"></label><label class="label-entry-attendance"><span>Atendimento</span><input name="encounterCode" inputmode="numeric" required maxlength="80"></label><label class="label-entry-procedure" data-label-field="procedure"><span>Cirurgia</span><input name="procedureCode" inputmode="numeric" maxlength="80"></label><label class="label-entry-type"><span>Tipo</span><select name="type" required><option value="">Selecione</option><option>Particular</option><option>Complementação</option><option>Convênio</option><option>Consulta Pré-anestésica</option><option>SADT</option></select></label><label class="label-entry-creditor"><span>Credor</span><select name="creditor" required><option value="">Selecione</option><option>Caixa</option><option>Plantão</option><option>Plantão/Caixa</option></select></label><label class="label-entry-amount" data-label-field="amount" hidden><span>Valor em Real · opcional</span><input name="amount" inputmode="decimal" placeholder="R$ 0,00" maxlength="32"></label><div class="label-staff-field" data-label-field="staff"><label class="label-staff-heading"><span>PLANTONISTAS</span><input name="staffSiglas" type="text" readonly placeholder="Selecione abaixo" aria-label="Siglas dos plantonistas selecionados" aria-live="polite"></label><div id="label-staff-options" class="label-staff-options" role="group" aria-label="Selecionar plantonistas"></div></div></div><input name="editLabelId" type="hidden"><input name="editLabelVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar registro</button><button class="secondary-button" id="label-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="label-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="label-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form></dialog>`;  if (route === 'checklist' && (can('checklistRead') || can('checklistWrite') || can('checklistManage'))) return '';
   if (route === 'management' && (can('managementActivityWrite') || can('qualityManage'))) return `<details class="quick-form" open><summary>Nova atividade</summary><form data-module-form="activity">
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
@@ -2392,6 +2406,7 @@ function beginLabelEdit(item) {
   if (labelReportMode !== 'daily') return;
   const form = document.querySelector('[data-module-form="labels"]');
   if (!form || !item) return;
+  labelEntryGeneration++;
   form.dataset.labelEntrySource = 'edit';
   form.elements.editLabelId.value = item.id;
   form.elements.editLabelVersion.value = String(Math.max(1, Number(item.version) || 1));
@@ -2403,6 +2418,7 @@ function beginLabelEdit(item) {
   }
   setLabelStaffSiglas(item.staffSiglas || []);
   form.querySelector('[type="submit"]').textContent = 'Atualizar etiqueta';
+  form.querySelector('[type="submit"]').disabled = false;
   const editorTitle = document.querySelector('#label-entry-title');
   if (editorTitle) editorTitle.textContent = 'EDITAR ETIQUETA';
   form.querySelector('#label-edit-cancel').hidden = false;
@@ -2415,6 +2431,7 @@ function beginLabelEdit(item) {
 function resetLabelEditor({keepOpen = false} = {}) {
   const form = document.querySelector('[data-module-form="labels"]');
   if (!form) return;
+  labelEntryGeneration++;
   form.dataset.labelEntrySource = '';
   form.reset();
   setLabelStaffSiglas([]);
@@ -2422,6 +2439,7 @@ function resetLabelEditor({keepOpen = false} = {}) {
   form.elements.editLabelId.value = '';
   form.elements.editLabelVersion.value = '';
   form.querySelector('[type="submit"]').textContent = 'Salvar registro';
+  form.querySelector('[type="submit"]').disabled = false;
   const editorTitle = document.querySelector('#label-entry-title');
   if (editorTitle) editorTitle.textContent = 'REGISTRO DE ETIQUETA';
   form.querySelector('#label-edit-cancel').hidden = true;
@@ -3149,8 +3167,12 @@ async function bindModuleForm(route) {
     submit.disabled = true;
     const values = Object.fromEntries(new FormData(form).entries());
     const actorUid = session.user.uid;
+    const entryGeneration = labelEntryGeneration;
+    const currentLabelSave = () => session.user?.uid === actorUid && entryGeneration === labelEntryGeneration && form.isConnected;
     const manualLabelEntry = route === 'labels' && (form.dataset.labelEntrySource === 'manual' || Boolean(values.editLabelId));
+    const cameraLabelEntry = route === 'labels' && !manualLabelEntry && form.dataset.labelEntrySource === 'camera';
     if (manualLabelEntry) updateLabelManualConfirmation('pending', actorUid);
+    if (cameraLabelEntry) updateLabelCameraConfirmation('pending', actorUid);
     const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
     try {
       if (route === 'people') {
@@ -3217,6 +3239,7 @@ async function bindModuleForm(route) {
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
           await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName, Number(values.editLabelVersion));
+          if (!currentLabelSave()) return;
           updateLabelManualConfirmation('confirmed', actorUid);
           notice = '';
           const entryDialog = document.querySelector('#label-entry-dialog');
@@ -3266,18 +3289,22 @@ async function bindModuleForm(route) {
       delete record.sign;
       const {createOperationalRecord} = await import('./data.js');
       const result = await createOperationalRecord(collectionName, record, {uid: session.user.uid});
+      if (route === 'labels' && !currentLabelSave()) return;
       notice = result.pendingFirestore
         ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
-      if (manualLabelEntry) {
-        updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
+      if (manualLabelEntry || cameraLabelEntry) {
+        if (manualLabelEntry) updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
+        else updateLabelCameraConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
         notice = '';
         const entryDialog = document.querySelector('#label-entry-dialog');
         if (entryDialog?.open) entryDialog.close();
-        document.querySelector('#label-manual-open')?.focus?.({preventScroll: true});
+        if (manualLabelEntry) document.querySelector('#label-manual-open')?.focus?.({preventScroll: true});
+        else document.querySelector('#label-camera-open')?.focus?.({preventScroll: true});
       }
       await render();
     } catch (error) {
+      if (route === 'labels' && !currentLabelSave()) return;
       notice = error.code === 'permission-denied' ? 'Seu perfil não tem permissão para esta ação.' : `Não foi possível salvar. ${error.message || ''}`;
       if (route === 'events') {
         const status = document.querySelector('#event-form-status');
@@ -3685,27 +3712,67 @@ function updateLabelEntryFields(form) {
 
 function bindLabelAi(workspace, form) {
   const fileInput = workspace.querySelector('#label-image-file');
-  const runButton = workspace.querySelector('#label-read-ai');
+  const openButton = workspace.querySelector('#label-camera-open');
+  const manualButton = workspace.querySelector('#label-manual-open');
   const status = workspace.querySelector('#label-ai-status');
   const dialog = document.querySelector('#label-entry-dialog');
+  if (!fileInput || !openButton) return () => {};
+  const controller = new AbortController();
+  const {signal} = controller;
   let generation = 0;
-  fileInput?.addEventListener('change', () => {
+  let reading = false;
+  const setBusy = (busy) => {
+    reading = busy;
+    openButton.disabled = busy;
+    openButton.setAttribute('aria-busy', String(busy));
+    const label = openButton.querySelector('.label-camera-label');
+    if (label) label.textContent = busy ? 'LENDO ETIQUETA…' : 'ABRIR CÂMERA';
+  };
+  const setStatus = (message, visible = false) => {
+    if (!status) return;
+    status.textContent = message;
+    if (visible) status.classList.remove('sr-only');
+    else status.classList.add('sr-only');
+  };
+  const cancelRead = () => {
     generation++;
-    runButton.disabled = !labelAiEnabled || !fileInput.files?.[0];
-    if (status && fileInput.files?.[0]) status.textContent = labelAiEnabled
-      ? 'Etiqueta capturada. Confira a imagem e toque em Ler Etiqueta.'
-      : 'Leitura por IA desativada. Use Registro Manual; a imagem não será enviada para a IA.';
-  });
-  runButton?.addEventListener('click', async () => {
-    const file = fileInput?.files?.[0];
-    if (!file || !labelAiEnabled) return;
+    setBusy(false);
+  };
+  openButton.addEventListener('click', () => {
+    cancelRead();
+    labelEntryGeneration++;
+    updateLabelCameraConfirmation('', session.user?.uid || '');
+    setStatus(labelAiEnabled ? 'Enquadre a etiqueta e toque em Capturar e Ler Etiqueta.' : 'Leitura por IA desativada. Você pode continuar pelo registro manual.');
+  }, {signal});
+  manualButton?.addEventListener('click', () => {
+    cancelRead();
+    setStatus('');
+  }, {signal});
+  fileInput.addEventListener('change', () => {
+    cancelRead();
+    setStatus('Ajuste o enquadramento e toque em Capturar e Ler Etiqueta.');
+  }, {signal});
+  fileInput.addEventListener('label-captured', async () => {
+    const file = fileInput.files?.[0];
+    const uid = session.user?.uid;
+    if (!file || !uid || reading) return;
+    if (!labelAiEnabled) {
+      setStatus('Leitura por IA desativada. Use Registro Manual; a imagem não será enviada para a IA.', true);
+      return;
+    }
     const current = ++generation;
-    runButton.disabled = true;
-    if (status) status.textContent = 'Enviando imagem para leitura segura por IA…';
+    const entryGeneration = labelEntryGeneration;
+    const currentRequest = () => current === generation && form.isConnected && session.user?.uid === uid;
+    const currentRead = () => currentRequest() && entryGeneration === labelEntryGeneration;
+    updateLabelCameraConfirmation('', uid);
+    setBusy(true);
+    setStatus('Lendo a etiqueta…');
     try {
       const {extractLabelWithAi} = await import('./label-ai.js');
+      if (!currentRead()) return;
       const result = await extractLabelWithAi(file);
-      if (current !== generation || !form.isConnected) return;
+      if (!currentRead()) return;
+      resetLabelEditor({keepOpen: true});
       for (const name of ['patientName', 'insurance', 'procedureCode', 'encounterCode', 'type', 'creditor']) {
         if (result[name] && form.elements[name]) form.elements[name].value = result[name];
       }
@@ -3714,22 +3781,29 @@ function bindLabelAi(workspace, form) {
       updateLabelEntryFields(form);
       form.elements.date.value = todayInputValue();
       form.dataset.labelEntrySource = 'camera';
-      dialog?.showModal();
+      if (dialog && !dialog.open) dialog.showModal();
       const names = {patientName: 'nome', insurance: 'convênio', procedureCode: 'cirurgia', encounterCode: 'atendimento'};
       const uncertain = (result.uncertain || []).map((field) => names[field] || field);
-      if (status) status.textContent = uncertain.length
+      setStatus(uncertain.length
         ? `Rascunho lido por IA. Confira todos os campos; pendente ou incerto: ${uncertain.join(', ')}. Nada foi salvo ainda.`
-        : 'Rascunho lido por IA. Confira os campos, especialmente os números, antes de salvar.';
+        : 'Rascunho lido por IA. Confira os campos, especialmente os números, antes de salvar.');
       const formStatus = document.querySelector('#label-form-status');
       if (formStatus) formStatus.textContent = status?.textContent || '';
       form.elements.patientName.focus({preventScroll: true});
     } catch (error) {
-      if (status) status.textContent = error?.message || 'Não foi possível realizar a leitura por IA. Tente novamente ou preencha os campos manualmente.';
+      if (currentRead()) setStatus(error?.message || 'Não foi possível realizar a leitura por IA. Tente novamente ou preencha os campos manualmente.', true);
     } finally {
-      if (runButton.isConnected) runButton.disabled = !labelAiEnabled || !fileInput.files?.[0];
+      if (currentRequest()) {
+        fileInput.value = '';
+        setBusy(false);
+      }
     }
-  });
-  return () => { generation++; };
+  }, {signal});
+  return () => {
+    controller.abort();
+    cancelRead();
+    fileInput.value = '';
+  };
 }
 
 function renderTrainingAdminList(items) {
@@ -4286,6 +4360,7 @@ function sessionChanged(next) {
   }
   if (next.status !== 'signed-in' || userChanged) {
     labelManualConfirmation = {uid: '', status: ''};
+    labelCameraConfirmation = {uid: '', status: ''};
     scheduleOutboxRetry('', null);
   }
   if (next.status !== 'signed-in') {
