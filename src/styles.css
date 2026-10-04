@@ -1948,3 +1948,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 
 /* Título de Etiquetas com o dobro do tamanho original. */
 .app-shell--labels .events-header-operational{font-size:clamp(1.56rem,6vw,1.96rem);line-height:1.1}
+
+/* Títulos principais ampliados conforme a proporção de cada página. */
+.app-shell--home .home-header-scale{font-size:clamp(1.8rem,7vw,2.2rem);line-height:1.1}
+.app-shell--management .events-header-operational{font-size:clamp(1.56rem,6vw,1.96rem);line-height:1.1}
+.app-shell--events .events-header-operational{font-size:clamp(1.44rem,5.6vw,1.76rem);line-height:1.1;gap:3px}
+.app-shell--events .events-header-operational>small{font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;line-height:1.1}
