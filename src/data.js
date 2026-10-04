@@ -11,6 +11,7 @@ import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {withGeneralReadPermissions} from './general-access.js';
+import {DOCUMENT_GROUPS, documentCollectionForWrite, documentGroupsFromAccess, mergeManagementDocuments, normalizeDocumentAccessEmail} from './document-access.js';
 
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
@@ -706,14 +707,52 @@ export async function cancelManagementActivity(activityId, uid) {
   });
 }
 
-export async function listManagementDocuments(managementAreaId, {includeInactive = false, pageSize = 50} = {}) {
+async function scopedDocumentAccess(managementAreaId, actorUid) {
+  const {auth} = await import('./firebase-auth.js');
+  const user = auth?.currentUser;
+  if (!user || actorUid && user.uid !== actorUid) throw new Error('A sessão expirou. Entre novamente.');
+  const checkSession = () => {
+    if (auth.currentUser?.uid !== user.uid) throw new Error('A sessão mudou. Entre novamente.');
+  };
+  const snapshot = await getDocFromServer(doc(db, 'users', user.uid));
+  checkSession();
+  const profile = snapshot.exists() ? snapshot.data() : null;
+  if (profile?.active !== true || profile?.access !== true) throw new Error('Seu acesso foi revogado.');
+  const permissions = profile.permissions || {};
+  const manages = profile.role === 'administrador_app' || permissions.admin === true || permissions.documentsManage === true ||
+    permissions.qualityManage === true && managementAreaId === 'area-gestao-da-qualidade';
+  if (manages) return {groups: DOCUMENT_GROUPS, manages: true, checkSession};
+  if (permissions.managementRead !== true) return {groups: [], manages: false, checkSession};
+  const token = await user.getIdTokenResult();
+  checkSession();
+  if (token.claims.email_verified !== true || token.claims.firebase?.sign_in_provider !== 'google.com') return {groups: [], manages: false, checkSession};
+  let email;
+  try { email = normalizeDocumentAccessEmail(token.claims.email); }
+  catch { return {groups: [], manages: false, checkSession}; }
+  const access = await getDocFromServer(doc(db, 'documentAccessEmails', email));
+  checkSession();
+  return {groups: documentGroupsFromAccess(access.exists() ? access.data() : null, email), manages: false, checkSession};
+}
+
+export async function listManagementDocuments(managementAreaId, {includeInactive = false, pageSize = 50, actorUid} = {}) {
   if (!managementAreaId) return [];
+  const access = await scopedDocumentAccess(managementAreaId, actorUid);
   const constraints = [where('managementAreaId', '==', managementAreaId)];
   if (!includeInactive) constraints.push(where('active', '==', true));
   constraints.push(orderBy('publishedAt', 'desc'));
   constraints.push(limit(Math.min(100, Math.max(1, pageSize))));
-  const snapshot = await getDocsFromServer(query(collection(db, 'documents'), ...constraints));
-  return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
+  const scopedConstraints = [where('managementAreaId', '==', managementAreaId)];
+  if (!access.manages || !includeInactive) scopedConstraints.push(where('active', '==', true));
+  scopedConstraints.push(where('audienceGroup', 'in', access.groups.length ? access.groups : ['GENERAL']));
+  scopedConstraints.push(orderBy('publishedAt', 'desc'), limit(Math.min(100, Math.max(1, pageSize))));
+  const [legacy, scoped] = await Promise.all([
+    getDocsFromServer(query(collection(db, 'documents'), ...constraints)),
+    access.groups.length ? getDocsFromServer(query(collection(db, 'scopedDocuments'), ...scopedConstraints)) : Promise.resolve(null)
+  ]);
+  access.checkSession();
+  return mergeManagementDocuments(
+    legacy.docs.map(item => ({...item.data(), id: item.id, documentCollection: 'documents'})),
+    scoped?.docs.map(item => ({...item.data(), id: item.id, documentCollection: 'scopedDocuments'})) || [], pageSize);
 }
 
 export async function saveManagementDocument(input, uid) {
@@ -724,11 +763,13 @@ export async function saveManagementDocument(input, uid) {
   const category = String(input.category || '').trim();
   const {driveFileId, driveUrl} = normalizeDriveDocumentUrl(input.driveUrl);
   const currentVersion = Number(input.version || 0);
+  const documentCollection = documentCollectionForWrite(input);
   if (!/^[A-Za-z0-9_-]{10,200}$/.test(id) || !uid || !managementAreaId || !title || title.length > 160 || description.length > 1200 || !category || category.length > 80 || !Number.isInteger(currentVersion) || currentVersion < 0 || currentVersion > 100) {
     throw new Error('Confira a área, o título, a categoria e o link do documento.');
   }
-  const ref = doc(db, 'documents', id);
+  const ref = doc(db, documentCollection, id);
   const content = {managementAreaId, title, description, driveFileId, driveUrl, category, active: input.active !== false, requiredReading: input.requiredReading === true};
+  if (documentCollection === 'scopedDocuments') content.audienceGroup = input.audienceGroup;
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists()) {
@@ -742,12 +783,31 @@ export async function saveManagementDocument(input, uid) {
     }
     const existing = snapshot.data();
     if (currentVersion === 0 && existing.version === 1 && existing.createdByUid === uid &&
-        ['managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading'].every((key) => existing[key] === content[key])) return;
+        Object.keys(content).every((key) => existing[key] === content[key])) return;
     if (existing.version !== currentVersion || currentVersion < 1) throw new Error('Este documento foi atualizado por outra pessoa. Atualize a lista antes de editar.');
     transaction.update(ref, {...content, updatedByUid: uid, updatedAt: serverTimestamp(), version: currentVersion + 1});
     queueEvaluationReconciliation(transaction, uid);
   });
   return id;
+}
+
+export async function saveDocumentAccessEmail(input, uid) {
+  const email = normalizeDocumentAccessEmail(input.email);
+  const groups = [...new Set(input.groups || [])];
+  const active = input.active === true;
+  const expectedVersion = Number(input.version || 0);
+  if (!uid || groups.some(group => !DOCUMENT_GROUPS.includes(group)) || groups.length > 2 || active && !groups.length ||
+      !Number.isInteger(expectedVersion) || expectedVersion < 0) throw new Error('Confira o público, o estado e a versão do acesso.');
+  const ref = doc(db, 'documentAccessEmails', email);
+  return runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(ref);
+    const old = snapshot.exists() ? snapshot.data() : null;
+    if ((old?.version || 0) !== expectedVersion) throw new Error('O acesso foi atualizado por outra pessoa. Atualize antes de salvar.');
+    transaction.set(ref, {id: email, email, groups, active, version: expectedVersion + 1,
+      createdByUid: old?.createdByUid || uid, createdAt: old?.createdAt || serverTimestamp(),
+      updatedByUid: uid, updatedAt: serverTimestamp()});
+    return email;
+  });
 }
 
 function queueEvaluationReconciliation(transaction, uid) {

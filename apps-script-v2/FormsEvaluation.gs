@@ -1,6 +1,6 @@
 /** Spark evaluation adapter. Defining these functions installs nothing and changes no remote form. */
 const SAHMT_V2_EVALUATION_FORMS = Object.freeze({pageSize: 100, maxScan: 5000, maxDriveFiles: 1000, maxResponses: 10, maxRequests: 20,
-  sources: ['managementAreas', 'documents', 'learningActivities'],
+  sources: ['managementAreas', 'documents', 'learningActivities', 'scopedDocuments'],
   markers: {ack: '[SAHMT:ACK]', problem: '[SAHMT:SUGGESTION_PROBLEM]', proposal: '[SAHMT:SUGGESTION_PROPOSAL]', benefit: '[SAHMT:SUGGESTION_BENEFIT]'}});
 
 function formsEvaluationHash_(value) {

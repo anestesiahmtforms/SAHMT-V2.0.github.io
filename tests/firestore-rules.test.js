@@ -45,6 +45,145 @@ async function seedProfiles(profiles) {
   });
 }
 
+function documentAccessFixture(email, groups = ['GENERAL'], extra = {}) {
+  return {id: email, email, groups, active: true, version: 1, createdByUid: 'documents-admin', createdAt: new Date(), updatedByUid: 'documents-admin', updatedAt: new Date(), ...extra};
+}
+
+function scopedDocumentFixture(id, audienceGroup = 'GENERAL', extra = {}) {
+  const fileId = 'DriveFile_1234567';
+  return {id, managementAreaId: 'area-documents', title: 'Documento fictício', description: 'Material de teste sem dados reais',
+    driveFileId: fileId, driveUrl: `https://drive.google.com/file/d/${fileId}/view`, audienceGroup, category: 'Orientação',
+    active: true, requiredReading: true, version: 1, publishedAt: new Date(), createdByUid: 'documents-admin', createdAt: new Date(), updatedByUid: 'documents-admin', updatedAt: new Date(), ...extra};
+}
+
+function documentIdentity(uid, email = `${uid}@example.invalid`, extra = {}) {
+  return testEnvironment.authenticatedContext(uid, {email, email_verified: true, firebase: {sign_in_provider: 'google.com'}, ...extra}).firestore();
+}
+
+async function seedDocumentScopes() {
+  await seedProfiles([
+    accessProfile('documents-admin', {documentsManage: true}), accessProfile('scoped-general', {managementRead: true}),
+    accessProfile('scoped-both', {managementRead: true}), accessProfile('scoped-outsider', {managementRead: true}),
+    accessProfile('scoped-no-module'), accessProfile('scoped-quality', {qualityManage: true}),
+    accessProfile('scoped-inactive', {managementRead: true}, {active: false}), accessProfile('scoped-revoked', {managementRead: true}, {access: false})
+  ]);
+  await testEnvironment.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    for (const id of ['area-documents', 'area-gestao-da-qualidade']) await setDoc(doc(db, 'managementAreas', id), {id, active: true});
+    for (const [uid, groups] of [['scoped-general', ['GENERAL']], ['scoped-both', ['GENERAL', 'RESTRICTED']], ['scoped-no-module', ['GENERAL']], ['scoped-inactive', ['GENERAL']], ['scoped-revoked', ['GENERAL']]]) {
+      const email = `${uid}@example.invalid`;
+      await setDoc(doc(db, 'documentAccessEmails', email), documentAccessFixture(email, groups));
+    }
+    for (const [id, group, active] of [['scoped-general-01', 'GENERAL', true], ['scoped-restricted-01', 'RESTRICTED', true], ['scoped-draft-01', 'GENERAL', false]]) {
+      await setDoc(doc(db, 'scopedDocuments', id), scopedDocumentFixture(id, group, {active}));
+    }
+  });
+}
+
+test('documentos novos exigem grupo confiável, módulo autorizado, perfil ativo e documento ativo', async () => {
+  await seedDocumentScopes();
+  const general = documentIdentity('scoped-general', 'SCOPED-GENERAL@EXAMPLE.INVALID');
+  const both = documentIdentity('scoped-both');
+  const admin = documentIdentity('documents-admin');
+  await assertSucceeds(getDoc(doc(general, 'scopedDocuments', 'scoped-general-01')));
+  await assertFails(getDoc(doc(general, 'scopedDocuments', 'scoped-restricted-01')));
+  await assertSucceeds(getDoc(doc(both, 'scopedDocuments', 'scoped-restricted-01')));
+  await assertFails(getDoc(doc(general, 'scopedDocuments', 'scoped-draft-01')));
+  await assertSucceeds(getDoc(doc(admin, 'scopedDocuments', 'scoped-draft-01')));
+  for (const uid of ['scoped-outsider', 'scoped-no-module', 'scoped-inactive', 'scoped-revoked']) {
+    await assertFails(getDoc(doc(documentIdentity(uid), 'scopedDocuments', 'scoped-general-01')));
+  }
+  await assertFails(getDoc(doc(testEnvironment.unauthenticatedContext().firestore(), 'scopedDocuments', 'scoped-general-01')));
+  const list = group => query(collection(general, 'scopedDocuments'), where('managementAreaId', '==', 'area-documents'), where('active', '==', true), where('audienceGroup', 'in', group), orderBy('publishedAt', 'desc'), limit(50));
+  await assertSucceeds(getDocs(list(['GENERAL'])));
+  await assertFails(getDocs(list(['GENERAL', 'RESTRICTED'])));
+  await assertFails(getDocs(collection(general, 'scopedDocuments')));
+  await assertSucceeds(getDocs(query(collection(both, 'scopedDocuments'), where('active', '==', true), where('audienceGroup', 'in', ['GENERAL', 'RESTRICTED']))));
+  await assertSucceeds(getDocs(collection(admin, 'scopedDocuments')));
+});
+
+test('lista de e-mails é privada e identidade vem do token Google verificado, sem confiar no perfil', async () => {
+  await seedDocumentScopes();
+  const general = documentIdentity('scoped-general');
+  const own = 'scoped-general@example.invalid';
+  await assertSucceeds(getDoc(doc(general, 'documentAccessEmails', own)));
+  await assertFails(getDoc(doc(general, 'documentAccessEmails', 'scoped-both@example.invalid')));
+  await assertFails(getDocs(collection(general, 'documentAccessEmails')));
+  await assertSucceeds(getDocs(collection(documentIdentity('documents-admin'), 'documentAccessEmails')));
+  for (const claims of [{email_verified: false}, {firebase: {sign_in_provider: 'password'}}]) {
+    const invalid = documentIdentity('scoped-general', own, claims);
+    await assertFails(getDoc(doc(invalid, 'documentAccessEmails', own)));
+    await assertFails(getDoc(doc(invalid, 'scopedDocuments', 'scoped-general-01')));
+  }
+  const profileOnly = documentIdentity('scoped-general', 'other@example.invalid');
+  await assertFails(getDoc(doc(profileOnly, 'scopedDocuments', 'scoped-general-01')));
+  await assertFails(getDoc(doc(documentIdentity('scoped-inactive'), 'documentAccessEmails', 'scoped-inactive@example.invalid')));
+});
+
+test('somente gestor de documentos administra grupos; versão, e-mail e auditoria são preservados', async () => {
+  await seedDocumentScopes();
+  const admin = documentIdentity('documents-admin');
+  const email = 'future@example.invalid';
+  const input = documentAccessFixture(email, ['GENERAL', 'RESTRICTED'], {createdAt: serverTimestamp(), updatedAt: serverTimestamp()});
+  await assertSucceeds(setDoc(doc(admin, 'documentAccessEmails', email), input));
+  await assertFails(setDoc(doc(documentIdentity('scoped-general'), 'documentAccessEmails', 'self@example.invalid'), {...input, id: 'self@example.invalid', email: 'self@example.invalid', createdByUid: 'scoped-general', updatedByUid: 'scoped-general'}));
+  await assertFails(setDoc(doc(admin, 'documentAccessEmails', 'upper@EXAMPLE.INVALID'), {...input, id: 'upper@EXAMPLE.INVALID', email: 'upper@EXAMPLE.INVALID'}));
+  for (const [suffix, patch] of [['duplicate', {groups: ['GENERAL', 'GENERAL']}], ['unknown', {groups: ['ADMIN']}], ['empty', {groups: []}], ['extra', {permissions: {admin: true}}]]) {
+    const id = `${suffix}@example.invalid`;
+    await assertFails(setDoc(doc(admin, 'documentAccessEmails', id), {...input, id, email: id, ...patch}));
+  }
+  const ref = doc(admin, 'documentAccessEmails', email);
+  await assertSucceeds(updateDoc(ref, {groups: ['GENERAL'], version: 2, updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {active: false, version: 2, updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {createdByUid: 'changed', version: 3, updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+  await assertFails(deleteDoc(ref));
+  await assertFails(setDoc(doc(documentIdentity('scoped-quality'), 'documentAccessEmails', 'quality@example.invalid'), {...input, id: 'quality@example.invalid', email: 'quality@example.invalid', createdByUid: 'scoped-quality', updatedByUid: 'scoped-quality'}));
+});
+
+test('documentos novos mantêm restrições de versão, área e autoria sem mudar permissões do legado', async () => {
+  await seedDocumentScopes();
+  const admin = documentIdentity('documents-admin');
+  const id = 'scoped-created-01';
+  const metadata = scopedDocumentFixture(id, 'RESTRICTED', {publishedAt: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp()});
+  const ref = doc(admin, 'scopedDocuments', id);
+  await assertSucceeds(setDoc(ref, metadata));
+  await assertFails(setDoc(doc(documentIdentity('scoped-general'), 'scopedDocuments', 'scoped-forbidden-01'), {...metadata, id: 'scoped-forbidden-01', createdByUid: 'scoped-general', updatedByUid: 'scoped-general'}));
+  await assertFails(setDoc(doc(admin, 'scopedDocuments', 'scoped-invalid-01'), {...metadata, id: 'scoped-invalid-01', audienceGroup: 'ADMIN'}));
+  await assertSucceeds(updateDoc(ref, {title: 'Título atualizado', audienceGroup: 'GENERAL', version: 2, updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {managementAreaId: 'another-area', version: 3, updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(ref, {version: 3, createdByUid: 'changed', updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+  await assertFails(deleteDoc(ref));
+  const legacy = {...metadata, id: 'legacy-document-01', active: false}; delete legacy.audienceGroup;
+  await assertSucceeds(setDoc(doc(admin, 'documents', legacy.id), legacy));
+  await assertSucceeds(getDoc(doc(documentIdentity('scoped-outsider'), 'documents', legacy.id)));
+  await assertFails(updateDoc(doc(admin, 'documents', legacy.id), {audienceGroup: 'GENERAL', version: 2, updatedByUid: 'documents-admin', updatedAt: serverTimestamp()}));
+});
+
+test('revogação de grupo ou permissão bloqueia a consulta seguinte imediatamente', async () => {
+  await seedDocumentScopes();
+  const general = documentIdentity('scoped-general');
+  const ref = doc(general, 'scopedDocuments', 'scoped-general-01');
+  await assertSucceeds(getDoc(ref));
+  await testEnvironment.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'documentAccessEmails', 'scoped-general@example.invalid'), {active: false}));
+  await assertFails(getDoc(ref));
+  await testEnvironment.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), 'documentAccessEmails', 'scoped-general@example.invalid'), {active: true});
+    await updateDoc(doc(context.firestore(), 'users', 'scoped-general'), {permissions: {managementRead: false}});
+  });
+  await assertFails(getDoc(ref));
+});
+
+test('gestor de qualidade conserva apenas sua área e não recebe acesso administrativo aos e-mails', async () => {
+  await seedDocumentScopes();
+  const quality = documentIdentity('scoped-quality');
+  const metadata = scopedDocumentFixture('quality-document-01', 'RESTRICTED', {managementAreaId: 'area-gestao-da-qualidade', active: false,
+    publishedAt: serverTimestamp(), createdByUid: 'scoped-quality', createdAt: serverTimestamp(), updatedByUid: 'scoped-quality', updatedAt: serverTimestamp()});
+  await assertSucceeds(setDoc(doc(quality, 'scopedDocuments', metadata.id), metadata));
+  await assertSucceeds(getDocs(query(collection(quality, 'scopedDocuments'), where('managementAreaId', '==', 'area-gestao-da-qualidade'))));
+  await assertFails(getDoc(doc(quality, 'scopedDocuments', 'scoped-general-01')));
+  await assertFails(getDocs(collection(quality, 'documentAccessEmails')));
+});
+
 async function seedEventCatalog(payers = ['Membro'], creditors = ['Equipe']) {
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
