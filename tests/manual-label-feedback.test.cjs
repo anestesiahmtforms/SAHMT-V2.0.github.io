@@ -34,10 +34,24 @@ const start = source.indexOf('async (event) => {', listener);
 const end = source.indexOf("\n  });\n  if (route === 'events')", start);
 const callback = source.slice(start, end).replaceAll("await import('./data.js')", 'mockData') + '\n}';
 function setup({pending = false, fail = false, origin = 'manual', editing = false, commitGate = null} = {}) {
+  let now = 10000;
+  let timerId = 0;
+  const timers = new Map();
+  class ClockDate extends Date {static now() {return now;}}
+  const advance = milliseconds => {
+    now += milliseconds;
+    for (const [id, timer] of [...timers]) if (timer.at <= now) {timers.delete(id); timer.callback();}
+  };
+  const feedbackButton = () => ({html: '', focused: false, hasStatus: false,
+    querySelector() {return this.html ? {remove: () => {this.html = '';}} : null;},
+    classList: {toggle(name, active) {this.owner.hasStatus = active;}},
+    insertAdjacentHTML(position, html) {this.html = html;}, focus() {this.focused = true;}
+  });
   const status = {textContent: ''};
-  const button = {querySelector: () => null, classList: {toggle() {}}, insertAdjacentHTML() {}};
-  const cameraButton = {focused: false, focus() {this.focused = true;}};
-  const cameraResult = {innerHTML: ''};
+  const button = feedbackButton();
+  const cameraButton = feedbackButton();
+  button.classList.owner = button;
+  cameraButton.classList.owner = cameraButton;
   const dialog = {open: true, close() {this.open = false;}};
   const form = {isConnected: true, dataset: {labelEntrySource: editing ? 'edit' : origin}, elements: {staffSiglas: {value: ''}, creditor: {value: 'Caixa'}}, querySelector: () => ({disabled: false})};
   const values = {date: '2026-09-30', type: 'Consulta Pré-anestésica', patientName: 'Paciente teste', encounterCode: '123', creditor: 'Caixa', insurance: '', editLabelId: editing ? 'label-1' : '', editLabelVersion: editing ? '1' : ''};
@@ -45,14 +59,16 @@ function setup({pending = false, fail = false, origin = 'manual', editing = fals
     session: {user: {uid: 'user-1', displayName: 'Teste'}, profile: {displayName: 'Teste'}},
     labelManualConfirmation: {uid: '', status: ''}, labelCameraConfirmation: {uid: '', status: ''}, labelEntryGeneration: 0, notice: '', route: 'labels', renderCount: 0,
     loadedLabelStaffSiglas: [], loadedLabelRecords: [],
-    document: {querySelector: (selector) => selector === '#label-form-status' ? status : selector === '#label-manual-open' ? button : selector === '#label-camera-open' ? cameraButton : selector === '#label-camera-result' ? cameraResult : selector === '#label-entry-dialog' ? dialog : null},
+    document: {querySelector: (selector) => selector === '#label-form-status' ? status : selector === '#label-manual-open' ? button : selector === '#label-camera-open' ? cameraButton : selector === '#label-entry-dialog' ? dialog : null},
     FormData: class {entries() {return Object.entries(values);}},
     mockData: {updateLabelRecord: async () => {if (commitGate) await commitGate; if (fail) throw new Error('Edição não confirmada');}, createOperationalRecord: async () => {if (commitGate) await commitGate; if (fail) throw new Error('Não confirmado'); return {id: 'record-1', pendingFirestore: pending};}},
-    render: async () => {context.renderCount++;}, Intl, Date, Set, Object, Number, String, JSON, Error
+    render: async () => {context.renderCount++;}, Intl, Date: ClockDate, Set, Object, Number, String, JSON, Error,
+    setTimeout(callback, delay) {const id = ++timerId; timers.set(id, {callback, at: now + delay}); return id;},
+    clearTimeout(id) {timers.delete(id);}
   });
   vm.runInContext(helper, context);
   const submit = vm.runInContext('(' + callback + ')', context);
-  return {context, status, cameraButton, cameraResult, dialog, submit: () => submit({preventDefault() {}, currentTarget: form})};
+  return {context, status, cameraButton, button, dialog, advance, timers, submit: () => submit({preventDefault() {}, currentTarget: form})};
 }
 test('registro manual confirmado: V verde e sem aviso principal', async () => {
   const {context, submit} = setup(); await submit();
@@ -76,8 +92,8 @@ test('leitura pela câmera não confirma o botão de registro manual', async () 
   const {context, submit} = setup({origin: 'camera'}); await submit();
   assert.equal(context.labelManualConfirmation.status, '');
 });
-test('registro pela câmera confirmado fecha o editor e sinaliza Feito na área liberada pela leitura', async () => {
-  const {context, cameraButton, cameraResult, dialog, submit} = setup({origin: 'camera'});
+test('registro pela câmera confirmado fecha o editor e sinaliza Feito dentro do botão da câmera', async () => {
+  const {context, cameraButton, dialog, submit} = setup({origin: 'camera'});
   await submit();
   assert.equal(context.labelCameraConfirmation.status, 'confirmed');
   assert.equal(context.labelCameraConfirmation.uid, 'user-1');
@@ -85,27 +101,27 @@ test('registro pela câmera confirmado fecha o editor e sinaliza Feito na área 
   assert.equal(context.notice, '');
   assert.equal(dialog.open, false);
   assert.equal(cameraButton.focused, true);
-  assert.match(cameraResult.innerHTML, /✓/);
-  assert.match(cameraResult.innerHTML, /Feito!/);
+  assert.match(cameraButton.html, /✓/);
+  assert.match(cameraButton.html, /Feito!/);
 });
 test('registro pela câmera aguarda a confirmação do servidor antes de mostrar Feito', async () => {
   let confirm;
   const commitGate = new Promise(resolve => {confirm = resolve;});
-  const {context, cameraResult, dialog, submit} = setup({origin: 'camera', commitGate});
+  const {context, cameraButton, dialog, submit} = setup({origin: 'camera', commitGate});
   const saving = submit();
   assert.equal(context.labelCameraConfirmation.status, 'pending');
-  assert.doesNotMatch(cameraResult.innerHTML, /Feito!/);
+  assert.doesNotMatch(cameraButton.html, /Feito!/);
   assert.equal(dialog.open, true);
   confirm();
   await saving;
-  assert.match(cameraResult.innerHTML, /Feito!/);
+  assert.match(cameraButton.html, /Feito!/);
   assert.equal(dialog.open, false);
 });
 for (const options of [{origin: 'camera'}, {origin: 'manual'}, {editing: true}, {origin: 'camera', fail: true}]) {
   test(`salvamento atrasado não altera outro editor: ${JSON.stringify(options)}`, async () => {
     let confirm;
     const commitGate = new Promise(resolve => {confirm = resolve;});
-    const {context, status, cameraResult, dialog, submit} = setup({...options, commitGate});
+    const {context, status, cameraButton, dialog, submit} = setup({...options, commitGate});
     const saving = submit();
     context.labelEntryGeneration++;
     context.labelCameraConfirmation = {uid: 'user-1', status: ''};
@@ -116,26 +132,26 @@ for (const options of [{origin: 'camera'}, {origin: 'manual'}, {editing: true}, 
     assert.equal(dialog.open, true);
     assert.equal(context.labelCameraConfirmation.status, '');
     assert.equal(context.labelManualConfirmation.status, '');
-    assert.doesNotMatch(cameraResult.innerHTML, /Feito!/);
+    assert.doesNotMatch(cameraButton.html, /Feito!/);
     assert.equal(status.textContent, 'Dados do novo registro preservados');
     assert.equal(context.notice, '');
     assert.equal(context.renderCount, 0);
   });
 }
 test('registro pela câmera pendente não exibe Feito nem aviso de confirmação', async () => {
-  const {context, cameraResult, submit} = setup({origin: 'camera', pending: true});
+  const {context, cameraButton, submit} = setup({origin: 'camera', pending: true});
   await submit();
   assert.equal(context.labelCameraConfirmation.status, 'pending');
-  assert.doesNotMatch(cameraResult.innerHTML, /Feito!/);
+  assert.doesNotMatch(cameraButton.html, /Feito!/);
   assert.equal(context.notice, '');
   assert.equal(context.labelManualConfirmation.status, '');
 });
 test('falha ao salvar pela câmera mantém o formulário e permite corrigir sem marcar Feito', async () => {
-  const {context, status, cameraResult, dialog, submit} = setup({origin: 'camera', fail: true});
+  const {context, status, cameraButton, dialog, submit} = setup({origin: 'camera', fail: true});
   await submit();
   assert.equal(context.labelCameraConfirmation.status, 'pending');
   assert.equal(dialog.open, true);
-  assert.doesNotMatch(cameraResult.innerHTML, /Feito!/);
+  assert.doesNotMatch(cameraButton.html, /Feito!/);
   assert.match(status.textContent, /Não confirmado/);
   assert.equal(context.notice, '');
 });
@@ -144,6 +160,54 @@ test('o indicador da câmera não aparece para outra conta', async () => {
   await submit();
   context.session.user.uid = 'user-2';
   assert.equal(context.renderLabelCameraConfirmation?.() ?? 'helper ausente', '');
+});
+for (const origin of ['camera', 'manual']) {
+  test(`confirmação ${origin} permanece brevemente, esmaece e desaparece sem renderizar a página`, async () => {
+    const {context, cameraButton, button, advance, submit} = setup({origin});
+    await submit();
+    const target = origin === 'camera' ? cameraButton : button;
+    assert.match(target.html, /label-confirmation--confirmed/);
+    assert.match(target.html, /--label-feedback-delay:3400ms/);
+    advance(3399);
+    assert.match(target.html, /✓/);
+    advance(1);
+    assert.match(target.html, /✓/);
+    advance(600);
+    assert.equal(target.html, '');
+    assert.equal(target.hasStatus, false);
+    assert.equal(context.renderCount, 1);
+    assert.equal(context[origin === 'camera' ? 'labelCameraConfirmation' : 'labelManualConfirmation'].status, '');
+  });
+  test(`timer antigo de ${origin} não apaga uma confirmação nova`, async () => {
+    const {context, cameraButton, button, advance, submit} = setup({origin});
+    await submit();
+    advance(3000);
+    const update = origin === 'camera' ? context.updateLabelCameraConfirmation : context.updateLabelManualConfirmation;
+    update('confirmed', 'user-1');
+    advance(1000);
+    assert.match((origin === 'camera' ? cameraButton : button).html, /✓/);
+    advance(3000);
+    assert.equal((origin === 'camera' ? cameraButton : button).html, '');
+  });
+  test(`reabrir markup ${origin} não reinicia o prazo de confirmação`, async () => {
+    const {context, advance, submit} = setup({origin});
+    await submit();
+    advance(3000);
+    const render = origin === 'camera' ? context.renderLabelCameraConfirmation : context.renderLabelManualConfirmation;
+    assert.match(render(), /--label-feedback-delay:400ms/);
+    advance(700);
+    assert.match(render(), /--label-feedback-delay:-300ms/);
+    advance(300);
+    assert.equal(render(), '');
+  });
+}
+test('registro manual pendente permanece e não possui timer de confirmação', async () => {
+  const {button, advance, timers, submit} = setup({pending: true});
+  await submit();
+  assert.equal(timers.size, 0);
+  advance(60000);
+  assert.match(button.html, /✕/);
+  assert.match(button.html, /Pendente/);
 });
 test('confirmação não aparece para outra conta', async () => {
   const {context, submit} = setup(); await submit(); context.session.user.uid = 'user-2';

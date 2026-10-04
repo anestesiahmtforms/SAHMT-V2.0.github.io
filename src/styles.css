@@ -1253,16 +1253,16 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .module-view--labels{justify-content:space-between;gap:clamp(7px,1.1dvh,10px)}
 .app-shell--labels .module-view--labels>.label-workspace{display:flex;flex:1 1 54%;flex-direction:column;justify-content:center;min-height:0;max-height:none;padding:clamp(8px,1.6dvh,13px);gap:0}
 .app-shell--labels .label-workspace::before{content:none}
-.app-shell--labels .label-action-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(68px,1.25fr) clamp(40px,7dvh,58px) minmax(48px,1fr);flex:1 1 auto;gap:clamp(6px,1dvh,10px);width:100%;height:100%}
+.app-shell--labels .label-action-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(68px,1.35fr) minmax(48px,1fr);flex:1 1 auto;gap:clamp(6px,1dvh,10px);width:100%;height:100%}
 .app-shell--labels .label-action-grid #label-camera-open{grid-column:1;grid-row:1}
-.app-shell--labels .label-action-grid #label-manual-open{grid-column:1;grid-row:3}
+.app-shell--labels .label-action-grid #label-manual-open{grid-column:1;grid-row:2}
 .app-shell--labels .label-action-grid button{width:100%;min-height:0;height:100%;padding:7px;border-radius:14px;font-size:clamp(.72rem,2.6vw,.92rem)}
 .app-shell--labels .label-action-grid #label-camera-open{display:flex;align-items:center;justify-content:center;gap:14px;border-radius:28px;background:linear-gradient(145deg,#2377b9,#10518c);box-shadow:inset 0 0 0 2px #ffffff55,0 4px 0 #0b3e6d}
 .app-shell--labels .label-action-grid #label-camera-open::before{content:"";display:block;flex:0 0 auto;width:clamp(48px,8dvh,68px);aspect-ratio:1;border:5px solid #fff;border-radius:50%;background:radial-gradient(circle at 38% 35%,#bddfff 0 9%,#4085bc 12% 25%,#123c64 30% 57%,#071e35 60% 100%);box-shadow:0 0 0 4px #ffffff35,inset 0 0 0 2px #081e30}
 .app-shell--labels .label-action-grid #label-manual-open{border-radius:13px}
 .app-shell--labels .label-camera-label{min-width:0;line-height:1.2}
-.app-shell--labels .label-camera-result{grid-column:1;grid-row:2;display:grid;place-items:center;min-width:0;min-height:0}
-.app-shell--labels .label-camera-confirmation{display:grid;justify-items:center;align-content:center;gap:1px;box-sizing:border-box;width:min(100%,140px);height:100%;padding:3px 14px;border:1px solid #b8dec6;border-radius:12px;background:#e5fff0;color:#167b3d;line-height:1;white-space:nowrap;pointer-events:none}
+.app-shell--labels .label-action-grid #label-camera-open.label-camera--has-status{position:relative;padding-inline:14px 82px}
+.app-shell--labels .label-camera-confirmation{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:grid;justify-items:center;gap:2px;box-sizing:border-box;width:60px;padding:6px 4px;border:1px solid #fff;border-radius:12px;background:#e5fff0;color:#167b3d;line-height:1;white-space:nowrap;pointer-events:none}
 .app-shell--labels .label-camera-confirmation>span{font-size:clamp(22px,3.5dvh,28px);font-weight:950}
 .app-shell--labels .label-camera-confirmation>small{font-size:.7rem;font-weight:900;line-height:1.15;white-space:nowrap}
 .app-shell--labels #label-ai-status:not(.sr-only){flex:0 0 auto;max-height:3.9em;margin:6px 0 0;color:#a32121;font-size:.74rem;line-height:1.3;text-align:center;overflow:auto}
@@ -1272,7 +1272,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .labels-home-button{margin-top:0}
 @media(max-width:520px){
  :is(.app-shell--labels,.app-shell--management) .identity-card{min-height:140px;padding-top:12px;padding-bottom:14px}
- .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.2fr) 40px minmax(42px,1fr);gap:6px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(62px,1.25fr) minmax(42px,1fr);gap:6px}
  .app-shell--labels .label-action-grid #label-camera-open::before{width:50px}
  .app-shell--labels .label-action-grid button{font-size:clamp(.68rem,2.9vw,.82rem)}
  .app-shell--labels .label-report-launchers{gap:6px;padding:7px}
@@ -1284,7 +1284,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  :is(.app-shell--labels,.app-shell--management) .events-header-operational{min-height:30px;padding:4px 8px}
  .app-shell--labels .module-view--labels{gap:5px}
  .app-shell--labels .module-view--labels>.label-workspace{padding:6px}
- .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) 38px minmax(36px,1fr);gap:4px}
+ .app-shell--labels .label-action-grid{grid-template-rows:minmax(48px,1.1fr) minmax(36px,1fr);gap:4px}
  .app-shell--labels .label-action-grid #label-camera-open::before{width:38px;border-width:4px}
  .app-shell--labels .label-report-launchers{gap:4px;padding:5px}
  .app-shell--labels .label-report-launchers button{min-height:34px;padding:4px}
@@ -1473,6 +1473,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .label-manual-confirmation>span{font-size:clamp(20px,3.5dvh,28px);font-weight:950}
 .app-shell--labels .label-manual-confirmation>small{font-size:.58rem;font-weight:900;line-height:1.1}
 .app-shell--labels .label-manual-confirmation--pending{color:#c62828}
+.app-shell--labels .label-confirmation--confirmed{animation:label-feedback-fade .6s ease var(--label-feedback-delay,3400ms) forwards}
+@keyframes label-feedback-fade{from{opacity:1}to{opacity:0}}
+@media(prefers-reduced-motion:reduce){.app-shell--labels .label-confirmation--confirmed{animation-duration:1ms}}
 
 /* Safari: evita zoom automático no foco e escala no botão Salvar. */
 .app-shell--labels .label-entry-dialog .form-grid input:not([type="hidden"]),
