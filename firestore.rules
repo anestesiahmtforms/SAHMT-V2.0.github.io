@@ -106,6 +106,15 @@ service cloud.firestore {
     }
     match /checklistResponsibilities/{day} { allow read: if checklistAccess(); allow write: if false; }
     function qualityManageArea(areaId) { return can('qualityManage') && areaId == 'area-gestao-da-qualidade'; }
+    function assignedDocumentAreaManager(areaId) {
+      let path = /databases/$(database)/documents/managementAreas/$(areaId);
+      return areaId == 'area-gestao-de-documentos' && can('managementRead') && exists(path) &&
+        get(path).data.active == true && get(path).data.managerUids is list &&
+        get(path).data.managerUids.hasAny([request.auth.uid]);
+    }
+    function managementDocumentManage(areaId) {
+      return can('documentsManage') || qualityManageArea(areaId) || assignedDocumentAreaManager(areaId);
+    }
     function activityPointsReviewer(areaId) {
       let areaPath = /databases/$(database)/documents/managementAreas/$(areaId);
       return can('managementManage') || qualityManageArea(areaId) ||
@@ -1351,11 +1360,11 @@ service cloud.firestore {
     }
     match /documents/{documentId} {
       allow read: if can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId);
-      allow create: if (can('documentsManage') || qualityManageArea(request.resource.data.managementAreaId)) && activeManagementArea(request.resource.data.managementAreaId) &&
+      allow create: if managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
         request.resource.data.createdByUid == request.auth.uid;
-      allow update: if (can('documentsManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementDocument(request.resource.data, documentId) &&
+      allow update: if managementDocumentManage(resource.data.managementAreaId) && validManagementDocument(request.resource.data, documentId) &&
         request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
         request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.version == resource.data.version + 1 &&
@@ -1374,12 +1383,13 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /scopedDocuments/{documentId} {
-      allow read: if can('documentsManage') || qualityManageArea(resource.data.managementAreaId) ||
-        (can('managementRead') && resource.data.active == true && documentGroupAccess(resource.data.audienceGroup));
-      allow create: if (can('documentsManage') || qualityManageArea(request.resource.data.managementAreaId)) && activeManagementArea(request.resource.data.managementAreaId) &&
+      allow get: if resource == null && (can('documentsManage') || assignedDocumentAreaManager('area-gestao-de-documentos'));
+      allow read: if resource != null && (managementDocumentManage(resource.data.managementAreaId) ||
+        (can('managementRead') && resource.data.active == true && documentGroupAccess(resource.data.audienceGroup)));
+      allow create: if managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validScopedManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time && request.resource.data.createdByUid == request.auth.uid;
-      allow update: if (can('documentsManage') || qualityManageArea(resource.data.managementAreaId)) && validScopedManagementDocument(request.resource.data, documentId) &&
+      allow update: if managementDocumentManage(resource.data.managementAreaId) && validScopedManagementDocument(request.resource.data, documentId) &&
         request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
         request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.version == resource.data.version + 1 &&

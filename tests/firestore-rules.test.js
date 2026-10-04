@@ -1,9 +1,13 @@
 import {readFile} from 'node:fs/promises';
 import {after, before, beforeEach, test} from 'node:test';
 import assert from 'node:assert/strict';
-import {and, doc, getAggregateFromServer, getDoc, getDocs, collection, deleteDoc, limit, orderBy, or, query, sum, where, setDoc, updateDoc, writeBatch, serverTimestamp, setLogLevel} from 'firebase/firestore';
+import vm from 'node:vm';
+import {randomUUID} from 'node:crypto';
+import {and, doc, getAggregateFromServer, getDoc, getDocFromServer, getDocs, collection, deleteDoc, limit, orderBy, or, query, runTransaction, sum, where, setDoc, updateDoc, writeBatch, serverTimestamp, setLogLevel} from 'firebase/firestore';
 import {assertFails, assertSucceeds, initializeTestEnvironment} from '@firebase/rules-unit-testing';
 import {stageOperationalWrite} from '../src/record-write.js';
+import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite} from '../src/document-access.js';
+import {normalizeDriveDocumentUrl} from '../src/drive-document.js';
 
 const projectId = 'demo-sahmt-v2';
 let testEnvironment;
@@ -182,6 +186,186 @@ test('gestor de qualidade conserva apenas sua área e não recebe acesso adminis
   await assertSucceeds(getDocs(query(collection(quality, 'scopedDocuments'), where('managementAreaId', '==', 'area-gestao-da-qualidade'))));
   await assertFails(getDoc(doc(quality, 'scopedDocuments', 'scoped-general-01')));
   await assertFails(getDocs(collection(quality, 'documentAccessEmails')));
+});
+
+const documentManagementAreaId = 'area-gestao-de-documentos';
+const documentDataSource = await readFile(new URL('../src/data.js', import.meta.url), 'utf8');
+function managementDocumentSaver(db, uid) {
+  const access = documentDataSource.slice(documentDataSource.indexOf('async function scopedDocumentAccess('), documentDataSource.indexOf('export async function listManagementDocuments('))
+    .replace("await import('./firebase-auth.js')", 'authModule');
+  const saving = documentDataSource.slice(documentDataSource.indexOf('export async function saveManagementDocument('), documentDataSource.indexOf('export async function saveDocumentAccessEmail(')).replace('export ', '');
+  const reconciliation = documentDataSource.slice(documentDataSource.indexOf('function queueEvaluationReconciliation('), documentDataSource.indexOf('export async function listEquipmentForArea('));
+  const auth = {currentUser: {uid, getIdTokenResult: async () => ({claims: {email: `${uid}@example.invalid`, email_verified: true, firebase: {sign_in_provider: 'google.com'}}})}};
+  // The SDK rejects plain objects from another VM realm. Copy only containers;
+  // keep actual SDK references, timestamps and FieldValue sentinels unchanged.
+  const sdkValue = value => Array.isArray(value) ? Array.from(value, sdkValue) :
+    value && typeof value === 'object' && value.constructor?.name === 'Object' ? Object.fromEntries(Object.entries(value).map(([key, child]) => [key, sdkValue(child)])) : value;
+  const sdkTransaction = (_, callback) => runTransaction(db, transaction => callback({
+    get: ref => transaction.get(ref), set: (ref, value) => transaction.set(ref, sdkValue(value)),
+    update: (ref, value) => transaction.update(ref, sdkValue(value))
+  }));
+  const ctx = {db, authModule: {auth}, doc, getDocFromServer, runTransaction: sdkTransaction, serverTimestamp, crypto: {randomUUID},
+    DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks,
+    normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite, normalizeDriveDocumentUrl};
+  vm.createContext(ctx); vm.runInContext(access + saving + reconciliation, ctx);
+  return ctx.saveManagementDocument;
+}
+async function seedAssignedDocumentManagers() {
+  await seedProfiles([
+    accessProfile('document-area-manager', {managementRead: true}), accessProfile('document-area-reader', {managementRead: true}),
+    accessProfile('other-area-manager', {managementRead: true}), accessProfile('unpermitted-assignee'),
+    accessProfile('inactive-assignee', {managementRead: true}, {active: false}),
+    accessProfile('revoked-assignee', {managementRead: true}, {access: false})
+  ]);
+  await testEnvironment.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'managementAreas', documentManagementAreaId), {id: documentManagementAreaId, active: true, version: 1,
+      managerUids: ['document-area-manager', 'unpermitted-assignee', 'inactive-assignee', 'revoked-assignee', 'missing-profile-assignee'],
+      memberUids: ['document-area-reader']});
+    for (const areaId of ['area-other-documents', 'area-gestao-da-qualidade']) {
+      await setDoc(doc(db, 'managementAreas', areaId), {id: areaId, active: true, managerUids: ['document-area-manager', 'other-area-manager']});
+    }
+    await setDoc(doc(db, 'documentAccessEmails', 'document-area-reader@example.invalid'), documentAccessFixture('document-area-reader@example.invalid'));
+    for (const [id, group, active, areaId] of [
+      ['assigned-general-01', 'GENERAL', true, documentManagementAreaId], ['assigned-restricted-01', 'RESTRICTED', false, documentManagementAreaId],
+      ['assigned-other-01', 'RESTRICTED', true, 'area-other-documents'], ['assigned-quality-01', 'GENERAL', true, 'area-gestao-da-qualidade']
+    ]) await setDoc(doc(db, 'scopedDocuments', id), scopedDocumentFixture(id, group, {managementAreaId: areaId, active}));
+    for (const [id, areaId] of [['assigned-legacy-01', documentManagementAreaId], ['assigned-legacy-other', 'area-other-documents'], ['assigned-legacy-quality', 'area-gestao-da-qualidade']]) {
+      const record = scopedDocumentFixture(id, 'GENERAL', {managementAreaId: areaId, active: false}); delete record.audienceGroup;
+      await setDoc(doc(db, 'documents', id), record);
+    }
+  });
+}
+
+test('gestor vinculado à área documental lê os dois públicos e rascunhos sem permissão global', async () => {
+  await seedAssignedDocumentManagers();
+  const manager = documentIdentity('document-area-manager'), reader = documentIdentity('document-area-reader');
+  await assertSucceeds(getDoc(doc(manager, 'managementAreas', documentManagementAreaId)));
+  for (const id of ['assigned-general-01', 'assigned-restricted-01']) await assertSucceeds(getDoc(doc(manager, 'scopedDocuments', id)));
+  await assertSucceeds(getDocs(query(collection(manager, 'scopedDocuments'), where('managementAreaId', '==', documentManagementAreaId), where('audienceGroup', 'in', ['GENERAL', 'RESTRICTED']))));
+  await assertFails(getDocs(collection(manager, 'scopedDocuments')));
+  assert.equal((await assertSucceeds(getDoc(doc(manager, 'scopedDocuments', 'new-document-not-created')))).exists(), false);
+  await assertFails(getDoc(doc(reader, 'scopedDocuments', 'new-document-not-created')));
+  await assertSucceeds(getDoc(doc(reader, 'scopedDocuments', 'assigned-general-01')));
+  await assertFails(getDoc(doc(reader, 'scopedDocuments', 'assigned-restricted-01')));
+  await assertFails(updateDoc(doc(reader, 'scopedDocuments', 'assigned-general-01'), {title: 'Tentativa comum', version: 2, updatedByUid: 'document-area-reader', updatedAt: serverTimestamp()}));
+});
+
+test('gestor da área documental cadastra e edita legado e catálogo separado com versão/autoria corretas', async () => {
+  await seedAssignedDocumentManagers(); const manager = documentIdentity('document-area-manager');
+  for (const [collectionName, id] of [['documents', 'manager-legacy-new'], ['scopedDocuments', 'manager-scoped-new']]) {
+    const record = scopedDocumentFixture(id, 'RESTRICTED', {managementAreaId: documentManagementAreaId, active: false,
+      publishedAt: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdByUid: 'document-area-manager', updatedByUid: 'document-area-manager'});
+    if (collectionName === 'documents') delete record.audienceGroup;
+    const ref = doc(manager, collectionName, id);
+    await assertSucceeds(setDoc(ref, record));
+    await assertSucceeds(updateDoc(ref, {title: 'Documento fictício revisto', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+    assert.equal((await getDoc(ref)).data().version, 2);
+  }
+  await assertSucceeds(updateDoc(doc(manager, 'documents', 'assigned-legacy-01'), {title: 'Legado revisto pelo gestor', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+  await assertSucceeds(updateDoc(doc(manager, 'scopedDocuments', 'assigned-restricted-01'), {description: 'Revisão periódica fictícia', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+});
+
+test('salvamento documental local não amplia RECONCILE_LINKS; lote global permanece restrito aos privilégios antigos', async () => {
+  await seedAssignedDocumentManagers();
+  await seedProfiles([accessProfile('document-global-manager', {documentsManage: true})]);
+  const manager = documentIdentity('document-area-manager'), global = documentIdentity('document-global-manager');
+  const request = (id, uid) => ({id, type: 'RECONCILE_LINKS', actorUid: uid, status: 'PENDING', payload: {}, createdAt: serverTimestamp()});
+  const denied = writeBatch(manager);
+  denied.update(doc(manager, 'scopedDocuments', 'assigned-general-01'), {title: 'Transação vedada', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()});
+  denied.set(doc(manager, 'evaluationRequests', 'local-reconcile-request'), request('local-reconcile-request', 'document-area-manager'));
+  await assertFails(denied.commit());
+  assert.equal((await getDoc(doc(manager, 'scopedDocuments', 'assigned-general-01'))).data().version, 1);
+  assert.equal((await assertSucceeds(getDoc(doc(manager, 'evaluationRequests', 'local-reconcile-request')))).exists(), false);
+  const localSave = writeBatch(manager);
+  localSave.update(doc(manager, 'scopedDocuments', 'assigned-general-01'), {title: 'Revisão documental local', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()});
+  await assertSucceeds(localSave.commit());
+  assert.equal((await getDoc(doc(manager, 'scopedDocuments', 'assigned-general-01'))).data().version, 2);
+  const globalSave = writeBatch(global);
+  globalSave.update(doc(global, 'scopedDocuments', 'assigned-general-01'), {title: 'Revisão global autorizada', version: 3, updatedByUid: 'document-global-manager', updatedAt: serverTimestamp()});
+  globalSave.set(doc(global, 'evaluationRequests', 'global-reconcile-request'), request('global-reconcile-request', 'document-global-manager'));
+  await assertSucceeds(globalSave.commit());
+  assert.equal((await getDoc(doc(global, 'evaluationRequests', 'global-reconcile-request'))).data().type, 'RECONCILE_LINKS');
+});
+
+test('saveManagementDocument real salva metadados do gestor de área no emulador sem request global e conserva requests administrativos', async () => {
+  await seedAssignedDocumentManagers();
+  await seedProfiles([accessProfile('document-global-manager', {documentsManage: true})]);
+  for (const uid of ['document-area-manager', 'document-global-manager']) {
+    const db = documentIdentity(uid), save = managementDocumentSaver(db, uid);
+    const input = {documentId: `actual-save-${uid}`, managementAreaId: documentManagementAreaId, documentCollection: 'scopedDocuments',
+      audienceGroup: 'RESTRICTED', title: 'Documento sintético', category: 'Orientação', description: 'Sem dados reais',
+      driveUrl: 'https://drive.google.com/file/d/DriveFile_1234567/view', version: 0, active: false, requiredReading: true};
+    assert.equal(await assertSucceeds(save(input, uid)), input.documentId);
+    await assertSucceeds(save({...input, title: 'Revisão sintética', version: 1}, uid));
+    const record = (await getDoc(doc(db, 'scopedDocuments', input.documentId))).data();
+    assert.equal(record.version, 2); assert.equal(record.createdByUid, uid); assert.equal(record.updatedByUid, uid); assert.equal(record.title, 'Revisão sintética');
+    const requests = await assertSucceeds(getDocs(query(collection(db, 'evaluationRequests'), where('actorUid', '==', uid))));
+    assert.equal(requests.size, uid === 'document-area-manager' ? 0 : 2);
+    assert.ok(requests.docs.every(item => item.data().type === 'RECONCILE_LINKS'));
+    if (uid === 'document-area-manager') {
+      await testEnvironment.withSecurityRulesDisabled(async context => updateDoc(doc(context.firestore(), 'managementAreas', documentManagementAreaId), {managerUids: []}));
+      await assert.rejects(save({...input, title: 'Após revogação', version: 2}, uid), /permissão|revogad/);
+      assert.equal((await getDoc(doc(db, 'documents', 'assigned-legacy-01'))).data().version, 1);
+      await testEnvironment.withSecurityRulesDisabled(async context => assert.equal((await getDoc(doc(context.firestore(), 'scopedDocuments', input.documentId))).data().version, 2));
+    }
+  }
+});
+
+test('vínculo documental não concede edição em outras áreas, perfis, rosters nem nos próprios vínculos', async () => {
+  await seedAssignedDocumentManagers(); const manager = documentIdentity('document-area-manager');
+  for (const [collectionName, id] of [['scopedDocuments', 'assigned-other-01'], ['scopedDocuments', 'assigned-quality-01'], ['documents', 'assigned-legacy-other'], ['documents', 'assigned-legacy-quality']]) {
+    await assertFails(updateDoc(doc(manager, collectionName, id), {title: 'Fora da área', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+  }
+  await assertFails(getDoc(doc(manager, 'scopedDocuments', 'assigned-other-01')));
+  await assertFails(updateDoc(doc(manager, 'managementAreas', documentManagementAreaId), {managerUids: ['document-area-manager', 'document-area-reader'], version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(manager, 'users', 'document-area-manager'), {permissions: {documentsManage: true}}));
+  await assertFails(updateDoc(doc(manager, 'users', 'document-area-reader'), {permissions: {admin: true}}));
+  await assertFails(getDocs(collection(manager, 'documentAccessEmails')));
+  await assertFails(getDoc(doc(manager, 'documentAccessEmails', 'document-area-reader@example.invalid')));
+  const email = 'document-area-manager@example.invalid';
+  await assertFails(setDoc(doc(manager, 'documentAccessEmails', email), documentAccessFixture(email, ['GENERAL', 'RESTRICTED'], {
+    createdByUid: 'document-area-manager', updatedByUid: 'document-area-manager', createdAt: serverTimestamp(), updatedAt: serverTimestamp()})));
+  const outsider = documentIdentity('other-area-manager');
+  await assertFails(updateDoc(doc(outsider, 'scopedDocuments', 'assigned-general-01'), {title: 'Outra área', version: 2, updatedByUid: 'other-area-manager', updatedAt: serverTimestamp()}));
+});
+
+test('gestor documental não move a área, altera autoria, burla versão nem apaga documentos', async () => {
+  await seedAssignedDocumentManagers(); const manager = documentIdentity('document-area-manager');
+  const ref = doc(manager, 'scopedDocuments', 'assigned-general-01');
+  for (const patch of [{version: 1}, {managementAreaId: 'area-other-documents'}, {createdByUid: 'document-area-manager'},
+    {createdAt: serverTimestamp()}, {publishedAt: serverTimestamp()}, {updatedByUid: 'other-area-manager'}, {audienceGroup: 'ADMIN'}]) {
+    await assertFails(updateDoc(ref, {title: 'Tentativa inválida', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp(), ...patch}));
+  }
+  for (const [collectionName, id] of [['scopedDocuments', 'assigned-general-01'], ['documents', 'assigned-legacy-01']]) await assertFails(deleteDoc(doc(manager, collectionName, id)));
+  await assertFails(updateDoc(doc(manager, 'documents', 'assigned-legacy-01'), {audienceGroup: 'GENERAL', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+});
+
+test('perfil ausente, inativo, sem acesso ou sem managementRead continua bloqueado apesar de managerUids', async () => {
+  await seedAssignedDocumentManagers();
+  for (const uid of ['missing-profile-assignee', 'inactive-assignee', 'revoked-assignee', 'unpermitted-assignee']) {
+    const db = documentIdentity(uid);
+    await assertFails(getDoc(doc(db, 'scopedDocuments', 'assigned-restricted-01')));
+    await assertFails(updateDoc(doc(db, 'scopedDocuments', 'assigned-general-01'), {title: 'Perfil não aprovado', version: 2, updatedByUid: uid, updatedAt: serverTimestamp()}));
+    await assertFails(updateDoc(doc(db, 'documents', 'assigned-legacy-01'), {title: 'Perfil não aprovado', version: 2, updatedByUid: uid, updatedAt: serverTimestamp()}));
+  }
+});
+
+test('revogar vínculo, desativar área ou retirar managementRead bloqueia a próxima edição documental', async () => {
+  for (const kind of ['membership', 'area', 'permission']) {
+    await seedAssignedDocumentManagers(); const manager = documentIdentity('document-area-manager');
+    await assertSucceeds(getDoc(doc(manager, 'scopedDocuments', 'assigned-restricted-01')));
+    await testEnvironment.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      if (kind === 'membership') await updateDoc(doc(db, 'managementAreas', documentManagementAreaId), {managerUids: []});
+      if (kind === 'area') await updateDoc(doc(db, 'managementAreas', documentManagementAreaId), {active: false});
+      if (kind === 'permission') await updateDoc(doc(db, 'users', 'document-area-manager'), {permissions: {managementRead: false}});
+    });
+    await assertFails(getDoc(doc(manager, 'scopedDocuments', 'assigned-restricted-01')));
+    for (const [collectionName, id] of [['scopedDocuments', 'assigned-general-01'], ['documents', 'assigned-legacy-01']]) {
+      await assertFails(updateDoc(doc(manager, collectionName, id), {title: 'Acesso revogado', version: 2, updatedByUid: 'document-area-manager', updatedAt: serverTimestamp()}));
+    }
+  }
 });
 
 async function seedEventCatalog(payers = ['Membro'], creditors = ['Equipe']) {

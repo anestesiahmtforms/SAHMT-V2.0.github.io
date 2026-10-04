@@ -1,5 +1,22 @@
 export const DOCUMENT_GROUPS = Object.freeze(['GENERAL', 'RESTRICTED']);
 export const SCOPED_DOCUMENT_COLLECTION = 'scopedDocuments';
+export const DOCUMENT_MANAGEMENT_AREA_ID = 'area-gestao-de-documentos';
+
+export function canManageManagementDocuments(profile, area, uid) {
+  if (profile?.active !== true || profile?.access !== true || !uid || !area?.id) return false;
+  const permissions = profile.permissions || {};
+  if (profile.role === 'administrador_app' || permissions.admin === true || permissions.documentsManage === true) return true;
+  if (permissions.qualityManage === true && area.id === 'area-gestao-da-qualidade') return true;
+  return permissions.managementRead === true && area.id === DOCUMENT_MANAGEMENT_AREA_ID && area.active === true &&
+    Array.isArray(area.managerUids) && area.managerUids.includes(uid);
+}
+
+export function canReconcileManagementDocumentLinks(profile) {
+  if (profile?.active !== true || profile?.access !== true) return false;
+  const permissions = profile.permissions || {};
+  return profile.role === 'administrador_app' || permissions.admin === true ||
+    ['documentsManage', 'managementManage', 'qualityManage', 'trainingsManage'].some(permission => permissions[permission] === true);
+}
 
 export function normalizeDocumentAccessEmail(value) {
   const email = String(value || '').trim().toLowerCase();

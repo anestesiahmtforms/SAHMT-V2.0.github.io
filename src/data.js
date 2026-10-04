@@ -11,7 +11,7 @@ import {updateScheduleReleaseState} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {withGeneralReadPermissions} from './general-access.js';
-import {DOCUMENT_GROUPS, documentCollectionForWrite, documentGroupsFromAccess, mergeManagementDocuments, normalizeDocumentAccessEmail} from './document-access.js';
+import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, documentCollectionForWrite, documentGroupsFromAccess, mergeManagementDocuments, normalizeDocumentAccessEmail} from './document-access.js';
 
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
@@ -719,8 +719,13 @@ async function scopedDocumentAccess(managementAreaId, actorUid) {
   const profile = snapshot.exists() ? snapshot.data() : null;
   if (profile?.active !== true || profile?.access !== true) throw new Error('Seu acesso foi revogado.');
   const permissions = profile.permissions || {};
-  const manages = profile.role === 'administrador_app' || permissions.admin === true || permissions.documentsManage === true ||
-    permissions.qualityManage === true && managementAreaId === 'area-gestao-da-qualidade';
+  let area = {id: managementAreaId};
+  if (permissions.managementRead === true && managementAreaId === DOCUMENT_MANAGEMENT_AREA_ID) {
+    const assignedArea = await getDocFromServer(doc(db, 'managementAreas', managementAreaId));
+    checkSession();
+    area = assignedArea.exists() ? {...assignedArea.data(), id: assignedArea.id} : area;
+  }
+  const manages = canManageManagementDocuments(profile, area, user.uid);
   if (manages) return {groups: DOCUMENT_GROUPS, manages: true, checkSession};
   if (permissions.managementRead !== true) return {groups: [], manages: false, checkSession};
   const token = await user.getIdTokenResult();
@@ -770,15 +775,25 @@ export async function saveManagementDocument(input, uid) {
   const ref = doc(db, documentCollection, id);
   const content = {managementAreaId, title, description, driveFileId, driveUrl, category, active: input.active !== false, requiredReading: input.requiredReading === true};
   if (documentCollection === 'scopedDocuments') content.audienceGroup = input.audienceGroup;
+  const access = await scopedDocumentAccess(managementAreaId, uid);
+  if (!access.manages) throw new Error('Você não tem permissão para editar documentos desta área.');
   await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(ref);
+    const [snapshot, profileSnapshot, areaSnapshot] = await Promise.all([
+      transaction.get(ref), transaction.get(doc(db, 'users', uid)),
+      managementAreaId === DOCUMENT_MANAGEMENT_AREA_ID ? transaction.get(doc(db, 'managementAreas', managementAreaId)) : Promise.resolve(null)
+    ]);
+    access.checkSession();
+    const profile = profileSnapshot.exists() ? profileSnapshot.data() : null;
+    const area = areaSnapshot?.exists() ? {...areaSnapshot.data(), id: areaSnapshot.id} : {id: managementAreaId};
+    if (!canManageManagementDocuments(profile, area, uid)) throw new Error('Sua permissão para editar documentos desta área foi revogada.');
+    const reconcileAllowed = canReconcileManagementDocumentLinks(profile);
     if (!snapshot.exists()) {
       if (currentVersion !== 0) throw new Error('O documento foi removido ou mudou. Atualize a lista.');
       transaction.set(ref, {
         ...content, id, version: 1, publishedAt: serverTimestamp(), createdByUid: uid,
         createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp()
       });
-      queueEvaluationReconciliation(transaction, uid);
+      if (reconcileAllowed) queueEvaluationReconciliation(transaction, uid);
       return;
     }
     const existing = snapshot.data();
@@ -786,7 +801,7 @@ export async function saveManagementDocument(input, uid) {
         Object.keys(content).every((key) => existing[key] === content[key])) return;
     if (existing.version !== currentVersion || currentVersion < 1) throw new Error('Este documento foi atualizado por outra pessoa. Atualize a lista antes de editar.');
     transaction.update(ref, {...content, updatedByUid: uid, updatedAt: serverTimestamp(), version: currentVersion + 1});
-    queueEvaluationReconciliation(transaction, uid);
+    if (reconcileAllowed) queueEvaluationReconciliation(transaction, uid);
   });
   return id;
 }
