@@ -1,6 +1,6 @@
 # Documentos por público: implantação separada e revisável
 
-Base inicial desta alteração: `main` em `3463c6286d3fd1a450fc462ba3c2c7fd0645e38e`. A branch foi rebaseada sobre `aeb3ee916001cf4fe144b3150c0be6d4396d1b87`, preservando as três atualizações posteriores de Etiquetas.
+Base inicial desta alteração: `main` em `3463c6286d3fd1a450fc462ba3c2c7fd0645e38e`. A branch foi rebaseada sobre `29421ae3aa589e3f95577e270a9390cccd323d36`, preservando as atualizações posteriores de Etiquetas, os títulos e o cache PWA v172 e a restauração mais recente da apresentação de Gestão. O PR não modifica o CSS, os títulos, o service worker ou a apresentação atual de Gestão.
 
 ## Coleções e autorização
 
