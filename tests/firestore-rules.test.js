@@ -802,7 +802,7 @@ test('permissão de escrita cria evento próprio diretamente no Firestore', asyn
   const other = testEnvironment.authenticatedContext('other-writer').firestore();
   const admin = testEnvironment.authenticatedContext('event-admin').firestore();
   const now = new Date();
-  const event = {date: '2026-09-24', memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 200, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
+  const event = {date: '2026-09-24', memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB — Atrasado', eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 400, status: 'OPEN', active: true, id: 'request-1', clientMutationId: 'request-1', createdByUid: 'writer', updatedByUid: 'writer', createdAt: now, updatedAt: now, version: 1};
   await assertSucceeds(setFirestoreRecord(user, 'events', 'standalone', {...event, id: 'standalone', clientMutationId: 'standalone', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
   await assertSucceeds(setFirestoreRecord(user, 'events', 'request-1', {...event, createdAt: serverTimestamp(), updatedAt: serverTimestamp()}, 'writer'));
   const shiftEvent = {...event, id: 'shift-valid', clientMutationId: 'shift-valid', eventType: 'Gestão', memberStatus: 'AB — Ausente', delayMultiple: null, substitute: 'Substituto', shift: 'Manhã', amountToPay: 1000};
@@ -813,7 +813,7 @@ test('permissão de escrita cria evento próprio diretamente no Firestore', asyn
   await assertFails(setFirestoreRecord(user, 'events', 'support-invalid-amount', {...supportEvent, id: 'support-invalid-amount', clientMutationId: 'support-invalid-amount', amountToPay: 1000}, 'writer'));
   const absenceEvent = {...shiftEvent, id: 'absence-manual', clientMutationId: 'absence-manual', eventType: 'Ausência', shift: 'Integral', amountToPay: 375};
   await assertSucceeds(setFirestoreRecord(user, 'events', 'absence-manual', absenceEvent, 'writer'));
-  const legacyEvent = {...event, id: 'legacy-event', clientMutationId: 'legacy-event', amountToPay: 400};
+  const legacyEvent = {...event, id: 'legacy-event', clientMutationId: 'legacy-event', amountToPay: 200};
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), 'events', 'legacy-event'), {
       ...legacyEvent, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
@@ -825,7 +825,7 @@ test('permissão de escrita cria evento próprio diretamente no Firestore', asyn
   }));
   await assertFails(updateEventWithHistory(user, {eventId: 'request-1', event, uid: 'writer', updates: {amountToPay: 220}, requestId: 'event-edit-2'}));
   await assertFails(updateEventWithHistory(admin, {eventId: 'request-1', event, uid: 'event-admin', updates: {amountToPay: 220}, requestId: 'event-edit-2-admin'}));
-  await assertFails(setFirestoreRecord(user, 'events', 'invalid-delay-amount', {...event, id: 'invalid-delay-amount', clientMutationId: 'invalid-delay-amount', amountToPay: 400}, 'writer'));
+  await assertFails(setFirestoreRecord(user, 'events', 'invalid-delay-amount', {...event, id: 'invalid-delay-amount', clientMutationId: 'invalid-delay-amount', amountToPay: 200}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'missing-member', {...event, id: 'missing-member', clientMutationId: 'missing-member', memberStatus: ''}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'invalid-delay', {...event, id: 'invalid-delay', clientMutationId: 'invalid-delay', delayMultiple: 8}, 'writer'));
   await assertFails(setFirestoreRecord(user, 'events', 'unknown-payer', {...event, id: 'unknown-payer', clientMutationId: 'unknown-payer', payer: 'Não catalogado'}, 'writer'));

@@ -132,7 +132,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   }
   function event(id, overrides = {}) {
     return {id, clientMutationId: id, date: day, memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB — Atrasado',
-      eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 200,
+      eventType: 'ATRASO', description: '', delayMultiple: 2, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 400,
       status: 'OPEN', active: true, createdByUid: 'fixture-member', updatedByUid: 'fixture-member', createdAt: sdk.serverTimestamp(), updatedAt: sdk.serverTimestamp(), version: 1, ...overrides};
   }
   function label(id, overrides = {}) {
