@@ -1987,3 +1987,15 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--management .management-menu-scroll>.management-utilities{margin-top:0}
 .app-shell--management .management-home-button{display:block;width:100%;min-height:40px;margin:0;padding:7px 10px;border-radius:14px;font-weight:900}
 .app-shell--management>.app-footer{flex:0 0 auto;margin:0;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
+
+/* Informações: ciência obrigatória, leitura com rolagem e ação sempre visível. */
+.information-banner{position:fixed;inset:max(12px,5dvh,env(safe-area-inset-top)) 5vw max(12px,5dvh,env(safe-area-inset-bottom));box-sizing:border-box;width:90vw;max-width:720px;height:auto;max-height:none;margin:auto;padding:16px;border:2px solid #fff;border-radius:22px;background:linear-gradient(145deg,#fffaf0,#e6eff2);color:var(--ink);box-shadow:0 22px 70px #001b3577;overflow:hidden}
+.information-banner[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
+.information-banner::backdrop{background:#041c30db;backdrop-filter:blur(4px)}
+.information-banner header{margin:0;border-bottom:1px solid #bfd0d9;padding-bottom:10px}
+.information-banner header>span{font-size:.72rem;font-weight:900;color:#1762a1}
+.information-banner h2{margin:6px 0 0;font-size:clamp(1.1rem,4vw,1.5rem);overflow-wrap:anywhere}
+.information-banner__text{min-height:0;overflow:auto;overscroll-behavior:contain;white-space:pre-wrap;overflow-wrap:anywhere;font-size:1rem;line-height:1.6;padding:4px 6px}
+.information-banner footer{margin:0;border-top:1px solid #bfd0d9;padding-top:8px}
+.information-banner__status{margin:0 0 8px;font-size:.8rem;color:#526578}
+.information-banner footer button{width:100%;min-height:46px}
