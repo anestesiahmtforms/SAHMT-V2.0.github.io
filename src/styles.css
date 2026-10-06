@@ -1507,8 +1507,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 :is(.app-shell--labels,.app-shell--events) .monthly-report-footer button{width:100%;min-height:44px;margin:0;padding:7px 10px;font-size:.85rem;font-weight:900;border-radius:14px}
 @media(max-height:680px){:is(.app-shell--labels,.app-shell--events) .monthly-report-footer{padding-top:5px;padding-bottom:max(5px,env(safe-area-inset-bottom))}:is(.app-shell--labels,.app-shell--events) .monthly-report-footer button{min-height:38px;padding:5px 8px;font-size:.78rem}}
 
-.app-shell--events #event-report-dialog{grid-template-rows:auto auto minmax(0,1fr) auto}
-.app-shell--events #event-report-dialog:has(.event-report-footer[hidden]){grid-template-rows:auto auto minmax(0,1fr)}
+.app-shell--events #event-report-dialog{grid-template-rows:auto auto auto minmax(0,1fr) auto}
+.app-shell--events #event-report-dialog:has(.event-report-footer[hidden]){grid-template-rows:auto auto auto minmax(0,1fr)}
 .app-shell--events #event-month-control{grid-template-columns:minmax(0,1fr)}
 
 /* Edição: dimensionamento uniforme inclusive no campo aninhado do membro. */
@@ -1954,3 +1954,10 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--management .events-header-operational{font-size:clamp(1.56rem,6vw,1.96rem);line-height:1.1}
 .app-shell--events .events-header-operational{font-size:clamp(1.44rem,5.6vw,1.76rem);line-height:1.1;gap:3px}
 .app-shell--events .events-header-operational>small{font-size:clamp(.72rem,2.8vw,.88rem);font-weight:950;line-height:1.1}
+
+/* Eventos: o seletor de período ocupa uma faixa própria e compacta. */
+.app-shell--events #event-report-dialog>.report-period{min-width:0;min-height:0;align-self:start;grid-template-columns:minmax(0,1fr);margin:0}
+.app-shell--events #event-report-dialog>.report-period>label{display:block;min-width:0;min-height:0;margin:0}
+.app-shell--events #event-report-dialog>.report-period input{display:block;box-sizing:border-box;-webkit-appearance:none;appearance:none;width:0;min-width:100%;max-width:100%;height:44px;min-height:44px;margin:0;padding:7px 10px;font-size:16px!important;line-height:1.25;text-align:center}
+.app-shell--events #event-report-dialog>.report-period input::-webkit-date-and-time-value{min-width:0;max-width:100%;text-align:center}
+.app-shell--events #event-report-dialog>#event-report-results{min-width:0;min-height:0;align-self:stretch;overflow:auto}
