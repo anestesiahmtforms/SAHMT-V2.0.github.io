@@ -1,5 +1,6 @@
 import './styles.css';
 import './performance-ui.css';
+import {updateInformationBanner} from './information-banner.js';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {createReportRuntime} from './report-runtime.js';
 import {mergeReportPendingRecords} from './report-pending.js';
@@ -4207,6 +4208,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  if (session.status !== 'signed-in') updateInformationBanner(null);
   evaluationModuleGeneration++;
   for (const kind of ['events', 'labels', 'checklist']) { const scope = liveReports.get(kind)?.snapshot().scope; if (scope?.warm !== true && (scope || reportStates.has(kind) || reportPayloads.has(kind))) closeReportLive(kind, 'render'); }
   labelReportLoad++;
@@ -4261,6 +4263,7 @@ async function render() {
     await loadModule(route);
     if (route !== 'events') await bindModuleForm(route);
   }
+  updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
   if (navigator.onLine) void syncOutbox();
 }
