@@ -46,7 +46,7 @@ const labels = {
   management: ['Gestão', 'Áreas, atividades e indicadores'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
-  notifications: ['Notificações', 'Comunicados do SAHMT'],
+  notifications: ['INFORMAÇÕES', 'Comunicados do SAHMT'],
   people: ['Pessoas', 'Contatos e cadastros da equipe'],
   admin: ['Administração', 'Usuários e configurações'],
   offline: ['Sincronização', 'Ações aguardando confirmação do Firestore']
@@ -504,14 +504,14 @@ function moduleCards() {
   const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage', 'admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
   const commonModules = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true ? ['training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && (commonModules.includes(route) || permissionFor[route]?.some(can)) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route}">
+  return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && (commonModules.includes(route) || permissionFor[route]?.some(can)) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => route === 'notifications' ? `<button class="module-card" type="button" disabled aria-label="Notificações de Eventos · em breve"><span class="module-mark" aria-hidden="true">NE</span><span><strong>NOTIFICAÇÕES DE EVENTOS</strong><small>Em breve</small></span><span class="arrow" aria-hidden="true">›</span></button>` : `<button class="module-card" data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
 }
 
 function managementUtilityCards() {
-  return [['people', 'peopleManage', 'PS'], ['admin', 'usersManage', 'AD']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route, , mark]) => {
+  return [['people', 'peopleManage', 'PS'], ['admin', 'usersManage', 'AD'], ['notifications', 'admin', 'IN']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route, , mark]) => {
     const [title, subtitle] = labels[route];
     return `<button class="module-card" data-route="${route}"><span class="module-mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
   }).join('');
@@ -700,7 +700,7 @@ function actionForm(route) {
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
     <label>Descrição<textarea name="description" rows="3" maxlength="1200"></textarea></label><button class="primary-button" type="submit">Criar atividade</button></form></details>`;
-  if (route === 'notifications' && can('notificationsManage')) return `<details class="quick-form" open><summary>Novo comunicado</summary><form data-module-form="notifications">
+  if (route === 'notifications' && can('admin')) return `<details class="quick-form" open><summary>Novo comunicado</summary><form data-module-form="notifications">
     <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Tipo<select name="type"><option value="INFO">Informação</option><option value="WARNING">Atenção</option><option value="ACTION">Ação</option></select></label><label>Público<select name="audienceType" id="notification-audience"><option value="ALL">Todos</option><option value="ROLE">Função</option><option value="USER">UID</option><option value="SIGLA">Sigla</option><option value="MANAGEMENT_AREA">Área de Gestão</option><option value="GROUP">Grupo</option></select></label><label id="notification-audience-value-wrap" hidden>Identificador do público<input name="audienceValue" maxlength="128"></label><label>Início<input name="startAt" type="date" required value="${todayInputValue()}"></label><label>Fim<input name="endAt" type="date" required value="${todayInputValue()}"></label><label>Prioridade<select name="priority"><option value="0">Normal</option><option value="1">Baixa</option><option value="2">Média</option><option value="3">Alta</option><option value="4">Urgente</option><option value="5">Crítica</option></select></label><label>Ação ao abrir<select name="actionRoute"><option value="">Nenhuma</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="management">Gestão</option><option value="checklist">Checklist</option><option value="training">Desempenho</option></select></label></div>
     <label>Mensagem<textarea name="message" rows="3" required maxlength="1200"></textarea></label><button class="primary-button" type="submit">Publicar comunicado</button></form></details>`;
   if (route === 'people' && can('peopleManage')) return `<details class="quick-form" open><summary>Cadastro de contato</summary><form data-module-form="people">
@@ -933,7 +933,7 @@ async function loadModule(route) {
     navigate('home');
     return;
   }
-  const contentPermissions = {training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage']};
+  const contentPermissions = {training: ['trainingsRead', 'trainingsManage'], notifications: ['admin']};
   if (contentPermissions[route] && !contentPermissions[route].some(can)) {
     content.innerHTML = '<p class="empty-state" role="status">Seu perfil ainda não tem acesso ao conteúdo desta área. Peça ao administrador para liberar a consulta.</p>';
     return;
