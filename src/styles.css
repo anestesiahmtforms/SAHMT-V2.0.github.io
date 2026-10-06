@@ -1961,3 +1961,17 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--events #event-report-dialog>.report-period input{display:block;box-sizing:border-box;-webkit-appearance:none;appearance:none;width:0;min-width:100%;max-width:100%;height:44px;min-height:44px;margin:0;padding:7px 10px;font-size:16px!important;line-height:1.25;text-align:center}
 .app-shell--events #event-report-dialog>.report-period input::-webkit-date-and-time-value{min-width:0;max-width:100%;text-align:center}
 .app-shell--events #event-report-dialog>#event-report-results{min-width:0;min-height:0;align-self:stretch;overflow:auto}
+
+/* Rodapé de retorno fora da área rolável dos relatórios. */
+.app-shell--events #event-report-dialog{grid-template-rows:auto auto auto minmax(0,1fr) auto auto}
+.app-shell--events #event-report-dialog:has(.event-report-footer[hidden]){grid-template-rows:auto auto auto minmax(0,1fr) auto}
+.app-shell--labels .label-report-dialog{grid-template-rows:auto auto minmax(0,1fr) auto auto}
+.app-shell--labels .label-report-dialog:has(.label-report-footer[hidden]){grid-template-rows:auto auto minmax(0,1fr) auto}
+:is(.app-shell--events,.app-shell--labels) .report-close-footer{min-width:0;min-height:0;margin:0;padding:0 0 max(3px,env(safe-area-inset-bottom));align-self:end}
+:is(.app-shell--events,.app-shell--labels) .report-close-footer>form{margin:0}
+:is(.app-shell--events,.app-shell--labels) .report-close-footer button{display:block;width:100%;min-height:40px;margin:0;padding:6px 10px;border-radius:14px;font-weight:900;line-height:1.2}
+:is(.app-shell--events,.app-shell--labels) .monthly-report-footer{padding-bottom:0}
+.app-shell--events #event-report-dialog>.event-report-dialog__header{justify-content:center;text-align:center}
+.app-shell--labels .label-report-header{grid-template-columns:48px minmax(0,1fr)}
+@media(max-width:520px){.app-shell--labels .label-report-header{grid-template-columns:40px minmax(0,1fr)}}
+@media(max-height:680px){:is(.app-shell--events,.app-shell--labels) .report-close-footer button{min-height:34px;padding:4px 8px;font-size:.78rem}}
