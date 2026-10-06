@@ -3,11 +3,12 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
-const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 
 test('a entrada em Gestão não abre uma área; o clique abre o modal antes de consultar', async () => {
   const start = source.indexOf("    if (route === 'management') {\n      if (!items.some");
   const end = source.indexOf("    } else {\n      const heading", start);
+  assert.ok(start >= 0 && end > start, 'Trecho da abertura da área de Gestão não localizado no fixture VM.');
   const handlers = new Map();
   const calls = [];
   const button = {dataset: {managementArea: 'area-1'}, classList: {toggle() {}}, setAttribute() {}, addEventListener: (event, fn) => handlers.set('click', fn)};

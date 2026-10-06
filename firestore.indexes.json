@@ -25,6 +25,8 @@
     {"collectionGroup":"maintenanceRecords","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]},
     {"collectionGroup":"documents","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]},
     {"collectionGroup":"documents","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]},
+    {"collectionGroup":"scopedDocuments","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"audienceGroup","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]},
+    {"collectionGroup":"scopedDocuments","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"audienceGroup","order":"ASCENDING"},{"fieldPath":"publishedAt","order":"DESCENDING"}]},
     {"collectionGroup":"equipment","queryScope":"COLLECTION","fields":[{"fieldPath":"managementAreaId","order":"ASCENDING"},{"fieldPath":"tag","order":"ASCENDING"}]},
     {"collectionGroup":"trainings","queryScope":"COLLECTION","fields":[{"fieldPath":"order","order":"ASCENDING"},{"fieldPath":"title","order":"ASCENDING"}]},
     {"collectionGroup":"learningActivities","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"showInTraining","order":"ASCENDING"},{"fieldPath":"audienceType","order":"ASCENDING"},{"fieldPath":"order","order":"ASCENDING"}]},

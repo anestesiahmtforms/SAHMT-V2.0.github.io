@@ -106,6 +106,15 @@ service cloud.firestore {
     }
     match /checklistResponsibilities/{day} { allow read: if checklistAccess(); allow write: if false; }
     function qualityManageArea(areaId) { return can('qualityManage') && areaId == 'area-gestao-da-qualidade'; }
+    function assignedDocumentAreaManager(areaId) {
+      let path = /databases/$(database)/documents/managementAreas/$(areaId);
+      return areaId == 'area-gestao-de-documentos' && can('managementRead') && exists(path) &&
+        get(path).data.active == true && get(path).data.managerUids is list &&
+        get(path).data.managerUids.hasAny([request.auth.uid]);
+    }
+    function managementDocumentManage(areaId) {
+      return can('documentsManage') || qualityManageArea(areaId) || assignedDocumentAreaManager(areaId);
+    }
     function activityPointsReviewer(areaId) {
       let areaPath = /databases/$(database)/documents/managementAreas/$(areaId);
       return can('managementManage') || qualityManageArea(areaId) ||
@@ -296,6 +305,43 @@ service cloud.firestore {
           data.driveUrl.matches('^https://docs[.]google[.]com/forms/d/(e/)?[A-Za-z0-9_-]{10,200}/(edit|viewform)$') ||
           data.driveUrl.matches('^https://forms[.]gle/[A-Za-z0-9_-]{4,200}$')) &&
         data.category is string && data.category.size() > 0 && data.category.size() <= 80 && data.active is bool && data.requiredReading is bool &&
+        data.publishedAt is timestamp && data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version is int && data.version >= 1;
+    }
+    function documentVerifiedEmail() {
+      return activeUser() && request.auth.token.keys().hasAll(['email', 'email_verified', 'firebase']) &&
+        request.auth.token.email_verified == true && request.auth.token.email is string &&
+        request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function documentOwnEmail(email) {
+      return documentVerifiedEmail() && request.auth.token.email.lower() == email;
+    }
+    function documentGroupAccess(group) {
+      let accessPath = /databases/$(database)/documents/documentAccessEmails/$(request.auth.token.email.lower());
+      return documentVerifiedEmail() && exists(accessPath) && get(accessPath).data.active == true &&
+        get(accessPath).data.groups.hasAny([group]);
+    }
+    function validDocumentAccessEmail(data, email) {
+      return data.keys().hasAll(['id', 'email', 'groups', 'active', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'email', 'groups', 'active', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+        email is string && email.size() <= 254 && email == email.lower() && email.matches('^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+[.][a-z]{2,}$') &&
+        data.id == email && data.email == email && data.groups is list && data.groups.size() <= 2 &&
+        data.groups.toSet().size() == data.groups.size() && data.groups.hasOnly(['GENERAL', 'RESTRICTED']) &&
+        data.active is bool && (!data.active || data.groups.size() > 0) && data.version is int && data.version >= 1 &&
+        data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+        data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+    }
+    function validScopedManagementDocument(data, documentId) {
+      return data.keys().hasAll(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'audienceGroup']) &&
+        data.keys().hasOnly(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'audienceGroup']) &&
+        data.id == documentId && documentId.matches('^[A-Za-z0-9_-]{10,200}$') && data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 160 && data.description is string && data.description.size() <= 1200 &&
+        data.driveFileId is string && data.driveFileId.matches('^[A-Za-z0-9_-]{10,200}$') &&
+        (data.driveUrl == 'https://drive.google.com/file/d/' + data.driveFileId + '/view' ||
+          data.driveUrl.matches('^https://docs[.]google[.]com/forms/d/(e/)?[A-Za-z0-9_-]{10,200}/(edit|viewform)$') ||
+          data.driveUrl.matches('^https://forms[.]gle/[A-Za-z0-9_-]{4,200}$')) &&
+        data.category is string && data.category.size() > 0 && data.category.size() <= 80 && data.active is bool && data.requiredReading is bool &&
+        data.audienceGroup in ['GENERAL', 'RESTRICTED'] &&
         data.publishedAt is timestamp && data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
         data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version is int && data.version >= 1;
     }
@@ -1314,15 +1360,40 @@ service cloud.firestore {
     }
     match /documents/{documentId} {
       allow read: if can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId);
-      allow create: if (can('documentsManage') || qualityManageArea(request.resource.data.managementAreaId)) && activeManagementArea(request.resource.data.managementAreaId) &&
+      allow create: if managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
         request.resource.data.createdByUid == request.auth.uid;
-      allow update: if (can('documentsManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementDocument(request.resource.data, documentId) &&
+      allow update: if managementDocumentManage(resource.data.managementAreaId) && validManagementDocument(request.resource.data, documentId) &&
         request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
         request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.version == resource.data.version + 1 &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading', 'updatedByUid', 'updatedAt', 'version']);
+      allow delete: if false;
+    }
+    match /documentAccessEmails/{email} {
+      allow get: if can('documentsManage') || documentOwnEmail(email);
+      allow list: if can('documentsManage');
+      allow create: if can('documentsManage') && validDocumentAccessEmail(request.resource.data, email) &&
+        request.resource.data.version == 1 && request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time;
+      allow update: if can('documentsManage') && validDocumentAccessEmail(request.resource.data, email) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groups', 'active', 'version', 'updatedByUid', 'updatedAt']);
+      allow delete: if false;
+    }
+    match /scopedDocuments/{documentId} {
+      allow get: if resource == null && (can('documentsManage') || assignedDocumentAreaManager('area-gestao-de-documentos'));
+      allow read: if resource != null && (managementDocumentManage(resource.data.managementAreaId) ||
+        (can('managementRead') && resource.data.active == true && documentGroupAccess(resource.data.audienceGroup)));
+      allow create: if managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
+        validScopedManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
+        request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if managementDocumentManage(resource.data.managementAreaId) && validScopedManagementDocument(request.resource.data, documentId) &&
+        request.resource.data.managementAreaId == resource.data.managementAreaId && request.resource.data.publishedAt == resource.data.publishedAt &&
+        request.resource.data.createdAt == resource.data.createdAt && request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'driveFileId', 'driveUrl', 'category', 'active', 'requiredReading', 'audienceGroup', 'updatedByUid', 'updatedAt', 'version']);
       allow delete: if false;
     }
     match /equipment/{equipmentId} {
