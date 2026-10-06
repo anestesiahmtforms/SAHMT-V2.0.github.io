@@ -2155,9 +2155,6 @@ function renderEventReportRecords({append = false} = {}) {
       ? '<p class="sync-state">Há eventos locais pendentes ou recusados. Eles ficam fora dos arquivos até o Firestore confirmar a gravação.</p>'
       : '';
   const empty = eventReportStale ? 'Não há eventos locais pendentes neste período.' : 'Nenhum evento neste período.';
-  const heading = eventReportMode === 'daily'
-    ? `<h3 class="event-report-period-heading">${escapeHtml(formatRecordDate(document.querySelector('#event-report-day')?.value || document.querySelector('#event-schedule-date')?.value || todayInputValue()))}</h3>`
-    : `<h3 class="event-report-period-heading">${escapeHtml(new Intl.DateTimeFormat('pt-BR', {month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo'}).format(new Date(`${document.querySelector('#event-report-month')?.value || todayInputValue().slice(0, 7)}-15T12:00:00`)))}</h3>`;
   const recordMarkup = (item, index = records.indexOf(item)) => {
     const confirmed = !item.pendingEdit && !item.pendingSync && !item.pendingFirestore && !item.syncFailed && !item.syncConflict && !item.hasPendingWrites;
     const showHistory = eventReportMode === 'daily' && confirmed;
@@ -2187,7 +2184,7 @@ function renderEventReportRecords({append = false} = {}) {
     return item && (Number(card.dataset.recordVersion) !== (Number(item.version) || 1) || panel?.dataset.loading === 'true' && panel._eventHistoryScopeKey !== liveReports.get('events')?.snapshot().scope?.key);
   }).map(card => card.dataset.eventRecord);
   const incomplete = eventReportCursor ? '<p class="sync-state">Há mais registros. Totais e PDF correspondem somente aos registros carregados.</p>' : '';
-  reconcileReportMarkup(target, `${heading}${syncNotice}${bannerList}${incomplete}${moreButton}`, {preserveSelectors: ['[data-event-history-panel]', '[data-event-history][aria-expanded="true"]', '.report-export-status']});
+  reconcileReportMarkup(target, `${syncNotice}${bannerList}${incomplete}${moreButton}`, {preserveSelectors: ['[data-event-history-panel]', '[data-event-history][aria-expanded="true"]', '.report-export-status']});
   target.querySelectorAll('[data-event-edit]').forEach((button) => button.onclick = () => { if (reportScopeCurrent(scope)) beginEventEdit(eventReportSourceRecords.find((item) => item.id === button.dataset.eventEdit)); });
   target.querySelectorAll('[data-event-history]').forEach((button) => {
     button.onclick = async () => {
