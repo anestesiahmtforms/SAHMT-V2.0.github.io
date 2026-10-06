@@ -73,3 +73,13 @@ test('recusa datas impossíveis e aceita 29 de fevereiro somente em ano bissexto
     assert.throws(() => validateEventForm({...valid, eventDate}), /data válida/);
   }
 });
+
+test('cálculo de atraso no app corresponde ao multiplicador exigido pelo Firestore', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
+  const match = rules.match(/data\.eventType == 'ATRASO'[^\n]*data\.amountToPay == data\.delayMultiple \* (\d+)/);
+  assert.ok(match, 'Validação financeira de ATRASO não encontrada nas regras.');
+  for (let multiple = 0; multiple <= 6; multiple++) {
+    assert.equal(eventAmountToPay('ATRASO', String(multiple), ''), multiple * Number(match[1]), `Múltiplo ${multiple} deve ser aceito pelo servidor.`);
+  }
+});
