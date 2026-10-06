@@ -25,7 +25,7 @@ import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 
 const app = document.querySelector('#app');
-const STARTUP_BANNER_DURATION_MS = 4000;
+const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
 
@@ -4231,9 +4231,10 @@ async function render() {
       <img src="${import.meta.env.BASE_URL}assets/icon-192.png" width="76" height="76" alt="SAHMT">
       <strong>SAHMT</strong><span class="boot-slogan" aria-label="Gestão responsável! Gestão eficiente! Gestão na palma da mão!"><span class="boot-slogan__phrase" aria-hidden="true">Gestão responsável!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão eficiente!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão na palma da mão!</span></span>
       <span class="boot-particles" aria-hidden="true">${[
-        [-92, 48, '.02s', '#46d98b'], [-68, 66, '.10s', '#43a5ff'], [-43, 38, '.18s', '#ffc857'], [-21, 78, '.26s', '#ff7a59'],
-        [4, 52, '.34s', '#b88cff'], [28, 72, '.42s', '#5ee7d2'], [53, 43, '.50s', '#ffd166'], [80, 64, '.58s', '#ff8fb3'],
-        [-106, 88, '.66s', '#7ce38b'], [104, 82, '.74s', '#70b7ff'], [-57, 96, '.82s', '#ffb347'], [62, 98, '.90s', '#d59bff']
+        [-118, 0, '0s', '#46d98b'], [118, 0, '0s', '#43a5ff'], [0, -85, '0s', '#ffc857'], [0, 85, '0s', '#ff7a59'],
+        [-95, -62, '.02s', '#b88cff'], [95, 62, '.02s', '#5ee7d2'], [-95, 62, '.02s', '#ffd166'], [95, -62, '.02s', '#ff8fb3'],
+        [-48, -90, '.04s', '#7ce38b'], [48, 90, '.04s', '#70b7ff'], [-48, 90, '.04s', '#ffb347'], [48, -90, '.04s', '#d59bff'],
+        [-112, -32, '.06s', '#46d98b'], [112, 32, '.06s', '#43a5ff'], [-112, 32, '.06s', '#ffc857'], [112, -32, '.06s', '#ff7a59']
       ].map(([x, y, delay, color]) => `<i class="boot-particle" style="--x:${x}px;--y:${y}px;--d:${delay};--c:${color}"></i>`).join('')}</span>
       <i class="boot-spinner" aria-hidden="true"></i>
     </div></main>`;
