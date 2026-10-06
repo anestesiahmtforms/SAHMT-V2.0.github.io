@@ -67,9 +67,9 @@ test('Escala mostra Treinamentos e Notificações para um perfil comum aprovado 
   const session = approved();
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['training', 'notifications']);
+  assert.deepEqual(visibleRoutes(h), ['training']);
   assert.match(h.ui.moduleCards(), /<strong>Desempenho<\/strong>/);
-  assert.match(h.ui.moduleCards(), /<strong>Notificações<\/strong>/);
+  assert.match(h.ui.moduleCards(), /<strong>NOTIFICAÇÕES DE EVENTOS<\/strong>/);
   for (const permission of ['trainingsRead', 'trainingsManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) {
     assert.equal(h.ui.can(permission), false, `${permission} continua sem concessão`);
   }
@@ -83,7 +83,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
   const session = approved({trainingsRead: false, notificationsRead: false, labelsWrite: true});
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['labels', 'training', 'notifications']);
+  assert.deepEqual(visibleRoutes(h), ['labels', 'training']);
   assert.equal(h.ui.can('trainingsRead'), false);
   assert.equal(h.ui.can('notificationsRead'), false);
   assert.deepEqual(session, before);
@@ -92,7 +92,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
 test('administradores preservam os cartões e os controles administrativos existentes', () => {
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
-    assert.deepEqual(visibleRoutes(h), ['events', 'labels', 'management', 'checklist', 'training', 'notifications']);
+    assert.deepEqual(visibleRoutes(h), ['events', 'labels', 'management', 'checklist', 'training']);
     assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);
     assert.match(h.ui.actionForm('training'), /id="training-catalog-form"/);
     assert.match(h.ui.actionForm('notifications'), /data-module-form="notifications"/);
@@ -122,13 +122,13 @@ test('desativar módulos globalmente continua ocultando os cartões para comuns 
     assert.equal(routes.includes('training'), false);
     assert.equal(routes.includes('notifications'), false);
   }
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), ['notifications']);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), []);
   assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['training']);
 });
 
 test('permissões de leitura existentes permitem consultar sem mostrar formulários de gestão', () => {
   const h = harness({session: approved({trainingsRead: true, notificationsRead: true})});
-  assert.deepEqual(visibleRoutes(h), ['training', 'notifications']);
+  assert.deepEqual(visibleRoutes(h), ['training']);
   assert.equal(h.ui.can('trainingsRead'), true);
   assert.equal(h.ui.can('notificationsRead'), true);
   assert.equal(h.ui.can('trainingsManage'), false);
@@ -137,7 +137,7 @@ test('permissões de leitura existentes permitem consultar sem mostrar formulár
   assert.equal(h.ui.actionForm('notifications'), '');
 });
 
-for (const route of ['training', 'notifications']) {
+for (const route of ['training']) {
   test(`${route}: sem permissão mostra aviso de acesso e encerra antes de importar ou consultar dados`, async () => {
     for (const permissions of [{}, {trainingsRead: false, trainingsManage: false, notificationsRead: false, notificationsManage: false}]) {
       const h = harness({session: approved(permissions), route});
@@ -160,13 +160,32 @@ for (const route of ['training', 'notifications']) {
   });
 
   test(`${route}: leitura previamente autorizada conserva a consulta do fluxo existente`, async () => {
-    const h = harness({session: approved({[route === 'training' ? 'trainingsRead' : 'notificationsRead']: true}), route});
+    const h = harness({session: route === 'training' ? approved({trainingsRead:true}) : approved({}, 'administrador_app'), route});
     await h.ui.loadModule(route);
     assert.ok(h.imports.includes(route === 'training' ? './performance-ui.js' : './data.js'));
     if(route === 'training') {assert.equal(h.imports.includes('./training.js'),false); assert.equal(h.queries.some(query=>query.name==='listModuleRecords'),false);}
     assert.ok(h.queries.length > 0);
     assert.doesNotMatch(h.content.innerHTML, /ainda não tem acesso/);
     assert.deepEqual(h.navigations, []);
-    assert.equal(h.ui.actionForm(route), '');
+    if (route === 'training') assert.equal(h.ui.actionForm(route), '');
   });
 }
+
+for (const role of ['gestor', 'coordenador', 'anestesiologista']) {
+  test(`Informações bloqueia ${role} mesmo com permissão antiga de notificações`, async () => {
+    const h = harness({session: approved({notificationsRead:true, notificationsManage:true}, role), route:'notifications'});
+    assert.doesNotMatch(h.ui.managementUtilityCards(), /data-route="notifications"/);
+    assert.equal(h.ui.actionForm('notifications'), '');
+    await h.ui.loadModule('notifications');
+    assert.deepEqual(h.imports, []);
+    assert.deepEqual(h.queries, []);
+    assert.match(h.content.innerHTML, /ainda não tem acesso/);
+  });
+}
+test('Informações fica somente em Gestão para administrador; Home contém atalho futuro sem rota', () => {
+  const h = harness({session:approved({}, 'administrador_app')});
+  assert.match(h.ui.managementUtilityCards(), /data-route="notifications"/);
+  assert.match(h.ui.managementUtilityCards(), /<strong>INFORMAÇÕES<\/strong>/);
+  assert.doesNotMatch(h.ui.moduleCards(), /data-route="notifications"/);
+  assert.match(h.ui.moduleCards(), /disabled aria-label="Notificações de Eventos · em breve"/);
+});
