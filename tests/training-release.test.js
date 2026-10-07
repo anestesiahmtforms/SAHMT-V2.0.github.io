@@ -215,6 +215,140 @@ test('configuration dispatch and finalizer publish exact group outside transacti
   assert.ok(h.commits.flat().every(w=>['evaluationActivities','evaluationRequests','evaluationFormConfigs','scopedDocuments'].includes(w.collection)));assert.ok(h.checks.every(check=>check===false));
   assert.throws(()=>h.ctx.evaluationAssertOperator_(true),/Ativação bloqueada/);assert.equal(h.get('evaluationRuntime','state'),null);
 });
+test('material audience shares one roster snapshot while each validation reads the current roster',()=>{
+  const h=fixture(),loaded=h.load(),scan=h.ctx.formsEvaluationAll_;let rosterScans=0;
+  h.ctx.formsEvaluationAll_=(collection,...args)=>{if(collection==='documentAccessEmails')rosterScans++;return scan(collection,...args);};
+  h.seed('documentAccessEmails','invalid@example.invalid',{email:'other@example.invalid',active:true,groups:['GENERAL']});
+  h.seed('documentAccessEmails','inactive@example.invalid',{email:'inactive@example.invalid',active:false,groups:['RESTRICTED']});
+  const first=h.ctx.trainingReleaseMaterialAudience_(loaded);
+  assert.equal(rosterScans,1);assert.deepEqual(plain(first.groups),{GENERAL:['general@example.invalid'],RESTRICTED:['restricted@example.invalid']});
+  assert.equal(first.digest,h.ctx.formsEvaluationHash_({owner:operator,writer:operator,groups:first.groups}));
+  h.seed('documentAccessEmails','both@example.invalid',{email:'both@example.invalid',active:true,groups:['GENERAL','RESTRICTED']});
+  const second=h.ctx.trainingReleaseMaterialAudience_(loaded);
+  assert.equal(rosterScans,2);assert.deepEqual(plain(second.groups),{GENERAL:['both@example.invalid','general@example.invalid'],RESTRICTED:['both@example.invalid','restricted@example.invalid']});
+  assert.notEqual(second.digest,first.digest);assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);
+});
+test('release dispatch defers the duplicate publication while full finalizer retains three fresh private gates',()=>{
+  const h=fixture(),loaded=h.load(),item=h.manifest.items[0];h.ctx.trainingReleasePrepared_(loaded,item);
+  const dispatch=h.ctx.formsEvaluationProcessRequest_,finalize=h.ctx.formsEvaluationFinalizePublication_,gate=h.ctx.trainingReleaseVerifyPublication_;
+  let dispatches=0,publications=0,gates=0;
+  h.ctx.formsEvaluationProcessRequest_=(request,options)=>{
+    dispatches++;assert.equal(options.deferPublication,true);
+    const result=dispatch(request,options);assert.equal(result.status,'CONFIGURATION_PENDING');
+    assert.equal(h.forms.get(item.formId).isPublished(),false);assert.equal(publications,0);return result;
+  };
+  h.ctx.formsEvaluationFinalizePublication_=(...args)=>{publications++;return finalize(...args);};
+  h.ctx.trainingReleaseVerifyPublication_=(...args)=>{gates++;return gate(...args);};
+  assert.equal(h.ctx.trainingReleaseReleased_(loaded,item).status,'READY');
+  assert.equal(dispatches,1);assert.equal(publications,1);assert.equal(gates,3);
+  assert.equal(h.formOperations.filter(operation=>operation.id===item.formId&&operation.kind==='published'&&operation.value===true).length,1);
+  assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`).active,true);assert.equal(h.get('evaluationRuntime','state'),null);
+});
+test('deferred release rejects roster revocation after native ACL publication with no Management topic',()=>{
+  const h=fixture(),loaded=h.load(),item=h.manifest.items[0];h.ctx.trainingReleasePrepared_(loaded,item);
+  const form=h.forms.get(item.formId),publish=form.setPublished;
+  form.setPublished=value=>{const result=publish(value);if(value)h.seed('documentAccessEmails','general@example.invalid',{email:'general@example.invalid',active:false,groups:['GENERAL']});return result;};
+  assert.equal(h.ctx.trainingReleaseReleased_(loaded,item).status,'CONFIGURATION_PENDING');
+  assert.equal(form.isPublished(),false);assert.equal(form.isAcceptingResponses(),false);
+  assert.equal(h.get('evaluationFormConfigs',item.formId).status,'CONFIGURATION_PENDING');assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`),null);
+});
+function revokeDuringReleaseRead(h,reason){
+  const metadata=h.ctx.formsEvaluationMetadata_;let changed=false;
+  h.ctx.formsEvaluationMetadata_=(...args)=>{
+    const result=metadata(...args);
+    if(!changed){
+      changed=true;
+      if(reason==='actor')h.seed('users','admin',{...h.get('users','admin'),active:false});
+      else if(reason==='assignment')h.store.delete(`evaluationAssignments/${area}`);
+      else h.seed('users','duplicate-operator',{uid:'duplicate-operator',email:operator.toUpperCase(),active:true,access:true,role:'usuario',permissions:{}});
+    }
+    return result;
+  };
+  return ()=>changed;
+}
+function stageReleaseConfiguration(h,loaded,item){
+  return h.ctx.evaluationRunTransaction_(tx=>h.ctx.formsEvaluationConfigured_(h.ctx.trainingReleasePayload_(item,0),loaded.manifest.actorUid,tx));
+}
+test('preparation revalidates revoked actor, assignment and normalized identity after native reads before committing',()=>{
+  for(const reason of ['actor','assignment','identity']){
+    const h=fixture(),loaded=h.load(),item=h.manifest.items[0],changed=revokeDuringReleaseRead(h,reason);
+    assert.throws(()=>h.ctx.trainingReleasePrepared_(loaded,item),/ADMIN_AREA_ASSIGNMENT/);
+    assert.equal(changed(),true);assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);
+    assert.equal(h.get('evaluationActivities',item.formId),null);assert.equal(h.get('evaluationFormConfigs',item.formId),null);
+    assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`),null);assert.equal(h.forms.get(item.formId).isPublished(),false);
+  }
+});
+test('release rejects revocation during native reads with either absent or existing staged configuration',()=>{
+  for(const configured of [false,true])for(const reason of ['actor','assignment','identity']){
+    const h=fixture(),loaded=h.load(),item=h.manifest.items[0];h.ctx.trainingReleasePrepared_(loaded,item);
+    if(configured)assert.equal(stageReleaseConfiguration(h,loaded,item).status,'CONFIGURATION_PENDING');
+    const commits=h.commits.length,mutations=h.mutations.length,operations=h.formOperations.length,changed=revokeDuringReleaseRead(h,reason);
+    assert.throws(()=>h.ctx.trainingReleaseReleased_(loaded,item),/ADMIN_AREA_ASSIGNMENT/);
+    assert.equal(changed(),true);assert.equal(h.commits.length,commits);assert.equal(h.mutations.length,mutations);assert.equal(h.formOperations.length,operations);
+    assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`),null);assert.equal(h.forms.get(item.formId).isPublished(),false);
+    assert.equal(h.get('evaluationActivities',item.formId).status,'CONFIGURATION_PENDING');
+  }
+});
+test('finalizer retains a fresh mandatory authorization gate after native reads and before ACL or unblock writes',()=>{
+  for(const reason of ['actor','assignment','identity']){
+    const h=fixture(),loaded=h.load(),item=h.manifest.items[0];h.ctx.trainingReleasePrepared_(loaded,item);stageReleaseConfiguration(h,loaded,item);
+    h.seed('evaluationFormConfigs',item.formId,{...h.get('evaluationFormConfigs',item.formId),trainingReleaseBlocked:true});
+    h.seed('evaluationActivities',item.formId,{...h.get('evaluationActivities',item.formId),trainingReleaseBlocked:true});
+    const commits=h.commits.length,mutations=h.mutations.length,operations=h.formOperations.length,changed=revokeDuringReleaseRead(h,reason);
+    assert.throws(()=>h.ctx.trainingReleaseFinalize_(loaded,item,null),/ADMIN_AREA_ASSIGNMENT/);
+    assert.equal(changed(),true);assert.equal(h.commits.length,commits);assert.equal(h.mutations.length,mutations);assert.equal(h.formOperations.length,operations);
+    assert.equal(h.get('evaluationFormConfigs',item.formId).trainingReleaseBlocked,true);assert.equal(h.get('evaluationActivities',item.formId).trainingReleaseBlocked,true);
+    assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`),null);assert.equal(h.forms.get(item.formId).isPublished(),false);
+  }
+});
+test('publication proof requires the fresh MaterialAudience context and rejects revocation after native reads',()=>{
+  const valid=fixture(),loaded=valid.load(),item=valid.manifest.items[0];valid.ctx.trainingReleasePrepared_(loaded,item);stageReleaseConfiguration(valid,loaded,item);
+  const context=valid.ctx.trainingReleaseContext_;let contexts=0;
+  valid.ctx.trainingReleaseContext_=(...args)=>{contexts++;assert.equal(args[1],null);return context(...args);};
+  assert.equal(valid.ctx.trainingReleaseVerifyPublication_(item.formId).formId,item.formId);assert.equal(contexts,1);
+  for(const reason of ['actor','assignment','identity']){
+    const h=fixture(),loaded=h.load(),item=h.manifest.items[0];h.ctx.trainingReleasePrepared_(loaded,item);stageReleaseConfiguration(h,loaded,item);
+    const commits=h.commits.length,mutations=h.mutations.length,changed=revokeDuringReleaseRead(h,reason);
+    assert.throws(()=>h.ctx.trainingReleaseVerifyPublication_(item.formId),/ADMIN_AREA_ASSIGNMENT/);
+    assert.equal(changed(),true);assert.equal(h.commits.length,commits);assert.equal(h.mutations.length,mutations);
+    assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`),null);assert.equal(h.forms.get(item.formId).isPublished(),false);
+  }
+});
+test('synthetic 60-profile and 60-roster release measures only removal of redundant document reads',t=>{
+  function measure(previousBehavior){
+    const h=fixture();
+    for(let index=0;index<56;index++){
+      const uid=`synthetic-user-${index}`,email=`synthetic-${index}@example.invalid`,group=index%4===0?'RESTRICTED':'GENERAL';
+      h.seed('users',uid,{uid,email,active:true,access:true,role:'usuario',permissions:{}});
+      h.seed('documentAccessEmails',email,{email,active:true,groups:[group]});
+    }
+    for(const email of [operator,'manager@example.invalid'])h.seed('documentAccessEmails',email,{email,active:true,groups:['GENERAL']});
+    assert.equal([...h.store.keys()].filter(key=>key.startsWith('users/')).length,60);
+    assert.equal([...h.store.keys()].filter(key=>key.startsWith('documentAccessEmails/')).length,60);
+    const loaded=h.load(),item=h.manifest.items[0],audience=h.ctx.trainingReleaseMaterialAudience_(loaded),file=h.files.get(item.sourceId);
+    file.permissions=[{id:'owner-id',type:'user',role:'owner',emailAddress:operator},...audience.groups.GENERAL.filter(email=>email!==operator).map((email,index)=>({id:`synthetic-reader-${index}`,type:'user',role:'reader',emailAddress:email}))];
+    if(previousBehavior){
+      // Restore the previous redundant contexts, scan and dispatch publication only in a static-fixture comparison.
+      const materialAudience=h.ctx.trainingReleaseMaterialAudience_,process=h.ctx.formsEvaluationProcessRequest_;
+      h.ctx.trainingReleaseMaterialAudience_=value=>{const result=materialAudience(value);h.ctx.formsEvaluationAll_('documentAccessEmails',[],null);return result;};
+      h.ctx.formsEvaluationProcessRequest_=request=>process(request);
+      for(const name of ['trainingReleasePrepared_','trainingReleaseReleased_','trainingReleaseFinalize_','trainingReleaseVerifyPublication_']){
+        const method=h.ctx[name];
+        h.ctx[name]=(...args)=>{h.ctx.trainingReleaseContext_(name==='trainingReleaseVerifyPublication_'?h.load():args[0],null);return method(...args);};
+      }
+    }
+    const get=h.ctx.evaluationGet_,scan=h.ctx.formsEvaluationAll_,counts={documentReads:0,singleReads:0,rosterScans:0,profileScans:0};
+    h.ctx.evaluationGet_=(...args)=>{counts.documentReads++;counts.singleReads++;return get(...args);};
+    h.ctx.formsEvaluationAll_=(collection,...args)=>{const rows=scan(collection,...args);counts.documentReads+=Math.max(1,rows.length);if(collection==='users')counts.profileScans++;if(collection==='documentAccessEmails')counts.rosterScans++;return rows;};
+    h.ctx.trainingReleasePrepared_(loaded,item);assert.equal(h.ctx.trainingReleaseReleased_(loaded,item).status,'READY');
+    assert.equal(h.get('scopedDocuments',`evaluation_${item.formId}`).active,true);assert.equal(h.get('evaluationRuntime','state'),null);
+    return counts;
+  }
+  const previous=measure(true),optimized=measure(false);
+  assert.ok(optimized.documentReads<previous.documentReads);assert.ok(optimized.rosterScans<previous.rosterScans);
+  assert.ok(optimized.documentReads<=1000,'static 60-profile and 60-roster fixture stays within the intended per-Form budget');
+  t.diagnostic(JSON.stringify({synthetic:true,profiles:60,rosterRecords:60,previous,optimized,removedDocumentReads:previous.documentReads-optimized.documentReads,remaining41FormReads:41*optimized.documentReads,excludes:['transaction retries','batch orchestration','catalog queries','live app traffic','index-entry billing']}));
+});
 test('ACL failure and audience expansion stay closed and pending; stale version never configures',()=>{
   for(const mutate of [h=>h.forms.get(h.manifest.items[0].formId).failAdd=true,h=>h.store.delete('documentAccessEmails/general@example.invalid')]){
     const h=fixture(),loaded=h.load(),item=h.manifest.items[0];h.ctx.trainingReleasePrepared_(loaded,item);mutate(h);const result=h.ctx.liberarCatalogoTreinamentosSahmtV2();assert.equal(result.status,'CONFIGURATION_PENDING');assert.equal(h.forms.get(item.formId).isPublished(),false);

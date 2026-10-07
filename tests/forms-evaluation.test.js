@@ -83,6 +83,32 @@ test('arquivo define adaptador sem chamar APIs, atribuir créditos ou instalar g
 test('normalização backend distingue Forms real de alias público/curto',()=>{const h=harness();assert.equal(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/${FORM}/edit`).formId,FORM);assert.equal(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/e/${ALIAS}/viewform`).formId,null);assert.equal(h.ctx.formsEvaluationLink_('https://forms.gle/TestAlias').kind,'SHORT_URL');});
 test('resolução de alias exige responderUri e mantém origem canônica',()=>{const h=harness();h.seedFixture();const r=h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/e/${ALIAS}/viewform`),{});assert.equal(r.formId,FORM);h.forms.get(FORM).responderUrl='https://docs.google.com/forms/d/e/DifferentAlias123/viewform';assert.throws(()=>h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_('https://docs.google.com/forms/d/e/DifferentAlias123/viewform'),{}),/não corresponde/);});
 test('perfil VERIFIED único e aprovado é a única fonte de UID',()=>{const h=harness(),m=metadata(),r=h.response({uid:'forged-browser-uid'});assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person')]).uid,'person');assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person'),profile('second',{email:'person@example.invalid'})]).status,'NEEDS_REVIEW');assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person',{active:false})]).status,'NEEDS_REVIEW');m.settings.emailCollectionType='RESPONDER_INPUT';assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person')]).status,'NEEDS_REVIEW');});
+test('filtro puro do cadastro mantém normalização, validações e entradas originais sem leituras',()=>{
+  const h=harness(),entries=[
+    {id:' PERSON@example.invalid ',email:' Person@example.invalid ',active:true,groups:['GENERAL']},
+    {id:'restricted@example.invalid',email:'restricted@example.invalid',active:true,groups:['RESTRICTED']},
+    {id:'both@example.invalid',email:'both@example.invalid',active:true,groups:['GENERAL','RESTRICTED']},
+    {id:'inactive@example.invalid',email:'inactive@example.invalid',active:false,groups:['GENERAL']},
+    {id:'boolean@example.invalid',email:'boolean@example.invalid',active:'true',groups:['GENERAL']},
+    {id:'different@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']},
+    {id:'invalid@domain',email:'invalid@domain',active:true,groups:['GENERAL']},
+    {id:'unknown@example.invalid',email:'unknown@example.invalid',active:true,groups:['UNKNOWN']},
+    {id:'string@example.invalid',email:'string@example.invalid',active:true,groups:'GENERAL'}
+  ],before=clone(entries);
+  h.ctx.formsEvaluationAll_=()=>{throw Error('pure filter must not read');};
+  assert.deepEqual(plain(h.ctx.formsEvaluationFilterGroupRoster_(entries,['GENERAL'])),[entries[0],entries[2]]);
+  assert.deepEqual(plain(h.ctx.formsEvaluationFilterGroupRoster_(entries,['RESTRICTED'])),[entries[1],entries[2]]);
+  assert.deepEqual(plain(h.ctx.formsEvaluationFilterGroupRoster_(entries,['UNKNOWN','GENERAL','RESTRICTED'])),entries.slice(0,3));
+  for(const groups of [null,[],['UNKNOWN'],'GENERAL'])assert.deepEqual(plain(h.ctx.formsEvaluationFilterGroupRoster_(entries,groups)),[]);
+  assert.deepEqual(entries,before);assert.equal(h.queries.length,0);assert.equal(h.commits.length,0);
+});
+test('cadastro por grupo conserva ausência de leitura para público inválido e usa a transação fornecida',()=>{
+  const h=harness();h.seed('documentAccessEmails','person@example.invalid',{email:'person@example.invalid',active:true,groups:['GENERAL']});
+  for(const groups of [null,[],['UNKNOWN'],'GENERAL'])assert.deepEqual(plain(h.ctx.formsEvaluationGroupRoster_(groups,'roster-transaction')),[]);
+  assert.equal(h.queries.length,0);
+  assert.equal(h.ctx.formsEvaluationGroupRoster_(['GENERAL','RESTRICTED'],'roster-transaction').length,1);
+  assert.equal(h.queries.length,1);assert.equal(h.queries[0].c,'documentAccessEmails');assert.equal(h.queries[0].tx,'roster-transaction');
+});
 test('pontuação por grupo exige cadastro atual ativo e grupo compatível',()=>{
   const h=harness(),m=h.seedFixture();
   h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']});
@@ -189,6 +215,40 @@ test('pedido agrupado só fica READY após stage confirmado e ACL publicada exat
   assert.equal(h.ctx.formsEvaluationProcessRequest_(h.get('evaluationRequests','group-request')).status,'READY');
   assert.equal(h.get('evaluationRequests','group-request').status,'READY');assert.equal(h.forms.get(FORM).isPublished(),true);
   assert.equal(h.commits[0].find(w=>w.c==='evaluationFormConfigs').changes.status,'CONFIGURATION_PENDING');
+});
+test('opção interna adia somente a publicação e mantém configuração fechada até o finalizador explícito',()=>{
+  const h=harness();h.seedFixture();h.seed('documentAccessEmails','person@example.invalid',{email:'person@example.invalid',active:true,groups:['GENERAL']});
+  const day=h.ctx.Utilities.formatDate(new Date()),payload={activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}};
+  h.seed('evaluationRequests','deferred-request',{type:'CONFIGURE_ACTIVITY',actorUid:'admin',status:'PENDING',payload});
+  const form=h.forms.get(FORM),finalize=h.ctx.formsEvaluationFinalizePublication_;let publications=0;
+  h.ctx.formsEvaluationFinalizePublication_=(...args)=>{publications++;return finalize(...args);};
+  assert.equal(h.ctx.formsEvaluationProcessRequest_(h.get('evaluationRequests','deferred-request'),{deferPublication:true}).status,'CONFIGURATION_PENDING');
+  assert.equal(publications,0);assert.equal(h.get('evaluationRequests','deferred-request').status,'CONFIGURATION_PENDING');
+  assert.equal(h.get('evaluationFormConfigs',FORM).publicationPending,true);assert.equal(h.get('evaluationActivities',FORM).status,'CONFIGURATION_PENDING');
+  assert.equal(form.isPublished(),false);assert.equal(form.isAcceptingResponses(),false);assert.equal(form.publicationChanges.includes(true),false);
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM,'deferred-request').status,'READY');assert.equal(publications,1);
+  assert.equal(h.get('evaluationRequests','deferred-request').status,'READY');assert.deepEqual(form.publishedEmails(),['person@example.invalid']);assert.equal(h.awards.length,0);
+});
+test('adiamento não pode vir do pedido e somente booleano true na opção interna muda o padrão',()=>{
+  for(const options of [undefined,{deferPublication:false},{deferPublication:'true'}]){
+    const h=harness();h.seedFixture();h.seed('documentAccessEmails','person@example.invalid',{email:'person@example.invalid',active:true,groups:['GENERAL']});
+    const day=h.ctx.Utilities.formatDate(new Date());
+    h.seed('evaluationRequests','untrusted-defer',{type:'CONFIGURE_ACTIVITY',actorUid:'admin',status:'PENDING',deferPublication:true,payload:{activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true},deferPublication:true}});
+    assert.equal(h.ctx.formsEvaluationProcessRequest_(h.get('evaluationRequests','untrusted-defer'),options).status,'READY');
+    assert.equal(h.forms.get(FORM).isPublished(),true);assert.equal(h.get('evaluationRequests','untrusted-defer').status,'READY');
+  }
+});
+test('adiamento interno preserva validações do solicitante e do mapeamento antes do stage',()=>{
+  for(const invalid of ['actor','mapping']){
+    const h=harness();h.seedFixture();h.seed('documentAccessEmails','person@example.invalid',{email:'person@example.invalid',active:true,groups:['GENERAL']});
+    const day=h.ctx.Utilities.formatDate(new Date()),payload={activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}};
+    if(invalid==='actor')h.seed('users','admin',profile('admin',{active:false,permissions:{admin:true}}));
+    else payload.acknowledgementItemId='missing-item';
+    h.seed('evaluationRequests','invalid-defer',{type:'CONFIGURE_ACTIVITY',actorUid:'admin',status:'PENDING',payload});
+    assert.throws(()=>h.ctx.formsEvaluationProcessRequest_(h.get('evaluationRequests','invalid-defer'),{deferPublication:true}));
+    assert.equal(h.get('evaluationFormConfigs',FORM),null);assert.equal(h.get('evaluationRequests','invalid-defer').status,'PENDING');
+    assert.equal(h.forms.get(FORM).publicationChanges.includes(true),false);assert.equal(h.commits.length,0);
+  }
 });
 test('alteração do público durante o READY CAS fecha e recuperação usa cadastro atual',()=>{
   const h=harness();stagedGroup(h);const form=h.forms.get(FORM),runTransaction=h.ctx.evaluationRunTransaction_;
