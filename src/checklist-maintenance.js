@@ -6,6 +6,14 @@ function isIsoDay(value) {
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
+function isIsoMonth(value) {
+  return typeof value === 'string' && !value.startsWith('0000-') && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+export function checklistMaintenanceInputType(value) {
+  return isIsoDay(value) ? 'date' : 'month';
+}
+
 export function normalizeChecklistMaintenance(value) {
   return Object.fromEntries(CHECKLIST_MAINTENANCE_FIELDS.map((key) => [key,
     value && typeof value === 'object' && typeof value[key] === 'string' ? value[key].trim() : ''
@@ -15,7 +23,9 @@ export function normalizeChecklistMaintenance(value) {
 export function checklistMaintenanceOverdue(value, today) {
   const dates = normalizeChecklistMaintenance(value);
   return Object.fromEntries(CHECKLIST_MAINTENANCE_FIELDS.map((key) => [key,
-    isIsoDay(today) && isIsoDay(dates[key]) && dates[key] < today
+    isIsoDay(today) && (isIsoMonth(dates[key])
+      ? dates[key] < today.slice(0, 7)
+      : isIsoDay(dates[key]) && dates[key] < today)
   ]));
 }
 
@@ -32,7 +42,7 @@ export function checklistMaintenanceForWrite(value) {
     throw new Error('Confira os três campos de data da manutenção.');
   }
   const dates = normalizeChecklistMaintenance(value);
-  if (Object.values(dates).some((day) => day !== '' && !isIsoDay(day))) {
+  if (Object.values(dates).some((date) => date !== '' && !isIsoDay(date) && !isIsoMonth(date))) {
     throw new Error('Informe datas válidas para a manutenção.');
   }
   return dates;

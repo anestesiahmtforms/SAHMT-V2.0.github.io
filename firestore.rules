@@ -232,7 +232,9 @@ service cloud.firestore {
         (!(station.keys().hasAny(['start']) && station.keys().hasAny(['end'])) || station.start <= station.end);
     }
     function validStationMaintenanceDate(value) {
-      return value is string && (value == '' || (validIsoDay(value) && !value.matches('^0000-.*$') &&
+      return value is string && (value == '' ||
+        (value.matches('^\\d{4}-(0[1-9]|1[0-2])$') && !value.matches('^0000-.*$')) ||
+        (validIsoDay(value) && !value.matches('^0000-.*$') &&
         (!value.matches('^\\d{4}-02-29$') ||
          (int(value.split('-')[0]) % 4 == 0 &&
           (int(value.split('-')[0]) % 100 != 0 || int(value.split('-')[0]) % 400 == 0)))));
