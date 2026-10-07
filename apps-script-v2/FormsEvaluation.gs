@@ -639,7 +639,12 @@ function formsEvaluationPublicationPending_(formId, configVersion, closureConfir
     const blocked = releaseBlocked === true || cfg.trainingReleaseBlocked === true || activity.trainingReleaseBlocked === true;
     const pending = {status: 'CONFIGURATION_PENDING', reason: closureConfirmed ? blocked ? 'Catálogo exige nova validação privada antes da publicação.' : 'Respondentes ou publicação pendentes de reconciliação.' : 'Fechamento do Google Form não confirmado; acesso externo exige reconciliação.', publicationPending: !blocked && (cfg.publicationPending === true || cfg.status === 'READY')};
     if (blocked) pending.trainingReleaseBlocked = true;
-    return {writes: [evaluationWrite_('evaluationFormConfigs', formId, pending, cfg, ['updatedAt']), evaluationWrite_('evaluationActivities', formId, pending, activity, ['updatedAt'])], result: {status: pending.status}};
+    const writes = [evaluationWrite_('evaluationFormConfigs', formId, pending, cfg, ['updatedAt']), evaluationWrite_('evaluationActivities', formId, pending, activity, ['updatedAt'])];
+    if (activity.trainingReleaseManifestDigest && typeof trainingReleaseManagementCloseWrite_ === 'function') {
+      const managementWrite = trainingReleaseManagementCloseWrite_(formId,activity,cfg,tx);
+      if (managementWrite) writes.push(managementWrite);
+    }
+    return {writes: writes, result: {status: pending.status}};
   });
 }
 function formsEvaluationFinalizePublication_(formId, requestId) {

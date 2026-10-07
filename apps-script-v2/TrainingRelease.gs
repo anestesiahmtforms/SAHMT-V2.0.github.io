@@ -2,7 +2,8 @@
 const SAHMT_V2_TRAINING_RELEASE = Object.freeze({
   source: 'SAHMT_V2_TRAINING_RELEASE', areaId: 'area-gestao-de-documentos', total: 76, batchSize: 5,
   originalRopRootId: '1Kx9FZRhlj2grDbGSH8opHU3pQFemReyG',
-  budgetMs: 160000, maxRuns: 40, maxAgeMs: 86400000, handler: 'continuarDisponibilizacaoTreinamentosSahmtV2_',
+  budgetMs: 160000, maxRuns: 80, maxAgeMs: 86400000, handler: 'continuarDisponibilizacaoTreinamentosSahmtV2_',
+  materialCount: 84, cloneRootId: '1N0lTv1vewXW_bqhBhN2QG8cq75ZzXdR8', outsideCloneParentId: '1AHqrb1elRlNSmw8L3t_z53gTOo6YjLU2',
   manifestProperty: 'SAHMT_V2_TRAINING_RELEASE_MANIFEST_ID', digestProperty: 'SAHMT_V2_TRAINING_RELEASE_MANIFEST_SHA256',
   cursorProperty: 'SAHMT_V2_TRAINING_RELEASE_CURSOR', jobProperty: 'SAHMT_V2_TRAINING_RELEASE_JOB',
   roots: Object.freeze({
@@ -157,6 +158,243 @@ function trainingReleaseSource_(item) {
   return true;
 }
 
+/** Material access inspection is read-only. No permission, inheritance, or folder mutation is performed. */
+function trainingReleaseMaterialCatalog_(loaded) {
+  const entries = {}, forms = new Set(loaded.manifest.items.map(function (item) { return item.formId; }));
+  loaded.manifest.items.forEach(function (item) {
+    item.materialUrls.forEach(function (url) {
+      const match = url.match(/^https:\/\/(?:drive|docs)\.google\.com\/(?:file|document)\/d\/([A-Za-z0-9_-]{10,200})(?:\/(?:view|edit))?\/?(?:[?#].*)?$/);
+      if (!match || forms.has(match[1]) || match[1] === loaded.id) trainingReleaseReject_('MATERIAL_REFERENCE');
+      const id = match[1], previous = entries[id];
+      if (previous && previous.group !== item.eligibleGroup) trainingReleaseReject_('MATERIAL_GROUP_CONFLICT');
+      entries[id] = {id: id, group: item.eligibleGroup, rop: Boolean(previous && previous.rop || item.rootId === SAHMT_V2_TRAINING_RELEASE.cloneRootId)};
+    });
+  });
+  const result = Object.keys(entries).sort().map(function (id) { return entries[id]; });
+  if (result.length !== 84 || result.filter(function (entry) { return entry.group === 'GENERAL'; }).length !== 70 ||
+      result.filter(function (entry) { return entry.group === 'RESTRICTED'; }).length !== 14) trainingReleaseReject_('MATERIAL_COUNTS');
+  return result;
+}
+function trainingReleaseMaterialAudience_(loaded) {
+  trainingReleaseContext_(loaded,null);
+  const writer = evaluationGet_('users',loaded.manifest.actorUid), email = String(writer && writer.email || '').trim().toLowerCase(), groups = {};
+  ['GENERAL','RESTRICTED'].forEach(function (group) {
+    groups[group] = [...new Set(formsEvaluationGroupRoster_([group],null).map(function (entry) { return entry.email; }))].sort();
+    if (!groups[group].length || groups[group].length > 500) trainingReleaseReject_('MATERIAL_EMPTY_AUDIENCE');
+  });
+  return {owner: loaded.operator,writer: email,groups: groups,digest: formsEvaluationHash_({owner: loaded.operator,writer: email,groups: groups})};
+}
+function trainingReleaseMaterialPermissions_(fileId) {
+  const permissions = [], tokens = new Set();let token = '', pages = 0;
+  do {
+    const page = formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) +
+      '/permissions?supportsAllDrives=true&pageSize=100&fields=' + encodeURIComponent('nextPageToken,permissions(id,type,role,emailAddress,view,deleted,pendingOwner,expirationTime,inheritedPermissionsDisabled,permissionDetails(inherited,inheritedFrom))') +
+      (token ? '&pageToken=' + encodeURIComponent(token) : ''));
+    if (!page || !Array.isArray(page.permissions) || ++pages > 10 || permissions.length + page.permissions.length > 1000) trainingReleaseReject_('MATERIAL_ACL_INCOMPLETE');
+    permissions.push.apply(permissions,page.permissions);token = String(page.nextPageToken || '');
+    if (token && tokens.has(token)) trainingReleaseReject_('MATERIAL_ACL_INCOMPLETE');
+    if (token) tokens.add(token);
+  } while (token);
+  return permissions;
+}
+function trainingReleaseMaterialMetadata_(entry,audience) {
+  const file = formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(entry.id) +
+    '?supportsAllDrives=true&fields=' + encodeURIComponent('id,name,mimeType,trashed,parents,owners(emailAddress,permissionId),capabilities(canShare)'));
+  const allowed = ['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','audio/mpeg','video/mp4'];
+  if (!file || file.id !== entry.id || file.trashed === true || !allowed.includes(file.mimeType) ||
+      /gabarito|answer[_ -]?key|checkpoint|manifest|operational-report|support-access/i.test(String(file.name || '')) ||
+      !Array.isArray(file.owners) || file.owners.length !== 1 || String(file.owners[0].emailAddress || '').trim().toLowerCase() !== audience.owner ||
+      !formsEvaluationId_(file.owners[0].permissionId)) trainingReleaseReject_('MATERIAL_OWNER_TYPE');
+  if (entry.rop) {
+    const pending = (file.parents || []).slice(), seen = new Set();let inClone = false;
+    while (pending.length) {
+      const id = pending.shift();
+      if (id === SAHMT_V2_TRAINING_RELEASE.originalRopRootId || seen.size >= 100) trainingReleaseReject_('MATERIAL_ORIGINAL_PROTECTED');
+      if (id === SAHMT_V2_TRAINING_RELEASE.cloneRootId) { inClone = true;continue; }
+      if (seen.has(id)) continue;seen.add(id);
+      const parent = formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?supportsAllDrives=true&fields=' + encodeURIComponent('id,parents'));
+      if (!parent || parent.id !== id) trainingReleaseReject_('MATERIAL_ANCESTRY');
+      pending.push.apply(pending,parent.parents || []);
+    }
+    if (!inClone) trainingReleaseReject_('MATERIAL_OUTSIDE_CLONE');
+  }
+  return file;
+}
+function trainingReleaseMaterialExact_(entry,file,permissions,audience) {
+  const expected = {}, seen = new Set();
+  expected[audience.owner] = 'owner';
+  audience.groups[entry.group].forEach(function (email) { if (email !== audience.owner) expected[email] = 'reader'; });
+  if (audience.writer !== audience.owner) expected[audience.writer] = 'writer';
+  for (let index = 0; index < permissions.length; index++) {
+    const permission = permissions[index], email = String(permission.emailAddress || '').trim().toLowerCase();
+    if (permission.type !== 'user' || !formsEvaluationId_(permission.id) || permission.deleted === true || permission.pendingOwner === true ||
+        permission.expirationTime || permission.view || permission.role !== expected[email] || seen.has(email)) return false;
+    if (permission.role === 'owner') { if (permission.id !== file.owners[0].permissionId) return false; }
+    else if ((permission.permissionDetails || []).some(function (detail) { return detail.inherited === true; })) return false;
+    seen.add(email);
+  }
+  return seen.size === Object.keys(expected).length;
+}
+function trainingReleaseCloneAccess_(loaded) {
+  const id = SAHMT_V2_TRAINING_RELEASE.cloneRootId;
+  const file = formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?supportsAllDrives=true&fields=' +
+    encodeURIComponent('id,mimeType,trashed,parents,owners(emailAddress,permissionId),inheritedPermissionsDisabled'));
+  if (!file || file.id !== id || file.mimeType !== 'application/vnd.google-apps.folder' || file.trashed === true || file.inheritedPermissionsDisabled !== true ||
+      !Array.isArray(file.parents) || file.parents.length !== 1 || file.parents[0] !== SAHMT_V2_TRAINING_RELEASE.outsideCloneParentId ||
+      !Array.isArray(file.owners) || file.owners.length !== 1 || String(file.owners[0].emailAddress || '').trim().toLowerCase() !== loaded.operator ||
+      !formsEvaluationId_(file.owners[0].permissionId)) trainingReleaseReject_('CLONE_ACCESS_PENDING');
+  let owner = 0;
+  trainingReleaseMaterialPermissions_(id).forEach(function (permission) {
+    if (permission.type === 'user' && permission.role === 'owner' && permission.id === file.owners[0].permissionId && String(permission.emailAddress || '').trim().toLowerCase() === loaded.operator && permission.deleted !== true && permission.pendingOwner !== true) { owner++;return; }
+    if (permission.view !== 'metadata' || permission.role !== 'reader' || permission.inheritedPermissionsDisabled !== true || permission.deleted === true || permission.pendingOwner === true ||
+        !(permission.permissionDetails || []).length || !(permission.permissionDetails || []).every(function (detail) { return detail.inherited === true; })) trainingReleaseReject_('CLONE_FOLDER_READERS');
+  });
+  if (owner !== 1) trainingReleaseReject_('CLONE_ACCESS_PENDING');
+  return true;
+}
+function trainingReleaseMaterialVerify_(loaded,item) {
+  const audience = trainingReleaseMaterialAudience_(loaded), catalog = trainingReleaseMaterialCatalog_(loaded);
+  const selected = new Set(item.materialUrls.map(function (url) { return url.match(/\/d\/([A-Za-z0-9_-]+)/)[1]; }));
+  if (item.rootId === SAHMT_V2_TRAINING_RELEASE.cloneRootId) trainingReleaseCloneAccess_(loaded);
+  catalog.filter(function (entry) { return selected.has(entry.id); }).forEach(function (entry) {
+    const file = trainingReleaseMaterialMetadata_(entry,audience);
+    if (!trainingReleaseMaterialExact_(entry,file,trainingReleaseMaterialPermissions_(entry.id),audience)) trainingReleaseReject_('MATERIAL_ACCESS_PENDING');
+  });
+  return {audienceDigest: audience.digest,verifiedMaterials: selected.size};
+}
+function consultarAcessoMateriaisTreinamentosSahmtV2() {
+  const started = Date.now();
+  try {
+    const loaded = trainingReleaseLoad_(), audience = trainingReleaseMaterialAudience_(loaded), catalog = trainingReleaseMaterialCatalog_(loaded);
+    let prepared = 0, inspected = 0, cloneReady = false;
+    const pendingItems = [];
+    try { cloneReady = trainingReleaseCloneAccess_(loaded); } catch (error) { pendingItems.push({pendingCode: error.trainingReleaseCode || 'CLONE_ACCESS_PENDING'}); }
+    for (let index = 0; index < catalog.length && Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs; index++) {
+      const entry = catalog[index];inspected++;
+      try {
+        const file = trainingReleaseMaterialMetadata_(entry,audience);
+        if ((!entry.rop || cloneReady) && trainingReleaseMaterialExact_(entry,file,trainingReleaseMaterialPermissions_(entry.id),audience)) prepared++;
+        else if (pendingItems.length < 5) pendingItems.push({materialId: entry.id,pendingCode: 'MATERIAL_ACCESS_PENDING'});
+      } catch (error) { if (pendingItems.length < 5) pendingItems.push({materialId: entry.id,pendingCode: error.trainingReleaseCode || 'MATERIAL_ACCESS'}); }
+    }
+    return trainingReleaseLog_({status: prepared === 84 ? 'READ_ONLY' : 'CONFIGURATION_PENDING',materialFiles: 84,materialPrepared: prepared,materialPending: 84 - prepared,
+      inspectedMaterials: inspected,liveMaterialsRevalidated: inspected === 84,pendingItems: pendingItems,productionFinancialWrites: false});
+  } catch (error) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING',pendingCode: error.trainingReleaseCode || 'MATERIAL_ACCESS',materialFiles: 84,materialPrepared: 0,materialPending: 84,productionFinancialWrites: false}); }
+}
+
+/** Human approval: 70 GENERAL /14 RESTRICTED materials, approved administrator writer, no notifications; original and external parent remain untouched. */
+function trainingReleaseMaterialQueue_(entry,file,permissions,audience) {
+  const expected = {}, actual = {}, operations = [];
+  audience.groups[entry.group].forEach(function (email) { if (email !== audience.owner) expected[email] = email === audience.writer ? 'writer' : 'reader'; });
+  if (audience.writer !== audience.owner) expected[audience.writer] = 'writer';
+  let owners = 0;
+  permissions.forEach(function (permission) {
+    const email = String(permission.emailAddress || '').trim().toLowerCase(), inherited = (permission.permissionDetails || []).some(function (detail) { return detail.inherited === true; });
+    if (permission.type === 'user' && permission.role === 'owner' && email === audience.owner && permission.id === file.owners[0].permissionId && permission.deleted !== true && permission.pendingOwner !== true) { owners++;return; }
+    if (!formsEvaluationId_(permission.id) || permission.deleted === true || permission.pendingOwner === true || permission.view || inherited || !['reader','writer'].includes(permission.role)) trainingReleaseReject_('MATERIAL_ACL_UNSAFE');
+    const base = 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(entry.id) + '/permissions/';
+    if (permission.type !== 'user' || !expected[email] || permission.expirationTime) {
+      if (permission.role !== 'reader' || !['user','anyone','domain','group'].includes(permission.type)) trainingReleaseReject_('MATERIAL_EDITOR_UNKNOWN');
+      operations.push({fileId: entry.id,url: base + encodeURIComponent(permission.id) + '?supportsAllDrives=true',options: {method: 'delete'}});return;
+    }
+    if (actual[email]) trainingReleaseReject_('MATERIAL_ACL_DUPLICATE');actual[email] = true;
+    if (permission.role !== expected[email]) {
+      if (permission.role === 'writer' && expected[email] !== 'writer') trainingReleaseReject_('MATERIAL_EDITOR_UNKNOWN');
+      operations.push({fileId: entry.id,url: base + encodeURIComponent(permission.id) + '?supportsAllDrives=true',options: {method: 'patch',contentType: 'application/json',payload: JSON.stringify({role: expected[email]})}});
+    }
+  });
+  if (owners !== 1) trainingReleaseReject_('MATERIAL_OWNER_ACL');
+  Object.keys(expected).sort().forEach(function (email) {
+    if (!actual[email]) operations.push({fileId: entry.id,url: 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(entry.id) + '/permissions?supportsAllDrives=true&sendNotificationEmail=false',
+      options: {method: 'post',contentType: 'application/json',payload: JSON.stringify({type: 'user',role: expected[email],emailAddress: email})}});
+  });
+  return operations;
+}
+/** Parallel requests always address distinct files. A subsequent wave waits for every preceding response. */
+function trainingReleaseMaterialWave_(operations) {
+  if (!operations.length || operations.length > 84 || new Set(operations.map(function (operation) { return operation.fileId; })).size !== operations.length) trainingReleaseReject_('MATERIAL_WAVE_INVALID');
+  const token = ScriptApp.getOAuthToken();
+  const requests = operations.map(function (operation) { return Object.assign({url: operation.url,muteHttpExceptions: true,headers: {Authorization: 'Bearer ' + token}},operation.options); });
+  let responses;
+  try { responses = UrlFetchApp.fetchAll(requests); } catch (_) { trainingReleaseReject_('MATERIAL_BATCH_ACCESS'); }
+  if (!Array.isArray(responses) || responses.length !== operations.length) trainingReleaseReject_('MATERIAL_BATCH_ACCESS');
+  return responses.map(function (response) { const status = response.getResponseCode();return {success: status >= 200 && status < 300,pendingCode: status >= 200 && status < 300 ? '' : 'MATERIAL_HTTP_' + status}; });
+}
+function trainingReleaseLimitClone_(loaded) {
+  const id = SAHMT_V2_TRAINING_RELEASE.cloneRootId;
+  const url = 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?supportsAllDrives=true&fields=' +
+    encodeURIComponent('id,mimeType,trashed,parents,owners(emailAddress,permissionId),capabilities(canDisableInheritedPermissions),inheritedPermissionsDisabled');
+  const file = formsEvaluationGoogleRequest_(url);
+  if (!file || file.id !== id || file.mimeType !== 'application/vnd.google-apps.folder' || file.trashed === true ||
+      !Array.isArray(file.parents) || file.parents.length !== 1 || file.parents[0] !== SAHMT_V2_TRAINING_RELEASE.outsideCloneParentId ||
+      !Array.isArray(file.owners) || file.owners.length !== 1 || String(file.owners[0].emailAddress || '').trim().toLowerCase() !== loaded.operator ||
+      !formsEvaluationId_(file.owners[0].permissionId)) trainingReleaseReject_('CLONE_LIMIT_OWNER');
+  if (file.inheritedPermissionsDisabled !== true) {
+    if (!file.capabilities || file.capabilities.canDisableInheritedPermissions !== true) trainingReleaseReject_('CLONE_LIMIT_UNAVAILABLE');
+    formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?supportsAllDrives=true&fields=id,inheritedPermissionsDisabled',
+      {method: 'patch',contentType: 'application/json',payload: JSON.stringify({inheritedPermissionsDisabled: true})});
+  }
+  // Readback checks the limited folder and rejects any direct content grant. No folder reader is ever added.
+  return trainingReleaseCloneAccess_(loaded);
+}
+function trainingReleaseMaterialBatch_(loaded,job) {
+  const properties = PropertiesService.getScriptProperties(), started = Date.now(), audience = trainingReleaseMaterialAudience_(loaded), catalog = trainingReleaseMaterialCatalog_(loaded);
+  if (job.materialAudienceDigest && job.materialAudienceDigest !== audience.digest) {
+    job.materialMask = '0'.repeat(84);job.materialCursor = 0;job.phase = 'CLOSE_FORMS';job.closeCursor = 0;job.closeMask = '0'.repeat(76);job.verifiedMask = '0'.repeat(76);
+  }
+  job.materialAudienceDigest = audience.digest;
+  if (job.phase === 'CLOSE_FORMS') {
+    let attempted = 0;const pendingItems = [];
+    while (attempted < 76 && Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs) {
+      const cursor = job.closeCursor,item = loaded.manifest.items[cursor],closed = trainingReleaseFailClosed_(item);
+      job.closeMask = job.closeMask.slice(0,cursor) + (closed ? '1' : '0') + job.closeMask.slice(cursor + 1);
+      if (!closed) pendingItems.push({formId: item.formId,pendingCode: 'FORM_CLOSURE_UNCONFIRMED'});
+      job.closeCursor = (cursor + 1) % 76;attempted++;
+      properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty,JSON.stringify(job));
+      if (!job.closeCursor) break;
+    }
+    if (job.closeMask === '1'.repeat(76)) job.phase = 'MATERIALS';
+    return {status: 'RUNNING',attemptedForms: attempted,pendingItems: pendingItems,materialFiles: 84,materialPrepared: 0,materialPending: 84};
+  }
+  trainingReleaseLimitClone_(loaded);
+  const states = [],pendingItems = [],start = job.materialCursor;
+  for (let offset = 0;start + offset < catalog.length && Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs;offset++) {
+    const index = start + offset,entry = catalog[index];
+    try {
+      const file = trainingReleaseMaterialMetadata_(entry,audience),permissions = trainingReleaseMaterialPermissions_(entry.id);
+      if (!file.capabilities || file.capabilities.canShare !== true) trainingReleaseReject_('MATERIAL_SHARE_UNAVAILABLE');
+      states.push({index: index,entry: entry,operations: trainingReleaseMaterialQueue_(entry,file,permissions,audience),failed: false});
+    } catch (error) { states.push({index: index,entry: entry,operations: [],failed: true});pendingItems.push({materialId: entry.id,pendingCode: error.trainingReleaseCode || 'MATERIAL_ACCESS'}); }
+  }
+  while (Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs) {
+    const active = states.filter(function (state) { return !state.failed && state.operations.length; });
+    if (!active.length) break;let results;
+    try { results = trainingReleaseMaterialWave_(active.map(function (state) { return state.operations[0]; })); }
+    catch (error) { active.forEach(function (state) { state.failed = true;pendingItems.push({materialId: state.entry.id,pendingCode: error.trainingReleaseCode || 'MATERIAL_ACCESS'}); });break; }
+    results.forEach(function (result,index) {
+      if (result.success) active[index].operations.shift();
+      else { active[index].failed = true;pendingItems.push({materialId: active[index].entry.id,pendingCode: result.pendingCode}); }
+    });
+    // On interruption the next run reads the ACL again; a successful grant is never replayed blindly.
+    properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty,JSON.stringify(job));
+  }
+  const currentAudience = trainingReleaseMaterialAudience_(loaded);
+  states.forEach(function (state) {
+    let ready = false;
+    if (Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs && currentAudience.digest === audience.digest && !state.failed && !state.operations.length) {
+      try { const file = trainingReleaseMaterialMetadata_(state.entry,audience);ready = trainingReleaseMaterialExact_(state.entry,file,trainingReleaseMaterialPermissions_(state.entry.id),audience); }
+      catch (error) { pendingItems.push({materialId: state.entry.id,pendingCode: error.trainingReleaseCode || 'MATERIAL_READBACK'}); }
+    }
+    job.materialMask = job.materialMask.slice(0,state.index) + (ready ? '1' : '0') + job.materialMask.slice(state.index + 1);
+  });
+  const unfinished = states.some(function (state) { return !state.failed && state.operations.length; });
+  job.materialCursor = unfinished ? start : (start + states.length) % 84;
+  const readyCount = job.materialMask.split('').filter(function (value) { return value === '1'; }).length;
+  if (readyCount === 84 && currentAudience.digest === audience.digest) job.phase = 'FORMS';
+  properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty,JSON.stringify(job));
+  return {status: 'RUNNING',pendingItems: pendingItems.slice(0,5),materialFiles: 84,materialPrepared: readyCount,materialPending: 84 - readyCount,attemptedMaterials: states.length};
+}
+
 function trainingReleasePayload_(item, expectedVersion) {
   const today = Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd');
   const validFrom = today > item.validFrom ? today : item.validFrom;
@@ -240,6 +478,8 @@ function trainingReleasePrepared_(loaded, item) {
 function trainingReleaseVerifyPublication_(formId) {
   const loaded = trainingReleaseLoad_();
   trainingReleaseContext_(loaded, null);
+  const job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);
+  if (job && job.status === 'RUNNING' && (job.schemaVersion !== 2 || job.phase !== 'FORMS' || job.materialMask !== '1'.repeat(84))) trainingReleaseReject_('MATERIAL_PHASE_PENDING');
   const item = loaded.manifest.items.find(function (entry) { return entry.formId === formId; });
   if (!item) trainingReleaseReject_('FORM_NOT_IN_MANIFEST');
   const live = trainingReleaseLive_(item, false), activity = evaluationGet_('evaluationActivities', formId), cfg = evaluationGet_('evaluationFormConfigs', formId);
@@ -250,7 +490,8 @@ function trainingReleaseVerifyPublication_(formId) {
       formsEvaluationSavedQuestionFingerprint_(cfg) !== live.checked.questionFingerprint || formsEvaluationStable_(cfg.mapping) !== formsEvaluationStable_(live.checked.mapping) ||
       formsEvaluationStable_(cfg.materialUrls) !== formsEvaluationStable_(item.materialUrls) || !Array.isArray(cfg.eligibleUids) || cfg.eligibleUids.length ||
       formsEvaluationStable_(cfg.eligibleGroups) !== formsEvaluationStable_([item.eligibleGroup])) trainingReleaseReject_('PREPARED_PUBLICATION_CHANGED');
-  return {formId: formId, manifestDigest: loaded.digest, formDigest: live.digest};
+  const access = trainingReleaseMaterialVerify_(loaded,item);
+  return {formId: formId, manifestDigest: loaded.digest, formDigest: live.digest,materialAudienceDigest: access.audienceDigest,verifiedMaterials: access.verifiedMaterials};
 }
 
 /** All Google Form publication goes through the existing closed-stage/ACL/CAS finalizer, outside callbacks. */
@@ -278,7 +519,54 @@ function trainingReleaseFinalize_(loaded, item, requestId) {
       cfg.maxTestScore !== item.maxTestScore || formsEvaluationSavedQuestionFingerprint_(cfg) !== after.checked.questionFingerprint ||
       formsEvaluationStable_(cfg.eligibleGroups) !== formsEvaluationStable_([item.eligibleGroup]) || !Array.isArray(cfg.eligibleUids) || cfg.eligibleUids.length ||
       !formsEvaluationPublishedPermissionsExact_(formsEvaluationPublishedPermissions_(item.formId), formsEvaluationPublicationContext_(cfg, null))) trainingReleaseReject_('PUBLISHED_CONFIGURATION_CHANGED');
+  trainingReleaseManagement_(loaded,item,cfg);
   return {status: 'READY', published: true, productionFinancialWrites: false};
+}
+
+/** The existing Management view reads this public metadata only. Questions and private release evidence remain elsewhere. */
+function trainingReleaseManagementFields_(item,cfg) {
+  const categories = {
+    '1ZVHg-9fcnBv1q8PJgFoUGQ50b5EwAggR': 'DIRETRIZES',
+    '1jwZn5MeuvsSoyHROk_dNS-mXL1teVfBc': 'DOCUMENTOS ADMINISTRATIVOS',
+    '1gg78vHm0O07B_McXFaMMi_ByGwbbWt-7': 'PROTOCOLOS',
+    '1N0lTv1vewXW_bqhBhN2QG8cq75ZzXdR8': 'TREINAMENTO DAS ROPs 2026 - SEGUNDO SEMESTRE'
+  };
+  if (!cfg || !/^https:\/\/docs\.google\.com\/forms\/d\/(?:e\/)?[A-Za-z0-9_-]{10,200}\/viewform$/.test(cfg.responderUrl || '') ||
+      item.title.length > 160 || !categories[item.rootId]) trainingReleaseReject_('MANAGEMENT_METADATA');
+  return {id: 'evaluation_' + item.formId,managementAreaId: SAHMT_V2_TRAINING_RELEASE.areaId,title: item.title,
+    description: 'Material de apoio, ciência do conteúdo, teste pontuado, sugestões e revisão pelo gestor.',
+    driveFileId: item.formId,driveUrl: cfg.responderUrl,category: categories[item.rootId],requiredReading: true,audienceGroup: item.eligibleGroup};
+}
+function trainingReleaseManagementOwned_(record,fields,actorUid) {
+  return record && record.createdByUid === actorUid && record.updatedByUid === actorUid &&
+    Number.isInteger(record.version) && record.version >= 1 && record.createdAt && record.publishedAt &&
+    Object.keys(fields).every(function (key) { return formsEvaluationStable_(record[key]) === formsEvaluationStable_(fields[key]); });
+}
+function trainingReleaseManagement_(loaded,item,proofCfg) {
+  const fields = trainingReleaseManagementFields_(item,proofCfg);
+  return evaluationRunTransaction_(function (tx) {
+    trainingReleaseContext_(loaded,tx);
+    const cfg = evaluationGet_('evaluationFormConfigs',item.formId,tx),activity = evaluationGet_('evaluationActivities',item.formId,tx),
+      previous = evaluationGet_('scopedDocuments',fields.id,tx);
+    if (!cfg || !activity || cfg.status !== 'READY' || activity.status !== 'READY' || cfg.configVersion !== proofCfg.configVersion ||
+        cfg.responderUrl !== fields.driveUrl || cfg.version !== item.version || cfg.creditScopeId !== item.creditScopeId ||
+        cfg.configuredByUid !== loaded.manifest.actorUid || activity.trainingReleaseManifestDigest !== loaded.digest ||
+        formsEvaluationStable_(cfg.eligibleGroups) !== formsEvaluationStable_([item.eligibleGroup])) trainingReleaseReject_('MANAGEMENT_PUBLICATION_CHANGED');
+    if (previous && !trainingReleaseManagementOwned_(previous,fields,loaded.manifest.actorUid)) trainingReleaseReject_('MANAGEMENT_DOCUMENT_CONFLICT');
+    if (previous && previous.active === true) return {writes: [],result: {unchanged: true}};
+    const changes = Object.assign({},fields,{active: true,version: previous ? previous.version + 1 : 1,updatedByUid: loaded.manifest.actorUid});
+    if (!previous) changes.createdByUid = loaded.manifest.actorUid;
+    return {writes: [evaluationWrite_('scopedDocuments',fields.id,changes,previous,previous ? ['updatedAt'] : ['publishedAt','createdAt','updatedAt'])],result: {created: !previous}};
+  });
+}
+/** Used inside the same pending transaction as the Forms projection, including periodic reconciliation. */
+function trainingReleaseManagementCloseWrite_(formId,activity,cfg,tx) {
+  if (!activity || !cfg || !/^[a-f0-9]{64}$/.test(activity.trainingReleaseManifestDigest || '') || activity.trainingReleaseClosedBaseline !== true ||
+      !SAHMT_V2_TRAINING_RELEASE.roots[activity.rootId] || !/^https:\/\/docs\.google\.com\/forms\/d\/(?:e\/)?[A-Za-z0-9_-]{10,200}\/viewform$/.test(cfg.responderUrl || '')) return null;
+  const item = {formId: formId,rootId: activity.rootId,title: activity.title,eligibleGroup: SAHMT_V2_TRAINING_RELEASE.roots[activity.rootId].group};
+  const fields = trainingReleaseManagementFields_(item,cfg),record = evaluationGet_('scopedDocuments',fields.id,tx);
+  if (!record || record.active !== true || !trainingReleaseManagementOwned_(record,fields,cfg.configuredByUid)) return null;
+  return evaluationWrite_('scopedDocuments',fields.id,{active: false,version: record.version + 1,updatedByUid: cfg.configuredByUid},record,['updatedAt']);
 }
 function trainingReleaseReleased_(loaded, item) {
   trainingReleaseContext_(loaded, null);
@@ -325,6 +613,9 @@ function trainingReleaseFailClosed_(item) {
       const writes = [];
       if (activity) writes.push(evaluationWrite_('evaluationActivities', item.formId, changes, activity, ['updatedAt']));
       if (config) writes.push(evaluationWrite_('evaluationFormConfigs', item.formId, changes, config, ['updatedAt']));
+      // Never overwrite manually created or edited Management records when closing a release item.
+      const managementWrite = trainingReleaseManagementCloseWrite_(item.formId,activity,config,tx);
+      if (managementWrite) writes.push(managementWrite);
       return {writes: writes, result: {status: 'CONFIGURATION_PENDING'}};
     });
   } catch (_) {}
@@ -332,17 +623,22 @@ function trainingReleaseFailClosed_(item) {
 }
 
 function trainingReleaseCounts_(loaded) {
-  const counts = {totalForms: 76, preparedForms: 0, publishedForms: 0, pendingForms: 0, generalForms: 62, restrictedForms: 14, liveFormsRevalidated: false, productionFinancialWrites: false};
-  const activities = {}, configs = {};
+  const counts = {totalForms: 76, preparedForms: 0, publishedForms: 0, pendingForms: 0, managementDocuments: 0, generalForms: 62, restrictedForms: 14, liveFormsRevalidated: false, productionFinancialWrites: false};
+  const activities = {}, configs = {}, documents = {};
   formsEvaluationAll_('evaluationActivities').forEach(function (record) { activities[record.id] = record; });
   formsEvaluationAll_('evaluationFormConfigs').forEach(function (record) { configs[record.id] = record; });
+  formsEvaluationAll_('scopedDocuments').forEach(function (record) { documents[record.id] = record; });
   loaded.manifest.items.forEach(function (item) {
     const activity = activities[item.formId], cfg = configs[item.formId];
     if (activity && activity.trainingReleaseManifestDigest === loaded.digest && activity.trainingReleaseClosedBaseline === true) counts.preparedForms++;
     if (activity && cfg && activity.active === true && activity.status === 'READY' && cfg.status === 'READY' &&
         activity.trainingReleaseManifestDigest === loaded.digest && activity.configVersion === cfg.configVersion &&
         cfg.version === item.version && cfg.creditScopeId === item.creditScopeId && Array.isArray(cfg.eligibleUids) && !cfg.eligibleUids.length &&
-        formsEvaluationStable_(cfg.eligibleGroups) === formsEvaluationStable_([item.eligibleGroup])) counts.publishedForms++;
+        formsEvaluationStable_(cfg.eligibleGroups) === formsEvaluationStable_([item.eligibleGroup])) {
+      counts.publishedForms++;
+      const fields = trainingReleaseManagementFields_(item,cfg),record = documents[fields.id];
+      if (record && record.active === true && trainingReleaseManagementOwned_(record,fields,loaded.manifest.actorUid)) counts.managementDocuments++;
+    }
   });
   counts.pendingForms = counts.totalForms - counts.publishedForms;
   return counts;
@@ -355,10 +651,15 @@ function trainingReleaseSaved_(property) {
 function trainingReleaseLog_(result) {
   const statuses = ['PENDING','READ_ONLY','CONFIGURATION_PENDING','BATCH_COMPLETED','RUNNING','COMPLETED','NOT_STARTED'];
   const safe = {status: statuses.includes(result.status) ? result.status : 'CONFIGURATION_PENDING', productionFinancialWrites: false};
-  ['totalForms','preparedForms','publishedForms','pendingForms','generalForms','restrictedForms','attemptedForms','successfulForms','pendingInBatch','runs','validatedForms'].forEach(function (key) {
+  ['totalForms','preparedForms','publishedForms','pendingForms','managementDocuments','generalForms','restrictedForms','attemptedForms','successfulForms','pendingInBatch','runs','validatedForms','materialFiles','materialPrepared','materialPending','inspectedMaterials'].forEach(function (key) {
     if (Number.isInteger(result[key]) && result[key] >= 0 && result[key] <= 5000) safe[key] = result[key];
   });
   if (typeof result.liveFormsRevalidated === 'boolean') safe.liveFormsRevalidated = result.liveFormsRevalidated;
+  if (typeof result.liveMaterialsRevalidated === 'boolean') safe.liveMaterialsRevalidated = result.liveMaterialsRevalidated;
+  if (/^[A-Z][A-Z0-9_]{0,79}$/.test(result.pendingCode || '')) safe.pendingCode = result.pendingCode;
+  const pendingCodes = [...new Set((result.pendingItems || []).map(function (item) { return item.pendingCode; }).filter(function (code) { return /^[A-Z][A-Z0-9_]{0,79}$/.test(code || ''); }))].slice(0,5);
+  if (pendingCodes.length) safe.pendingCodes = pendingCodes;
+  if (['CLOSE_FORMS','MATERIALS','FORMS'].includes(result.phase)) safe.phase = result.phase;
   Logger.log(JSON.stringify(safe));
   return result;
 }
@@ -425,7 +726,7 @@ function iniciarDisponibilizacaoTreinamentosSahmtV2() {
     const defaults = typeof SAHMT_V2_TRAINING_RELEASE_DEFAULTS === 'undefined' ? null : SAHMT_V2_TRAINING_RELEASE_DEFAULTS;
     const loaded = defaults ? trainingReleaseLoad_(defaults.manifestId, defaults.digest) : trainingReleaseLoad_();
     trainingReleaseContext_(loaded, null);
-    if (job && job.status === 'RUNNING') {
+    if (job && job.status === 'RUNNING' && job.schemaVersion === 2) {
       if (job.digest !== loaded.digest) trainingReleaseReject_('JOB_MANIFEST_CONFLICT');
       return trainingReleaseLog_(Object.assign({status: 'RUNNING', runs: job.runs}, trainingReleaseCounts_(loaded)));
     }
@@ -433,7 +734,8 @@ function iniciarDisponibilizacaoTreinamentosSahmtV2() {
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.manifestProperty, loaded.id);
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.digestProperty, loaded.digest);
     const trigger = ScriptApp.newTrigger(SAHMT_V2_TRAINING_RELEASE.handler).timeBased().everyMinutes(5).create();
-    job = {schemaVersion: 1, status: 'RUNNING', digest: loaded.digest, startedAt: Date.now(), runs: 0, verifiedMask: '0'.repeat(76), triggerId: trigger.getUniqueId(), productionFinancialWrites: false};
+    job = {schemaVersion: 2, status: 'RUNNING', digest: loaded.digest, startedAt: Date.now(), runs: 0, phase: 'CLOSE_FORMS',closeCursor: 0,closeMask: '0'.repeat(76),materialCursor: 0,materialMask: '0'.repeat(84),
+      verifiedMask: '0'.repeat(76), triggerId: trigger.getUniqueId(), productionFinancialWrites: false};
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
   } catch (error) {
     if (job) {
@@ -453,6 +755,8 @@ function continuarDisponibilizacaoTreinamentosSahmtV2_() {
   try {
     job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);
     if (!job || job.status !== 'RUNNING') return {status: job && job.status || 'NOT_STARTED', productionFinancialWrites: false};
+    if (job.schemaVersion !== 2 || !['CLOSE_FORMS','MATERIALS','FORMS'].includes(job.phase) || !Number.isInteger(job.closeCursor) || job.closeCursor < 0 || job.closeCursor >= 76 ||
+        !Number.isInteger(job.materialCursor) || job.materialCursor < 0 || job.materialCursor >= 84 || !/^[01]{76}$/.test(job.closeMask) || !/^[01]{84}$/.test(job.materialMask)) trainingReleaseReject_('CHECKPOINT_INVALID');
     if (!Number.isInteger(job.runs) || job.runs >= SAHMT_V2_TRAINING_RELEASE.maxRuns || !Number.isFinite(job.startedAt) || Date.now() - job.startedAt >= SAHMT_V2_TRAINING_RELEASE.maxAgeMs) trainingReleaseReject_('JOB_LIMIT');
     if (typeof job.verifiedMask !== 'string' || !/^[01]{76}$/.test(job.verifiedMask)) trainingReleaseReject_('CHECKPOINT_INVALID');
     const loaded = trainingReleaseLoad_();
@@ -460,13 +764,23 @@ function continuarDisponibilizacaoTreinamentosSahmtV2_() {
     trainingReleaseContext_(loaded, null);
     job.runs++;
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
-    const result = trainingReleaseBatch_(loaded, 'combined', job);
+    const currentAudience = trainingReleaseMaterialAudience_(loaded);
+    if (job.materialAudienceDigest && currentAudience.digest !== job.materialAudienceDigest) {
+      job.phase = 'CLOSE_FORMS';job.closeCursor = 0;job.closeMask = '0'.repeat(76);job.materialCursor = 0;job.materialMask = '0'.repeat(84);job.verifiedMask = '0'.repeat(76);
+    }
+    let result;
+    if (job.phase === 'FORMS') result = Object.assign(trainingReleaseBatch_(loaded,'combined',job),{materialFiles: 84,materialPrepared: 84,materialPending: 0});
+    else {
+      const materials = trainingReleaseMaterialBatch_(loaded,job);
+      result = Object.assign({},trainingReleaseCounts_(loaded),materials);
+    }
     const validatedForms = job.verifiedMask.split('').filter(function (value) { return value === '1'; }).length;
-    if (result.publishedForms === 76 && validatedForms === 76) { job.status = 'COMPLETED'; trainingReleaseStopTrigger_(job); }
+    if (job.phase === 'FORMS' && job.materialMask === '1'.repeat(84) && result.publishedForms === 76 && result.managementDocuments === 76 && validatedForms === 76) { job.status = 'COMPLETED'; trainingReleaseStopTrigger_(job); }
     else if (job.runs >= SAHMT_V2_TRAINING_RELEASE.maxRuns) { job.status = 'CONFIGURATION_PENDING'; job.pendingCode = 'JOB_LIMIT'; trainingReleaseStopTrigger_(job); }
-    Object.assign(job, {preparedForms: result.preparedForms, publishedForms: result.publishedForms, pendingForms: result.pendingForms, validatedForms: validatedForms, pendingItems: result.pendingItems, updatedAt: Date.now()});
+    Object.assign(job, {preparedForms: result.preparedForms, publishedForms: result.publishedForms, pendingForms: result.pendingForms, validatedForms: validatedForms,
+      materialPrepared: result.materialPrepared,materialPending: result.materialPending,pendingItems: result.pendingItems, updatedAt: Date.now()});
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
-    return trainingReleaseLog_(Object.assign({}, result, {status: job.status, runs: job.runs, validatedForms: validatedForms, liveFormsRevalidated: job.status === 'COMPLETED'}));
+    return trainingReleaseLog_(Object.assign({}, result, {status: job.status,phase: job.phase,runs: job.runs, validatedForms: validatedForms, liveFormsRevalidated: job.status === 'COMPLETED'}));
   } catch (error) {
     if (job) {
       job.status = 'CONFIGURATION_PENDING'; job.pendingCode = error.trainingReleaseCode || 'JOB_ACCESS';
@@ -481,6 +795,7 @@ function consultarDisponibilizacaoTreinamentosSahmtV2() {
   if (result.status !== 'READ_ONLY') return result;
   try {
     const job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);
-    return trainingReleaseLog_(Object.assign({}, result, {status: job && job.status || 'NOT_STARTED', runs: job && job.runs || 0, validatedForms: job && job.validatedForms || 0, pendingCode: job && job.pendingCode || '', pendingItems: job && job.pendingItems || []}));
+    return trainingReleaseLog_(Object.assign({}, result, {status: job && job.status || 'NOT_STARTED',phase: job && job.phase || '',runs: job && job.runs || 0, validatedForms: job && job.validatedForms || 0,
+      materialFiles: 84,materialPrepared: job && job.materialPrepared || 0,materialPending: job && Number.isInteger(job.materialPending) ? job.materialPending : 84,pendingCode: job && job.pendingCode || '', pendingItems: job && job.pendingItems || []}));
   } catch (_) { return {status: 'CONFIGURATION_PENDING', pendingCode: 'CHECKPOINT_INVALID', productionFinancialWrites: false}; }
 }
