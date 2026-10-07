@@ -358,8 +358,10 @@ function trainingReleaseMaterialBatch_(loaded,job) {
   }
   trainingReleaseLimitClone_(loaded);
   const states = [],pendingItems = [],start = job.materialCursor;
-  for (let offset = 0;start + offset < catalog.length && Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs;offset++) {
+  // Reserve time for mutations and fresh readback; a slow read phase must not starve the same trailing files forever.
+  for (let offset = 0;start + offset < catalog.length && Date.now() - started < SAHMT_V2_TRAINING_RELEASE.budgetMs / 2;offset++) {
     const index = start + offset,entry = catalog[index];
+    if (job.materialMask[index] === '1') continue; // Progress only: publication separately revalidates the live ACL for every Form.
     try {
       const file = trainingReleaseMaterialMetadata_(entry,audience),permissions = trainingReleaseMaterialPermissions_(entry.id);
       if (!file.capabilities || file.capabilities.canShare !== true) trainingReleaseReject_('MATERIAL_SHARE_UNAVAILABLE');
@@ -387,8 +389,8 @@ function trainingReleaseMaterialBatch_(loaded,job) {
     }
     job.materialMask = job.materialMask.slice(0,state.index) + (ready ? '1' : '0') + job.materialMask.slice(state.index + 1);
   });
-  const unfinished = states.some(function (state) { return !state.failed && state.operations.length; });
-  job.materialCursor = unfinished ? start : (start + states.length) % 84;
+  const pendingState = states.find(function (state) { return job.materialMask[state.index] !== '1'; });
+  job.materialCursor = pendingState ? pendingState.index : states.length ? (states[states.length - 1].index + 1) % 84 : (start + 1) % 84;
   const readyCount = job.materialMask.split('').filter(function (value) { return value === '1'; }).length;
   if (readyCount === 84 && currentAudience.digest === audience.digest) job.phase = 'FORMS';
   properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty,JSON.stringify(job));

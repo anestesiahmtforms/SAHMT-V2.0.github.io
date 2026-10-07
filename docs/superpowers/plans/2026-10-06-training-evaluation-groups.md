@@ -15,10 +15,11 @@ Preservar as páginas e os originais. A lista documentAccessEmails, os gabaritos
 - [x] Publicar Forms por estágio fechado, ACL de respondentes, verificação de conteúdo e confirmação transacional. Preservar editores e bloquear reabertura após divergência semântica.
 - [x] Criar TrainingRelease.gs com manifesto fixado por hash, verificadores reais e lotes temporários.
 - [x] Implementar ajuste dos 84 materiais por ondas sequenciais, limitação da pasta clone e projeção dos tópicos em Gestão somente após READY.
-- [x] Executar 876 testes de domínio, 81 de regras e build. Atualizar cache do PWA.
+- [x] Executar 877 testes de domínio, 81 de regras e build. Atualizar cache do PWA.
 - [x] Confirmar por leitura da API as regras efetivamente ativas no Firebase.
 - [ ] Conceder e confirmar acesso dos grupos aos materiais de apoio e edição ao gestor.
-- [ ] Integrar o código, conferir workflow e versão servida pelo Pages.
+- [x] Integrar o catálogo (PR 18), conferir workflow e versão servida pelo Pages; preservar layout e parâmetros de build da CI.
+- [x] Publicar o liberador final no Apps Script e receber registro do início nativo; ajustes de retomada conservam o progresso existente.
 - [ ] Iniciar o liberador no Apps Script e confirmar a publicação viva dos 76 Forms.
 - [ ] Validar uma participação autenticada e isolamento entre grupos no dispositivo.
 

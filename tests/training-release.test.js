@@ -415,3 +415,17 @@ test('Management projection rejects stale config version without creating an ann
   h.store.delete(`scopedDocuments/${id}`);h.seed('evaluationFormConfigs',item.formId,{...cfg,configVersion:cfg.configVersion+1});
   assert.throws(()=>h.ctx.trainingReleaseManagement_(loaded,item,cfg),/MANAGEMENT_PUBLICATION_CHANGED/);assert.equal(h.get('scopedDocuments',id),null);
 });
+
+test('slow material reads reserve fresh readback time and advance past already verified files',()=>{
+  const h=fixture(),loaded=h.load(),job=materialJob(h),metadata=h.ctx.trainingReleaseMaterialMetadata_,permissions=h.ctx.trainingReleaseMaterialPermissions_;
+  h.ctx.trainingReleaseMaterialMetadata_=(...args)=>{const value=metadata(...args);h.advance(1500);return value;};
+  h.ctx.trainingReleaseMaterialPermissions_=(...args)=>{const value=permissions(...args);h.advance(1500);return value;};
+  const first=h.ctx.trainingReleaseMaterialBatch_(loaded,job);assert.ok(first.materialPrepared>0&&first.materialPrepared<84);
+  const readyIds=new Set(plain(h.ctx.trainingReleaseMaterialCatalog_(loaded)).filter((entry,index)=>job.materialMask[index]==='1').map(entry=>entry.id));
+  assert.ok(job.materialCursor>0);h.readbacks.length=0;
+  for(let run=0;run<8&&job.phase!=='FORMS';run++)h.ctx.trainingReleaseMaterialBatch_(loaded,job);
+  assert.equal(job.materialMask,'1'.repeat(84));assert.equal(job.phase,'FORMS');
+  assert.equal(h.readbacks.some(read=>readyIds.has(read.id)),false,'finished checkpoints are not reread during setup waves');
+  const item=h.manifest.items.find(entry=>entry.materialUrls.some(url=>readyIds.has(url.match(/\/d\/([^/]+)/)[1])));
+  h.ctx.trainingReleaseMaterialVerify_(loaded,item);assert.equal(h.readbacks.some(read=>readyIds.has(read.id)),true,'publication still revalidates the live ACL');
+});
