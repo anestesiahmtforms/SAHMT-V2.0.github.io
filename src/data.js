@@ -1743,6 +1743,7 @@ export async function saveChecklistStation(input, uid) {
       order,
       active: input.active === true,
       ...(current.exists() && Object.hasOwn(current.data(), 'maintenance') ? {maintenance: current.data().maintenance} : {}),
+      ...(current.exists() && Object.hasOwn(current.data(), 'maintenanceCalibrationPeriod') ? {maintenanceCalibrationPeriod: current.data().maintenanceCalibrationPeriod} : {}),
       createdByUid: current.exists() ? current.data().createdByUid : uid,
       createdAt: current.exists() ? current.data().createdAt : serverTimestamp(),
       updatedByUid: uid,
