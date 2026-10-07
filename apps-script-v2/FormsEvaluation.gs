@@ -553,7 +553,7 @@ function formsEvaluationPublishedPermissions_(formId) {
   let token = '';
   do {
     const url = 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(formId) + '/permissions?includePermissionsForView=published&supportsAllDrives=true&pageSize=100&fields=' +
-      encodeURIComponent('nextPageToken,permissions(id,type,role,emailAddress,view,deleted,permissionDetails(inherited,inheritedFrom))') + (token ? '&pageToken=' + encodeURIComponent(token) : '');
+      encodeURIComponent('nextPageToken,permissions(id,type,role,emailAddress,view,deleted,pendingOwner,permissionDetails(role,inherited,inheritedFrom))') + (token ? '&pageToken=' + encodeURIComponent(token) : '');
     const page = formsEvaluationGoogleRequest_(url);
     if (!page || !Array.isArray(page.permissions)) throw new Error('Lista de permissões publicada não pôde ser comprovada.');
     result.push.apply(result, page.permissions);
@@ -564,12 +564,25 @@ function formsEvaluationPublishedPermissions_(formId) {
   } while (token);
   return result;
 }
+function formsEvaluationExpectedOwners_(permissions, expected) {
+  // Google does not create a separate responder grant for the existing owner/editor.
+  // Only the direct owner already in the approved roster counts here; normal viewers/editors do not.
+  // https://developers.google.com/apps-script/reference/forms/form#addPublishedReader(String)
+  return permissions.filter(function (permission) {
+    const email = String(permission.emailAddress || '').trim().toLowerCase();
+    const details = permission.permissionDetails || [];
+    return !permission.view && permission.type === 'user' && permission.role === 'owner' && permission.deleted !== true && permission.pendingOwner !== true &&
+      expected.includes(email) && (!details.length || details.some(function (detail) { return detail.role === 'owner' && detail.inherited === false; }));
+  }).map(function (permission) { return String(permission.emailAddress || '').trim().toLowerCase(); });
+}
 function formsEvaluationPublishedPermissionsExact_(permissions, expected) {
   const published = permissions.filter(function (permission) { return permission.view === 'published'; });
   if (published.some(function (permission) { return permission.type !== 'user' || permission.role !== 'reader' || permission.deleted === true ||
     (permission.permissionDetails || []).some(function (detail) { return detail.inherited === true; }) ||
     !expected.includes(String(permission.emailAddress || '').trim().toLowerCase()); })) return false;
-  const actual = published.map(function (permission) { return String(permission.emailAddress || '').trim().toLowerCase(); }).sort();
+  const explicit = published.map(function (permission) { return String(permission.emailAddress || '').trim().toLowerCase(); });
+  if (new Set(explicit).size !== explicit.length || new Set(expected).size !== expected.length) return false;
+  const actual = [...new Set(explicit.concat(formsEvaluationExpectedOwners_(permissions, expected)))].sort();
   return actual.length === expected.length && actual.every(function (email, index) { return email === expected[index]; });
 }
 function formsEvaluationSyncResponders_(form, emails) {
@@ -587,7 +600,9 @@ function formsEvaluationSyncResponders_(form, emails) {
       formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(formId) + '/permissions/' + encodeURIComponent(permission.id) + '?supportsAllDrives=true', {method: 'delete'});
     });
     permissions = formsEvaluationPublishedPermissions_(formId);
+    const owners = formsEvaluationExpectedOwners_(permissions, emails);
     emails.forEach(function (email) {
+      if (owners.includes(email)) return;
       if (!permissions.some(function (permission) { return permission.view === 'published' && permission.type === 'user' && permission.role === 'reader' && String(permission.emailAddress || '').trim().toLowerCase() === email; })) {
         formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(formId) + '/permissions?supportsAllDrives=true&sendNotificationEmail=false',
           {method: 'post', contentType: 'application/json', payload: JSON.stringify({type: 'user', role: 'reader', view: 'published', emailAddress: email})});
