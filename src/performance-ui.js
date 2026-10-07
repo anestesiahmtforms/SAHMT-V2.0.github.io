@@ -1,5 +1,6 @@
 import {createLiveReportSession} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
+import {renderCatalogFolders} from './catalog-folders.js';
 
 const CATEGORIES = new Set(['PERFORMANCE', 'GOVERNANCE']);
 const MODALITY_LABELS = {ACKNOWLEDGEMENT: 'Ciência', SUGGESTION: 'Sugestão aprovada', TEST: 'Teste', MATERIAL: 'Material', QUESTIONS: 'Questões', CHECKLIST_TRANSFER: 'Transferência do Checklist', CHECKLIST: 'Checklist'};
@@ -283,11 +284,11 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     }
   }
   function renderActivities() {
-    markup('[data-evaluation-activities]', activities.length ? `<ol class="evaluation-activity-list">${activities.map(activity => {
+    markup('[data-evaluation-activities]', activities.length ? renderCatalogFolders(activities, activity => {
       const configured = activity.status === 'READY' && activity.active === true;
       const url = configured ? safeUrl(activity.responderUrl) : '';
       return `<li id="evaluation-activity-${escapeHtml(activity.id)}"><strong>${escapeHtml(activity.title || activity.id)}</strong><small>Versão ${escapeHtml(activity.version || 'não definida')} · ${escapeHtml(STATUS_LABELS[activity.status] || activity.status || 'Configuração pendente')}</small>${activity.reason ? `<p>${escapeHtml(activity.reason)}</p>` : ''}<small>${[activity.modalities?.acknowledgement ? 'Ciência: 1 ponto' : '', activity.modalities?.suggestion ? 'Sugestão aprovada: 2 pontos' : '', activity.modalities?.test ? 'Teste: nota corrigida do Forms' : ''].filter(Boolean).map(escapeHtml).join(' · ')}</small>${evidenceLink(activity.materialUrls, 'Material de apoio')}${url ? `<a class="primary-button evaluation-link-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Abrir formulário</a>` : '<small>Participação aguardando configuração ou vigência válida.</small>'}<small>Abrir o formulário não gera pontos. A ciência registra uma declaração do participante e não comprova leitura integral.</small></li>`;
-    }).join('')}</ol>` : '<p class="empty-state">Nenhuma atividade elegível foi vinculada ainda.</p>');
+    }, {scope: 'activities', listClass: 'evaluation-activity-list', ordered: true, fallback: 'Outros treinamentos'}) : '<p class="empty-state">Nenhuma atividade elegível foi vinculada ainda.</p>');
   }
   async function refreshReviewQueue({suggestionsOnly = false} = {}) {
     if (!(suggestionsOnly ? suggestionReviewer() : admin())) return;
