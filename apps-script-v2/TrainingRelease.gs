@@ -902,7 +902,7 @@ function continuarDisponibilizacaoTreinamentosSahmtV2_() {
 }
 function consultarDisponibilizacaoTreinamentosSahmtV2() {
   try { evaluationAssertOperator_(false); }
-  catch (_) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: 'JOB_AUTHORIZATION_REQUIRED', checkpointReadOnly: true, catalogReadAvailable: false, productionFinancialWrites: false}); }
+  catch (_) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: 'JOB_AUTHORIZATION_REQUIRED', checkpointReadOnly: true, catalogReadAvailable: false, liveFormsRevalidated: false, productionFinancialWrites: false}); }
   let job, result;
   try {
     const cfg = SAHMT_V2_TRAINING_RELEASE, now = Date.now();
@@ -927,7 +927,7 @@ function consultarDisponibilizacaoTreinamentosSahmtV2() {
       if (job.pendingCode !== undefined) result.pendingCode = job.pendingCode;
       if (job.httpStatus !== undefined) result.httpStatus = job.httpStatus;
     }
-  } catch (_) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: 'CHECKPOINT_INVALID', checkpointReadOnly: true, catalogReadAvailable: false, productionFinancialWrites: false}); }
+  } catch (_) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: 'CHECKPOINT_INVALID', checkpointReadOnly: true, catalogReadAvailable: false, liveFormsRevalidated: false, productionFinancialWrites: false}); }
   if (job) {
     try {
       const triggers = ScriptApp.getProjectTriggers();
