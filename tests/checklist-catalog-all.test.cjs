@@ -92,7 +92,7 @@ test('banner usa altura natural, centralização explícita e limite da área se
   assert.ok(!dialog.includes('fit-content'));
 });
 
-test('largura intrínseca do calendário não estica a coluna e preserva o input date', () => {
+test('largura intrínseca do calendário não estica a coluna e preserva o seletor de data', () => {
   const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
   const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
   const input = css.match(/#checklist-station-dialog \.checklist-maintenance-date input\{([^}]+)\}/)[1];
@@ -103,7 +103,7 @@ test('largura intrínseca do calendário não estica a coluna e preserva o input
   assert.match(input, /min-height:44px/);
   assert.match(css, /#checklist-station-dialog \.checklist-maintenance-date input::-webkit-date-and-time-value\{[^}]*min-width:0[^}]*max-width:100%/);
   assert.ok(!/overflow:\s*hidden|text-overflow:\s*ellipsis/.test(input));
-  assert.match(main, /<input type="date" data-checklist-maintenance-date=/);
+  assert.match(main, /<input type="\$\{checklistMaintenanceInputType\(maintenance\[key\]\)\}" data-checklist-maintenance-date=/);
 });
 
 
