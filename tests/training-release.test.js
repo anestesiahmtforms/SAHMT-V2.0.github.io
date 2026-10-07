@@ -28,7 +28,7 @@ function fixture() {
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key)||null,setProperty:(key,value)=>properties.set(key,value),deleteProperty:key=>properties.delete(key)})},
     Session:{getEffectiveUser:()=>({getEmail:()=>operator})},
     Logger:{log:value=>logs.push(value)},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
-    ScriptApp:{getOAuthToken:()=> 'synthetic-token',getProjectTriggers:()=>triggers,newTrigger:handler=>({timeBased:()=>({everyMinutes:minutes=>({create:()=>{assert.equal(minutes,5);const id=`trigger-${++serial}`;const t={getUniqueId:()=>id,getHandlerFunction:()=>handler};triggers.push(t);return t;}})})}),deleteTrigger:t=>{removedTriggers.push(t.getUniqueId());triggers.splice(triggers.indexOf(t),1);}},
+    ScriptApp:{TriggerSource:{CLOCK:'CLOCK'},EventType:{CLOCK:'CLOCK'},getOAuthToken:()=> 'synthetic-token',getProjectTriggers:()=>triggers,newTrigger:handler=>({timeBased:()=>({everyMinutes:minutes=>({create:()=>{assert.equal(minutes,5);const id=`trigger-${++serial}`;const t={getUniqueId:()=>id,getHandlerFunction:()=>handler,getTriggerSource:()=> 'CLOCK',getEventType:()=> 'CLOCK'};triggers.push(t);return t;}})})}),deleteTrigger:t=>{removedTriggers.push(t.getUniqueId());triggers.splice(triggers.indexOf(t),1);}},
     DriveApp:{Access:{PRIVATE:'PRIVATE'},getFileById:id=>{if(!files.has(id))throw Error('sensitive inaccessible file');return files.get(id);}},
     FormApp:{openById:id=>{if(!forms.has(id))throw Error('sensitive inaccessible form');return forms.get(id);}}
   });
@@ -264,6 +264,136 @@ test('time budget stops scheduling further Forms and checkpoints preserve the ne
   const h=fixture(),prepare=h.ctx.trainingReleasePrepared_;h.ctx.trainingReleasePrepared_=(loaded,item)=>{const result=prepare(loaded,item);h.advance(80000);return result;};
   const result=h.ctx.prepararCatalogoTreinamentosSahmtV2();assert.equal(result.attemptedForms,2);assert.equal(result.preparedForms,2);
   assert.equal(JSON.parse(h.properties.get('SAHMT_V2_TRAINING_RELEASE_CURSOR')).prepare,2);
+});
+
+const jobProperty='SAHMT_V2_TRAINING_RELEASE_JOB',cursorProperty='SAHMT_V2_TRAINING_RELEASE_CURSOR';
+const releaseHandler='continuarDisponibilizacaoTreinamentosSahmtV2_';
+function stoppedReleaseJob(h, changes={}) {
+  const loaded=h.load(),audience=h.ctx.trainingReleaseMaterialAudience_(loaded);
+  const job={schemaVersion:2,status:'CONFIGURATION_PENDING',pendingCode:'JOB_ACCESS',digest:loaded.digest,
+    startedAt:Date.parse('2026-10-06T15:00:00Z'),runs:19,phase:'FORMS',closeCursor:0,closeMask:'1'.repeat(76),
+    materialCursor:0,materialMask:'1'.repeat(84),materialAudienceDigest:audience.digest,verifiedMask:'1'.repeat(16)+'0'.repeat(60),
+    triggerId:'stopped-trigger',preparedForms:19,publishedForms:17,pendingForms:59,validatedForms:16,materialPrepared:84,materialPending:0,
+    productionFinancialWrites:false,...changes};
+  h.properties.set(jobProperty,JSON.stringify(job));
+  h.properties.set(cursorProperty,JSON.stringify({schemaVersion:1,digest:loaded.digest,prepare:0,release:0,combined:19}));
+  return job;
+}
+function clockTrigger(id,handler=releaseHandler) {
+  return {getUniqueId:()=>id,getHandlerFunction:()=>handler,getTriggerSource:()=> 'CLOCK',getEventType:()=> 'CLOCK'};
+}
+function assertNoReleaseMutation(h,before) {
+  assert.deepEqual([...h.properties],before);assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);assert.equal(h.formOperations.length,0);
+}
+
+test('quota interruption is classified and resumed at the same checkpoint without extending the job',()=>{
+  const h=fixture(),initial=stoppedReleaseJob(h,{status:'RUNNING'}),cursor=h.properties.get(cursorProperty),audience=h.ctx.trainingReleaseMaterialAudience_;
+  h.triggers.push(clockTrigger(initial.triggerId));
+  h.ctx.trainingReleaseMaterialAudience_=()=>{throw Object.assign(Error('sensitive private provider body'),{status:429});};
+  const interrupted=h.ctx.continuarDisponibilizacaoTreinamentosSahmtV2_();
+  assert.equal(interrupted.pendingCode,'JOB_QUOTA_EXCEEDED');assert.equal(interrupted.httpStatus,429);assert.equal(h.triggers.length,0);
+  const stopped=JSON.parse(h.properties.get(jobProperty));assert.equal(stopped.runs,20);assert.equal(stopped.startedAt,initial.startedAt);
+  h.ctx.trainingReleaseMaterialAudience_=audience;h.advance(3600000);
+  const resumed=h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2(),after=JSON.parse(h.properties.get(jobProperty));
+  assert.equal(resumed.status,'RUNNING');assert.equal(resumed.resumedOriginalJob,true);assert.equal(h.triggers.length,1);
+  const expected={...stopped,status:'RUNNING',triggerId:h.triggers[0].getUniqueId()};delete expected.pendingCode;delete expected.httpStatus;
+  assert.deepEqual(after,expected);assert.equal(h.properties.get(cursorProperty),cursor);assert.equal(after.runs,20);assert.equal(after.startedAt,initial.startedAt);
+  assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);assert.equal(h.formOperations.length,0);
+  assert.equal(h.logs.some(log=>log.includes('sensitive private provider body')),false);
+  h.advance(86400000-3600000);const writes=h.commits.length;
+  assert.equal(h.ctx.continuarDisponibilizacaoTreinamentosSahmtV2_().pendingCode,'JOB_LIMIT');assert.equal(h.commits.length,writes);assert.equal(h.triggers.length,0);
+});
+
+test('historic JOB_ACCESS and explicit transient HTTP failures can resume without changing counters or masks',()=>{
+  for(const [status,code] of [[null,'JOB_ACCESS'],[429,'JOB_QUOTA_EXCEEDED'],[503,'JOB_TEMPORARY_SERVICE'],[409,'JOB_REVISION_CONFLICT']]) {
+    const h=fixture(),initial=stoppedReleaseJob(h,{pendingCode:code,...(status?{httpStatus:status}:{})}),cursor=h.properties.get(cursorProperty);
+    const result=h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2(),job=JSON.parse(h.properties.get(jobProperty));
+    assert.equal(result.status,'RUNNING');assert.equal(job.runs,initial.runs);assert.equal(job.startedAt,initial.startedAt);
+    for(const key of ['digest','phase','closeCursor','closeMask','materialCursor','materialMask','materialAudienceDigest','verifiedMask'])assert.equal(job[key],initial[key]);
+    assert.equal(h.properties.get(cursorProperty),cursor);assert.equal(h.triggers.length,1);assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);
+  }
+});
+
+test('running jobs reuse their exact clock trigger and public resume never runs a batch inside its lock',()=>{
+  const h=fixture(),job=stoppedReleaseJob(h,{status:'RUNNING'}),known=clockTrigger(job.triggerId),unrelated=clockTrigger('unrelated','otherHandler');
+  h.triggers.push(known,unrelated);let held=false,releases=0;
+  h.ctx.LockService.getScriptLock=()=>({tryLock:()=>{assert.equal(held,false);held=true;return true;},releaseLock:()=>{held=false;releases++;}});
+  h.ctx.trainingReleaseBatch_=()=>{throw Error('resume must not execute any batch');};
+  const before=copy([...h.properties]);
+  assert.equal(h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().status,'RUNNING');
+  assert.equal(h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().status,'RUNNING');
+  assert.deepEqual(h.triggers,[known,unrelated]);assert.equal(h.removedTriggers.length,0);assert.equal(releases,2);assert.equal(held,false);assertNoReleaseMutation(h,before);
+});
+
+test('resume rejects changed identity, audience, invalid checkpoints and exhausted limits with no changes',()=>{
+  const variants=[
+    h=>h.seed('users','admin',{uid:'admin',email:operator,active:true,access:true,permissions:{}}),
+    h=>h.manifestFile.permissions.push({type:'group',role:'reader'}),
+    h=>h.seed('documentAccessEmails','other@example.invalid',{email:'other@example.invalid',active:true,groups:['GENERAL']}),
+    h=>h.advance(86400000),
+    (h,job)=>job.runs=80,
+    (h,job)=>job.runs=-1,
+    (h,job)=>job.startedAt+=1000,
+    (h,job)=>job.digest='0'.repeat(64),
+    (h,job)=>job.schemaVersion=1,
+    (h,job)=>job.closeMask='0'+'1'.repeat(75),
+    (h,job)=>job.materialMask='0'+'1'.repeat(83),
+    (h,job)=>job.verifiedMask='invalid',
+    (h,job)=>job.materialCursor=84,
+    (h,job)=>job.productionFinancialWrites=true,
+    (h,job)=>job.pendingCode='JOB_LIMIT',
+    (h,job)=>job.pendingCode='ADMIN_AREA_ASSIGNMENT',
+    (h,job)=>{job.pendingCode='JOB_ACCESS';job.httpStatus=403;},
+    h=>{const cursor=JSON.parse(h.properties.get(cursorProperty));cursor.combined=76;h.properties.set(cursorProperty,JSON.stringify(cursor));},
+    h=>h.properties.delete(cursorProperty)
+  ];
+  for(const alter of variants) {
+    const h=fixture(),job=stoppedReleaseJob(h);alter(h,job);h.properties.set(jobProperty,JSON.stringify(job));
+    const before=copy([...h.properties]);assert.equal(h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().status,'CONFIGURATION_PENDING');
+    assert.equal(h.triggers.length,0);assert.equal(h.removedTriggers.length,0);assertNoReleaseMutation(h,before);
+  }
+});
+
+test('resume rejects unknown, duplicate or non-clock handler triggers without removing them',()=>{
+  for(const makeTriggers of [
+    job=>[clockTrigger('unknown')],
+    job=>[clockTrigger(job.triggerId),clockTrigger(job.triggerId)],
+    job=>[clockTrigger(job.triggerId,'wrongHandler')],
+    job=>[{...clockTrigger(job.triggerId),getTriggerSource:()=> 'SPREADSHEETS'}],
+    job=>[{...clockTrigger(job.triggerId),getEventType:()=> 'ON_EDIT'}]
+  ]) {
+    const h=fixture(),job=stoppedReleaseJob(h);h.triggers.push(...makeTriggers(job));const before=copy([...h.properties]),triggers=[...h.triggers];
+    const result=h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2();assert.equal(result.pendingCode,'JOB_TRIGGER_CONFLICT');
+    assert.deepEqual(h.triggers,triggers);assert.equal(h.removedTriggers.length,0);assertNoReleaseMutation(h,before);
+  }
+});
+
+test('resume notices property drift before arming and compensates only its newly created trigger',()=>{
+  const early=fixture();stoppedReleaseJob(early);const audience=early.ctx.trainingReleaseMaterialAudience_,originalJob=early.properties.get(jobProperty);
+  early.ctx.trainingReleaseMaterialAudience_=(...args)=>{const value=audience(...args);early.properties.set(cursorProperty,'manual concurrent cursor');return value;};
+  assert.equal(early.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().pendingCode,'JOB_CHANGED_DURING_RESUME');
+  assert.equal(early.properties.get(jobProperty),originalJob);assert.equal(early.properties.get(cursorProperty),'manual concurrent cursor');assert.equal(early.triggers.length,0);
+  const h=fixture();stoppedReleaseJob(h);const unrelated=clockTrigger('unrelated','otherHandler');h.triggers.push(unrelated);
+  const nativeCreate=h.ctx.ScriptApp.newTrigger;let manualRaw;
+  h.ctx.ScriptApp.newTrigger=handler=>({timeBased:()=>({everyMinutes:minutes=>({create:()=>{
+    const created=nativeCreate(handler).timeBased().everyMinutes(minutes).create();
+    manualRaw=JSON.stringify({...JSON.parse(h.properties.get(jobProperty)),status:'MANUAL_REVIEW',runs:21});h.properties.set(jobProperty,manualRaw);return created;
+  }})})});
+  assert.equal(h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().pendingCode,'JOB_CHANGED_DURING_RESUME');
+  assert.equal(h.properties.get(jobProperty),manualRaw);assert.deepEqual(h.triggers,[unrelated]);assert.equal(h.removedTriggers.length,1);
+  assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);assert.equal(h.formOperations.length,0);
+});
+
+test('unknown trigger creation outcome leaves a guarded intent and is never blindly armed twice',()=>{
+  const h=fixture();stoppedReleaseJob(h);const create=h.ctx.ScriptApp.newTrigger,cursor=h.properties.get(cursorProperty);
+  h.ctx.ScriptApp.newTrigger=handler=>({timeBased:()=>({everyMinutes:minutes=>({create:()=>{
+    create(handler).timeBased().everyMinutes(minutes).create();throw Object.assign(Error('private transient transport body'),{status:503});
+  }})})});
+  const first=h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2();assert.equal(first.pendingCode,'JOB_TEMPORARY_SERVICE');assert.equal(first.httpStatus,503);
+  assert.equal(JSON.parse(h.properties.get(jobProperty)).pendingCode,'JOB_TRIGGER_UNCONFIRMED');assert.equal(h.triggers.length,1);
+  const before=copy([...h.properties]);assert.equal(h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().pendingCode,'JOB_RESUME_REQUIRES_REVIEW');
+  assert.equal(h.triggers.length,1);assert.equal(h.removedTriggers.length,0);assert.equal(h.properties.get(cursorProperty),cursor);assertNoReleaseMutation(h,before);
+  assert.equal(h.logs.some(log=>log.includes('private transient transport body')),false);
 });
 
 
