@@ -1,0 +1,15 @@
+.catalog-folders { display: grid; gap: 12px; min-width: 0; }
+.catalog-folder { min-width: 0; border: 1px solid #aac6d3; border-radius: 14px; background: #fff; overflow: hidden; }
+.catalog-folder > summary { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 12px 14px; box-sizing: border-box; list-style: none; cursor: pointer; color: var(--ink, #143254); background: linear-gradient(145deg, #fffaf0, #e6eff2); }
+.catalog-folder > summary::-webkit-details-marker { display: none; }
+.catalog-folder > summary:focus-visible { outline: 3px solid #1762a1; outline-offset: -3px; }
+.catalog-folder-icon { width: 24px; height: 24px; flex: 0 0 auto; color: #1762a1; }
+.catalog-folder-name { flex: 1; min-width: 0; font-weight: 850; line-height: 1.35; overflow-wrap: anywhere; }
+.catalog-folder-count { flex: 0 0 auto; font-size: .77rem; white-space: nowrap; color: #526578; }
+.catalog-folder-chevron { flex: 0 0 auto; font-size: 1.2rem; line-height: 1; transition: transform .15s; }
+.catalog-folder[open] > summary { border-bottom: 1px solid #c7d8df; }
+.catalog-folder[open] .catalog-folder-chevron { transform: rotate(180deg); }
+.catalog-folder-content { padding: 12px; min-width: 0; }
+.catalog-folder-content > .record-list, .catalog-folder-content > .evaluation-activity-list { margin: 0; padding: 0; list-style: none; }
+@media (max-width: 520px) { .catalog-folder > summary { padding: 12px 10px; gap: 8px; }.catalog-folder-content { padding: 10px; }.catalog-folder-name { font-size: .88rem; } }
+@media (prefers-reduced-motion: reduce) { .catalog-folder-chevron { transition: none; } }
