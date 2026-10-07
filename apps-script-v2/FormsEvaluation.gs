@@ -501,12 +501,208 @@ function formsEvaluationAssignments_(payload, actorUid, tx) {
   if (writes.length + 1 > SAHMT_V2_EVALUATION_LEDGER.maxWrites) throw new Error('Designação excede o limite de transação; preservar como pendente sem atualizar projeção parcial.');
   return {writes: writes, result: {status:'CONFIRMED', assignmentId:payload.areaId, assignmentVersion:version, updatedActivities:configs.length}};
 }
+function formsEvaluationGroupRoster_(groups, tx) {
+  const accepted = Array.isArray(groups) ? groups.filter(function (group) { return ['GENERAL', 'RESTRICTED'].includes(group); }) : [];
+  if (!accepted.length) return [];
+  return formsEvaluationAll_('documentAccessEmails', [], tx).filter(function (entry) {
+    const email = String(entry.email || '').trim().toLowerCase();
+    return entry.active === true && email === String(entry.id || '').trim().toLowerCase() &&
+      /^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && Array.isArray(entry.groups) &&
+      entry.groups.some(function (group) { return accepted.includes(group); });
+  });
+}
+function formsEvaluationEligibleProfile_(cfg, profile, tx) {
+  if (!formsEvaluationActive_(profile) || !formsEvaluationId_(profile.uid || profile.id) || (profile.uid && profile.id && profile.uid !== profile.id)) return false;
+  if (Array.isArray(cfg.eligibleUids) && cfg.eligibleUids.includes(profile.uid || profile.id)) return true;
+  const groups = Array.isArray(cfg.eligibleGroups) ? cfg.eligibleGroups : [];
+  const email = String(profile.email || '').trim().toLowerCase();
+  return Boolean(email && groups.length && formsEvaluationGroupRoster_(groups, tx).some(function (entry) { return entry.email === email; }));
+}
+function formsEvaluationResponderEmails_(cfg, tx) {
+  const emails = formsEvaluationGroupRoster_(cfg.eligibleGroups || [], tx).map(function (entry) { return entry.email; });
+  const uids = Array.isArray(cfg.eligibleUids) ? [...new Set(cfg.eligibleUids)] : [];
+  if (uids.length) {
+    const profiles = formsEvaluationAll_('users', [], tx);
+    uids.forEach(function (uid) {
+      const profile = profiles.find(function (entry) { return entry.id === uid; });
+      const email = String(profile && profile.email || '').trim().toLowerCase();
+      const identity = formsEvaluationResolveIdentity_({settings: {emailCollectionType: 'VERIFIED'}}, {respondentEmail: email}, profiles);
+      if (!formsEvaluationId_(uid) || !formsEvaluationActive_(profile) || identity.status !== 'CONFIRMED' || identity.uid !== uid ||
+          !/^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) throw new Error('UID individual não possui perfil aprovado e identidade única.');
+      emails.push(email);
+    });
+  }
+  const expected = [...new Set(emails)].sort();
+  if (!expected.length) throw new Error('O público autorizado está vazio; formulário deve continuar fechado.');
+  return expected;
+}
+function formsEvaluationCloseForm_(form) {
+  // Each close operation is attempted independently: one failing API must not skip the other.
+  try { if (typeof form.setPublished === 'function') form.setPublished(false); } catch (_) {}
+  try { form.setAcceptingResponses(false); } catch (_) {}
+  let closed = false;
+  try { closed = form.isAcceptingResponses() === false &&
+    (typeof form.supportsAdvancedResponderPermissions !== 'function' || !form.supportsAdvancedResponderPermissions() || form.isPublished() === false); } catch (_) {}
+  if (!closed) throw new Error('Fechamento do Google Form não confirmado; acesso externo exige reconciliação.');
+  return true;
+}
+function formsEvaluationPublishedPermissions_(formId) {
+  // Google documents responder grants as Drive permissions with view=published. User[] alone misses anyone/domain grants.
+  // https://developers.google.com/workspace/forms/api/guides/publish-form
+  const result = [], tokens = new Set();
+  let token = '';
+  do {
+    const url = 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(formId) + '/permissions?includePermissionsForView=published&supportsAllDrives=true&pageSize=100&fields=' +
+      encodeURIComponent('nextPageToken,permissions(id,type,role,emailAddress,view,deleted,permissionDetails(inherited,inheritedFrom))') + (token ? '&pageToken=' + encodeURIComponent(token) : '');
+    const page = formsEvaluationGoogleRequest_(url);
+    if (!page || !Array.isArray(page.permissions)) throw new Error('Lista de permissões publicada não pôde ser comprovada.');
+    result.push.apply(result, page.permissions);
+    if (result.length > SAHMT_V2_EVALUATION_FORMS.maxScan) throw new Error('Lista de respondentes excede a varredura completa.');
+    token = String(page.nextPageToken || '');
+    if (token && tokens.has(token)) throw new Error('Paginação de permissões não avançou.');
+    if (token) tokens.add(token);
+  } while (token);
+  return result;
+}
+function formsEvaluationPublishedPermissionsExact_(permissions, expected) {
+  const published = permissions.filter(function (permission) { return permission.view === 'published'; });
+  if (published.some(function (permission) { return permission.type !== 'user' || permission.role !== 'reader' || permission.deleted === true ||
+    (permission.permissionDetails || []).some(function (detail) { return detail.inherited === true; }) ||
+    !expected.includes(String(permission.emailAddress || '').trim().toLowerCase()); })) return false;
+  const actual = published.map(function (permission) { return String(permission.emailAddress || '').trim().toLowerCase(); }).sort();
+  return actual.length === expected.length && actual.every(function (email, index) { return email === expected[index]; });
+}
+function formsEvaluationSyncResponders_(form, emails) {
+  try {
+    formsEvaluationCloseForm_(form);
+    if (!emails.length || typeof form.supportsAdvancedResponderPermissions !== 'function' || !form.supportsAdvancedResponderPermissions() || typeof form.setPublished !== 'function') return false;
+    const formId = form.getId();
+    let permissions = formsEvaluationPublishedPermissions_(formId);
+    permissions.filter(function (permission) { return permission.view === 'published'; }).forEach(function (permission) {
+      if ((permission.permissionDetails || []).some(function (detail) { return detail.inherited === true; })) throw new Error('Acesso de respondente herdado não pode ser restringido neste formulário.');
+      const email = String(permission.emailAddress || '').trim().toLowerCase();
+      if (permission.type === 'user' && permission.role === 'reader' && permission.deleted !== true && emails.includes(email)) return;
+      if (!permission.id || permission.role !== 'reader' || !['user','anyone','domain','group'].includes(permission.type)) throw new Error('Permissão publicada não pode ser removida com segurança.');
+      // Delete only the published grant by its ID. removePublishedReader can remove editor/viewer rights too.
+      formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(formId) + '/permissions/' + encodeURIComponent(permission.id) + '?supportsAllDrives=true', {method: 'delete'});
+    });
+    permissions = formsEvaluationPublishedPermissions_(formId);
+    emails.forEach(function (email) {
+      if (!permissions.some(function (permission) { return permission.view === 'published' && permission.type === 'user' && permission.role === 'reader' && String(permission.emailAddress || '').trim().toLowerCase() === email; })) {
+        formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(formId) + '/permissions?supportsAllDrives=true&sendNotificationEmail=false',
+          {method: 'post', contentType: 'application/json', payload: JSON.stringify({type: 'user', role: 'reader', view: 'published', emailAddress: email})});
+      }
+    });
+    if (!formsEvaluationPublishedPermissionsExact_(formsEvaluationPublishedPermissions_(formId), emails)) throw new Error('Respondentes publicados não correspondem ao público autorizado.');
+    form.setPublished(true);
+    form.setAcceptingResponses(true);
+    if (!form.isPublished() || !form.isAcceptingResponses() || !formsEvaluationPublishedPermissionsExact_(formsEvaluationPublishedPermissions_(formId), emails)) throw new Error('Publicação e respondentes não confirmados.');
+    return true;
+  } catch (_) {
+    formsEvaluationCloseForm_(form);
+    return false;
+  }
+}
+function formsEvaluationPublicationContext_(cfg, tx) {
+  const assignment = evaluationGet_('evaluationAssignments', cfg.managerAreaId, tx);
+  const area = evaluationGet_('managementAreas', cfg.managerAreaId, tx);
+  if (!formsEvaluationAdmin_(evaluationGet_('users', cfg.configuredByUid, tx)) || !area || area.active !== true || !assignment ||
+      assignment.uid !== cfg.managerUid || assignment.version !== cfg.assignmentVersion || !formsEvaluationActive_(evaluationGet_('users', assignment.uid, tx))) throw new Error('Designação, área ou administrador da configuração não possui acesso vigente.');
+  return formsEvaluationResponderEmails_(cfg, tx);
+}
+function formsEvaluationReleaseGate_(formId, activity, cfg) {
+  if (!activity.trainingReleaseManifestDigest) return null;
+  try {
+    if (activity.trainingReleaseBlocked === true || cfg.trainingReleaseBlocked === true || typeof trainingReleaseVerifyPublication_ !== 'function') throw new Error('Catálogo exige nova validação privada antes da publicação.');
+    const verified = trainingReleaseVerifyPublication_(formId);
+    if (!verified || verified.formId !== formId || verified.manifestDigest !== activity.trainingReleaseManifestDigest || verified.formDigest !== activity.trainingReleaseDigest ||
+        !/^[a-f0-9]{64}$/.test(verified.manifestDigest) || !/^[a-f0-9]{64}$/.test(verified.formDigest)) throw new Error('Prova privada do catálogo não corresponde à projeção.');
+    return {formId: formId, manifestDigest: verified.manifestDigest, formDigest: verified.formDigest};
+  } catch (_) {
+    const error = new Error('Catálogo exige nova validação privada antes da publicação.');
+    error.trainingReleaseBlocked = true;
+    throw error;
+  }
+}
+function formsEvaluationReleaseGateUnchanged_(expected, activity, cfg) {
+  if (!expected && !activity.trainingReleaseManifestDigest) return true;
+  if (expected && expected.manifestDigest === activity.trainingReleaseManifestDigest && expected.formDigest === activity.trainingReleaseDigest &&
+      activity.trainingReleaseBlocked !== true && cfg.trainingReleaseBlocked !== true) return true;
+  const error = new Error('Prova privada do catálogo mudou durante a publicação.');
+  error.trainingReleaseBlocked = true;
+  throw error;
+}
+function formsEvaluationPublicationPending_(formId, configVersion, closureConfirmed, releaseBlocked) {
+  return evaluationRunTransaction_(function (tx) {
+    const cfg = evaluationGet_('evaluationFormConfigs', formId, tx), activity = evaluationGet_('evaluationActivities', formId, tx);
+    if (!cfg || !activity || cfg.configVersion !== configVersion) return {writes: [], result: {status: 'CONFIGURATION_PENDING'}};
+    const blocked = releaseBlocked === true || cfg.trainingReleaseBlocked === true || activity.trainingReleaseBlocked === true;
+    const pending = {status: 'CONFIGURATION_PENDING', reason: closureConfirmed ? blocked ? 'Catálogo exige nova validação privada antes da publicação.' : 'Respondentes ou publicação pendentes de reconciliação.' : 'Fechamento do Google Form não confirmado; acesso externo exige reconciliação.', publicationPending: !blocked && (cfg.publicationPending === true || cfg.status === 'READY')};
+    if (blocked) pending.trainingReleaseBlocked = true;
+    const writes = [evaluationWrite_('evaluationFormConfigs', formId, pending, cfg, ['updatedAt']), evaluationWrite_('evaluationActivities', formId, pending, activity, ['updatedAt'])];
+    if (activity.trainingReleaseManifestDigest && typeof trainingReleaseManagementCloseWrite_ === 'function') {
+      const managementWrite = trainingReleaseManagementCloseWrite_(formId,activity,cfg,tx);
+      if (managementWrite) writes.push(managementWrite);
+    }
+    return {writes: writes, result: {status: pending.status}};
+  });
+}
+function formsEvaluationFinalizePublication_(formId, requestId) {
+  let form = null, configVersion = null;
+  try {
+    const cfg = evaluationGet_('evaluationFormConfigs', formId), activity = evaluationGet_('evaluationActivities', formId);
+    if (!cfg || !activity || !Array.isArray(cfg.eligibleGroups) || !cfg.eligibleGroups.length || (cfg.status !== 'READY' && cfg.publicationPending !== true)) return {status: 'CONFIGURATION_PENDING'};
+    configVersion = cfg.configVersion;
+    form = FormApp.openById(formId);
+    const releaseProof = formsEvaluationReleaseGate_(formId, activity, cfg);
+    const emails = formsEvaluationPublicationContext_(cfg, null);
+    const metadata = formsEvaluationMetadata_(formId);
+    formsEvaluationCheckedMapping_(metadata, cfg);
+    if (formsEvaluationQuestionFingerprint_(formsEvaluationQuestionSnapshot_(metadata)) !== formsEvaluationSavedQuestionFingerprint_(cfg) || !form.hasLimitOneResponsePerUser() || form.canEditResponse()) throw new Error('Conteúdo ou opções do Forms mudaram; exige configuração vigente.');
+    if (cfg.status === 'READY' && form.isPublished() && form.isAcceptingResponses() && formsEvaluationPublishedPermissionsExact_(formsEvaluationPublishedPermissions_(formId), emails)) return {status: 'READY', activityId: formId, configVersion: configVersion, unchanged: true};
+    formsEvaluationCloseForm_(form);
+    // Persist a recoverable closed stage before any publication. No transaction callback opens a Google Form.
+    evaluationRunTransaction_(function (tx) {
+      const live = evaluationGet_('evaluationFormConfigs', formId, tx), projected = evaluationGet_('evaluationActivities', formId, tx);
+      if (!live || !projected || projected.active !== true || live.configVersion !== configVersion || (live.status !== 'READY' && live.publicationPending !== true) ||
+          formsEvaluationStable_(formsEvaluationPublicationContext_(live, tx)) !== formsEvaluationStable_(emails)) throw new Error('Público ou configuração mudou antes da publicação.');
+      formsEvaluationReleaseGateUnchanged_(releaseProof, projected, live);
+      const changes = {status: 'CONFIGURATION_PENDING', reason: 'Respondentes em validação antes da publicação.', publicationPending: true};
+      return {writes: [evaluationWrite_('evaluationFormConfigs', formId, changes, live, ['updatedAt']), evaluationWrite_('evaluationActivities', formId, changes, projected, ['updatedAt'])], result: {status: changes.status}};
+    });
+    if (!formsEvaluationSyncResponders_(form, emails)) throw new Error('Permissões ou publicação do Forms não confirmadas.');
+    const verifiedActivity = evaluationGet_('evaluationActivities', formId), verifiedCfg = evaluationGet_('evaluationFormConfigs', formId);
+    if (!verifiedActivity || !verifiedCfg) throw new Error('Configuração ausente após verificar os respondentes.');
+    const verifiedProof = formsEvaluationReleaseGate_(formId, verifiedActivity, verifiedCfg);
+    formsEvaluationReleaseGateUnchanged_(releaseProof, verifiedActivity, verifiedCfg);
+    if (formsEvaluationStable_(verifiedProof) !== formsEvaluationStable_(releaseProof)) throw new Error('Verificação privada mudou durante a publicação.');
+    return evaluationRunTransaction_(function (tx) {
+      const live = evaluationGet_('evaluationFormConfigs', formId, tx), projected = evaluationGet_('evaluationActivities', formId, tx);
+      if (!live || !projected || projected.active !== true || live.configVersion !== configVersion || live.publicationPending !== true ||
+          formsEvaluationStable_(formsEvaluationPublicationContext_(live, tx)) !== formsEvaluationStable_(emails)) throw new Error('Público ou configuração mudou durante a publicação.');
+      formsEvaluationReleaseGateUnchanged_(releaseProof, projected, live);
+      const changes = {status: 'READY', reason: '', publicationPending: false, publishedAudienceHash: formsEvaluationHash_(emails)};
+      const writes = [evaluationWrite_('evaluationFormConfigs', formId, changes, live, ['updatedAt', 'accessVerifiedAt']), evaluationWrite_('evaluationActivities', formId, changes, projected, ['updatedAt', 'accessVerifiedAt'])];
+      const request = requestId && evaluationGet_('evaluationRequests', requestId, tx);
+      if (request && request.type === 'CONFIGURE_ACTIVITY' && request.payload.activityId === formId && request.status === 'CONFIGURATION_PENDING') writes.push(evaluationWrite_('evaluationRequests', requestId, {status: 'READY', result: {status: 'READY', activityId: formId, configVersion: configVersion}}, request, ['processedAt']));
+      return {writes: writes, result: {status: 'READY', activityId: formId, configVersion: configVersion}};
+    });
+  } catch (error) {
+    let closureConfirmed = false;
+    if (form) { try { closureConfirmed = formsEvaluationCloseForm_(form); } catch (_) {} }
+    if (configVersion !== null) { try { formsEvaluationPublicationPending_(formId, configVersion, closureConfirmed, error && error.trainingReleaseBlocked === true); } catch (_) {} }
+    return {status: 'CONFIGURATION_PENDING', closureConfirmed: closureConfirmed};
+  }
+}
 function formsEvaluationConfigured_(payload, actorUid, tx) {
   if (!formsEvaluationAdmin_(evaluationGet_('users', actorUid, tx))) throw new Error('Configuração exige administrador autorizado.');
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (protectedIds.includes(payload.activityId)) throw new Error('Formulário original protegido: não configurar importação de respostas.');
+  const eligibleGroups = Array.isArray(payload.eligibleGroups) ? [...new Set(payload.eligibleGroups)] : [];
   if (!formsEvaluationId_(payload.activityId) || !formsEvaluationId_(payload.creditScopeId) || !Number.isInteger(payload.version) || payload.version < 1 ||
-      !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 0 || !Array.isArray(payload.eligibleUids) || !payload.eligibleUids.length || payload.eligibleUids.length > 500) throw new Error('Confira matéria estável, versão, configuração e público.');
+      !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 0 || !Array.isArray(payload.eligibleUids) || payload.eligibleUids.length > 500 ||
+      eligibleGroups.length > 2 || eligibleGroups.some(function (group) { return !['GENERAL', 'RESTRICTED'].includes(group); }) ||
+      (!payload.eligibleUids.length && !eligibleGroups.length)) throw new Error('Confira matéria estável, versão, configuração e público.');
   const projection = evaluationGet_('evaluationActivities', payload.activityId, tx);
   const previous = evaluationGet_('evaluationFormConfigs', payload.activityId, tx);
   if (!projection || !projection.active || !projection.areaIds || !projection.areaIds.includes(payload.managerAreaId)) throw new Error('Formulário precisa de vínculo ativo na área escolhida.');
@@ -545,17 +741,24 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
   if (previous && previous.creditScopeId !== payload.creditScopeId) throw new Error('A matéria estável não pode ser trocada para repetir créditos.');
   let ready = form.isAcceptingResponses() && (!form.supportsAdvancedResponderPermissions || !form.supportsAdvancedResponderPermissions() || form.isPublished());
   let reason = ready ? '' : 'Formulário ainda não publicado ou não recebendo respostas; nenhuma leitura histórica será pontuada.';
+  let blockedByPriorResponses = false;
   if (previous && payload.version > previous.version) {
     const existing = formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/' + encodeURIComponent(payload.activityId) + '/responses?pageSize=1');
     if ((existing.responses || []).length) {
       ready = false;
+      blockedByPriorResponses = true;
       reason = 'Nova versão deste Form já tem respostas e uma resposta por conta impede repetir o teste. Use uma cópia sem respostas, com a mesma matéria (creditScopeId) e a nova versão elegível; não apague respostas existentes.';
     }
+  }
+  if (eligibleGroups.length) {
+    formsEvaluationCloseForm_(form);
+    ready = false;
+    if (!blockedByPriorResponses) reason = 'Configuração salva fechada; respondentes precisam de validação antes da publicação.';
   }
   const status = ready ? 'READY' : 'CONFIGURATION_PENDING';
   const configVersion = (previous ? previous.configVersion : 0) + 1;
   const cfg = {id: payload.activityId, formId: payload.activityId, responderUrl: metadata.responderUri || '', creditScopeId: payload.creditScopeId,
-    version: payload.version, configVersion: configVersion, status: status, reason: reason, eligibleUids: eligibleUids, managerAreaId: payload.managerAreaId,
+    version: payload.version, configVersion: configVersion, status: status, reason: reason, eligibleUids: eligibleUids, eligibleGroups: eligibleGroups, managerAreaId: payload.managerAreaId,
     managerUid: assignment.uid, assignmentId: assignment.id, assignmentVersion: assignment.version, modalities: payload.modalities,
     acknowledgementItemId: checked.mapping.acknowledgement && checked.mapping.acknowledgement.itemId || payload.acknowledgementItemId || '',
     acknowledgementValue: checked.mapping.acknowledgement && checked.mapping.acknowledgement.affirmativeValue || payload.acknowledgementValue || 'SIM',
@@ -567,13 +770,13 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
     previousSnapshot: baseline && payload.version > baseline.version ? {version: baseline.version, questionFingerprint: formsEvaluationSavedQuestionFingerprint_(baseline), questionSnapshot: baseline.questionSnapshot,
       materialFingerprint: baseline.materialFingerprint, materialSnapshot: baseline.materialSnapshot} : previous && previous.previousSnapshot || null,
     validFrom: validFrom, validUntil: validUntil, firstEligibleAt: previous && previous.version === payload.version ? previous.firstEligibleAt : new Date(Math.max(Date.now(), validFrom.getTime())),
-    configuredByUid: actorUid, updatedAt: new Date()};
+    configuredByUid: actorUid, publicationPending: eligibleGroups.length > 0 && !blockedByPriorResponses, updatedAt: new Date()};
   const visible = {creditScopeId: cfg.creditScopeId, version: cfg.version, configVersion: configVersion, title: metadata.info.title,
-    eligibleUids: eligibleUids, managerUid: cfg.managerUid, assignmentId: cfg.assignmentId, managerAreaId: cfg.managerAreaId,
+    eligibleUids: eligibleUids, eligibleGroups: eligibleGroups, managerUid: cfg.managerUid, assignmentId: cfg.assignmentId, managerAreaId: cfg.managerAreaId,
     modalities: cfg.modalities, maxTestScore: cfg.maxTestScore, validFrom: validFrom, validUntil: validUntil, status: status, reason: reason, responderUrl: cfg.responderUrl,
     acknowledgementItemId: cfg.acknowledgementItemId, acknowledgementValue: cfg.acknowledgementValue,
     suggestionProblemItemId: cfg.suggestionProblemItemId, suggestionProposalItemId: cfg.suggestionProposalItemId, suggestionBenefitItemId: cfg.suggestionBenefitItemId,
-    materialUrls: cfg.materialUrls};
+    materialUrls: cfg.materialUrls, publicationPending: cfg.publicationPending};
   return {writes: [evaluationWrite_('evaluationFormConfigs', cfg.id, cfg, previous, ['updatedAt']),
     evaluationWrite_('evaluationActivities', cfg.id, visible, projection, ['updatedAt'])], result: {status: status, activityId: cfg.id, configVersion: configVersion}};
 }
@@ -594,7 +797,8 @@ function formsEvaluationParticipation_(metadata, cfg, response, profiles) {
   const identity = formsEvaluationResolveIdentity_(metadata, response, profiles);
   if (identity.status !== 'CONFIRMED') return identity;
   const submittedAt = new Date(response.createTime);
-  if (cfg.status !== 'READY' || !cfg.eligibleUids.includes(identity.uid) || !Number.isFinite(submittedAt.getTime()) || submittedAt < cfg.validFrom || submittedAt > cfg.validUntil || submittedAt < cfg.firstEligibleAt) return {status: 'NEEDS_REVIEW', reason: 'Resposta fora da versão, público ou vigência aprovada.'};
+  const eligibleProfile = profiles.find(function (profile) { return (profile.uid || profile.id) === identity.uid; });
+  if (cfg.status !== 'READY' || !formsEvaluationEligibleProfile_(cfg, eligibleProfile || {}, null) || !Number.isFinite(submittedAt.getTime()) || submittedAt < cfg.validFrom || submittedAt > cfg.validUntil || submittedAt < cfg.firstEligibleAt) return {status: 'NEEDS_REVIEW', reason: 'Resposta fora da versão, público ou vigência aprovada.'};
   try { formsEvaluationCheckedMapping_(metadata, cfg); }
   catch (_) { return {status: 'NEEDS_REVIEW', reason: 'IDs, opções ou regras dos campos não correspondem à configuração vigente; não interpretar respostas como zero.'}; }
   const currentFingerprint = formsEvaluationQuestionFingerprint_(formsEvaluationQuestionSnapshot_(metadata));
@@ -650,7 +854,7 @@ function formsEvaluationProcessResponse_(formId, responseId, profilePool) {
     const liveCfg = evaluationGet_('evaluationFormConfigs', formId, tx);
     const activity = evaluationGet_('evaluationActivities', formId, tx);
     const profile = evaluationGet_('users', decoded.uid, tx);
-    if (!activity || !liveCfg || liveCfg.status !== 'READY' || activity.active !== true || activity.status !== 'READY' || liveCfg.configVersion !== cfg.configVersion || !formsEvaluationActive_(profile) || String(profile.email || '').trim().toLowerCase() !== String(response.respondentEmail || '').trim().toLowerCase() || !liveCfg.eligibleUids.includes(decoded.uid)) return {writes: [], result: {status: 'NEEDS_REVIEW', reason: 'Acesso ou configuração mudou durante a validação.'}};
+    if (!activity || !liveCfg || liveCfg.status !== 'READY' || activity.active !== true || activity.status !== 'READY' || liveCfg.configVersion !== cfg.configVersion || !formsEvaluationActive_(profile) || String(profile.email || '').trim().toLowerCase() !== String(response.respondentEmail || '').trim().toLowerCase() || !formsEvaluationEligibleProfile_(liveCfg, profile, tx)) return {writes: [], result: {status: 'NEEDS_REVIEW', reason: 'Acesso ou configuração mudou durante a validação.'}};
     // Recheck normalized identity in a complete bounded transaction snapshot, including newly approved profiles.
     const currentProfiles = formsEvaluationAll_('users', [firestoreFilter_('active','EQUAL',{booleanValue:true}),firestoreFilter_('access','EQUAL',{booleanValue:true})], tx);
     const currentIdentity = formsEvaluationResolveIdentity_(metadata, response, currentProfiles);
@@ -831,7 +1035,7 @@ function formsEvaluationProcessRequest_(request) {
     return {status: result.failures.length ? 'NEEDS_REVIEW' : 'CONFIRMED', result: result};
   }
   if (type === 'REVIEW_SUGGESTION' || type === 'REVIEW_GOVERNANCE') evaluationAssertOperator_(true);
-  return evaluationRunTransaction_(function (tx) {
+  const result = evaluationRunTransaction_(function (tx) {
     const live = evaluationGet_('evaluationRequests', request.id, tx);
     if (!live || live.status !== 'PENDING') return {writes: [], result: {status: live ? live.status : 'NEEDS_REVIEW'}};
     const actor = evaluationGet_('users', live.actorUid, tx);
@@ -847,6 +1051,8 @@ function formsEvaluationProcessRequest_(request) {
     plan.writes.push(evaluationWrite_('evaluationRequests', live.id, {status: plan.result.status, result: plan.result}, live, ['processedAt']));
     return plan;
   });
+  if (type === 'CONFIGURE_ACTIVITY' && Array.isArray(payload.eligibleGroups) && payload.eligibleGroups.length && result.status === 'CONFIGURATION_PENDING') return formsEvaluationFinalizePublication_(payload.activityId, request.id);
+  return result;
 }
 function processEvaluationRequests() {
   evaluationAssertOperator_(false);
@@ -892,6 +1098,24 @@ function onEvaluationFormSubmit(event) {
   if (!event || !event.response || !event.source || typeof event.response.getId !== 'function' || typeof event.source.getId !== 'function') throw new Error('Exige gatilho instalável do formulário; valores do navegador não são aceitos.');
   return formsEvaluationProcessResponse_(event.source.getId(), event.response.getId());
 }
+function reconcileEvaluationResponderAccess() {
+  evaluationAssertOperator_(false);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return {status: 'PENDING'};
+  try {
+    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true); });
+    const properties = PropertiesService.getScriptProperties(), cursorKey = 'SAHMT_V2_EVALUATION_ACCESS_CURSOR', cursor = properties.getProperty(cursorKey) || '';
+    const ordered = configs.filter(function (cfg) { return cfg.id > cursor; }).concat(configs.filter(function (cfg) { return cfg.id <= cursor; }));
+    const result = {checked: 0, ready: 0, pending: 0};
+    ordered.slice(0, 5).forEach(function (cfg) {
+      const outcome = formsEvaluationFinalizePublication_(cfg.id);
+      result.checked++;
+      if (outcome.status === 'READY') result.ready++; else result.pending++;
+      properties.setProperty(cursorKey, cfg.id);
+    });
+    return result;
+  } finally { lock.releaseLock(); }
+}
 function reconcileEvaluationResponses() {
   evaluationAssertOperator_(true);
   const lock = LockService.getScriptLock();
@@ -930,6 +1154,7 @@ function reconciliarAvaliacaoSahmtV2() {
     catch (error) { result[name] = {status:'PENDING',reason:String(error.message || error).slice(0,300)}; }
   }
   step('requests',processEvaluationRequests);
+  step('responders',reconcileEvaluationResponderAccess);
   step('responses',reconcileEvaluationResponses);
   step('checklistResponsibilities',reconcileChecklistResponsibilities);
   // Categories bootstrap and publish independently. A failure never confirms a partial projection or blocks the other category.

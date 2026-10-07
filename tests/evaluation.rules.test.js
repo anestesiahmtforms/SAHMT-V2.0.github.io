@@ -18,6 +18,13 @@ beforeEach(async () => {
     await setDoc(doc(db, 'evaluationReference', 'team'), {maxPerformance: 1, eligibleCount: 2, allZero: false});
     await setDoc(doc(db, 'evaluationAssignments', 'area'), {id: 'area', uid: 'manager', areaId: 'area', version: 1});
     await setDoc(doc(db, 'evaluationActivities', 'form'), {eligibleUids: ['member'], managerUid: 'manager'});
+    await setDoc(doc(db, 'users', 'group-general'), {uid: 'group-general', email: 'general@example.invalid', role: 'anestesiologista', active: true, access: true, permissions: {}});
+    await setDoc(doc(db, 'users', 'group-restricted'), {uid: 'group-restricted', email: 'restricted@example.invalid', role: 'anestesiologista', active: true, access: true, permissions: {}});
+    await setDoc(doc(db, 'users', 'group-unlisted'), {uid: 'group-unlisted', email: 'unlisted@example.invalid', role: 'anestesiologista', active: true, access: true, permissions: {}});
+    await setDoc(doc(db, 'documentAccessEmails', 'general@example.invalid'), {id: 'general@example.invalid', email: 'general@example.invalid', active: true, groups: ['GENERAL']});
+    await setDoc(doc(db, 'documentAccessEmails', 'restricted@example.invalid'), {id: 'restricted@example.invalid', email: 'restricted@example.invalid', active: true, groups: ['RESTRICTED']});
+    await setDoc(doc(db, 'evaluationActivities', 'general-form'), {eligibleUids: [], eligibleGroups: ['GENERAL']});
+    await setDoc(doc(db, 'evaluationActivities', 'restricted-form'), {eligibleUids: [], eligibleGroups: ['RESTRICTED']});
     await setDoc(doc(db, 'evaluationParticipations', 'participation'), {uid: 'member', managerUid: 'manager', areaIds: ['area'], suggestion: {status: 'PENDING'}});
     await setDoc(doc(db, 'evaluationParticipations', 'manager-self'), {uid: 'manager', managerUid: 'manager', areaIds: ['area'], suggestion: {status: 'PENDING'}});
     await setDoc(doc(db, 'evaluationGovernanceRevisions', 'revision'), {uid: 'manager', activityId: 'form', status: 'PENDING'});
@@ -49,6 +56,16 @@ test('atividade apenas público elegível/gestor/admin; fonte e snapshots privad
   for (const uid of ['member', 'manager', 'admin']) await assertSucceeds(getDoc(doc(dbFor(uid), 'evaluationActivities', 'form')));
   await assertFails(getDoc(doc(dbFor('other'), 'evaluationActivities', 'form')));
   for (const name of ['evaluationFormConfigs', 'evaluationRuntime', 'evaluationChecklistTransfers']) await assertFails(setDoc(doc(dbFor('admin'), name, 'private'), {points: 1}));
+});
+test('atividade por grupo exige e-mail Google verificado e cadastro ativo no grupo correto', async () => {
+  const identity = (uid, email, verified = true, provider = 'google.com') => env.authenticatedContext(uid, {email, email_verified: verified, firebase: {sign_in_provider: provider}}).firestore();
+  await assertSucceeds(getDoc(doc(identity('group-general', 'general@example.invalid'), 'evaluationActivities', 'general-form')));
+  await assertFails(getDoc(doc(identity('group-general', 'general@example.invalid'), 'evaluationActivities', 'restricted-form')));
+  await assertSucceeds(getDoc(doc(identity('group-restricted', 'restricted@example.invalid'), 'evaluationActivities', 'restricted-form')));
+  await assertFails(getDoc(doc(identity('group-restricted', 'restricted@example.invalid'), 'evaluationActivities', 'general-form')));
+  await assertFails(getDoc(doc(identity('group-unlisted', 'unlisted@example.invalid'), 'evaluationActivities', 'general-form')));
+  await assertFails(getDoc(doc(identity('group-general', 'general@example.invalid', false), 'evaluationActivities', 'general-form')));
+  await assertFails(getDoc(doc(identity('group-general', 'general@example.invalid', true, 'password'), 'evaluationActivities', 'general-form')));
 });
 test('somente administrador solicita correção categoria fixa/motivo/versão, inclusive zero', async () => {
   const payload = {awardId: 'award', category: 'PERFORMANCE', expectedAwardVersion: 1, correctedPoints: 0, reason: 'Correção de fixture'};

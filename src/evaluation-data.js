@@ -1,8 +1,8 @@
 // Evaluation reads never use the legacy scores collection or the privileged integration.
 async function store() {
-  const [{db}, sdk] = await Promise.all([import('./firebase.js'), import('firebase/firestore')]);
+  const [{db}, sdk, {auth}] = await Promise.all([import('./firebase.js'), import('firebase/firestore'), import('./firebase-auth.js')]);
   if (!db) throw new Error('A integração de avaliação não está disponível.');
-  return {db, sdk};
+  return {db, sdk, auth};
 }
 const categories = ['PERFORMANCE', 'GOVERNANCE'];
 const canonical = value => value && typeof value === 'object' ? Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']' : '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
@@ -20,7 +20,16 @@ export function validateEvaluationRequest(type, payload) {
   let valid = false;
   if (type === 'RECONCILE_LINKS') valid = keys(payload, []);
   if (type === 'ASSIGN_MANAGER') valid = keys(payload, ['areaId', 'managerUid', 'expectedVersion']) && validId(payload.areaId) && validId(payload.managerUid) && integer(payload.expectedVersion);
-  if (type === 'CONFIGURE_ACTIVITY') valid = keys(payload, ['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'managerAreaId', 'expectedVersion'], ['acknowledgementValue', 'materialUrls']) && validId(payload.activityId) && validId(payload.creditScopeId) && integer(payload.version) && payload.version > 0 && integer(payload.expectedVersion) && validId(payload.managerAreaId) && keys(payload.modalities, ['acknowledgement', 'suggestion', 'test']) && Object.values(payload.modalities).every(value => typeof value === 'boolean') && Object.values(payload.modalities).some(Boolean) && ['acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId'].every(key => typeof payload[key] === 'string' && /^[A-Za-z0-9_-]{0,200}$/.test(payload[key])) && date(payload.validFrom) && date(payload.validUntil) && payload.validFrom <= payload.validUntil && Array.isArray(payload.eligibleUids) && payload.eligibleUids.length > 0 && payload.eligibleUids.length <= 500 && payload.eligibleUids.every(validId) && (!Object.hasOwn(payload, 'acknowledgementValue') || text(payload.acknowledgementValue, 1, 200)) && (!Object.hasOwn(payload, 'materialUrls') || httpsList(payload.materialUrls));
+  if (type === 'CONFIGURE_ACTIVITY') {
+    const groups = payload?.eligibleGroups ?? [];
+    valid = keys(payload, ['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'managerAreaId', 'expectedVersion'], ['acknowledgementValue', 'materialUrls', 'eligibleGroups']) &&
+      validId(payload.activityId) && validId(payload.creditScopeId) && integer(payload.version) && payload.version > 0 && integer(payload.expectedVersion) && validId(payload.managerAreaId) &&
+      keys(payload.modalities, ['acknowledgement', 'suggestion', 'test']) && Object.values(payload.modalities).every(value => typeof value === 'boolean') && Object.values(payload.modalities).some(Boolean) &&
+      ['acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId'].every(key => typeof payload[key] === 'string' && /^[A-Za-z0-9_-]{0,200}$/.test(payload[key])) &&
+      date(payload.validFrom) && date(payload.validUntil) && payload.validFrom <= payload.validUntil && Array.isArray(payload.eligibleUids) && payload.eligibleUids.length <= 500 && payload.eligibleUids.every(validId) &&
+      Array.isArray(groups) && groups.length <= 2 && new Set(groups).size === groups.length && groups.every(group => ['GENERAL', 'RESTRICTED'].includes(group)) && (payload.eligibleUids.length > 0 || groups.length > 0) &&
+      (!Object.hasOwn(payload, 'acknowledgementValue') || text(payload.acknowledgementValue, 1, 200)) && (!Object.hasOwn(payload, 'materialUrls') || httpsList(payload.materialUrls));
+  }
   if (type === 'CORRECT_SCORE') valid = keys(payload, ['awardId', 'category', 'expectedAwardVersion', 'correctedPoints', 'reason']) && validId(payload.awardId) && categories.includes(payload.category) && integer(payload.expectedAwardVersion) && typeof payload.correctedPoints === 'number' && Number.isFinite(payload.correctedPoints) && Math.abs(payload.correctedPoints) <= 100000 && text(payload.reason, 8, 1000);
   if (type === 'REVIEW_SUGGESTION') valid = keys(payload, ['participationId', 'decision', 'note']) && validId(payload.participationId) && ['APPROVE', 'REJECT'].includes(payload.decision) && text(payload.note, 8, 1000);
   if (type === 'REVIEW_GOVERNANCE') valid = keys(payload, ['revisionId', 'decision', 'note']) && validId(payload.revisionId) && ['APPROVE', 'REJECT'].includes(payload.decision) && text(payload.note, 8, 1000);
@@ -88,8 +97,27 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
 export async function listEvaluationActivities(actorUid) {
   const service = await store(), profile = await actor(service, actorUid), {sdk} = service;
   if (profile.isAdmin) return listAll(service, 'evaluationActivities');
-  const [eligible, managed] = await Promise.all([listAll(service, 'evaluationActivities', [sdk.where('eligibleUids', 'array-contains', actorUid)]), listAll(service, 'evaluationActivities', [sdk.where('managerUid', '==', actorUid)])]);
-  return [...new Map([...eligible, ...managed].map(item => [item.id, item])).values()];
+  const [eligible, managed, groups] = await Promise.all([
+    listAll(service, 'evaluationActivities', [sdk.where('eligibleUids', 'array-contains', actorUid)]),
+    listAll(service, 'evaluationActivities', [sdk.where('managerUid', '==', actorUid)]),
+    evaluationActorGroups(service, actorUid)
+  ]);
+  const grouped = await Promise.all(groups.map(group => listAll(service, 'evaluationActivities', [sdk.where('eligibleGroups', 'array-contains', group)])));
+  return [...new Map([...eligible, ...managed, ...grouped.flat()].map(item => [item.id, item])).values()];
+}
+async function evaluationActorGroups(service, actorUid) {
+  const user = service.auth?.currentUser;
+  if (!user || user.uid !== actorUid) return [];
+  let claims;
+  try { claims = (await user.getIdTokenResult()).claims; } catch { return []; }
+  if (claims?.email_verified !== true || claims.firebase?.sign_in_provider !== 'google.com' || typeof claims.email !== 'string') return [];
+  const email = claims.email.trim().toLowerCase();
+  if (email.length > 254 || !/^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) return [];
+  let snapshot;
+  try { snapshot = await service.sdk.getDocFromServer(service.sdk.doc(service.db, 'documentAccessEmails', email)); } catch { return []; }
+  const access = snapshot.exists() ? snapshot.data() : null;
+  return access?.active === true && access.email === email && Array.isArray(access.groups)
+    ? [...new Set(access.groups.filter(group => ['GENERAL', 'RESTRICTED'].includes(group)))] : [];
 }
 export async function listEvaluationPeople(actorUid) {
   const service = await store(), profile = await actor(service, actorUid);

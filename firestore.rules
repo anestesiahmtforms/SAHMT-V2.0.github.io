@@ -20,6 +20,18 @@ service cloud.firestore {
     }
     function evaluationOwn(data) { return activeUser() && (isAdmin() || data.uid == request.auth.uid); }
     function evaluationId(value) { return value is string && value.matches('^[A-Za-z0-9_-]{1,200}$'); }
+    function evaluationGroupAccess(group) {
+      let accessPath = /databases/$(database)/documents/documentAccessEmails/$(request.auth.token.email.lower());
+      return request.auth.token.keys().hasAll(['email', 'email_verified', 'firebase']) && request.auth.token.email is string &&
+        request.auth.token.email_verified == true && request.auth.token.firebase.sign_in_provider == 'google.com' &&
+        exists(accessPath) && get(accessPath).data.active == true && get(accessPath).data.email == request.auth.token.email.lower() &&
+        get(accessPath).data.groups is list && get(accessPath).data.groups.hasAny([group]);
+    }
+    function evaluationGroupEligible(data) {
+      return data.keys().hasAny(['eligibleGroups']) && data.eligibleGroups is list &&
+        ((data.eligibleGroups.hasAny(['GENERAL']) && evaluationGroupAccess('GENERAL')) ||
+         (data.eligibleGroups.hasAny(['RESTRICTED']) && evaluationGroupAccess('RESTRICTED')));
+    }
     function evaluationText(value, minimum, maximum) { return value is string && value.size() >= minimum && value.size() <= maximum; }
     function evaluationHttpsAt(values, index) { return values.size() <= index || (values[index] is string && values[index].size() <= 1500 && values[index].matches('^https://[^/@: ]+[/].*')); }
     function evaluationEvidence(values) {
@@ -29,7 +41,7 @@ service cloud.firestore {
     }
     function evaluationConfiguration(p) {
       return p.keys().hasAll(['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'managerAreaId', 'expectedVersion']) &&
-        p.keys().hasOnly(['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'managerAreaId', 'expectedVersion', 'acknowledgementValue', 'materialUrls']) &&
+        p.keys().hasOnly(['activityId', 'creditScopeId', 'version', 'modalities', 'acknowledgementItemId', 'suggestionProblemItemId', 'suggestionProposalItemId', 'suggestionBenefitItemId', 'validFrom', 'validUntil', 'eligibleUids', 'eligibleGroups', 'managerAreaId', 'expectedVersion', 'acknowledgementValue', 'materialUrls']) &&
         evaluationId(p.activityId) && evaluationId(p.creditScopeId) && evaluationId(p.managerAreaId) &&
         p.version is int && p.version > 0 && p.expectedVersion is int && p.expectedVersion >= 0 &&
         p.modalities is map && p.modalities.keys().hasAll(['acknowledgement', 'suggestion', 'test']) && p.modalities.keys().hasOnly(['acknowledgement', 'suggestion', 'test']) &&
@@ -37,7 +49,9 @@ service cloud.firestore {
         (p.modalities.acknowledgement || p.modalities.suggestion || p.modalities.test) &&
         evaluationText(p.acknowledgementItemId, 0, 200) && evaluationText(p.suggestionProblemItemId, 0, 200) && evaluationText(p.suggestionProposalItemId, 0, 200) && evaluationText(p.suggestionBenefitItemId, 0, 200) &&
         p.validFrom is string && p.validFrom.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && p.validUntil is string && p.validUntil.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && p.validFrom <= p.validUntil &&
-        p.eligibleUids is list && p.eligibleUids.size() > 0 && p.eligibleUids.size() <= 500 &&
+        p.eligibleUids is list && p.eligibleUids.size() <= 500 &&
+        (!p.keys().hasAny(['eligibleGroups']) || (p.eligibleGroups is list && p.eligibleGroups.size() <= 2 && p.eligibleGroups.toSet().size() == p.eligibleGroups.size() && p.eligibleGroups.hasOnly(['GENERAL', 'RESTRICTED']))) &&
+        (p.eligibleUids.size() > 0 || (p.keys().hasAny(['eligibleGroups']) && p.eligibleGroups.size() > 0)) &&
         (!p.keys().hasAny(['acknowledgementValue']) || evaluationText(p.acknowledgementValue, 1, 200)) &&
         (!p.keys().hasAny(['materialUrls']) || evaluationEvidence(p.materialUrls));
     }
@@ -86,7 +100,10 @@ service cloud.firestore {
          (data.type == 'RECONCILE_LINKS' && (isAdmin() || can('documentsManage') || can('managementManage') || can('qualityManage') || can('trainingsManage')) && data.payload.keys().size() == 0));
     }
     match /evaluationActivities/{id} {
-      allow read: if activeUser() && (isAdmin() || resource.data.eligibleUids.hasAny([request.auth.uid]) || resource.data.managerUid == request.auth.uid);
+      allow read: if activeUser() && (isAdmin() ||
+        (resource.data.keys().hasAny(['eligibleUids']) && resource.data.eligibleUids is list && resource.data.eligibleUids.hasAny([request.auth.uid])) ||
+        (resource.data.keys().hasAny(['managerUid']) && resource.data.managerUid == request.auth.uid) ||
+        evaluationGroupEligible(resource.data));
       allow write: if false;
     }
     match /evaluationAwards/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
