@@ -1766,7 +1766,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const inherited = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}.</small>` : '';
   const occurrence = record?.occurrence ? `<div class="checklist-station-justification"><strong>Justificativa</strong><p>${escapeHtml(record.occurrence)}</p></div>` : '';
   const activeLabel = active ? 'Arsenal ativo' : 'Arsenal inativo';
-  const maintenanceFields = [['preventiveAnnual', 'Preventiva Anual'], ['electricalAnnual', 'Elétrica Anual'], ['calibrationSemiannual', 'Calibração Semestral']];
+  const maintenanceFields = [['preventiveAnnual', 'Preventiva Anual'], ['electricalAnnual', 'Elétrica Anual'], ['calibrationSemiannual', station.maintenanceCalibrationPeriod === 'annual' ? 'Calibração Anual' : 'Calibração Semestral']];
   const maintenance = normalizeChecklistMaintenance(station.maintenance);
   const overdueMaintenance = checklistMaintenanceOverdue(maintenance, todayInputValue());
   result.innerHTML = `<div class="checklist-station-result__heading checklist-station-result--${!active ? 'inactive' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : active ? 'pending' : 'inactive'}"><span>Situação atual do arsenal</span><strong>${resultLabel}</strong><span>${activeLabel}</span><span class="checklist-maintenance-alert" data-checklist-maintenance-alert ${Object.values(overdueMaintenance).some(Boolean) ? '' : 'hidden'}>MANUTENÇÃO EM ATRASO</span></div>`;
