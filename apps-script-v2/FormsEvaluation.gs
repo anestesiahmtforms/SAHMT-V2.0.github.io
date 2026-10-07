@@ -501,15 +501,19 @@ function formsEvaluationAssignments_(payload, actorUid, tx) {
   if (writes.length + 1 > SAHMT_V2_EVALUATION_LEDGER.maxWrites) throw new Error('Designação excede o limite de transação; preservar como pendente sem atualizar projeção parcial.');
   return {writes: writes, result: {status:'CONFIRMED', assignmentId:payload.areaId, assignmentVersion:version, updatedActivities:configs.length}};
 }
-function formsEvaluationGroupRoster_(groups, tx) {
+function formsEvaluationFilterGroupRoster_(entries, groups) {
   const accepted = Array.isArray(groups) ? groups.filter(function (group) { return ['GENERAL', 'RESTRICTED'].includes(group); }) : [];
   if (!accepted.length) return [];
-  return formsEvaluationAll_('documentAccessEmails', [], tx).filter(function (entry) {
+  return entries.filter(function (entry) {
     const email = String(entry.email || '').trim().toLowerCase();
     return entry.active === true && email === String(entry.id || '').trim().toLowerCase() &&
       /^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && Array.isArray(entry.groups) &&
       entry.groups.some(function (group) { return accepted.includes(group); });
   });
+}
+function formsEvaluationGroupRoster_(groups, tx) {
+  if (!Array.isArray(groups) || !groups.some(function (group) { return ['GENERAL', 'RESTRICTED'].includes(group); })) return [];
+  return formsEvaluationFilterGroupRoster_(formsEvaluationAll_('documentAccessEmails', [], tx), groups);
 }
 function formsEvaluationEligibleProfile_(cfg, profile, tx) {
   if (!formsEvaluationActive_(profile) || !formsEvaluationId_(profile.uid || profile.id) || (profile.uid && profile.id && profile.uid !== profile.id)) return false;
@@ -1039,7 +1043,7 @@ function formsEvaluationReviewGovernance_(payload, actorUid, tx) {
     reviewNote: note, manualAuthorshipVerification: payload.decision === 'APPROVE' && revision.authorshipVerified !== true}, revision, ['updatedAt']));
   return {writes: writes, result: {status: status, revisionId: revision.id}};
 }
-function formsEvaluationProcessRequest_(request) {
+function formsEvaluationProcessRequest_(request, options) {
   const type = request.type;
   const payload = request.payload || {};
   if (type === 'CORRECT_SCORE') { evaluationAssertOperator_(true); return evaluationProcessScoreCorrection_(request); }
@@ -1066,7 +1070,7 @@ function formsEvaluationProcessRequest_(request) {
     plan.writes.push(evaluationWrite_('evaluationRequests', live.id, {status: plan.result.status, result: plan.result}, live, ['processedAt']));
     return plan;
   });
-  if (type === 'CONFIGURE_ACTIVITY' && Array.isArray(payload.eligibleGroups) && payload.eligibleGroups.length && result.status === 'CONFIGURATION_PENDING') return formsEvaluationFinalizePublication_(payload.activityId, request.id);
+  if (type === 'CONFIGURE_ACTIVITY' && Array.isArray(payload.eligibleGroups) && payload.eligibleGroups.length && result.status === 'CONFIGURATION_PENDING' && !(options && options.deferPublication === true)) return formsEvaluationFinalizePublication_(payload.activityId, request.id);
   return result;
 }
 function processEvaluationRequests() {

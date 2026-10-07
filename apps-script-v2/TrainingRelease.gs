@@ -193,8 +193,9 @@ function trainingReleaseMaterialCatalog_(loaded) {
 function trainingReleaseMaterialAudience_(loaded) {
   trainingReleaseContext_(loaded,null);
   const writer = evaluationGet_('users',loaded.manifest.actorUid), email = String(writer && writer.email || '').trim().toLowerCase(), groups = {};
+  const roster = formsEvaluationAll_('documentAccessEmails',[],null);
   ['GENERAL','RESTRICTED'].forEach(function (group) {
-    groups[group] = [...new Set(formsEvaluationGroupRoster_([group],null).map(function (entry) { return entry.email; }))].sort();
+    groups[group] = [...new Set(formsEvaluationFilterGroupRoster_(roster,[group]).map(function (entry) { return entry.email; }))].sort();
     if (!groups[group].length || groups[group].length > 500) trainingReleaseReject_('MATERIAL_EMPTY_AUDIENCE');
   });
   return {owner: loaded.operator,writer: email,groups: groups,digest: formsEvaluationHash_({owner: loaded.operator,writer: email,groups: groups})};
@@ -463,7 +464,7 @@ function trainingReleaseIdentity_(item, activity, cfg, tx) {
   if (peers.some(function (record) { return record.version !== item.version; })) trainingReleaseReject_('EXISTING_SCOPE_CONFLICT');
 }
 function trainingReleasePrepared_(loaded, item) {
-  trainingReleaseContext_(loaded, null);
+  // The transaction below revalidates authorization after these read-only inspections.
   const current = evaluationGet_('evaluationActivities', item.formId), cfg = evaluationGet_('evaluationFormConfigs', item.formId);
   const already = current && current.trainingReleaseManifestDigest === loaded.digest && current.trainingReleaseClosedBaseline === true;
   const live = trainingReleaseLive_(item, !already || !cfg || cfg.status !== 'READY');
@@ -494,7 +495,7 @@ function trainingReleasePrepared_(loaded, item) {
 /** Pure publication gate also used by generic Forms reconciliation; no writes or Form mutations. */
 function trainingReleaseVerifyPublication_(formId) {
   const loaded = trainingReleaseLoad_();
-  trainingReleaseContext_(loaded, null);
+  // The mandatory material gate validates current authorization before returning a publication proof.
   const job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);
   if (job && job.status === 'RUNNING' && (job.schemaVersion !== 2 || job.phase !== 'FORMS' || job.materialMask !== '1'.repeat(84))) trainingReleaseReject_('MATERIAL_PHASE_PENDING');
   const item = loaded.manifest.items.find(function (entry) { return entry.formId === formId; });
@@ -513,7 +514,7 @@ function trainingReleaseVerifyPublication_(formId) {
 
 /** All Google Form publication goes through the existing closed-stage/ACL/CAS finalizer, outside callbacks. */
 function trainingReleaseFinalize_(loaded, item, requestId) {
-  trainingReleaseContext_(loaded, null);
+  // The mandatory publication gate and transaction revalidate authorization before any write or ACL change.
   const before = trainingReleaseLive_(item, false), activity = evaluationGet_('evaluationActivities', item.formId);
   if (!activity || activity.trainingReleaseManifestDigest !== loaded.digest || !activity.trainingReleaseClosedBaseline || activity.trainingReleaseDigest !== before.digest) trainingReleaseReject_('PREPARED_BASELINE_REQUIRED');
   const proof = trainingReleaseVerifyPublication_(item.formId);
@@ -586,7 +587,7 @@ function trainingReleaseManagementCloseWrite_(formId,activity,cfg,tx) {
   return evaluationWrite_('scopedDocuments',fields.id,{active: false,version: record.version + 1,updatedByUid: cfg.configuredByUid},record,['updatedAt']);
 }
 function trainingReleaseReleased_(loaded, item) {
-  trainingReleaseContext_(loaded, null);
+  // Current authorization is checked in the request transaction or mandatory finalizer gate before writes.
   const activity = evaluationGet_('evaluationActivities', item.formId), cfg = evaluationGet_('evaluationFormConfigs', item.formId);
   if (!activity || activity.trainingReleaseManifestDigest !== loaded.digest || activity.trainingReleaseClosedBaseline !== true) trainingReleaseReject_('PREPARED_BASELINE_REQUIRED');
   const live = trainingReleaseLive_(item, !cfg || cfg.status !== 'READY');
@@ -614,7 +615,7 @@ function trainingReleaseReleased_(loaded, item) {
       status: 'PENDING', source: SAHMT_V2_TRAINING_RELEASE.source, productionFinancialWrites: false}, null, ['createdAt'])], result: {status: 'PENDING'}};
   });
   // The dispatcher validates the admin, configuration, live mapping, version and material snapshot itself.
-  const dispatched = formsEvaluationProcessRequest_(evaluationGet_('evaluationRequests', requestId));
+  const dispatched = formsEvaluationProcessRequest_(evaluationGet_('evaluationRequests', requestId), {deferPublication:true});
   if (dispatched.status !== 'READY' && dispatched.status !== 'CONFIGURATION_PENDING') return {status: 'CONFIGURATION_PENDING'};
   return trainingReleaseFinalize_(loaded, item, requestId);
 }
