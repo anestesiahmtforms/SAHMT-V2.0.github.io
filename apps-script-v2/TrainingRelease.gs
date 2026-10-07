@@ -19,6 +19,21 @@ function trainingReleaseReject_(code) {
   error.trainingReleaseCode = code;
   throw error;
 }
+/** Keep HTTP diagnostics useful without copying provider messages or private response bodies. */
+function trainingReleaseJobError_(error) {
+  const status = error && error.status;
+  const result = {pendingCode: error && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.trainingReleaseCode || '') ? error.trainingReleaseCode : 'JOB_ACCESS'};
+  if (Number.isInteger(status) && status >= 400 && status <= 599) {
+    result.httpStatus = status;
+    if (result.pendingCode === 'JOB_ACCESS') {
+      if (status === 429) result.pendingCode = 'JOB_QUOTA_EXCEEDED';
+      else if ([408,500,502,503,504].includes(status)) result.pendingCode = 'JOB_TEMPORARY_SERVICE';
+      else if ([409,412].includes(status)) result.pendingCode = 'JOB_REVISION_CONFLICT';
+      else if ([401,403].includes(status)) result.pendingCode = 'JOB_AUTHORIZATION_REQUIRED';
+    }
+  }
+  return result;
+}
 function trainingReleaseShape_(value, required, optional) {
   return value && typeof value === 'object' && !Array.isArray(value) &&
     required.every(function (key) { return Object.prototype.hasOwnProperty.call(value, key); }) &&
@@ -658,6 +673,8 @@ function trainingReleaseLog_(result) {
   });
   if (typeof result.liveFormsRevalidated === 'boolean') safe.liveFormsRevalidated = result.liveFormsRevalidated;
   if (typeof result.liveMaterialsRevalidated === 'boolean') safe.liveMaterialsRevalidated = result.liveMaterialsRevalidated;
+  if (typeof result.resumedOriginalJob === 'boolean') safe.resumedOriginalJob = result.resumedOriginalJob;
+  if (Number.isInteger(result.httpStatus) && result.httpStatus >= 400 && result.httpStatus <= 599) safe.httpStatus = result.httpStatus;
   if (/^[A-Z][A-Z0-9_]{0,79}$/.test(result.pendingCode || '')) safe.pendingCode = result.pendingCode;
   const pendingCodes = [...new Set((result.pendingItems || []).map(function (item) { return item.pendingCode; }).filter(function (code) { return /^[A-Z][A-Z0-9_]{0,79}$/.test(code || ''); }))].slice(0,5);
   if (pendingCodes.length) safe.pendingCodes = pendingCodes;
@@ -740,14 +757,98 @@ function iniciarDisponibilizacaoTreinamentosSahmtV2() {
       verifiedMask: '0'.repeat(76), triggerId: trigger.getUniqueId(), productionFinancialWrites: false};
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
   } catch (error) {
+    const diagnostic = trainingReleaseJobError_(error);
     if (job) {
-      job.status = 'CONFIGURATION_PENDING'; job.pendingCode = error.trainingReleaseCode || 'JOB_ACCESS';
+      job.status = 'CONFIGURATION_PENDING'; delete job.httpStatus; Object.assign(job, diagnostic);
       try { trainingReleaseStopTrigger_(job); } catch (_) {}
       PropertiesService.getScriptProperties().setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
     }
-    return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: error.trainingReleaseCode || 'JOB_ACCESS', productionFinancialWrites: false});
+    return trainingReleaseLog_(Object.assign({status: 'CONFIGURATION_PENDING', productionFinancialWrites: false}, diagnostic));
   } finally { lock.releaseLock(); }
   return continuarDisponibilizacaoTreinamentosSahmtV2_();
+}
+/** Re-arm this same bounded job after a temporary interruption; no catalog, Form or ACL writes. */
+function retomarDisponibilizacaoTreinamentosSahmtV2() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return {status: 'PENDING', productionFinancialWrites: false};
+  const cfg = SAHMT_V2_TRAINING_RELEASE, properties = PropertiesService.getScriptProperties();
+  let createdTrigger = null, ownedRaw = '', originalRaw = '', pins = null;
+  function unchanged(expectedJob) {
+    return properties.getProperty(cfg.jobProperty) === expectedJob &&
+      properties.getProperty(cfg.cursorProperty) === pins.cursor && properties.getProperty(cfg.manifestProperty) === pins.manifest &&
+      properties.getProperty(cfg.digestProperty) === pins.digest;
+  }
+  function summary(job) {
+    return trainingReleaseLog_(Object.assign({},job,{status: 'RUNNING', totalForms: cfg.total, resumedOriginalJob: true,
+      materialFiles: cfg.materialCount, materialPrepared: job.materialMask.split('').filter(function (value) { return value === '1'; }).length,
+      validatedForms: job.verifiedMask.split('').filter(function (value) { return value === '1'; }).length, liveFormsRevalidated: false, productionFinancialWrites: false}));
+  }
+  try {
+    evaluationAssertOperator_(false);
+    originalRaw = properties.getProperty(cfg.jobProperty);
+    const job = trainingReleaseSaved_(cfg.jobProperty);
+    pins = {cursor: properties.getProperty(cfg.cursorProperty),manifest: properties.getProperty(cfg.manifestProperty),digest: properties.getProperty(cfg.digestProperty)};
+    if (!job || !['RUNNING','CONFIGURATION_PENDING'].includes(job.status)) trainingReleaseReject_('JOB_RESUME_REQUIRES_REVIEW');
+    const temporaryCodes = ['JOB_ACCESS','JOB_QUOTA_EXCEEDED','JOB_TEMPORARY_SERVICE','JOB_REVISION_CONFLICT'];
+    if (job.status === 'CONFIGURATION_PENDING' && (!temporaryCodes.includes(job.pendingCode) || [401,403].includes(job.httpStatus))) trainingReleaseReject_('JOB_RESUME_REQUIRES_REVIEW');
+    if (job.schemaVersion !== 2 || !['CLOSE_FORMS','MATERIALS','FORMS'].includes(job.phase) ||
+        !Number.isInteger(job.closeCursor) || job.closeCursor < 0 || job.closeCursor >= cfg.total ||
+        !Number.isInteger(job.materialCursor) || job.materialCursor < 0 || job.materialCursor >= cfg.materialCount ||
+        !/^[01]{76}$/.test(job.closeMask || '') || !/^[01]{84}$/.test(job.materialMask || '') || !/^[01]{76}$/.test(job.verifiedMask || '') ||
+        !/^[a-f0-9]{64}$/.test(job.digest || '') || !/^[a-f0-9]{64}$/.test(job.materialAudienceDigest || '') ||
+        typeof job.triggerId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(job.triggerId) || job.productionFinancialWrites !== false) trainingReleaseReject_('CHECKPOINT_INVALID');
+    function withinLimits() {
+      if (!Number.isInteger(job.runs) || job.runs < 0 || job.runs >= cfg.maxRuns || !Number.isFinite(job.startedAt) ||
+          job.startedAt > Date.now() || Date.now() - job.startedAt >= cfg.maxAgeMs) trainingReleaseReject_('JOB_LIMIT');
+    }
+    withinLimits();
+    if (job.phase !== 'CLOSE_FORMS' && job.closeMask !== '1'.repeat(cfg.total) ||
+        job.phase === 'FORMS' && job.materialMask !== '1'.repeat(cfg.materialCount)) trainingReleaseReject_('CHECKPOINT_INVALID');
+    const cursor = trainingReleaseSaved_(cfg.cursorProperty);
+    if (pins.cursor && (!cursor || cursor.schemaVersion !== 1 || cursor.digest !== job.digest ||
+        ['prepare','release','combined'].some(function (key) { return !Number.isInteger(cursor[key]) || cursor[key] < 0 || cursor[key] >= cfg.total; }))) trainingReleaseReject_('CHECKPOINT_INVALID');
+    if (!pins.cursor && job.verifiedMask !== '0'.repeat(cfg.total)) trainingReleaseReject_('CHECKPOINT_INVALID');
+    const loaded = trainingReleaseLoad_();
+    if (loaded.digest !== job.digest) trainingReleaseReject_('JOB_MANIFEST_CONFLICT');
+    trainingReleaseContext_(loaded,null);
+    if (trainingReleaseMaterialAudience_(loaded).digest !== job.materialAudienceDigest) trainingReleaseReject_('JOB_AUDIENCE_CHANGED');
+    function knownTrigger() {
+      const triggers = ScriptApp.getProjectTriggers(), known = triggers.filter(function (trigger) { return trigger.getUniqueId() === job.triggerId; });
+      if (known.length > 1 || triggers.some(function (trigger) { return trigger.getHandlerFunction() === cfg.handler && trigger.getUniqueId() !== job.triggerId; })) trainingReleaseReject_('JOB_TRIGGER_CONFLICT');
+      if (known.some(function (trigger) { return trigger.getHandlerFunction() !== cfg.handler ||
+          trigger.getTriggerSource() !== ScriptApp.TriggerSource.CLOCK || trigger.getEventType() !== ScriptApp.EventType.CLOCK; })) trainingReleaseReject_('JOB_TRIGGER_CONFLICT');
+      return known[0] || null;
+    }
+    const existing = knownTrigger();
+    if (!unchanged(originalRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+    withinLimits();
+    if (existing && job.status === 'RUNNING') return summary(job);
+    if (!existing) {
+      // Persist an intent before arming. An unknown creation outcome requires review, never a blind second trigger.
+      job.status = 'CONFIGURATION_PENDING'; job.pendingCode = 'JOB_TRIGGER_UNCONFIRMED'; delete job.httpStatus;
+      ownedRaw = JSON.stringify(job); properties.setProperty(cfg.jobProperty,ownedRaw);
+      if (!unchanged(ownedRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+      if (knownTrigger()) trainingReleaseReject_('JOB_TRIGGER_CONFLICT');
+      createdTrigger = ScriptApp.newTrigger(cfg.handler).timeBased().everyMinutes(5).create();
+      if (!unchanged(ownedRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+      job.triggerId = createdTrigger.getUniqueId();
+      if (typeof job.triggerId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(job.triggerId)) trainingReleaseReject_('JOB_TRIGGER_UNCONFIRMED');
+      if (!knownTrigger()) trainingReleaseReject_('JOB_TRIGGER_UNCONFIRMED');
+    }
+    if (!unchanged(ownedRaw || originalRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+    withinLimits();
+    job.status = 'RUNNING'; delete job.pendingCode; delete job.httpStatus;
+    ownedRaw = JSON.stringify(job); properties.setProperty(cfg.jobProperty,ownedRaw);
+    if (!unchanged(ownedRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+    return summary(job);
+  } catch (error) {
+    if (createdTrigger) {
+      try { ScriptApp.deleteTrigger(createdTrigger); } catch (_) {}
+      // Restore only our own persisted intent; concurrent user/property changes remain intact.
+      try { if (ownedRaw && pins && unchanged(ownedRaw)) properties.setProperty(cfg.jobProperty,originalRaw); } catch (_) {}
+    }
+    return trainingReleaseLog_(Object.assign({status: 'CONFIGURATION_PENDING', productionFinancialWrites: false},trainingReleaseJobError_(error)));
+  } finally { lock.releaseLock(); }
 }
 function continuarDisponibilizacaoTreinamentosSahmtV2_() {
   const lock = LockService.getScriptLock();
@@ -784,12 +885,13 @@ function continuarDisponibilizacaoTreinamentosSahmtV2_() {
     properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
     return trainingReleaseLog_(Object.assign({}, result, {status: job.status,phase: job.phase,runs: job.runs, validatedForms: validatedForms, liveFormsRevalidated: job.status === 'COMPLETED'}));
   } catch (error) {
+    const diagnostic = trainingReleaseJobError_(error);
     if (job) {
-      job.status = 'CONFIGURATION_PENDING'; job.pendingCode = error.trainingReleaseCode || 'JOB_ACCESS';
+      job.status = 'CONFIGURATION_PENDING'; delete job.httpStatus; Object.assign(job, diagnostic);
       try { trainingReleaseStopTrigger_(job); } catch (_) {}
       properties.setProperty(SAHMT_V2_TRAINING_RELEASE.jobProperty, JSON.stringify(job));
     }
-    return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: error.trainingReleaseCode || 'JOB_ACCESS', productionFinancialWrites: false});
+    return trainingReleaseLog_(Object.assign({status: 'CONFIGURATION_PENDING', productionFinancialWrites: false}, diagnostic));
   } finally { lock.releaseLock(); }
 }
 function consultarDisponibilizacaoTreinamentosSahmtV2() {
@@ -798,6 +900,6 @@ function consultarDisponibilizacaoTreinamentosSahmtV2() {
   try {
     const job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);
     return trainingReleaseLog_(Object.assign({}, result, {status: job && job.status || 'NOT_STARTED',phase: job && job.phase || '',runs: job && job.runs || 0, validatedForms: job && job.validatedForms || 0,
-      materialFiles: 84,materialPrepared: job && job.materialPrepared || 0,materialPending: job && Number.isInteger(job.materialPending) ? job.materialPending : 84,pendingCode: job && job.pendingCode || '', pendingItems: job && job.pendingItems || []}));
+      materialFiles: 84,materialPrepared: job && job.materialPrepared || 0,materialPending: job && Number.isInteger(job.materialPending) ? job.materialPending : 84,pendingCode: job && job.pendingCode || '',httpStatus: job && job.httpStatus, pendingItems: job && job.pendingItems || []}));
   } catch (_) { return {status: 'CONFIGURATION_PENDING', pendingCode: 'CHECKPOINT_INVALID', productionFinancialWrites: false}; }
 }
