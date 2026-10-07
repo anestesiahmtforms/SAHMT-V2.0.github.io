@@ -286,6 +286,96 @@ function assertNoReleaseMutation(h,before) {
   assert.deepEqual([...h.properties],before);assert.equal(h.commits.length,0);assert.equal(h.mutations.length,0);assert.equal(h.formOperations.length,0);
 }
 
+test('release checkpoint remains readable during catalog quota without exposing private job fields',()=>{
+  const h=fixture(),job=stoppedReleaseJob(h,{status:'RUNNING',pendingCode:undefined,pendingItems:[{formId:'PrivateFormSentinel',pendingCode:'PRIVATE_SENTINEL'}],privateData:'PrivateJobSentinel'});
+  h.triggers.push(clockTrigger(job.triggerId));
+  h.ctx.trainingReleaseContext_=()=>{throw Object.assign(Error('PrivateProviderSentinel'),{status:429});};
+  const before=copy([...h.properties]),triggers=[...h.triggers],result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+  assert.equal(result.status,'RUNNING');assert.equal(result.runs,19);assert.equal(result.phase,'FORMS');
+  assert.equal(result.checkpointReadOnly,true);assert.equal(result.catalogReadAvailable,false);assert.equal(result.liveFormsRevalidated,false);
+  assert.equal(result.catalogReadCode,'JOB_QUOTA_EXCEEDED');assert.equal(result.catalogHttpStatus,429);
+  assert.equal(Object.hasOwn(result,'pendingCode'),false);assert.equal(Object.hasOwn(result,'httpStatus'),false);
+  assert.equal(result.triggerLookupAvailable,true);assert.equal(result.triggerPresent,true);assert.equal(result.jobLimitReached,false);
+  assert.equal(result.expiresAt,'2026-10-07T15:00:00.000Z');assert.equal(result.validatedForms,16);
+  const output=JSON.stringify(result)+h.logs.join('');
+  for(const privateValue of [job.digest,job.closeMask,job.materialMask,'PrivateFormSentinel','PRIVATE_SENTINEL','PrivateJobSentinel','PrivateProviderSentinel',operator])assert.equal(output.includes(privateValue),false);
+  const logged=JSON.parse(h.logs.at(-1));
+  assert.equal(logged.catalogReadCode,'JOB_QUOTA_EXCEEDED');assert.equal(logged.expiresAt,result.expiresAt);assert.equal(logged.triggerPresent,true);
+  assertNoReleaseMutation(h,before);assert.deepEqual(h.triggers,triggers);assert.equal(h.removedTriggers.length,0);
+});
+
+test('catalog authorization failure does not overwrite the stored quota interruption',()=>{
+  const h=fixture();stoppedReleaseJob(h,{pendingCode:'JOB_QUOTA_EXCEEDED',httpStatus:429});
+  h.ctx.trainingReleaseContext_=()=>{throw Object.assign(Error('PrivateAuthorizationSentinel'),{status:403});};
+  const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+  assert.equal(result.status,'CONFIGURATION_PENDING');assert.equal(result.pendingCode,'JOB_QUOTA_EXCEEDED');assert.equal(result.httpStatus,429);
+  assert.equal(result.catalogReadCode,'JOB_AUTHORIZATION_REQUIRED');assert.equal(result.catalogHttpStatus,403);
+  assert.equal(result.triggerLookupAvailable,true);assert.equal(result.triggerPresent,false);assert.equal(result.jobLimitReached,false);
+  assert.equal(JSON.stringify(result).includes('PrivateAuthorizationSentinel'),false);assertNoReleaseMutation(h,before);assert.equal(h.removedTriggers.length,0);
+});
+
+test('successful checkpoint query retains actual catalog counts and performs no mutation',()=>{
+  const h=fixture(),loaded=h.load(),item=h.manifest.items[0];
+  h.ctx.trainingReleasePrepared_(loaded,item);h.ctx.trainingReleaseReleased_(loaded,item);
+  const job=stoppedReleaseJob(h,{status:'RUNNING',pendingCode:undefined});h.triggers.push(clockTrigger(job.triggerId));
+  h.commits.length=0;h.mutations.length=0;h.formOperations.length=0;
+  const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+  assert.equal(result.status,'RUNNING');assert.equal(result.catalogReadAvailable,true);assert.equal(result.checkpointReadOnly,true);
+  assert.equal(result.totalForms,76);assert.equal(result.preparedForms,1);assert.equal(result.publishedForms,1);assert.equal(result.managementDocuments,1);
+  assert.equal(result.generalForms,62);assert.equal(result.restrictedForms,14);assert.equal(result.liveFormsRevalidated,false);
+  assert.equal(Object.hasOwn(result,'catalogReadCode'),false);assertNoReleaseMutation(h,before);assert.equal(h.triggers.length,1);
+});
+
+test('checkpoint query reports the original time and round limits without changing them',()=>{
+  for(const boundary of ['age','runs']){
+    const h=fixture(),job=stoppedReleaseJob(h,{runs:boundary==='runs'?80:19});if(boundary==='age')h.advance(86400000);
+    h.ctx.trainingReleaseContext_=()=>{throw Object.assign(Error('PrivateQuotaSentinel'),{status:429});};
+    const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+    assert.equal(result.jobLimitReached,true);assert.equal(result.runs,job.runs);assert.equal(result.expiresAt,'2026-10-07T15:00:00.000Z');
+    assert.equal(result.pendingCode,'JOB_ACCESS');assert.equal(result.catalogReadCode,'JOB_QUOTA_EXCEEDED');assertNoReleaseMutation(h,before);
+  }
+});
+
+test('checkpoint query does not claim trigger absence when trigger lookup fails',()=>{
+  const h=fixture();stoppedReleaseJob(h,{status:'RUNNING',pendingCode:undefined});
+  h.ctx.ScriptApp.getProjectTriggers=()=>{throw Error('PrivateTriggerSentinel');};
+  h.ctx.trainingReleaseContext_=()=>{throw Object.assign(Error('PrivateQuotaSentinel'),{status:429});};
+  const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+  assert.equal(result.triggerLookupAvailable,false);assert.equal(Object.hasOwn(result,'triggerPresent'),false);assert.equal(result.status,'RUNNING');
+  assert.equal(JSON.stringify(result).includes('PrivateTriggerSentinel'),false);assertNoReleaseMutation(h,before);
+});
+
+test('invalid checkpoints fail closed before catalog or trigger lookup',()=>{
+  for(const invalid of ['null','false','0','[]','"private-string"','not-json',null]){
+    const h=fixture(),job=stoppedReleaseJob(h);
+    h.properties.set(jobProperty,invalid===null?JSON.stringify({...job,startedAt:Date.parse('2026-10-06T15:00:01Z')}):invalid);
+    h.ctx.trainingReleaseContext_=()=>{throw Error('Catalog must not be read');};
+    h.ctx.ScriptApp.getProjectTriggers=()=>{throw Error('Triggers must not be read');};
+    const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+    assert.equal(result.status,'CONFIGURATION_PENDING');assert.equal(result.pendingCode,'CHECKPOINT_INVALID');
+    assert.equal(Object.hasOwn(result,'runs'),false);assert.equal(Object.hasOwn(result,'expiresAt'),false);assert.equal(result.catalogReadAvailable,false);
+    assertNoReleaseMutation(h,before);
+  }
+});
+
+test('operator denial prevents reading or exposing a private checkpoint',()=>{
+  const h=fixture();stoppedReleaseJob(h);h.properties.set('SAHMT_V2_EVALUATION_ALLOWED_EMAILS','denied@example.invalid');
+  const getProperties=h.ctx.PropertiesService.getScriptProperties,reads=[];
+  h.ctx.PropertiesService.getScriptProperties=()=>{const properties=getProperties();return {...properties,getProperty:key=>{reads.push(key);return properties.getProperty(key);}};};
+  h.ctx.trainingReleaseLoad_=()=>{throw Error('Catalog must not be read');};
+  const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+  assert.equal(result.pendingCode,'JOB_AUTHORIZATION_REQUIRED');assert.equal(result.catalogReadAvailable,false);assert.equal(reads.includes(jobProperty),false);
+  assert.equal(Object.hasOwn(result,'runs'),false);assert.equal(Object.hasOwn(result,'expiresAt'),false);assertNoReleaseMutation(h,before);
+});
+
+test('checkpoint query does not mix catalog counts from another manifest',()=>{
+  const h=fixture();stoppedReleaseJob(h);const load=h.ctx.trainingReleaseLoad_;
+  h.ctx.trainingReleaseLoad_=()=>({...load(),digest:'f'.repeat(64)});
+  const before=copy([...h.properties]),result=h.ctx.consultarDisponibilizacaoTreinamentosSahmtV2();
+  assert.equal(result.catalogReadCode,'JOB_MANIFEST_CONFLICT');assert.equal(result.catalogReadAvailable,false);
+  assert.equal(Object.hasOwn(result,'publishedForms'),false);assert.equal(result.runs,19);assertNoReleaseMutation(h,before);
+});
+
 test('quota interruption is classified and resumed at the same checkpoint without extending the job',()=>{
   const h=fixture(),initial=stoppedReleaseJob(h,{status:'RUNNING'}),cursor=h.properties.get(cursorProperty),audience=h.ctx.trainingReleaseMaterialAudience_;
   h.triggers.push(clockTrigger(initial.triggerId));

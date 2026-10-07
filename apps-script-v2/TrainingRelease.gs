@@ -674,6 +674,12 @@ function trainingReleaseLog_(result) {
   if (typeof result.liveFormsRevalidated === 'boolean') safe.liveFormsRevalidated = result.liveFormsRevalidated;
   if (typeof result.liveMaterialsRevalidated === 'boolean') safe.liveMaterialsRevalidated = result.liveMaterialsRevalidated;
   if (typeof result.resumedOriginalJob === 'boolean') safe.resumedOriginalJob = result.resumedOriginalJob;
+  ['checkpointReadOnly','catalogReadAvailable','triggerLookupAvailable','triggerPresent','jobLimitReached'].forEach(function (key) {
+    if (typeof result[key] === 'boolean') safe[key] = result[key];
+  });
+  if (typeof result.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(result.expiresAt) && Number.isFinite(Date.parse(result.expiresAt))) safe.expiresAt = result.expiresAt;
+  if (Number.isInteger(result.catalogHttpStatus) && result.catalogHttpStatus >= 400 && result.catalogHttpStatus <= 599) safe.catalogHttpStatus = result.catalogHttpStatus;
+  if (/^[A-Z][A-Z0-9_]{0,79}$/.test(result.catalogReadCode || '')) safe.catalogReadCode = result.catalogReadCode;
   if (Number.isInteger(result.httpStatus) && result.httpStatus >= 400 && result.httpStatus <= 599) safe.httpStatus = result.httpStatus;
   if (/^[A-Z][A-Z0-9_]{0,79}$/.test(result.pendingCode || '')) safe.pendingCode = result.pendingCode;
   const pendingCodes = [...new Set((result.pendingItems || []).map(function (item) { return item.pendingCode; }).filter(function (code) { return /^[A-Z][A-Z0-9_]{0,79}$/.test(code || ''); }))].slice(0,5);
@@ -895,11 +901,52 @@ function continuarDisponibilizacaoTreinamentosSahmtV2_() {
   } finally { lock.releaseLock(); }
 }
 function consultarDisponibilizacaoTreinamentosSahmtV2() {
-  const result = consultarCatalogoTreinamentosSahmtV2();
-  if (result.status !== 'READ_ONLY') return result;
+  try { evaluationAssertOperator_(false); }
+  catch (_) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: 'JOB_AUTHORIZATION_REQUIRED', checkpointReadOnly: true, catalogReadAvailable: false, productionFinancialWrites: false}); }
+  let job, result;
   try {
-    const job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);
-    return trainingReleaseLog_(Object.assign({}, result, {status: job && job.status || 'NOT_STARTED',phase: job && job.phase || '',runs: job && job.runs || 0, validatedForms: job && job.validatedForms || 0,
-      materialFiles: 84,materialPrepared: job && job.materialPrepared || 0,materialPending: job && Number.isInteger(job.materialPending) ? job.materialPending : 84,pendingCode: job && job.pendingCode || '',httpStatus: job && job.httpStatus, pendingItems: job && job.pendingItems || []}));
-  } catch (_) { return {status: 'CONFIGURATION_PENDING', pendingCode: 'CHECKPOINT_INVALID', productionFinancialWrites: false}; }
+    const cfg = SAHMT_V2_TRAINING_RELEASE, now = Date.now();
+    job = trainingReleaseSaved_(cfg.jobProperty);
+    if (job === null && PropertiesService.getScriptProperties().getProperty(cfg.jobProperty) !== null) trainingReleaseReject_('CHECKPOINT_INVALID');
+    result = {status: 'NOT_STARTED', runs: 0, checkpointReadOnly: true, catalogReadAvailable: false, liveFormsRevalidated: false, productionFinancialWrites: false};
+    if (job !== null) {
+      if (typeof job !== 'object' || Array.isArray(job) || job.schemaVersion !== 2 || !['RUNNING','CONFIGURATION_PENDING','COMPLETED'].includes(job.status) ||
+          !['CLOSE_FORMS','MATERIALS','FORMS'].includes(job.phase) || !Number.isInteger(job.runs) || job.runs < 0 || job.runs > cfg.maxRuns ||
+          !Number.isSafeInteger(job.startedAt) || job.startedAt < 0 || job.startedAt > now || job.productionFinancialWrites !== false ||
+          !/^[a-f0-9]{64}$/.test(job.digest || '') || !/^[01]{76}$/.test(job.closeMask || '') || !/^[01]{84}$/.test(job.materialMask || '') || !/^[01]{76}$/.test(job.verifiedMask || '') ||
+          !Number.isInteger(job.closeCursor) || job.closeCursor < 0 || job.closeCursor >= cfg.total || !Number.isInteger(job.materialCursor) || job.materialCursor < 0 || job.materialCursor >= cfg.materialCount ||
+          typeof job.triggerId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(job.triggerId) ||
+          job.pendingCode !== undefined && !/^[A-Z][A-Z0-9_]{0,79}$/.test(job.pendingCode) ||
+          job.httpStatus !== undefined && (!Number.isInteger(job.httpStatus) || job.httpStatus < 400 || job.httpStatus > 599)) trainingReleaseReject_('CHECKPOINT_INVALID');
+      const expiresAt = job.startedAt + cfg.maxAgeMs;
+      if (!Number.isSafeInteger(expiresAt) || !Number.isFinite(new Date(expiresAt).getTime())) trainingReleaseReject_('CHECKPOINT_INVALID');
+      Object.assign(result, {status: job.status, phase: job.phase, runs: job.runs, expiresAt: new Date(expiresAt).toISOString(), jobLimitReached: job.runs >= cfg.maxRuns || now >= expiresAt,
+        validatedForms: job.verifiedMask.split('').filter(function (value) { return value === '1'; }).length,
+        materialFiles: cfg.materialCount, materialPrepared: job.materialMask.split('').filter(function (value) { return value === '1'; }).length});
+      result.materialPending = cfg.materialCount - result.materialPrepared;
+      if (job.pendingCode !== undefined) result.pendingCode = job.pendingCode;
+      if (job.httpStatus !== undefined) result.httpStatus = job.httpStatus;
+    }
+  } catch (_) { return trainingReleaseLog_({status: 'CONFIGURATION_PENDING', pendingCode: 'CHECKPOINT_INVALID', checkpointReadOnly: true, catalogReadAvailable: false, productionFinancialWrites: false}); }
+  if (job) {
+    try {
+      const triggers = ScriptApp.getProjectTriggers();
+      if (!Array.isArray(triggers)) trainingReleaseReject_('TRIGGER_LOOKUP_UNAVAILABLE');
+      const matching = triggers.filter(function (trigger) { return trigger.getUniqueId() === job.triggerId; });
+      result.triggerPresent = matching.length === 1 && matching[0].getHandlerFunction() === SAHMT_V2_TRAINING_RELEASE.handler &&
+        matching[0].getTriggerSource() === ScriptApp.TriggerSource.CLOCK && matching[0].getEventType() === ScriptApp.EventType.CLOCK;
+      result.triggerLookupAvailable = true;
+    } catch (_) { result.triggerLookupAvailable = false; delete result.triggerPresent; }
+  }
+  try {
+    const loaded = trainingReleaseLoad_();
+    if (job && loaded.digest !== job.digest) trainingReleaseReject_('JOB_MANIFEST_CONFLICT');
+    trainingReleaseContext_(loaded, null);
+    Object.assign(result, trainingReleaseCounts_(loaded), {catalogReadAvailable: true});
+  } catch (error) {
+    const diagnostic = trainingReleaseJobError_(error);
+    result.catalogReadCode = diagnostic.pendingCode;
+    if (diagnostic.httpStatus !== undefined) result.catalogHttpStatus = diagnostic.httpStatus;
+  }
+  return trainingReleaseLog_(result);
 }
