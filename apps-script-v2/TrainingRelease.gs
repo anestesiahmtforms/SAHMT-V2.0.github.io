@@ -797,8 +797,11 @@ function retomarDisponibilizacaoTreinamentosSahmtV2() {
         !/^[01]{76}$/.test(job.closeMask || '') || !/^[01]{84}$/.test(job.materialMask || '') || !/^[01]{76}$/.test(job.verifiedMask || '') ||
         !/^[a-f0-9]{64}$/.test(job.digest || '') || !/^[a-f0-9]{64}$/.test(job.materialAudienceDigest || '') ||
         typeof job.triggerId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(job.triggerId) || job.productionFinancialWrites !== false) trainingReleaseReject_('CHECKPOINT_INVALID');
-    if (!Number.isInteger(job.runs) || job.runs < 0 || job.runs >= cfg.maxRuns || !Number.isFinite(job.startedAt) ||
-        job.startedAt > Date.now() || Date.now() - job.startedAt >= cfg.maxAgeMs) trainingReleaseReject_('JOB_LIMIT');
+    function withinLimits() {
+      if (!Number.isInteger(job.runs) || job.runs < 0 || job.runs >= cfg.maxRuns || !Number.isFinite(job.startedAt) ||
+          job.startedAt > Date.now() || Date.now() - job.startedAt >= cfg.maxAgeMs) trainingReleaseReject_('JOB_LIMIT');
+    }
+    withinLimits();
     if (job.phase !== 'CLOSE_FORMS' && job.closeMask !== '1'.repeat(cfg.total) ||
         job.phase === 'FORMS' && job.materialMask !== '1'.repeat(cfg.materialCount)) trainingReleaseReject_('CHECKPOINT_INVALID');
     const cursor = trainingReleaseSaved_(cfg.cursorProperty);
@@ -818,6 +821,7 @@ function retomarDisponibilizacaoTreinamentosSahmtV2() {
     }
     const existing = knownTrigger();
     if (!unchanged(originalRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+    withinLimits();
     if (existing && job.status === 'RUNNING') return summary(job);
     if (!existing) {
       // Persist an intent before arming. An unknown creation outcome requires review, never a blind second trigger.
@@ -828,9 +832,11 @@ function retomarDisponibilizacaoTreinamentosSahmtV2() {
       createdTrigger = ScriptApp.newTrigger(cfg.handler).timeBased().everyMinutes(5).create();
       if (!unchanged(ownedRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
       job.triggerId = createdTrigger.getUniqueId();
+      if (typeof job.triggerId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(job.triggerId)) trainingReleaseReject_('JOB_TRIGGER_UNCONFIRMED');
       if (!knownTrigger()) trainingReleaseReject_('JOB_TRIGGER_UNCONFIRMED');
     }
     if (!unchanged(ownedRaw || originalRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');
+    withinLimits();
     job.status = 'RUNNING'; delete job.pendingCode; delete job.httpStatus;
     ownedRaw = JSON.stringify(job); properties.setProperty(cfg.jobProperty,ownedRaw);
     if (!unchanged(ownedRaw)) trainingReleaseReject_('JOB_CHANGED_DURING_RESUME');

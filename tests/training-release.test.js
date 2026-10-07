@@ -352,6 +352,11 @@ test('resume rejects changed identity, audience, invalid checkpoints and exhaust
     const before=copy([...h.properties]);assert.equal(h.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().status,'CONFIGURATION_PENDING');
     assert.equal(h.triggers.length,0);assert.equal(h.removedTriggers.length,0);assertNoReleaseMutation(h,before);
   }
+  const expiresDuringValidation=fixture();stoppedReleaseJob(expiresDuringValidation);const audience=expiresDuringValidation.ctx.trainingReleaseMaterialAudience_;
+  expiresDuringValidation.ctx.trainingReleaseMaterialAudience_=(...args)=>{const value=audience(...args);expiresDuringValidation.advance(86400000);return value;};
+  const before=copy([...expiresDuringValidation.properties]);
+  assert.equal(expiresDuringValidation.ctx.retomarDisponibilizacaoTreinamentosSahmtV2().pendingCode,'JOB_LIMIT');
+  assert.equal(expiresDuringValidation.triggers.length,0);assertNoReleaseMutation(expiresDuringValidation,before);
 });
 
 test('resume rejects unknown, duplicate or non-clock handler triggers without removing them',()=>{
