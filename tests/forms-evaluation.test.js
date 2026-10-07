@@ -46,9 +46,29 @@ function harness(){
   ctx.evaluationRunTransaction_=callback=>{const p=callback('mock-transaction');commit(p.writes||[]);return p.result;};
   ctx.formsEvaluationCommitWrites_=commit;
   ctx.evaluationAssertOperator_=runtime=>{operatorChecks.push(runtime);if(runtime&&!enabled)throw Error('Homologação e ativação pendentes');return 'admin@example.invalid';};
-  ctx.formsEvaluationGoogleRequest_=url=>{const route=google.get(url);if(route instanceof Error)throw route;if(route===undefined)throw Error(`Unexpected mocked Google URL ${url}`);return typeof route==='function'?clone(route()):clone(route);};
+  ctx.formsEvaluationGoogleRequest_=(url,options={})=>{
+    const route=google.get(url);if(route instanceof Error)throw route;if(route!==undefined)return typeof route==='function'?clone(route()):clone(route);
+    const permissionRoute=url.match(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^/]+)\/permissions(?:\/([^?]+))?(?:\?(.*))?$/);
+    if(!permissionRoute)throw Error(`Unexpected mocked Google URL ${url}`);
+    const form=forms.get(permissionRoute[1]);if(!form)throw Error('Missing permissions fixture');
+    const method=options.method||'get';
+    if(method==='delete'){if(form.failDelete)throw Error('cannot remove permission');const selected=form.permissions.find(p=>p.id===permissionRoute[2]);if(selected?.permissionDetails?.some(p=>p.inherited))throw Error('inherited permission');form.deletedPermissions.push(permissionRoute[2]);form.permissions=form.permissions.filter(p=>p.id!==permissionRoute[2]);return {};}
+    if(method==='post'){if(form.failAdd)throw Error('cannot add reader');const permission={id:'published-'+(++serial),...JSON.parse(options.payload)};form.permissions.push(permission);return clone(permission);}
+    assert.match(url,/includePermissionsForView=published/);const query=new URLSearchParams(permissionRoute[3]||''),offset=Number(query.get('pageToken')||0),size=form.permissionsPageSize||100;
+    const result={permissions:clone(form.permissions.slice(offset,offset+size))};if(offset+size<form.permissions.length)result.nextPageToken=String(offset+size);if(form.repeatPageToken)result.nextPageToken='0';return result;
+  };
   ctx.evaluationApplyAwards_=(changes,options={})=>{const writes=[],plans=[];for(const change of changes){awards.push(clone(change));const id=ctx.evaluationAwardId_(change),old=get('evaluationAwards',id);const plan=ctx.evaluationPlanAward_(old,change);plans.push(plan);if(plan.changed){writes.push(ctx.evaluationWrite_('evaluationAwards',id,plan.award,old),ctx.evaluationWrite_('evaluationLedger',plan.ledger.id,plan.ledger,null));}}return{status:plans.some(p=>p.status==='NEEDS_REVIEW')?'NEEDS_REVIEW':'APPLIED',writes,awards:plans};};
-  function fakeForm(id=FORM){const obj={getId:()=>id,responderUrl:`https://docs.google.com/forms/d/e/${ALIAS}/viewform`,hasLimitOneResponsePerUser:()=>true,canEditResponse:()=>false,isAcceptingResponses:()=>true,supportsAdvancedResponderPermissions:()=>true,isPublished:()=>true};forms.set(id,obj);return obj;}
+  function fakeForm(id=FORM){
+    let accepting=true,published=true;
+    const obj={getId:()=>id,responderUrl:`https://docs.google.com/forms/d/e/${ALIAS}/viewform`,hasLimitOneResponsePerUser:()=>true,canEditResponse:()=>false,isAcceptingResponses:()=>accepting,supportsAdvancedResponderPermissions:()=>true,isPublished:()=>published,
+      permissions:[{id:'owner',type:'user',role:'owner',emailAddress:'admin@example.invalid'},{id:'editor',type:'user',role:'writer',emailAddress:'manager@example.invalid'},{id:'public',type:'anyone',role:'reader',view:'published'},{id:'outsider',type:'user',role:'reader',view:'published',emailAddress:'anyone@example.invalid'}],deletedPermissions:[],publicationChanges:[],failAdd:false,
+      setAcceptingResponses:value=>{accepting=value;return obj;},setPublished:value=>{published=value;obj.publicationChanges.push(value);if(!value)accepting=false;return obj;},
+      getPublishedReaders:()=>obj.permissions.filter(p=>p.view==='published'&&p.type==='user').map(p=>({getEmail:()=>p.emailAddress})),
+      addPublishedReader:email=>{if(obj.failAdd)throw Error('cannot add reader');obj.permissions.push({id:'legacy-'+(++serial),type:'user',role:'reader',view:'published',emailAddress:email});return obj;},
+      removePublishedReader:()=>{throw Error('must preserve editor/viewer ACL and remove published grants by Drive permission ID');},
+      publishedEmails:()=>obj.permissions.filter(p=>p.view==='published'&&p.type==='user').map(p=>p.emailAddress)};
+    forms.set(id,obj);return obj;
+  }
   function seedFixture(){seed('users','admin',profile('admin',{permissions:{admin:true}}));seed('users','manager',profile('manager'));seed('users','person',profile('person'));seed('managementAreas',AREA,{active:true,managerUids:['preserved-legacy']});seed('evaluationAssignments',AREA,{areaId:AREA,uid:'manager',version:1,effectiveAt:new Date('2026-01-01')});seed('evaluationAssignmentHistory',`assignment-${ctx.formsEvaluationHash_(`${AREA}\0${1}`)}`,{areaId:AREA,uid:'manager',version:1,effectiveAt:new Date('2026-01-01')});seed('evaluationActivities',FORM,{formId:FORM,active:true,areaIds:[AREA],status:'CONFIGURATION_PENDING'});const meta=metadata();google.set(`https://forms.googleapis.com/v1/forms/${FORM}`,meta);fakeForm();return meta;}
   function configuration(meta=metadata(),extra={}){const checked=ctx.formsEvaluationConfiguration_(meta,{modalities:{acknowledgement:true,suggestion:true,test:true}});const cfg={formId:FORM,status:'READY',creditScopeId:'matter',version:1,configVersion:1,eligibleUids:['person','manager'],managerAreaId:AREA,managerUid:'manager',assignmentId:AREA,modalities:{acknowledgement:true,suggestion:true,test:true},...checked,materialUrls:[],materialSnapshot:[],materialFingerprint:ctx.formsEvaluationHash_([]),validFrom:new Date('2026-01-01'),validUntil:new Date('2099-12-31'),firstEligibleAt:new Date('2026-01-01'),...extra};seed('evaluationFormConfigs',FORM,cfg);seed('evaluationActivities',FORM,{...(get('evaluationActivities',FORM)||{}),formId:FORM,active:true,status:'READY',configVersion:cfg.configVersion,managerUid:cfg.managerUid,managerAreaId:cfg.managerAreaId,assignmentId:cfg.assignmentId,areaIds:[AREA]});return cfg;}
   function response(extra={}){return{formId:FORM,responseId:'response-fixture',respondentEmail:'person@example.invalid',createTime:new Date().toISOString(),answers:{ack:answer('SIM'),test:answer('A')},totalScore:5,...extra};}
@@ -63,6 +83,141 @@ test('arquivo define adaptador sem chamar APIs, atribuir créditos ou instalar g
 test('normalização backend distingue Forms real de alias público/curto',()=>{const h=harness();assert.equal(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/${FORM}/edit`).formId,FORM);assert.equal(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/e/${ALIAS}/viewform`).formId,null);assert.equal(h.ctx.formsEvaluationLink_('https://forms.gle/TestAlias').kind,'SHORT_URL');});
 test('resolução de alias exige responderUri e mantém origem canônica',()=>{const h=harness();h.seedFixture();const r=h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/e/${ALIAS}/viewform`),{});assert.equal(r.formId,FORM);h.forms.get(FORM).responderUrl='https://docs.google.com/forms/d/e/DifferentAlias123/viewform';assert.throws(()=>h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_('https://docs.google.com/forms/d/e/DifferentAlias123/viewform'),{}),/não corresponde/);});
 test('perfil VERIFIED único e aprovado é a única fonte de UID',()=>{const h=harness(),m=metadata(),r=h.response({uid:'forged-browser-uid'});assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person')]).uid,'person');assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person'),profile('second',{email:'person@example.invalid'})]).status,'NEEDS_REVIEW');assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person',{active:false})]).status,'NEEDS_REVIEW');m.settings.emailCollectionType='RESPONDER_INPUT';assert.equal(h.ctx.formsEvaluationResolveIdentity_(m,r,[profile('person')]).status,'NEEDS_REVIEW');});
+test('pontuação por grupo exige cadastro atual ativo e grupo compatível',()=>{
+  const h=harness(),m=h.seedFixture();
+  h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']});
+  const cfg=h.configuration(m,{eligibleUids:[],eligibleGroups:['GENERAL']});
+  assert.equal(h.ctx.formsEvaluationParticipation_(m,cfg,h.response(),[profile('person')]).status,'CONFIRMED');
+  assert.equal(h.ctx.formsEvaluationParticipation_(m,cfg,h.response(),[profile('restricted-user')]).status,'NEEDS_REVIEW');
+  h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:false,groups:['GENERAL']});
+  assert.equal(h.ctx.formsEvaluationParticipation_(m,cfg,h.response(),[profile('person')]).status,'NEEDS_REVIEW');
+});
+test('configuração publica apenas para os e-mails do grupo e remove respondentes fora da lista',()=>{
+  const h=harness(),m=h.seedFixture(),form=h.ctx.FormApp.openById(FORM);
+  h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']});
+  const day=h.ctx.Utilities.formatDate(new Date()),payload={activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}};
+  assert.equal(run(h,'formsEvaluationConfigured_',payload).status,'CONFIGURATION_PENDING');
+  assert.equal(form.isPublished(),false);
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');
+  assert.deepEqual(form.publishedEmails(),['person@example.invalid']);
+  assert.equal(form.isPublished(),true);assert.equal(form.isAcceptingResponses(),true);
+  assert.deepEqual(h.get('evaluationActivities',FORM).eligibleGroups,['GENERAL']);
+});
+test('falha ao validar ACL do grupo mantém formulário fechado e projeção pendente',()=>{
+  const h=harness();h.seedFixture();const form=h.ctx.FormApp.openById(FORM);form.failAdd=true;
+  h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['RESTRICTED']});
+  const day=h.ctx.Utilities.formatDate(new Date()),payload={activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['RESTRICTED'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}};
+  assert.equal(run(h,'formsEvaluationConfigured_',payload).status,'CONFIGURATION_PENDING');
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');
+  assert.equal(form.isPublished(),false);assert.equal(form.isAcceptingResponses(),false);
+  assert.equal(h.get('evaluationActivities',FORM).status,'CONFIGURATION_PENDING');
+});
+function stagedGroup(h,extra={}){
+  h.seedFixture();h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']});
+  const day=h.ctx.Utilities.formatDate(new Date()),payload={activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true},...extra};
+  return run(h,'formsEvaluationConfigured_',payload);
+}
+test('ACL publicada remove acesso amplo de todas as páginas preservando proprietário e editor',()=>{
+  const h=harness();stagedGroup(h);const form=h.forms.get(FORM);form.permissionsPageSize=1;
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');
+  assert.deepEqual(form.deletedPermissions.sort(),['outsider','public']);
+  assert.equal(form.permissions.find(p=>p.id==='editor').role,'writer');assert.equal(form.permissions.find(p=>p.id==='owner').role,'owner');
+  assert.deepEqual(form.publishedEmails(),['person@example.invalid']);
+});
+test('ACL herdada ou paginação sem avanço mantém Forms e projeção fechados',()=>{
+  for(const inherited of [true,false]){const h=harness();stagedGroup(h);const form=h.forms.get(FORM);
+    if(inherited)form.permissions.push({id:'inherited-domain',type:'domain',role:'reader',view:'published',permissionDetails:[{inherited:true}]});else form.repeatPageToken=true;
+    assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');
+    assert.equal(form.isPublished(),false);assert.equal(form.isAcceptingResponses(),false);assert.equal(h.get('evaluationActivities',FORM).status,'CONFIGURATION_PENDING');
+  }
+});
+test('público Forms une grupo e UIDs individuais sem persistir UIDs do grupo',()=>{
+  const h=harness();stagedGroup(h,{eligibleUids:['manager']});
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');
+  assert.deepEqual(h.forms.get(FORM).publishedEmails().sort(),['manager@example.invalid','person@example.invalid']);
+  assert.deepEqual(h.get('evaluationFormConfigs',FORM).eligibleUids,['manager']);
+});
+test('UID individual com identidade duplicada fica fechado sem conceder ACL',()=>{
+  const h=harness();stagedGroup(h,{eligibleUids:['manager']});
+  h.seed('users','duplicate-manager',profile('duplicate-manager',{email:'MANAGER@example.invalid'}));
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');
+  assert.equal(h.forms.get(FORM).isPublished(),false);assert.equal(h.forms.get(FORM).publicationChanges.includes(true),false);
+});
+test('falha de remoção de acesso amplo e fechamento não confirmado nunca viram READY',()=>{
+  const h=harness();stagedGroup(h);const form=h.forms.get(FORM);form.failDelete=true;
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');assert.equal(form.isPublished(),false);
+  form.setPublished(true);form.setAcceptingResponses(true);form.setPublished=()=>{throw Error('close unavailable');};
+  const outcome=h.ctx.formsEvaluationFinalizePublication_(FORM);assert.equal(outcome.status,'CONFIGURATION_PENDING');assert.equal(outcome.closureConfirmed,false);
+  assert.equal(h.get('evaluationActivities',FORM).status,'CONFIGURATION_PENDING');assert.match(h.get('evaluationActivities',FORM).reason,/não confirmado/);
+});
+test('registro staged com respostas de versão anterior nunca é reaberto pela recuperação',()=>{
+  const h=harness();stagedGroup(h);const previous=h.get('evaluationFormConfigs',FORM);
+  h.seed('evaluationFormConfigs',FORM,{...previous,publicationPending:false,reason:'Nova versão do Form já respondida.'});
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');
+  assert.equal(h.forms.get(FORM).publicationChanges.includes(true),false);assert.equal(h.ctx.reconcileEvaluationResponderAccess().checked,0);
+});
+test('pedido agrupado só fica READY após stage confirmado e ACL publicada exata',()=>{
+  const h=harness();h.seedFixture();h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']});
+  const day=h.ctx.Utilities.formatDate(new Date());h.seed('evaluationRequests','group-request',{id:'group-request',type:'CONFIGURE_ACTIVITY',actorUid:'admin',status:'PENDING',payload:{activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}}});
+  assert.equal(h.ctx.formsEvaluationProcessRequest_(h.get('evaluationRequests','group-request')).status,'READY');
+  assert.equal(h.get('evaluationRequests','group-request').status,'READY');assert.equal(h.forms.get(FORM).isPublished(),true);
+  assert.equal(h.commits[0].find(w=>w.c==='evaluationFormConfigs').changes.status,'CONFIGURATION_PENDING');
+});
+test('alteração do público durante o READY CAS fecha e recuperação usa cadastro atual',()=>{
+  const h=harness();stagedGroup(h);const form=h.forms.get(FORM),runTransaction=h.ctx.evaluationRunTransaction_;
+  const publish=form.setPublished;form.setPublished=value=>{const outcome=publish(value);if(value)h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:false,groups:['GENERAL']});return outcome;};
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');assert.equal(form.isPublished(),false);
+  form.setPublished=publish;h.seed('documentAccessEmails','another-reader@example.invalid',{id:'another-reader@example.invalid',email:'another-reader@example.invalid',active:true,groups:['GENERAL']});
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');assert.deepEqual(form.publishedEmails(),['another-reader@example.invalid']);
+});
+function releaseGateFixture(h){
+  stagedGroup(h);const manifestDigest='a'.repeat(64),formDigest='b'.repeat(64);
+  h.seed('evaluationActivities',FORM,{...h.get('evaluationActivities',FORM),trainingReleaseManifestDigest:manifestDigest,trainingReleaseDigest:formDigest,trainingReleaseClosedBaseline:true});
+  return{formId:FORM,manifestDigest,formDigest};
+}
+test('atividade de release exige verificador privado completo antes de publicação genérica',()=>{
+  const h=harness();releaseGateFixture(h);
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');
+  assert.equal(h.forms.get(FORM).publicationChanges.includes(true),false);assert.equal(h.get('evaluationFormConfigs',FORM).trainingReleaseBlocked,true);assert.equal(h.get('evaluationFormConfigs',FORM).publicationPending,false);
+});
+test('release privado é validado antes e depois da ACL fora da transação',()=>{
+  const h=harness(),proof=releaseGateFixture(h);let checks=0;
+  h.ctx.trainingReleaseVerifyPublication_=id=>{assert.equal(id,FORM);checks++;return proof;};
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');assert.equal(checks,2);
+});
+test('material de apoio divergente depois de publicar bloqueia reconciliação genérica',()=>{
+  const h=harness(),proof=releaseGateFixture(h);let checks=0;
+  h.ctx.trainingReleaseVerifyPublication_=()=>{if(++checks===2)throw Error('material header removed');return proof;};
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');assert.equal(h.forms.get(FORM).isPublished(),false);
+  assert.equal(h.get('evaluationActivities',FORM).trainingReleaseBlocked,true);assert.equal(h.get('evaluationFormConfigs',FORM).publicationPending,false);
+  h.ctx.trainingReleaseVerifyPublication_=()=>proof;
+  assert.equal(h.ctx.reconcileEvaluationResponderAccess().checked,0);assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');assert.equal(h.forms.get(FORM).isPublished(),false);
+});
+test('troca de digest do release durante o READY CAS nunca publica a projeção incorreta',()=>{
+  const h=harness(),proof=releaseGateFixture(h);h.ctx.trainingReleaseVerifyPublication_=()=>proof;
+  const form=h.forms.get(FORM),publish=form.setPublished;form.setPublished=value=>{const result=publish(value);if(value)h.seed('evaluationActivities',FORM,{...h.get('evaluationActivities',FORM),trainingReleaseDigest:'c'.repeat(64)});return result;};
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');assert.equal(form.isPublished(),false);assert.equal(h.get('evaluationActivities',FORM).status,'CONFIGURATION_PENDING');
+});
+test('falha do commit de configuração nunca publica antes de confirmar stage',()=>{
+  const h=harness();h.seedFixture();h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:true,groups:['GENERAL']});
+  const form=h.forms.get(FORM),day=h.ctx.Utilities.formatDate(new Date());
+  h.seed('evaluationRequests','config-request',{id:'config-request',type:'CONFIGURE_ACTIVITY',actorUid:'admin',status:'PENDING',payload:{activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:[],eligibleGroups:['GENERAL'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}}});
+  h.ctx.evaluationRunTransaction_=callback=>{callback('stage-failed');throw Error('commit failed');};
+  assert.throws(()=>h.ctx.formsEvaluationProcessRequest_(h.get('evaluationRequests','config-request')),/commit failed/);
+  assert.equal(form.isPublished(),false);assert.equal(form.publicationChanges.includes(true),false);
+});
+test('falha de READY CAS após publicar despublica e mantém stage recuperável',()=>{
+  const h=harness();stagedGroup(h);const form=h.forms.get(FORM),runTransaction=h.ctx.evaluationRunTransaction_;
+  h.ctx.evaluationRunTransaction_=callback=>{const plan=callback('failed-ready-cas');if(plan.writes.some(w=>w.c==='evaluationActivities'&&w.changes.status==='READY'))throw Error('READY commit failed');return runTransaction(()=>plan);};
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'CONFIGURATION_PENDING');
+  assert.equal(form.isPublished(),false);assert.equal(form.isAcceptingResponses(),false);assert.equal(h.get('evaluationFormConfigs',FORM).publicationPending,true);
+});
+test('reconciliação retira respondente revogado do grupo e concede novo sem pontuar',()=>{
+  const h=harness();stagedGroup(h);assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');
+  h.seed('documentAccessEmails','person@example.invalid',{id:'person@example.invalid',email:'person@example.invalid',active:false,groups:['GENERAL']});
+  h.seed('documentAccessEmails','new-reader@example.invalid',{id:'new-reader@example.invalid',email:'new-reader@example.invalid',active:true,groups:['GENERAL']});
+  const result=h.ctx.reconcileEvaluationResponderAccess();assert.equal(result.ready,1);assert.deepEqual(h.forms.get(FORM).publishedEmails(),['new-reader@example.invalid']);assert.equal(h.awards.length,0);
+});
 test('native zero obrigatório em ciência, sugestão e revisão',()=>{const h=harness();const m=metadata();m.items[0].questionItem.question.grading.pointValue=1;assert.throws(()=>h.ctx.formsEvaluationConfiguration_(m,{modalities:{acknowledgement:true}}),/zero/);});
 test('teste exige quiz, escolha real, gabarito e pesos confirmados',()=>{const h=harness();for(const mutate of [m=>m.settings.quizSettings.isQuiz=false,m=>delete m.items[4].questionItem.question.grading.correctAnswers,m=>m.items[4].questionItem.question.grading.correctAnswers.answers=[{value:'C'}],m=>m.items[4].questionItem.question.grading.pointValue=1.5]){const m=metadata();mutate(m);assert.throws(()=>h.ctx.formsEvaluationConfiguration_(m,{modalities:{test:true}}));}assert.equal(h.ctx.formsEvaluationConfiguration_(metadata(),{modalities:{test:true}}).maxTestScore,5);});
 test('renomear formulário ou copiar IDs não é alteração efetiva dos testes',()=>{const h=harness(),a=metadata(),b=metadata();b.info.title='Título administrativo novo';b.items.forEach(i=>{i.itemId+='copy';i.questionItem.question.questionId+='copy';});assert.equal(h.ctx.formsEvaluationConfiguration_(a,{modalities:{test:true}}).questionFingerprint,h.ctx.formsEvaluationConfiguration_(b,{modalities:{test:true}}).questionFingerprint);b.items[4].title='Questão realmente alterada';assert.notEqual(h.ctx.formsEvaluationConfiguration_(a,{modalities:{test:true}}).questionFingerprint,h.ctx.formsEvaluationConfiguration_(b,{modalities:{test:true}}).questionFingerprint);});

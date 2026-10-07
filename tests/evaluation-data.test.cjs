@@ -2,13 +2,22 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../src/evaluation-data.js'), 'utf8').replaceAll('export ', '').replaceAll("import('./firebase.js')", 'Promise.resolve({db: fakeDb})').replaceAll("import('firebase/firestore')", 'Promise.resolve(fakeSdk)');
-function setup({admin = false, revoked = false} = {}) {
+const source = fs.readFileSync(require('node:path').join(__dirname, '../src/evaluation-data.js'), 'utf8').replaceAll('export ', '').replaceAll("import('./firebase.js')", 'Promise.resolve({db: fakeDb})').replaceAll("import('./firebase-auth.js')", 'Promise.resolve({auth: fakeAuth})').replaceAll("import('firebase/firestore')", 'Promise.resolve(fakeSdk)');
+function setup({admin = false, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false} = {}) {
   const listeners = [], events = [], errors = [];
-  const sdk = {doc: (_db, name, id) => ({name, id}), collection: (_db, name) => ({name}), where: (...args) => ({where: args}), query: (...args) => args, orderBy: (...args) => ({orderBy: args}), limit: count => ({limit: count}),
-    getDocFromServer: async () => ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {}})}),
+  const sdk = {doc: (_db, name, id) => ({name, id}), collection: (_db, name) => ({name}), where: (...args) => ({where: args}), query: (...args) => args, orderBy: (...args) => ({orderBy: args}), limit: count => ({limit: count}), documentId: () => '__name__', startAfter: cursor => ({startAfter: cursor}),
+    getDocFromServer: async ref => ref?.name === 'documentAccessEmails'
+      ? (groupReadDenied ? Promise.reject(new Error('permission-denied')) : {exists: () => accessGroups.length > 0, data: () => ({email: 'fixture@example.invalid', active: accessGroups.length > 0, groups: accessGroups})})
+      : ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {}})}),
+    getDocsFromServer: async query => {
+      const collection = query.find(item => item?.name)?.name;
+      const filters = query.filter(item => item?.where).map(item => item.where);
+      const docs = collection === 'evaluationActivities' ? activities.filter(item => filters.every(([field, operator, value]) => operator === 'array-contains' ? item[field]?.includes(value) : operator === '==' ? item[field] === value : true)) : [];
+      return {docs: docs.map(item => ({id: item.id, data: () => item}))};
+    },
     onSnapshot: (query, options, next, error) => { const item = {query, options, next, error, stops: 0}; listeners.push(item); return () => item.stops++; }};
-  const context = vm.createContext({fakeDb: {}, fakeSdk: sdk, URL, console, crypto: {randomUUID: () => 'fixture-request'}, navigator: {onLine: true}});
+  const fakeAuth = {currentUser: {uid: 'fixture-user', getIdTokenResult: async () => ({claims: {email: 'fixture@example.invalid', email_verified: true, firebase: {sign_in_provider: 'google.com'}, ...claims}})}};
+  const context = vm.createContext({fakeDb: {}, fakeSdk: sdk, fakeAuth, URL, console, crypto: {randomUUID: () => 'fixture-request'}, navigator: {onLine: true}});
   vm.runInContext(source, context);
   const watch = options => context.watchEvaluation({actorUid: 'fixture-user', category: 'PERFORMANCE', onData: data => events.push(data), onError: error => errors.push(error), ...options});
   const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -39,6 +48,35 @@ test('pedidos rejeitam identidade/nota forjada, categoria inválida e URLs com c
   assert.equal(validate('CORRECT_SCORE', correction), correction); assert.throws(() => validate('CORRECT_SCORE', {...correction, category: 'GLOBAL'})); assert.throws(() => validate('CORRECT_SCORE', {...correction, uid: 'other'}));
   const review = {activityId: 'form-fixture', areaId: 'area-fixture', assignmentId: 'assignment-fixture', previousVersion: 1, newVersion: 2, summary: 'Alteração fictícia de conteúdo', components: ['MATERIAL'], materialEvidence: ['https://drive.google.com/file/d/fixture123456/view'], questionEvidence: []};
   assert.equal(validate('REQUEST_GOVERNANCE', review), review); assert.throws(() => validate('REQUEST_GOVERNANCE', {...review, materialEvidence: ['https://secret:secret@example.invalid/']})); assert.throws(() => validate('REQUEST_GOVERNANCE', {...review, components: ['MATERIAL', 'MATERIAL']}));
+});
+
+test('configuração aceita público por grupos conhecidos preservando UIDs legados', () => {
+  const h = setup(), validate = h.context.validateEvaluationRequest;
+  const base = {activityId: 'form-fixture', creditScopeId: 'matter-fixture', version: 1,
+    modalities: {acknowledgement: true, suggestion: true, test: true}, acknowledgementItemId: 'ack',
+    suggestionProblemItemId: 'problem', suggestionProposalItemId: 'proposal', suggestionBenefitItemId: 'benefit',
+    validFrom: '2026-10-01', validUntil: '2026-12-31', eligibleUids: [], eligibleGroups: ['GENERAL'],
+    managerAreaId: 'area-fixture', expectedVersion: 0};
+  assert.equal(validate('CONFIGURE_ACTIVITY', base), base);
+  assert.equal(validate('CONFIGURE_ACTIVITY', {...base, eligibleUids: ['legacy-user'], eligibleGroups: ['RESTRICTED']}).eligibleUids[0], 'legacy-user');
+  assert.throws(() => validate('CONFIGURE_ACTIVITY', {...base, eligibleGroups: []}));
+  assert.throws(() => validate('CONFIGURE_ACTIVITY', {...base, eligibleGroups: ['ALL']}));
+  assert.throws(() => validate('CONFIGURE_ACTIVITY', {...base, eligibleGroups: ['GENERAL', 'GENERAL']}));
+});
+test('lista apenas atividades de grupos confirmados e compatibilidade de UID/gestor', async () => {
+  const items = [
+    {id: 'general', eligibleGroups: ['GENERAL'], eligibleUids: []},
+    {id: 'restricted', eligibleGroups: ['RESTRICTED'], eligibleUids: []},
+    {id: 'legacy', eligibleUids: ['fixture-user']},
+    {id: 'managed', eligibleUids: [], managerUid: 'fixture-user'}
+  ];
+  const h = setup({activities: items});
+  const result = await h.context.listEvaluationActivities('fixture-user');
+  assert.deepEqual(JSON.parse(JSON.stringify(result.map(item => item.id).sort())), ['general', 'legacy', 'managed']);
+  const invalid = setup({activities: items, claims: {email_verified: false}});
+  assert.deepEqual(JSON.parse(JSON.stringify((await invalid.context.listEvaluationActivities('fixture-user')).map(item => item.id).sort())), ['legacy', 'managed']);
+  const denied = setup({activities: items, groupReadDenied: true});
+  assert.deepEqual(JSON.parse(JSON.stringify((await denied.context.listEvaluationActivities('fixture-user')).map(item => item.id).sort())), ['legacy', 'managed']);
 });
 
 test('retry usa ID estável e mapa reordenado pelo Firestore sem resetar pedido concluído', async () => {

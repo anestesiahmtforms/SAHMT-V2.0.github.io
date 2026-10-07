@@ -70,6 +70,12 @@ test('reopening an existing activity preserves custom acknowledgement, IDs, mate
   const fields=evaluationConfigurationFields(activity);assert.equal(fields.complete,true);
   assert.equal(fields.values.acknowledgementValue,'DECLARO CIÊNCIA');assert.equal(fields.values.acknowledgementItemId,'ack-real');assert.equal(fields.values.suggestionProblemItemId,'problem-real');assert.equal(fields.values.suggestionProposalItemId,'proposal-real');assert.equal(fields.values.suggestionBenefitItemId,'benefit-real');assert.equal(fields.values.materialUrls,activity.materialUrls.join('\n'));assert.equal(fields.values.validFrom,'2026-10-03');assert.equal(fields.values.validUntil,'2026-10-31');assert.equal(fields.values.managerAreaId,'assigned-area');assert.equal(fields.values.eligibleUids,'person-a\nmanager-a');
 });
+
+test('reopening an activity preserves the configured access groups',()=>{
+  const activity={id:'form-groups',configVersion:2,version:1,creditScopeId:'matter',acknowledgementItemId:'ack',suggestionProblemItemId:'problem',suggestionProposalItemId:'proposal',suggestionBenefitItemId:'benefit',acknowledgementValue:'SIM',materialUrls:[],validFrom:'2026-10-03',validUntil:'2026-10-31',eligibleUids:[],eligibleGroups:['GENERAL','RESTRICTED'],managerAreaId:'area'};
+  const fields=evaluationConfigurationFields(activity);
+  assert.equal(fields.complete,true);assert.deepEqual(fields.values.eligibleGroups,['GENERAL','RESTRICTED']);assert.equal(fields.values.eligibleUids,'');
+});
 test('an older incomplete configured projection cannot silently clear materials or reset acknowledgement to SIM',async()=>{
   const fields=evaluationConfigurationFields({id:'form-a',configVersion:1,validFrom:'2026-10-03',validUntil:'2026-10-31'});assert.equal(fields.complete,false);assert.equal(fields.values.acknowledgementValue,'');
   const source=await readFile(new URL('../src/performance-ui.js',import.meta.url),'utf8');assert.match(source,/configurationComplete !== 'true'/);assert.match(source,/if \(!fields.complete\) return/);assert.match(source,/for \(const \[key, value\] of Object.entries\(fields.values\)\)/);
