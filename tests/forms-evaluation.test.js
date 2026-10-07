@@ -124,6 +124,33 @@ test('ACL publicada remove acesso amplo de todas as páginas preservando proprie
   assert.equal(form.permissions.find(p=>p.id==='editor').role,'writer');assert.equal(form.permissions.find(p=>p.id==='owner').role,'owner');
   assert.deepEqual(form.publishedEmails(),['person@example.invalid']);
 });
+test('proprietário aprovado participa sem exigir concessão publicada duplicada',()=>{
+  const h=harness();stagedGroup(h);const form=h.forms.get(FORM),googleRequest=h.ctx.formsEvaluationGoogleRequest_;
+  h.seed('documentAccessEmails','admin@example.invalid',{id:'admin@example.invalid',email:'admin@example.invalid',active:true,groups:['GENERAL']});
+  form.permissions.find(p=>p.role==='owner').permissionDetails=[{role:'writer',inherited:true},{role:'owner',inherited:false}];
+  h.ctx.formsEvaluationGoogleRequest_=(url,options={})=>{
+    if(options.method==='post')assert.notEqual(JSON.parse(options.payload).emailAddress,'admin@example.invalid');
+    return googleRequest(url,options);
+  };
+  assert.equal(h.ctx.formsEvaluationFinalizePublication_(FORM).status,'READY');
+  assert.deepEqual(form.publishedEmails(),['person@example.invalid']);
+  assert.equal(form.isPublished(),true);assert.equal(form.isAcceptingResponses(),true);
+  assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_(form.permissions,['admin@example.invalid','person@example.invalid']),true);
+  assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_(form.permissions,['person@example.invalid']),true);
+  assert.equal(h.get('evaluationFormConfigs',FORM).status,'READY');assert.equal(h.awards.length,0);
+});
+test('apenas owner direto vigente pode suprir respondente esperado; concessões extras continuam rejeitadas',()=>{
+  const h=harness(),owner={id:'owner',type:'user',role:'owner',emailAddress:'admin@example.invalid'},reader={id:'person',type:'user',role:'reader',view:'published',emailAddress:'person@example.invalid'},expected=['admin@example.invalid','person@example.invalid'];
+  assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_([owner,reader],expected),true);
+  for(const changes of [{role:'writer'},{role:'reader'},{type:'group'},{deleted:true},{pendingOwner:true},{permissionDetails:[{role:'owner',inherited:true}]},{permissionDetails:[{role:'owner'}]},{permissionDetails:[{role:'writer',inherited:false}]}]){
+    assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_([{...owner,...changes},reader],expected),false);
+  }
+  for(const extra of [{id:'outside',type:'user',role:'reader',view:'published',emailAddress:'outside@example.invalid'},{id:'wide',type:'anyone',role:'reader',view:'published'},{...reader,id:'inherited',permissionDetails:[{inherited:true}]}]){
+    assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_([owner,reader,extra],expected),false);
+  }
+  assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_([owner,reader,{...reader,id:'duplicate'}],expected),false);
+  assert.equal(h.ctx.formsEvaluationPublishedPermissionsExact_([owner,reader],[...expected,'admin@example.invalid']),false);
+});
 test('ACL herdada ou paginação sem avanço mantém Forms e projeção fechados',()=>{
   for(const inherited of [true,false]){const h=harness();stagedGroup(h);const form=h.forms.get(FORM);
     if(inherited)form.permissions.push({id:'inherited-domain',type:'domain',role:'reader',view:'published',permissionDetails:[{inherited:true}]});else form.repeatPageToken=true;
