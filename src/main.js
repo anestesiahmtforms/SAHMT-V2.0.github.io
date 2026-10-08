@@ -505,7 +505,7 @@ function loginView() {
 }
 
 function moduleCards() {
-  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage', 'admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
+  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
   const commonModules = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true ? ['training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
   return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && (commonModules.includes(route) || permissionFor[route]?.some(can)) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => route === 'notifications' ? `<button class="module-card" type="button" disabled aria-label="Notificações de Eventos · em breve"><img class="module-icon" src="${import.meta.env.BASE_URL}assets/modules/notificacoes-eventos.svg" alt="" width="40" height="40" loading="lazy" decoding="async"><span><strong>NOTIFICAÇÕES DE EVENTOS</strong><small>Em breve</small></span><span class="arrow" aria-hidden="true">›</span></button>` : `<button class="module-card" data-route="${route}">
@@ -931,6 +931,10 @@ function showScheduleContacts(contacts, context = {}) {
 }
 
 async function loadModule(route) {
+  if (route === 'management' && !can('admin')) {
+    navigate('home');
+    return;
+  }
   const content = document.querySelector('#module-content');
   if (!content && route !== 'labels') return;
   if (!featureEnabledForRoute(route, appFeatures)) {
@@ -4255,6 +4259,11 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if (requestedRoute === 'management' && !can('admin')) {
+    notice = 'Gestão é exclusiva de administradores.';
+    navigate('home');
+    return;
+  }
   if (!featureEnabledForRoute(requestedRoute, appFeatures)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
     navigate('home');
