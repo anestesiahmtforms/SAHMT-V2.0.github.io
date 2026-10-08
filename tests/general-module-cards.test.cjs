@@ -63,6 +63,65 @@ function visibleRoutes(h) {
   return [...h.ui.moduleCards().matchAll(/data-route="([^"]+)"/g)].map((match) => match[1]);
 }
 
+const legacyManagementPermissions = ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage'];
+
+for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) {
+  test(`Gestão não aparece nem carrega para ${role}, mesmo com permissões antigas`, async () => {
+    for (const permission of legacyManagementPermissions) {
+      const session = approved({[permission]: true}, role);
+      const before = structuredClone(session);
+      const h = harness({session, route: 'management'});
+      assert.equal(visibleRoutes(h).includes('management'), false, permission);
+      await h.ui.loadModule('management');
+      assert.deepEqual(h.navigations, ['home'], permission);
+      assert.deepEqual(h.imports, [], permission);
+      assert.deepEqual(h.queries, [], permission);
+      assert.deepEqual(session, before);
+    }
+  });
+}
+
+function renderHarness(session) {
+  const navigations = [], loads = [], shells = [];
+  const context = vm.createContext({
+    session, appFeatures: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
+    liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),
+    labelReportLoad: 0, labelReportLoadingMore: false, labelReportState: 'idle',
+    cleanupLabelMedia: null, cleanupCurrentModule: null, startupBannerActive: false,
+    stopChecklistQrScanner() {}, currentRoute: () => 'management',
+    app: {innerHTML: ''}, notice: '', labels: {management: ['Gestão']},
+    navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
+    featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {},
+    document: {querySelectorAll: () => [], querySelector: () => null},
+    loadModule: async route => loads.push(route), bindModuleForm: async () => {},
+    updateInformationBanner() {}, updateOutboxStatus: async () => {}, navigator: {onLine: false}
+  });
+  vm.runInContext(`${extractFunction('can')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
+  return {context, navigations, loads, shells};
+}
+
+test('link direto de Gestão bloqueia antes de renderizar e carregar; revogação também bloqueia', async () => {
+  for (const session of [approved({managementRead: true}, 'gestor'), approved({admin: 'true'})]) {
+    const h = renderHarness(session);
+    await h.context.runRender();
+    assert.deepEqual(h.navigations, ['home']);
+    assert.deepEqual(h.shells, []);
+    assert.deepEqual(h.loads, []);
+  }
+  for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
+    const h = renderHarness(session);
+    await h.context.runRender();
+    assert.deepEqual(h.navigations, []);
+    assert.deepEqual(h.loads, ['management']);
+    session.profile.role = 'gestor';
+    session.profile.permissions = {managementRead: true};
+    await h.context.runRender();
+    assert.deepEqual(h.navigations, ['home']);
+    assert.deepEqual(h.shells, ['shell']);
+    assert.deepEqual(h.loads, ['management']);
+  }
+});
+
 test('Escala mostra Treinamentos e Notificações para um perfil comum aprovado sem conceder permissões', () => {
   const session = approved();
   const before = structuredClone(session);
