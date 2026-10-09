@@ -62,12 +62,12 @@ test('não inventa responsável quando escala ou eventos estão incompletos/sem 
   remotePreview: async () => ({responsible:null})
  })),/não confirmado/);
 });
-test('rodapé contém somente um botão com título e nome, e revisão fica em modal separado', () => {
+test('rodapé separa rodízio da escala do botão de confirmação, e revisão fica em modal separado', () => {
  const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  const footer=source.match(/<footer class="checklist-confirmation-footer">([\s\S]*?)<\/footer>/)?.[1];
  assert.ok(footer);
  assert.equal((footer.match(/<button\b/g)||[]).length,1);
- assert.match(footer,/<span>Confirmação do Checklist<\/span><small id="checklist-responsible-name">/);
+ assert.match(footer,/<div class="checklist-rotation-summary"><span>Rodízio da escala<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><button\b[^>]*id="checklist-signature-prepare"[^>]*><span>Confirmação do Checklist<\/span><\/button>/);
  assert.doesNotMatch(footer,/checklist-signature-status|checklist-signature-preview|Revisar e assinar|Assinatura do responsável/);
  assert.match(source,/confirmationDialog\.showModal\(\)/);
  assert.match(source,/if \(scope\.isAdmin\)/);

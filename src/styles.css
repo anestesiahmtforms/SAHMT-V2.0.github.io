@@ -1780,6 +1780,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 }
 .checklist-report-dialog .checklist-station-select{padding:1px;border-radius:8px;font-size:clamp(.46rem,1.65vw,.64rem)}
 .checklist-daily-layout>.checklist-confirmation-footer{grid-row:3;min-width:0;margin:0;padding:0}
+.checklist-rotation-summary{display:grid;justify-items:center;gap:2px;padding:5px 8px;margin:0 0 5px;text-align:center;color:#173957;font-size:clamp(.68rem,2.4vw,.84rem);line-height:1.2}
+.checklist-rotation-summary>span{font-weight:700}
+.checklist-rotation-summary>strong{max-width:100%;overflow-wrap:anywhere}
 .checklist-confirmation-footer>.checklist-confirmation-button{
  display:grid;justify-items:center;align-content:center;gap:4px;width:100%;
  min-height:64px;margin:0;padding:8px 10px;border:2px solid #fff;border-radius:14px;
