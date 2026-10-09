@@ -35,8 +35,8 @@ Fluxo preparado para integração futura:
 
 1. Broker Gestão isolado recebe a requisição e encaminha uma operação autenticada, fechada e idempotente para a ponte.
 2. A ponte verifica identidade e estado Auth FA, projeção FA atual, identidade FB reconciliada, orçamento do projeto consultado e lease/fence FB.
-3. O backend confirma a lease por CAS e revalida a fonte antes de assinar. Somente então monta o token Firebase com UID e claims derivados do servidor.
-4. IAM Credentials assina o JWT usando a conta fixa. Nenhum OAuth access/refresh token é devolvido ao Worker ou à PWA.
+3. O núcleo prepara o UID e as claims derivados do servidor, solicita a assinatura IAM da conta fixa e mantém o custom token assinado somente em memória no servidor, antes do CAS. A assinatura preparada não autoriza sua entrega nem confirma um lease. Nenhum OAuth access/refresh token é devolvido ao Worker ou à PWA.
+4. Ainda sem devolver o token, o núcleo revalida FA, direitos e usuário FB; confirma o lease por CAS; repete as verificações e exige o readback do lease/versionamento exatos. Somente depois dessas confirmações finais pode entregar o custom token. Conflito, timeout ou cancelamento descartam o token; se uma escrita pode ter ocorrido, exigem invalidação/fence condicionado apenas ao grant/versionamento afetado e reconciliação quando a limpeza não for confirmada. Timeout não comprova que a gravação remota foi cancelada.
 5. O navegador troca o custom token e exige a confirmação atual do lease antes de acessar recursos.
 
 A ponte não deve oferecer assinatura arbitrária, URLs/projetos fornecidos pelo cliente, claims/UID livres ou credenciais administrativas ao Worker. Os limites, autenticação entre servidores, nonce, validade, repetição e fences pertencem ao contrato do gateway; este documento não implementa nem aprova um endpoint público.
