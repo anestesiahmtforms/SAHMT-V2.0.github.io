@@ -128,6 +128,7 @@ const reportWaiters = new Map();
 let checklistCatalogLive = null;
 let checklistModuleStations = [];
 let checklistResponsibilityLive = null;
+let checklistDisplayResponsibilityLive = null;
 let suspendedReportScopes = [];
 const reportPermissions = {
   events: ['eventsRead', 'eventsWrite'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
@@ -239,7 +240,7 @@ function closeReportLive(kind, reason = 'close') {
   const waiter = reportWaiters.get(kind); if (waiter) settleReportWaiter(kind, waiter.key, false);
   if (kind === 'labels') { loadedLabelRecords = []; if (reason === 'close') document.querySelector('#label-report-results')?.replaceChildren(); }
   if (kind === 'events') { loadedEventReportRecords = []; eventReportSourceRecords = []; if (reason === 'close') document.querySelector('#event-report-results')?.replaceChildren(); }
-  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; }
+  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; checklistDisplayResponsibilityLive = null; }
 }
 function invalidateChecklistSignature(message) {
   const dialog = document.querySelector('#checklist-confirmation-dialog');
@@ -265,7 +266,15 @@ function updateChecklistResponsibilityUI() {
   if (!scope || scope.warm || !reportScopeCurrent(scope) || scope.mode !== 'daily') return;
   const responsible = checklistResponsibilityLive?.key === scope.key ? checklistResponsibilityLive : null;
   const name = document.querySelector('#checklist-responsible-name');
-  if (name) name.textContent = responsible?.responsible?.name || (responsible?.error ? 'Responsável não confirmado' : 'Consultando responsável…');
+  const display = checklistDisplayResponsibilityLive?.key === scope.key ? checklistDisplayResponsibilityLive : null;
+  if (name) {
+    const confirmedName = responsible?.confirmed === true ? responsible.responsible?.name : null;
+    const displayedName = confirmedName || display?.responsible?.name || responsible?.responsible?.name;
+    const displayIsSelected = !confirmedName && Boolean(display?.responsible?.name);
+    name.textContent = displayedName
+      ? displayedName + (displayIsSelected && !display.current ? ' · aguardando atualização' : '')
+      : display?.ready || display?.error || responsible?.error ? 'Responsável aguardando confirmação do servidor' : 'Consultando responsável…';
+  }
   const prepare = document.querySelector('#checklist-signature-prepare');
   if (prepare) prepare.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
 }
@@ -280,12 +289,12 @@ async function subscribeLiveReport(kind, scope, callbacks) {
     import('./report-live-data.js'), import('./checklist-report-listener.js'), import('./outbox.js')
   ]);
   if (!callbacks.isCurrent()) return () => {};
-  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, sequence = 0, idsKey = null;
+  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, sequence = 0, idsKey = null;
   const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
   const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
   let catalogServerSeen = false, writtenCatalog = '', catalogWriteSequence = 0;
   const current = () => !stopped && callbacks.isCurrent();
-  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); };
+  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
   const error = failure => { if (current()) { stop(); callbacks.error(failure); } };
   const acceptResponsibility = payload => {
     if (!current()) return;
@@ -294,6 +303,24 @@ async function subscribeLiveReport(kind, scope, callbacks) {
     if (previous?.key === scope.key && reportFingerprint(previous.responsible) !== reportFingerprint(payload.responsible)) invalidateChecklistSignature('A escala ou a responsabilidade mudou. Revise o relatório antes de enviar.');
     updateChecklistResponsibilityUI();
   };
+  if (scope.mode === 'daily' && !scope.isAdmin) {
+    // Name visibility is independent of signing permission and its validator.
+    void import('./checklist-responsibility-display.js').then(module => current() ? module.watchChecklistResponsibilityDisplay(scope, payload => {
+      if (!current()) return;
+      checklistDisplayResponsibilityLive = {...payload, key: scope.key};
+      updateChecklistResponsibilityUI();
+    }, failure => {
+      if (!current()) return;
+      checklistDisplayResponsibilityLive = {key: scope.key, ready: true, error: failure};
+      updateChecklistResponsibilityUI();
+    }) : null).then(unsubscribe => {
+      if (!current()) unsubscribe?.(); else displayResponsibilityStop = unsubscribe;
+    }).catch(failure => {
+      if (!current()) return;
+      checklistDisplayResponsibilityLive = {key: scope.key, ready: true, error: failure};
+      updateChecklistResponsibilityUI();
+    });
+  }
   if (scope.mode === 'daily' && can('checklistSign')) {
     if (scope.isAdmin) {
       void import('./checklist-responsibility-listener.js').then(module => current() ? module.watchChecklistResponsibility(scope, acceptResponsibility, failure => acceptResponsibility({confirmed: false, error: failure})) : null)
@@ -4412,7 +4439,7 @@ function sessionChanged(next) {
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (userChanged || next.status !== 'signed-in') {
-    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
+    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistDisplayResponsibilityLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
     for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
   }
   if (next.status !== 'signed-in' || userChanged) {
