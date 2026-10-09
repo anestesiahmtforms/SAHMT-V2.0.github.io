@@ -4,7 +4,7 @@
 
 O módulo `scripts/lib/management-migration-executor.js` executa um plano local por unidades, através de adaptadores injetados. Não possui cliente Firebase, credenciais, rede, filesystem ou CLI de produção. Sua entrega não migrou documentos, publicou Rules, ativou runtime, rearmou treinamento ou conectou Gestão à interface.
 
-As negações, reexecuções e falhas são verificadas por 47 testes sintéticos em `tests/management-migration-executor.test.js`. A atomicidade em produção depende do transporte real cumprir o contrato abaixo; os testes não comprovam IAM, Firestore real ou participante/dispositivo autenticado.
+As negações, reexecuções e falhas são verificadas por 60 testes sintéticos em `tests/management-migration-executor.test.js`. A atomicidade em produção depende do transporte real cumprir o contrato abaixo; os testes não comprovam IAM, Firestore real ou participante/dispositivo autenticado.
 
 ## Escopo e entradas
 
@@ -60,7 +60,7 @@ Essas confirmações requerem evidência real no executor futuro. Não basta mar
 
 ### Orçamento
 
-Cada prova de reserva exige:
+O modo anterior, com medição do total do projeto, exige em cada prova de reserva:
 
 - Projeto FB, propósito `MANAGEMENT_MIGRATION_CREATE_ONLY`, pausa falsa e renovação incapaz de limpá-la.
 - Limite 35.000 e dia de cota `America/Los_Angeles`, iguais ao dia calculado pelo relógio.
@@ -75,6 +75,27 @@ Os padrões reservam duas leituras para a leitura do par e mais duas antes do co
 
 Ao recusar uma prova, o núcleo solicita uma pausa persistente e interrompe. Se gravar a pausa falhar, retorna `readPausePersisted: false`, mantém bloqueio e não tenta outra unidade. O operador precisa resolver a persistência antes de nova execução. A margem local não fornece corte automático global no PWA diante de tráfego simultâneo e atraso de métrica.
 
+### Autorização independente de FB para a cópia
+
+A continuação autorizada usa `USER_AUTHORIZED_BOUNDED_FB_MIGRATION`, validado
+por `management-migration-destination-budget.js`. Esse modo é exclusivo da cópia
+preparada em FB; não remove a pausa de FA nem depende da métrica de FA. O executor
+confere `runId`, os seis pins, path, etapa, prazo fixo e persistência da reserva
+antes de permitir I/O. Não aceita esse modo como orçamento do broker contínuo.
+
+Para 134 pares, a CLI limita a reserva local a 804 unidades: 536 para as duas
+etapas de cópia e 268 para pós-conferência. O total efetivo do projeto FB continua
+**desconhecido**; isso não é medição faturável, teto global ou garantia de cota.
+A janela da CLI dura no máximo 180 segundos e não se estende por retries.
+Falha preserva reservas, checkpoint protegido e lock para revisão.
+
+Os adaptadores REST, a composição local e o contexto fresco agora estão
+preparados, mas não foram usados para copiar produção. Ver o [uso da
+CLI](management-migration-cli.md), o [transporte
+REST](management-migration-firestore-rest.md) e os [gates de
+contexto](management-migration-context.md). Reexecução após interrupção exige
+reconciliação concreta; apagar o lock ou criar uma nova autorização para ocultar
+um commit incerto não é uma retomada válida.
 ### Transporte de leitura e commit
 
 `readDestinationPair` deve retornar:

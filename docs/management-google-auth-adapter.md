@@ -58,3 +58,28 @@ Um AbortSignal não comprova que uma API já enviada deixou de executar. Uma ass
 ## Gates antes de usar
 
 Implementar provider OAuth2 de servidor/identidade federada confiável; escolher e verificar runtime/gateway HTTPS; reconciliar service account/IAM/escopos/API/quota sem custos não autorizados; assegurar relógio e log redaction; instalar direitos/projeções/lease/CAS/fence/ledger durável; validar Rules e revogação com usuário real; confirmar comportamento de dispositivo e rollback. Nenhum desses gates foi cumprido por estes testes. Não instalar, publicar ou conceder acesso automaticamente com base nesta preparação.
+
+
+## Continuação: ponte dedicada sem OAuth no Worker
+
+Em 9 de outubro de 2026 foi acrescentada a alternativa privilegedGateway, com
+lookupAuthUser e signFbCustomToken. É mutuamente exclusiva com getAdminAccessToken;
+ambas presentes ou ambas ausentes negam antes de I/O. O caminho anterior continua
+reservado a hosts que já mantenham a identidade OAuth administrativa no servidor.
+
+No modo ponte, fetchImpl obtém somente as chaves públicas. O cliente HTTPS dedicado
+verifica o envelope HMAC e a aceitação durável de resposta antes de devolver dados.
+Lookup aceita somente users e os campos mínimos localId, disabled, emailVerified,
+validSince e providerUserInfo com providerId/rawId. Campos extras, getters, protótipos,
+arrays esparsos ou atributos privados são negados. O lookup não reutiliza o cache de
+chaves como cache de revogação e não cria/importa usuário ausente.
+
+O pedido de assinatura contém uid, seis claims aprovadas, issuedAtSeconds e
+expiresAtSeconds derivados pelo servidor. A ponte constrói signer/aud/iss/sub fixos.
+O adaptador exige somente keyId/signedJwt, confere igualdade exata do payload e a
+assinatura pública do signatário FB antes de devolver o token provisório ao núcleo.
+A assinatura não pula CAS, revalidação, fence ou confirmação do lease.
+
+Ver [transporte da ponte](management-gateway-client.md), [protocolo](management-gateway-protocol.md)
+e o pacote Apps Script dedicado. Nenhum secret foi criado, manifesto operacional foi
+alterado, endpoint publicado, OAuth consentido ou superfície reativada nesta etapa.

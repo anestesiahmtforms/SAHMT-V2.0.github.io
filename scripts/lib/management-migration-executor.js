@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {prepareSplitPlan, snapshotDigest, validateSplitSnapshot} from './management-split-plan.js';
 import {firestoreQuotaDayStart} from './management-read-budget.js';
+import {validateFbMigrationDestinationBudgetProof} from './management-migration-destination-budget.js';
 
 const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66';
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -50,7 +51,10 @@ function validateFreshContext(context, pins, nowMs) {
 }
 
 /** This proof is local and conservative. It never certifies a global exact cutoff. */
-function validateBudgetProof(proof, nowMs, maximumReads) {
+function validateBudgetProof(proof, nowMs, maximumReads, expected) {
+  if (proof?.mode === 'USER_AUTHORIZED_BOUNDED_FB_MIGRATION') {
+    return validateFbMigrationDestinationBudgetProof({proof, nowMs, maximumReads, expected});
+  }
   assert(proof?.schemaVersion === 1 && proof.projectId === FB && proof.authorizedPurpose === 'MANAGEMENT_MIGRATION_CREATE_ONLY' && proof.allowed === true, 'MIGRATION_BUDGET_PROOF_REQUIRED');
   assert(proof.pausedRequiresReview === false && proof.renewalClearsPause === false && proof.dailyReadLimit === 35000 && proof.quotaTimeZone === 'America/Los_Angeles', 'MIGRATION_BUDGET_PAUSED_OR_INVALID');
   const quotaDayStart = firestoreQuotaDayStart(nowMs);
@@ -185,7 +189,7 @@ export async function executeManagementMigration({
   const guard = async (operation, stage, maximumReads) => {
     phase = stage + '_BUDGET';
     const proof = await call('reserveReadBudget', {...base, projectId:FB, path:operation.path, stage, maximumReads});
-    const budget = validateBudgetProof(proof, clock(), maximumReads);
+    const budget = validateBudgetProof(proof, clock(), maximumReads, {runId:base.runId, pins:base.pins, path:operation.path, stage});
     assert(!reservations.has(budget.reservationId), 'MIGRATION_BUDGET_RESERVATION_REUSED');
     assert(proof.reservedReads >= lastReservedReads + maximumReads, 'MIGRATION_BUDGET_RESERVATION_NOT_CUMULATIVE');
     lastReservedReads = proof.reservedReads;
@@ -193,7 +197,7 @@ export async function executeManagementMigration({
     phase = stage + '_CONTEXT';
     const context = await call('freshContext', {...base, path:operation.path, stage});
     validateFreshContext(context, validated.pins, clock());
-    validateBudgetProof(proof, clock(), maximumReads);
+    validateBudgetProof(proof, clock(), maximumReads, {runId:base.runId, pins:base.pins, path:operation.path, stage});
     return {...budget, context, proof, maximumReads};
   };
   try {
@@ -217,7 +221,7 @@ export async function executeManagementMigration({
         {update:{name:documentBase + operation.provenancePath, fields:copy(operation.provenanceFields)}, currentDocument:{exists:false}}
       ];
       validateFreshContext(commitBudget.context, validated.pins, clock());
-      validateBudgetProof(commitBudget.proof, clock(), commitBudget.maximumReads);
+      validateBudgetProof(commitBudget.proof, clock(), commitBudget.maximumReads, {runId:base.runId, pins:base.pins, path:operation.path, stage:'COMMIT_PAIR'});
       phase = 'COMMIT_PAIR'; commitAttempted = true;
       const result = await call('commitCreatePair', {...base, projectId:FB, operationId:intent.operationId, reservationId:commitBudget.reservationId, writes});
       validateCommit(result, operation, clock()); currentCommitted = true;

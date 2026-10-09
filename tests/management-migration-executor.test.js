@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {createHash} from 'node:crypto';
+import {createFbMigrationDestinationBudget, assessFbMigrationDestinationBudget, acknowledgeFbMigrationDestinationReservation, pauseFbMigrationDestinationBudget} from '../scripts/lib/management-migration-destination-budget.js';
 import assert from 'node:assert/strict';
 import {prepareSplitPlan, snapshotDigest, documentDigest} from '../scripts/lib/management-split-plan.js';
 import {firestoreQuotaDayStart} from '../scripts/lib/management-read-budget.js';
@@ -267,4 +269,119 @@ test('falha de orçamento grava pausa persistente e métricas frescas não autor
 test('latch de pausa indisponível mantém bloqueio auditável, sem próximo documento',async()=>{
   const h=harness();h.input.adapters.reserveReadBudget=async payload=>({...h.budget(payload),fresh:false});h.input.adapters.pauseReadBudget=async()=>{throw Error('SYNTHETIC_PAUSE_FAILURE');};
   const result=await executeManagementMigration(h.input);assert.equal(result.status,'STOPPED');assert.equal(result.readPausePersisted,false);assert.equal(result.requiresFreshReviewBeforeResume,true);assert.equal(h.calls.commit.length,0);
+});
+
+function boundedHarness(...args) {
+  const h = harness(...args);
+  const scope = {schemaVersion:1, projectId:FB, databaseId:'(default)',
+    runId:createHash('sha256').update(h.input.approval.requestId + '\u0000' + h.input.plan.planSha256).digest('hex'),
+    pins:copy(h.input.approval.pins), unitPaths:h.input.plan.operations.map(operation=>operation.path)};
+  const authorization = {schemaVersion:1, authorized:true, projectId:FB, databaseId:'(default)',
+    purpose:'MANAGEMENT_MIGRATION_CREATE_ONLY', authorizationSource:'EXPLICIT_HUMAN_CONTINUE_FB',
+    authorizationId:'human-continued-fb', approvedAt:TIME, expiresAt:h.input.approval.expiresAt,
+    maximumDurationMs:300000, readPairMaximumReads:2, commitPairMaximumReads:2,
+    maximumPostcheckReads:scope.unitPaths.length * 2, maximumReservedReads:scope.unitPaths.length * 6};
+  let policy = createFbMigrationDestinationBudget({projectId:FB, scope, authorization, nowMs:h.input.now()});
+  let counter = 0;
+  h.calls.budgetPersistence = [];
+  h.input.adapters.reserveReadBudget = async payload => {
+    h.calls.budget.push(copy(payload));
+    const reservation = {...payload, databaseId:'(default)', reservationId:'bounded-' + (++counter)};
+    const pending = assessFbMigrationDestinationBudget({
+      projectId:FB, scope, policy, nowMs:h.input.now(), reservation});
+    // Two acknowledged synthetic durable writes happen before either transport.
+    policy = pending.nextPolicy; h.calls.budgetPersistence.push(copy(policy));
+    const acknowledged = acknowledgeFbMigrationDestinationReservation({
+      projectId:FB, scope, policy, nowMs:h.input.now(),
+      acknowledgement:{persisted:true, reservationId:reservation.reservationId, policySha256:pending.policySha256}});
+    policy = acknowledged.nextPolicy; h.calls.budgetPersistence.push(copy(policy));
+    return acknowledged.proof;
+  };
+  h.input.adapters.pauseReadBudget = async payload => {
+    h.calls.pause.push(copy(payload));
+    policy = pauseFbMigrationDestinationBudget({projectId:FB, policy, nowMs:h.input.now(), reason:payload.reason});
+    return {persisted:true, projectId:FB, pausedRequiresReview:true, renewalClearsPause:false};
+  };
+  h.destinationBudget = () => copy(policy);
+  return h;
+}
+
+test('modo FB autorizado executa sem Monitoring e sem alterar trava da origem', async () => {
+  const h = boundedHarness(), faPause = {projectId:FA, pausedRequiresReview:true, dailyReadLimit:45000};
+  const original = copy(faPause);
+  const result = await executeManagementMigration(h.input);
+  assert.equal(result.status, 'COMPLETE');
+  assert.equal(h.calls.commit.length, 1);
+  assert.equal(h.destinationBudget().reservedReads, 4);
+  assert.equal(h.destinationBudget().maximumReservedReads, 6);
+  assert.equal(h.destinationBudget().dailyReadLimit, null);
+  assert.equal(h.destinationBudget().totalUsageKnown, false);
+  assert.deepEqual(faPause, original);
+  assert.equal(result.exactGlobalReadCutoff, false);
+  assert.equal(h.calls.budgetPersistence.length, 4);
+  assert.deepEqual(h.calls.budgetPersistence.map(row=>row.status),
+    ['RESERVATION_PENDING','IN_PROGRESS','RESERVATION_PENDING','IN_PROGRESS']);
+});
+
+for (const [label, change] of [
+  ['run', proof=>{proof.runId='f'.repeat(64);}],
+  ['path', proof=>{proof.path='managementAreas/another';}],
+  ['stage', proof=>{proof.stage='COMMIT_PAIR';}],
+  ['pins', proof=>{proof.pins.aclSha256='f'.repeat(64);}],
+  ['projeto', proof=>{proof.projectId=FA;}],
+  ['purpose', proof=>{proof.authorizedPurpose='TRAINING_RELEASE';}],
+  ['persistência', proof=>{proof.reservationPersisted=false;}],
+  ['limite herdado', proof=>{proof.dailyReadLimit=35000;}],
+  ['corte global', proof=>{proof.exactGlobalCutoff=true;}]
+]) test('modo FB rejeita prova divergente em ' + label + ' antes de transporte', async () => {
+  const h=boundedHarness(), reserve=h.input.adapters.reserveReadBudget;
+  h.input.adapters.reserveReadBudget=async payload=>{const proof=await reserve(payload);change(proof);return proof;};
+  const result=await executeManagementMigration(h.input);
+  assert.equal(result.status,'STOPPED');assert.match(result.code,/MIGRATION_BUDGET_DESTINATION_/);
+  assert.equal(h.calls.read.length,0);assert.equal(h.calls.commit.length,0);
+  assert.equal(result.readPausePersisted,true);
+  assert.equal(h.destinationBudget().reservedReads,2);
+  assert.equal(h.destinationBudget().pausedRequiresReview,true);
+});
+
+test('modo FB falha em persistência mantém reserva e não inicia leitura', async () => {
+  const h=boundedHarness(), reserve=h.input.adapters.reserveReadBudget;
+  h.input.adapters.reserveReadBudget=async payload=>{
+    await reserve(payload);
+    throw new Error('MIGRATION_BUDGET_DESTINATION_PERSISTENCE_REQUIRED');
+  };
+  const result=await executeManagementMigration(h.input);
+  assert.equal(result.code,'MIGRATION_BUDGET_DESTINATION_PERSISTENCE_REQUIRED');
+  assert.equal(result.readPausePersisted,true);
+  assert.equal(h.destinationBudget().reservedReads,2);
+  assert.equal(h.calls.read.length,0);assert.equal(h.calls.commit.length,0);
+});
+
+test('modo FB revalida deadline após checkpoint de intenção', async () => {
+  const h=boundedHarness(), checkpoint=h.input.adapters.checkpoint, reserve=h.input.adapters.reserveReadBudget;
+  h.input.adapters.reserveReadBudget=async payload=>{
+    const proof=await reserve(payload);proof.maximumDurationMs=1000;proof.deadlineAt='2026-10-08T12:00:01.000Z';return proof;
+  };
+  h.input.adapters.checkpoint=async payload=>{
+    const result=await checkpoint(payload);if(payload.state==='BEFORE_COMMIT')h.advance(1001);return result;
+  };
+  const result=await executeManagementMigration(h.input);
+  assert.equal(result.status,'STOPPED');assert.equal(result.code,'MIGRATION_BUDGET_DESTINATION_PROOF_EXPIRED');
+  assert.equal(h.calls.read.length,1);assert.equal(h.calls.commit.length,0);
+  assert.equal(h.destinationBudget().reservedReads,4);
+  assert.equal(result.readPausePersisted,true);
+});
+
+test('modo FB mantém pausa em reexecução mesmo sem bloqueio de Monitoring', async () => {
+  const h=boundedHarness(), reserve=h.input.adapters.reserveReadBudget;
+  let first=true;
+  h.input.adapters.reserveReadBudget=async payload=>{
+    const proof=await reserve(payload);if(first){first=false;proof.pausedRequiresReview=true;}return proof;
+  };
+  const failed=await executeManagementMigration(h.input);
+  assert.equal(failed.readPausePersisted,true);
+  const second=await executeManagementMigration(h.input);
+  assert.equal(second.code,'MIGRATION_BUDGET_DESTINATION_PAUSED_REQUIRES_REVIEW');
+  assert.equal(h.calls.read.length,0);assert.equal(h.calls.commit.length,0);
+  assert.equal(h.destinationBudget().reservedReads,2);
 });
