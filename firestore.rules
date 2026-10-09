@@ -576,8 +576,10 @@ service cloud.firestore {
         request.resource.data.id == resource.data.id && request.resource.data.date == resource.data.date &&
         request.resource.data.positions == resource.data.positions &&
         oldHighlights is map && newHighlights is map &&
-        newHighlights.keys().hasOnly(['siglas', 'events']) &&
+        newHighlights.keys().hasOnly(['siglas', 'events', 'releaseTimes']) &&
         newHighlights.get('events', []) == oldHighlights.get('events', []) &&
+        newHighlights.get('releaseTimes', {}) is map && newHighlights.get('releaseTimes', {}).size() <= 30 &&
+        newHighlights.get('releaseTimes', {}).keys().hasOnly(newHighlights.get('siglas', [])) &&
         newHighlights.get('siglas', []) is list && newHighlights.get('siglas', []).size() <= 30 &&
         request.resource.data.updatedAt == request.time &&
         request.resource.data.version == resource.data.get('version', 0) + 1;
@@ -599,8 +601,9 @@ service cloud.firestore {
         request.resource.data.id == resource.data.id && request.resource.data.date == scheduleId &&
         request.resource.data.positions == resource.data.positions &&
         oldHighlights is map && newHighlights is map &&
-        newHighlights.keys().hasOnly(['siglas', 'events']) &&
+        newHighlights.keys().hasOnly(['siglas', 'events', 'releaseTimes']) &&
         newHighlights.get('siglas', []) == oldHighlights.get('siglas', []) &&
+        newHighlights.get('releaseTimes', {}) == oldHighlights.get('releaseTimes', {}) &&
         oldEvents is list && newEvents is list && oldEvents.size() < 100 && newEvents.size() == oldEvents.size() + 1 &&
         newEvents.hasAll(oldEvents) && marker is string && (markerParts.size() == 3 || markerParts.size() == 4) &&
         markerParts[0] == 'EVENTO' && markerParts[1] == eventAfter.get('scheduleSigla', '') &&

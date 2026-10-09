@@ -1841,3 +1841,26 @@ test('consulta de autoria legada conserva a leitura de users restrita ao própri
   await assertSucceeds(getDoc(doc(usersManager, 'users', 'author-profile')));
   await assertFails(getDoc(doc(testEnvironment.unauthenticatedContext().firestore(), 'users', 'author-profile')));
 });
+
+test('horários da liberação exigem scheduleWrite e pertencem a siglas liberadas', async () => {
+  await seedProfiles([
+    accessProfile('release-time-reader', {scheduleRead: true}),
+    accessProfile('release-time-manager', {scheduleRead: true, scheduleWrite: true})
+  ]);
+  const day = '2026-10-09';
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'scheduleDays', day), {
+      id: day, date: day, positions: [{position: 1, sigla: 'AB'}],
+      highlights: {siglas: [], events: []}, version: 1,
+      createdByUid: 'release-time-manager', updatedByUid: 'release-time-manager', createdAt: new Date(), updatedAt: new Date()
+    });
+  });
+  const update = {'highlights.siglas': ['AB'], 'highlights.releaseTimes': {AB: Date.parse('2026-10-09T10:05:00Z')}, updatedByUid: 'release-time-manager', updatedAt: serverTimestamp(), version: 2};
+  const reader = testEnvironment.authenticatedContext('release-time-reader').firestore();
+  const manager = testEnvironment.authenticatedContext('release-time-manager').firestore();
+  await assertFails(updateDoc(doc(reader, 'scheduleDays', day), {...update, updatedByUid: 'release-time-reader'}));
+  await assertFails(updateDoc(doc(manager, 'scheduleDays', day), {...update, 'highlights.releaseTimes': {ZZ: Date.now()}}));
+  await assertSucceeds(updateDoc(doc(manager, 'scheduleDays', day), update));
+  assert.deepEqual((await getDoc(doc(manager, 'scheduleDays', day))).data().highlights.releaseTimes, update['highlights.releaseTimes']);
+  await assertSucceeds(updateDoc(doc(manager, 'scheduleDays', day), {'highlights.siglas': [], 'highlights.releaseTimes': {}, updatedByUid: 'release-time-manager', updatedAt: serverTimestamp(), version: 3}));
+});
