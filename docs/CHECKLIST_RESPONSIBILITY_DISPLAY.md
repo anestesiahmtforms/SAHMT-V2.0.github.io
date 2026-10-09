@@ -1,8 +1,16 @@
 # Nome do responsável na confirmação do Checklist
 
-O Relatório diário exibe o responsável para todas as contas com acesso ao Checklist. Essa informação descreve a primeira posição disponível da escala, considerando férias e substituições. Não é o autor de uma resposta individual.
+O PR #29 contém a proposta preparada para exibir o responsável no Relatório diário a todas as contas com acesso ao Checklist. A interface ainda não foi publicada. Essa informação descreve a primeira posição disponível da escala, considerando férias e substituições. Não é o autor de uma resposta individual.
 
-## Caminho de leitura
+## Estado confirmado em 9 de outubro de 2026
+
+O diagnóstico nativo às 08:29:44 de São Paulo confirmou monitoringReadAuthorized true, authorizationRequired false e principalMatchesOperator true. As duas chamadas ao Monitoring, sem e com projeto de quota explícito, retornaram HTTP 403, PERMISSION_DENIED: o método exige faturamento no projeto 1072832154794, correspondente a FA, sahmt-17a16.
+
+O diagnóstico não emitiu leituras de documentos do Firestore e retornou stateChanged false. Faturamento não foi autorizado nem ativado. A pausa original CRD_MONITORING_UNAVAILABLE permanece registrada e o gatilho de exibição continua desligado. Esse resultado não é uma medição do consumo atual.
+
+A nova versão do módulo classifica a mensagem conhecida como BILLING_REQUIRED no diagnóstico e CRD_MONITORING_BILLING_REQUIRED na guarda. Isso melhora a identificação de uma futura falha; não altera o estado histórico nem libera a pausa. Não repetir a ativação ou o diagnóstico já conhecido, trocar a ligação GCP ou remover a guarda para contornar o bloqueio.
+
+## Caminho de leitura proposto
 
 - Administradores preservam o listener operacional existente.
 - Demais leitores acompanham apenas checklistResponsibilities/{dia}, permitido pelas Rules já publicadas, inclusive sem checklistSign.
@@ -10,13 +18,15 @@ O Relatório diário exibe o responsável para todas as contas com acesso ao Che
 - O estado de exibição é independente de checklistResponsibilityLive. O leitor, os requisitos e o validador de assinatura continuam no caminho operacional original. A exibição não concede autorização, assinatura ou pontos.
 - O histórico usa somente a projeção previamente aceita; não calcula datas passadas com o cadastro atual.
 
-## Produtor e ativação nativa
+## Produtor e condição para ativação nativa
 
 ChecklistResponsibilityDisplay.gs calcula a mesma seleção no servidor com consultas mascaradas a escala, férias, eventos, contatos e perfil único ativo. Atualiza somente display, preservando snapshot, revision, fingerprint, assinaturas e versões financeiras.
 
-Após publicar o módulo e o escopo monitoring.read, executar somente ativarExibicaoResponsavelChecklist no editor Apps Script autorizado. A função confere operador, métricas frescas e margem antes de ler o Firestore; prepara a projeção atual e, somente após CONFIRMED, instala seu próprio gatilho a cada cinco minutos. Aceitar o novo consentimento de leitura do Monitoring quando solicitado. Não ativar evaluationRuntime, validadores financeiros ou a liberação cancelada de treinamentos.
+Uma nova execução de ativarExibicaoResponsavelChecklist depende de uma solução concreta para o acesso ao Monitoring e de nova reavaliação humana do bloqueio. A publicação do código ou a renovação da cota não autorizam essa retomada. Não há passo de ativação a executar agora.
 
-O resultado esperado é ENABLED, lastProjectionStatus CONFIRMED e displayTriggerEnabled true. Resultado PAUSED_REQUIRES_REVIEW é uma pausa efetiva; não repetir a função automaticamente. statusExibicaoResponsavelChecklist consulta apenas propriedades locais.
+Se a retomada for autorizada após a solução, a função nativa confere operador, métricas frescas e margem antes de ler o Firestore; prepara a projeção atual e, somente após CONFIRMED, instala seu próprio gatilho a cada cinco minutos. Não ativa evaluationRuntime, validadores financeiros ou a liberação cancelada de treinamentos.
+
+O resultado esperado nessa futura ativação é ENABLED, lastProjectionStatus CONFIRMED e displayTriggerEnabled true. Resultado PAUSED_REQUIRES_REVIEW é uma pausa efetiva; não repetir a função automaticamente. statusExibicaoResponsavelChecklist consulta apenas propriedades locais.
 
 ## Leituras
 
@@ -30,6 +40,6 @@ Remover somente o gatilho refreshExibicaoResponsavelChecklist e desabilitar seu 
 
 ## Diagnóstico do Monitoring
 
-Se a ativação parar em CRD_MONITORING_UNAVAILABLE, preservar a pausa e executar somente diagnosticarMonitoringResponsavelChecklist no mesmo módulo. A função confere o consentimento granular e a identidade do token, comparando apenas se coincide com o operador; consulta o Monitoring sem e com projeto de quota explícito. Não consulta o Firestore nem modifica propriedades, reservas, pausa ou gatilhos.
+diagnosticarMonitoringResponsavelChecklist confere o consentimento granular e a identidade do token, comparando apenas se coincide com o operador; consulta o Monitoring sem e com projeto de quota explícito. Não consulta o Firestore nem modifica propriedades, reservas, pausa ou gatilhos. O bloqueio atual já foi identificado; uma repetição depende de uma mudança concreta que justifique nova avaliação.
 
-O resumo contém HTTP, status de autorização, motivos restritos e mensagem de erro redigida, sem token, e-mail, URL de autorização ou corpo de documento. HTTP 200 neste diagnóstico confirma apenas acesso ao serviço: não mede o orçamento diário completo nem autoriza retomada. A ativação continua exigindo métrica fresca, margem e projeção CONFIRMED.
+O resumo contém HTTP, status de autorização, motivos restritos e mensagem de erro redigida, sem token, e-mail, URL de autorização ou corpo de documento. HTTP 200 neste diagnóstico confirmaria apenas acesso ao serviço: não mediria o orçamento diário completo nem autorizaria retomada. A ativação continua exigindo métrica fresca, margem e projeção CONFIRMED.

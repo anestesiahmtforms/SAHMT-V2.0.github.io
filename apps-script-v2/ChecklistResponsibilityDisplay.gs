@@ -137,7 +137,10 @@ function checklistDisplayDiagnosticError_(error) {
     const reason = field(entry && entry.reason, 120, /^[A-Za-z][A-Za-z0-9_]{0,119}$/);
     if (reason !== null) safe.reasons.push(reason);
   });
-  if (typeof error.message === 'string' && error.message.length <= 10000 &&
+  if (typeof error.message === 'string' && error.message.length <= 1000 &&
+      /requires\s+billing\s+to\s+be\s+enabled/i.test(error.message)) {
+    safe.classification = 'BILLING_REQUIRED';
+  } else if (typeof error.message === 'string' && error.message.length <= 10000 &&
       /\binsufficient\s+(?:authentication\s+scopes|permissions)\b/i.test(error.message)) {
     safe.classification = 'AUTHENTICATION_SCOPE_INSUFFICIENT';
   }
@@ -336,6 +339,26 @@ function checklistDisplayMetricIdentity_(series) {
   }
   return JSON.stringify(ordered([series.metric, series.resource]));
 }
+/** Classify only a bounded 403 body; this never logs or returns its contents. */
+function checklistDisplayMonitoringFailureCode_(response) {
+  const unavailable = 'CRD_MONITORING_UNAVAILABLE';
+  try {
+    if (response.getResponseCode() !== 403) return unavailable;
+    const bytes = response.getContent();
+    if (!Array.isArray(bytes) || bytes.length > 1048576) return unavailable;
+    const text = response.getContentText();
+    if (typeof text !== 'string' || text.length > 1048576) return unavailable;
+    const data = JSON.parse(text);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return unavailable;
+    const error = data.error;
+    if (error && typeof error === 'object' && !Array.isArray(error) &&
+        typeof error.message === 'string' && error.message.length <= 1000 &&
+        /requires\s+billing\s+to\s+be\s+enabled/i.test(error.message)) {
+      return 'CRD_MONITORING_BILLING_REQUIRED';
+    }
+  } catch (_) {}
+  return unavailable;
+}
 function checklistDisplayMeasure_(state, startedAt) {
   const start = checklistDisplayQuotaStart_(startedAt), quotaDay = checklistDisplayQuotaDay_(startedAt);
   const tokens = new Set(), points = new Set(), intervals = {}, lastPoint = {value: 0};
@@ -351,7 +374,7 @@ function checklistDisplayMeasure_(state, startedAt) {
     const query = Object.keys(params).map(function (key) { return encodeURIComponent(key) + '=' + encodeURIComponent(params[key]); }).join('&');
     const response = UrlFetchApp.fetch('https://monitoring.googleapis.com/v3/projects/' + SAHMT_V2_CHECKLIST_DISPLAY.projectId + '/timeSeries?' + query,
       {method: 'get', headers: {Authorization: 'Bearer ' + ScriptApp.getOAuthToken()}, muteHttpExceptions: true, followRedirects: false});
-    if (response.getResponseCode() !== 200) checklistDisplayFail_('CRD_MONITORING_UNAVAILABLE');
+    if (response.getResponseCode() !== 200) checklistDisplayFail_(checklistDisplayMonitoringFailureCode_(response));
     let data;
     try {
       const text = response.getContentText();
