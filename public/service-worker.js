@@ -41,6 +41,7 @@ self.addEventListener('install', (event) => {
     // PDF, camera processing and other optional module graphs remain fetched on demand.
     const reportEssentials = new Set([
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
+      'src/checklist-rotation-listener.js',
       'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
       'src/performance-ui.js', 'src/evaluation-data.js'
     ]);
