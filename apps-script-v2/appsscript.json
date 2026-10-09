@@ -2,9 +2,7 @@
   "timeZone": "America/Sao_Paulo",
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
-  "executionApi": {
-    "access": "MYSELF"
-  },
+  "executionApi": {"access": "MYSELF"},
   "oauthScopes": [
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/datastore",
@@ -12,7 +10,6 @@
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/forms",
     "https://www.googleapis.com/auth/script.external_request",
-    "https://www.googleapis.com/auth/script.scriptapp",
-    "https://www.googleapis.com/auth/monitoring.read"
+    "https://www.googleapis.com/auth/script.scriptapp"
   ]
 }

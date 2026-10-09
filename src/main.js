@@ -128,7 +128,7 @@ const reportWaiters = new Map();
 let checklistCatalogLive = null;
 let checklistModuleStations = [];
 let checklistResponsibilityLive = null;
-let checklistDisplayResponsibilityLive = null;
+let checklistRotationLive = null;
 let suspendedReportScopes = [];
 const reportPermissions = {
   events: ['eventsRead', 'eventsWrite'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
@@ -240,7 +240,7 @@ function closeReportLive(kind, reason = 'close') {
   const waiter = reportWaiters.get(kind); if (waiter) settleReportWaiter(kind, waiter.key, false);
   if (kind === 'labels') { loadedLabelRecords = []; if (reason === 'close') document.querySelector('#label-report-results')?.replaceChildren(); }
   if (kind === 'events') { loadedEventReportRecords = []; eventReportSourceRecords = []; if (reason === 'close') document.querySelector('#event-report-results')?.replaceChildren(); }
-  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; checklistDisplayResponsibilityLive = null; }
+  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; checklistRotationLive = null; }
 }
 function invalidateChecklistSignature(message) {
   const dialog = document.querySelector('#checklist-confirmation-dialog');
@@ -264,16 +264,13 @@ function checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint
 function updateChecklistResponsibilityUI() {
   const state = reportStates.get('checklist'), scope = state?.scope;
   if (!scope || scope.warm || !reportScopeCurrent(scope) || scope.mode !== 'daily') return;
-  const responsible = checklistResponsibilityLive?.key === scope.key ? checklistResponsibilityLive : null;
-  const name = document.querySelector('#checklist-responsible-name');
-  const display = checklistDisplayResponsibilityLive?.key === scope.key ? checklistDisplayResponsibilityLive : null;
+  const name = document.querySelector('#checklist-rotation-name');
+  const rotation = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
   if (name) {
-    const confirmedName = responsible?.confirmed === true ? responsible.responsible?.name : null;
-    const displayedName = confirmedName || display?.responsible?.name || responsible?.responsible?.name;
-    const displayIsSelected = !confirmedName && Boolean(display?.responsible?.name);
-    name.textContent = displayedName
-      ? displayedName + (displayIsSelected && !display.current ? ' · aguardando atualização' : '')
-      : display?.ready || display?.error || responsible?.error ? 'Responsável aguardando confirmação do servidor' : 'Consultando responsável…';
+    const selected = rotation?.rotation;
+    name.textContent = selected?.name
+      ? selected.name + ' · ' + selected.position + 'ª posição' + (!rotation.current ? ' · aguardando atualização' : '')
+      : rotation?.ready || rotation?.error ? (rotation.reason || 'Rodízio indisponível para esta data.') : 'Consultando escala…';
   }
   const prepare = document.querySelector('#checklist-signature-prepare');
   if (prepare) prepare.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
@@ -303,21 +300,21 @@ async function subscribeLiveReport(kind, scope, callbacks) {
     if (previous?.key === scope.key && reportFingerprint(previous.responsible) !== reportFingerprint(payload.responsible)) invalidateChecklistSignature('A escala ou a responsabilidade mudou. Revise o relatório antes de enviar.');
     updateChecklistResponsibilityUI();
   };
-  if (scope.mode === 'daily' && !scope.isAdmin) {
-    // Name visibility is independent of signing permission and its validator.
-    void import('./checklist-responsibility-display.js').then(module => current() ? module.watchChecklistResponsibilityDisplay(scope, payload => {
+  if (scope.mode === 'daily') {
+    // Rotation is schedule information; it never authorizes a signature.
+    void import('./checklist-rotation-listener.js').then(module => current() ? module.watchChecklistRotation(scope, payload => {
       if (!current()) return;
-      checklistDisplayResponsibilityLive = {...payload, key: scope.key};
+      checklistRotationLive = {...payload, key: scope.key};
       updateChecklistResponsibilityUI();
     }, failure => {
       if (!current()) return;
-      checklistDisplayResponsibilityLive = {key: scope.key, ready: true, error: failure};
+      checklistRotationLive = {key: scope.key, ready: true, error: failure};
       updateChecklistResponsibilityUI();
     }) : null).then(unsubscribe => {
       if (!current()) unsubscribe?.(); else displayResponsibilityStop = unsubscribe;
     }).catch(failure => {
       if (!current()) return;
-      checklistDisplayResponsibilityLive = {key: scope.key, ready: true, error: failure};
+      checklistRotationLive = {key: scope.key, ready: true, error: failure};
       updateChecklistResponsibilityUI();
     });
   }
@@ -1673,7 +1670,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
     const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
-    const signatureMarkup = `<footer class="checklist-confirmation-footer"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Confirmação do Checklist</span><small id="checklist-responsible-name">Consultando responsável…</small></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Confirmação do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
+    const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>Rodízio da escala</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Confirmação do Checklist</span></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Confirmação do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
     reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
       if (!reportScopeCurrent(scope)) return;
@@ -1681,7 +1678,6 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       if (station) showChecklistStationBanner(station, resolvedRecordFor(station), day, stations, {fromQr: false});
     });
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
-    const responsibleName = content.querySelector('#checklist-responsible-name');
     const confirmationDialog = content.querySelector('#checklist-confirmation-dialog');
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
@@ -4439,7 +4435,7 @@ function sessionChanged(next) {
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (userChanged || next.status !== 'signed-in') {
-    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistDisplayResponsibilityLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
+    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistRotationLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
     for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
   }
   if (next.status !== 'signed-in' || userChanged) {
