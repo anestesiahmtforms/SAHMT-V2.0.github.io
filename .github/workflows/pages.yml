@@ -36,6 +36,10 @@ jobs:
         run: npm ci --prefix functions
       - name: Run domain tests
         run: npm run test:domain
+      - name: Run management migration local tests
+        run: npm run test:management
+      - name: Run management destination Rules tests
+        run: npm run test:management-rules
       - name: Run Etiquetas AI Worker tests
         run: npm run test:label-ai-worker
       - name: Run Firestore Rules tests
