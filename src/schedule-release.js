@@ -18,3 +18,19 @@ export function updateScheduleReleaseState(currentSiglas, {sigla, marked, groupS
   if (!tokenShouldBeMarked && next.includes(tokenSigla)) next.splice(next.indexOf(tokenSigla), 1);
   return {siglas: next, changed: memberWasMarked !== marked || tokenShouldBeMarked !== tokenWasMarked};
 }
+
+export function updateScheduleReleaseTimes(currentTimes = {}, previousSiglas = [], nextSiglas = [], occurredAt) {
+  const times = {};
+  for (const sigla of nextSiglas) {
+    if (Number.isFinite(currentTimes?.[sigla]) && currentTimes[sigla] > 0) times[sigla] = currentTimes[sigla];
+    else if (!previousSiglas.includes(sigla) && Number.isFinite(occurredAt) && occurredAt > 0) times[sigla] = occurredAt;
+  }
+  return times;
+}
+
+export function formatScheduleReleaseTime(value) {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('pt-BR', {hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Sao_Paulo'}).format(date);
+}

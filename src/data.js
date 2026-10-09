@@ -7,7 +7,7 @@ import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
-import {updateScheduleReleaseState} from './schedule-release.js';
+import {updateScheduleReleaseState, updateScheduleReleaseTimes} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {withGeneralReadPermissions} from './general-access.js';
@@ -48,7 +48,7 @@ export async function setScheduleSiglaRelease(day, sigla, marked, {groupSiglas =
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '') || typeof marked !== 'boolean' || !uid) {
     throw new Error('Não foi possível identificar a marcação da escala.');
   }
-  const operation = {day, sigla, marked, groupSiglas, tokenSigla};
+  const operation = {day, sigla, marked, groupSiglas, tokenSigla, occurredAt: Date.now()};
   if (!navigator.onLine) return queueScheduleSiglaRelease(operation, {uid, currentSiglas});
   try {
     const updated = await applyScheduleSiglaRelease(operation, uid);
@@ -71,13 +71,15 @@ async function applyScheduleSiglaRelease(operation, uid) {
     const result = updateScheduleReleaseState(current, operation);
     if (!result.changed) return {...schedule, id: snapshot.id};
     const version = (Number.isInteger(schedule.version) && schedule.version > 0 ? schedule.version : 0) + 1;
+    const releaseTimes = updateScheduleReleaseTimes(schedule.highlights?.releaseTimes, current, result.siglas, operation.occurredAt || Date.now());
     transaction.update(reference, {
       'highlights.siglas': result.siglas,
+      'highlights.releaseTimes': releaseTimes,
       updatedByUid: uid,
       updatedAt: serverTimestamp(),
       version
     });
-    return {...schedule, id: snapshot.id, updatedByUid: uid, version, highlights: {...schedule.highlights, siglas: result.siglas}};
+    return {...schedule, id: snapshot.id, updatedByUid: uid, version, highlights: {...schedule.highlights, siglas: result.siglas, releaseTimes}};
   });
   await writeSafeCache(uid, 'scheduleDays', operation.day, updated).catch(() => {});
   return updated;
@@ -93,10 +95,11 @@ async function queueScheduleSiglaRelease(operation, {uid, currentSiglas = []}) {
     });
     const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
     const schedule = cached?.data || {id: operation.day, date: operation.day, positions: [], highlights: {siglas: [], events: []}, version: 0};
+    const releaseTimes = updateScheduleReleaseTimes(schedule.highlights?.releaseTimes, currentSiglas, result.siglas, operation.occurredAt);
     await writeSafeCache(uid, 'scheduleDays', operation.day, {
-      ...schedule, stale: true, highlights: {...schedule.highlights, siglas: result.siglas}
+      ...schedule, stale: true, highlights: {...schedule.highlights, siglas: result.siglas, releaseTimes}
     }).catch(() => {});
-    return {...schedule, stale: true, pendingFirestore: true, highlights: {...schedule.highlights, siglas: result.siglas}};
+    return {...schedule, stale: true, pendingFirestore: true, highlights: {...schedule.highlights, siglas: result.siglas, releaseTimes}};
   }
   const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
   return cached?.data ? {...cached.data, stale: true, pendingFirestore: false} : {id: operation.day, date: operation.day, stale: true, pendingFirestore: false, highlights: {siglas: result.siglas, events: []}};

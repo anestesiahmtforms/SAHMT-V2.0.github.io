@@ -1780,6 +1780,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 }
 .checklist-report-dialog .checklist-station-select{padding:1px;border-radius:8px;font-size:clamp(.46rem,1.65vw,.64rem)}
 .checklist-daily-layout>.checklist-confirmation-footer{grid-row:3;min-width:0;margin:0;padding:0}
+.checklist-rotation-summary{display:grid;justify-items:center;gap:2px;padding:5px 8px;margin:0 0 5px;text-align:center;color:#173957;font-size:clamp(.68rem,2.4vw,.84rem);line-height:1.2}
+.checklist-rotation-summary>span{font-weight:700}
+.checklist-rotation-summary>strong{max-width:100%;overflow-wrap:anywhere}
 .checklist-confirmation-footer>.checklist-confirmation-button{
  display:grid;justify-items:center;align-content:center;gap:4px;width:100%;
  min-height:64px;margin:0;padding:8px 10px;border:2px solid #fff;border-radius:14px;
@@ -2009,3 +2012,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--training .module-view--training>.module-content{min-width:0;min-height:0;margin:0;padding:2px 3px 8px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .app-shell--training .training-home-button{display:block;width:100%;min-height:40px;margin:0;padding:7px 10px;border-radius:14px;font-weight:900}
 .app-shell--training>.app-footer{flex:0 0 auto;margin:0;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
+
+/* Horário da liberação abaixo da própria sigla, dentro do botão. */
+.app-shell--home .sigla-token__timed-label{display:inline-grid;grid-template-rows:auto auto;justify-items:center;vertical-align:middle;gap:1px;max-width:100%}
+.app-shell--home .sigla-token__release-time{display:block;font-size:clamp(.48rem,1.8vw,.62rem);line-height:1;letter-spacing:0;white-space:nowrap;font-weight:750;color:inherit;font-variant-numeric:tabular-nums}
+.app-shell--home .sigla-token--dc .sigla-token__aliases{overflow:visible;line-height:1.1}
+.app-shell--home .sigla-token--dc .sigla-token__release-time{font-size:clamp(.36rem,1.35vw,.46rem)}

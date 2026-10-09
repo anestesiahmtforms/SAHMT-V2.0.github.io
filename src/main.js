@@ -15,6 +15,7 @@ import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettle
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
+import {formatScheduleReleaseTime} from './schedule-release.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay} from './checklist-display.js';
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMaintenanceInputType} from './checklist-maintenance.js';
@@ -127,6 +128,7 @@ const reportWaiters = new Map();
 let checklistCatalogLive = null;
 let checklistModuleStations = [];
 let checklistResponsibilityLive = null;
+let checklistRotationLive = null;
 let suspendedReportScopes = [];
 const reportPermissions = {
   events: ['eventsRead', 'eventsWrite'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
@@ -238,7 +240,7 @@ function closeReportLive(kind, reason = 'close') {
   const waiter = reportWaiters.get(kind); if (waiter) settleReportWaiter(kind, waiter.key, false);
   if (kind === 'labels') { loadedLabelRecords = []; if (reason === 'close') document.querySelector('#label-report-results')?.replaceChildren(); }
   if (kind === 'events') { loadedEventReportRecords = []; eventReportSourceRecords = []; if (reason === 'close') document.querySelector('#event-report-results')?.replaceChildren(); }
-  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; }
+  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; checklistRotationLive = null; }
 }
 function invalidateChecklistSignature(message) {
   const dialog = document.querySelector('#checklist-confirmation-dialog');
@@ -262,9 +264,14 @@ function checklistSignatureCurrent(scope, fingerprint, responsibilityFingerprint
 function updateChecklistResponsibilityUI() {
   const state = reportStates.get('checklist'), scope = state?.scope;
   if (!scope || scope.warm || !reportScopeCurrent(scope) || scope.mode !== 'daily') return;
-  const responsible = checklistResponsibilityLive?.key === scope.key ? checklistResponsibilityLive : null;
-  const name = document.querySelector('#checklist-responsible-name');
-  if (name) name.textContent = responsible?.responsible?.name || (responsible?.error ? 'Responsável não confirmado' : 'Consultando responsável…');
+  const name = document.querySelector('#checklist-rotation-name');
+  const rotation = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
+  if (name) {
+    const selected = rotation?.rotation;
+    name.textContent = selected?.name
+      ? selected.name + ' · ' + selected.position + 'ª posição' + (!rotation.current ? ' · aguardando atualização' : '')
+      : rotation?.ready || rotation?.error ? (rotation.reason || 'Rodízio indisponível para esta data.') : 'Consultando escala…';
+  }
   const prepare = document.querySelector('#checklist-signature-prepare');
   if (prepare) prepare.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
 }
@@ -279,12 +286,12 @@ async function subscribeLiveReport(kind, scope, callbacks) {
     import('./report-live-data.js'), import('./checklist-report-listener.js'), import('./outbox.js')
   ]);
   if (!callbacks.isCurrent()) return () => {};
-  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, sequence = 0, idsKey = null;
+  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, sequence = 0, idsKey = null;
   const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
   const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
   let catalogServerSeen = false, writtenCatalog = '', catalogWriteSequence = 0;
   const current = () => !stopped && callbacks.isCurrent();
-  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); };
+  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
   const error = failure => { if (current()) { stop(); callbacks.error(failure); } };
   const acceptResponsibility = payload => {
     if (!current()) return;
@@ -293,6 +300,24 @@ async function subscribeLiveReport(kind, scope, callbacks) {
     if (previous?.key === scope.key && reportFingerprint(previous.responsible) !== reportFingerprint(payload.responsible)) invalidateChecklistSignature('A escala ou a responsabilidade mudou. Revise o relatório antes de enviar.');
     updateChecklistResponsibilityUI();
   };
+  if (scope.mode === 'daily') {
+    // Rotation is schedule information; it never authorizes a signature.
+    void import('./checklist-rotation-listener.js').then(module => current() ? module.watchChecklistRotation(scope, payload => {
+      if (!current()) return;
+      checklistRotationLive = {...payload, key: scope.key};
+      updateChecklistResponsibilityUI();
+    }, failure => {
+      if (!current()) return;
+      checklistRotationLive = {key: scope.key, ready: true, error: failure};
+      updateChecklistResponsibilityUI();
+    }) : null).then(unsubscribe => {
+      if (!current()) unsubscribe?.(); else displayResponsibilityStop = unsubscribe;
+    }).catch(failure => {
+      if (!current()) return;
+      checklistRotationLive = {key: scope.key, ready: true, error: failure};
+      updateChecklistResponsibilityUI();
+    });
+  }
   if (scope.mode === 'daily' && can('checklistSign')) {
     if (scope.isAdmin) {
       void import('./checklist-responsibility-listener.js').then(module => current() ? module.watchChecklistResponsibility(scope, acceptResponsibility, failure => acceptResponsibility({confirmed: false, error: failure})) : null)
@@ -532,7 +557,7 @@ function vacationRankMarkup(sigla, classes, position) {
   return `<span class="sigla-token__vacation-rank"><span class="${classes.join(' ')}">${escapeHtml(sigla)}</span><small class="sigla-token__vacation-number" aria-label="Posição ${position} na escala de férias">${position}</small></span>`;
 }
 
-function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, releaseTimes = {}) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
   return String(sigla || '—').toUpperCase().split(/([/-])/).map((part) => {
@@ -542,13 +567,14 @@ function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vaca
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(part)) classes.push('sigla-token__released-part--checked');
-    return onVacation
+    const label = onVacation
       ? vacationRankMarkup(part, classes, vacationPositions[part] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(part)}</span>`;
+    return scheduleReleaseLabel(label, checkedSet.has(part) ? releaseTimes[part] : undefined);
   }).join('');
 }
 
-function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, releaseTimes = {}) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
   return siglas.map((sigla) => {
@@ -557,14 +583,21 @@ function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], v
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(sigla)) classes.push('sigla-token__released-part--checked');
-    return onVacation
+    const label = onVacation
       ? vacationRankMarkup(sigla, classes, vacationPositions[sigla] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(sigla)}</span>`;
+    return scheduleReleaseLabel(label, checkedSet.has(sigla) ? releaseTimes[sigla] : undefined);
   }).join(' · ');
+}
+
+function scheduleReleaseLabel(label, occurredAt) {
+  const time = formatScheduleReleaseTime(occurredAt);
+  return time ? `<span class="sigla-token__timed-label">${label}<small class="sigla-token__release-time" aria-label="Liberado às ${time}">${time}</small></span>` : label;
 }
 
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
   const highlightedSiglas = new Set(mode === 'events' ? [] : Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
+  const releaseTimes = mode === 'home' ? schedule.highlights?.releaseTimes || {} : {};
   const isAdmin = can('admin');
   const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
   const eventSiglas = new Set();
@@ -584,10 +617,10 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
     const hasEvent = eventMode && (eventSiglas.has(String(position.sigla || '').toUpperCase()) || position.siglas.some((sigla) => eventSiglas.has(String(sigla || '').toUpperCase())));
     const aliases = position.sigla === 'DC' && position.siglas.length
-      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions)}</small>`
+      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, true, releaseTimes)}</small>`
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
-      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
+      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, releaseTimes)}</strong>`;
     const marked = !eventMode && highlightedSiglas.has(position.sigla);
     const showConfirmedDot = eventMode ? hasEvent : marked && !schedule.stale && schedule.pendingFirestore !== true;
     const confirmationLabel = eventMode ? 'Registro de evento confirmado no Firestore' : 'Liberação confirmada no Firestore';
@@ -1637,7 +1670,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
     const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
-    const signatureMarkup = `<footer class="checklist-confirmation-footer"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Confirmação do Checklist</span><small id="checklist-responsible-name">Consultando responsável…</small></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Confirmação do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
+    const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>Rodízio da escala</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Confirmação do Checklist</span></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Confirmação do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
     reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
       if (!reportScopeCurrent(scope)) return;
@@ -1645,7 +1678,6 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       if (station) showChecklistStationBanner(station, resolvedRecordFor(station), day, stations, {fromQr: false});
     });
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
-    const responsibleName = content.querySelector('#checklist-responsible-name');
     const confirmationDialog = content.querySelector('#checklist-confirmation-dialog');
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
@@ -4403,7 +4435,7 @@ function sessionChanged(next) {
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (userChanged || next.status !== 'signed-in') {
-    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
+    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistRotationLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
     for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
   }
   if (next.status !== 'signed-in' || userChanged) {
