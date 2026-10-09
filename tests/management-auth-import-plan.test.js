@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {authImportPlanDigest, authSnapshotDigest, prepareAuthImportPlan} from '../scripts/lib/management-auth-import-plan.js';
+import {authImportPlanDigest, authSnapshotDigest, authSourceRecordDigest, authRawSnapshotDigest, prepareAuthImportPlan} from '../scripts/lib/management-auth-import-plan.js';
 
 const account = (uid = 'member-a', changes = {}) => ({
   uid,
@@ -248,4 +248,245 @@ test('readTime preserva frações válidas até nanossegundos sem afirmar freshn
   const blocked = prepare(users, [], []);
   assert.equal(blocked.readiness.structuralReady, false);
   assert.equal(blocked.readiness.operationalFreshnessEvaluated, false);
+});
+
+
+const unlinked = (id = 'unlinked-a', changes = {}) => account(id, {providerData: [], emailVerified: false, ...changes});
+const rawUnlinked = user => ({localId: user.uid, email: user.email, disabled: false, emailVerified: false, providerUserInfo: []});
+const deferOptions = (users, {requiredSourceUids = [], rawUsers = users.map(rawUnlinked)} = {}) => ({
+  deferUnlinkedSource: true,
+  requiredSourceUids,
+  expectedRawSnapshotSha256: authRawSnapshotDigest(rawUsers),
+  unlinkedSourceEvidence: {
+    schemaVersion: 1,
+    sourceSnapshotSha256: authSnapshotDigest(source(users)),
+    rawSnapshotSha256: authRawSnapshotDigest(rawUsers),
+    entries: users.filter(user => Array.isArray(user.providerData) && user.providerData.length === 0 && user.disabled === false && user.emailVerified === false && !requiredSourceUids.includes(user.uid)).map(user => ({
+      faUid: user.uid, sourceRecordSha256: authSourceRecordDigest(user), rawRecordSha256: authSourceRecordDigest(rawUsers.find(row => row.localId === user.uid)),
+      providerCount: 0, passwordMaterialPresent: false, otherProviderIdentityPresent: false, disabled: false, emailVerified: false
+    }))
+  }
+});
+const assertSelectionDenied = plan => { assert.equal(plan.ready, false); assert.equal(plan.selectedImportReady, false); assert.deepEqual(plan.importRecords, []); };
+
+test('modo estrito continua negando 53 sem provedor e preserva todos os 60 vínculos', () => {
+  const users = [...Array.from({length: 7}, (_, n) => account('google-' + n)), ...Array.from({length: 53}, (_, n) => unlinked('unlinked-' + n))];
+  const plan = prepare(users);
+  assertSelectionDenied(plan);
+  assert.equal(plan.counts.create, 7);
+  assert.equal(plan.counts.conflict, 53);
+  assert.equal(plan.counts.deferUnlinked, 0);
+  assert.deepEqual(plan.identityMappings, mappings(users));
+  assert.equal(plan.selectionPolicy.mode, 'STRICT_GOOGLE_ONLY');
+});
+
+test('opt-in privado propõe sete Google, adia53 sem usuário/permissão e não conclui os60', () => {
+  const users = [...Array.from({length: 7}, (_, n) => account('google-' + n)), ...Array.from({length: 53}, (_, n) => unlinked('unlinked-' + n))];
+  const options = deferOptions(users, {requiredSourceUids: ['google-0', 'google-1', 'google-2']});
+  const plan = prepare(users, [], mappings(users), options);
+  assert.equal(plan.ready, false);
+  assert.equal(plan.selectedImportReady, true);
+  assert.equal(plan.allSourceUsersReconciled, false);
+  assert.equal(plan.deferredRequiresVerifiedGoogleLink, true);
+  assert.equal(plan.counts.create, 7);
+  assert.equal(plan.counts.deferUnlinked, 53);
+  assert.equal(plan.counts.conflict, 0);
+  assert.equal(plan.importRecords.length, 7);
+  assert.deepEqual(plan.identityMappings, mappings(users));
+  for (const entry of plan.entries.filter(entry => entry.action === 'DEFER_UNLINKED_SOURCE')) {
+    assert.equal(Object.hasOwn(entry, 'importRecord'), false);
+    assert.equal(Object.hasOwn(entry, 'permissions'), false);
+    assert.equal(Object.hasOwn(entry, 'providerData'), false);
+    assert.equal(entry.nextRequirement, 'VERIFIED_GOOGLE_LINK_AND_FRESH_IDENTITY_REVIEW');
+    assert.match(entry.rawRecordSha256, /^[a-f0-9]{64}$/);
+  }
+  assert.equal(plan.productionAuthorized, false);
+  assert.equal(plan.writeEnabled, false);
+  assert.equal(plan.readiness.operationalFreshnessEvaluated, false);
+  assert.equal(plan.selectionPolicy.evidenceScope, 'PRIVATE_OFFLINE_REVIEW_ONLY');
+  assert.equal(plan.resultSha256, authImportPlanDigest(plan));
+});
+
+for (const [label, mutate, expectedCode] of [
+  ['opt-in de outro tipo', options => {options.deferUnlinkedSource = 'true';}, 'DEFER_UNLINKED_POLICY_INVALID'],
+  ['opção desligada com prova', options => {options.deferUnlinkedSource = false;}, 'DEFER_UNLINKED_POLICY_NOT_ENABLED'],
+  ['UIDs COPY ausentes', options => {delete options.requiredSourceUids;}, 'REQUIRED_SOURCE_UIDS_INVALID_OR_MISSING'],
+  ['UIDs COPY não array', options => {options.requiredSourceUids = {};}, 'REQUIRED_SOURCE_UIDS_INVALID_OR_MISSING'],
+  ['UIDs COPY duplicados', options => {options.requiredSourceUids = ['google-a', 'google-a'];}, 'REQUIRED_SOURCE_UIDS_INVALID_OR_MISSING'],
+  ['UIDs COPY inválidos', options => {options.requiredSourceUids = ['bad uid'];}, 'REQUIRED_SOURCE_UIDS_INVALID_OR_MISSING'],
+  ['UID COPY ausente em Auth', options => {options.requiredSourceUids = ['unknown'];}, 'REQUIRED_SOURCE_UID_NOT_IN_AUTH_SNAPSHOT'],
+  ['pin raw ausente', options => {delete options.expectedRawSnapshotSha256;}, 'EXPECTED_RAW_AUTH_SNAPSHOT_FINGERPRINT_INVALID_OR_MISSING'],
+  ['pin raw inválido', options => {options.expectedRawSnapshotSha256 = 'BAD';}, 'EXPECTED_RAW_AUTH_SNAPSHOT_FINGERPRINT_INVALID_OR_MISSING'],
+  ['evidência ausente', options => {delete options.unlinkedSourceEvidence;}, 'UNLINKED_SOURCE_EVIDENCE_INVALID_OR_MISSING'],
+  ['schema errado', options => {options.unlinkedSourceEvidence.schemaVersion = 2;}, 'UNLINKED_SOURCE_EVIDENCE_INVALID_OR_MISSING'],
+  ['snapshot normalizado mudou', options => {options.unlinkedSourceEvidence.sourceSnapshotSha256 = '1'.repeat(64);}, 'UNLINKED_SOURCE_EVIDENCE_NORMALIZED_SNAPSHOT_CHANGED'],
+  ['snapshot raw mudou', options => {options.unlinkedSourceEvidence.rawSnapshotSha256 = '1'.repeat(64);}, 'UNLINKED_SOURCE_EVIDENCE_RAW_SNAPSHOT_CHANGED'],
+  ['prova extra do envelope', options => {options.unlinkedSourceEvidence.passwordHash = 'PRIVATE_PROOF';}, 'UNLINKED_SOURCE_EVIDENCE_INVALID_OR_MISSING'],
+  ['prova UID duplicada', options => {options.unlinkedSourceEvidence.entries.push(structuredClone(options.unlinkedSourceEvidence.entries[0]));}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_DUPLICATED'],
+  ['prova UID extra', options => {options.unlinkedSourceEvidence.entries.push({...options.unlinkedSourceEvidence.entries[0], faUid: 'google-a'});}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_EXTRA'],
+  ['prova UID ausente', options => {options.unlinkedSourceEvidence.entries = [];}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_MISSING'],
+  ['digest registro mudou', options => {options.unlinkedSourceEvidence.entries[0].sourceRecordSha256 = '1'.repeat(64);}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_CHANGED'],
+  ['digest raw inválido', options => {options.unlinkedSourceEvidence.entries[0].rawRecordSha256 = 'bad';}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID'],
+  ['prova registra provedor', options => {options.unlinkedSourceEvidence.entries[0].providerCount = 1;}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID'],
+  ['prova senha presente', options => {options.unlinkedSourceEvidence.entries[0].passwordMaterialPresent = true;}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID'],
+  ['prova outros provedores', options => {options.unlinkedSourceEvidence.entries[0].otherProviderIdentityPresent = true;}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID'],
+  ['prova disabled', options => {options.unlinkedSourceEvidence.entries[0].disabled = true;}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID'],
+  ['prova emailVerified', options => {options.unlinkedSourceEvidence.entries[0].emailVerified = true;}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID'],
+  ['prova campo adicional privado', options => {options.unlinkedSourceEvidence.entries[0].passwordSalt = 'PRIVATE_PROOF';}, 'UNLINKED_SOURCE_RECORD_EVIDENCE_INVALID']
+]) test('opt-in nega ' + label + ' e não libera lote parcial', () => {
+  const users = [account('google-a'), unlinked()];
+  const options = deferOptions(users);
+  mutate(options);
+  const plan = prepare(users, [], mappings(users), options);
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, expectedCode), true);
+  assert.equal(plan.entries.some(entry => entry.action === 'DEFER_UNLINKED_SOURCE'), false);
+  assert.equal(JSON.stringify(plan).includes('PRIVATE_PROOF'), false);
+});
+
+test('autor/vínculo COPY requerido sem Google nunca é adiado', () => {
+  const users = [account('google-a'), unlinked()];
+  const plan = prepare(users, [], mappings(users), deferOptions(users, {requiredSourceUids: ['unlinked-a']}));
+  assertSelectionDenied(plan);
+  assert.equal(plan.entries[1].action, 'CONFLICT');
+  assert.equal(hasConflict(plan, 'SOURCE_REQUIRED_USER_HAS_NO_VERIFIED_GOOGLE_LINK'), true);
+  assert.equal(hasConflict(plan, 'SOURCE_GOOGLE_PROVIDER_MISSING_OR_AMBIGUOUS'), true);
+});
+
+for (const [label, changes, expectedCode] of [
+  ['disabled', {disabled: true}, 'SOURCE_UNLINKED_STATUS_REQUIRES_REVIEW'],
+  ['emailVerified', {emailVerified: true}, 'SOURCE_UNLINKED_STATUS_REQUIRES_REVIEW'],
+  ['disabled ausente', {disabled: undefined}, 'SOURCE_AUTH_STATUS_MISSING_OR_INVALID'],
+  ['emailVerified ausente', {emailVerified: undefined}, 'SOURCE_AUTH_STATUS_MISSING_OR_INVALID'],
+  ['providers ausentes', {providerData: undefined}, 'SOURCE_PROVIDERS_INVALID'],
+  ['providers null', {providerData: null}, 'SOURCE_PROVIDERS_INVALID'],
+  ['provider password', {providerData: [{providerId: 'password', uid: 'unlinked-a@example.invalid'}]}, 'SOURCE_PASSWORD_PROVIDER_REQUIRES_REVIEW'],
+  ['provider diferente', {providerData: [{providerId: 'github.com', uid: 'github-unlinked'}]}, 'SOURCE_UNSUPPORTED_PROVIDER_REQUIRES_REVIEW'],
+  ['senha no normalizado', {passwordHash: 'PRIVATE_SOURCE'}, 'SOURCE_PASSWORD_MATERIAL_REQUIRES_REVIEW'],
+  ['salt vazio', {salt: ''}, 'SOURCE_PASSWORD_MATERIAL_REQUIRES_REVIEW'],
+  ['metadata desconhecida', {isAnonymous: true}, 'SOURCE_UNLINKED_METADATA_REQUIRES_REVIEW'],
+  ['claims fonte', {customClaims: {admin: true}}, 'SOURCE_UNLINKED_METADATA_REQUIRES_REVIEW']
+]) test('opt-in mantém conflito real em fonte: ' + label, () => {
+  const users = [account('google-a'), unlinked('unlinked-a', changes)];
+  const options = deferOptions(users);
+  const plan = prepare(users, [], mappings(users), options);
+  assertSelectionDenied(plan);
+  assert.equal(plan.entries[1].action, 'CONFLICT');
+  assert.equal(hasConflict(plan, expectedCode), true);
+  assert.equal(JSON.stringify(plan).includes('PRIVATE_SOURCE'), false);
+});
+
+test('evidência lista candidato antes de colisões e não esconde fonte ambígua', () => {
+  const users = [account('google-a'), unlinked('unlinked-a', {email: 'GOOGLE-A@example.invalid'})];
+  const plan = prepare(users, [], mappings(users), deferOptions(users));
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, 'SOURCE_EMAIL_COLLISION'), true);
+  assert.equal(plan.entries[1].action, 'CONFLICT');
+});
+
+test('UID providerless duplicado não pode ser atestado uma vez e adiado', () => {
+  const users = [unlinked(), unlinked()];
+  const options = deferOptions(users);
+  options.unlinkedSourceEvidence.entries.pop();
+  const plan = prepare(users, [], mappings(users), options);
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, 'UNLINKED_SOURCE_EVIDENCE_SOURCE_UID_AMBIGUOUS'), true);
+  assert.equal(plan.entries.some(entry => entry.action === 'DEFER_UNLINKED_SOURCE'), false);
+});
+
+for (const [label, target, code] of [
+  ['UID existente Google', account('unlinked-a'), 'DESTINATION_UNLINKED_UID_ALREADY_EXISTS_REQUIRES_REVIEW'],
+  ['UID existente sem provedor', unlinked(), 'DESTINATION_UNLINKED_UID_ALREADY_EXISTS_REQUIRES_REVIEW'],
+  ['e-mail de outro UID', account('target-a', {email: 'UNLINKED-A@example.invalid'}), 'DESTINATION_EMAIL_COLLISION'],
+  ['e-mail em provider de outro UID', account('target-a', {providerData: [{providerId: 'google.com', uid: 'google-target-a', email: 'UNLINKED-A@example.invalid'}]}), 'DESTINATION_EMAIL_COLLISION']
+]) test('opt-in mantém conflito destino: ' + label, () => {
+  const users = [account('google-a'), unlinked()];
+  const plan = prepare(users, [target], mappings(users), deferOptions(users));
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, code), true);
+  assert.equal(plan.entries[1].action, 'CONFLICT');
+});
+
+test('Google selecionado continua revisado: colisão de identidade bloqueia sete/53', () => {
+  const users = [account('google-a'), unlinked()];
+  const target = account('target-a', {providerData: [{providerId: 'google.com', uid: 'google-google-a', email: 'target-a@example.invalid'}]});
+  const plan = prepare(users, [target], mappings(users), deferOptions(users));
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, 'DESTINATION_GOOGLE_UID_COLLISION'), true);
+  assert.equal(plan.entries[1].action, 'DEFER_UNLINKED_SOURCE');
+  assert.equal(plan.allSourceUsersReconciled, false);
+});
+
+test('adiamento não contorna mapping ausente ou remapeado', () => {
+  const users = [account('google-a'), unlinked()];
+  const missing = prepare(users, [], mappings([users[0]]), deferOptions(users));
+  assertSelectionDenied(missing);
+  assert.equal(hasConflict(missing, 'IDENTITY_MAPPING_MISSING'), true);
+  const changedLinks = mappings(users); changedLinks[1].fbUid = 'another-uid';
+  const changed = prepare(users, [], changedLinks, deferOptions(users));
+  assertSelectionDenied(changed);
+  assert.equal(hasConflict(changed, 'UID_REMAP_REQUIRES_REVIEWED_ADAPTER'), true);
+});
+
+test('fingerprints antigos também bloqueiam opt-in sem afirmar frescor da captura', () => {
+  const users = [account('google-a'), unlinked()];
+  const options = deferOptions(users);
+  const original = prepare(users, [], mappings(users), options);
+  const changed = prepare(users, [account('target-a')], mappings(users), {...options, expectedFingerprints: original.fingerprints});
+  assertSelectionDenied(changed);
+  assert.equal(hasConflict(changed, 'DESTINATION_SNAPSHOT_CHANGED'), true);
+});
+
+test('digests da revisão são canônicos, preservam entradas e cobrem política/prova', () => {
+  const users = [account('google-a'), unlinked()];
+  const options = deferOptions(users);
+  const before = structuredClone({users, options, links: mappings(users)});
+  const plan = prepare(users, [], before.links, options);
+  const reordered = structuredClone(options); reordered.unlinkedSourceEvidence.entries.reverse();
+  assert.equal(plan.resultSha256, prepare(users, [], before.links, reordered).resultSha256);
+  assert.deepEqual({users, options, links: mappings(users)}, before);
+  assert.equal(authSourceRecordDigest({b: 2, a: 1}), authSourceRecordDigest({a: 1, b: 2}));
+  assert.equal(authRawSnapshotDigest([{b: 2, a: 1}]), authRawSnapshotDigest([{a: 1, b: 2}]));
+  assert.throws(() => authRawSnapshotDigest({}), /AUTH_RAW_USERS_ARRAY_REQUIRED/);
+  const changedRaw = structuredClone(options);
+  changedRaw.expectedRawSnapshotSha256 = '2'.repeat(64);
+  changedRaw.unlinkedSourceEvidence.rawSnapshotSha256 = '2'.repeat(64);
+  assert.notEqual(plan.inputSha256, prepare(users, [], before.links, changedRaw).inputSha256);
+  assert.notEqual(plan.resultSha256, prepare(users).resultSha256);
+  assert.equal(Object.hasOwn(plan, 'migrationComplete'), false);
+});
+
+test('opções inválidas recusam chamada e limites privados bloqueiam mais de50000 UIDs', () => {
+  assert.throws(() => prepare([account()], [], mappings([account()]), []), /AUTH_PLAN_OPTIONS_INVALID/);
+  const users = [account('google-a'), unlinked()];
+  const options = deferOptions(users);
+  options.requiredSourceUids = Array.from({length: 50001}, (_, index) => 'required-' + index);
+  assertSelectionDenied(prepare(users, [], mappings(users), options));
+  const oversizedProof = deferOptions(users);
+  oversizedProof.unlinkedSourceEvidence.entries = Array(50001).fill(oversizedProof.unlinkedSourceEvidence.entries[0]);
+  const plan = prepare(users, [], mappings(users), oversizedProof);
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, 'UNLINKED_SOURCE_EVIDENCE_INVALID_OR_MISSING'), true);
+});
+
+
+test('dois UIDs não podem reutilizar pin do mesmo registro raw', () => {
+  const users = [account('google-a'), unlinked('unlinked-a'), unlinked('unlinked-b')];
+  const options = deferOptions(users);
+  options.unlinkedSourceEvidence.entries[1].rawRecordSha256 = options.unlinkedSourceEvidence.entries[0].rawRecordSha256;
+  const plan = prepare(users, [], mappings(users), options);
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, 'UNLINKED_SOURCE_RAW_RECORD_EVIDENCE_DUPLICATED'), true);
+  assert.equal(plan.counts.deferUnlinked, 0);
+});
+
+test('mapping inválido não leva campos privados ao artifact que preserva vínculos válidos', () => {
+  const users = [account('google-a'), unlinked()];
+  const links = mappings(users);
+  links[1].passwordHash = 'PRIVATE_INVALID_MAP';
+  const plan = prepare(users, [], links, deferOptions(users));
+  assertSelectionDenied(plan);
+  assert.equal(hasConflict(plan, 'IDENTITY_MAPPING_INVALID'), true);
+  assert.equal(JSON.stringify(plan).includes('PRIVATE_INVALID_MAP'), false);
+  assert.deepEqual(plan.identityMappings, [links[0]]);
 });

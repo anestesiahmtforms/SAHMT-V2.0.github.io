@@ -106,7 +106,7 @@ function documentRelations(document, documents) {
       if(value?.mapValue) inspect(value.mapValue.fields);
       if(value?.arrayValue) for(const item of value.arrayValue.values || []) if(item.mapValue) inspect(item.mapValue.fields);
     }
-    const sourceCollection=fields.sourceCollection?.stringValue,sourceId=fields.sourceId?.stringValue;
+    const sourceCollection=fields?.sourceCollection?.stringValue,sourceId=fields?.sourceId?.stringValue;
     if(sourceCollection && sourceId) result.add(`${sourceCollection}/${sourceId}`);
   };
   inspect(document.fields);
@@ -136,6 +136,35 @@ export function prepareSplitPlan(snapshot, manifest, destinationSnapshot = null)
     memberIds.add(mapping.memberId); sourceUids.add(mapping.faUid); destinationUids.add(mapping.fbUid);
   }
   const documents = new Map(snapshot.documents.map(document => [document.path, document]));
+  // Archived authors are explicit source attributions, never identity mappings.
+  // Each exception is pinned to one original, top-level author field in a COPY.
+  const historicalAttributions = new Map(), consumedAttributions = new Set();
+  if (Object.hasOwn(manifest, 'historicalAttributions')) {
+    assert(Array.isArray(manifest.historicalAttributions), 'INVALID_HISTORICAL_ATTRIBUTIONS');
+    const exactKeys = (object, keys) => object !== null && typeof object === 'object' && !Array.isArray(object)
+      && [Object.prototype, null].includes(Object.getPrototypeOf(object))
+      && Reflect.ownKeys(object).length === keys.length && Reflect.ownKeys(object).every(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(object, key);
+        return keys.includes(key) && descriptor.enumerable === true && Object.hasOwn(descriptor, 'value');
+      });
+    for (const attribution of manifest.historicalAttributions) {
+      assert(exactKeys(attribution, ['path', 'sourceSha256', 'field', 'sourceUid', 'actor']), 'INVALID_HISTORICAL_ATTRIBUTION');
+      assert(validPath(attribution.path) && attribution.path.split('/').length === 2 && ['documents', 'scopedDocuments'].includes(attribution.path.split('/')[0]) && documents.has(attribution.path), 'HISTORICAL_ATTRIBUTION_PATH_MISMATCH');
+      assert(['createdByUid', 'updatedByUid'].includes(attribution.field), 'HISTORICAL_ATTRIBUTION_FIELD_FORBIDDEN');
+      assert(typeof attribution.sourceUid === 'string' && attribution.sourceUid.length > 0 && attribution.sourceUid.length <= 200 && !/[\s/\x00-\x1f]/.test(attribution.sourceUid), 'INVALID_HISTORICAL_ATTRIBUTION_UID');
+      assert(!sourceUids.has(attribution.sourceUid), 'HISTORICAL_ATTRIBUTION_ALREADY_MAPPED');
+      const sourceDocument = documents.get(attribution.path);
+      assert(attribution.sourceSha256 === documentDigest(sourceDocument), 'HISTORICAL_ATTRIBUTION_HASH_MISMATCH');
+      assert(Object.hasOwn(sourceDocument.fields, attribution.field) && sourceDocument.fields[attribution.field]?.stringValue === attribution.sourceUid, 'HISTORICAL_ATTRIBUTION_FIELD_MISMATCH');
+      const actor = attribution.actor;
+      assert(exactKeys(actor, ['sourceProjectId', 'sourceUid', 'status', 'active', 'access', 'memberId'])
+        && actor.sourceProjectId === snapshot.projectId && actor.sourceUid === attribution.sourceUid
+        && actor.status === 'ARCHIVED_UNRESOLVED' && actor.active === false && actor.access === false && actor.memberId === null, 'INVALID_HISTORICAL_ARCHIVED_ACTOR');
+      const key = `${attribution.path}\u0000${attribution.field}`;
+      assert(!historicalAttributions.has(key), 'DUPLICATE_HISTORICAL_ATTRIBUTION');
+      historicalAttributions.set(key, attribution);
+    }
+  }
   const entries = new Map();
   for (const entry of manifest.entries) {
     assert(entry && documents.has(entry.path) && !entries.has(entry.path) && actions.has(entry.action) && typeof entry.reason === 'string' && entry.reason.trim().length >= 8, 'INVALID_MANIFEST_ENTRY');
@@ -154,17 +183,23 @@ export function prepareSplitPlan(snapshot, manifest, destinationSnapshot = null)
       assert(entry.dependencies.includes(awardPath) && documents.has(awardPath), 'LEDGER_AWARD_DEPENDENCY_REQUIRED');
     }
     if (entry.action === 'COPY') {
-      const inspectUids = (value, field = '') => {
+      const inspectUids = (value, field = '', topLevel = false) => {
         if (!value || typeof value !== 'object') return;
-        if ((field==='uid' || field.endsWith('Uid') || ['createdBy','updatedBy'].includes(field)) && typeof value.stringValue === 'string' && value.stringValue) assert(sourceUids.has(value.stringValue), 'UID_NOT_MAPPED');
+        if ((field==='uid' || field.endsWith('Uid') || ['createdBy','updatedBy'].includes(field)) && typeof value.stringValue === 'string' && value.stringValue && !sourceUids.has(value.stringValue)) {
+          const key = `${entry.path}\u0000${field}`;
+          const attribution = topLevel ? historicalAttributions.get(key) : undefined;
+          assert(attribution?.sourceUid === value.stringValue, 'UID_NOT_MAPPED');
+          consumedAttributions.add(key);
+        }
         if (field.endsWith('Uids')) for (const item of value.arrayValue?.values || []) assert(sourceUids.has(item.stringValue), 'UID_NOT_MAPPED');
         if (value.mapValue) Object.entries(value.mapValue.fields || {}).forEach(([key, item]) => inspectUids(item, key));
         if (value.arrayValue) for (const item of value.arrayValue.values || []) inspectUids(item);
       };
-      Object.entries(fields).forEach(([key, value]) => inspectUids(value, key));
+      Object.entries(fields).forEach(([key, value]) => inspectUids(value, key, true));
     }
     entries.set(entry.path, entry);
   }
+  assert(consumedAttributions.size === historicalAttributions.size, 'HISTORICAL_ATTRIBUTION_UNCONSUMED');
   for (const entry of entries.values()) if (entry.action === 'COPY' && entry.path.startsWith('evaluationLedger/')) {
     const awardPath = `evaluationAwards/${documents.get(entry.path).fields.awardId.stringValue}`;
     assert(entries.get(awardPath)?.action === 'COPY', 'LEDGER_AWARD_NOT_MIGRATED');

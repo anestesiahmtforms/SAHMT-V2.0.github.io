@@ -48,7 +48,7 @@ async function harness({sdkOverrides = {}, reserveOverride, sourceOverride, leas
     calls.push(['reserve', request]);
     const prior = debits.get(request.projectId) || 0; debits.set(request.projectId, prior + request.maximumReads);
     const receipt = {schemaVersion: 1, projectId: request.projectId, operation: request.operation,
-      reservationId: 'reservation-' + (++reservationCount), dailyLimit: 35000, quotaTimezone: 'America/Los_Angeles',
+      reservationId: 'reservation-' + (++reservationCount), dailyLimit: request.dailyLimit, quotaTimezone: 'America/Los_Angeles',
       quotaDay: day(time), pausedRequiresReview: false, metricsComplete: true, measurementTimeMs: time,
       expiresAtMs: time + 10000, reservedReads: request.maximumReads, totalReadCount: 1000,
       outstandingReservedReads: request.maximumReads, unreportedConsumedReads: prior,
@@ -473,4 +473,98 @@ test('composition restores, obtains broker session, invalidates changes/revocati
   assert.ok(states.includes('needs-broker') && states.includes('connecting') && states.includes('ready') && states.includes('blocked') && states.includes('signed-out'));
   assert.ok(detached.includes('context-changed') && detached.includes('logout'));
   unobserve(); context.wrapper.dispose();
+});
+
+
+const separatedBrowserPolicy = (faLimit=45000) => ({...policy(),dailyLimits:{[FA]:faLimit,[FB]:35000},
+  ...(faLimit===45000?{limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08'}:{})});
+test('browser legacy35k and explicit separate35k stay compatible',async t=>{
+  for(const suppliedPolicy of [policy(),{...policy(),dailyLimit:35000},separatedBrowserPolicy(35000)])await t.test('compatible35k',async()=>{
+    const f=await harness({suppliedPolicy,fbUser:{uid:'member-a'}});try{
+      assert.equal((await f.adapters.restoreFb()).mirror.memberId,'stable-a');
+      for(const [,request] of count(f.calls,'reserve'))assert.equal(request.dailyLimit,35000);
+    }finally{f.wrapper.dispose();}
+  });
+});
+test('browser trusted FA45k requests its cap while FB always requests35k',async()=>{
+  const f=await harness({suppliedPolicy:separatedBrowserPolicy(),fbUser:{uid:'member-a'},
+    reserveOverride:(value,request)=>({...value,totalReadCount:request.projectId===FA?40000:1000})});
+  try{
+    assert.equal((await f.adapters.restoreFb()).mirror.memberId,'stable-a');
+    assert.deepEqual(count(f.calls,'reserve').map(([,request])=>request.dailyLimit),[45000,35000]);
+    assert.equal(count(f.calls,'read').length,2);
+  }finally{f.wrapper.dispose();}
+});
+test('browser FA45k pin must come from injected configuration before SDK load',async t=>{
+  for(const pin of [undefined,true,'USER_FB_LIMIT_45000'])await t.test('pin',async()=>{
+    const value=separatedBrowserPolicy();if(pin===undefined)delete value.limitApprovalEvidence;else value.limitApprovalEvidence=pin;
+    await expectCode(harness({suppliedPolicy:value}),'BROWSER_FA_LIMIT_INCREASE_NOT_AUTHORIZED');
+  });
+});
+test('browser project map cannot widen FB or use ambiguous global45k',async t=>{
+  const changes=[value=>{delete value.dailyLimits[FB];},value=>{value.dailyLimits.foreign=35000;},value=>{value.dailyLimits[FB]=45000;},
+    value=>{value.dailyLimits[FA]=40000;},value=>{value.dailyLimit=35000;},value=>{delete value.dailyLimits;value.dailyLimit=45000;}];
+  for(const change of changes)await t.test('map',async()=>{
+    const value=separatedBrowserPolicy();change(value);await expectCode(harness({suppliedPolicy:value}),'BROWSER_READ_LIMITS_INVALID');
+  });
+});
+test('browser rejects wrong-project ceiling before document SDK call',async t=>{
+  for(const mode of ['FA35k','FB45k'])await t.test(mode,async()=>{
+    const f=await harness({suppliedPolicy:separatedBrowserPolicy(),fbUser:{uid:'member-a'},reserveOverride:(value,request)=>
+      ({...value,dailyLimit:mode==='FA35k'&&request.projectId===FA?35000:mode==='FB45k'&&request.projectId===FB?45000:request.dailyLimit,
+        limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08'})});
+    try{
+      await expectCode(f.adapters.restoreFb(),'FIRESTORE_BUDGET_DENIED');
+      assert.equal(count(f.calls,'read').filter(([,ref])=>ref.firestore.app.options.projectId===FB).length,0);
+    }finally{f.wrapper.dispose();}
+  });
+});
+test('browser local evidence alone cannot admit45k receipt under legacy35k',async()=>{
+  const f=await harness({reserveOverride:value=>({...value,dailyLimit:45000,limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08'})});
+  try{await expectCode(f.adapters.restoreFa(),'FIRESTORE_BUDGET_DENIED');assert.equal(count(f.calls,'read').length,0);}finally{f.wrapper.dispose();}
+});
+test('browser raised FA never admits FB sum above35k',async()=>{
+  const f=await harness({suppliedPolicy:separatedBrowserPolicy(),fbUser:{uid:'member-a'},
+    reserveOverride:(value,request)=>({...value,totalReadCount:request.projectId===FA?40000:34800})});
+  try{await expectCode(f.adapters.restoreFb(),'FIRESTORE_BUDGET_DENIED');assert.equal(count(f.calls,'read').filter(([,ref])=>ref.firestore.app.options.projectId===FB).length,0);}finally{f.wrapper.dispose();}
+});
+test('browser operation bounds preserve each project ceiling before SDK setup',async()=>{
+  const value=separatedBrowserPolicy();value.leaseReadMaximum=35000;
+  await expectCode(harness({suppliedPolicy:value}),'BROWSER_READ_BUDGET_POLICY_INVALID');
+});
+test('browser pins limits and scalar policy before awaits; mutation cannot broaden a project',async()=>{
+  const value=separatedBrowserPolicy(),f=await harness({suppliedPolicy:value,fbUser:{uid:'member-a'}});
+  try{
+    value.dailyLimits[FA]=50000;value.dailyLimits[FB]=45000;value.limitApprovalEvidence=null;value.sourceReadMaximum=999999;
+    assert.equal((await f.adapters.restoreFb()).mirror.memberId,'stable-a');
+    const requests=count(f.calls,'reserve').map(([,request])=>request);
+    assert.deepEqual(requests.map(request=>request.dailyLimit),[45000,35000]);assert.equal(requests[0].maximumReads,5);
+  }finally{f.wrapper.dispose();}
+});
+
+
+test('browser denies receipt sum exactly at each project ceiling35k or45k',async t=>{
+  for(const [name,target,suppliedPolicy] of [['FA35k',FA,policy()],['FA45k',FA,separatedBrowserPolicy()],['FB35k-under-FA45k',FB,separatedBrowserPolicy()]])await t.test(name,async()=>{
+    const f=await harness({suppliedPolicy,fbUser:{uid:'member-a'},reserveOverride:(receipt,request)=>request.projectId===target?
+      ({...receipt,totalReadCount:request.dailyLimit-receipt.outstandingReservedReads-receipt.unreportedConsumedReads
+        -receipt.applicationReserveReads-receipt.metricLagReserveReads}):receipt});
+    try{
+      await expectCode(f.adapters.restoreFb(),'FIRESTORE_BUDGET_DENIED');
+      assert.equal(count(f.calls,'read').filter(([,ref])=>ref.firestore.app.options.projectId===FA).length,target===FA?0:1);
+      assert.equal(count(f.calls,'read').filter(([,ref])=>ref.firestore.app.options.projectId===FB).length,0);
+    }finally{f.wrapper.dispose();}
+  });
+});
+
+
+test('browser rejects measurement age policy above300000 before SDK load',async()=>{
+  const value=policy();value.maxMeasurementAgeMs=300001;let imported=false;
+  const faApp={name:'sahmt-v2',options:{projectId:FA}};
+  await expectCode(createManagementBrowserAdapters({enabled:true,faAuth:{app:faApp},faFirestore:{app:faApp},fbConfig:config,
+    sourceReference:()=>{},reserveFirestoreReads:()=>{},policy:value,sdkLoader:async()=>{imported=true;return {};}}),
+    'BROWSER_ADAPTER_POLICY_REQUIRED');assert.equal(imported,false);
+});
+test('browser accepts explicit measurement age policy at300000 with unchanged fresh receipts',async()=>{
+  const value=separatedBrowserPolicy();value.maxMeasurementAgeMs=300000;
+  const f=await harness({suppliedPolicy:value});try{assert.equal((await f.adapters.restoreFa()).profile.memberId,'stable-a');}finally{f.wrapper.dispose();}
 });

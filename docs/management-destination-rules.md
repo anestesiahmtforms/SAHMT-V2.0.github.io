@@ -83,7 +83,7 @@ Não existe leitura cruzada de Firestore FA nas Rules FB. Mudança/revogação e
 
 O get próprio usa `resource.data`, o documento solicitado. **Não há get()/exists()/getAfter() adicional de Rules nesta versão.** Os recursos negados não invocam consultas de autorização.
 
-O get continua sendo uma leitura do cliente quando servido pelo backend. Listeners, retomadas, retries e operações do broker precisam entrar no orçamento operacional de 35.000 leituras totais por projeto/dia, com as margens já estabelecidas. Esta Rules não instala esse corte global e não mede consumo.
+O get continua sendo uma leitura do cliente quando servido pelo backend. Listeners, retomadas, retries e operações do broker precisam entrar no orçamento operacional próprio do projeto por dia: FA 45.000 aprovado em 8/10 e FB 35.000 local, com as margens já estabelecidas e sem pausa herdada. Esta Rules não instala esse corte global e não mede consumo.
 
 Quando os recursos forem liberados, consultar o lease via get()/exists() nas Rules poderá acrescentar leituras inclusive para pedidos negados. Há limites de 10 access calls para uma operação/query e 20 para leitura múltipla/transação/batch, além do limite individual; calls em cache podem não contar. Orçar conservadoramente antes de adicionar paths, sem tratar cache como garantia. [Limites e cobrança de access calls](https://firebase.google.com/docs/firestore/security/rules-conditions#access_call_limits).
 

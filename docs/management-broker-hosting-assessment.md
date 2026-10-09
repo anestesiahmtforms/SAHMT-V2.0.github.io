@@ -69,7 +69,7 @@ Durable Objects SQLite estão disponíveis no Workers Free e são candidatos ao 
 | Cloudflare Workers Free | 100.000 requests/dia da conta, 10 ms CPU/request, 50 subrequests/request. | Medir CPU criptográfica/bundle e contagem incluindo redirecionamentos; tempo de rede não certifica CPU. Conta/uso atuais não conferidos. |
 | Durable Objects Free | SQLite disponível, 100.000 requests/dia; esgotamento gratuito faz operações falharem. | Serialização/armazenamento/retention a implementar; disponibilidade sujeita à quota. |
 | IAM | Documentação informa IAM sem cobrança adicional; outros produtos podem ter preço próprio. | Conferir acesso real/API/quotas; isto não comprova habilitação nem licença para ativar outros serviços. |
-| Firestore FA e FB | Política local: 35.000 leituras totais por projeto/dia LA, tráfego do app incluído. | Medição fresca completa, margens, pausa humana persistida e reservas cumulativas duráveis antes de reads/CAS/limpeza. |
+| Firestore FA e FB | Políticas locais separadas: FA 45.000 explicitamente aprovado em 8/10; FB 35.000. Tráfego do app incluído, com dia LA e sem pausa herdada. | Medição fresca completa, margens, pausa humana persistida e reservas cumulativas duráveis antes de reads/CAS/limpeza. |
 
 Fontes das quotas: [Apps Script](https://developers.google.com/apps-script/guides/services/quotas), [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Durable Objects](https://developers.cloudflare.com/durable-objects/platform/pricing/), [IAM](https://docs.cloud.google.com/iam/docs/billing-questions). A quota gratuita de Firestore não aumenta porque o host está no Cloudflare.
 

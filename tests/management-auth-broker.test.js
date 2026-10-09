@@ -27,7 +27,7 @@ const reservation = (request, time = TIME) => {
   mockBudgetDebits.set(request.projectId, {quotaDay: day, maximumReadsReserved: consumed + request.maximumReads});
   return {schemaVersion: 1, projectId: request.projectId, operation: request.operation,
     reservationId: 'reservation-' + (++nextReservationId), quotaTimezone: 'America/Los_Angeles',
-    quotaDay: day, dailyLimit: 35000, pausedRequiresReview: false, metricsComplete: true,
+    quotaDay: day, dailyLimit: request.dailyLimit, pausedRequiresReview: false, metricsComplete: true,
     measurementTimeMs: time, expiresAtMs: time + 10000, reservedReads: request.maximumReads,
     totalReadCount: 1000, outstandingReservedReads: request.maximumReads, unreportedConsumedReads: consumed,
     applicationReserveReads: 100, metricLagReserveReads: 100};
@@ -725,4 +725,152 @@ test('HTTP sustenta cleanup/fence do broker real depois de retornar cancelamento
   await new Promise(yes=>setImmediate(yes));assert.equal(settled,false);
   cleanup.resolve({applied:false,matched:false,fenced:true});
   assert.deepEqual(await completion,{settled:true,started:true,requiresReconciliation:false,code:'BROKER_COMPLETED_AFTER_ABORT'});
+});
+
+
+// Separate limits are trusted host policy; requests/claims/receipts cannot raise them.
+const separatedPolicy = (faLimit = 45000) => {
+  const value = policy(); delete value.readBudget.dailyLimit;
+  value.readBudget.dailyLimits = {[FA]: faLimit, [FB]: 35000};
+  if (faLimit === 45000) value.readBudget.limitApprovalEvidence = 'USER_FA_DAILY_LIMIT_45000_2026_10_08';
+  return value;
+};
+const separatedReservationAdapter = ({faReads=40000, fbReads=1000, change=value=>value}={}) => {
+  const debits=new Map();let sequence=0;
+  return async request => {
+    const previous=debits.get(request.projectId)||0, debit=previous+request.maximumReads;
+    debits.set(request.projectId,debit);
+    const receipt={schemaVersion:1,projectId:request.projectId,operation:request.operation,
+      reservationId:'separated_reservation_'+(++sequence),quotaTimezone:'America/Los_Angeles',quotaDay:quotaDay(TIME),
+      dailyLimit:request.dailyLimit,pausedRequiresReview:false,metricsComplete:true,measurementTimeMs:TIME,
+      expiresAtMs:TIME+10000,reservedReads:request.maximumReads,totalReadCount:request.projectId===FA?faReads:fbReads,
+      outstandingReservedReads:debit,unreportedConsumedReads:0,applicationReserveReads:100,metricLagReserveReads:100};
+    return change(receipt,request);
+  };
+};
+
+test('legacy35k and explicit separate35k issue independent project limits',async t=>{
+  for(const suppliedPolicy of [policy(),separatedPolicy(35000)])await t.test('compatible35k',async()=>{
+    const f=harness({suppliedPolicy});assert.equal((await exchange(f.broker)).ok,true);
+    for(const [,request] of called(f.calls,'reserve'))assert.equal(request.dailyLimit,35000);
+  });
+});
+test('trusted FA45k accepts source above35k while every FB unit remains35k',async()=>{
+  const requests=[],reserve=separatedReservationAdapter();
+  const f=harness({suppliedPolicy:separatedPolicy(),overrides:{reserveFirestoreReads:async request=>{requests.push(request);return reserve(request);}}});
+  assert.equal((await exchange(f.broker)).ok,true);
+  assert.deepEqual(requests.map(request=>request.dailyLimit),[45000,35000,45000,35000,45000,35000]);
+  assert.equal(f.writes.length,1);
+});
+test('conditional cleanup still asks FB35k under FA45k',async()=>{
+  let faReads=0;const requests=[],reserve=separatedReservationAdapter();
+  const f=harness({suppliedPolicy:separatedPolicy(),overrides:{
+    reserveFirestoreReads:async request=>{requests.push(request);return reserve(request);},
+    readFaAuthorization:async()=>{const value=source();if(++faReads===3)value.profile.active=false;return value;}
+  }});
+  assert.equal((await exchange(f.broker)).code,'FA_PROFILE_REVOKED_OR_MISSING');
+  assert.equal(requests.at(-1).operation,'invalidateFbLease');assert.equal(requests.at(-1).projectId,FB);
+  assert.equal(requests.at(-1).dailyLimit,35000);assert.equal(f.cleanup.length,1);
+});
+test('FA45k policy pin missing or wrong denies before Auth even with approval in body',async t=>{
+  for(const pin of [undefined,'USER_FB_LIMIT_45000',true])await t.test('missing-pin',async()=>{
+    const value=separatedPolicy();if(pin===undefined)delete value.readBudget.limitApprovalEvidence;else value.readBudget.limitApprovalEvidence=pin;
+    const f=harness({suppliedPolicy:value});
+    const result=await f.broker.exchange({faIdToken:'fake-private-fa-token',limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08',dailyLimits:{[FA]:45000,[FB]:45000}});
+    assert.equal(result.code,'BROKER_FA_LIMIT_INCREASE_NOT_AUTHORIZED');assert.equal(f.calls.length,0);
+  });
+});
+test('malformed project maps or global45k are denied before services',async t=>{
+  const changes=[value=>{delete value.readBudget.dailyLimits[FB];},value=>{value.readBudget.dailyLimits.foreign=35000;},
+    value=>{value.readBudget.dailyLimits[FB]=45000;},value=>{value.readBudget.dailyLimits[FA]=40000;},
+    value=>{value.readBudget.dailyLimit=35000;},value=>{delete value.readBudget.dailyLimits;value.readBudget.dailyLimit=45000;}];
+  for(const change of changes)await t.test('project-map',async()=>{
+    const value=separatedPolicy();change(value);const f=harness({suppliedPolicy:value});
+    assert.equal((await exchange(f.broker)).code,'BROKER_READ_LIMITS_INVALID');assert.equal(f.calls.length,0);
+  });
+});
+test('receipt cannot choose its project ceiling or widen FB via evidence flag',async t=>{
+  for(const change of [value=>({...value,dailyLimit:value.projectId===FA?35000:35000}),
+    value=>value.projectId===FB?({...value,dailyLimit:45000,limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08'}):value]) {
+    await t.test('receipt-limit',async()=>{
+      const f=harness({suppliedPolicy:separatedPolicy(),overrides:{reserveFirestoreReads:separatedReservationAdapter({change})}});
+      assert.equal((await exchange(f.broker)).code,'FIRESTORE_READ_BUDGET_DENIED');assert.equal(f.writes.length,0);
+    });
+  }
+});
+test('legacy35k does not accept45k receipt or body-derived cap',async()=>{
+  const f=harness({overrides:{reserveFirestoreReads:separatedReservationAdapter({faReads:1000,change:value=>({...value,dailyLimit:45000})})}});
+  const result=await f.broker.exchange({faIdToken:'fake-private-fa-token',readBudget:separatedPolicy().readBudget});
+  assert.equal(result.code,'FIRESTORE_READ_BUDGET_DENIED');assert.equal(f.reads.fa,0);
+});
+test('FA45k never lets observed FB usage above35k reach FB reader',async()=>{
+  const f=harness({suppliedPolicy:separatedPolicy(),overrides:{reserveFirestoreReads:separatedReservationAdapter({fbReads:34800})}});
+  assert.equal((await exchange(f.broker)).code,'FIRESTORE_READ_BUDGET_DENIED');assert.equal(f.reads.lease,0);
+});
+test('operation costs are checked against their own project policy',async()=>{
+  const value=separatedPolicy();value.readBudget.operationReadBounds.writeFbLease=35000;
+  const f=harness({suppliedPolicy:value});assert.equal((await exchange(f.broker)).code,'BROKER_READ_BUDGET_POLICY_INVALID');assert.equal(f.calls.length,0);
+});
+test('policy map is pinned for a running exchange across asynchronous callbacks',async()=>{
+  const value=separatedPolicy(),gate=deferred(),requests=[],reserve=separatedReservationAdapter();
+  const f=harness({suppliedPolicy:value,overrides:{verifyFaIdToken:async()=>{await gate.promise;return claims();},
+    reserveFirestoreReads:async request=>{requests.push(request);return reserve(request);}}});
+  const pending=exchange(f.broker);await Promise.resolve();await Promise.resolve();
+  value.readBudget.dailyLimits[FA]=50000;value.readBudget.dailyLimits[FB]=45000;value.readBudget.limitApprovalEvidence=null;
+  gate.resolve();assert.equal((await pending).ok,true);
+  for(const request of requests)assert.equal(request.dailyLimit,request.projectId===FA?45000:35000);
+});
+test('broker composes with real local ledger and SQLite using distinct FA45k/FB35k receipts',async()=>{
+  const {DatabaseSync}=await import('node:sqlite');
+  const {createManagementBudgetLedger}=await import('../scripts/lib/management-budget-ledger.js');
+  const {createManagementSqliteStore}=await import('../scripts/lib/management-budget-sqlite-store.js');
+  const db=new DatabaseSync(':memory:');
+  const storage={sql:{exec:(sql,...params)=>db.prepare(sql).all(...params)},transactionSync(work){db.exec('BEGIN');try{const output=work();db.exec('COMMIT');return output;}catch(error){db.exec('ROLLBACK');throw error;}}};
+  try{
+    const consumerPolicy=separatedPolicy(),budget=consumerPolicy.readBudget;
+    const store=createManagementSqliteStore({storage,maxStateBytes:1024*1024,now:()=>TIME});
+    const ledger=createManagementBudgetLedger({enabled:true,store,clock:()=>TIME,
+      policy:{schemaVersion:1,version:'synthetic_composition',dailyLimits:budget.dailyLimits,quotaTimezone:'America/Los_Angeles',
+        maxMeasurementAgeMs:5000,applicationReserveReads:100,metricLagReserveReads:100,reservationTtlMs:10000,
+        transactionTimeoutMs:1000,maxApprovalAgeMs:5000,maxReservationRecords:100,maxDayRecords:10,
+        maxApprovalRecords:100,maxSettlementRecords:100,maxObservationRecords:100,operationReadBounds:budget.operationReadBounds},
+      authorizeMeasurement:()=>true,authorizeHumanReview:()=>true}); // synthetic private authorities only
+    for(const projectId of [FA,FB]){
+      const quotaDayValue=quotaDay(TIME);
+      await ledger.recordMeasurement({projectId,quotaDay:quotaDayValue,metric:'read_count',totalReadCount:projectId===FA?40000:1000,
+        measurementTimeMs:TIME,pointTimeMs:TIME,metricsComplete:true,observationId:'observation_'+projectId,observationHash:'a'.repeat(64)});
+      const status=await ledger.status({projectId});
+      assert.equal((await ledger.reviewPause({projectId,quotaDay:quotaDayValue,dailyLimit:budget.dailyLimits[projectId],
+        expectedPolicyHash:status.policyHash,expectedPauseEpoch:status.pauseEpoch,expectedRevision:status.revision,
+        approvalId:'approval_'+projectId,approvedAtMs:TIME,decision:'continue'})).ok,true);
+    }
+    const f=harness({suppliedPolicy:consumerPolicy,overrides:{reserveFirestoreReads:(request,ctx)=>ledger.reserveFirestoreReads(request,ctx)}});
+    assert.equal((await exchange(f.broker)).ok,true);
+    const fa=await ledger.status({projectId:FA}),fb=await ledger.status({projectId:FB});
+    assert.equal(fa.dailyLimit,45000);assert.equal(fb.dailyLimit,35000);
+    assert.equal(fa.outstandingReservedReads,18);assert.equal(fb.outstandingReservedReads,5);
+    assert.equal(f.writes.length,1);
+  }finally{db.close();}
+});
+
+
+test('broker denies receipt sum exactly at each project ceiling35k or45k',async t=>{
+  for(const [name,target,suppliedPolicy] of [['FA35k',FA,policy()],['FA45k',FA,separatedPolicy()],['FB35k-under-FA45k',FB,separatedPolicy()]])await t.test(name,async()=>{
+    const f=harness({suppliedPolicy,overrides:{reserveFirestoreReads:separatedReservationAdapter({faReads:1000,change:(receipt,request)=>
+      request.projectId===target?({...receipt,totalReadCount:request.dailyLimit-receipt.outstandingReservedReads
+        -receipt.unreportedConsumedReads-receipt.applicationReserveReads-receipt.metricLagReserveReads}):receipt})}});
+    assert.equal((await exchange(f.broker)).code,'FIRESTORE_READ_BUDGET_DENIED');
+    assert.equal(f.reads.fa,target===FA?0:1);assert.equal(f.reads.lease,0);assert.equal(f.writes.length,0);
+  });
+});
+
+
+test('broker rejects measurement age policy above300000 before Auth or budget',async()=>{
+  const value=policy();value.readBudget.maxMeasurementAgeMs=300001;
+  const f=harness({suppliedPolicy:value});assert.equal((await exchange(f.broker)).code,'BROKER_READ_BUDGET_POLICY_REQUIRED');assert.equal(f.calls.length,0);
+});
+test('broker accepts explicit measurement age policy at300000 with unchanged fresh receipts',async()=>{
+  const value=separatedPolicy();value.readBudget.maxMeasurementAgeMs=300000;
+  const f=harness({suppliedPolicy:value,overrides:{reserveFirestoreReads:separatedReservationAdapter()}});
+  assert.equal((await exchange(f.broker)).ok,true);
 });

@@ -20,7 +20,7 @@ async function fixture(t, changes = {}) {
   const privateDir = resolve(directory, '.local-preview/management-split');
   await mkdir(resolve(directory, 'scripts/lib'), {recursive: true});
   await mkdir(privateDir, {recursive: true});
-  for (const name of ['management-firestore-capture.mjs', 'lib/firestore-snapshot-capture.js', 'lib/management-split-plan.js', 'lib/management-read-budget.js', 'lib/windows-protected-json.js']) {
+  for (const name of ['management-firestore-capture.mjs', 'lib/firestore-snapshot-capture.js', 'lib/management-split-plan.js', 'lib/management-read-budget.js', 'lib/management-fb-bootstrap-budget.js', 'lib/windows-protected-json.js']) {
     await copyFile(resolve(root, 'scripts', name), resolve(directory, 'scripts', name));
   }
   if (changes.failPolicyRename) {

@@ -5,7 +5,8 @@ import {createHash, randomUUID} from 'node:crypto';
 const FA = 'sahmt-17a16';
 const FB = 'sahmt-gestao-5ae66';
 const QUOTA_TIMEZONE = 'America/Los_Angeles';
-const DAILY_READ_LIMIT = 35000;
+const LEGACY_DAILY_READ_LIMIT = 35000;
+const FA_LIMIT_APPROVAL = 'USER_FA_DAILY_LIMIT_45000_2026_10_08';
 const firestoreOperations = {readFaAuthorization: FA, readFbLease: FB, writeFbLease: FB, invalidateFbLease: FB};
 const quotaDay = time => new Intl.DateTimeFormat('en-CA', {timeZone: QUOTA_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date(time));
 const permissions = [
@@ -25,6 +26,24 @@ class BrokerDenial extends Error { constructor(code) { super(code); this.code = 
 const deny = code => { throw new BrokerDenial(code); };
 const demand = (condition, code) => { if (!condition) deny(code); };
 
+function normalizedDailyLimits(budget) {
+  let limits;
+  if (Object.hasOwn(budget, 'dailyLimits')) {
+    demand(object(budget.dailyLimits) && Object.keys(budget.dailyLimits).length === 2
+      && Object.hasOwn(budget.dailyLimits, FA) && Object.hasOwn(budget.dailyLimits, FB)
+      && !Object.hasOwn(budget, 'dailyLimit'), 'BROKER_READ_LIMITS_INVALID');
+    limits = {[FA]: budget.dailyLimits[FA], [FB]: budget.dailyLimits[FB]};
+  } else {
+    demand(budget.dailyLimit === LEGACY_DAILY_READ_LIMIT, 'BROKER_READ_LIMITS_INVALID');
+    limits = {[FA]: LEGACY_DAILY_READ_LIMIT, [FB]: LEGACY_DAILY_READ_LIMIT};
+  }
+  demand([35000, 45000].includes(limits[FA]) && limits[FB] === 35000, 'BROKER_READ_LIMITS_INVALID');
+  // This pin belongs only to trusted server configuration, never the request/receipt.
+  if (limits[FA] === 45000) demand(budget.limitApprovalEvidence === FA_LIMIT_APPROVAL,
+    'BROKER_FA_LIMIT_INCREASE_NOT_AUTHORIZED');
+  return Object.freeze(limits);
+}
+
 function validatePolicy(policy) {
   demand(object(policy) && policy.schemaVersion === 1 && id(policy.version, 100), 'BROKER_POLICY_REQUIRED');
   demand(integer(policy.leaseDurationMs, 1) && integer(policy.maxSnapshotAgeMs, 1)
@@ -32,28 +51,28 @@ function validatePolicy(policy) {
     && integer(policy.cleanupTimeoutMs, 1) && policy.cleanupTimeoutMs <= 2147483647
     && integer(policy.maxFutureSkewMs), 'BROKER_POLICY_INVALID');
   const budget = policy.readBudget;
-  demand(object(budget) && budget.dailyLimit === DAILY_READ_LIMIT && budget.quotaTimezone === QUOTA_TIMEZONE
-    && integer(budget.maxMeasurementAgeMs, 1) && integer(budget.applicationReserveReads, 1)
+  demand(object(budget) && budget.quotaTimezone === QUOTA_TIMEZONE
+    && integer(budget.maxMeasurementAgeMs, 1) && budget.maxMeasurementAgeMs <= 300000 && integer(budget.applicationReserveReads, 1)
     && integer(budget.metricLagReserveReads, 1) && object(budget.operationReadBounds), 'BROKER_READ_BUDGET_POLICY_REQUIRED');
-  const operationReadBounds = {};
+  const dailyLimits = normalizedDailyLimits(budget), operationReadBounds = {};
   for (const name of Object.keys(firestoreOperations)) {
     demand(integer(budget.operationReadBounds[name], 1)
-      && budget.operationReadBounds[name] + budget.applicationReserveReads + budget.metricLagReserveReads < DAILY_READ_LIMIT,
+      && budget.operationReadBounds[name] + budget.applicationReserveReads + budget.metricLagReserveReads < dailyLimits[firestoreOperations[name]],
       'BROKER_READ_BUDGET_POLICY_INVALID');
     operationReadBounds[name] = budget.operationReadBounds[name];
   }
   return Object.freeze({schemaVersion: 1, version: policy.version, leaseDurationMs: policy.leaseDurationMs,
     maxSnapshotAgeMs: policy.maxSnapshotAgeMs, maxExecutionMs: policy.maxExecutionMs,
     cleanupTimeoutMs: policy.cleanupTimeoutMs, maxFutureSkewMs: policy.maxFutureSkewMs,
-    readBudget: Object.freeze({...budget, operationReadBounds: Object.freeze(operationReadBounds)})});
+    readBudget: Object.freeze({...budget, dailyLimits, operationReadBounds: Object.freeze(operationReadBounds)})});
 }
 
 function validateReservation(receipt, request, time, policy) {
-  const budget = policy.readBudget;
+  const budget = policy.readBudget, dailyLimit = budget.dailyLimits[request.projectId];
   demand(object(receipt) && receipt.schemaVersion === 1 && receipt.projectId === request.projectId
     && receipt.operation === request.operation && id(receipt.reservationId, 200)
     && receipt.quotaDay === quotaDay(time) && receipt.quotaTimezone === QUOTA_TIMEZONE
-    && receipt.dailyLimit === DAILY_READ_LIMIT && receipt.pausedRequiresReview === false
+    && receipt.dailyLimit === dailyLimit && request.dailyLimit === dailyLimit && receipt.pausedRequiresReview === false
     && receipt.metricsComplete === true && integer(receipt.measurementTimeMs)
     && receipt.measurementTimeMs <= time && quotaDay(receipt.measurementTimeMs) === receipt.quotaDay
     && time - receipt.measurementTimeMs <= budget.maxMeasurementAgeMs
@@ -64,7 +83,7 @@ function validateReservation(receipt, request, time, policy) {
     && integer(receipt.applicationReserveReads, budget.applicationReserveReads)
     && integer(receipt.metricLagReserveReads, budget.metricLagReserveReads)
     && receipt.totalReadCount + receipt.outstandingReservedReads + receipt.unreportedConsumedReads + receipt.applicationReserveReads
-      + receipt.metricLagReserveReads <= DAILY_READ_LIMIT, 'FIRESTORE_READ_BUDGET_DENIED');
+      + receipt.metricLagReserveReads < dailyLimit, 'FIRESTORE_READ_BUDGET_DENIED');
   return Object.freeze({reservationId: receipt.reservationId, projectId: receipt.projectId,
     operation: receipt.operation, maximumReads: receipt.reservedReads, expiresAtMs: receipt.expiresAtMs,
     quotaDay: receipt.quotaDay});
@@ -226,7 +245,7 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
       let reservation;
       if (firestoreOperations[name]) {
         const request = Object.freeze({projectId: firestoreOperations[name], operation: name,
-          maximumReads: policy.readBudget.operationReadBounds[name], dailyLimit: DAILY_READ_LIMIT,
+          maximumReads: policy.readBudget.operationReadBounds[name], dailyLimit: policy.readBudget.dailyLimits[firestoreOperations[name]],
           quotaTimezone: QUOTA_TIMEZONE, quotaDay: quotaDay(start),
           applicationReserveReads: policy.readBudget.applicationReserveReads,
           metricLagReserveReads: policy.readBudget.metricLagReserveReads});

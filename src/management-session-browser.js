@@ -1,6 +1,8 @@
 import {normalizeManagementFirebaseConfig} from './management-firebase-config.js';
 
 const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FB_NAME = 'sahmt-management';
+const FA_LIMIT_APPROVAL = 'USER_FA_DAILY_LIMIT_45000_2026_10_08';
+const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const id = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\s/\x00-\x1f]/.test(value);
 const integer = (value, minimum = 0) => Number.isSafeInteger(value) && value >= minimum;
 class AdapterError extends Error { constructor(code) { super(code); this.code = code; } }
@@ -11,6 +13,24 @@ const binding = value => value ? {sourceProjectId: value.sourceProjectId, destin
   faUid: value.faUid, fbUid: value.fbUid, memberId: value.memberId} : null;
 const validBinding = (value, uid, memberId) => value?.sourceProjectId === FA && value.destinationProjectId === FB
   && value.faUid === uid && value.fbUid === uid && value.memberId === memberId && id(memberId);
+function normalizedDailyLimits(policy) {
+  let limits;
+  if (Object.hasOwn(policy, 'dailyLimits')) {
+    check(object(policy.dailyLimits) && Object.keys(policy.dailyLimits).length === 2
+      && Object.hasOwn(policy.dailyLimits, FA) && Object.hasOwn(policy.dailyLimits, FB)
+      && !Object.hasOwn(policy, 'dailyLimit'), 'BROWSER_READ_LIMITS_INVALID');
+    limits = {[FA]: policy.dailyLimits[FA], [FB]: policy.dailyLimits[FB]};
+  } else {
+    check(policy.dailyLimit === undefined || policy.dailyLimit === 35000, 'BROWSER_READ_LIMITS_INVALID');
+    limits = {[FA]: 35000, [FB]: 35000};
+  }
+  check([35000, 45000].includes(limits[FA]) && limits[FB] === 35000, 'BROWSER_READ_LIMITS_INVALID');
+  // Local configuration only pins what a trusted budget service must attest.
+  // It cannot authorize a raised project limit on the server or clear its pause.
+  if (limits[FA] === 45000) check(policy.limitApprovalEvidence === FA_LIMIT_APPROVAL,
+    'BROWSER_FA_LIMIT_INCREASE_NOT_AUTHORIZED');
+  return Object.freeze(limits);
+}
 const defaultSdkLoader = async () => Object.assign({}, ...await Promise.all([
   import('firebase/app'), import('firebase/auth'), import('firebase/firestore')
 ]));
@@ -23,11 +43,17 @@ export async function createManagementBrowserAdapters({enabled = false, faAuth, 
     observeAuth: () => () => {}, refreshContexts: async () => null, dispose: () => {}});
   check(integer(policy?.operationTimeoutMs, 1) && policy.operationTimeoutMs <= 120000
     && integer(policy.cleanupTimeoutMs, 1) && policy.cleanupTimeoutMs <= 120000
-    && integer(policy.maxMeasurementAgeMs, 1) && integer(policy.applicationReserveReads, 1)
+    && integer(policy.maxMeasurementAgeMs, 1) && policy.maxMeasurementAgeMs <= 300000 && integer(policy.applicationReserveReads, 1)
     && integer(policy.metricLagReserveReads, 1) && integer(policy.sourceReadMaximum, 1)
     && integer(policy.leaseReadMaximum, 1) && integer(policy.sourceMaxAgeMs, 1)
     && integer(policy.sourceMaxLeaseMs, 1) && integer(policy.maxReservationRecords, 1)
     && policy.maxReservationRecords <= 1000000, 'BROWSER_ADAPTER_POLICY_REQUIRED');
+  const dailyLimits = normalizedDailyLimits(policy);
+  check(policy.sourceReadMaximum + policy.applicationReserveReads + policy.metricLagReserveReads < dailyLimits[FA]
+    && policy.leaseReadMaximum + policy.applicationReserveReads + policy.metricLagReserveReads < dailyLimits[FB],
+    'BROWSER_READ_BUDGET_POLICY_INVALID');
+  // Pin all consumed scalar policy values before the first async SDK wait.
+  policy = Object.freeze({...policy, dailyLimits});
   check(project(faAuth) === FA && project(faFirestore) === FA && faAuth.app === faFirestore.app
     && faAuth.app.name === 'sahmt-v2', 'FA_INSTANCE_MISMATCH');
   check(typeof sourceReference === 'function' && typeof reserveFirestoreReads === 'function', 'BROWSER_DATA_ADAPTER_REQUIRED');
@@ -122,13 +148,14 @@ export async function createManagementBrowserAdapters({enabled = false, faAuth, 
     check(user && user.uid === uid && id(uid) && uid.length <= 128, code); return user;
   };
   const guard = async (projectId, operation, maximumReads, ctx) => {
-    const request = Object.freeze({projectId, operation, maximumReads, dailyLimit: 35000,
+    const dailyLimit = policy.dailyLimits[projectId];
+    const request = Object.freeze({projectId, operation, maximumReads, dailyLimit,
       quotaTimezone: 'America/Los_Angeles', quotaDay: quotaDay(now()),
       applicationReserveReads: policy.applicationReserveReads, metricLagReserveReads: policy.metricLagReserveReads});
     const receipt = await bounded(() => reserveFirestoreReads(request, {signal: ctx.controller.signal, deadlineMs: ctx.deadline}), ctx, 'FIRESTORE_BUDGET_UNAVAILABLE');
     const time = now();
     check(receipt?.schemaVersion === 1 && receipt.projectId === projectId && receipt.operation === operation
-      && id(receipt.reservationId) && receipt.dailyLimit === 35000 && receipt.quotaTimezone === request.quotaTimezone
+      && id(receipt.reservationId) && receipt.dailyLimit === dailyLimit && receipt.quotaTimezone === request.quotaTimezone
       && receipt.quotaDay === quotaDay(time) && receipt.pausedRequiresReview === false && receipt.metricsComplete === true
       && integer(receipt.measurementTimeMs) && receipt.measurementTimeMs <= time
       && quotaDay(receipt.measurementTimeMs) === receipt.quotaDay && time - receipt.measurementTimeMs <= policy.maxMeasurementAgeMs
@@ -137,7 +164,7 @@ export async function createManagementBrowserAdapters({enabled = false, faAuth, 
       && integer(receipt.unreportedConsumedReads) && integer(receipt.applicationReserveReads, policy.applicationReserveReads)
       && integer(receipt.metricLagReserveReads, policy.metricLagReserveReads)
       && receipt.totalReadCount + receipt.outstandingReservedReads + receipt.unreportedConsumedReads
-        + receipt.applicationReserveReads + receipt.metricLagReserveReads <= 35000, 'FIRESTORE_BUDGET_DENIED');
+        + receipt.applicationReserveReads + receipt.metricLagReserveReads < dailyLimit, 'FIRESTORE_BUDGET_DENIED');
     const key = projectId + ':' + receipt.reservationId, prior = floors.get(projectId), sameDay = prior?.quotaDay === receipt.quotaDay;
     check(!usedReservations.has(key), 'FIRESTORE_RESERVATION_REUSED');
     check(usedReservations.size < policy.maxReservationRecords, 'FIRESTORE_RESERVATION_CAPACITY_EXCEEDED');
