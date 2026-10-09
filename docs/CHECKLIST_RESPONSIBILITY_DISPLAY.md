@@ -27,3 +27,9 @@ Métricas atrasadas, incompletas, regressão de relógio, fontes ambíguas ou au
 ## Rollback
 
 Remover somente o gatilho refreshExibicaoResponsavelChecklist e desabilitar seu estado próprio. Reverter o PR da interface se necessário. Preservar dados de autoria, snapshot de assinatura e reservas. GitHub Pages não publica Apps Script; código remoto e ativação precisam de provas separadas.
+
+## Diagnóstico do Monitoring
+
+Se a ativação parar em CRD_MONITORING_UNAVAILABLE, preservar a pausa e executar somente diagnosticarMonitoringResponsavelChecklist no mesmo módulo. A função confere o consentimento granular e a identidade do token, comparando apenas se coincide com o operador; consulta o Monitoring sem e com projeto de quota explícito. Não consulta o Firestore nem modifica propriedades, reservas, pausa ou gatilhos.
+
+O resumo contém HTTP, status de autorização, motivos restritos e mensagem de erro redigida, sem token, e-mail, URL de autorização ou corpo de documento. HTTP 200 neste diagnóstico confirma apenas acesso ao serviço: não mede o orçamento diário completo nem autoriza retomada. A ativação continua exigindo métrica fresca, margem e projeção CONFIRMED.

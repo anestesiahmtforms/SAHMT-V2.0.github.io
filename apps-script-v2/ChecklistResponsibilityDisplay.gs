@@ -28,6 +28,137 @@ function statusExibicaoResponsavelChecklist() {
   return summary;
 }
 
+/** Operator-only HTTP diagnosis. No Firestore, properties, pause or trigger changes. */
+function diagnosticarMonitoringResponsavelChecklist() {
+  const operator = evaluationAssertOperator_(false);
+  const now = Date.now();
+  const params = {filter: 'metric.type="' + SAHMT_V2_CHECKLIST_DISPLAY.metric + '" AND resource.labels.project_id="' +
+    SAHMT_V2_CHECKLIST_DISPLAY.projectId + '"', 'interval.startTime': new Date(now - 600000).toISOString(),
+    'interval.endTime': new Date(now).toISOString(), pageSize: '1000'};
+  const query = Object.keys(params).map(function (key) {
+    return encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
+  }).join('&');
+  const url = 'https://monitoring.googleapis.com/v3/projects/' + SAHMT_V2_CHECKLIST_DISPLAY.projectId + '/timeSeries?' + query;
+  const summary = {status: 'MONITORING_DIAGNOSTIC', projectId: SAHMT_V2_CHECKLIST_DISPLAY.projectId,
+    diagnosticOnly: true, firestoreDocumentReadsIssued: 0, stateChanged: false,
+    monitoringReadAuthorized: null, authorizationRequired: null, principalMatchesOperator: null, userInfoHttpStatus: null, results: []};
+  try {
+    const monitoringScope = 'https://www.googleapis.com/auth/monitoring.read';
+    const authorization = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, [monitoringScope]);
+    const scopes = authorization.getAuthorizedScopes();
+    const status = authorization.getAuthorizationStatus();
+    if (!Array.isArray(scopes) || !scopes.every(function (scope) { return typeof scope === 'string'; }) ||
+        ![ScriptApp.AuthorizationStatus.REQUIRED, ScriptApp.AuthorizationStatus.NOT_REQUIRED].includes(status)) {
+      throw new Error('AUTHORIZATION_STATUS_UNAVAILABLE');
+    }
+    summary.monitoringReadAuthorized = scopes.includes(monitoringScope);
+    summary.authorizationRequired = status === ScriptApp.AuthorizationStatus.REQUIRED;
+  } catch (_) { summary.authorizationCheckCode = 'AUTHORIZATION_STATUS_UNAVAILABLE'; }
+  let token;
+  try {
+    token = ScriptApp.getOAuthToken();
+    if (typeof token !== 'string' || !token) throw new Error('TOKEN_UNAVAILABLE');
+  } catch (_) {
+    summary.status = 'MONITORING_DIAGNOSTIC_TOKEN_UNAVAILABLE';
+    console.log(JSON.stringify(summary));
+    return summary;
+  }
+  try {
+    const response = UrlFetchApp.fetch('https://www.googleapis.com/oauth2/v2/userinfo',
+      {method: 'get', headers: {Authorization: 'Bearer ' + token}, muteHttpExceptions: true, followRedirects: false});
+    const httpStatus = response.getResponseCode();
+    if (!Number.isInteger(httpStatus) || httpStatus < 100 || httpStatus > 599) throw new Error('RESPONSE_INVALID');
+    summary.userInfoHttpStatus = httpStatus;
+    if (httpStatus === 200) {
+      const text = response.getContentText();
+      if (typeof text !== 'string' || text.length > 100000) throw new Error('RESPONSE_INVALID');
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || Array.isArray(data) ||
+          typeof data.email !== 'string' || !data.email.trim() || data.email.length > 320) throw new Error('RESPONSE_INVALID');
+      summary.principalMatchesOperator = data.email.trim().toLowerCase() === operator.trim().toLowerCase();
+    }
+  } catch (_) { summary.userInfoDiagnosticCode = 'PRINCIPAL_CHECK_UNAVAILABLE'; }
+  [false, true].forEach(function (withQuotaProject) {
+    const result = {quotaProjectHeader: withQuotaProject, httpStatus: null};
+    const headers = {Authorization: 'Bearer ' + token};
+    if (withQuotaProject) headers['X-Goog-User-Project'] = SAHMT_V2_CHECKLIST_DISPLAY.projectId;
+    try {
+      const response = UrlFetchApp.fetch(url, {method: 'get', headers: headers,
+        muteHttpExceptions: true, followRedirects: false});
+      const httpStatus = response.getResponseCode();
+      if (!Number.isInteger(httpStatus) || httpStatus < 100 || httpStatus > 599) throw new Error('RESPONSE_INVALID');
+      result.httpStatus = httpStatus;
+      const text = response.getContentText();
+      if (typeof text !== 'string' || text.length > 3000000) throw new Error('RESPONSE_INVALID');
+      let data;
+      try { data = JSON.parse(text); } catch (_) { result.diagnosticCode = 'RESPONSE_NOT_JSON'; }
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        if (httpStatus === 200) {
+          if (data.timeSeries === undefined || Array.isArray(data.timeSeries)) {
+            result.seriesPresent = Array.isArray(data.timeSeries) && data.timeSeries.length > 0;
+            result.seriesCount = Array.isArray(data.timeSeries) ? data.timeSeries.length : 0;
+          } else { result.diagnosticCode = 'RESPONSE_INVALID'; }
+        } else { result.error = checklistDisplayDiagnosticError_(data.error); }
+      } else if (!result.diagnosticCode) { result.diagnosticCode = 'RESPONSE_INVALID'; }
+    } catch (_) { result.diagnosticCode = result.httpStatus === null ? 'FETCH_UNAVAILABLE' : 'RESPONSE_UNAVAILABLE'; }
+    summary.results.push(result);
+  });
+  token = null;
+  console.log(JSON.stringify(summary));
+  return summary;
+}
+
+/** Bounded redacted API message only; never return credentials, identifiers or bodies. */
+function checklistDisplayDiagnosticMessage_(value) {
+  if (typeof value !== 'string' || value.length > 1000) return null;
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s"'<>]+|\bwww\.[^\s"'<>]+/gi, '[url]')
+    .replace(/[^\s@<>"']+@[^\s@<>"',;]+/g, '[email]')
+    .replace(/\b(?:Bearer|access[_ -]?token|refresh[_ -]?token|api[_ -]?key)\b(?:["']?\s*[:=]\s*|\s+)(?:"[^"]*"|'[^']*'|[^\s,;)}\]]+)/gi, '[credential]')
+    .replace(/[A-Za-z0-9._-]{20,}/g, '[identifier]')
+    .replace(/\s+/g, ' ').trim().slice(0, 400);
+}
+
+/** Copy only restricted diagnostic fields; never expose raw API messages or bodies. */
+function checklistDisplayDiagnosticError_(error) {
+  const safe = {status: null, reasons: [], classification: null, safeMessage: null, errorInfo: []};
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return safe;
+  safe.safeMessage = checklistDisplayDiagnosticMessage_(error.message);
+  const statuses = ['OK','CANCELLED','UNKNOWN','INVALID_ARGUMENT','DEADLINE_EXCEEDED','NOT_FOUND','ALREADY_EXISTS',
+    'PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','FAILED_PRECONDITION','ABORTED','OUT_OF_RANGE',
+    'UNIMPLEMENTED','INTERNAL','UNAVAILABLE','DATA_LOSS'];
+  if (statuses.includes(error.status)) safe.status = error.status;
+  const details = Array.isArray(error.details) ? error.details.slice(0, 8) : [];
+  function field(value, limit, pattern) {
+    return typeof value === 'string' && value.length <= limit && pattern.test(value) ? value : null;
+  }
+  const errors = Array.isArray(error.errors) ? error.errors.slice(0, 8) : [];
+  errors.forEach(function (entry) {
+    const reason = field(entry && entry.reason, 120, /^[A-Za-z][A-Za-z0-9_]{0,119}$/);
+    if (reason !== null) safe.reasons.push(reason);
+  });
+  if (typeof error.message === 'string' && error.message.length <= 10000 &&
+      /\binsufficient\s+(?:authentication\s+scopes|permissions)\b/i.test(error.message)) {
+    safe.classification = 'AUTHENTICATION_SCOPE_INSUFFICIENT';
+  }
+  details.forEach(function (detail) {
+    if (!detail || detail['@type'] !== 'type.googleapis.com/google.rpc.ErrorInfo') return;
+    const info = {reason: field(detail.reason, 120, /^[A-Z][A-Z0-9_]*$/),
+      domain: field(detail.domain, 160, /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/), metadata: {}};
+    const metadata = detail.metadata;
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      const service = field(metadata.service, 160, /^(?:[a-z0-9-]+\.)+googleapis\.com$/);
+      const consumer = field(metadata.consumer, 160, /^projects\/[a-z0-9][a-z0-9-]{0,62}$/);
+      const permission = field(metadata.permission, 160, /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/);
+      if (service !== null) info.metadata.service = service;
+      if (consumer !== null) info.metadata.consumer = consumer;
+      if (permission !== null) info.metadata.permission = permission;
+    }
+    safe.errorInfo.push(info);
+  });
+  return safe;
+}
+
 function checklistDisplayRun_(manual) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {status: 'BUSY', firestoreDocumentReadsIssued: 0};
