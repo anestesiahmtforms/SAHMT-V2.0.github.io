@@ -195,7 +195,7 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
     }
     catch { /* Audit presentation must never alter an authorization decision. */ }
   };
-  async function exchange(body) {
+  async function exchange(body, {signal} = {}) {
     if (enabled !== true) return Object.freeze({ok: false, code: 'BROKER_DISABLED'});
     let phase = 'preflight', verified, source, prior, lease, customToken = null, faIdToken = null;
     let policy, startedAtMs, deadlineMs, wallDeadlineMs, cleanupDeadlineMs, cleanupWallDeadlineMs;
@@ -203,6 +203,7 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
     const readClock = (cleanup = false) => {
       const result = clock();
       demand(integer(result), 'BROKER_CLOCK_INVALID');
+      if (!cleanup) demand(signal?.aborted !== true, 'BROKER_REQUEST_CANCELLED');
       if (startedAtMs !== undefined) {
         demand(result + policy.maxFutureSkewMs >= startedAtMs, 'BROKER_CLOCK_REGRESSION');
         if (!cleanup) demand(result <= deadlineMs && performance.now() <= wallDeadlineMs, 'BROKER_DEADLINE_EXCEEDED');
@@ -232,7 +233,7 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
         const receipt = await runAdapter('reserveFirestoreReads', 'FIRESTORE_READ_BUDGET_UNAVAILABLE', [request], cleanup);
         const reservationTime = readClock(cleanup);
         reservation = validateReservation(receipt, request, reservationTime, policy);
-        for (const [key, expiresAtMs] of usedReservations) if (expiresAtMs <= reservationTime) usedReservations.delete(key);
+        demand(usedReservations.size < 70000, 'FIRESTORE_RESERVATION_LOCAL_CAPACITY_EXCEEDED');
         const reservationKey = reservation.projectId + ':' + reservation.reservationId;
         demand(!usedReservations.has(reservationKey), 'FIRESTORE_RESERVATION_REUSED');
         const previousFloor = projectReadFloors.get(reservation.projectId);
@@ -254,13 +255,20 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
       }
       demand(Math.min(limit - beforeInvocation, wallLimit - performance.now()) > 0, timeoutCode);
       const controller = new AbortController();
-      let timer;
+      let timer, abortListener;
       const context = Object.freeze({signal: controller.signal, deadlineMs: limit, firestoreReservation: reservation});
       try {
         const bounded = new Promise((resolve, reject) => {
+          if (!cleanup && signal) {
+            abortListener = () => { controller.abort(); reject(new BrokerDenial('BROKER_REQUEST_CANCELLED')); };
+            signal.addEventListener('abort', abortListener, {once: true});
+            if (signal.aborted) { abortListener(); return; }
+          }
           timer = setTimeout(() => { controller.abort(); reject(new BrokerDenial(timeoutCode)); },
             Math.max(1, Math.ceil(Math.min(limit - readClock(cleanup), wallLimit - performance.now()))));
           Promise.resolve().then(() => {
+            readClock(cleanup);
+            demand(!controller.signal.aborted, timeoutCode);
             if (name === 'writeFbLease') writeAttempted = true;
             return adapters[name](...args, context);
           }).then(resolve, reject);
@@ -270,7 +278,7 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
         demand(completedAtMs <= limit && performance.now() <= wallLimit, timeoutCode);
         return result;
       } catch (error) { if (error instanceof BrokerDenial) throw error; deny(code); }
-      finally { clearTimeout(timer); }
+      finally { clearTimeout(timer); if (abortListener) signal.removeEventListener('abort', abortListener); }
     };
     const invoke = (name, code, ...args) => runAdapter(name, code, args);
     try {

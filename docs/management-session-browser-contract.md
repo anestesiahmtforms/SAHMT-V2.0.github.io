@@ -1,0 +1,72 @@
+# Adaptador browser de sessões Gestão — preparação local
+
+Preparado em 8 de outubro de 2026, exclusivamente no worktree `management-firebase-split`. Os arquivos `src/management-session-browser.js` e `src/management-broker-transport.js` não são importados pela interface e permanecem desligados por padrão. Os testes usam doubles de SDK, Auth, documentos, orçamento e fetch. Nenhum login, documento, token real, API Firebase ou endpoint foi acessado.
+
+## Instâncias e restauração
+
+`createManagementBrowserAdapters({enabled:false,...})` retorna um adaptador vazio, sem importar SDK ou inicializar Firebase. Habilitar explicitamente exige instâncias FA injetadas do mesmo app `sahmt-v2`/`sahmt-17a16`, configuração FB validada, referência FA aprovada, política e guarda de orçamento. A inicialização operacional FA não é importada ou substituída.
+
+O loader usa a dependência modular Firebase existente. FB tem app nomeado `sahmt-management`, projeto `sahmt-gestao-5ae66`, Auth próprio e Firestore próprio. Um app nomeado que pertença a outro projeto é negado. Auth FB novo usa `inMemoryPersistence`; Firestore FB novo usa cache de memória. Um Auth FB já inicializado é reutilizado sem trocar persistência, portanto seu modo existente deve ser conferido antes de integrar. O adaptador não grava tokens, perfis, respostas ou leases em armazenamento manual, URL ou log e não limpa caches/outbox. A persistência Auth FA atual permanece sob o SDK existente.
+
+Antes de documentos, aguarda `authStateReady()` das duas instâncias. Restaurar Auth local, sem usuário, não lê documentos. Perfil offline não libera Gestão e não recebe fallback de cache. O método oficial retorna quando o estado inicial Auth foi resolvido; isso não comprova elegibilidade. [Auth.authStateReady](https://firebase.google.com/docs/reference/js/auth.auth).
+
+O adaptador observa alterações de identidade por `onAuthStateChanged`, expõe `observeAuth(listener)` com IDs/código sanitizados e invalida operações pendentes quando ocorre mudança externa. Mutações próprias esperadas são distinguídas por instância para que logout de FA e FB concorrentes não cancelem um ao outro. Os callbacks de integração deverão invalidar o coordenador imediatamente, bloquear/detachar dados anteriores e solicitar nova observação confirmada somente com orçamento permitido. Nenhuma integração UI foi feita. [Observers Auth](https://firebase.google.com/docs/reference/js/auth).
+
+## Documentos confirmados, projeção FA e lease FB
+
+Leituras são observações **finitas** por `getDocFromServer`, nunca um listener Firestore contínuo ou polling automático. Snapshots precisam ser do documento/UID/projeto esperado, existir e ter `fromCache:false` e `hasPendingWrites:false`. Falha, cache, escrita pendente ou permission-denied bloqueiam a operação. O SDK oferece explicitamente uma leitura do servidor; metadados/cache não substituem Rules nem atualidade do escritor de direitos. [Leitura do servidor](https://firebase.google.com/docs/reference/js/firestore).
+
+A referência FA é fornecida por `sourceReference({uid,firestore,sdk})`. Não existe path produtivo aprovado para essa projeção reconciliada; `managementSourceContexts/{uid}` aparece somente no double de testes. A referência deve apontar a uma projeção própria do membro, protegida contra escrita cliente e mantida por serviço privilegiado. Não converter um perfil legado, e-mail, UID ou claims de Auth em vínculo automaticamente.
+
+Schema local FA exigido:
+
+- `schemaVersion:1`, `sourceProjectId`, `destinationProjectId` exatos, `productionAuthorized:true`.
+- `sourceVersion` positiva, `sourceHash` SHA256 hexadecimal, `confirmedAtMs` e `validUntilMs`.
+- `profile` com UID, `memberId` estável, `active` e `access` booleanos; `managementAllowed` efetivo.
+- `binding` com os dois projetos, UIDs FA/FB iguais e `memberId` equivalente.
+
+FA exige confirmação não futura, lease vigente, idade máxima `policy.sourceMaxAgeMs` e duração máxima `policy.sourceMaxLeaseMs`. Não há TTL aprovado implícito. Versão regressiva ou hash alterado sem nova versão são negados. O navegador não recalcula o hash completo dos direitos a partir do subconjunto apresentado; ele confere formato, monotonicidade local e igualdade com o lease FB. A geração/consistência completa do hash e a autorização produtiva pertencem ao escritor privilegiado e continuam gates. Um get do servidor pode devolver uma projeção velha: TTL/hash/versionamento reduzem essa janela, mas o sincronismo de todos os escritores FA/revogação ainda precisa ser instalado e comprovado.
+
+O path FB preparado é `managementAuthorizationLeases/{uid}`. O adaptador confere o subconjunto do lease necessário à sessão: identidade equivalente, versão/hash iguais à projeção FA recém-observada, política, confirmação/validade e flags. O schema completo de 22 campos e a vinculação das claims pertencem às Rules preparadas; os doubles dessa suíte não comprovam essas verificações das Rules. Também exige schema, política, validade e flags coerentes. Participante não recebe direitos por estar autenticado. Claims não são lidas como fonte de perfil/permissão. Os caminhos de conteúdo seguem negados nas Rules isoladas preparadas por outro componente.
+
+As Rules do lease exigem sessão custom, claims do broker, lease vigente e vínculo coerente. Lease ausente, expirado, revogado, sem claims ou incompatível pode resultar no mesmo permission-denied; o adapter não infere direito nem renova automaticamente nessa falha. Uma recuperação futura só pode iniciar com nova comprovação servidor/orçamento e política aprovada.
+
+Timers locais para validade FA/FB emitem `AUTHORIZATION_LEASE_EXPIRED`, invalidam trabalhos e não fazem leitura automática. O coordenador também precisa ser consultado para validade e conectado a esses eventos; sem essa integração, uma UI que conserve seu próprio estado não recebe bloqueio automático. Rules usam horário servidor e são a fronteira real. Nenhuma revogação instantânea entre os projetos é alegada.
+
+## Guarda de leituras antes do SDK
+
+`reserveFirestoreReads` é obrigatório antes de qualquer `getDocFromServer` FA/FB e não pode ser buscado primeiro no próprio Firestore sem orçamento. Pedidos identificam projeto, operação, limite máximo, dia America/Los_Angeles, limite operacional de **35.000 leituras totais** e margens explícitas de app/atraso da métrica. Leituras do app e das rotinas compartilham o limite do projeto; um orçamento FA não cobre FB.
+
+A política requer `sourceReadMaximum`, `leaseReadMaximum`, `maxMeasurementAgeMs`, margens positivas e `maxReservationRecords`. Nenhum valor 1 é presumido como teto: os limites reais precisam incluir documentos dependentes das Rules, reconexões/retries do SDK e todos os demais custos, antes de permitir uso real. Os números dos testes são artificiais.
+
+O recibo exige medição completa/fresca do dia, pausa desativada por decisão humana, reserva válida e correspondente, total observado, reservas pendentes e consumo ainda não refletido. A soma dessas parcelas e margens deve caber em 35.000. IDs consumidos permanecem tombstones locais mesmo após vencer; IDs reciclados são negados. Capacidade esgotada nega operações em vez de apagar histórico. O piso local incorpora cada novo maior total observado e os limites das unidades admitidas; regressão ou novos IDs com agregado fixo não criam margem.
+
+O ledger durável, consumo único entre processos/restarts, atribuição do consumo às métricas e retenção de operações de resultado desconhecido ainda não existem aqui. Booleans/recibos de doubles não medem o uso global nem instalam teto exato/corte automático do app. Métricas amostradas/atrasadas exigem margem, e renovação do dia não remove uma pausa humana. `read_ops_count` e `read_count` são alternativas, não parcelas.
+
+Firebase `getDocFromServer` não recebe o AbortSignal usado pelo adaptador. Cancelar a espera local não prova que a requisição interna já enviada deixou de consumir leituras. A validade/dia da reserva são rechecados no thunk imediatamente antes do SDK; seu vencimento limita também a espera local. A reserva e os débitos devem permanecer conservadores até o resultado ser reconciliado; timeout não autoriza liberar margem. Esse limite e o custo interno de Rules/retries são gates da integração real.
+
+## Transporte de broker
+
+`createManagementBrokerTransport` não usa fetch global nem faz requisição automática. Exige fetch injetado e endpoint definido pelo host, HTTPS público com origem exata em `allowedBrokerOrigins`, sem credenciais, query ou fragmento, sem hostname local/endereço IP literal, e path fixo `/v1/management/session`. A validação da string não comprova DNS público ou a identidade da infraestrutura; o host e o DNS devem ser aprovados operacionalmente. O host ainda não foi escolhido/provisionado; URLs de testes não são serviços.
+
+O protocolo do HTTP adapter servidor preparado pelo root é POST, corpo JSON contendo **somente** `faIdToken`, sem cookies/Authorization, `cache:no-store`, redirect negado e referer omitido. O cliente não envia UID/role/permite como autoridade. A expectativa de vínculo fica em memória para comparar o resultado servidor. A origem PWA aprovada no servidor é `https://anestesiahmtforms.github.io`; permitir CORS não autoriza Gestão.
+
+Resposta requer HTTP 200, URL esperada, JSON e `Cache-Control:no-store`, tamanho limitado por política e leitura de stream com limite finito de chunks (máximo 1.024), rejeição de chunks vazios e prazo monotônico conferido antes/depois de cada await e antes do retorno. Um fluxo de microtasks não depende de o timer obter uma oportunidade para interromper. São aceitos somente `ok:true`, projetos/UID/member equivalentes, versão/política válidas e custom token opaco. Erros HTTP/brutos, redirects, identidade divergente, corpo inválido/grande, timeout ou cancelamento negam sem token no estado/log. A prova e o token só passam em memória ao broker e ao método Auth apropriado.
+
+Não há fallback para outro popup Google ou criação/importação alternativa. `signInWithCustomToken` somente é chamado com UID FA esperado atual; a resposta SDK e o Auth FB atual também precisam corresponder antes de ler o lease confirmado. [Custom token SDK](https://firebase.google.com/docs/reference/js/auth).
+
+## Resultados tardios e logout
+
+Cada operação tem um prazo fixo lógico/monotônico e cancelamento local. Contexto, prazo e identidade são revalidados dentro dos thunks enfileirados, imediatamente antes de iniciar SDK/broker; uma troca de conta entre agendamento e execução não inicia efeito tardio. Troca de conta/dispose invalida resultados pendentes. SDK sign-in não pode ser cancelado pelo AbortSignal: após timeout/cancelamento, o raw Promise continua rastreado. Uma conclusão tardia limpa somente a sessão produzida quando ela ainda é o usuário atual; não encerra uma conta diferente. Novo sign-in fica bloqueado enquanto mutação/limpeza FB estiver pendente. Falha de limpeza mantém uma trava local de reconciliação no closure mesmo depois de o Promise terminar; target/sign-in ficam negados até saída explícita com Auth FB confirmado vazio, sem mutações pendentes. Ela não persiste entre recarga/reinstância; journal durável do host é gate. Se o SDK nunca resolver, continua bloqueado e exige reconciliação; não libera um retry sobreposto.
+
+Logout verifica os UIDs esperados e tenta ambas as instâncias pelo coordenador. Pendências continuam no callback `beforeSignOut`; nenhum outbox, rascunho ou requestId é importado ou modificado pelos adapters. `dispose` encerra observers/timers e cancela espera/transporte, sem apagar dados. Um signOut SDK já enviado não é cancelável; o host deverá serializar toda mutação Auth de FA e FB através do coordenador/adaptador, inclusive os caminhos FA existentes, para impedir logout antigo concorrendo com login novo: caminhos externos não coordenados podem introduzir corridas e continuam gate.
+
+## Validação e gates restantes
+
+A suite `tests/management-session-browser.test.js` contém testes sintéticos de restauração, identidade/projetos, source TTL/hash/versionamento, lease confirmado, pause/budget/replay, resultados tardios, logout/pending, timeout, transporte e ausência de vazamento. Esses resultados não comprovam SDK real, Google OAuth, hosting, métricas, Rules publicadas, IAM ou Safari/iPhone.
+
+Antes de ativar: path/schema/escritor FA protegido, vínculo/usuários importados reconciliados, sincronismo de revogação, política de TTL e limites comprovados, ledger de orçamento durável, custos/retries SDK, host HTTPS/CORS/no-store, credenciais servidor/IAM, projeção lease CAS/fence real, Rules específicas com recursos adequados, ligação dos observers/timers ao coordenador/UI, cenários reais de dispositivo e rollback. Auth FB in-memory recupera via broker após recarga, não via segundo Google popup; essa recuperação ainda precisa de prova real. O módulo permanece desligado e sem imports na UI.
+
+## Ensaio de composição local
+
+Um único teste compõe o coordenador real `createManagementSession`, os adapters e o transporte, com doubles de SDK/documentos/orçamento/fetch. Ele liga `observeAuth` a `session.updateContext` usando somente contexto negativo: identidade/evento Auth não concede permissões. `onInvalidate` representa detach de dados antigos e `beforeSignOut` confere pendências preservadas. O fluxo restaura sem FB, passa por broker e chega a ready; troca de conta bloqueia imediatamente sem leitura automática, reentrada exige restore confirmado, revogação observada em leitura explícita bloqueia connect e logout sai de ambos sem perder requestId. Não há consumer UI, broker real nem dispositivo nessa prova.

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createManagementAuthBroker} from '../scripts/lib/management-auth-broker.js';
+import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
 
 const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', TIME = 2000000;
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -650,4 +651,78 @@ test('piso incorpora medição maior e nega regressão no mesmo dia de cota', as
   assert.equal(writes.length, 1);
   assert.equal(cleanup.length, 1);
   assert.equal(Object.hasOwn(result, 'customToken'), false);
+});
+
+test('requisição cancelada antes da troca não chama adaptadores',async()=>{
+  const controller=new AbortController();controller.abort();const {broker,calls}=harness();
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token'},{signal:controller.signal});
+  assert.equal(result.code,'BROKER_REQUEST_CANCELLED');assert.deepEqual(calls,[]);
+});
+test('cancelamento de verificador travado aborta e encerra sem prazo adicional',async()=>{
+  const controller=new AbortController();let adapterSignal;
+  const {broker,reads}=harness({overrides:{verifyFaIdToken:(_token,_check,context)=>{adapterSignal=context.signal;controller.abort();return new Promise(()=>{});}}});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token'},{signal:controller.signal});
+  assert.equal(result.code,'BROKER_REQUEST_CANCELLED');assert.equal(adapterSignal.aborted,true);assert.equal(reads.fa,0);
+});
+test('cancelamento durante reserva não chama leitor de dados',async()=>{
+  const controller=new AbortController();
+  const {broker,calls}=harness({overrides:{reserveFirestoreReads:async request=>{controller.abort();return reservation(request);}}});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token'},{signal:controller.signal});
+  assert.equal(result.code,'BROKER_REQUEST_CANCELLED');assert.equal(called(calls,'source').length,0);
+});
+test('cancelamento após iniciar commit exige cleanup/fence com sinal independente',async()=>{
+  const controller=new AbortController();let cleanupContext;
+  const {broker}=harness({overrides:{
+    writeFbLease:async()=>{controller.abort();return {applied:true,projectId:FB,revision:'r-cancelled'};},
+    invalidateFbLease:async(_request,context)=>{cleanupContext=context;return {applied:false,matched:false,fenced:true};}
+  }});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token'},{signal:controller.signal});
+  assert.equal(result.code,'BROKER_REQUEST_CANCELLED');assert.equal(result.requiresReconciliation,false);
+  assert.equal(cleanupContext.signal.aborted,false);assert.equal(Object.hasOwn(result,'customToken'),false);
+});
+test('cancelamento com limpeza sem fence mantém reconciliação',async()=>{
+  const controller=new AbortController();
+  const {broker}=harness({overrides:{writeFbLease:async()=>{controller.abort();return {applied:true,projectId:FB,revision:'r-cancelled'};},
+    invalidateFbLease:async()=>({applied:false,matched:false,fenced:false})}});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token'},{signal:controller.signal});
+  assert.equal(result.code,'FB_LEASE_CLEANUP_FAILED');assert.equal(result.requiresReconciliation,true);assert.equal(Object.hasOwn(result,'customToken'),false);
+});
+
+test('ID de reserva consumido não pode ser reciclado após vencer',async()=>{
+  let firstId, firstExchange=true, control;
+  const context=harness({overrides:{reserveFirestoreReads:async request=>{
+    const value=reservation(request,control.now());
+    if(request.projectId===FA && request.operation==='readFaAuthorization') {
+      firstId??=value.reservationId;
+      if(!firstExchange) value.reservationId=firstId;
+    }
+    return value;
+  }}});
+  control=context.control;
+  assert.equal((await exchange(context.broker)).ok,true);
+  firstExchange=false;control.advance(10001);
+  assert.equal((await exchange(context.broker)).code,'FIRESTORE_RESERVATION_REUSED');
+  assert.equal(context.writes.length,1);
+});
+
+test('HTTP sustenta cleanup/fence do broker real depois de retornar cancelamento',async()=>{
+  const controller=new AbortController(), writeStarted=deferred(), cleanup=deferred();
+  let completion, cleanupSignal;
+  const {broker}=harness({overrides:{
+    writeFbLease:async()=>{writeStarted.resolve();return new Promise(()=>{});},
+    invalidateFbLease:async(_request,context)=>{cleanupSignal=context.signal;return cleanup.promise;}
+  }});
+  const handle=createManagementBrokerHttp({enabled:true,broker,admitRequest:async()=>true,
+    maxRequestMs:1000,cleanupDrainMs:1000,superviseExchange:value=>{completion=value;return true;}});
+  const request=new Request('https://example.invalid/v1/management/session',{method:'POST',signal:controller.signal,
+    headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:JSON.stringify({faIdToken:'fake-private-fa-token'})});
+  const pending=handle(request);await writeStarted.promise;controller.abort();
+  const response=await pending, body=await response.json();
+  assert.equal(response.status,504);assert.equal(body.requiresReconciliation,true);
+  assert.equal(Object.hasOwn(body,'customToken'),false);
+  await new Promise(yes=>setImmediate(yes));assert.equal(cleanupSignal.aborted,false);
+  let settled=false;void completion.then(()=>{settled=true;});
+  await new Promise(yes=>setImmediate(yes));assert.equal(settled,false);
+  cleanup.resolve({applied:false,matched:false,fenced:true});
+  assert.deepEqual(await completion,{settled:true,started:true,requiresReconciliation:false,code:'BROKER_COMPLETED_AFTER_ABORT'});
 });

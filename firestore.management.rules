@@ -1,0 +1,111 @@
+rules_version = '2';
+
+// FB preparation only. Not referenced by firebase.json and not published.
+// The broker adapter owns this NEW projection; no browser may write it.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function identifier(value, maximum) {
+      return value is string && value.size() > 0 && value.size() <= maximum &&
+        value.matches('^[^/[:space:][:cntrl:]]+$');
+    }
+    function customManagementIdentity() {
+      return request.auth != null && identifier(request.auth.uid, 128) &&
+        request.auth.token.keys().hasAll([
+          'firebase', 'managementSourceProjectId', 'managementMemberId',
+          'managementSourceVersion', 'managementSourceHash',
+          'managementPolicyVersion', 'managementSourceAuthTimeMs'
+        ]) && request.auth.token.firebase is map && request.auth.token.firebase.keys().hasAll(['sign_in_provider']) &&
+        request.auth.token.firebase.sign_in_provider == 'custom' &&
+        request.auth.token.managementSourceProjectId == 'sahmt-17a16' &&
+        identifier(request.auth.token.managementMemberId, 200) &&
+        request.auth.token.managementSourceVersion is int &&
+        request.auth.token.managementSourceVersion > 0 && request.auth.token.managementSourceVersion <= 9007199254740991 &&
+        request.auth.token.managementSourceHash is string &&
+        request.auth.token.managementSourceHash.matches('^[a-f0-9]{64}$') &&
+        identifier(request.auth.token.managementPolicyVersion, 100) &&
+        request.auth.token.managementSourceAuthTimeMs is int &&
+        request.auth.token.managementSourceAuthTimeMs > 0 && request.auth.token.managementSourceAuthTimeMs <= 9007199254740991;
+    }
+    function leaseFields(data) {
+      return data is map && data.keys().hasAll([
+        'schemaVersion', 'sourceProjectId', 'destinationProjectId',
+        'faUid', 'fbUid', 'memberId', 'leaseVersion', 'grantId',
+        'sourceVersion', 'policyVersion', 'sourceHash', 'active', 'revoked',
+        'managementAllowed', 'role', 'permissions', 'memberAreaIds',
+        'managerAreaIds', 'documentGroups', 'sourceAuthValidAfterTimeMs',
+        'confirmedAtMs', 'validUntilMs'
+      ]) && data.keys().hasOnly([
+        'schemaVersion', 'sourceProjectId', 'destinationProjectId',
+        'faUid', 'fbUid', 'memberId', 'leaseVersion', 'grantId',
+        'sourceVersion', 'policyVersion', 'sourceHash', 'active', 'revoked',
+        'managementAllowed', 'role', 'permissions', 'memberAreaIds',
+        'managerAreaIds', 'documentGroups', 'sourceAuthValidAfterTimeMs',
+        'confirmedAtMs', 'validUntilMs'
+      ]);
+    }
+    function permissionShape(data) {
+      return data.permissions is map &&
+        data.permissions.keys().hasAll([
+          'admin', 'managementRead', 'managementManage', 'managementActivityWrite',
+          'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
+          'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsManage',
+          'financeRead', 'financeWrite', 'financeManage'
+        ]) && data.permissions.keys().hasOnly([
+          'admin', 'managementRead', 'managementManage', 'managementActivityWrite',
+          'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
+          'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsManage',
+          'financeRead', 'financeWrite', 'financeManage'
+        ]) &&
+        data.permissions.admin is bool && data.permissions.managementRead is bool &&
+        data.permissions.managementManage is bool && data.permissions.managementActivityWrite is bool &&
+        data.permissions.managementIndicatorsRead is bool && data.permissions.managementIndicatorsWrite is bool &&
+        data.permissions.managementPlansManage is bool && data.permissions.documentsManage is bool &&
+        data.permissions.equipmentManage is bool && data.permissions.qualityManage is bool &&
+        data.permissions.trainingsManage is bool && data.permissions.financeRead is bool &&
+        data.permissions.financeWrite is bool && data.permissions.financeManage is bool;
+    }
+    function validManagementLease(data) {
+      return leaseFields(data) && data.schemaVersion is int && data.schemaVersion == 1 &&
+        data.sourceProjectId == 'sahmt-17a16' &&
+        data.destinationProjectId == 'sahmt-gestao-5ae66' &&
+        data.faUid == request.auth.uid && data.fbUid == request.auth.uid &&
+        data.memberId == request.auth.token.managementMemberId &&
+        identifier(data.memberId, 200) && data.leaseVersion is int && data.leaseVersion > 0 && data.leaseVersion <= 9007199254740991 &&
+        identifier(data.grantId, 100) &&
+        data.sourceVersion is int && data.sourceVersion == request.auth.token.managementSourceVersion &&
+        data.sourceHash == request.auth.token.managementSourceHash &&
+        data.policyVersion == request.auth.token.managementPolicyVersion &&
+        data.active == true && data.revoked == false && data.managementAllowed == true &&
+        data.role is string && data.role.size() <= 100 && permissionShape(data) &&
+        data.memberAreaIds is list && data.memberAreaIds.size() <= 1000 &&
+        data.memberAreaIds.toSet().size() == data.memberAreaIds.size() &&
+        data.managerAreaIds is list && data.managerAreaIds.size() <= 1000 &&
+        data.managerAreaIds.toSet().size() == data.managerAreaIds.size() &&
+        data.documentGroups is list && data.documentGroups.size() <= 2 &&
+        data.documentGroups.hasOnly(['GENERAL', 'RESTRICTED']) &&
+        data.documentGroups.toSet().size() == data.documentGroups.size() &&
+        data.sourceAuthValidAfterTimeMs is int && data.sourceAuthValidAfterTimeMs >= 0 && data.sourceAuthValidAfterTimeMs <= 9007199254740991 &&
+        request.auth.token.managementSourceAuthTimeMs >= data.sourceAuthValidAfterTimeMs &&
+        data.confirmedAtMs is int && data.confirmedAtMs > 0 && data.confirmedAtMs <= 9007199254740991 &&
+        request.auth.token.managementSourceAuthTimeMs <= data.confirmedAtMs &&
+        data.confirmedAtMs <= request.time.toMillis() &&
+        data.validUntilMs is int && data.validUntilMs > data.confirmedAtMs && data.validUntilMs <= 9007199254740991 &&
+        request.time.toMillis() < data.validUntilMs;
+    }
+
+    match /managementAuthorizationLeases/{uid} {
+      // resource is the requested lease: no extra get()/exists() access call.
+      // Absence, expiration or revocation denies the read; do not bootstrap it.
+      allow get: if database == '(default)' && customManagementIdentity() &&
+        uid == request.auth.uid && resource != null && validManagementLease(resource.data);
+      allow list, create, update, delete: if false;
+    }
+
+    // Resource scopes/schemas and the FA -> FB authorization reconciliation are
+    // not approved/implemented yet. A valid entry lease does not grant resources.
+    // This also blocks descendants, mirrors, ledger, provenance and migration.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
