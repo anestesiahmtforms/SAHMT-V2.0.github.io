@@ -2009,3 +2009,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--training .module-view--training>.module-content{min-width:0;min-height:0;margin:0;padding:2px 3px 8px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .app-shell--training .training-home-button{display:block;width:100%;min-height:40px;margin:0;padding:7px 10px;border-radius:14px;font-weight:900}
 .app-shell--training>.app-footer{flex:0 0 auto;margin:0;padding:3px 8px max(4px,env(safe-area-inset-bottom));font-size:.62rem}
+
+/* Horário da liberação abaixo da própria sigla, dentro do botão. */
+.app-shell--home .sigla-token__timed-label{display:inline-grid;grid-template-rows:auto auto;justify-items:center;vertical-align:middle;gap:1px;max-width:100%}
+.app-shell--home .sigla-token__release-time{display:block;font-size:clamp(.48rem,1.8vw,.62rem);line-height:1;letter-spacing:0;white-space:nowrap;font-weight:750;color:inherit;font-variant-numeric:tabular-nums}
+.app-shell--home .sigla-token--dc .sigla-token__aliases{overflow:visible;line-height:1.1}
+.app-shell--home .sigla-token--dc .sigla-token__release-time{font-size:clamp(.36rem,1.35vw,.46rem)}

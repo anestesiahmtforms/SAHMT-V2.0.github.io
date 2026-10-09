@@ -15,6 +15,7 @@ import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettle
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
+import {formatScheduleReleaseTime} from './schedule-release.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay} from './checklist-display.js';
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMaintenanceInputType} from './checklist-maintenance.js';
@@ -532,7 +533,7 @@ function vacationRankMarkup(sigla, classes, position) {
   return `<span class="sigla-token__vacation-rank"><span class="${classes.join(' ')}">${escapeHtml(sigla)}</span><small class="sigla-token__vacation-number" aria-label="Posição ${position} na escala de férias">${position}</small></span>`;
 }
 
-function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, releaseTimes = {}) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
   return String(sigla || '—').toUpperCase().split(/([/-])/).map((part) => {
@@ -542,13 +543,14 @@ function renderScheduleSigla(sigla, vacationParts = [], checkedSiglas = [], vaca
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(part)) classes.push('sigla-token__released-part--checked');
-    return onVacation
+    const label = onVacation
       ? vacationRankMarkup(part, classes, vacationPositions[part] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(part)}</span>`;
+    return scheduleReleaseLabel(label, checkedSet.has(part) ? releaseTimes[part] : undefined);
   }).join('');
 }
 
-function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true) {
+function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], vacationPositions = {}, showVacationRank = true, releaseTimes = {}) {
   const vacationSet = new Set(vacationParts.map((item) => String(item || '').toUpperCase()));
   const checkedSet = new Set(checkedSiglas.map((item) => String(item || '').toUpperCase()));
   return siglas.map((sigla) => {
@@ -557,14 +559,21 @@ function renderScheduleAliases(siglas, vacationParts = [], checkedSiglas = [], v
     const classes = [];
     if (onVacation) classes.push('sigla-token__vacation-part');
     if (checkedSet.has(sigla)) classes.push('sigla-token__released-part--checked');
-    return onVacation
+    const label = onVacation
       ? vacationRankMarkup(sigla, classes, vacationPositions[sigla] || '')
       : `<span${classes.length ? ` class="${classes.join(' ')}"` : ''}>${escapeHtml(sigla)}</span>`;
+    return scheduleReleaseLabel(label, checkedSet.has(sigla) ? releaseTimes[sigla] : undefined);
   }).join(' · ');
+}
+
+function scheduleReleaseLabel(label, occurredAt) {
+  const time = formatScheduleReleaseTime(occurredAt);
+  return time ? `<span class="sigla-token__timed-label">${label}<small class="sigla-token__release-time" aria-label="Liberado às ${time}">${time}</small></span>` : label;
 }
 
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
   const highlightedSiglas = new Set(mode === 'events' ? [] : Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
+  const releaseTimes = mode === 'home' ? schedule.highlights?.releaseTimes || {} : {};
   const isAdmin = can('admin');
   const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
   const eventSiglas = new Set();
@@ -584,10 +593,10 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
     const hasEvent = eventMode && (eventSiglas.has(String(position.sigla || '').toUpperCase()) || position.siglas.some((sigla) => eventSiglas.has(String(sigla || '').toUpperCase())));
     const aliases = position.sigla === 'DC' && position.siglas.length
-      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions)}</small>`
+      ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, true, releaseTimes)}</small>`
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
-      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions)}</strong>`;
+      : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, releaseTimes)}</strong>`;
     const marked = !eventMode && highlightedSiglas.has(position.sigla);
     const showConfirmedDot = eventMode ? hasEvent : marked && !schedule.stale && schedule.pendingFirestore !== true;
     const confirmationLabel = eventMode ? 'Registro de evento confirmado no Firestore' : 'Liberação confirmada no Firestore';
