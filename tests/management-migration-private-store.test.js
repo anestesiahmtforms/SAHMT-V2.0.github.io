@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readdir, readFile, lstat, unlink, rmdir} from 'node:fs/promises';
+import {mkdir, mkdtemp, readdir, readFile, lstat, unlink, rmdir} from 'node:fs/promises';
 import {resolve, dirname, join, relative, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createManagementMigrationPrivateStore} from '../scripts/lib/management-migration-private-store.js';
@@ -16,6 +16,7 @@ const pins = Object.fromEntries(names.map((name, i) => [name, String(i + 1).repe
 const clone = value => structuredClone(value);
 
 async function fixture() {
+  await mkdir(resolve(root, '.local-preview'), {recursive:true});
   const directory = await mkdtemp(join(root, '.local-preview', 'migration-store-test-'));
   const nowMs = Date.now(), time = new Date(nowMs).toISOString();
   const scope = {schemaVersion:1, projectId:FB, databaseId:'(default)', runId:'a'.repeat(64),
