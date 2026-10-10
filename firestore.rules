@@ -448,12 +448,13 @@ service cloud.firestore {
     }
     function validChecklistSignatureRequest(data, requestId) {
       return data.keys().hasAll(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt']) &&
-        data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt']) &&
+        data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt', 'recordKind']) &&
         data.id == requestId && requestId == data.day + '_' + data.revision + '_' + request.auth.uid &&
         validIsoDay(data.day) && data.day == serverSaoPauloDay() &&
         data.revision is string && data.revision.matches('^[a-f0-9]{64}$') &&
         data.signerUid == request.auth.uid && data.declaration == true &&
         data.justification is string && data.justification.size() >= 8 && data.justification.size() <= 500 &&
+        (!data.keys().hasAny(['recordKind']) || (data.recordKind == 'ACKNOWLEDGEMENT' && data.justification == 'Declaro que tomei ciência das informações deste relatório.')) &&
         data.status == 'PENDING_VALIDATION' && data.requestedAt == request.time &&
         request.auth.token.email_verified == true && can('checklistSign');
     }
@@ -1175,7 +1176,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /scheduleDays/{scheduleId} {
-      allow read: if can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite');
+      allow read: if can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign');
       allow create: if false;
       allow update: if validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
       allow delete: if false;
@@ -1191,12 +1192,12 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /eventMembers/{sigla} {
-      allow read: if can('eventsRead') || can('eventsWrite');
+      allow read: if can('eventsRead') || can('eventsWrite') || can('checklistSign');
       allow create, update: if can('peopleManage') && validEventMember(request.resource.data, sigla);
       allow delete: if false;
     }
     match /vacations/{vacationId} {
-      allow read: if (can('scheduleRead') && resource.data.active == true) || can('scheduleWrite');
+      allow read: if ((can('scheduleRead') || can('checklistSign')) && resource.data.active == true) || can('scheduleWrite');
       allow create: if can('scheduleWrite') && validVacation(request.resource.data, vacationId);
       allow update: if can('scheduleWrite') && resource.data.id == vacationId &&
         request.resource.data.createdByUid == resource.data.createdByUid &&

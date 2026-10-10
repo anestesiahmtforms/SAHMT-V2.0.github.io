@@ -106,7 +106,7 @@ test('integração main: Checklist incompleto ou catálogo pendente nunca confir
   h.next({...catalog,truncated:true},{sourceKey:'catalog'});assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),false);h.close();
 });
 
-test('integração main: assinatura preparada deixa de ser válida quando o conteúdo ou responsável muda',async()=>{
+test('integração main: ciência preparada exige o mesmo conteúdo, sem depender do nome do rodízio',async()=>{
   const h=await harness({kind:'checklist'});const open=h.ctx.startReportLive('checklist');await settle();
   h.next({records:[],truncated:false},{sourceKey:'catalog'});h.next({records:[],priorRecords:[],historyIncomplete:false,truncated:false});await open;
   const scope=h.subscriptions[0].scope, responsible={name:'Pessoa fictícia A'};
@@ -114,7 +114,7 @@ test('integração main: assinatura preparada deixa de ser válida quando o cont
   const signature=h.ctx.reportFingerprint(responsible);assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),true);
   h.ctx.testReports.setContext({fingerprint:'after'});assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),false);
   h.ctx.testReports.setContext({fingerprint:'before'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Pessoa fictícia B'}});
-  assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),false);h.close();
+  assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),true);h.close();
 });
 
 test('integração main: append aumenta janela sem apagar cartões; reload mantém tamanho já carregado',async()=>{
@@ -270,3 +270,12 @@ test('Checklist: indicador fica na faixa da data sem ocupar a linha expansível 
     assert.equal(html.includes('id="checklist-scan-qr"'),write);
   }
 });
+
+ test('ciência permite qualquer elegível sem aguardar responsável ou rodízio', async()=>{
+ const h=await harness({kind:'checklist'}),open=h.ctx.startReportLive('checklist');await settle();
+ h.next({records:[],truncated:false},{sourceKey:'catalog'});h.next({records:[],priorRecords:[],historyIncomplete:false,truncated:false});await open;
+ const scope=h.subscriptions[0].scope;h.ctx.testReports.setContext({fingerprint:'current'});h.ctx.testReports.setResponsibility(null);
+ assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),true);
+ h.ctx.session.profile.permissions.checklistSign=false;
+ assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),false);h.close();
+ });

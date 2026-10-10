@@ -387,3 +387,25 @@ test('rollout preserva leitor operacional até homologação e não conecta proj
   assert.match(reader,/remotePreview/);assert.doesNotMatch(reader,/checklistResponsibilities/);
   assert.doesNotMatch(main,/checklist-responsibility-projection/);
 });
+
+test('ciência preserva transferência diária, autoria e natureza do registro sem assumir execução',()=>{
+ for(const own of [true,false]) {
+ const h=checklistFixture({own});const request=h.get('checklistSignatureRequests',h.id);
+ h.seed('checklistSignatureRequests',h.id,{...request,recordKind:'ACKNOWLEDGEMENT',justification:'Declaro que tomei ciência das informações deste relatório.'});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
+ const receipt=h.data('checklistSignatures',`${h.day}_${h.snapshot.revision}`);
+ assert.equal(receipt.recordKind,'ACKNOWLEDGEMENT');assert.equal(receipt.declarationText,'Declaro que tomei ciência das informações deste relatório.');
+ assert.equal(receipt.signerUid,h.signerUid);assert.equal(receipt.missing,1);
+ assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,own?0:1);
+ assert.equal(h.data('checklistSignatureRequests',h.id).responsibleAdjustment,own?0:-1);
+ assert.ok(h.commits.at(-1).writes.find(w=>w.update.name.includes('/checklistSignatures/')).updateTransforms.some(t=>t.fieldPath==='acknowledgedAt'));
+ }
+});
+
+test('ciência usa o rodízio de Eventos para pontuar o próprio indicado com zero',()=>{
+ const h=checklistFixture();h.seed('scheduleDays',h.day,{positions:[{position:1,sigla:'AA'},{position:2,sigla:'BB'}],highlights:{events:['EVENTO:AA:AA:event-fixture']}});
+ const request=h.get('checklistSignatureRequests',h.id);h.seed('checklistSignatureRequests',h.id,{...request,recordKind:'ACKNOWLEDGEMENT',justification:'Declaro que tomei ciência das informações deste relatório.'});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
+ assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,0);
+ assert.equal(h.values('checklistSignatures')[0].responsibleUid,'person-b');
+});
