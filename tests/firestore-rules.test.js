@@ -1864,3 +1864,31 @@ test('horários da liberação exigem scheduleWrite e pertencem a siglas liberad
   assert.deepEqual((await getDoc(doc(manager, 'scheduleDays', day))).data().highlights.releaseTimes, update['highlights.releaseTimes']);
   await assertSucceeds(updateDoc(doc(manager, 'scheduleDays', day), {'highlights.siglas': [], 'highlights.releaseTimes': {}, updatedByUid: 'release-time-manager', updatedAt: serverTimestamp(), version: 3}));
 });
+
+test('ciência: elegível registra declaração própria sem responsabilidade; não elegível, autoria falsa e alteração são negadas', async()=>{
+ await seedProfiles([accessProfile('science-eligible',{checklistSign:true}),accessProfile('science-denied',{checklistRead:true})]);
+ const db=testEnvironment.authenticatedContext('science-eligible',{email_verified:true}).firestore();
+ const day=saoPauloDay(),revision='a'.repeat(64),id=`${day}_${revision}_science-eligible`;
+ const receipt={id,day,revision,signerUid:'science-eligible',declaration:true,justification:'Declaro que tomei ciência das informações deste relatório.',status:'PENDING_VALIDATION',requestedAt:serverTimestamp(),recordKind:'ACKNOWLEDGEMENT'};
+ await assertSucceeds(setDoc(doc(db,'checklistSignatureRequests',id),receipt));
+ await assertFails(updateDoc(doc(db,'checklistSignatureRequests',id),{recordKind:'LEGACY_SIGNATURE'}));
+ const denied=testEnvironment.authenticatedContext('science-denied',{email_verified:true}).firestore(),otherId=`${day}_${revision}_science-denied`;
+ await assertFails(setDoc(doc(denied,'checklistSignatureRequests',otherId),{...receipt,id:otherId,signerUid:'science-denied'}));
+ const nextRevision='b'.repeat(64),nextId=`${day}_${nextRevision}_science-eligible`;
+ await assertFails(setDoc(doc(db,'checklistSignatureRequests',nextId),{...receipt,id:nextId,revision:nextRevision,signerUid:'science-denied'}));
+ await assertFails(setDoc(doc(db,'checklistSignatureRequests',nextId),{...receipt,id:nextId,revision:nextRevision,justification:'Declaro responsabilidade pela execução'}));
+});
+
+test('rodízio: elegível de ciência lê fontes compartilhadas de Eventos sem acesso a eventos completos ou alterações de escala',async()=>{
+ await seedProfiles([accessProfile('rotation-eligible',{checklistSign:true})]);
+ const day=saoPauloDay();await testEnvironment.withSecurityRulesDisabled(async c=>{
+ const db=c.firestore();await setDoc(doc(db,'scheduleDays',day),{date:day,positions:[{position:1,sigla:'AA'}]});
+ await setDoc(doc(db,'eventMembers','AA'),{sigla:'AA',name:'Pessoa fictícia',active:true});
+ await setDoc(doc(db,'vacations','vacation-fixture'),{active:true,start:day,end:day,siglas:['BB']});
+ });
+ const db=testEnvironment.authenticatedContext('rotation-eligible',{email_verified:true}).firestore();
+ await assertSucceeds(getDoc(doc(db,'scheduleDays',day)));await assertSucceeds(getDoc(doc(db,'eventMembers','AA')));
+ await assertSucceeds(getDocs(query(collection(db,'vacations'),where('active','==',true),where('start','<=',day),where('end','>=',day))));
+ await assertFails(getDocs(collection(db,'events')));
+ await assertFails(updateDoc(doc(db,'scheduleDays',day),{positions:[{position:1,sigla:'BB'}]}));
+});

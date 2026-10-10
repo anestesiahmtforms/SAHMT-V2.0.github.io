@@ -1892,17 +1892,16 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
   return {
     day, revision, total: entries.length, missing: entries.filter((entry) => !entry.condition).length,
     responsible: null,
-    declaration: 'Confirmo que revisei o relatório do Checklist e solicito a validação da assinatura.',
+    declaration: 'Declaro que tomei ciência das informações deste relatório.',
     requestStatus: request?.status || '', requestId: request?.id || '', validationMessage: request?.validationMessage || ''
   };
 }
 
-export async function createChecklistSignatureRequest({day, revision, declaration, justification, uid} = {}) {
+export async function createChecklistSignatureRequest({day, revision, declaration, uid} = {}) {
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !/^[a-f0-9]{64}$/.test(revision || '') || declaration !== true) {
     throw new Error('Atualize o relatório e confirme a declaração antes de solicitar a validação.');
   }
-  const reason = String(justification || '').trim().slice(0, 500);
-  if (reason.length < 8) throw new Error('Informe uma justificativa de pelo menos 8 caracteres para a auditoria.');
+  const reason = 'Declaro que tomei ciência das informações deste relatório.';
   const id = checklistSignatureRequestId(day, revision, uid);
   const reference = doc(db, 'checklistSignatureRequests', id);
   return runTransaction(db, async (transaction) => {
@@ -1910,12 +1909,12 @@ export async function createChecklistSignatureRequest({day, revision, declaratio
     if (existing.exists()) {
       const request = existing.data();
       if (request.signerUid !== uid || request.day !== day || request.revision !== revision) {
-        throw new Error('O pedido de assinatura existente não corresponde a esta sessão.');
+        throw new Error('O registro de ciência existente não corresponde a esta sessão.');
       }
       return {id, status: request.status, alreadyRequested: true};
     }
     transaction.set(reference, {
-      id, day, revision, signerUid: uid, declaration: true,
+      id, day, revision, signerUid: uid, declaration: true, recordKind: 'ACKNOWLEDGEMENT',
       justification: reason, status: 'PENDING_VALIDATION', requestedAt: serverTimestamp()
     });
     return {id, status: 'PENDING_VALIDATION', alreadyRequested: false};

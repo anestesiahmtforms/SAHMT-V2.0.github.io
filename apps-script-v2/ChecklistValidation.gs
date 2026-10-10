@@ -44,7 +44,7 @@ function listPendingChecklistSignatureRequests_() {
   const body = {structuredQuery: {
     from: [{collectionId: 'checklistSignatureRequests'}],
     where: {fieldFilter: {field: {fieldPath: 'status'}, op: 'EQUAL', value: {stringValue: 'PENDING_VALIDATION'}}},
-    select: {fields: ['id', 'day', 'revision', 'signerUid', 'declaration', 'status', 'justification'].map(function (fieldPath) {
+    select: {fields: ['id', 'day', 'revision', 'signerUid', 'declaration', 'status', 'justification', 'recordKind'].map(function (fieldPath) {
       return {fieldPath: fieldPath};
     })},
     limit: SAHMT_V2_CHECKLIST_VALIDATION.maxPendingPerRun
@@ -72,12 +72,13 @@ function validateChecklistSignatureRequest_(request) {
         String(current.justification || '').trim().length < 8 || String(current.justification || '').length > 500) {
       return reject('REJECTED', 'Solicitação fora do contrato.');
     }
+    if (current.recordKind && (current.recordKind !== 'ACKNOWLEDGEMENT' || current.justification !== 'Declaro que tomei ciência das informações deste relatório.')) return reject('REJECTED', 'Declaração de ciência inválida.');
     const signer = evaluationGet_('users', current.signerUid, transaction);
     if (!evaluationActiveProfile_(signer, current.signerUid) || !hasChecklistSignPermission_(signer)) {
       return reject('REJECTED', 'Perfil do solicitante inativo ou sem permissão atual.');
     }
     let snapshot;
-    try { snapshot = readTrustedChecklistSnapshot_(current.day, transaction); }
+    try { snapshot = readTrustedChecklistSnapshot_(current.day, transaction, {eventRotation: current.recordKind === 'ACKNOWLEDGEMENT'}); }
     catch (error) {
       if (error.status) throw error;
       return reject('NEEDS_REVIEW', String(error && error.message || 'Dados indisponíveis para validar.').slice(0, 300));
@@ -94,13 +95,16 @@ function validateChecklistSignatureRequest_(request) {
       status: 'DUPLICATE', finalSignatureId: signatureId, pointsAwarded: 0, responsibleAdjustment: 0,
       validationMessage: 'Esta revisão já possui assinatura válida.'
     }, current, ['validatedAt'])], result: 'DUPLICATE'};
+    const isAcknowledgement = current.recordKind === 'ACKNOWLEDGEMENT';
     const signature = {
       id: signatureId, date: current.day, checklistId: current.day,
       responsibleUid: snapshot.responsible.responsibleUid, responsibleName: snapshot.responsible.responsibleName,
       responsibleEmail: snapshot.responsible.responsibleEmail,
       signerUid: current.signerUid, signerName: signer.displayName || '', signerEmail: signer.email || '',
       declaration: true, revision: snapshot.revision, snapshot: snapshot.snapshot,
-      missing: snapshot.missing, justification: current.justification
+      missing: snapshot.missing, justification: current.justification,
+      recordKind: isAcknowledgement ? 'ACKNOWLEDGEMENT' : 'LEGACY_SIGNATURE',
+      declarationText: isAcknowledgement ? 'Declaro que tomei ciência das informações deste relatório.' : 'Confirmação do relatório conforme fluxo anterior'
     };
     let transfer;
     try { transfer = evaluationApplyChecklistTransfer_(current.day, snapshot.responsible.responsibleUid, current.signerUid, signatureId, {transaction: transaction}); }
@@ -109,7 +113,7 @@ function validateChecklistSignatureRequest_(request) {
       return reject('NEEDS_REVIEW', String(error && error.message || 'Pontuação pendente de revisão.').slice(0, 300));
     }
     const applied = transfer.status === 'APPLIED' && snapshot.responsible.responsibleUid !== current.signerUid;
-    transfer.writes.push(evaluationWrite_('checklistSignatures', signatureId, signature, null, ['signedAt']));
+    transfer.writes.push(evaluationWrite_('checklistSignatures', signatureId, signature, null, isAcknowledgement ? ['signedAt', 'acknowledgedAt'] : ['signedAt']));
     transfer.writes.push(projectionWrite);
     transfer.writes.push(evaluationWrite_('checklistSignatureRequests', current.id, {
       status: 'VALIDATED', finalSignatureId: signatureId, pointsAwarded: applied ? 1 : 0,
@@ -119,11 +123,12 @@ function validateChecklistSignatureRequest_(request) {
   });
 }
 
-function readTrustedChecklistSnapshot_(day, transaction) {
+function readTrustedChecklistSnapshot_(day, transaction, options) {
+  options = options || {};
   if (day !== checklistSaoPauloDay_()) throw new Error('O pedido não corresponde ao dia atual em São Paulo.');
   const getTrusted = function (collectionId, id, fields) { return transaction ? evaluationGet_(collectionId, id, transaction) : getFirestoreDocument_(collectionId, id, fields); };
   const queryTrusted = function (collectionId, filters, order, maximum, fields) { return transaction ? evaluationQuery_(collectionId, filters, order, maximum, fields, transaction) : queryFirestore_(collectionId, filters, order, maximum, fields); };
-  const schedule = getTrusted('scheduleDays', day, ['positions', 'vacationLabel']);
+  const schedule = getTrusted('scheduleDays', day, ['positions', 'vacationLabel', 'highlights']);
   if (!schedule) throw new Error('Escala do dia indisponível.');
   const stations = queryTrusted('stations', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
@@ -134,7 +139,7 @@ function readTrustedChecklistSnapshot_(day, transaction) {
     firestoreFilter_('start', 'LESS_THAN_OR_EQUAL', {stringValue: day}),
     firestoreFilter_('end', 'GREATER_THAN_OR_EQUAL', {stringValue: day})
   ], [{fieldPath: 'start', direction: 'ASCENDING'}], 101, ['active', 'start', 'end', 'siglas', 'label']);
-  const events = queryTrusted('events', [
+  const events = options.eventRotation ? [] : queryTrusted('events', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
     firestoreFilter_('date', 'EQUAL', {stringValue: day})
   ], [], 201, ['active', 'date', 'eventType', 'memberStatus', 'substitute']);
@@ -168,7 +173,7 @@ function readTrustedChecklistSnapshot_(day, transaction) {
     return {stationId: entry.stationId, stationName: entry.stationName, condition: entry.condition,
       occurrence: entry.occurrence, responseId: entry.responseId, responseAt: entry.responseAt};
   })}));
-  const selection = selectChecklistResponsible_({schedule: schedule, day: day, vacations: vacations, events: events, contacts: contacts});
+  const selection = options.eventRotation ? selectChecklistEventRotation_({schedule: schedule, day: day, vacations: vacations}) : selectChecklistResponsible_({schedule: schedule, day: day, vacations: vacations, events: events, contacts: contacts});
   if (!selection.ok) throw new Error(selection.reason);
   const matchedProfiles = queryTrusted('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
     ['uid', 'active', 'access', 'displayName', 'email']);
@@ -312,4 +317,35 @@ function checklistRequestUpdateWrite_(request, changes) {
     updateMask: {fieldPaths: Object.keys(changes)},
     currentDocument: {updateTime: request.updateTime}
   };
+}
+
+/** Same marker contract as checklist-rotation.js; source is the shared Eventos schedule document. */
+function selectChecklistEventRotation_(input) {
+  const schedule = input.schedule, weekday = checklistWeekday_(input.day);
+  const markers = schedule.highlights && schedule.highlights.events || [];
+  if (!Array.isArray(markers) || markers.length > 100) return {ok: false, reason: 'Destaques de Eventos incompletos.'};
+  const events = [];
+  function members(token, support) {
+    if (typeof token !== 'string' || token.length > 240) return null;
+    const value = token.split('(')[0].trim().toUpperCase();
+    if (support && value === 'SUPORTE' || !value) return [];
+    if (!/^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$/.test(value)) return null;
+    return checklistSiglas_(value, weekday);
+  }
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    if (typeof marker !== 'string' || !marker.trim() || marker.length > 400) return {ok: false, reason: 'Destaque de Eventos inválido.'};
+    const parts = marker.trim().split(':');
+    let affected;
+    if (parts.length === 1) affected = members(parts[0], true);
+    else {
+      if (parts[0].toUpperCase() !== 'EVENTO' || parts.length < 2 || parts.length > 4 || !parts[1].trim()) return {ok: false, reason: 'Destaque de Eventos inválido.'};
+      affected = members(parts[1], true);
+      if (parts.length > 2 && !/^[A-Za-z0-9_-]{1,200}$/.test(parts[parts.length - 1])) return {ok: false, reason: 'Identificador de Evento inválido.'};
+      if (affected !== null && parts.length === 4 && parts[1].trim().toUpperCase() !== 'SUPORTE' && parts[2].trim() !== '-') affected = parts[2].trim() ? members(parts[2], true) : null;
+    }
+    if (affected === null) return {ok: false, reason: 'Sigla do Evento inválida.'};
+    affected.forEach(function (sigla) { events.push({date: input.day, active: true, eventType: 'ROTATION', memberStatus: sigla, substitute: 'EXCLUDED_BY_EVENT'}); });
+  }
+  return selectChecklistResponsible_({schedule: schedule, day: input.day, vacations: input.vacations, events: events, contacts: []});
 }

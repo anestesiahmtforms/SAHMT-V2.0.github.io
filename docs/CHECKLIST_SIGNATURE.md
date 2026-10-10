@@ -1,27 +1,20 @@
-# Assinatura interna do Checklist
+# Ciência do Checklist — alteração preparada em 10/10/2026
 
-## Fluxo Spark atual
+O comando “Dar ciência do Checklist” registra a leitura do relatório por qualquer perfil ativo, verificado e previamente autorizado por `checklistSign`. A ação não declara execução das verificações, conformidade dos equipamentos nem assunção de responsabilidade operacional. Ela independe do carregamento do nome do rodízio; exige relatório do dia confirmado no servidor e ausência de gravações locais pendentes.
 
-1. O comando aparece para `checklistSign` no Checklist do dia, apenas online e depois que as respostas locais pendentes/recusadas forem resolvidas.
-2. O PWA apresenta o total de estações e calcula um fingerprint SHA-256 dos IDs, nomes e respostas mais recentes das estações ativas vigentes. Esse fingerprint é um claim do cliente, não uma revisão validada.
-3. A pessoa declara que revisou o relatório, informa justificativa/contexto e cria `checklistSignatureRequests/{day}_{fingerprint}_{uid}` com status `PENDING_VALIDATION`. A gravação é imutável e repetível com o mesmo ID. Firestore Rules exigem sessão verificada, perfil ativo com `checklistSign`, data de São Paulo do servidor, UID próprio, digest hexadecimal e campos/status exatos.
-4. A solicitação não grava `checklistSignatures`, não atribui responsável, não concede pontos e não afirma que a revisão está correta. Esses resultados exigem validação confiável da escala, férias, substituições, contatos, perfis, estações e respostas atuais.
+A declaração é “Declaro que tomei ciência das informações deste relatório.” O recibo imutável identifica o UID autenticado, a revisão visualizada, a data de servidor (`requestedAt`) e `recordKind: ACKNOWLEDGEMENT`. O validador acrescenta nome, email e `acknowledgedAt`. As coleções e nomes técnicos antigos são preservados para compatibilidade; `signedAt` permanece como campo temporal legado, sem mudar a natureza da ciência. Registros antigos não são reclassificados.
 
-## Validação pendente
+O rodízio informativo usa as mesmas fontes Firestore de Eventos: `scheduleDays/{day}`, seus marcadores `highlights.events`, férias ativas e o nome no diretório `eventMembers`. Não consulta planilhas na abertura. O validador de ciência usa esses mesmos marcadores para determinar o indicado na apuração, preservando o resolvedor anterior somente para pedidos legados. A leitura não permite editar posições nem acessar lançamentos completos de Eventos.
 
-`apps-script-v2/ChecklistValidation.gs` implementa agora a rotina periódica que lê e valida `checklistSignatureRequests`, recalcula escala/snapshot e grava assinatura/pontos em commit REST idempotente. Ela não está copiada/autorizada no projeto Apps Script real e ainda não foi validada com Firestore IAM; por isso os pedidos em produção permanecem pendentes até essa ativação controlada. Não implantar Cloud Functions nem habilitar Blaze para contornar essa dependência.
+## Pontuação mantida
 
-O consumidor futuro deve reler os documentos operacionais pelo Firestore REST usando identidade IAM privilegiada, reproduzir a escolha da primeira posição disponível, confirmar UID ativo e único, férias, substituições, estações e a resposta mais recente, recalcular o fingerprint e verificar declaração/justificativa. Só então poderá criar `checklistSignatures/{day}_{trustedRevision}` e os lançamentos de pontos em um único commit REST com precondições idempotentes, além de atualizar o pedido. Assinatura incompleta não pontua. Pedido divergente deve permanecer auditável como recusado/necessitando revisão, sem escrita em `scores`.
+- Ciência do próprio indicado: zero ponto adicional.
+- Ciência de outro elegível: +1 para ele e −1 para o indicado.
+- O ledger mantém uma única transferência por dia, mesmo com novas revisões.
+- A gravação da ciência no Firestore é imediata; pontos só são definitivos após apuração confiável. Uma revisão alterada antes da validação permanece auditável e exige nova conferência; a interface não promete pontos pendentes.
 
-A conta que executará o Apps Script contorna Firestore Rules por IAM e deve ser tratada como operador privilegiado. Atribua o menor papel viável, monitore auditoria e não coloque credenciais no PWA. O algoritmo de responsável não pode ser movido para JavaScript do cliente como fonte de autorização.
+## Publicação coordenada pendente
 
-## Compatibilidade e histórico
+Publicar nesta ordem: regras do Firestore, código `ChecklistValidation.gs` no projeto Apps Script e sua validação operacional, então PWA. Não publicar somente o PWA: as regras antigas recusam `recordKind`. O workflow Pages não implanta regras nem Apps Script. A sessão desta alteração não tem conta Firebase autorizada nem autenticação Apps Script, portanto não comprova implantação ou execução do validador em produção. Não ativar Blaze ou Cloud Functions. A rotina de apuração existente depende de IAM e runtime habilitados; esta alteração não reativa a homologação cancelada de Gestão/Desempenho.
 
-- `functions/index.js` mantém a callable `checklistSignature` e seus testes como implementação histórica/referência; o PWA não a chama.
-- `checklistSignatures` e `scores` continuam sem escrita cliente nas Rules. A interface não apresenta ponto definitivo para um pedido pendente.
-- O fingerprint do pedido usa somente campos operacionais atuais e não é assinatura criptográfica de usuário nem prova de reprodução/trabalho. O validador deve recomputar seus dados de origem; não deve confiar no fingerprint informado.
-- Respostas locais pendentes nunca compõem a solicitação. Revisão histórica continua somente leitura.
-
-## Homologação ainda necessária
-
-O workflow GitHub compilará as regras/client; ainda é necessário validar o consumer Apps Script com dados fictícios/emulador e, depois, com uma ação produtiva controlada. A homologação de navegador/aparelho, leitura IAM, corrida de pedidos, replay, revisão alterada, responsável substituto, relatório incompleto e pontuação idempotente ainda não foi concluída. A carga V1 de escala permanece sujeita às revisões de dados já registradas em `RELEASE_STATUS.md`.
+Alterações de posições feitas exclusivamente na planilha ainda precisam chegar a `scheduleDays`; usar os dados de Eventos dispensa a planilha no clique, mas não cria publicação automática das edições externas.
