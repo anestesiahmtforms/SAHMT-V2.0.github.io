@@ -3577,10 +3577,25 @@ async function bindModuleForm(route) {
     if (form) updateLabelEntryFields(form);
     if (form && workspace) {
       const cleanupAi = bindLabelAi(workspace, form);
-      const {bindLabelCamera} = await import('./label-camera.js');
-      if (!form.isConnected) { cleanupAi(); return; }
-      const cleanupCamera = bindLabelCamera(workspace);
-      cleanupLabelMedia = () => { cleanupAi(); cleanupCamera(); };
+      try {
+        const {bindLabelCamera} = await import('./label-camera.js');
+        if (!form.isConnected) { cleanupAi(); return; }
+        const cleanupCamera = bindLabelCamera(workspace);
+        cleanupLabelMedia = () => { cleanupAi(); cleanupCamera(); };
+      } catch {
+        cleanupLabelMedia = cleanupAi;
+        const cameraButton = workspace.querySelector('#label-camera-open');
+        if (cameraButton) {
+          cameraButton.disabled = true;
+          cameraButton.setAttribute('aria-disabled', 'true');
+        }
+        const status = document.createElement('p');
+        status.className = 'label-camera-load-status';
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.textContent = 'A câmera não carregou. Atualize o app; o Registro Manual continua disponível.';
+        workspace.closest('.module-view--labels')?.insertBefore(status, workspace.nextSibling);
+      }
     }
     const entryDialog = document.querySelector('#label-entry-dialog');
     entryDialog?.addEventListener('click', (event) => { if (event.target === entryDialog) resetLabelEditor(); });

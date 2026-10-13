@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v186';
+const CACHE = 'sahmt-v2-shell-v187';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -37,13 +37,13 @@ self.addEventListener('install', (event) => {
       for (const imported of entry.imports || []) visitEntry(imported);
     };
     visitEntry(entryKey);
-    // Only the report/offline adapters and their static dependencies are essential.
-    // PDF, camera processing and other optional module graphs remain fetched on demand.
+    // Precache adapters required when opening core screens, including the Labels camera binder.
+    // PDF, OCR processing and training materials remain fetched on demand.
     const reportEssentials = new Set([
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
       'src/checklist-rotation-listener.js',
       'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
-      'src/performance-ui.js', 'src/evaluation-data.js'
+      'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js'
     ]);
     for (const [key, entry] of Object.entries(manifest)) {
       if (reportEssentials.has(entry.src || key)) visitEntry(key);

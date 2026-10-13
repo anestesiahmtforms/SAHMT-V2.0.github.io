@@ -17,6 +17,7 @@ const manifest = {
   'src/firebase.js': {src: 'src/firebase.js', file: 'assets/firebase-full.js', imports: ['assets/shared.js']},
   'src/performance-ui.js': {src: 'src/performance-ui.js', file: 'assets/performance-ui.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
   'src/evaluation-data.js': {src: 'src/evaluation-data.js', file: 'assets/evaluation-data.js', imports: ['assets/shared.js']},
+  'src/label-camera.js': {src: 'src/label-camera.js', file: 'assets/label-camera.js', imports: ['assets/shared.js']},
   'optional-pdf': {file: 'assets/report-pdf.js', imports: []},
   'assets/shared.js': {
     file: 'assets/shared.js',
@@ -30,7 +31,7 @@ function createWorker({offline = false} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
-  const names = new Set(['sahmt-v2-shell-v170', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
+  const names = new Set(['sahmt-v2-shell-v186', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
@@ -92,7 +93,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
-  assert.ok(worker.names.has('sahmt-v2-shell-v186'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v187'));
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
@@ -100,6 +101,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/sahmt-logo.png`));
   assert.ok(worker.cacheNames.includes(`${BASE}assets/selo-qga-accredited-qmentum-diamond.png`));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/main.js'));
+  assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/label-camera.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/shared.css'));
   assert.equal(worker.skipWaiting(), 1);
 });
@@ -114,8 +116,8 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
-  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v170', 'sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v186'));
+  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v186', 'sahmt-v2-shell-v159']);
+  assert.ok(worker.names.has('sahmt-v2-shell-v187'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
