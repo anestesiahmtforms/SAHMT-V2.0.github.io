@@ -13,8 +13,10 @@ O rodízio informativo usa as mesmas fontes Firestore de Eventos: `scheduleDays/
 - O ledger mantém uma única transferência por dia, mesmo com novas revisões.
 - A gravação da ciência no Firestore é imediata; pontos só são atribuídos após apuração confiável. Uma revisão ou posição alterada antes da validação permanece auditável e exige revisão; não há pontuação pendente exibida como definitiva.
 
-## Publicação coordenada pendente
+## Publicação coordenada
 
-Publicar nesta ordem: regras do Firestore, código `ChecklistValidation.gs` no projeto Apps Script e sua validação operacional, então PWA. Não publicar somente o PWA: as regras antigas recusam `recordKind`. O workflow Pages não implanta regras nem Apps Script. A sessão desta alteração não tem conta Firebase autorizada nem autenticação Apps Script, portanto não comprova implantação ou execução do validador em produção. Não ativar Blaze ou Cloud Functions. A rotina de apuração existente depende de IAM e runtime habilitados; esta alteração não reativa a homologação cancelada de Gestão/Desempenho.
+Publicar nesta ordem: regras do Firestore, código `ChecklistValidation.gs` no projeto Apps Script e sua validação operacional, então PWA. Não publicar somente o PWA: as regras antigas recusam `recordKind`. O workflow Pages não implanta regras nem Apps Script. Não ativar Blaze ou Cloud Functions. A rotina de apuração existente depende de IAM e runtime habilitados; esta alteração não reativa a homologação cancelada de Gestão/Desempenho.
+
+Em 2026-10-13, as regras restritas desta liberação foram publicadas e relidas com sucesso após reorganização dos escopos dos validadores; ver `FIRESTORE_RULES_COMPILER.md`. Os dois índices de `checklistSignatureRequests` foram conferidos como `READY`, e a leitura projetada de `checklistScienceRuntime/state.enabled` confirmou `true`. Os quatro arquivos do validador local correspondem ao snapshot obtido após a instalação do Apps Script; a execução manual comunicada pelo proprietário retornou `CHECKLIST_SCIENCE_INSTALLED`. Essas verificações não substituem a confirmação de uma ciência real enviada pela PWA e processada pelo gatilho.
 
 Alterações de posições feitas exclusivamente na planilha ainda precisam chegar a `scheduleDays`; usar os dados de Eventos dispensa a planilha no clique, mas não cria publicação automática das edições externas.
