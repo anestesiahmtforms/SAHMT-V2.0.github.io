@@ -72,8 +72,9 @@ test('rodapé separa rodízio da escala do botão de confirmação, e revisão f
  assert.match(source,/confirmationDialog\.showModal\(\)/);
  assert.match(source,/ENVIAR CIÊNCIA DAS PENDÊNCIAS/);
  assert.match(source,/CHECAGEM SEM PENDÊNCIAS/);
- assert.match(source,/O número 1 do dia está registrando ciência de que houve pendências na checagem do Arsenal/);
- assert.match(source,/selected\.position !== 1 \|\| selected\.sigla !== ownSigla/);
+ assert.match(source,/Esta checagem registra ciência de que houve pendências na conferência do Arsenal/);
+ assert.match(source,/preparePending\.disabled = !checklistSignatureCurrent\(scope, checklistReportContext\?\.fingerprint\)/);
+ assert.doesNotMatch(source,/selected\.position !== 1|posição efetiva 1 do dia/);
  assert.doesNotMatch(source,/pendingJustification|checklistOutcome/);
  assert.doesNotMatch(source,/A ciência registra a leitura destas informações|Não declara execução das verificações/);
  assert.doesNotMatch(source,/watchChecklistResponsibility\(scope, acceptResponsibility/);
