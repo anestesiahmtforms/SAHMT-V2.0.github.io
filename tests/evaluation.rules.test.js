@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {doc, setDoc, getDoc, getDocs, collection, query, where, updateDoc, deleteDoc, serverTimestamp, setLogLevel} from 'firebase/firestore';
 import {assertFails, assertSucceeds, initializeTestEnvironment} from '@firebase/rules-unit-testing';
 let env; setLogLevel('silent');
-before(async () => { env = await initializeTestEnvironment({projectId: 'demo-sahmt-v2', firestore: {host: '127.0.0.1', port: 8080, rules: await readFile(new URL('../firestore.rules', import.meta.url), 'utf8')}}); });
+before(async () => { env = await initializeTestEnvironment({projectId: 'demo-sahmt-v2', firestore: {host: '127.0.0.1', port: Number(process.env.FIRESTORE_EMULATOR_HOST?.split(':').pop() || 8080), rules: await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE || new URL('../firestore.rules', import.meta.url), 'utf8')}}); });
 after(async () => env?.cleanup());
 beforeEach(async () => {
   await env.clearFirestore();

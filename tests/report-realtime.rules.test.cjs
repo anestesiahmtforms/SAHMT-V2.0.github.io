@@ -39,7 +39,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 
   before(async () => {
     environment = await initializeTestEnvironment({projectId, firestore: {host: '127.0.0.1', port: emulatorPort,
-      rules: fs.readFileSync(path.join(__dirname, '../firestore.rules'), 'utf8')}});
+      rules: fs.readFileSync(process.env.SAHMT_FIRESTORE_RULES_FILE || path.join(__dirname, '../firestore.rules'), 'utf8')}});
     [checklist, responsibility, checklistDates] = await Promise.all([
       import(pathToFileURL(path.join(__dirname, '../src/checklist-report-listener.js')).href),
       import(pathToFileURL(path.join(__dirname, '../src/checklist-responsibility-listener.js')).href),
