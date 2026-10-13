@@ -3,12 +3,11 @@ import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
 import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess} from '../src/occurrences-ui.js';
 
-test('grupos mostram os dez formulários especificados e formulário oncológico como pendente sem abrir',()=>{
+test('grupos mostram os dez formulários e removem o atalho oncológico',()=>{
   const markup=['A','B','C','D'].map(id=>occurrenceCategoryMarkup(id,{canWrite:true})).join('');
   assert.equal((markup.match(/data-occurrence-form="F\d\d"/g)||[]).length,10);
-  assert.match(markup,/Notificação de Farmacovigilância Oncológica - Reação Adversa ao Medicamento/);
-  assert.match(markup,/Em preparação/);
-  assert.match(markup,/occurrence-form-launch--pending" disabled/);
+  assert.doesNotMatch(markup,/ONCOLÓGICA|Em preparação|occurrence-form-launch--pending/);
+  assert.doesNotMatch(markup,/Formulário de Registro/);
 });
 
 test('módulo exige permissão explícita mesmo quando o usuário é administrador',()=>{
@@ -25,15 +24,24 @@ test('página inicial mostra quatro acessos a banners, sem expandir formulários
   const markup=occurrenceGroupMarkup();
   assert.equal((markup.match(/data-occurrence-group="[A-D]"/g)||[]).length,4);
   assert.doesNotMatch(markup,/<details|<summary|data-occurrence-form=/);
+  assert.equal((markup.match(/class="occurrence-icon"/g)||[]).length,4);
+  assert.match(markup,/NOTIFICAÇÃO DE INCIDENTE ASSISTENCIAL/);
 });
 
 test('banner de categoria mostra somente seus formulários e retorno independente',()=>{
   const markup=occurrenceCategoryMarkup('B');
-  assert.match(markup,/REGISTRO DE OCORRÊNCIA/);
-  assert.match(markup,/Notificação de Infração ou Dilema Ético/);
+  assert.doesNotMatch(markup,/REGISTRO DE OCORRÊNCIA|class="eyebrow"/);
+  assert.match(markup,/NOTIFICAÇÃO DE INFRAÇÃO OU DILEMA ÉTICO/);
   assert.match(markup,/data-occurrence-form="F08"/);
   assert.doesNotMatch(markup,/data-occurrence-form="F01"|identity-card/);
   assert.match(markup,/data-occurrence-group-cancel/);
+  assert.match(markup,/class="occurrence-icon"/);
+});
+
+test('formulário destaca o título do evento sem texto superior repetido',()=>{
+  const markup=occurrenceFormMarkup(OCCURRENCE_FORMS[0]);
+  assert.doesNotMatch(markup,/REGISTRO DE OCORRÊNCIA|class="eyebrow"/);
+  assert.match(markup,/NOTIFICAÇÃO DE FARMACOVIGILÂNCIA - QUEIXA TÉCNICA DE MEDICAMENTO/);
 });
 
 test('formulário F10 não mostra bloco de informações gerais nem campos ausentes',()=>{
