@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
-import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceModuleAccess} from '../src/occurrences-ui.js';
+import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess} from '../src/occurrences-ui.js';
 
 test('grupos mostram os dez formulários especificados e formulário oncológico como pendente sem abrir',()=>{
-  const markup=occurrenceGroupMarkup({canWrite:true});
+  const markup=['A','B','C','D'].map(id=>occurrenceCategoryMarkup(id,{canWrite:true})).join('');
   assert.equal((markup.match(/data-occurrence-form="F\d\d"/g)||[]).length,10);
   assert.match(markup,/Notificação de Farmacovigilância Oncológica - Reação Adversa ao Medicamento/);
   assert.match(markup,/Em preparação/);
@@ -17,8 +17,23 @@ test('módulo exige permissão explícita mesmo quando o usuário é administrad
 });
 
 test('grupo impede envio sem autorização de gravação',()=>{
-  const markup=occurrenceGroupMarkup({canWrite:false});
+  const markup=occurrenceCategoryMarkup('A',{canWrite:false});
   assert.match(markup,/data-occurrence-form="F01" disabled/);
+});
+
+test('página inicial mostra quatro acessos a banners, sem expandir formulários nela',()=>{
+  const markup=occurrenceGroupMarkup();
+  assert.equal((markup.match(/data-occurrence-group="[A-D]"/g)||[]).length,4);
+  assert.doesNotMatch(markup,/<details|<summary|data-occurrence-form=/);
+});
+
+test('banner de categoria mostra somente seus formulários e retorno independente',()=>{
+  const markup=occurrenceCategoryMarkup('B');
+  assert.match(markup,/REGISTRO DE OCORRÊNCIA/);
+  assert.match(markup,/Notificação de Infração ou Dilema Ético/);
+  assert.match(markup,/data-occurrence-form="F08"/);
+  assert.doesNotMatch(markup,/data-occurrence-form="F01"|identity-card/);
+  assert.match(markup,/data-occurrence-group-cancel/);
 });
 
 test('formulário F10 não mostra bloco de informações gerais nem campos ausentes',()=>{
