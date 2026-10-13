@@ -11,11 +11,17 @@ export function occurrenceModuleAccess(permissions = {}) {
     audit:permissions.occurrencesAuditRead === true, any:['occurrencesRead','occurrencesWrite','occurrencesAuditRead'].some(key => permissions[key] === true)});
 }
 
-export function occurrenceGroupMarkup({canWrite=true}={}) {
-  return OCCURRENCE_GROUPS.map(group => `<details class="occurrence-group" data-occurrence-group="${group.id}"><summary>${escape(group.title)}</summary><div class="occurrence-group__items">${FORM_ORDER[group.id].map(id => {
+export function occurrenceGroupMarkup() {
+  return OCCURRENCE_GROUPS.map(group => `<button type="button" class="occurrence-group" data-occurrence-group="${group.id}" aria-haspopup="dialog"><span>${escape(group.title)}</span><span class="occurrence-group__arrow" aria-hidden="true">›</span></button>`).join('');
+}
+
+export function occurrenceCategoryMarkup(groupId,{canWrite=true}={}) {
+  const group=OCCURRENCE_GROUPS.find(item=>item.id===groupId);
+  if(!group)return '';
+  return `<dialog class="occurrence-dialog occurrence-category-dialog" aria-labelledby="occurrence-category-title"><div class="occurrence-dialog__form"><header class="occurrence-dialog__header"><p class="eyebrow">REGISTRO DE OCORRÊNCIA</p><h3 id="occurrence-category-title" tabindex="-1" autofocus>${escape(group.title)}</h3></header><div class="occurrence-dialog__body"><div class="occurrence-group__items">${FORM_ORDER[group.id].map(id => {
     if (id === 'PENDING_ONCOLOGY') return `<button type="button" class="occurrence-form-launch occurrence-form-launch--pending" disabled><span>${escape(OCCURRENCE_PENDING_FORM.label)}</span><small>${escape(OCCURRENCE_PENDING_FORM.status)}</small></button>`;
     const form=getOccurrenceForm(id); return `<button type="button" class="occurrence-form-launch" data-occurrence-form="${id}" ${canWrite?'':'disabled'}><span>${escape(form.title)}</span><small>${canWrite?'Formulário de Registro':'Sem autorização para registrar'}</small></button>`;
-  }).join('')}</div></details>`).join('');
+  }).join('')}</div><p class="occurrence-category-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer occurrence-dialog__footer--single"><button type="button" class="secondary-button" data-occurrence-group-cancel>VOLTAR</button></footer></div></dialog>`;
 }
 
 export function occurrenceFieldMarkup(item, catalogs = {}) {
@@ -41,18 +47,18 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
   const classification=form.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${form.classification.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
   const details=form.fields.filter(item=>!generalIds.has(item.id));
   const additional=details.length?`<section class="occurrence-form-section"><h4>Dados do formulário</h4><div class="occurrence-form-grid">${details.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
-  return `<dialog class="occurrence-dialog" aria-label="Formulário de Registro"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><p class="eyebrow">Formulário de Registro</p><h3>${escape(form.title)}</h3></header><div class="occurrence-dialog__body">${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
+  return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><p class="eyebrow">REGISTRO DE OCORRÊNCIA</p><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title)}</h3></header><div class="occurrence-dialog__body">${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
 }
 
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID()}={}) {
   const access=occurrenceModuleAccess(permissions);
   if(!access.any||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
   const repository=createOccurrenceRepository({db,auth,idGenerator,isCurrent});
-  let catalogs={},saving=false,pendingRecordId=null;
-  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Rascunhos não são armazenados localmente.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><p class="occurrence-points-note">Cada formulário salvo cria um lançamento de 2 pontos pendente de validação; a integração com Desempenho ainda requer reconciliação administrativa.</p><div class="occurrence-groups">${occurrenceGroupMarkup({canWrite:access.write})}</div><section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}<div data-occurrence-dialog-host></div></section>`;
+  let catalogs={},saving=false,loading=false,pendingRecordId=null;
+  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Rascunhos não são armazenados localmente.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
   const loadRecords=async()=>{
-    if(!access.read){records.innerHTML='<p class="record-meta">A listagem geral é restrita; você pode registrar uma nova ocorrência.</p>';return;}
+    if(!access.read||!records)return;
     try {const items=await repository.list({uid,pageSize:30}); if(!isCurrent())return;
       records.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formTitle)}</strong><small>${escape(item.occurredOn||'—')} · ${escape(item.authorLabel||'Anônimo')}</small><p>${escape(item.occurrence||'Registro de não conformidade')}</p><small class="record-meta">Pontuação: ${escape(item.pointsStatus||'PENDING_VALIDATION')}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhuma ocorrência disponível.</p>';
     } catch {if(isCurrent())records.innerHTML='<p class="empty-state" role="status">Não foi possível carregar os registros autorizados.</p>';}
@@ -64,12 +70,18 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
       auditRoot.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formId)}</strong><small>${escape(item.anonymous?'Identidade preservada em trilha restrita':'Registro autenticado')} · ${escape(item.reportId)}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhum evento de auditoria disponível.</p>';
     } catch {if(isCurrent())auditRoot.innerHTML='<p class="empty-state">Não foi possível carregar a auditoria autorizada.</p>';}
   };
+  const categoryHost=root.querySelector('[data-occurrence-category-host]');
   const open=async formId=>{
-    if(!access.write||!isCurrent()||saving)return;
+    if(!access.write||!isCurrent()||saving||loading)return;
     const form=getOccurrenceForm(formId);if(!form)return;
-    host.innerHTML='<p class="loading">Carregando catálogo protegido…</p>';
-    try {catalogs=(await repository.loadCatalog({uid})).catalogs;} catch {host.innerHTML='<p class="empty-state" role="status">O catálogo privado ainda não está disponível no Firestore FC.</p>';return;}
-    if(!isCurrent())return;
+    const categoryStatus=categoryHost.querySelector('.occurrence-category-status');
+    loading=true;
+    if(categoryStatus)categoryStatus.textContent='Carregando…';
+    categoryHost.querySelector('[data-occurrence-group-cancel]').disabled=true;
+    try {catalogs=(await repository.loadCatalog({uid})).catalogs;} catch {if(isCurrent()&&categoryStatus)categoryStatus.textContent='O catálogo privado ainda não está disponível no Firestore FC.';return;}
+    finally {loading=false;const back=categoryHost.querySelector('[data-occurrence-group-cancel]');if(back)back.disabled=false;}
+    if(!isCurrent()||!categoryHost.querySelector('dialog')?.open)return;
+    if(categoryStatus)categoryStatus.textContent='';
     host.innerHTML=occurrenceFormMarkup(form,catalogs,displayName);
     const dialog=host.querySelector('dialog'), formElement=host.querySelector('form'), status=host.querySelector('.occurrence-form-status'), saveButton=host.querySelector('[data-occurrence-save]'), cancelButton=host.querySelector('[data-occurrence-cancel]');
     host.querySelectorAll('[data-filter-select]').forEach(input=>input.addEventListener('input',()=>{
@@ -102,7 +114,15 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     });
     dialog.showModal();
   };
-  if(access.write)root.querySelectorAll('[data-occurrence-form]').forEach(button=>button.addEventListener('click',()=>void open(button.dataset.occurrenceForm)));
+  root.querySelectorAll('[data-occurrence-group]').forEach(button=>button.addEventListener('click',()=>{
+    if(!isCurrent()||saving||loading)return;
+    categoryHost.innerHTML=occurrenceCategoryMarkup(button.dataset.occurrenceGroup,{canWrite:access.write});
+    const dialog=categoryHost.querySelector('dialog');
+    categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>dialog.close());
+    dialog.addEventListener('cancel',event=>{if(loading||saving)event.preventDefault();});
+    if(access.write)categoryHost.querySelectorAll('[data-occurrence-form]').forEach(launch=>launch.addEventListener('click',()=>void open(launch.dataset.occurrenceForm)));
+    dialog.showModal();
+  }));
   void loadRecords();void loadAudit();
-  return ()=>{repository.clear();host.replaceChildren();root.replaceChildren();};
+  return ()=>{repository.clear();root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
 }
