@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import vm from 'node:vm';
 import {getChecklistDayResponsible} from '../src/checklist-responsibility-projection.js';
 
-const files = ['Config.gs', 'ChecklistValidation.gs', 'ChecklistProjection.gs', 'EvaluationLedger.gs'];
+const files = ['Config.gs', 'ChecklistRotationCore.gs', 'ChecklistValidation.gs', 'ChecklistScienceRelease.gs', 'ChecklistProjection.gs', 'EvaluationLedger.gs'];
 const source = files.map(file => readFileSync(new URL(`../apps-script-v2/${file}`, import.meta.url), 'utf8')).join('\n');
 const plain = value => JSON.parse(JSON.stringify(value));
 const profile = (uid, extra = {}) => ({uid, active:true, access:true, role:'usuario', permissions:{checklistSign:true}, displayName:`Pessoa ${uid}`, email:`${uid}@example.invalid`, ...extra});
@@ -24,7 +24,7 @@ function harness({activated = true} = {}) {
     Utilities:{DigestAlgorithm:{SHA_256:'SHA_256'},Charset:{UTF_8:'UTF_8'},computeDigest:(_algorithm,text)=>Array.from(createHash('sha256').update(text).digest()),
       formatDate:()=>'2026-10-03'}, PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key)||null})}});
   vm.runInContext(source, ctx);
-  ctx.sahmtV2Properties_ = () => ({getProperty:key=>properties.get(key)||null});
+  ctx.sahmtV2Properties_ = () => ({getProperty:key=>properties.get(key)||null,setProperty:(key,value)=>properties.set(key,value)});
   const name = (collection,id) => ctx.firestoreDocumentName_(collection,id);
   function seed(collection,id,data) { const doc = {name:name(collection,id), fields:plain(ctx.firestoreFieldsFromJs_(data)), updateTime:`v${++counter}`, createTime:`v${counter}`}; store.set(doc.name,doc); return doc; }
   function data(collection,id) { const item=store.get(name(collection,id)); return item ? plain(ctx.firestoreFieldsToJs_(item.fields)) : null; }
@@ -218,17 +218,21 @@ test('usuário comum lê somente projeção Spark confiável; ausente/pendente/d
   const reader=readFileSync(new URL('../src/checklist-responsibility-projection.js',import.meta.url),'utf8');assert.doesNotMatch(reader,/firebase\/functions|httpsCallable/);
 });
 
-function checklistFixture({complete=false,own=false,activated=true}={}) {
+function checklistFixture({complete=false,own=false,activated=true,ack=false}={}) {
   const h=harness({activated}),day='2026-10-03',signerUid=own?'person-a':'person-b';
   h.seed('users','person-a',profile('person-a',{sigla:'AA'}));h.seed('users','person-b',profile('person-b',{sigla:'BB'}));
-  h.seed('scheduleDays',day,{positions:['AA','BB']});
+  h.seed('scheduleDays',day,{positions:ack?[{position:1,sigla:'AA'},{position:2,sigla:'BB'}]:['AA','BB'],highlights:{events:[]}});
   h.seed('contacts','AA',{active:true,sigla:'AA',name:'Pessoa person-a',email:'person-a@example.invalid'});
   h.seed('contacts','BB',{active:true,sigla:'BB',name:'Pessoa person-b',email:'person-b@example.invalid'});
   h.seed('stations','station-fixture',{active:true,order:1,name:'Arsenal fictício'});
   if(complete)h.seed('checklists','response-fixture',{date:day,stationId:'station-fixture',condition:'SIM',occurrence:'',createdAt:new Date('2026-10-03T09:00:00Z')});
-  const snapshot=h.ctx.readTrustedChecklistSnapshot_(day);
-  const id=`${day}_${snapshot.fingerprint}_${signerUid}`;
-  h.seed('checklistSignatureRequests',id,{id,day,revision:snapshot.fingerprint,signerUid,declaration:true,status:'PENDING_VALIDATION',justification:'Revisão fictícia controlada do Checklist',requestedAt:new Date('2026-10-03T10:00:00Z')});
+  const snapshot=h.ctx.readTrustedChecklistSnapshot_(day,null,{eventRotation:ack});
+  const id=ack?`${day}_${signerUid}`:`${day}_${snapshot.fingerprint}_${signerUid}`;
+  const request={id,day,revision:snapshot.fingerprint,signerUid,declaration:true,status:'PENDING_VALIDATION',
+    justification:ack?'Declaro que tomei ciência das informações deste relatório.':'Revisão fictícia controlada do Checklist'};
+  if(ack)Object.assign(request,{recordKind:'ACKNOWLEDGEMENT',signerName:`Pessoa ${signerUid}`,acknowledgedAt:new Date('2026-10-03T10:00:00Z'),rotationSigla:'AA',rotationPosition:1});
+  else request.requestedAt=new Date('2026-10-03T10:00:00Z');
+  h.seed('checklistSignatureRequests',id,request);
   return {...h,day,id,signerUid,snapshot};
 }
 
@@ -386,4 +390,139 @@ test('rollout preserva leitor operacional até homologação e não conecta proj
   const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
   assert.match(reader,/remotePreview/);assert.doesNotMatch(reader,/checklistResponsibilities/);
   assert.doesNotMatch(main,/checklist-responsibility-projection/);
+});
+
+test('ciência preserva transferência diária, autoria e natureza do registro sem assumir execução',()=>{
+ for(const own of [true,false]) {
+ const h=checklistFixture({own,ack:true});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
+ const receipt=h.data('checklistSignatures',`${h.day}_${h.snapshot.revision}`);
+ assert.equal(receipt.recordKind,'ACKNOWLEDGEMENT');assert.equal(receipt.declarationText,'Declaro que tomei ciência das informações deste relatório.');
+ assert.equal(receipt.signerUid,h.signerUid);assert.equal(receipt.missing,1);
+ assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,own?0:1);
+ assert.equal(h.data('checklistSignatureRequests',h.id).responsibleAdjustment,own?0:-1);
+ assert.equal(receipt.acknowledgedAt,'2026-10-03T10:00:00.000Z');
+ assert.ok(h.commits.at(-1).writes.find(w=>w.update.name.includes('/checklistSignatures/')).updateTransforms.some(t=>t.fieldPath==='signedAt'));
+ }
+});
+
+test('ciência usa o rodízio de Eventos para pontuar o próprio indicado com zero',()=>{
+ const h=checklistFixture({ack:true});h.seed('scheduleDays',h.day,{positions:[{position:1,sigla:'AA'},{position:2,sigla:'BB'}],highlights:{events:['EVENTO:AA:AA:event-fixture']}});
+ const request=h.get('checklistSignatureRequests',h.id);h.seed('checklistSignatureRequests',h.id,{...request,revision:h.ctx.readTrustedChecklistSnapshot_(h.day,null,{eventRotation:true}).fingerprint,rotationSigla:'BB',rotationPosition:2});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
+ assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,0);
+ assert.equal(h.values('checklistSignatures')[0].responsibleUid,'person-b');
+});
+
+test('ciência sem rodízio confirmado permanece registrada e não gera pontuação',()=>{
+ const h=checklistFixture({ack:true});
+ h.seed('checklistSignatureRequests',h.id,{...h.get('checklistSignatureRequests',h.id),rotationSigla:null,rotationPosition:null});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id)),'NEEDS_REVIEW');
+ assert.equal(h.data('checklistSignatureRequests',h.id).recordKind,'ACKNOWLEDGEMENT');
+ assert.equal(h.values('checklistSignatures').length,0);assert.equal(h.values('evaluationLedger').length,0);
+});
+
+test('ciência permanece registrada sem pontos quando Eventos muda após a confirmação',()=>{
+ const h=checklistFixture({ack:true});
+ h.seed('scheduleDays',h.day,{positions:[{position:1,sigla:'AA'},{position:2,sigla:'BB'}],highlights:{events:['EVENTO:AA:AA:event-fixture']}});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id)),'NEEDS_REVIEW');
+ const request=h.data('checklistSignatureRequests',h.id);
+ assert.equal(request.recordKind,'ACKNOWLEDGEMENT');assert.equal(request.acknowledgedAt,'2026-10-03T10:00:00.000Z');
+ assert.equal(h.values('checklistSignatures').length,0);assert.equal(h.values('evaluationLedger').length,0);
+});
+
+function scienceFixture(options={}) {
+ const h=checklistFixture({ack:true,activated:false,...options});
+ h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_OPERATOR','operator@example.invalid');
+ h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_ENABLED','true');
+ h.seed('checklistScienceRuntime','state',{enabled:true,release:'checklist-science-v1',activatedAt:new Date('2026-10-03T09:00:00Z')});
+ return h;
+}
+
+test('ativação exclusiva da ciência apura o par e resumo sem habilitar outras modalidades',()=>{
+ for(const own of [true,false]) {
+  const h=scienceFixture({own});
+  assert.throws(()=>h.ctx.evaluationAssertOperator_(true));
+  assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id},{scienceOnly:true}),'VALIDATED');
+  assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,own?0:1);
+  assert.equal(h.ctx.evaluationPublishCategorySummary_('PERFORMANCE',{scienceOnly:true}).status,'CONFIRMED');
+  assert.equal(h.data('evaluationSummaries',h.signerUid).performanceTotal,own?0:1);
+  assert.notEqual(h.data('evaluationRuntime','state').homologationVerified,true);
+  assert.equal(h.properties.has('SAHMT_V2_EVALUATION_ENABLED'),false);
+  assert.throws(()=>h.ctx.applyEvaluationAwardDesired_(base()),/homologação/);
+  assert.throws(()=>h.ctx.evaluationPublishCategorySummary_('GOVERNANCE',{scienceOnly:true}),/CATEGORY_DENIED/);
+ }
+});
+
+test('ciência isolada exclui pedido legado e recibo anterior à ativação sem modificar históricos',()=>{
+ for(const legacy of [true,false]) {
+  const h=scienceFixture();
+  const request=h.get('checklistSignatureRequests',h.id);
+  h.seed('checklistSignatureRequests',h.id,{...request,...(legacy?{recordKind:'LEGACY_SIGNATURE'}:{acknowledgedAt:new Date('2026-10-02T09:00:00Z')})});
+  assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id},{scienceOnly:true}),'OUTSIDE_RELEASE');
+  assert.equal(h.data('checklistSignatureRequests',h.id).status,'PENDING_VALIDATION');
+  assert.equal(h.values('evaluationLedger').length,0);
+ }
+});
+
+test('consulta de ciência é limitada por modalidade, status e início da ativação',()=>{
+ const h=scienceFixture(),active=h.ctx.checklistScienceAssertOperator_();
+ h.seed('checklistSignatureRequests','legacy',{id:'legacy',status:'PENDING_VALIDATION',acknowledgedAt:new Date('2026-10-03T10:00:00Z')});
+ h.seed('checklistSignatureRequests','old',{id:'old',recordKind:'ACKNOWLEDGEMENT',status:'PENDING_VALIDATION',acknowledgedAt:new Date('2026-10-02T10:00:00Z')});
+ assert.deepEqual(plain(h.ctx.listPendingChecklistScienceRequests_(active.activatedAt)),[{id:h.id}]);
+ const query=h.requests.at(-1).body.structuredQuery;
+ assert.equal(query.limit,20);assert.deepEqual(query.select.fields,[{fieldPath:'id'}]);
+});
+
+test('desativação, operador divergente ou versão incorreta bloqueiam a ciência isolada',()=>{
+ for(const mode of ['property','operator','runtime','release']) {
+  const h=scienceFixture();
+  if(mode==='property')h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_ENABLED','false');
+  else if(mode==='operator')h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_OPERATOR','another@example.invalid');
+  else h.seed('checklistScienceRuntime','state',{...h.get('checklistScienceRuntime','state'),...(mode==='runtime'?{enabled:false}:{release:'other-release'})});
+  assert.throws(()=>h.ctx.validateChecklistSignatureRequest_({id:h.id},{scienceOnly:true}),/CHECKLIST_SCIENCE_DISABLED/);
+  assert.equal(h.commits.length,0);
+ }
+});
+
+test('revogação concorrente da ciência aborta o commit e não atribui pontos',()=>{
+ const h=scienceFixture();
+ h.beforeCommit(()=>h.seed('checklistScienceRuntime','state',{...h.get('checklistScienceRuntime','state'),enabled:false}));
+ assert.throws(()=>h.ctx.validateChecklistSignatureRequest_({id:h.id},{scienceOnly:true}),/CHECKLIST_SCIENCE_DISABLED/);
+ assert.equal(h.values('evaluationLedger').length,0);
+});
+
+function installHarness() {
+ const h=harness({activated:false}),triggers=[];
+ h.ctx.ScriptApp={getScriptId:()=> 'synthetic-script',getProjectTriggers:()=>triggers,
+  newTrigger:handler=>({timeBased:()=>({everyMinutes:minutes=>({create:()=>{assert.equal(minutes,5);const t={getHandlerFunction:()=>handler};triggers.push(t);return t;}})})}),
+  deleteTrigger:t=>triggers.splice(triggers.indexOf(t),1)};
+ h.ctx.DriveApp={getFileById:()=>({getOwner:()=>({getEmail:()=> 'operator@example.invalid'})})};
+ h.ctx.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})};
+ const logs=[];h.ctx.console={log:value=>logs.push(value)};
+ return {...h,triggers,logs};
+}
+
+test('instalação é exclusiva do dono, idempotente e reversível sem ativar avaliação global',()=>{
+ const h=installHarness();
+ assert.equal(h.ctx.instalarCienciaChecklistV1().code,'CHECKLIST_SCIENCE_INSTALLED');
+ const first=h.data('checklistScienceRuntime','state').activatedAt;
+ assert.equal(h.ctx.instalarCienciaChecklistV1().code,'CHECKLIST_SCIENCE_INSTALLED');
+ assert.equal(h.triggers.length,1);assert.equal(h.data('checklistScienceRuntime','state').activatedAt,first);
+ assert.equal(h.values('evaluationLedger').length,0);assert.equal(h.data('evaluationRuntime','state'),null);
+ assert.equal(h.ctx.desativarCienciaChecklistV1().code,'CHECKLIST_SCIENCE_DISABLED');
+ assert.equal(h.triggers.length,0);assert.equal(h.data('checklistScienceRuntime','state').enabled,false);
+ assert.equal(h.properties.get('SAHMT_V2_CHECKLIST_SCIENCE_ENABLED'),'false');
+ assert.doesNotMatch(h.logs.join(''),/operator@example|synthetic-script|Bearer/);
+ h.ctx.DriveApp={getFileById:()=>({getOwner:()=>({getEmail:()=> 'another@example.invalid'})})};
+ assert.throws(()=>h.ctx.instalarCienciaChecklistV1(),/OWNER_REQUIRED/);
+});
+
+test('falha ao criar gatilho deixa o processamento fechado e não modifica registros',()=>{
+ const h=installHarness();h.ctx.ScriptApp.newTrigger=()=>{throw new Error('synthetic failure');};
+ assert.equal(h.ctx.instalarCienciaChecklistV1().code,'CHECKLIST_SCIENCE_INSTALL_FAILED');
+ assert.equal(h.properties.get('SAHMT_V2_CHECKLIST_SCIENCE_ENABLED'),'false');
+ assert.throws(()=>h.ctx.checklistScienceAssertOperator_(),/DISABLED/);
+ assert.equal(h.values('evaluationLedger').length,0);
+ assert.doesNotMatch(h.logs.join(''),/synthetic failure/);
 });

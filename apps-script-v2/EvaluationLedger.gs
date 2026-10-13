@@ -292,9 +292,14 @@ function initializeEvaluationCategoryState_(category) {
   });
 }
 
-function evaluationPublishCategorySummary_(category) {
-  evaluationAssertOperator_(false);
+function evaluationPublishCategorySummary_(category, options) {
+  const scienceOnly = options && options.scienceOnly === true;
+  if (scienceOnly) {
+    if (category !== 'PERFORMANCE') throw new Error('CHECKLIST_SCIENCE_CATEGORY_DENIED');
+    checklistScienceAssertOperator_();
+  } else evaluationAssertOperator_(false);
   return evaluationRunTransaction_(function (transaction) {
+    if (scienceOnly) checklistScienceAssertOperator_(transaction);
     const fields = evaluationCategoryFields_(category), runtime = evaluationGet_('evaluationRuntime', 'state', transaction);
     if (!runtime || !Number.isInteger(runtime[fields.revision])) return {writes: [], result: {status: 'PENDING', reason: 'Categoria ainda não reconciliada.'}};
     const reference = evaluationGet_('evaluationReference', 'team', transaction);

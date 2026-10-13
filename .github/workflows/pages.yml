@@ -46,6 +46,8 @@ jobs:
         run: npm run test:rules
       - name: Run isolated evaluation transactions
         run: npm run test:evaluation-integration
+      - name: Run isolated Checklist science transactions
+        run: npm run test:checklist-integration
       - name: Run Cloud Functions Emulator tests
         env:
           FUNCTIONS_DISCOVERY_TIMEOUT: '60'

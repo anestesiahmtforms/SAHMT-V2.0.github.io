@@ -11,8 +11,11 @@ const {initializeTestEnvironment, assertFails, assertSucceeds} = require('@fireb
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   test('listeners reais exigem emulador local explícito', {skip: 'Execute com firebase emulators:exec --project demo-sahmt-v2 --only firestore.'}, () => {});
 } else {
-  assert.match(process.env.FIRESTORE_EMULATOR_HOST, /^(?:127\.0\.0\.1|localhost):(?:8080|8081)$/);
-  const emulatorPort = Number(process.env.FIRESTORE_EMULATOR_HOST.split(':').at(-1));
+  const [emulatorAddress, emulatorPortText] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
+  assert.ok(['127.0.0.1', 'localhost'].includes(emulatorAddress), 'Firestore Emulator must use loopback');
+  assert.match(emulatorPortText, /^\d{1,5}$/, 'Firestore Emulator port must be numeric');
+  const emulatorPort = Number(emulatorPortText);
+  assert.ok(emulatorPort >= 1 && emulatorPort <= 65535, 'Firestore Emulator port must be valid');
   const projectId = 'demo-sahmt-v2', day = '2026-10-01', month = '2026-10';
   const measures = {projectId, emulator: `127.0.0.1:${emulatorPort}`, fixtureOnly: true, sdk: 'firebase/firestore', startedAt: new Date().toISOString(), timings: [], listenerMetrics: [], indexAudit: []};
   let environment, checklist, responsibility, checklistDates;

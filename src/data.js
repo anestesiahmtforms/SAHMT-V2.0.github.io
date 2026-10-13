@@ -1904,6 +1904,10 @@ function checklistSignatureRequestId(day, revision, uid) {
   return `${day}_${revision}_${uid}`;
 }
 
+function checklistAcknowledgementRequestId(day, uid) {
+  return `${day}_${uid}`;
+}
+
 export async function previewChecklistSignatureRequest({day, stations = [], records = [], uid} = {}) {
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Não foi possível identificar o Checklist ou a sessão.');
   const latest = new Map();
@@ -1915,37 +1919,41 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
   });
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({day, entries})));
   const revision = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
-  const id = checklistSignatureRequestId(day, revision, uid);
+  const id = checklistAcknowledgementRequestId(day, uid);
   const snapshot = await getDocFromServer(doc(db, 'checklistSignatureRequests', id));
   const request = snapshot.exists() ? snapshot.data() : null;
   return {
     day, revision, total: entries.length, missing: entries.filter((entry) => !entry.condition).length,
     responsible: null,
-    declaration: 'Confirmo que revisei o relatório do Checklist e solicito a validação da assinatura.',
+    declaration: 'Declaro que tomei ciência das informações deste relatório.',
     requestStatus: request?.status || '', requestId: request?.id || '', validationMessage: request?.validationMessage || ''
   };
 }
 
-export async function createChecklistSignatureRequest({day, revision, declaration, justification, uid} = {}) {
+export async function createChecklistSignatureRequest({day, revision, declaration, uid, signerName, rotationSigla = null, rotationPosition = null} = {}) {
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !/^[a-f0-9]{64}$/.test(revision || '') || declaration !== true) {
     throw new Error('Atualize o relatório e confirme a declaração antes de solicitar a validação.');
   }
-  const reason = String(justification || '').trim().slice(0, 500);
-  if (reason.length < 8) throw new Error('Informe uma justificativa de pelo menos 8 caracteres para a auditoria.');
-  const id = checklistSignatureRequestId(day, revision, uid);
+  if (typeof signerName !== 'string' || !signerName.trim() || signerName.length > 120) throw new Error('Não foi possível identificar seu nome de perfil.');
+  if (!((rotationSigla === null && rotationPosition === null) ||
+      (typeof rotationSigla === 'string' && /^(?:[A-Z]{2}|L2)$/.test(rotationSigla) && Number.isInteger(rotationPosition) && rotationPosition >= 1 && rotationPosition <= 30))) {
+    throw new Error('O rodízio disponível não corresponde ao formato esperado.');
+  }
+  const reason = 'Declaro que tomei ciência das informações deste relatório.';
+  const id = checklistAcknowledgementRequestId(day, uid);
   const reference = doc(db, 'checklistSignatureRequests', id);
   return runTransaction(db, async (transaction) => {
     const existing = await transaction.get(reference);
     if (existing.exists()) {
       const request = existing.data();
-      if (request.signerUid !== uid || request.day !== day || request.revision !== revision) {
-        throw new Error('O pedido de assinatura existente não corresponde a esta sessão.');
+      if (request.signerUid !== uid || request.day !== day || request.recordKind !== 'ACKNOWLEDGEMENT') {
+        throw new Error('O registro de ciência existente não corresponde a esta sessão.');
       }
       return {id, status: request.status, alreadyRequested: true};
     }
     transaction.set(reference, {
-      id, day, revision, signerUid: uid, declaration: true,
-      justification: reason, status: 'PENDING_VALIDATION', requestedAt: serverTimestamp()
+      id, day, revision, signerUid: uid, signerName: signerName.trim(), declaration: true, recordKind: 'ACKNOWLEDGEMENT',
+      rotationSigla, rotationPosition, justification: reason, status: 'PENDING_VALIDATION', acknowledgedAt: serverTimestamp()
     });
     return {id, status: 'PENDING_VALIDATION', alreadyRequested: false};
   });

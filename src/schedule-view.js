@@ -1,11 +1,4 @@
-const dcAliasesByWeekday = Object.freeze({
-  segunda: ['CR', 'LH'],
-  terca: ['CR', 'LH', 'AD'],
-  quarta: ['CR', 'LH', 'AD'],
-  quinta: ['CR', 'LH'],
-  sexta: ['CR', 'LA']
-});
-const dcFallback = ['AD', 'CR', 'LA', 'LH'];
+import {checklistRotationWeekday, resolveChecklistRotationSiglas} from './checklist-rotation-core.js';
 const siglaPattern = /(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*/g;
 
 function normalizeWeekday(value = '') {
@@ -17,8 +10,7 @@ function normalizeWeekday(value = '') {
 export function weekdayForDate(dateKey, label = '') {
   const supplied = normalizeWeekday(label);
   if (supplied) return supplied;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey || '')) return '';
-  return normalizeWeekday(new Intl.DateTimeFormat('pt-BR', {weekday: 'long', timeZone: 'UTC'}).format(new Date(`${dateKey}T12:00:00Z`)));
+  return checklistRotationWeekday(dateKey);
 }
 
 export function extractScheduleSiglas(value = '') {
@@ -30,9 +22,7 @@ function expandScheduleSiglas(value = '') {
 }
 
 export function resolveScheduleSiglas(token, weekday) {
-  const normalized = String(token || '').toUpperCase();
-  if (normalized === 'DC') return [...(dcAliasesByWeekday[weekday] || dcFallback)];
-  return [...new Set(extractScheduleSiglas(normalized).flatMap((group) => group.split(/[/-]/).flatMap((sigla) => sigla === 'DC' ? (dcAliasesByWeekday[weekday] || dcFallback) : [sigla])))];
+  return resolveChecklistRotationSiglas(token, weekday);
 }
 
 function schedulePositions(schedule = {}) {
