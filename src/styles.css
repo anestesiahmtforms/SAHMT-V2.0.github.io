@@ -2094,3 +2094,11 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 @media(max-width:360px){.occurrence-group{padding:7px;gap:6px;font-size:.72rem;line-height:1.1}.occurrence-group .occurrence-icon{flex-basis:26px;width:26px;height:26px;padding:3px}.occurrence-group__arrow{font-size:1.25rem}}
 .module-card--inactive,.module-card--inactive:nth-child(n){cursor:not-allowed;filter:grayscale(.55);opacity:.62;box-shadow:0 3px 0 #93a4ab,0 5px 9px #001b3518!important;transform:none!important}
 .module-card--inactive:active,.module-card--inactive:hover{transform:none!important;box-shadow:0 3px 0 #93a4ab,0 5px 9px #001b3518!important}
+
+/* Escala: página fixa e espaço equilibrado acima e abaixo do bloco diário. */
+html:has(.app-shell--home),body:has(.app-shell--home){overflow:hidden;overscroll-behavior:none}
+.app-shell--home{position:fixed;inset:0;width:100%;height:100dvh;min-height:0;overscroll-behavior:none}
+.app-shell--home>.topbar{position:relative;top:auto}
+.app-shell--home .identity-card{margin-bottom:0}
+.app-shell--home .main-content{padding-top:clamp(0px,calc(1dvh - 5px),5px)}
+.app-shell--home .schedule-card{position:relative;top:auto}
