@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {GENERAL_READ_PERMISSIONS, withGeneralReadPermissions} from '../src/general-access.js';
+import {FIRST_LOGIN_COHORTS} from '../src/management-first-login-cohort.js';
 
 const dataSource = readFileSync(new URL('../src/data.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const functionStart = dataSource.indexOf('export async function saveUserProfile(');
@@ -28,7 +29,7 @@ function harness({current = null, request = null, readError, commitError, writeE
   let commitCount = 0;
   let timestampCount = 0;
   const context = vm.createContext({
-    db, withGeneralReadPermissions,
+    db, withGeneralReadPermissions, FIRST_LOGIN_COHORTS,
     doc: (actualDb, collection, id) => {
       assert.equal(actualDb, db);
       return {collection, id};
@@ -118,11 +119,29 @@ test('novo perfil aprovado recebe somente as duas consultas gerais e conserva me
   assert.equal(record.active, true);
   assert.equal(record.access, true);
   assert.equal(record.role, 'anestesiologista');
+  assert.equal(record.firstLoginCohort, 'REVIEW');
   assert.ok(record.createdAt.serverTimestamp);
   assert.ok(record.updatedAt.serverTimestamp);
   assert.deepEqual(h.reads.map((ref) => ref.collection), ['users', 'accessRequests']);
   assert.equal(h.batchCount(), 0);
   assert.deepEqual(input, before);
+});
+
+test('saveUserProfile preserva firstLoginCohort existente e ignora qualquer tentativa de alterá-lo pelo formulário comum', async () => {
+  for (const cohort of FIRST_LOGIN_COHORTS) {
+    const h = harness({current: {uid:'pessoa-ficticia',createdAt:{seconds:123,nanoseconds:0},firstLoginCohort:cohort,permissions:{}}});
+    await h.save(profileInput({firstLoginCohort:'OPERATIONAL'}), 'admin-ficticio');
+    assert.equal(h.writes[0].record.firstLoginCohort, cohort);
+  }
+});
+
+test('saveUserProfile deixa perfis legados sem classificação e bloqueia classificação persistida inválida sem escrita', async () => {
+  const legacy = harness({current: {uid:'pessoa-ficticia',createdAt:{seconds:123,nanoseconds:0},permissions:{}}});
+  await legacy.save(profileInput({firstLoginCohort:'OPERATIONAL'}), 'admin-ficticio');
+  assert.equal(Object.hasOwn(legacy.writes[0].record,'firstLoginCohort'), false);
+  const invalid = harness({current: {uid:'pessoa-ficticia',createdAt:{seconds:123,nanoseconds:0},firstLoginCohort:'ADMIN',permissions:{}}});
+  await assert.rejects(invalid.save(profileInput(), 'admin-ficticio'), /classificação de primeiro login existente é inválida/);
+  assert.deepEqual(invalid.writes, []);
 });
 
 test('perfil existente mantém createdAt e todas as outras permissões aceitas fornecidas pelo formulário', async () => {
@@ -151,13 +170,14 @@ test('perfil aprovado sem mapa ou com leituras false recebe as duas consultas ao
 test('saveUserProfile mantém o filtro de IDs conhecidos e de valores exatamente true', async () => {
   const h = harness();
   const input = profileInput({permissions: {
-    labelsRead: true, eventsWrite: true, checklistWrite: false,
+    labelsRead: true, eventsWrite: true, checklistWrite: false, occurrencesRead:true, occurrencesWrite:true, occurrencesAuditRead:true,
     usersManage: 'true', admin: 1, financeRead: 'yes', desconhecida: true,
     trainingsRead: false, notificationsRead: false, notificationsManage: false
   }});
   const before = structuredClone(input);
   await h.save(input, 'admin-ficticio');
-  assert.deepEqual(h.writes[0].record.permissions, {labelsRead: true, eventsWrite: true, trainingsRead: true, notificationsRead: true});
+  assert.deepEqual(h.writes[0].record.permissions, {labelsRead: true, eventsWrite: true, occurrencesRead:true, occurrencesWrite:true,
+    occurrencesAuditRead:true, trainingsRead: true, notificationsRead: true});
   assert.deepEqual(input, before);
 });
 

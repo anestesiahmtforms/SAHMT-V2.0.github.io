@@ -14,6 +14,8 @@ const claims = () => ({managementSourceProjectId: 'sahmt-17a16', managementMembe
   managementSourceVersion: 1, managementSourceHash: 'a'.repeat(64), managementPolicyVersion: 'synthetic-policy-v1',
   managementSourceAuthTimeMs: START - 1000});
 const signBody = () => ({uid: 'uid-synthetic', claims: claims(), issuedAtSeconds: START / 1000, expiresAtSeconds: START / 1000 + 60});
+const signFcBody = () => ({uid: 'uid-synthetic', claims: {sahmtFaSourceProjectId:'sahmt-17a16',sahmtOccurrencesCatalogRead:false,
+  sahmtOccurrencesRead:false,sahmtOccurrencesWrite:false,sahmtOccurrencesAuditRead:false}, issuedAtSeconds: START / 1000, expiresAtSeconds: START / 1000 + 60});
 const lookup = () => ({users: [{localId: 'uid-synthetic', disabled: false, emailVerified: true, validSince: '0',
   providerUserInfo: [{providerId: 'google.com', rawId: 'google-synthetic'}]}]});
 const factory = (changes = {}, options = {}) => createManagementGatewayProtocol({policy: policy(changes), secret: TEST_KEY,
@@ -38,8 +40,8 @@ function ledgerDouble() {
     ids.add(id); nonces.add(nonce); records.push(metadata); return fullReceipt(metadata);
   }};
 }
-const handlers = dispatch => ({AUTH_USER_LOOKUP_FA: {enabled: true, dispatch}, AUTH_USER_LOOKUP_FB: {enabled: true, dispatch},
-  SIGN_FB_CUSTOM_TOKEN: {enabled: true, dispatch}});
+const handlers = dispatch => ({AUTH_USER_LOOKUP_FA: {enabled: true, dispatch}, AUTH_USER_LOOKUP_FB: {enabled: true, dispatch}, AUTH_USER_LOOKUP_FC: {enabled: true, dispatch},
+  SIGN_FB_CUSTOM_TOKEN: {enabled: true, dispatch}, SIGN_FC_CUSTOM_TOKEN: {enabled: true, dispatch}});
 const expectCode = (fn, code) => assert.throws(fn, error => error?.code === code && error.message === code);
 const expectAsyncCode = (fn, code) => assert.rejects(fn, error => error?.code === code && error.message === code);
 
@@ -90,6 +92,26 @@ for (const [field, value] of [['requestId', 'a'.repeat(31)], ['requestId', 'A'.r
 test('request verified as deep copy with fixed metadata', () => {
   const p = factory(), r = request(p); const verified = p.verifyRequest(r); verified.body.uid = 'other'; assert.equal(r.body.uid, 'uid-synthetic');
   assert.equal(r.sourceProjectId, 'sahmt-17a16'); assert.equal(r.destinationProjectId, 'sahmt-gestao-5ae66');
+});
+test('FC custom token is pinned to FC and cannot carry permission claims', () => {
+  const p = factory(), r = request(p, {operation: 'SIGN_FC_CUSTOM_TOKEN', body: signFcBody()});
+  assert.equal(r.destinationProjectId, 'indicadores---sahmt'); assert.deepEqual(p.verifyRequest(r), r);
+  for (const claims of [{admin: true}, {managementManage: true}, {...signFcBody().claims,sahmtOccurrencesCatalogRead:true}])
+    assert.throws(() => request(p, {operation: 'SIGN_FC_CUSTOM_TOKEN', body: {...signFcBody(), claims}}));
+});
+test('first-login signing operation is pinned to FA, has no caller UID or claims, and returns only a fixed result shape',()=>{
+  const p=factory(),body={email:'professional@example.org',googleSub:'google-sub-synthetic',
+    issuedAtSeconds:START/1000,expiresAtSeconds:START/1000+300};
+  const r=p.createRequest({operation:'FIRST_LOGIN_FA_SIGN',requestId:'5'.repeat(32),nonce:'6'.repeat(32),
+    issuedAtMs:START,expiresAtMs:START+10000,body});
+  assert.equal(r.destinationProjectId,'sahmt-17a16');assert.deepEqual(r.body,body);
+  const result={status:'FIRST_LOGIN',uid:'uid-synthetic',signedJwt:'e30.e30.c2lnbmF0dXJl'};
+  assert.deepEqual(p.verifyResponse(p.createResponse(r,{status:'SUCCESS',code:'OK',body:result}),r).body,result);
+  const deniedResult={status:'DENIED',code:'FA_ACCOUNT_NOT_IN_OPERATIONAL_COHORT'};
+  assert.deepEqual(p.verifyResponse(p.createResponse(r,{status:'SUCCESS',code:'OK',body:deniedResult}),r).body,deniedResult);
+  for(const invalid of [{...body,uid:'caller-selected'},{...body,claims:{admin:true}},{...body,email:'UPPER@example.org'},
+    {...body,googleSub:'bad/id'}])assert.throws(()=>p.createRequest({operation:'FIRST_LOGIN_FA_SIGN',requestId:'7'.repeat(32),nonce:'8'.repeat(32),
+      issuedAtMs:START,expiresAtMs:START+10000,body:invalid}));
 });
 for (const field of ['audience', 'keyId', 'sourceProjectId', 'destinationProjectId', 'protocolVersion', 'direction', 'operation', 'signature', 'bodySha256'])
   test('tampered envelope rejects field ' + field, () => { const p = factory(), r = request(p); r[field] = 'wrong'; assert.throws(() => p.verifyRequest(r)); });

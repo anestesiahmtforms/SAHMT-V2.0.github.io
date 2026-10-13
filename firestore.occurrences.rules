@@ -1,0 +1,107 @@
+rules_version = '2';
+
+// FC occurrence records use project-specific claims issued after FA authorization.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedFromFa() {
+      return database == '(default)' && request.auth != null &&
+        request.auth.token.firebase is map &&
+        request.auth.token.firebase.sign_in_provider == 'custom' &&
+        request.auth.token.sahmtFaSourceProjectId == 'sahmt-17a16';
+    }
+    function canCatalog() { return signedFromFa() && request.auth.token.sahmtOccurrencesCatalogRead == true; }
+    function canWrite() { return signedFromFa() && request.auth.token.sahmtOccurrencesWrite == true; }
+    function canRead() { return signedFromFa() && request.auth.token.sahmtOccurrencesRead == true; }
+    function canAudit() { return signedFromFa() && request.auth.token.sahmtOccurrencesAuditRead == true; }
+    function reportPath(id) { return /databases/$(database)/documents/occurrenceReports/$(id); }
+    function auditPath(id) { return /databases/$(database)/documents/occurrenceAudit/$(id); }
+    function scorePath(id) { return /databases/$(database)/documents/occurrenceScoreClaims/$(id); }
+    function canReadReport(id) {
+      return canRead() || (canWrite() && resource == null) ||
+        (canWrite() && exists(auditPath(id)) && get(auditPath(id)).data.uid == request.auth.uid);
+    }
+    function canReadPrivate(id) {
+      return canAudit() || (canWrite() && resource == null) ||
+        (canWrite() && resource.data.uid == request.auth.uid);
+    }
+    function validReport(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
+          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
+          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
+        data.schemaVersion == 1 && data.id == reportId &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.formTitle is string && data.formTitle.size() > 0 && data.formTitle.size() <= 180 &&
+        data.classification is map && data.classification.keys().size() <= 4 &&
+        data.details is map && data.details.keys().size() <= 20 &&
+        data.anonymous is bool && data.authorLabel is string && data.authorLabel.size() > 0 && data.authorLabel.size() <= 120 &&
+        (data.anonymous == true ? data.authorLabel == 'Anônimo' : data.authorLabel != 'Anônimo') &&
+        data.pointsClaimed == 2 && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
+        (data.formId == 'F10' ? data.occurredOn == null && data.occurrence == null && data.description == null :
+          data.occurredOn is string && data.occurredOn.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 180 &&
+          data.description is string && data.description.size() > 0 && data.description.size() <= 5000);
+    }
+    function validAudit(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
+        data.schemaVersion == 1 && data.reportId == reportId && data.uid == request.auth.uid &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.anonymous is bool && data.createdAt == request.time;
+    }
+    function validScoreClaim(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&
+        data.schemaVersion == 1 && data.id == reportId && data.source == 'REGISTRO_OCORRENCIA' &&
+        data.sourceId == reportId && data.uid == request.auth.uid &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.points == 2 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
+    }
+    function pairedAfter(reportId) {
+      let report = getAfter(reportPath(reportId)).data;
+      let audit = getAfter(auditPath(reportId)).data;
+      let claim = getAfter(scorePath(reportId)).data;
+      return report.id == reportId && report.createdAt == request.time &&
+        audit.reportId == reportId && audit.uid == request.auth.uid && audit.formId == report.formId &&
+        audit.anonymous == report.anonymous && audit.createdAt == request.time &&
+        claim.id == reportId && claim.sourceId == reportId && claim.uid == request.auth.uid &&
+        claim.formId == report.formId && claim.points == 2 && claim.status == 'PENDING_VALIDATION' &&
+        claim.createdAt == request.time;
+    }
+
+    match /occurrenceCatalogs/current {
+      allow get: if canCatalog();
+      allow list, create, update, delete: if false;
+    }
+    match /occurrenceReports/{reportId} {
+      allow get: if canReadReport(reportId);
+      allow list: if canRead() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if canWrite() && !exists(reportPath(reportId)) &&
+        validReport(reportId, request.resource.data) && pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    match /occurrenceAudit/{reportId} {
+      allow get: if canReadPrivate(reportId);
+      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if canWrite() && !exists(auditPath(reportId)) &&
+        validAudit(reportId, request.resource.data) && pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    match /occurrenceScoreClaims/{reportId} {
+      allow get: if canReadPrivate(reportId);
+      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if canWrite() && !exists(scorePath(reportId)) &&
+        validScoreClaim(reportId, request.resource.data) && pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    // Preserve the existing bounded read probe used by the indicators pilot.
+    match /indicators/{indicatorId} {
+      allow list: if database == '(default)' && request.auth != null &&
+        request.auth.token.firebase is map &&
+        request.auth.token.firebase.sign_in_provider == 'custom' &&
+        request.query.limit != null && request.query.limit <= 1;
+      allow get, create, update, delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

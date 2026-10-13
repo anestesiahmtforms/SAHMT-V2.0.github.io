@@ -17,27 +17,52 @@ pinada. Não importar este arquivo na PWA.
 | --- | --- | --- |
 | AUTH_USER_LOOKUP_FA | somente uid | users com localId, emailVerified, providerUserInfo(providerId/rawId), disabled e validSince quando presentes |
 | AUTH_USER_LOOKUP_FB | somente uid | mesma projeção; projeto FB fixo |
+| AUTH_USER_LOOKUP_FC | somente uid | mesma projeção; projeto FC fixo |
 | SIGN_FB_CUSTOM_TOKEN | uid, claims, issuedAtSeconds, expiresAtSeconds | somente keyId/signedJwt, provisório e em memória |
+| SIGN_FC_CUSTOM_TOKEN | uid, claims vazio, issuedAtSeconds, expiresAtSeconds | somente keyId/signedJwt, provisório e em memória; projeto FC fixo |
+| FIRST_LOGIN_FA_SIGN | e-mail e sub já verificados pelo Worker, issuedAtSeconds, expiresAtSeconds; nonce do envelope derivado do digest Google | `ALREADY_LINKED`, `DENIED` com código fechado, ou token FA provisório para o UID resolvido no FA |
 
-Os projetos, endpoints, audiência Firebase e signatário FB não vêm do corpo.
-O signatário é uma service account FB fixa na configuração privada pinada.
+Os projetos, endpoints, audiência Firebase e signatários não vêm do corpo.
+O signatário FA, FB e FC são contas de serviço distintas, cada uma fixa na
+configuração privada pinada e restrita ao projeto correspondente. A operação de
+primeiro login não aceita UID do chamador: resolve a conta pelo e-mail do token
+Google validado no Worker, confirma provedor, lê somente `active`, `access` e
+`firstLoginCohort` no perfil FA, exige `OPERATIONAL` e só então assina com
+`claims:{}` no signer FA. Classificação ausente, estrutural, homologação ou
+desconhecida é negada. Nenhuma lista paralela de e-mails/UIDs é usada. A operação
+permanece desabilitada por padrão. A conta signer FA e as provas sintéticas de
+assinatura foram relatadas como concluídas; este relatório local não repetiu nem
+revalidou essas chamadas remotas.
 As claims são exatamente as seis do núcleo: managementSourceProjectId,
 managementMemberId, managementSourceVersion, managementSourceHash,
 managementPolicyVersion e managementSourceAuthTimeMs. A policy version é pinada
 também no gateway. TTL máximo é o menor contrato configurado, sempre ≤3.600 segundos;
 iat precisa ser plausível e pertencer à janela da requisição.
+Para FC, claims precisa ser exatamente `{}`: o token replica o UID de FA, mas não
+transfere permissões, claims ou direitos de gestão de FB. O broker exige que a
+conta Auth de FC já exista com o mesmo UID e faz lookup antes e depois de assinar.
+Logo, FC precisa ser provisionado separadamente antes de a sessão ser conectada;
+este Gateway não cria contas. Firestore FC continua sujeito às Rules próprias,
+que não são alteradas por este token.
 
 O gateway confia no Worker autenticado como executor de servidor. HMAC não prova
-direitos do participante. Somente o núcleo do broker, após validar token FA,
-direitos, vínculo e usuário FB existente, pode fornecer UID/claims ao signer.
-Não é um endpoint para UID ou permissões enviados pela PWA. O dispatcher não
-cria/importa/vincula usuários e não fornece uma reconciliação JIT dos 53 DEFER.
-Entregar um custom token sem as verificações do broker continua proibido.
+direitos do participante. Na sessão de gestão, somente o broker após validar o
+token FA e as políticas/vínculo existentes pode fornecer UID/claims aos signers
+FB/FC. No primeiro login, a operação é distinta: recebe e-mail/sub somente do
+Worker que verificou o token Google, resolve o UID no FA, confirma `active`,
+`access` e `firstLoginCohort:"OPERATIONAL"`, e o Gateway escolhe esse UID. A
+PWA nunca envia UID ou permissões para essa operação. O Gateway não escreve
+Auth/Firestore nem vincula provedores; o vínculo cliente só acontece após o
+custom token. Entregar um token sem as verificações do broker/Gateway continua
+proibido.
 
-A assinatura é preparada antes do CAS e deve ficar só na memória do servidor.
-O broker só pode entregá-la à PWA após CAS, readback e revalidações finais;
-falha/timeout/conflito descarta a assinatura e exige o fence correspondente.
-Este gateway Auth não implementa esse CAS/fence.
+A assinatura FB/FC da sessão de gestão é preparada antes do CAS e deve ficar só
+na memória do servidor; o broker só a entrega após readback e revalidações. O
+primeiro login FA é uma operação separada sem CAS de gestão: assina somente
+depois da consulta Auth e da leitura do perfil/coorte no FA. Um timeout pode
+deixar um token provisório não entregue, que expira em 5 minutos; a repetição
+com o mesmo nonce é bloqueada. Não há transação atômica entre revogação do
+perfil, assinatura e uso do token.
 
 ## Propriedades privadas obrigatórias
 
@@ -54,20 +79,28 @@ uma política revisada antes de uso):
 - schemaVersion: 1; enabled: false na preparação.
 - actorEmailSha256: SHA256 do e-mail efetivo normalizado trim/lowercase,
   derivado de evidência privada do ator autorizado; não de parâmetro de cliente.
-- signerServiceAccountEmail: endereço fixo de conta de serviço FB já auditada.
+- faSignerServiceAccountEmail: `sahmt-fa-token-signer@sahmt-17a16.iam.gserviceaccount.com`;
+  criação e prova sintética foram confirmadas anteriormente pelo administrador.
+- signerServiceAccountEmail: `sahmt-fb-token-signer@sahmt-gestao-5ae66.iam.gserviceaccount.com`;
+  criação e prova sintética foram confirmadas anteriormente pelo administrador.
+- fcSignerServiceAccountEmail: `sahmt-fc-token-signer@indicadores---sahmt.iam.gserviceaccount.com`;
+  criação e prova sintética foram confirmadas anteriormente pelo administrador.
 - managementPolicyVersion: versão de direitos aceita pelo núcleo.
 - maxGoogleResponseBytes: inteiro 1.024–262.144.
 - policy: schemaVersion, protocolVersion, audience, keyId, maximumTtlMs,
   maxFutureSkewMs, maxEnvelopeBytes, operationTimeoutMs,
-  customTokenMaxTtlSeconds e enabledOperations com as três chaves booleanas.
+  customTokenMaxTtlSeconds e enabledOperations com as seis chaves booleanas.
   A versão/audiência são os literais do protocolo; keyId contém somente
   letras/números/ponto/underscore/hífen. TTL/operação ≤120.000 ms,
   skew ≤60.000 ms, envelope 1.024–65.536 bytes, custom TTL 1–3.600 s.
-  Os três enabledOperations começam false.
+  Todas as seis enabledOperations começam false.
 - noncePolicy: maxNonceRecords (1–512), maxPropertyBytes (1.024–8.192),
   maxStorageBytes (16.384–400.000), lockTimeoutMs (1–1.000) e
   retentionMs (1–86.400.000). Esses são limites admissíveis do código,
   não valores operacionais aprovados nem certificação de custo/capacidade.
+  `FIRST_LOGIN_FA_SIGN` limita a vida do envelope a 30 segundos e mantém seu
+  tombstone por no máximo 5 minutos (mais skew), independentemente de retenção
+  maior configurada para as outras operações.
 
 O hash configura uma pinagem de autoridade privada; não certifica por si só
 quem forneceu os valores. Alterar config/keyId/secret com journal existente
@@ -90,14 +123,25 @@ com assinatura e os mesmos IDs/operação/issuedAtMs/expiresAtMs. Um envelope
 invertido, corpo alterado ou resposta de outra operação não autentica acesso.
 
 PropertiesService + ScriptLock conservam metadados/hash e status CLAIMED antes
-da operação Google. requestId e nonce têm unicidade independente no namespace;
+da operação Google. Para primeiro login, o nonce do envelope é derivado dos
+128 bits iniciais de SHA-256 do nonce Google, permitindo ao mesmo ledger consumir
+atômicamente o desafio sem persistir seu valor original. requestId e nonce têm unicidade independente no namespace;
 não basta o par combinado. Escrita e checkpoint exigem readback exato. Toda execução conserva também o maior horário já observado;
 recuo intrarrequisição nega mesmo quando o valor ainda supera o início. Lock,
 capacidade, corrupção, propriedade desconhecida, clock regressivo ou readback
 incerto negam antes de OAuth. Falha parcial conserva o nonce consumido e,
 se o checkpoint faltar, bloqueia o journal para reconciliação.
 
-Não há expurgo durante doPost. managementGatewayCleanupExpiredNonces_ é um
+Sob contenção transitória, o ledger espera até cinco intervalos de
+`noncePolicy.lockTimeoutMs` (máximo de 1.000 ms por intervalo), limitado também
+a cinco segundos totais e à expiração assinada original. Revalida o relógio a
+cada intervalo e ao obter o lock. Se continuar ocupado, retorna o código fechado
+`GATEWAY_LOCK_BUSY`; não obtém OAuth nem inicia uma operação Google. Isso não
+repete requisições HTTP, não estende a validade do envelope e não libera nonces.
+
+O modo operacional estendido usa registros compactos e remove apenas tombstones
+expirados durante a admissão, sob o mesmo lock e após persistir o checkpoint.
+No modelo básico, não há expurgo durante doPost. managementGatewayCleanupExpiredNonces_ é um
 helper privado separado, sem trigger/caller instalado: só remove estritamente
 depois de expiresAtMs + skew + retentionMs, sob o mesmo lock/checkpoint.
 A limpeza persiste/readback seu maior horário antes de remover qualquer registro;
@@ -116,8 +160,10 @@ não certifica persistência/concorrência real do serviço Google nem quota.
 
 ScriptApp.getOAuthToken fica exclusivamente na chamada UrlFetchApp a endpoints
 fixos Auth/IAM. Não retorna pela ponte e não é parâmetro de request/response HMAC.
-O manifesto separado contém apenas identitytoolkit, iam, external_request e
-userinfo.email; não contém datastore, Drive, Forms, Sheets ou Execution API.
+O manifesto separado contém identitytoolkit, iam, external_request,
+userinfo.email e datastore (somente para a futura leitura de perfil FA). A
+inclusão do escopo exige consentimento OAuth futuro; ela não concede acesso por
+si só. Não há escopo Drive, Forms, Sheets ou Execution API.
 
 UrlFetch usa HTTPS verificado, redirects false e timeoutSeconds igual ao inteiro
 inferior do prazo restante (inclusive operationTimeout absoluto desde a entrada).
@@ -158,6 +204,36 @@ dedicado, configuração privada/segredo, ator/deployment e grants específicos.
 Nesta etapa não executar nem pedir ao usuário para executar a função.
 Consentimento de escopos não prova IAM ou API habilitada; conferir esses gates
 separadamente antes de qualquer teste remoto autorizado.
+
+## Política de identidades protegidas FA
+
+AUTH_USER_LOOKUP_FA e FIRST_LOGIN_FA_SIGN exigem a propriedade de Script Properties
+SAHMT_FA_PROTECTED_IDENTITIES_JSON. Ela deve conter exatamente três pares
+confirmados no Authentication do FA: marcador, UID e e-mail esperado. Use uma
+vez cada marcador `STRUCTURAL_OWNER`, `HOMOLOGATION_CANDIDATE_1` e
+`HOMOLOGATION_CANDIDATE_2`, com UIDs e e-mails distintos. Não instale exemplos,
+placeholders ou valores não confirmados; o JSON só pode ser montado após comparar
+cada par real com o índice FA protegido e a identidade retornada pelo Authentication.
+
+Não coloque esses pares no bundle PWA, Worker, logs, manifestos, repositório ou
+configuração enviada pelo navegador. A política é lida no servidor. O Gateway
+compara UID e e-mail retornados pelo lookup autenticado do FA: se só um dos dois
+coincidir, se os pares forem duplicados ou se a propriedade estiver ausente ou
+inválida, a operação falha com resposta genérica e não assina token. A primeira
+conta recebe sempre STRUCTURAL_OWNER; somente as duas identidades explicitamente
+configuradas recebem marcadores de homologação. Outras contas não são inferidas
+como homologação por atividade passada.
+
+Antes de configurar essa propriedade futuramente, comparar cada par com o índice
+FA protegido e validar o UID contra a identidade retornada pelo Authentication.
+O setup remoto não foi feito nesta etapa. Sem a propriedade, lookup de FA pelo
+broker e o fluxo de primeiro login especial permanecem bloqueados; o login Google
+principal atual do FA não usa essa política e permanece inalterado.
+
+O adaptador Node em modo administrativo direto também exige a mesma estrutura
+injetada pelo processo servidor em protectedIdentityPolicy. A ausência ou
+inconsistência é rejeitada antes de obter credenciais ou chamar Google. Essa
+opção não deve ser configurada com variáveis VITE nem importada pela PWA.
 
 ## Provas e próxima unidade
 

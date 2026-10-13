@@ -26,3 +26,46 @@ test('cabeçalhos inválidos falham antes de chamar DPAPI', async () => {
     await assert.rejects(openPrivateJson(envelope), /HEADER_INVALID/);
   }
 });
+
+test('protector.open faz readback síncrono e independente sem expor a chave', {skip: !windows}, async () => {
+  const protector = await createPrivateJsonProtector();
+  assert.equal(Object.isFrozen(protector), true);
+  assert.deepEqual(Reflect.ownKeys(protector).sort(), ['open', 'seal']);
+  let finalEnvelope;
+  for (let index = 0; index < 100; index++) {
+    const value = {...synthetic, revision: index};
+    finalEnvelope = protector.seal(value);
+    const opened = protector.open(JSON.parse(JSON.stringify(finalEnvelope)));
+    assert.equal(opened instanceof Promise, false);
+    assert.deepEqual(opened, value);
+  }
+  assert.deepEqual(await openPrivateJson(finalEnvelope), {...synthetic, revision: 99});
+});
+
+test('protector.open recusa chave de outra instância e conteúdo adulterado', {skip: !windows}, async () => {
+  const protector = await createPrivateJsonProtector(), other = await createPrivateJsonProtector();
+  const envelope = protector.seal(synthetic);
+  assert.throws(() => other.open(envelope), /PROTECTOR_KEY_MISMATCH/);
+  const mutate = key => {
+    const bytes = Buffer.from(envelope[key], 'base64'); bytes[0] ^= 1;
+    return {...envelope, [key]: bytes.toString('base64')};
+  };
+  for (const key of ['tag', 'ciphertext', 'iv']) {
+    assert.throws(() => protector.open(mutate(key)), /AUTHENTICATION_FAILED/);
+  }
+  assert.throws(() => protector.open({...envelope, plaintextSha256: '0'.repeat(64)}), /DIGEST_MISMATCH/);
+});
+
+test('protector.open recusa cabeçalhos ambíguos antes de avaliar accessors', {skip: !windows}, async () => {
+  const protector = await createPrivateJsonProtector(), envelope = protector.seal(synthetic);
+  const symbolHeader = {...envelope, [Symbol('unexpected')]: true};
+  const nonEnumerable = {...envelope}; Object.defineProperty(nonEnumerable, 'unexpected', {value: true});
+  let getterCalls = 0;
+  const accessor = {...envelope}; Object.defineProperty(accessor, 'schemaVersion', {get() { getterCalls++; return 2; }});
+  const invalid = [null, [], {schemaVersion: 1}, {...envelope, extra: true}, symbolHeader, nonEnumerable, accessor,
+    {...envelope, iv: 'AAA='}, {...envelope, tag: 'AAA='}, {...envelope, ciphertext: '!'},
+    {...envelope, plaintextSha256: 42}, Object.assign(Object.create({extra: true}), envelope)];
+  for (const item of invalid) assert.throws(() => protector.open(item), /HEADER_INVALID/);
+  assert.equal(getterCalls, 0);
+  assert.deepEqual(protector.open(Object.assign(Object.create(null), envelope)), synthetic);
+});

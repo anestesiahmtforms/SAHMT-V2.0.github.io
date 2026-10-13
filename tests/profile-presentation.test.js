@@ -69,7 +69,7 @@ function harness({active = true, access = true, online = true} = {}) {
   let snapshotCallback;
   const api = {doc: (_db, collection, id) => ({collection, id}), getDoc: async () => ({exists: () => true, data: () => f.profile}), onSnapshot: (_ref, callback) => { snapshotCallback = callback; return () => {}; }};
   const source = readFileSync(new URL('../src/auth.js', import.meta.url), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '')
+    .replace(/^import(?!\s*\()[\s\S]*?;\r?\n/gm, '')
     .replace(/\bexport /g, '')
     .replace(/import\((['"][^'"]+['"])\)/g, 'fakeImport($1)');
   const context = vm.createContext({

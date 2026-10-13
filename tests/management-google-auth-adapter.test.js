@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, sign} from 'node:crypto';
 import {createManagementGoogleAuthAdapter} from '../scripts/lib/management-google-auth-adapter.js';
+import {managementProtectedIdentityMarker} from '../scripts/lib/management-protected-identity-policy.js';
 
-const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', TIME = 1800000000000, SECONDS = TIME / 1000;
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt', TIME = 1800000000000, SECONDS = TIME / 1000;
 const SIGNER = 'management-broker@' + FB + '.iam.gserviceaccount.com';
+const FC_SIGNER = 'indicators-broker@' + FC + '.iam.gserviceaccount.com';
 const FA_CERTS = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 const IAM_CERTS = 'https://www.googleapis.com/service_accounts/v1/metadata/x509/' + SIGNER;
 const IAM_URL = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/' + SIGNER + ':signJwt';
+const FC_IAM_CERTS = 'https://www.googleapis.com/service_accounts/v1/metadata/x509/' + FC_SIGNER;
+const FC_IAM_URL = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/' + FC_SIGNER + ':signJwt';
 const AUD = 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit';
 const keyA = generateKeyPairSync('rsa', {modulusLength: 2048}), keyB = generateKeyPairSync('rsa', {modulusLength: 2048});
 const publicPem = key => key.publicKey.export({type: 'spki', format: 'pem'});
@@ -26,25 +30,31 @@ const policy = () => ({operationTimeoutMs: 1000, maxResponseBytes: 65536, maxRes
 const user = () => ({localId: 'member-a', email: 'private-synthetic@example.invalid', emailVerified: true,
   disabled: false, validSince: String(SECONDS - 100), providerUserInfo: [{providerId: 'google.com', rawId: 'google-id-a'}],
   customAttributes: '{"admin":true}', passwordHash: 'never-return-hash', salt: 'never-return-salt'});
+const protectedIdentityPolicy = () => ({schemaVersion:1,identities:[
+  {marker:'STRUCTURAL_OWNER',uid:'structural-uid',email:'owner@example.invalid'},
+  {marker:'HOMOLOGATION_CANDIDATE_1',uid:'homologation-uid-1',email:'homologation-1@example.invalid'},
+  {marker:'HOMOLOGATION_CANDIDATE_2',uid:'homologation-uid-2',email:'homologation-2@example.invalid'}]});
 function response(url, data, {headers = {}, status = 200, body, redirected = false} = {}) {
   const bytes = new TextEncoder().encode(typeof data === 'string' ? data : JSON.stringify(data)); let delivered = false;
   return {url, status, redirected, headers: new Headers({'content-type': 'application/json', ...headers}), body: body || {
     getReader: () => ({read: async () => delivered ? {done: true} : (delivered = true, {done: false, value: bytes}),
       cancel: async () => {}, releaseLock: () => {}})}};
 }
-function harness({fetchOverride, credentialOverride, suppliedPolicy = policy(), signer = SIGNER, enabled = true} = {}) {
+function harness({fetchOverride, credentialOverride, suppliedPolicy = policy(), signer = SIGNER, fcSigner = FC_SIGNER,
+  identityPolicy = protectedIdentityPolicy(), enabled = true} = {}) {
   let time = TIME;
   const calls = [], credentials = [], state = {keys: {'key-a': publicPem(keyA)}, lookupUser: user(), signedKey: keyA, signedKid: 'key-a'};
   const fetchImpl = async (url, options) => {
     calls.push({url, options}); if (fetchOverride) return fetchOverride(url, options, state);
-    if (url === FA_CERTS || url === IAM_CERTS) return response(url, state.keys, {headers: {'cache-control': 'public, max-age=60'}});
+    if (url === FA_CERTS || url === IAM_CERTS || url === FC_IAM_CERTS) return response(url, state.keys, {headers: {'cache-control': 'public, max-age=60'}});
     if (url.includes('/accounts:lookup')) return response(url, {users: [state.lookupUser]});
-    if (url === IAM_URL) { const signedPayload = JSON.parse(JSON.parse(options.body).payload);
+    if (url === IAM_URL || url === FC_IAM_URL) { const signedPayload = JSON.parse(JSON.parse(options.body).payload);
       return response(url, {keyId: state.signedKid, signedJwt: jwt(signedPayload, {alg: 'RS256', kid: state.signedKid, typ: 'JWT'}, state.signedKey)}); }
     throw new Error('Unexpected synthetic endpoint');
   };
   const adapter = createManagementGoogleAuthAdapter({enabled, fetchImpl, signerServiceAccountEmail: signer,
-    policy: suppliedPolicy, clock: () => time, getAdminAccessToken: async (request, context) => {
+    ...(fcSigner === null ? {} : {fcSignerServiceAccountEmail: fcSigner}),
+    protectedIdentityPolicy:identityPolicy,policy: suppliedPolicy, clock: () => time, getAdminAccessToken: async (request, context) => {
       credentials.push({request, context}); const value = {credentialType: 'google-oauth2', accessToken: 'opaque-server-oauth-access',
         expiresAtMs: time + 600000, scopes: request.scopes}; return credentialOverride ? credentialOverride(value, request, context) : value;
     }});
@@ -53,11 +63,37 @@ function harness({fetchOverride, credentialOverride, suppliedPolicy = policy(), 
 const errorCode = (promise, code) => assert.rejects(promise, error => error.code === code && error.message === code);
 const deferred = () => { let resolve; const promise = new Promise(yes => { resolve = yes; }); return {promise, resolve}; };
 
+test('trusted identity policy requires exact UID and email pairing for protected identities',()=>{
+  const config=protectedIdentityPolicy();
+  assert.equal(managementProtectedIdentityMarker({uid:'structural-uid',email:'owner@example.invalid'},config),'STRUCTURAL_OWNER');
+  assert.equal(managementProtectedIdentityMarker({uid:'homologation-uid-1',email:'homologation-1@example.invalid'},config),'HOMOLOGATION_CANDIDATE_1');
+  assert.equal(managementProtectedIdentityMarker({uid:'homologation-uid-2',email:'homologation-2@example.invalid'},config),'HOMOLOGATION_CANDIDATE_2');
+  assert.equal(managementProtectedIdentityMarker({uid:'operational-uid',email:'operational@example.invalid'},config),null);
+  assert.throws(()=>managementProtectedIdentityMarker({uid:'other-uid',email:'owner@example.invalid'},config),/AUTH_IDENTITY_POLICY_MISMATCH/);
+  assert.throws(()=>managementProtectedIdentityMarker({uid:'structural-uid',email:'different@example.invalid'},config),/AUTH_IDENTITY_POLICY_MISMATCH/);
+  assert.throws(()=>managementProtectedIdentityMarker({uid:'structural-uid',email:'owner@example.invalid'},undefined),/AUTH_IDENTITY_POLICY_UNAVAILABLE/);
+});
+
+test('trusted identity policy rejects duplicate markers, UIDs, e-mails, and unexpected fields',()=>{
+  const duplicateUid=protectedIdentityPolicy();duplicateUid.identities[1].uid=duplicateUid.identities[0].uid;
+  const duplicateEmail=protectedIdentityPolicy();duplicateEmail.identities[2].email=duplicateEmail.identities[1].email;
+  const extraField=protectedIdentityPolicy();extraField.identities[0].note='unexpected';
+  for(const invalid of [duplicateUid,duplicateEmail,extraField,{schemaVersion:1,identities:[]}])
+    assert.throws(()=>managementProtectedIdentityMarker({uid:'operational-uid',email:'operational@example.invalid'},invalid),/AUTH_IDENTITY_POLICY_/);
+});
+
 test('disabled adapter has no network, token provider or credential discovery', async () => {
   const context = harness({enabled: false});
   await errorCode(context.adapter.verifyFaIdToken(jwt(payload()), true), 'GOOGLE_AUTH_ADAPTER_DISABLED');
   await errorCode(context.adapter.getFbUser({uid: 'member-a', projectId: FB}), 'GOOGLE_AUTH_ADAPTER_DISABLED');
+  await errorCode(context.adapter.getFcUser({uid: 'member-a', projectId: FC}), 'GOOGLE_AUTH_ADAPTER_DISABLED');
   assert.equal(context.calls.length, 0); assert.equal(context.credentials.length, 0);
+});
+
+test('direct server adapter refuses all authentication before network when protected UID policy is absent',async()=>{
+  const context=harness({identityPolicy:null});
+  await errorCode(context.adapter.verifyFaIdToken(jwt(payload()),true),'AUTH_IDENTITY_POLICY_UNAVAILABLE');
+  assert.equal(context.calls.length,0);assert.equal(context.credentials.length,0);
 });
 
 test('policy and FB-owned signer must be explicit before any effects', async t => {
@@ -66,6 +102,16 @@ test('policy and FB-owned signer must be explicit before any effects', async t =
     const context = harness({...options, suppliedPolicy: options.suppliedPolicy === undefined ? null : options.suppliedPolicy});
     await assert.rejects(context.adapter.verifyFaIdToken(jwt(payload()), true)); assert.equal(context.calls.length, 0);
   });
+});
+
+test('FC signer is separately pinned to FC and is optional until configured', async t => {
+  for (const fcSigner of [SIGNER, 'indicators-broker@' + FB + '.iam.gserviceaccount.com']) await t.test('wrong project signer', async () => {
+    const context = harness({fcSigner}); await errorCode(context.adapter.createFcCustomToken('member-a'), 'GOOGLE_AUTH_ADAPTER_CONFIG_INVALID');
+    assert.equal(context.calls.length, 0); context.adapter.dispose();
+  });
+  const context = harness({fcSigner: null});
+  await errorCode(context.adapter.createFcCustomToken('member-a'), 'FC_SIGNER_NOT_CONFIGURED');
+  assert.equal(context.calls.length, 0); context.adapter.dispose();
 });
 
 test('FA JWT signature, identity and current revocation lookup are checked each call', async () => {
@@ -172,6 +218,16 @@ test('FB current user is projected without e-mails/hashes/attributes and aliases
   assert.equal(context.adapter.getFbUser, context.adapter.readFbUser); assert.equal(context.adapter.signFbCustomToken, context.adapter.createFbCustomToken); context.adapter.dispose();
 });
 
+test('FC current user lookup is pinned to FC and projects only the closed identity shape', async () => {
+  const context = harness(); const snapshot = await context.adapter.getFcUser({uid: 'member-a', projectId: FC});
+  assert.equal(snapshot.projectId, FC); assert.equal(snapshot.user.uid, 'member-a');
+  assert.deepEqual(snapshot.user.providerData, [{providerId: 'google.com', uid: 'google-id-a'}]);
+  for (const forbidden of ['email', 'passwordHash', 'salt', 'customAttributes']) assert.equal(Object.hasOwn(snapshot.user, forbidden), false);
+  const request = context.calls.find(call => call.url.includes('/accounts:lookup'));
+  assert.equal(request.url, 'https://identitytoolkit.googleapis.com/v1/projects/' + FC + '/accounts:lookup');
+  assert.equal(context.adapter.readFcUser, context.adapter.getFcUser); context.adapter.dispose();
+});
+
 test('lookup is admin-only, missing/ambiguous/cached records and wrong project deny', async t => {
   for (const options of [{records: []}, {records: [user(), user()]}, {records: [user()], headers: {age: '1'}}]) await t.test('records', async () => {
     const context = harness({fetchOverride: async url => response(url, {users: options.records}, {headers: options.headers})});
@@ -187,6 +243,28 @@ test('keyless IAM signs only internally derived payload and verifies signature/o
   const request = context.calls.find(call => call.url === IAM_URL); assert.deepEqual(Object.keys(JSON.parse(request.options.body)), ['payload']);
   assert.equal(request.options.cache, 'no-store'); assert.equal(request.url.includes('opaque-server-oauth-access'), false);
   assert.equal(context.calls.find(call => call.url === IAM_CERTS).options.headers.Authorization, undefined); context.adapter.dispose();
+});
+
+test('FC token uses FC signer and carries no FB management permission claims', async () => {
+  const context = harness(); const token = await context.adapter.createFcCustomToken('member-a');
+  const decoded = JSON.parse(Buffer.from(token.split('.')[1], 'base64url'));
+  assert.deepEqual(decoded, {iss: FC_SIGNER, sub: FC_SIGNER, aud: AUD, iat: SECONDS, exp: SECONDS + 600, uid: 'member-a', claims: {
+    sahmtFaSourceProjectId:'sahmt-17a16',sahmtOccurrencesCatalogRead:false,sahmtOccurrencesRead:false,sahmtOccurrencesWrite:false,sahmtOccurrencesAuditRead:false}});
+  const request = context.calls.find(call => call.url === FC_IAM_URL); assert.deepEqual(Object.keys(JSON.parse(request.options.body)), ['payload']);
+  assert.equal(context.credentials.at(-1).request.projectId, FC);
+  assert.equal(context.calls.find(call => call.url === FC_IAM_CERTS).options.headers.Authorization, undefined);
+  assert.equal(context.calls.some(call => call.url === IAM_URL), false); context.adapter.dispose();
+});
+
+test('FC signer accepts only fixed FA-origin occurrence authorization booleans',async t=>{
+  const good={sahmtFaSourceProjectId:'sahmt-17a16',sahmtOccurrencesCatalogRead:true,sahmtOccurrencesRead:true,
+    sahmtOccurrencesWrite:true,sahmtOccurrencesAuditRead:false};
+  for(const [name,claims] of [['wrong source',{...good,sahmtFaSourceProjectId:'other'}],
+    ['unknown claim',{...good,admin:true}],['catalog without write',{...good,sahmtOccurrencesWrite:false}],
+    ['non boolean',{...good,sahmtOccurrencesRead:'true'}]]) await t.test(name,async()=>{
+      const context=harness();await errorCode(context.adapter.createFcCustomToken('member-a',claims),'CUSTOM_TOKEN_UID_INVALID');
+      assert.equal(context.calls.some(call=>call.url===FC_IAM_URL),false);
+    });
 });
 
 test('reserved/arbitrary claims and invalid UID cannot be signed', async t => {

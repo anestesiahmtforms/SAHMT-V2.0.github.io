@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {assessManagementReadBudget, firestoreQuotaDayStart, describeManagementReadObservation, sourceUsageReviewUpperReads, sourceUsageReviewObservationSha256} from '../scripts/lib/management-read-budget.js';
+import {assessManagementReadBudget, firestoreQuotaDayStart, describeManagementReadObservation, sourceUsageReviewUpperReads, sourceUsageReviewObservationSha256, sourceUsageHumanReportTextSha256, sourceUsageHumanReportUpperReads, sourceUsageHumanReportObservationSha256} from '../scripts/lib/management-read-budget.js';
 const nowMs = Date.parse('2026-10-08T23:20:00.000Z');
 const day = firestoreQuotaDayStart(nowMs);
 const observation = {project: 'sahmt-17a16', metric: 'firestore.googleapis.com/document/read_ops_count', quotaDayStart: day, reads: 4109, verifiedAt: '2026-10-08T23:19:00.000Z', latestPoint: '2026-10-08T23:17:00.000Z', complete: true, fresh: true};
@@ -197,4 +197,126 @@ test('observação métrica existente não recebe requisito manual nem teto novo
     policy:{...policy,projectId:'sahmt-gestao-5ae66'}});
   assert.equal(assessManagementReadBudget(destination).allowed,true);
   assert.equal(destination.policy.dailyReadLimit,35000);
+});
+
+
+// The following text/report fixtures are local and synthetic; no private policy is created.
+const reportTime='2026-10-09T14:30:04.000Z';
+const literalReport='PORQUE VOCE NÃO ESTÁ CONSEGUINDO VER? EU VEJO TEMOS ATÉ O MOMENTO 4.000';
+function humanReportInput() {
+  const clock=Date.parse('2026-10-09T14:31:00.000Z'),quotaDayStart=firestoreQuotaDayStart(clock);
+  const evidenceId='synthetic-current-fa-human-text',evidenceSha256=sourceUsageHumanReportTextSha256(literalReport);
+  const observation={observationSource:'USER_CURRENT_USAGE_HUMAN_REPORT',project:'sahmt-17a16',quotaDayStart,
+    reportedAt:reportTime,reviewedAt:'2026-10-09T14:30:20.000Z',periodStart:quotaDayStart,
+    periodKind:'CURRENT_FA_QUOTA_DAY_TO_REPORT',reportedReads:4000,reads:5000,reportedText:literalReport,
+    evidenceId,evidenceSha256,totalUsageKnown:false,measuredTotalReads:null,exactGlobalCutoff:false,
+    reportProvenance:{schemaVersion:1,source:'HUMAN_USER_MESSAGE_TEXT',humanMessageId:'synthetic-human-text-message',
+      evidenceId,evidenceSha256,reportedAt:reportTime}};
+  const approved={...policy,dailyReadLimit:45000,limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08',
+    humanDecisionAt:'2026-10-09T14:20:00.000Z',reservationQuotaDayStart:quotaDayStart,reservedReads:0,
+    maximumCaptureReserve:2000,manualReportEvidence:evidenceId,manualReportSha256:evidenceSha256};
+  approved.manualReportAuthorization={schemaVersion:1,authorized:true,
+    authorizationSource:'EXPLICIT_HUMAN_FA_QUARTER_CAPTURE_REVIEW',authorizationId:'synthetic-approved-quarter',
+    humanDecisionMessageId:'synthetic-prior-quarter-approval',projectId:'sahmt-17a16',
+    authorizedPurpose:'MANAGEMENT_BACKUP_ONLY',dailyReadLimit:45000,quotaDayStart,approvedAt:approved.humanDecisionAt,
+    reviewedAt:observation.reviewedAt,reportedAt:reportTime,evidenceId,evidenceSha256,
+    observationSha256:sourceUsageHumanReportObservationSha256(observation),
+    reportHumanMessageId:observation.reportProvenance.humanMessageId,reportSource:'HUMAN_USER_MESSAGE_TEXT',
+    maximumCaptureReserve:2000};
+  return input({nowMs:clock,observation,policy:approved,maximumReads:2000,legacyReservedReads:0});
+}
+test('relato humano FA4000 preserva horário real e quarter prévia, com teto conservador5000',()=>{
+  const next=humanReportInput(),before=structuredClone(next),result=assessManagementReadBudget(next);
+  assert.equal(result.allowed,true);
+  assert.equal(result.observationSource,'USER_CURRENT_USAGE_HUMAN_REPORT');
+  assert.equal(result.estimatedWithMargin,14000);
+  assert.equal(result.remainingAfterMargin,31000);
+  assert.equal(next.observation.quotaDayStart,'2026-10-09T07:00:00.000Z');
+  assert.equal(next.observation.reportedAt,reportTime);
+  assert.equal(next.policy.humanDecisionAt,'2026-10-09T14:20:00.000Z');
+  assert.deepEqual(next,before);
+  const summary=describeManagementReadObservation(next.observation);
+  assert.equal(summary.estimatedUpperReads,5000);
+  assert.equal(summary.reportSource,'HUMAN_USER_MESSAGE_TEXT');
+  assert.equal(summary.totalUsageKnown,false);
+  assert.equal(summary.measuredTotalReads,null);
+  for(const key of ['capturedAt','captureSource','reportedText','humanDecisionMessageId'])assert.equal(Object.hasOwn(summary,key),false);
+});
+test('relato humano é estimativa de inteiro e hash literal UTF8 sem normalização',()=>{
+  for(const [reads,upper] of [[0,1000],[999,1000],[1000,2000],[4000,5000],[4109,5000]])
+    assert.equal(sourceUsageHumanReportUpperReads(reads),upper);
+  for(const reads of [-1,-0,1.1,'4000',null,Infinity,Number.MAX_SAFE_INTEGER])
+    assert.throws(()=>sourceUsageHumanReportUpperReads(reads),/MANUAL_SOURCE/);
+  assert.notEqual(sourceUsageHumanReportTextSha256(literalReport),sourceUsageHumanReportTextSha256(literalReport+' '));
+});
+for(const [label,edit] of [
+  ['texto literal alterado',v=>{v.observation.reportedText+=' ';}],
+  ['hash de texto trocado',v=>{v.observation.evidenceSha256='c'.repeat(64);}],
+  ['evidência ID trocada',v=>{v.observation.evidenceId='other-evidence';}],
+  ['número informado alterado',v=>{v.observation.reportedReads=4001;}],
+  ['upper exato indevido',v=>{v.observation.reads=4000;}],
+  ['origem automática',v=>{v.observation.reportProvenance.source='AGENT_BROWSER_TEXT';}],
+  ['sem mensagem humana',v=>{v.observation.reportProvenance.humanMessageId=null;}],
+  ['horário origem alterado',v=>{v.observation.reportProvenance.reportedAt='2026-10-09T14:31:00.000Z';}],
+  ['captura fictícia',v=>{v.observation.capturedAt=reportTime;}],
+  ['anexo fictício',v=>{v.observation.captureProvenance={source:'HUMAN_USER_MESSAGE_ATTACHMENT'};}],
+  ['LAST24H alegado',v=>{v.observation.periodKind='LAST_24_HOURS';}],
+  ['dia incompleto',v=>{v.observation.periodStart='2026-10-09T08:00:00.000Z';}],
+  ['total exato indevido',v=>{v.observation.totalUsageKnown=true;}],
+  ['medição fabricada',v=>{v.observation.measuredTotalReads=4000;}],
+  ['API fabricada',v=>{v.observation.metric='firestore.googleapis.com/document/read_count';}],
+  ['autoridade genérica',v=>{v.policy.manualReportAuthorization.authorizationSource='EXPLICIT_HUMAN_FA_BACKUP_REVIEW';}],
+  ['quarter não autorizada',v=>{v.policy.manualReportAuthorization.authorized=false;}],
+  ['finalidade release',v=>{v.policy.manualReportAuthorization.authorizedPurpose='TRAINING_RELEASE';}],
+  ['binding anterior copiado',v=>{v.policy.manualReportAuthorization.observationSha256='c'.repeat(64);}],
+  ['aumento posterior de cap',v=>{v.policy.maximumCaptureReserve=2001;}]
+])test('relato humano nega '+label+' sem mudar estado',()=>{
+  const next=humanReportInput();edit(next);const before=structuredClone(next);
+  assert.throws(()=>assessManagementReadBudget(next),/MANUAL_SOURCE/);
+  assert.deepEqual(next,before);
+});
+test('relato textual não rearma pausa nem renova dia ou aumenta limites',()=>{
+  for(const edit of [
+    v=>{v.policy.pausedRequiresReview=true;},
+    v=>{v.policy.dailyReadLimit=35000;},
+    v=>{v.maximumReads=2001;},
+    v=>{v.policy.appTrafficReserve=4999;},
+    v=>{v.policy.metricLagReserve=1999;},
+    v=>{v.legacyReservedReads=31000;},
+    v=>{v.nowMs=Date.parse('2026-10-10T07:30:04.000Z');},
+    v=>{v.projectId='sahmt-gestao-5ae66';v.policy.projectId=v.projectId;v.policy.dailyReadLimit=35000;}
+  ]){
+    const next=humanReportInput();edit(next);const before=structuredClone(next);
+    assert.throws(()=>assessManagementReadBudget(next));
+    assert.deepEqual(next,before);
+  }
+});
+test('relato expira em cinco minutos e não pode ser redatado pela mesma proveniência',()=>{
+  const next=humanReportInput();next.nowMs=Date.parse(reportTime)+300000;
+  assert.equal(assessManagementReadBudget(next).allowed,true);
+  next.nowMs++;
+  assert.throws(()=>assessManagementReadBudget(next),/MANUAL_SOURCE/);
+  const redated=humanReportInput();redated.observation.reportedAt='2026-10-09T14:30:10.000Z';
+  redated.observation.reportProvenance.reportedAt=redated.observation.reportedAt;
+  redated.policy.manualReportAuthorization.observationSha256=sourceUsageHumanReportObservationSha256(redated.observation);
+  assert.throws(()=>assessManagementReadBudget(redated),/MANUAL_SOURCE/);
+});
+test('relato futuro ou revisão antes do relato não fornece atualidade',()=>{
+  for(const edit of [
+    v=>{v.observation.reportedAt='2026-10-09T14:31:01.000Z';},
+    v=>{v.observation.reviewedAt='2026-10-09T14:30:03.000Z';},
+    v=>{v.observation.reviewedAt='2026-10-09T14:31:01.000Z';},
+    v=>{v.policy.humanDecisionAt='2026-10-09T14:30:21.000Z';}
+  ]){
+    const next=humanReportInput();edit(next);
+    assert.throws(()=>assessManagementReadBudget(next),/MANUAL_SOURCE/);
+  }
+});
+test('modo textual não enfraquece prova screenshot ou recebe autoridade por flags refeitas',()=>{
+  const next=humanReportInput();next.observation.observationSource='USER_CURRENT_USAGE_DASHBOARD_REVIEW';
+  assert.throws(()=>assessManagementReadBudget(next),/MANUAL_SOURCE/);
+  const forged=humanReportInput();forged.observation.reportProvenance.source='AGENT_BROWSER_TEXT';
+  forged.policy.manualReportAuthorization.reportSource=forged.observation.reportProvenance.source;
+  forged.policy.manualReportAuthorization.observationSha256=sourceUsageHumanReportObservationSha256(forged.observation);
+  assert.throws(()=>assessManagementReadBudget(forged),/MANUAL_SOURCE/);
 });

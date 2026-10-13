@@ -29,6 +29,35 @@ export async function sealPrivateJson(value) {
   const ciphertext = await dpapi(plaintext);
   return {schemaVersion: 1, protection: 'WINDOWS_DPAPI_CURRENT_USER', plaintextSha256: digest(plaintext), ciphertext: ciphertext.toString('base64')};
 }
+function openCurrentProtectorJson(envelope, key, wrappedKey) {
+  const keys = ['schemaVersion','protection','plaintextSha256','wrappedKey','iv','tag','ciphertext'];
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(envelope))
+    || Reflect.ownKeys(envelope).length !== keys.length
+    || !keys.every(name => Object.hasOwn(envelope, name)
+      && Object.hasOwn(Object.getOwnPropertyDescriptor(envelope, name), 'value'))
+    || envelope.schemaVersion !== 2 || envelope.protection !== 'AES256_GCM_WITH_WINDOWS_DPAPI_CURRENT_USER'
+    || typeof envelope.plaintextSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(envelope.plaintextSha256)
+    || !['wrappedKey','iv','tag','ciphertext'].every(name => typeof envelope[name] === 'string'
+      && /^[A-Za-z0-9+/]+={0,2}$/.test(envelope[name])
+      && envelope[name].length <= 72 * 1024 * 1024)) throw Error('PROTECTED_JSON_HEADER_INVALID');
+  if (envelope.wrappedKey !== wrappedKey) throw Error('PROTECTED_JSON_PROTECTOR_KEY_MISMATCH');
+  const decoded = Object.fromEntries(['iv','tag','ciphertext'].map(name => [name, Buffer.from(envelope[name], 'base64')]));
+  if (decoded.iv.length !== 12 || decoded.tag.length !== 16 || decoded.ciphertext.length > 50 * 1024 * 1024
+    || Object.entries(decoded).some(([name, bytes]) => bytes.toString('base64') !== envelope[name]))
+    throw Error('PROTECTED_JSON_HEADER_INVALID');
+  const decipher = createDecipheriv('aes-256-gcm', key, decoded.iv);
+  decipher.setAAD(Buffer.from('SAHMT_MANAGEMENT_BACKUP_V2')); decipher.setAuthTag(decoded.tag);
+  let plaintext;
+  try { plaintext = Buffer.concat([decipher.update(decoded.ciphertext), decipher.final()]); }
+  catch { throw Error('PROTECTED_JSON_AUTHENTICATION_FAILED'); }
+  if (digest(plaintext) !== envelope.plaintextSha256) throw Error('PROTECTED_JSON_DIGEST_MISMATCH');
+  try { return JSON.parse(plaintext.toString('utf8')); }
+  catch { throw Error('PROTECTED_JSON_PLAINTEXT_INVALID'); }
+}
+/** The closure retains its already protected key; open accepts only envelopes
+ * created by this instance. Historical files still use independent DPAPI open.
+ * No key is exported and no child process is started by this synchronous path. */
 export async function createPrivateJsonProtector() {
   const key = randomBytes(32), wrappedKey = (await dpapi(key)).toString('base64');
   return Object.freeze({seal(value) {
@@ -38,7 +67,7 @@ export async function createPrivateJsonProtector() {
     cipher.setAAD(Buffer.from('SAHMT_MANAGEMENT_BACKUP_V2'));
     const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     return {schemaVersion: 2, protection: 'AES256_GCM_WITH_WINDOWS_DPAPI_CURRENT_USER', plaintextSha256: digest(plaintext), wrappedKey, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext: ciphertext.toString('base64')};
-  }});
+  }, open(envelope) { return openCurrentProtectorJson(envelope, key, wrappedKey); }});
 }
 export async function openPrivateJson(envelope) {
   if (envelope?.schemaVersion === 2) {

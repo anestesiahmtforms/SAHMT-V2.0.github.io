@@ -90,7 +90,7 @@ Cada cópia planejada conserva campos, IDs e vínculos; referências selecionada
 
 ## Preflight de usuários preparado
 
-`scripts/lib/management-auth-import-plan.js` recebe capturas locais completas de Auth FA/FB e mapa explícito de membros. Preserva UID, identidade Google e estado desativado; detecta colisões de UID, provedor e e-mail, sem usar e-mail como chave histórica. Existente equivalente resulta em `SKIP`; divergência bloqueia o lote, sem sobrescrita.
+`scripts/lib/management-auth-import-plan.js` suporta uma prévia individual FA→FB ou FA→FC e `prepareAuthMigrationSimulation()` resume as duas em conjunto. Cada destino usa mapping próprio (`fbUid`/`fcUid`) e exige UID igual ao FA. Preserva identidade Google e estado desativado; detecta colisões de UID, provedor e e-mail, sem usar e-mail como chave histórica. Existente equivalente resulta em `SKIP`; divergência bloqueia o lote, sem sobrescrita. A simulação conjunta classifica criar, equivalente, conflito e revisão manual, deriva o grupo de administradores PWA dos perfis FA `users/{uid}` (role, permissions.admin, active e access) e retorna apenas contagens/categorias sem dados pessoais. Ela não copia privilégios nem altera IAM.
 
 A prévia não importa claims, senhas ou tokens. Seu `ready` significa somente estrutura reconciliada: `readiness.scope: STRUCTURAL_PREVIEW_ONLY` e `operationalFreshnessEvaluated:false`. Uma captura antiga/futura não ganha validade operacional por passar nessa prévia.
 

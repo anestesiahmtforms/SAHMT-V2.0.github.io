@@ -1,6 +1,7 @@
 import {randomBytes} from 'node:crypto';
+import {MANAGEMENT_GATEWAY_DENIAL_CODES} from './management-gateway-protocol.js';
 
-const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66';
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt';
 class GatewayClientError extends Error { constructor(code) { super(code); this.code = code; } }
 const need = (condition, code) => { if (!condition) throw new GatewayClientError(code); };
 const integer = (value, minimum = 0) => Number.isSafeInteger(value) && value >= minimum;
@@ -37,8 +38,8 @@ export function createManagementGatewayClient({enabled = false, protocol, fetchI
       && integer(policy.maxResponseBytes, 1024) && policy.maxResponseBytes <= 65536
       && integer(policy.maxResponseChunks, 1) && policy.maxResponseChunks <= 512, 'GATEWAY_CLIENT_POLICY_INVALID');
   };
-  const invoke = async (operation, body, context = {}) => {
-    let controller, timer, abortListener, reader;
+  const invoke = async (operation, body, context = {}, requestNonce) => {
+    let controller, timer, abortListener, reader, authenticatedDenialCode;
     try {
       configured();
       need(object(context), 'GATEWAY_CONTEXT_INVALID');
@@ -65,7 +66,9 @@ export function createManagementGatewayClient({enabled = false, protocol, fetchI
       if (context.signal?.aborted) cancel('GATEWAY_CANCELLED');
       const work = async () => {
         assertLive();
-        const envelope = protocol.createRequest({operation, requestId:newRequestId(), nonce:newNonce(), issuedAtMs:start, expiresAtMs:deadlineMs, body});
+        const nonce = requestNonce === undefined ? newNonce() : requestNonce;
+        need(typeof nonce === 'string' && /^[a-f0-9]{32}$/.test(nonce), 'GATEWAY_REQUEST_NONCE_INVALID');
+        const envelope = protocol.createRequest({operation, requestId:newRequestId(), nonce, issuedAtMs:start, expiresAtMs:deadlineMs, body});
         const options = {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8', Accept:'application/json'},
           body:JSON.stringify(envelope), redirect:'manual', cache:'no-store', credentials:'omit', referrerPolicy:'no-referrer', signal:controller.signal};
         let expectedUrl = endpoint;
@@ -96,13 +99,22 @@ export function createManagementGatewayClient({enabled = false, protocol, fetchI
         assertLive();
         const result = await protocol.acceptResponse(data, envelope, {claimNonce:claimResponseNonce, signal:controller.signal, deadlineMs});
         assertLive();
+        // Set only after HMAC, binding, expiry and response nonce validation.
+        // Neither raw HTTP content nor a thrown transport error can supply it.
+        if (context.pilotDiagnostics === true && result?.status === 'DENIED' && result.body === null
+          && MANAGEMENT_GATEWAY_DENIAL_CODES.includes(result.code)) authenticatedDenialCode = result.code;
         need(result && result.status === 'SUCCESS' && result.code === 'OK', 'GATEWAY_OPERATION_DENIED');
         return result.body;
       };
       const result = await Promise.race([Promise.resolve().then(work), cancelled]);
       assertLive(); return result;
     } catch (error) {
-      if (error instanceof GatewayClientError) throw new GatewayClientError(error.code);
+      if (error instanceof GatewayClientError) {
+        const sanitized = new GatewayClientError(error.code);
+        if (error.code === 'GATEWAY_OPERATION_DENIED' && authenticatedDenialCode !== undefined)
+          sanitized.gatewayDenialCode = authenticatedDenialCode;
+        throw sanitized;
+      }
       throw new GatewayClientError('GATEWAY_CLIENT_UNAVAILABLE');
     } finally {
       controller?.abort(); clearTimeout(timer);
@@ -113,12 +125,32 @@ export function createManagementGatewayClient({enabled = false, protocol, fetchI
     }
   };
   return Object.freeze({
+    readFaAuthorization: (body, context) => invoke('READ_FA_AUTHORIZATION', body, context),
+    readFbLease: (body, context) => invoke('READ_FB_LEASE', body, context),
+    writeFbLease: (body, context) => invoke('WRITE_FB_LEASE', body, context),
+    invalidateFbLease: (body, context) => invoke('INVALIDATE_FB_LEASE', body, context),
     lookupAuthUser: (request, context) => {
-      if (!exactKeys(request, ['projectId','uid']) || ![FA,FB].includes(request.projectId))
+      if (!exactKeys(request, ['projectId','uid']) || ![FA,FB,FC].includes(request.projectId))
         return Promise.reject(new GatewayClientError('GATEWAY_LOOKUP_REQUEST_INVALID'));
-      return invoke(request.projectId === FA ? 'AUTH_USER_LOOKUP_FA' : 'AUTH_USER_LOOKUP_FB', {uid:request.uid}, context);
+      const operation = request.projectId === FA ? 'AUTH_USER_LOOKUP_FA' : request.projectId === FB ? 'AUTH_USER_LOOKUP_FB' : 'AUTH_USER_LOOKUP_FC';
+      return invoke(operation, {uid:request.uid}, context);
+    },
+    authorizeAndSignFaFirstLogin: (request, context) => {
+      if (!exactKeys(request, ['email','googleSub','nonceDigest','issuedAtSeconds','expiresAtSeconds'])
+        || typeof request.email !== 'string' || request.email.length > 254
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email)
+        || typeof request.googleSub !== 'string' || !/^[A-Za-z0-9._-]{1,128}$/.test(request.googleSub)
+        || typeof request.nonceDigest !== 'string' || !/^[a-f0-9]{64}$/.test(request.nonceDigest)
+        || !integer(request.issuedAtSeconds,1) || !integer(request.expiresAtSeconds,1))
+        return Promise.reject(new GatewayClientError('GATEWAY_FIRST_LOGIN_REQUEST_INVALID'));
+      const body = {email:request.email,googleSub:request.googleSub,
+        issuedAtSeconds:request.issuedAtSeconds,expiresAtSeconds:request.expiresAtSeconds};
+      // The gateway's existing atomic nonce ledger consumes this digest-derived
+      // envelope nonce under LockService. The raw Google nonce never leaves the Worker.
+      return invoke('FIRST_LOGIN_FA_SIGN', body, context, request.nonceDigest.slice(0,32));
     },
     signFbCustomToken: (request, context) => invoke('SIGN_FB_CUSTOM_TOKEN', request, context),
+    signFcCustomToken: (request, context) => invoke('SIGN_FC_CUSTOM_TOKEN', request, context),
     dispose: () => { disposed = true; for (const cancel of active.values()) cancel('GATEWAY_CANCELLED'); active.clear(); }
   });
 }

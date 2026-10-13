@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
 const origin='https://anestesiahmtforms.github.io', endpoint='https://example.invalid/v1/management/session';
+const FA='sahmt-17a16',FB='sahmt-gestao-5ae66',FC='indicadores---sahmt';
 const token='synthetic-private-fa-token', customToken='synthetic-private-fb-token';
-const granted=()=>({ok:true,sourceProjectId:'sahmt-17a16',destinationProjectId:'sahmt-gestao-5ae66',
-  faUid:'uid-a',fbUid:'uid-a',memberId:'member-a',leaseVersion:1,policyVersion:'policy-v1',customToken});
+const fcToken='synthetic-private-fc-token';
+const targetProjectIds=()=>({FB,FC});
+const granted=()=>({ok:true,sourceProjectId:FA,destinationProjectId:FB,
+  faUid:'uid-a',fbUid:'uid-a',memberId:'member-a',leaseVersion:1,policyVersion:'policy-v1',customToken,
+  targets:{FB:{projectId:FB,status:'READY',uid:'uid-a',customToken},FC:{projectId:FC,status:'READY',uid:'uid-a',customToken:fcToken}}});
 const request=(options={})=>new Request(options.url||endpoint,{method:options.method||'POST',
   headers:{Origin:origin,'Content-Type':'application/json',...options.headers},
-  body:options.body??(options.method==='GET'||options.method==='OPTIONS'?undefined:JSON.stringify({faIdToken:token})),
+  body:options.body??(options.method==='GET'||options.method==='OPTIONS'?undefined:JSON.stringify({faIdToken:token,sourceProjectId:FA,targetProjectIds:targetProjectIds()})),
   signal:options.signal,...options.requestOptions});
 function harness(options={}) {
   const calls=[];
@@ -17,6 +21,33 @@ function harness(options={}) {
   return {handle,calls};
 }
 const denied=async(response,status,code)=>{assert.equal(response.status,status);const body=await response.json();assert.equal(body.ok,false);assert.equal(body.code,code);assert.equal(Object.hasOwn(body,'customToken'),false);return body;};
+test('HTTP denial exposes closed adapter detail only for pilot runtime',async()=>{
+  for(const pilotOnly of [false,true])for(const code of ['GOOGLE_KEYS_INVALID','PRIVATE_TOKEN']){
+    const {handle}=harness({pilotOnly,broker:{exchange:async()=>({ok:false,code:'FA_TOKEN_REJECTED',
+      diagnostic:{stage:'PUBLIC_KEYS',code,token:'private-token',email:'private@example.invalid'}})}});
+    const body=await denied(await handle(request()),403,'FA_TOKEN_REJECTED');
+    assert.deepEqual(body.diagnostic,pilotOnly?{stage:'PUBLIC_KEYS',code:code==='PRIVATE_TOKEN'?'DIAGNOSTIC_UNAVAILABLE':code}:undefined);
+    assert.equal(JSON.stringify(body).includes('private'),false);assert.equal(JSON.stringify(body).includes('PRIVATE_TOKEN'),false);
+  }
+  const {handle}=harness({pilotOnly:true,broker:{exchange:async()=>({ok:false,code:'FA_TOKEN_REJECTED',diagnostic:{stage:'private-uid',code:'GOOGLE_KEYS_INVALID'}})}});
+  assert.equal((await denied(await handle(request()),403,'FA_TOKEN_REJECTED')).diagnostic,undefined);
+});
+test('partial response diagnostics are pilot-only closed data and READY remains exact',async()=>{
+ for(const pilotOnly of [false,true])for(const detail of [
+  {stage:'AUTH_LOOKUP',code:'GATEWAY_OPERATION_DENIED',token:'private-token'},
+  {stage:'AUTH_LOOKUP',code:'private-token'},
+  {stage:'private-stage',code:'GATEWAY_OPERATION_DENIED'}]){
+  const {handle}=harness({pilotOnly,broker:{exchange:async()=>({...granted(),targets:{FB:granted().targets.FB,
+   FC:{projectId:FC,status:'UNAVAILABLE',code:'FA_TOKEN_REJECTED',diagnostic:detail}}})}});
+  const response=await handle(request()),body=await response.json();assert.equal(response.status,200);
+  assert.deepEqual(body.targets.FC,{projectId:FC,status:'UNAVAILABLE',code:'FA_TOKEN_REJECTED',
+   ...(pilotOnly&&detail.stage==='AUTH_LOOKUP'?{diagnostic:{stage:'AUTH_LOOKUP',code:detail.code==='GATEWAY_OPERATION_DENIED'?detail.code:'DIAGNOSTIC_UNAVAILABLE'}}:{})});
+  assert.equal(JSON.stringify(body.targets.FC).includes('private'),false);
+ }
+ const {handle}=harness({pilotOnly:true,broker:{exchange:async()=>({...granted(),targets:{...granted().targets,
+  FC:{...granted().targets.FC,diagnostic:{stage:'AUTH_LOOKUP',code:'GATEWAY_OPERATION_DENIED'}}}})}});
+ await denied(await handle(request()),502,'BROKER_RESPONSE_INVALID');
+});
 test('HTTP desligado não admite nem troca token',async()=>{
   const {calls}=harness();
   const handle=createManagementBrokerHttp({broker:{exchange:()=>calls.push('unexpected')}});
@@ -30,17 +61,52 @@ test('política, broker e admissão explícitos obrigatórios',async t=>{
 test('sucesso entrega somente resposta whitelisted no-store ao domínio exato',async()=>{
   const {handle,calls}=harness({broker:{exchange:async(body,context)=>{calls.push(['exchange',body,context]);return {...granted(),rawProfile:{secret:true},password:'not-returned'};}}});
   const response=await handle(request()), body=await response.json();
-  assert.equal(response.status,200);assert.deepEqual(body,granted());
+  assert.equal(response.status,200);assert.deepEqual(body,{schemaVersion:1,sourceProjectId:FA,faUid:'uid-a',targets:granted().targets});
   assert.equal(response.headers.get('Cache-Control'),'no-store');
   assert.equal(response.headers.get('Access-Control-Allow-Origin'),origin);
   assert.equal(response.headers.get('Vary'),'Origin');assert.equal(response.headers.get('X-Content-Type-Options'),'nosniff');
-  assert.deepEqual(calls[1][1],{faIdToken:token});assert.ok(calls[1][2].signal instanceof AbortSignal);
+  assert.deepEqual(calls[1][1],{faIdToken:token,sourceProjectId:FA,targetProjectIds:targetProjectIds()});assert.ok(calls[1][2].signal instanceof AbortSignal);
+});
+test('falha isolada do signer FC retorna FB pronto e FC indisponível sem vazar token',async()=>{
+  const {handle}=harness({broker:{exchange:async()=>({...granted(),targets:{
+    FB:{projectId:FB,status:'READY',uid:'uid-a',customToken},
+    FC:{projectId:FC,status:'UNAVAILABLE',code:'FC_TOKEN_SIGN_FAILED'}
+  }})}});
+  const response=await handle(request()),body=await response.json();
+  assert.equal(response.status,200);
+  assert.deepEqual(body,{schemaVersion:1,sourceProjectId:FA,faUid:'uid-a',targets:{
+    FB:{projectId:FB,status:'READY',uid:'uid-a',customToken},
+    FC:{projectId:FC,status:'UNAVAILABLE',code:'FC_TOKEN_SIGN_FAILED'}
+  }});
+  assert.equal(JSON.stringify(body).includes(fcToken),false);
 });
 test('origem ausente, diferente ou com sufixo não admitida',async t=>{
   for(const value of ['',origin+'.evil.invalid','https://other.invalid']) await t.test(value||'absent',async()=>{
     const {handle,calls}=harness();const response=await handle(request({headers:{Origin:value}}));
     await denied(response,403,'BROKER_ORIGIN_DENIED');assert.equal(response.headers.has('Access-Control-Allow-Origin'),false);assert.equal(calls.length,0);
   });
+});
+
+test('isolated pilot origin replaces rather than broadens the admitted browser origin', async () => {
+  const pilot = 'https://pilot.example.invalid';
+  const {handle, calls} = harness({allowedOrigin: pilot});
+  const response = await handle(request({headers: {Origin: pilot}}));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), pilot);
+  calls.length = 0;
+  for (const rejected of [origin, pilot + '.evil.invalid', 'null']) {
+    const deniedResponse = await handle(request({headers: {Origin: rejected}}));
+    await denied(deniedResponse, 403, 'BROKER_ORIGIN_DENIED');
+    assert.equal(deniedResponse.headers.has('Access-Control-Allow-Origin'), false);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('origin configuration must be an exact HTTPS origin without wildcard or path', () => {
+  for (const allowedOrigin of ['*', 'https://*.example.invalid', 'http://pilot.example.invalid',
+    'https://pilot.example.invalid/', 'https://pilot.example.invalid/path', 'https://pilot.example.invalid?x=1',
+    'https://user:password@pilot.example.invalid', 'null'])
+    assert.throws(() => harness({allowedOrigin}), /BROKER_ORIGIN_CONFIGURATION_INVALID/);
 });
 test('HTTPS e rota fixa sem query fragmento ou token em URL',async t=>{
   for(const url of ['http://example.invalid/v1/management/session',endpoint+'?token='+token,endpoint+'#fragment']) await t.test(url,async()=>{
@@ -61,9 +127,18 @@ test('método, content-type, cookies e Authorization recusados antes da admissã
     [{headers:{Cookie:'token='+token}},400,'BROKER_HEADERS_DENIED']
   ]) await t.test(code+status,async()=>{const {handle,calls}=harness();await denied(await handle(request(options)),status,code);assert.equal(calls.length,0);});
 });
-test('somente faIdToken no JSON; nenhuma identidade/permissão do corpo é aceita',async t=>{
-  for(const body of ['{','null','[]',JSON.stringify({faIdToken:token,uid:'other'}),JSON.stringify({faIdToken:''}),JSON.stringify({faIdToken:10})])
+test('somente FA token e destinos allowlisted no JSON; identidade/permissão arbitrária é recusada',async t=>{
+  for(const body of ['{','null','[]',JSON.stringify({faIdToken:token,uid:'other'}),JSON.stringify({faIdToken:''}),JSON.stringify({faIdToken:10}),
+    JSON.stringify({faIdToken:token,sourceProjectId:'foreign',targetProjectIds:targetProjectIds()}),
+    JSON.stringify({faIdToken:token,sourceProjectId:FA,targetProjectIds:{FB,FC:'foreign'}})])
     await t.test(body.slice(0,12),async()=>{const {handle,calls}=harness();await denied(await handle(request({body})),400,'BROKER_BODY_INVALID');assert.equal(calls.filter(v=>v[0]==='exchange').length,0);});
+});
+test('HTTP aceita pedido somente FC e não exige metadados ou lease FB',async()=>{
+  const {handle}=harness({broker:{exchange:async()=>({ok:true,sourceProjectId:FA,faUid:'uid-a',
+    targets:{FC:{projectId:FC,status:'READY',uid:'uid-a',customToken:fcToken}}})}});
+  const response=await handle(request({body:JSON.stringify({faIdToken:token,sourceProjectId:FA,targetProjectIds:{FC}})}));
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),{schemaVersion:1,sourceProjectId:FA,faUid:'uid-a',
+    targets:{FC:{projectId:FC,status:'READY',uid:'uid-a',customToken:fcToken}}});
 });
 test('limite por bytes não depende do Content-Length',async()=>{
   const {handle,calls}=harness();await denied(await handle(request({body:JSON.stringify({faIdToken:'x'.repeat(22000)})})),413,'BROKER_BODY_TOO_LARGE');
@@ -82,8 +157,10 @@ test('negação nunca reproduz token ou documento adicionados pelo adaptador',as
   const body=await denied(await handle(request()),403,'FA_TOKEN_REJECTED');assert.deepEqual(Object.keys(body).sort(),['code','ok','requiresReconciliation']);
 });
 test('identidade/projeto/resposta divergentes bloqueiam token e exigem reconciliação',async t=>{
-  for(const patch of [{fbUid:'other'},{destinationProjectId:'other'},{leaseVersion:0},{customToken:''},{policyVersion:'invalid/value'}]) await t.test(JSON.stringify(Object.keys(patch)),async()=>{
-    const {handle}=harness({broker:{exchange:async()=>({...granted(),...patch})}});
+  for(const patch of [r=>({...r,fbUid:'other'}),r=>({...r,destinationProjectId:'other'}),r=>({...r,leaseVersion:0}),
+    r=>({...r,targets:{...r.targets,FB:{...r.targets.FB,customToken:''}}}),r=>({...r,policyVersion:'invalid/value'}),r=>({...r,targets:{...r.targets,FC:{...r.targets.FC,uid:'other'}}}),
+    r=>({...r,targets:{...r.targets,FC:{...r.targets.FC,customToken:''}}})]) await t.test('invalid result',async()=>{
+    const {handle}=harness({broker:{exchange:async()=>patch(granted())}});
     assert.equal((await denied(await handle(request()),502,'BROKER_RESPONSE_INVALID')).requiresReconciliation,true);
   });
 });

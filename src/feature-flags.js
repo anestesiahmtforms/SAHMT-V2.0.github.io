@@ -4,6 +4,7 @@ export const DEFAULT_APP_FEATURES = Object.freeze({
   trainings: true,
   management: true,
   notifications: true,
+  occurrences: false,
   esg: false,
   innovation: false
 });
@@ -13,7 +14,8 @@ export const FEATURE_ROUTE = Object.freeze({
   labels: 'labels',
   trainings: 'training',
   management: 'management',
-  notifications: 'notifications'
+  notifications: 'notifications',
+  occurrences: 'occurrences'
 });
 
 export function normalizeAppFeatures(value) {

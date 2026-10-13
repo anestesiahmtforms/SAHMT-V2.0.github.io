@@ -6,7 +6,7 @@ import {createManagementBrokerTransport} from '../src/management-broker-transpor
 
 const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', TIME = 1800000000000;
 const config = {apiKey: 'public-test-key', authDomain: FB + '.firebaseapp.com', projectId: FB,
-  storageBucket: FB + '.firebasestorage.app', messagingSenderId: '613953519880', appId: '1:613953519880:web:test'};
+  storageBucket: FB + '.firebasestorage.app', messagingSenderId: '613953519880', appId: '1:613953519880:web:abc123'};
 const policy = () => ({operationTimeoutMs: 1000, cleanupTimeoutMs: 200, maxMeasurementAgeMs: 5000,
   applicationReserveReads: 100, metricLagReserveReads: 100, sourceReadMaximum: 5, leaseReadMaximum: 7, sourceMaxAgeMs: 5000, sourceMaxLeaseMs: 60000, maxReservationRecords: 1000});
 const clone = value => JSON.parse(JSON.stringify(value));

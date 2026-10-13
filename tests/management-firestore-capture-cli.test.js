@@ -6,7 +6,7 @@ import {resolve, sep, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {firestoreQuotaDayStart} from '../scripts/lib/management-read-budget.js';
+import {firestoreQuotaDayStart, sourceUsageHumanReportTextSha256, sourceUsageHumanReportObservationSha256} from '../scripts/lib/management-read-budget.js';
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const projectId = 'sahmt-gestao-5ae66';
@@ -20,8 +20,15 @@ async function fixture(t, changes = {}) {
   const privateDir = resolve(directory, '.local-preview/management-split');
   await mkdir(resolve(directory, 'scripts/lib'), {recursive: true});
   await mkdir(privateDir, {recursive: true});
-  for (const name of ['management-firestore-capture.mjs', 'lib/firestore-snapshot-capture.js', 'lib/management-split-plan.js', 'lib/management-read-budget.js', 'lib/management-fb-bootstrap-budget.js', 'lib/windows-protected-json.js']) {
+  for (const name of ['management-firestore-capture.mjs', 'lib/firestore-snapshot-capture.js', 'lib/management-capture-quarter-plan.js', 'lib/management-split-plan.js', 'lib/management-read-budget.js', 'lib/management-fb-bootstrap-budget.js', 'lib/windows-protected-json.js']) {
     await copyFile(resolve(root, 'scripts', name), resolve(directory, 'scripts', name));
+  }
+  // Copy the head modules when the current CLI imports them; absence of an
+  // actually imported module fails the fixture rather than hiding the error.
+  const copiedCliSource = await readFile(resolve(directory, 'scripts/management-firestore-capture.mjs'), 'utf8');
+  for (const name of ['management-capture-quarter-head.js','management-capture-quarter-head-store.js']) {
+    if (copiedCliSource.includes('./lib/' + name))
+      await copyFile(resolve(root,'scripts/lib',name),resolve(directory,'scripts/lib',name));
   }
   if (changes.failPolicyRename) {
     // Fault injection affects only the temporary fixture copy, never production or ACLs.
@@ -93,4 +100,74 @@ test('falha ao salvar pausa conserva lock durável e bloqueia nova execução', 
   assert.equal(await readFile(resolve(value.privateDir, 'backup-read-FB.lock'), 'utf8'), '');
   const repeated = await run(value); assert.equal(repeated.output.errorCode, 'MANAGEMENT_CAPTURE_LOCK_PRESENT_REQUIRES_REVIEW');
   assert.deepEqual(await currentPolicy(value), value.policy);
+});
+
+// Freshness/authority failure is tested in an isolated FA fixture. Credential,
+// protection and fetch boundaries are tripwired in the temporary CLI copy;
+// the real legacy read policy, Firebase accounts and network are never touched.
+async function humanFaFixture(t, change) {
+  const value=await fixture(t), now=Date.now(), day=firestoreQuotaDayStart(now), FA='sahmt-17a16';
+  const reportedAt=new Date(now-1000).toISOString(),reviewedAt=new Date(now-500).toISOString();
+  const reportedText='PODE IR EM FRENTE ESTÁ MOSTRANDO ATÉ AGORA 3.000 LEITURAS';
+  const evidenceId='synthetic-cli-human-text',evidenceSha256=sourceUsageHumanReportTextSha256(reportedText);
+  const observation={observationSource:'USER_CURRENT_USAGE_HUMAN_REPORT',project:FA,quotaDayStart:day,reportedAt,reviewedAt,
+    periodStart:day,periodKind:'CURRENT_FA_QUOTA_DAY_TO_REPORT',reportedReads:3000,reads:4000,reportedText,evidenceId,evidenceSha256,
+    exactGlobalCutoff:false,totalUsageKnown:false,measuredTotalReads:null,
+    reportProvenance:{schemaVersion:1,source:'HUMAN_USER_MESSAGE_TEXT',humanMessageId:'synthetic-cli-report-message',evidenceId,evidenceSha256,reportedAt}};
+  const policy={schemaVersion:1,projectId:FA,dailyReadLimit:45000,limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08',
+    quotaTimeZone:'America/Los_Angeles',renewalClearsPause:false,pausedRequiresReview:false,authorizedPurpose:'MANAGEMENT_BACKUP_ONLY',
+    humanDecisionAt:reportedAt,authorizationEvidence:'synthetic-quarter-authorization',appTrafficReserve:5000,metricLagReserve:2000,
+    maximumCaptureReserve:6000,reservationQuotaDayStart:day,reservedReads:0,manualReportEvidence:evidenceId,manualReportSha256:evidenceSha256};
+  policy.manualReportAuthorization={schemaVersion:1,authorized:true,authorizationSource:'EXPLICIT_HUMAN_FA_QUARTER_CAPTURE_REVIEW',
+    authorizationId:'synthetic-cli-approved-first-quarter',humanDecisionMessageId:'synthetic-cli-report-message',projectId:FA,
+    authorizedPurpose:'MANAGEMENT_BACKUP_ONLY',dailyReadLimit:45000,quotaDayStart:day,approvedAt:reportedAt,reviewedAt,reportedAt,
+    evidenceId,evidenceSha256,observationSha256:sourceUsageHumanReportObservationSha256(observation),
+    reportHumanMessageId:observation.reportProvenance.humanMessageId,reportSource:'HUMAN_USER_MESSAGE_TEXT',maximumCaptureReserve:6000};
+  change({observation,policy,now});
+  const policyPath=resolve(value.privateDir,'backup-read-policy-FA.json');
+  await writeFile(policyPath,JSON.stringify(policy));
+  await writeFile(resolve(value.privateDir,'daily-read-observation.json'),JSON.stringify(observation));
+  await writeFile(resolve(value.privateDir,'backup-scope-FA.json'),JSON.stringify({schemaVersion:1,projectId:FA,databaseId:'(default)',rootCollections:['managementAreas']}));
+  const legacyPath=resolve(value.privateDir,'synthetic-legacy-policy.json');
+  await writeFile(legacyPath,JSON.stringify({schemaVersion:1,project:FA,dailyReadLimit:35000,reservationQuotaDayStart:day,reservedCheckReads:0}));
+  const boundaryMarker=resolve(value.privateDir,'synthetic-boundary-called.txt'),copied=resolve(value.directory,'scripts/management-firestore-capture.mjs');
+  let source=await readFile(copied,'utf8');
+  assert.equal(source.match(/^const legacyPath = .*;$/gm)?.length,1);
+  source=source.replace(/^const legacyPath = .*;$/m,'const legacyPath = '+JSON.stringify(legacyPath)+';');
+  source+='\n';
+  const authNeedle="    const auth = createRequire(resolve(root, 'package.json'))('firebase-tools/lib/auth');";
+  const protectionNeedle='    const protector = await createPrivateJsonProtector();';
+  for(const needle of [authNeedle,protectionNeedle])assert.equal(source.split(needle).length,2);
+  source=source.replace(authNeedle,'    await writeFile('+JSON.stringify(boundaryMarker)+",'CREDENTIAL'); throw Error('SYNTHETIC_CREDENTIAL_BOUNDARY_REACHED');\n"+authNeedle);
+  source=source.replace(protectionNeedle,'    await writeFile('+JSON.stringify(boundaryMarker)+",'PROTECTION'); throw Error('SYNTHETIC_PROTECTION_BOUNDARY_REACHED');\n"+protectionNeedle);
+  source=source.replace('const projects =','Date.now = () => '+now+';\nglobalThis.fetch = async () => { await writeFile('+JSON.stringify(boundaryMarker)+",'API'); throw Error('SYNTHETIC_API_BOUNDARY_REACHED'); };\nconst projects =");
+  await writeFile(copied,source);
+  return {...value,policyPath,policy,boundaryMarker};
+}
+async function runHumanFa(value, mode='--capture-quarter') {
+  try {const output=await execute(process.execPath,[resolve(value.directory,'scripts/management-firestore-capture.mjs'),'FA',mode],
+    {cwd:value.directory,timeout:20000,windowsHide:true,maxBuffer:65536});return {exitCode:0,output:JSON.parse(output.stdout.trim())};}
+  catch(error){assert.equal(typeof error.code,'number');return {exitCode:error.code,output:JSON.parse(error.stderr.trim())};}
+}
+for(const [label,change] of [
+  ['expired',({observation,policy,now})=>{
+    const old=new Date(now-300001).toISOString();observation.reportedAt=old;observation.reportProvenance.reportedAt=old;
+    policy.manualReportAuthorization.reportedAt=old;
+    policy.manualReportAuthorization.observationSha256=sourceUsageHumanReportObservationSha256(observation);
+  }],
+  ['literal text modified',({observation})=>{observation.reportedText+=' ALTERADO';}],
+  ['authority not current human text',({policy})=>{policy.manualReportAuthorization.reportSource='AGENT_BROWSER_TEXT';}]
+])test('human FA '+label+' denies before credentials/API and persists pause for capture and preflight',async t=>{
+  for(const mode of ['--capture-quarter','--preflight'])await t.test(mode,async t=>{
+    const value=await humanFaFixture(t,change),result=await runHumanFa(value,mode);
+    assert.equal(result.exitCode,1);assert.equal(result.output.errorCode,'MANUAL_SOURCE_USAGE_HUMAN_REPORT_INVALID_OR_EXPIRED');
+    assert.equal(result.output.pausePersisted,true);assert.equal(result.output.firestoreWritesIssued,0);
+    assert.equal(result.output.productionMigrationExecuted,false);
+    const saved=await currentPolicy(value);assert.equal(saved.pausedRequiresReview,true);assert.equal(saved.reservedReads,0);
+    assert.equal(saved.pauseReason,'MANUAL_SOURCE_USAGE_HUMAN_REPORT_INVALID_OR_EXPIRED');
+    await assert.rejects(readFile(value.boundaryMarker,'utf8'),error=>error.code==='ENOENT');
+    const repeated=await runHumanFa(value,mode);assert.equal(repeated.output.errorCode,'MANAGEMENT_READ_PAUSED_REQUIRES_REVIEW');
+    assert.equal((await currentPolicy(value)).reservedReads,0);
+    await assert.rejects(readFile(value.boundaryMarker,'utf8'),error=>error.code==='ENOENT');
+  });
 });

@@ -1,4 +1,4 @@
-const routes = new Set(['home', 'events', 'labels', 'management', 'checklist', 'training', 'notifications', 'people', 'admin', 'offline']);
+const routes = new Set(['home', 'events', 'labels', 'management', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'offline']);
 
 export function currentRoute() {
   const route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';

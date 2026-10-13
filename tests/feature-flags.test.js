@@ -9,6 +9,7 @@ test('flags padrão mantêm módulos publicados ativos e ESG/Inovação inativos
     trainings: true,
     management: true,
     notifications: true,
+    occurrences: false,
     esg: false,
     innovation: false
   });
@@ -21,6 +22,7 @@ test('normaliza apenas valores booleanos reconhecidos sem alterar os padrões re
     trainings: true,
     management: true,
     notifications: true,
+    occurrences: false,
     esg: true,
     innovation: false
   });
@@ -28,10 +30,12 @@ test('normaliza apenas valores booleanos reconhecidos sem alterar os padrões re
 });
 
 test('mapeia flags aos caminhos de módulos e deixa rotas fixas inalteradas', () => {
-  const features = {...DEFAULT_APP_FEATURES, checklist: false, labels: false, trainings: false, management: false, notifications: false};
+  const features = {...DEFAULT_APP_FEATURES, checklist: false, labels: false, trainings: false, management: false, notifications: false, occurrences:true};
   for (const route of ['checklist', 'labels', 'training', 'management', 'notifications']) {
     assert.equal(featureEnabledForRoute(route, features), false, `${route} deve obedecer à flag correspondente`);
   }
+  assert.equal(featureEnabledForRoute('occurrences',features),true);
+  assert.equal(featureEnabledForRoute('occurrences'),false);
   for (const route of ['home', 'events', 'people', 'admin', 'offline', 'unknown']) {
     assert.equal(featureEnabledForRoute(route, features), true, `${route} não possui feature flag`);
   }

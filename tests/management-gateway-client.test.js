@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createManagementGatewayClient} from '../scripts/lib/management-gateway-client.js';
+import {MANAGEMENT_GATEWAY_DENIAL_CODES} from '../scripts/lib/management-gateway-protocol.js';
 
-const TIME=1800000000000,FA='sahmt-17a16',FB='sahmt-gestao-5ae66';
+const TIME=1800000000000,FA='sahmt-17a16',FB='sahmt-gestao-5ae66',FC='indicadores---sahmt';
 const ENDPOINT='https://script.google.com/macros/s/'+'A'.repeat(30)+'/exec';
 const REDIRECT='https://script.googleusercontent.com/macros/echo?user_content_key=synthetic-content-key&lib=synthetic-lib';
 const reply=(url,data,{status=200,headers={},stream,redirected=false}={})=>({url,status,redirected,
@@ -23,6 +24,22 @@ function harness({options={},fetchOverride,protocolOverride={}}={}) {
 }
 const denied=(work,code)=>assert.rejects(work,error=>error.code===code&&error.message===code);
 
+test('only pilot context retains a closed denial reason after authenticated response acceptance',async()=>{
+ for(const pilotDiagnostics of [false,true])for(const code of [...MANAGEMENT_GATEWAY_DENIAL_CODES,'private-email@example.invalid']){
+  const h=harness();Object.assign(h.result,{status:'DENIED',code,body:null});
+  await assert.rejects(h.client.lookupAuthUser({projectId:FA,uid:'uid-a'},{pilotDiagnostics}),error=>{
+   assert.equal(error.code,'GATEWAY_OPERATION_DENIED');assert.equal(error.message,'GATEWAY_OPERATION_DENIED');
+   assert.equal(error.gatewayDenialCode,pilotDiagnostics&&MANAGEMENT_GATEWAY_DENIAL_CODES.includes(code)?code:undefined);
+   assert.equal(JSON.stringify(error).includes('private'),false);return true;
+  });
+ }
+ const h=harness({protocolOverride:{acceptResponse:async()=>{throw Object.assign(Error('private raw response'),
+  {code:'GATEWAY_OPERATION_DENIED',gatewayDenialCode:'GATEWAY_ADMISSION_DENIED'});}}});
+ await assert.rejects(h.client.lookupAuthUser({projectId:FA,uid:'uid-a'},{pilotDiagnostics:true}),error=>{
+  assert.equal(error.code,'GATEWAY_CLIENT_UNAVAILABLE');assert.equal(error.gatewayDenialCode,undefined);return true;
+ });
+});
+
 test('default disable has no request, signing or transport effects',async()=>{
   const h=harness({options:{enabled:false}});await denied(h.client.lookupAuthUser({projectId:FA,uid:'uid-a'}),'GATEWAY_CLIENT_DISABLED');
   assert.equal(h.calls.length,0);assert.equal(h.protocolCalls.length,0);
@@ -37,12 +54,30 @@ test('fixed POST carries authenticated envelope only, no credentials, cookies or
   assert.equal(h.protocolCalls[0][1].expiresAtMs,TIME+1000);assert.equal(h.protocolCalls.filter(c=>c[0]==='claim').length,1);
 });
 
-test('FB lookup and signer choose closed operation instead of custom URLs or project commands',async()=>{
+test('FB/FC lookups and signers choose closed project-specific operations',async()=>{
   const h=harness();await h.client.lookupAuthUser({projectId:FB,uid:'uid-a'});await h.client.signFbCustomToken({uid:'uid-a',claims:{synthetic:true},issuedAtSeconds:1,expiresAtSeconds:2});
-  assert.deepEqual(h.protocolCalls.filter(c=>c[0]==='create').map(c=>c[1].operation),['AUTH_USER_LOOKUP_FB','SIGN_FB_CUSTOM_TOKEN']);
+  await h.client.lookupAuthUser({projectId:FC,uid:'uid-a'});
+  await h.client.signFcCustomToken({uid:'uid-a',claims:{},issuedAtSeconds:1,expiresAtSeconds:2});
+  assert.deepEqual(h.protocolCalls.filter(c=>c[0]==='create').map(c=>c[1].operation),['AUTH_USER_LOOKUP_FB','SIGN_FB_CUSTOM_TOKEN','AUTH_USER_LOOKUP_FC','SIGN_FC_CUSTOM_TOKEN']);
+  assert.deepEqual(h.protocolCalls.find(c=>c[0]==='create'&&c[1].operation==='SIGN_FC_CUSTOM_TOKEN')[1].body,
+    {uid:'uid-a',claims:{},issuedAtSeconds:1,expiresAtSeconds:2});
   await denied(h.client.lookupAuthUser({projectId:'other',uid:'uid-a'}),'GATEWAY_LOOKUP_REQUEST_INVALID');
   await denied(h.client.lookupAuthUser({projectId:FA,uid:'uid-a',url:'https://bad.invalid'}),'GATEWAY_LOOKUP_REQUEST_INVALID');
-  assert.equal(h.calls.length,2);
+  assert.equal(h.calls.length,4);
+});
+
+test('first-login Gateway request uses a digest-derived atomic envelope nonce and never accepts a caller UID',async()=>{
+  const h=harness();
+  await h.client.authorizeAndSignFaFirstLogin({email:'professional@example.org',googleSub:'google-sub-synthetic',
+    nonceDigest:'c'.repeat(64),issuedAtSeconds:TIME/1000,expiresAtSeconds:TIME/1000+300});
+  const request=h.protocolCalls.find(call=>call[0]==='create')[1];
+  assert.equal(request.operation,'FIRST_LOGIN_FA_SIGN');assert.equal(request.nonce,'c'.repeat(32));
+  assert.equal(request.body.email,'professional@example.org');assert.equal(request.body.googleSub,'google-sub-synthetic');
+  assert.equal(Object.hasOwn(request.body,'uid'),false);assert.equal(Object.hasOwn(request.body,'nonceDigest'),false);
+  assert.equal(h.calls.length,1);
+  await denied(h.client.authorizeAndSignFaFirstLogin({email:'professional@example.org',googleSub:'google-sub-synthetic',
+    nonceDigest:'not-a-digest',issuedAtSeconds:TIME/1000,expiresAtSeconds:TIME/1000+300}),'GATEWAY_FIRST_LOGIN_REQUEST_INVALID');
+  assert.equal(h.calls.length,1);
 });
 
 test('one ContentService redirect follows GET with no envelope or original headers',async t=>{

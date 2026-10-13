@@ -48,12 +48,12 @@ service cloud.firestore {
         data.permissions.keys().hasAll([
           'admin', 'managementRead', 'managementManage', 'managementActivityWrite',
           'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
-          'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsManage',
+          'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsRead', 'trainingsManage',
           'financeRead', 'financeWrite', 'financeManage'
         ]) && data.permissions.keys().hasOnly([
           'admin', 'managementRead', 'managementManage', 'managementActivityWrite',
           'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
-          'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsManage',
+          'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsRead', 'trainingsManage',
           'financeRead', 'financeWrite', 'financeManage'
         ]) &&
         data.permissions.admin is bool && data.permissions.managementRead is bool &&
@@ -61,7 +61,7 @@ service cloud.firestore {
         data.permissions.managementIndicatorsRead is bool && data.permissions.managementIndicatorsWrite is bool &&
         data.permissions.managementPlansManage is bool && data.permissions.documentsManage is bool &&
         data.permissions.equipmentManage is bool && data.permissions.qualityManage is bool &&
-        data.permissions.trainingsManage is bool && data.permissions.financeRead is bool &&
+        data.permissions.trainingsRead is bool && data.permissions.trainingsManage is bool && data.permissions.financeRead is bool &&
         data.permissions.financeWrite is bool && data.permissions.financeManage is bool;
     }
     function validManagementLease(data) {
@@ -93,12 +93,28 @@ service cloud.firestore {
         request.time.toMillis() < data.validUntilMs;
     }
 
+    function validTrainingReadLease() {
+      let leasePath = /databases/$(database)/documents/managementAuthorizationLeases/$(request.auth.uid);
+      return database == '(default)' && customManagementIdentity() && exists(leasePath) &&
+        validManagementLease(get(leasePath).data) &&
+        (get(leasePath).data.permissions.trainingsRead == true ||
+          get(leasePath).data.permissions.trainingsManage == true);
+    }
+
     match /managementAuthorizationLeases/{uid} {
       // resource is the requested lease: no extra get()/exists() access call.
       // Absence, expiration or revocation denies the read; do not bootstrap it.
       allow get: if database == '(default)' && customManagementIdentity() &&
         uid == request.auth.uid && resource != null && validManagementLease(resource.data);
       allow list, create, update, delete: if false;
+    }
+
+    // Read-only pilot path. Broker-minted FB sessions must have a current,
+    // matching FA authorization lease; collection scans must be capped at one.
+    match /trainings/{trainingId} {
+      allow get: if false;
+      allow list: if validTrainingReadLease() && request.query.limit != null && request.query.limit <= 1;
+      allow create, update, delete: if false;
     }
 
     // Resource scopes/schemas and the FA -> FB authorization reconciliation are

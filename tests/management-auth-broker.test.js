@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createManagementAuthBroker} from '../scripts/lib/management-auth-broker.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
+import {createManagementAuthWorker} from '../worker-management-auth/worker.js';
 
-const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', TIME = 2000000;
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt', TIME = 2000000;
 const clone = value => JSON.parse(JSON.stringify(value));
 const policy = () => ({schemaVersion: 1, version: 'approved-test-policy-v1', leaseDurationMs: 60000, maxSnapshotAgeMs: 5000, maxExecutionMs: 5000, cleanupTimeoutMs: 1000, maxFutureSkewMs: 0, readBudget: {dailyLimit: 35000, quotaTimezone: 'America/Los_Angeles', maxMeasurementAgeMs: 5000, applicationReserveReads: 100, metricLagReserveReads: 100, operationReadBounds: {readFaAuthorization: 6, readFbLease: 1, writeFbLease: 3, invalidateFbLease: 3}}});
 const claims = () => ({uid: 'member-a', sub: 'member-a', aud: FA, iss: 'https://securetoken.google.com/' + FA, auth_time: 1990, iat: 1995, exp: 2100, email_verified: true, firebase: {sign_in_provider: 'google.com', identities: {'google.com': ['google-member-a']}}});
@@ -11,12 +12,14 @@ const binding = () => ({sourceProjectId: FA, destinationProjectId: FB, faUid: 'm
 const source = (time = TIME) => ({
   schemaVersion: 1, projectId: FA, readTimeMs: time, fromCache: false, hasPendingWrites: false,
   consistentRead: true, coverageComplete: true, productionAuthorized: true, authorizationVersion: 7,
-  authUser: {uid: 'member-a', disabled: false, emailVerified: true, googleUid: 'google-member-a', tokensValidAfterTimeMs: 0},
-  profile: {uid: 'member-a', memberId: 'stable-member-a', active: true, access: true, role: 'profissional', permissions: {managementRead: true}},
+  authUser: {uid: 'member-a', email: 'member-a@example.invalid', disabled: false, emailVerified: true, googleUid: 'google-member-a', identityMarker: null, tokensValidAfterTimeMs: 0},
+  profile: {uid: 'member-a', memberId: 'stable-member-a', active: true, access: true, role: 'profissional', permissions: {managementRead: true, trainingsRead: true, managementIndicatorsRead: true}},
   binding: binding(), areas: [], documentAccess: {active: false, groups: []}
 });
 const destinationUser = (time = TIME) => ({schemaVersion: 1, projectId: FB, readTimeMs: time, fromCache: false, hasPendingWrites: false,
-  user: {uid: 'member-a', disabled: false, emailVerified: true, providerData: [{providerId: 'google.com', uid: 'google-member-a'}]}});
+  user: {uid: 'member-a', email: 'member-a@example.invalid', disabled: false, emailVerified: true, providerData: [{providerId: 'google.com', uid: 'google-member-a'}]}});
+const fcDestinationUser = (time = TIME) => ({schemaVersion: 1, projectId: FC, readTimeMs: time, fromCache: false, hasPendingWrites: false,
+  user: {uid: 'member-a', email: 'member-a@example.invalid', disabled: false, emailVerified: true, providerData: [{providerId: 'google.com', uid: 'google-member-a'}]}});
 const noLease = (time = TIME) => ({schemaVersion: 1, projectId: FB, readTimeMs: time, fromCache: false, hasPendingWrites: false, exists: false, revision: null, lease: null});
 const quotaDay = time => new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date(time));
 let nextReservationId = 0;
@@ -34,10 +37,10 @@ const reservation = (request, time = TIME) => {
 };
 const deferred = () => { let resolve; const promise = new Promise(yes => { resolve = yes; }); return {promise, resolve}; };
 
-function harness({overrides = {}, enabled = true, suppliedPolicy = policy(), initialLease = null} = {}) {
+function harness({overrides = {}, enabled = true, suppliedPolicy = policy(), initialLease = null, pilotUidAllowlist = null, fcPilotProvisionUid = null, pilotDiagnostics = false} = {}) {
   const calls = [], audit = [], writes = [], cleanup = [];
   let time = TIME, stored = initialLease ? clone(initialLease) : null, revision = stored ? 'r-existing' : null, grant = 0;
-  const reads = {fa: 0, fbUser: 0, lease: 0, verify: 0};
+  const reads = {fa: 0, fbUser: 0, fcUser: 0, lease: 0, verify: 0};
   const control = {
     now: () => time, advance: milliseconds => { time += milliseconds; },
     stored: () => stored ? clone(stored) : null,
@@ -48,8 +51,10 @@ function harness({overrides = {}, enabled = true, suppliedPolicy = policy(), ini
     verifyFaIdToken: async (token, checkRevoked) => { reads.verify++; calls.push(['verify', {checkRevoked}]); assert.equal(token, 'fake-private-fa-token'); assert.equal(checkRevoked, true); return claims(); },
     readFaAuthorization: async request => { reads.fa++; calls.push(['source', request]); return source(time); },
     getFbUser: async request => { reads.fbUser++; calls.push(['fb-user', request]); return destinationUser(time); },
+    getFcUser: async request => { reads.fcUser++; calls.push(['fc-user', request]); return fcDestinationUser(time); },
     readFbLease: async request => { reads.lease++; calls.push(['lease-read', request]); return stored ? {...noLease(time), exists: true, revision, lease: clone(stored)} : noLease(time); },
     createFbCustomToken: async (uid, tokenClaims) => { calls.push(['sign', {uid, claims: clone(tokenClaims)}]); return 'fake-private-custom-token'; },
+    createFcCustomToken: async (uid, tokenClaims) => { calls.push(['sign-fc', {uid, claims:clone(tokenClaims)}]); return 'fake-private-fc-token'; },
     writeFbLease: async request => {
       calls.push(['write', {uid: request.uid, expectedRevision: request.expectedRevision}]);
       if (request.expectedRevision !== revision) return {applied: false};
@@ -64,11 +69,23 @@ function harness({overrides = {}, enabled = true, suppliedPolicy = policy(), ini
     },
     ...overrides
   };
-  const broker = createManagementAuthBroker({enabled, policy: suppliedPolicy, adapters, clock: () => time, newGrantId: () => 'grant-' + (++grant), onAudit: event => audit.push(event)});
+  const broker = createManagementAuthBroker({enabled, policy: suppliedPolicy, adapters, clock: () => time,
+    newGrantId: () => 'grant-' + (++grant), onAudit: event => audit.push(event), pilotUidAllowlist, fcPilotProvisionUid, pilotDiagnostics});
   return {broker, adapters, calls, reads, audit, writes, cleanup, control};
 }
 const exchange = broker => broker.exchange({faIdToken: 'fake-private-fa-token'});
 const called = (calls, name) => calls.filter(call => call[0] === name);
+
+test('broker preserves FA_TOKEN_REJECTED and only opt-in pilot gets sanitized adapter detail',async()=>{
+  for(const mode of [false,true])for(const allowlist of [null,['member-a']]){
+    const h=harness({pilotDiagnostics:mode,pilotUidAllowlist:allowlist,overrides:{verifyFaIdToken:async()=>{
+      throw Object.assign(Error('private-token@example.invalid'),{diagnostic:{stage:'AUTH_LOOKUP',code:'GATEWAY_OPERATION_DENIED',uid:'private-uid'}});
+    }}});
+    const result=await exchange(h.broker);assert.equal(result.code,'FA_TOKEN_REJECTED');
+    assert.deepEqual(result.diagnostic,mode&&allowlist?{stage:'AUTH_LOOKUP',code:'GATEWAY_OPERATION_DENIED'}:undefined);
+    assert.equal(JSON.stringify(result).includes('private'),false);assert.equal(h.reads.fa,0);assert.equal(h.writes.length,0);
+  }
+});
 
 // All Auth/Firestore adapters below are local doubles; this suite is not proof
 // of hosted service, IAM, real token verification or live Security Rules.
@@ -89,7 +106,7 @@ test('política explícita e conjunto inteiro de adaptadores são obrigatórios'
   });
   const {broker, calls} = harness({overrides: {invalidateFbLease: undefined}});
   assert.equal((await exchange(broker)).code, 'BROKER_ADAPTER_UNAVAILABLE');
-  assert.equal(called(calls, 'verify').length, 0);
+  assert.equal(called(calls, 'verify').length, 1);
 });
 
 test('ignora UIDs/permissões/expiração falsos do corpo e deriva tudo da fonte servidor', async () => {
@@ -108,6 +125,244 @@ test('ignora UIDs/permissões/expiração falsos do corpo e deriva tudo da fonte
   assert.equal(Object.hasOwn(called(calls, 'sign')[0][1].claims, 'permissions'), false);
   assert.equal(called(calls, 'verify').length, 3);
   assert.equal(JSON.stringify(audit).includes('fake-private'), false);
+});
+
+test('FC destino opcional usa o mesmo FA UID e retorna token independente sem claims de FB', async () => {
+  const {broker, calls, writes} = harness();
+  const result = await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB,FC}});
+  assert.equal(result.ok,true);assert.equal(writes.length,1);
+  assert.deepEqual(result.targets,{FB:{projectId:FB,status:'READY',uid:'member-a',customToken:'fake-private-custom-token'},
+    FC:{projectId:FC,status:'READY',uid:'member-a',customToken:'fake-private-fc-token'}});
+  assert.deepEqual(called(calls,'sign-fc')[0][1],{uid:'member-a',claims:{sahmtFaSourceProjectId:FA,sahmtOccurrencesCatalogRead:true,
+    sahmtOccurrencesRead:false,sahmtOccurrencesWrite:true,sahmtOccurrencesAuditRead:false}});
+  assert.equal(JSON.stringify(called(calls,'sign-fc')[0]).includes('managementRead'),false);
+});
+
+test('FC occurrences grants write to active accessible FA users without granting read, audit, or admin', async t => {
+  await t.test('explicit write gets only the matching FC claims', async () => {
+    const base=source();
+    const {broker,calls,writes}=harness({overrides:{readFaAuthorization:async()=>({...base,profile:{...base.profile,
+      role:'profissional',permissions:{occurrencesWrite:true,occurrencesRead:true}}})}});
+    const result=await broker.exchange({faIdToken:'fake-private-fa-token',targetProjectIds:{FC}});
+    assert.equal(result.ok,true);assert.equal(result.targets.FC.status,'READY');assert.equal(writes.length,0);
+    assert.deepEqual(called(calls,'sign-fc')[0][1],{uid:'member-a',claims:{sahmtFaSourceProjectId:FA,
+      sahmtOccurrencesCatalogRead:true,sahmtOccurrencesRead:true,sahmtOccurrencesWrite:true,sahmtOccurrencesAuditRead:false}});
+  });
+  await t.test('ordinary active user receives only occurrence write access', async () => {
+    const base=source();
+    const {broker,calls}=harness({overrides:{readFaAuthorization:async()=>({...base,profile:{...base.profile,
+      role:'profissional',permissions:{}}})}});
+    const result=await broker.exchange({faIdToken:'fake-private-fa-token',targetProjectIds:{FC}});
+    assert.equal(result.ok,true);assert.equal(result.targets.FC.status,'READY');
+    assert.deepEqual(called(calls,'sign-fc')[0][1],{uid:'member-a',claims:{sahmtFaSourceProjectId:FA,
+      sahmtOccurrencesCatalogRead:true,sahmtOccurrencesRead:false,sahmtOccurrencesWrite:true,sahmtOccurrencesAuditRead:false}});
+  });
+});
+
+test('Worker dedicado → HTTP → broker valida prova FA e entrega tokens FB/FC separados', async () => {
+  const {broker, calls, writes} = harness();
+  const app = createManagementAuthWorker({buildRuntime: async () => ({enabled: true, broker,
+    admitRequest: async () => true, superviseExchange: () => true, maxRequestMs: 1000, cleanupDrainMs: 50})});
+  const response = await app.fetch(new Request('https://broker.invalid/v1/management/session', {method: 'POST',
+    headers: {Origin: 'https://anestesiahmtforms.github.io', 'Content-Type': 'application/json'},
+    body: JSON.stringify({faIdToken: 'fake-private-fa-token', sourceProjectId: FA, targetProjectIds: {FB, FC}})}), {}, {});
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(called(calls, 'verify').map(call => call[1].checkRevoked), [true, true, true, true]);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(payload.targets.FB, {projectId: FB, status: 'READY', uid: 'member-a', customToken: 'fake-private-custom-token'});
+  assert.deepEqual(payload.targets.FC, {projectId: FC, status: 'READY', uid: 'member-a', customToken: 'fake-private-fc-token'});
+  assert.notEqual(payload.targets.FB.customToken, payload.targets.FC.customToken);
+});
+
+test('FC signer failure is isolated after confirmed FB lease and preserves FB token', async () => {
+  const {broker, calls, writes, cleanup} = harness({overrides:{createFcCustomToken:async()=>{throw new Error('private signer detail');}}});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB,FC}});
+  assert.equal(result.ok,true);assert.equal(writes.length,1);assert.equal(cleanup.length,0);
+  assert.equal(result.targets.FB.customToken,'fake-private-custom-token');
+  assert.deepEqual(result.targets.FC,{projectId:FC,status:'UNAVAILABLE',code:'FC_TOKEN_SIGN_FAILED'});
+  assert.equal(JSON.stringify(result).includes('private signer detail'),false);
+});
+
+test('FC normally requires a pre-existing same-UID Auth account', async t => {
+  const cases = [
+    ['missing', value => { value.user = null; }, 'FC_AUTH_USER_MISSING'],
+    ['uid mismatch', value => { value.user.uid = 'other'; }, 'FC_AUTH_USER_INVALID'],
+    ['disabled', value => { value.user.disabled = true; }, 'FC_AUTH_USER_INVALID'],
+    ['Google mismatch', value => { value.user.providerData[0].uid = 'other-google'; }, 'FC_GOOGLE_IDENTITY_MISMATCH']
+  ];
+  for (const [name, change, code] of cases) await t.test(name, async () => {
+    const value = fcDestinationUser(); change(value);
+    const {broker, calls, writes} = harness({overrides: {getFcUser: async request => { assert.equal(request.projectId, FC); return value; }}});
+    const result = await broker.exchange({faIdToken: 'fake-private-fa-token', targetProjectIds: {FC}});
+    assert.equal(result.ok, false); assert.equal(result.code, code);
+    assert.equal(called(calls, 'sign-fc').length, 0); assert.equal(writes.length, 0);
+  });
+});
+
+test('FC pilot provisioning signs only for the allowlisted missing UID and leaves account creation to Firebase sign-in', async () => {
+  const absent = time => ({schemaVersion:1,projectId:FC,readTimeMs:time,fromCache:false,hasPendingWrites:false,user:null});
+  const {broker,calls,writes} = harness({pilotUidAllowlist:['member-a'],fcPilotProvisionUid:'member-a',
+    overrides:{getFcUser:async request=>{calls.push(['fc-user',request]);assert.equal(request.uid,'member-a');assert.equal(request.projectId,FC);return absent(TIME);}}});
+  const result = await broker.exchange({faIdToken:'fake-private-fa-token',targetProjectIds:{FC}});
+  assert.equal(result.ok,true); assert.equal(result.targets.FC.status,'READY');
+  assert.equal(result.targets.FC.uid,'member-a'); assert.equal(result.targets.FC.customToken,'fake-private-fc-token');
+  assert.equal(called(calls,'fc-user').length,2); assert.equal(called(calls,'sign-fc').length,1);
+  assert.equal(called(calls,'sign-fc')[0][1].uid,'member-a'); assert.equal(writes.length,0);
+  assert.equal(called(calls,'sign-fc')[0][1].claims.sahmtOccurrencesWrite,true);
+});
+
+test('FC missing-account provisioning is impossible without explicit pilot UID gate', async t => {
+  const absent = {schemaVersion:1,projectId:FC,readTimeMs:TIME,fromCache:false,hasPendingWrites:false,user:null};
+  await t.test('disabled provision mode denies absent Auth record',async()=>{
+    const {broker,calls}=harness({pilotUidAllowlist:['member-a'],overrides:{getFcUser:async request=>{calls.push(['fc-user',request]);return absent;}}});
+    const result=await broker.exchange({faIdToken:'fake-private-fa-token',targetProjectIds:{FC}});
+    assert.equal(result.ok,false);assert.equal(result.code,'FC_AUTH_USER_MISSING');
+    assert.equal(called(calls,'sign-fc').length,0);
+  });
+  await t.test('provision UID must equal the one-item server allowlist',()=>{
+    assert.throws(()=>harness({pilotUidAllowlist:['other-pilot'],fcPilotProvisionUid:'member-a'}),/BROKER_FC_PILOT_PROVISION_INVALID/);
+  });
+});
+
+test('FC pilot recheck blocks if the missing UID becomes conflicting or disabled', async () => {
+  let lookup=0;const disabled={...fcDestinationUser(),user:{...fcDestinationUser().user,disabled:true}};
+  const {broker,calls}=harness({pilotUidAllowlist:['member-a'],fcPilotProvisionUid:'member-a',overrides:{
+    getFcUser:async request=>{calls.push(['fc-user',request]);return ++lookup===1?{schemaVersion:1,projectId:FC,readTimeMs:TIME,fromCache:false,hasPendingWrites:false,user:null}:disabled;}}});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token',targetProjectIds:{FC}});
+  assert.equal(result.ok,false);assert.equal(result.code,'FC_AUTH_USER_INVALID');
+  assert.equal(called(calls,'sign-fc').length,1);
+});
+
+test('FC-only exige a leitura orçada da autorização FA, mas não consulta nem grava lease FB', async () => {
+  const {broker, calls, writes} = harness({overrides: {getFbUser: undefined,
+    readFbLease: undefined, writeFbLease: undefined, invalidateFbLease: undefined, createFbCustomToken: undefined}});
+  const result = await broker.exchange({faIdToken: 'fake-private-fa-token', targetProjectIds: {FC}});
+  assert.equal(result.ok, true); assert.equal(result.targets.FC.status, 'READY');
+  assert.equal(writes.length, 0); assert.equal(called(calls, 'fc-user').length, 2);
+  assert.equal(called(calls, 'reserve').length, 2);
+  assert.ok(called(calls, 'reserve').every(call => call[1].operation === 'readFaAuthorization'));
+});
+
+test('FC destino ausente é isolado enquanto FB completa sua sessão', async () => {
+  const {broker, calls, writes} = harness({overrides: {getFcUser: async () => ({...fcDestinationUser(), user: null})}});
+  const result = await broker.exchange({faIdToken: 'fake-private-fa-token', targetProjectIds: {FB, FC}});
+  assert.equal(result.ok, true); assert.equal(result.targets.FB.status, 'READY');
+  assert.equal(result.targets.FC.status, 'UNAVAILABLE'); assert.equal(result.targets.FC.code, 'FC_AUTH_USER_MISSING');
+  assert.equal(writes.length, 1); assert.equal(called(calls, 'sign-fc').length, 0);
+});
+
+test('FB signer failure is isolated and leaves authorized FC available', async () => {
+  const {broker, calls, writes, cleanup} = harness({overrides:{createFbCustomToken:async()=>{throw new Error('private FB signer detail');}}});
+  const result = await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB,FC}});
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.targets.FB,{projectId:FB,status:'UNAVAILABLE',code:'FB_TOKEN_SIGN_FAILED'});
+  assert.deepEqual(result.targets.FC,{projectId:FC,status:'READY',uid:'member-a',customToken:'fake-private-fc-token'});
+  assert.equal(writes.length,0);
+  assert.equal(cleanup.length,0);
+  assert.equal(called(calls,'sign-fc').length,1);
+  assert.equal(JSON.stringify(result).includes('private FB signer detail'),false);
+});
+
+test('FC signer that stalls is cut off before the request deadline and leaves FB response available', async () => {
+  const {broker, writes} = harness({overrides:{createFcCustomToken:()=>new Promise(()=>{})}});
+  const started=performance.now();
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB,FC}});
+  assert.ok(performance.now()-started<2500);assert.equal(result.ok,true);assert.equal(writes.length,1);
+  assert.equal(result.targets.FB.status,'READY');assert.equal(result.targets.FC.status,'UNAVAILABLE');
+});
+
+test('broker aceita somente IDs allowlisted e rejeita mapas inválidos', async t => {
+  for(const targetProjectIds of [{FB:'foreign',FC},{FB,FC:'foreign'},{}]) await t.test('target IDs',async()=>{
+    const {broker,calls}=harness();const result=await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds});
+    assert.equal(result.ok,false);assert.equal(result.code,'BROKER_TARGETS_INVALID');assert.equal(called(calls,'verify').length,0);
+  });
+});
+
+test('FC-only não consulta nem grava FB e usa permissão própria de indicadores', async () => {
+  const {broker, calls, reads, writes} = harness({overrides: {readFaAuthorization: async request => {
+    const snapshot = source(); snapshot.profile.permissions = {managementIndicatorsRead: true};
+    snapshot.binding = null; return snapshot;
+  }}});
+  const result = await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FC}});
+  assert.equal(result.ok, true); assert.deepEqual(Object.keys(result.targets), ['FC']);
+  assert.deepEqual(result.targets.FC,{projectId:FC,status:'READY',uid:'member-a',customToken:'fake-private-fc-token'});
+  assert.equal(reads.fbUser,0); assert.equal(reads.lease,0); assert.equal(writes.length,0);
+  assert.equal(called(calls,'sign').length,0); assert.equal(called(calls,'sign-fc').length,1);
+});
+
+test('FB-only não assina FC e requer permissão de treinamentos independente', async () => {
+  const {broker, calls, writes} = harness();
+  const result = await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB}});
+  assert.equal(result.ok,true); assert.deepEqual(Object.keys(result.targets),['FB']);
+  assert.equal(result.targets.FB.status,'READY'); assert.equal(writes.length,1);
+  assert.equal(called(calls,'sign-fc').length,0);
+});
+
+test('FB permite custom-token UID idêntico sem documento de binding quando a autorização FA é válida', async () => {
+  const {broker, writes} = harness({overrides: {readFaAuthorization: async () => { const snapshot = source(); snapshot.binding = null; return snapshot; }}});
+  const result = await broker.exchange({faIdToken: 'fake-private-fa-token', sourceProjectId: FA, targetProjectIds: {FB}});
+  assert.equal(result.ok, true);
+  assert.equal(result.targets.FB.status, 'READY');
+  assert.equal(result.fbUid, result.faUid);
+  assert.equal(writes.length, 1);
+});
+
+test('permissões continuam independentes: o write universal de Ocorrências não concede FB', async t => {
+  const cases = [
+    {name:'FC permitido, FB negado', permissions:{managementIndicatorsRead:true}, expected:{FB:'DENIED',FC:'READY'}},
+    {name:'FB permitido, FC disponível somente para ocorrências', permissions:{trainingsRead:true}, expected:{FB:'READY',FC:'READY'}}
+  ];
+  for (const item of cases) await t.test(item.name,async()=>{
+    const {broker, writes} = harness({overrides:{readFaAuthorization:async()=>{const snapshot=source();snapshot.profile.permissions=item.permissions;return snapshot;}}});
+    const result=await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB,FC}});
+    assert.equal(result.ok,true);assert.equal(result.targets.FB.status,item.expected.FB);assert.equal(result.targets.FC.status,item.expected.FC);
+    assert.equal(writes.length,item.expected.FB==='READY'?1:0);
+  });
+});
+
+test('administrador sem permissão de Educação recebe apenas sessão FC para Ocorrências', async () => {
+  const {broker, calls, writes} = harness({overrides:{readFaAuthorization:async()=>{
+    const snapshot=source(); snapshot.profile.role='administrador_app'; snapshot.profile.permissions={admin:true}; return snapshot;
+  }}});
+  const result=await broker.exchange({faIdToken:'fake-private-fa-token',sourceProjectId:FA,targetProjectIds:{FB,FC}});
+  assert.equal(result.ok,true);
+  assert.equal(result.targets.FB.status,'DENIED');
+  assert.equal(result.targets.FC.status,'READY');
+  assert.equal(called(calls,'sign').length,0);
+  assert.equal(called(calls,'sign-fc').length,1);
+  assert.equal(called(calls,'sign-fc')[0][1].claims.sahmtOccurrencesWrite,true);
+  assert.equal(writes.length,0);
+});
+
+test('pilot UID allowlist permits the approved source UID and denies all other users before destination effects', async t => {
+  await t.test('approved UID', async () => {
+    const {broker, calls} = harness({pilotUidAllowlist: ['member-a']});
+    const result = await exchange(broker);
+    assert.equal(result.ok, true);
+    assert.equal(result.targets.FB.status, 'READY');
+    assert.ok(called(calls, 'fb-user').length > 0);
+  });
+  await t.test('other verified UID', async () => {
+    const {broker, calls, reads, writes} = harness({pilotUidAllowlist: ['only-pilot'], overrides: {
+      verifyFaIdToken: async () => ({...claims(), uid: 'another-member', sub: 'another-member'}),
+      readFaAuthorization: async request => { reads.fa++; calls.push(['source', request]); return {...source(TIME),
+        profile:{...source(TIME).profile, uid:request.uid}, authUser:{...source(TIME).authUser, uid:request.uid},
+        binding:{...binding(), faUid:request.uid, fbUid:request.uid}}; }
+    }});
+    const result = await exchange(broker);
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'BROKER_PILOT_UID_DENIED');
+    assert.equal(reads.fa, 1);
+    assert.equal(called(calls, 'fb-user').length, 0);
+    assert.equal(called(calls, 'fc-user').length, 0);
+    assert.equal(called(calls, 'sign').length, 0);
+    assert.equal(called(calls, 'sign-fc').length, 0);
+    assert.equal(writes.length, 0);
+  });
+  for (const pilotUidAllowlist of [[], ['a', 'b'], ['bad uid'], ['x'.repeat(129)]]) await t.test('invalid allowlist shape', () => {
+    assert.throws(() => createManagementAuthBroker({pilotUidAllowlist}), /BROKER_PILOT_UID_ALLOWLIST_INVALID/);
+  });
 });
 
 test('token rejeitado/revogado nunca chega ao leitor de autorização', async () => {
@@ -136,6 +391,21 @@ test('nega audiência/emissor/provedor/tempo/UID inválidos no resultado verific
     assert.equal(called(calls, 'source').length, 0);
     assert.equal(called(calls, 'sign').length, 0);
   });
+});
+
+test('conta estrutural e candidatas de homologação ficam fora dos fluxos operacionais mesmo se forem admin', async t => {
+  for (const marker of ['STRUCTURAL_OWNER', 'HOMOLOGATION_CANDIDATE_1', 'HOMOLOGATION_CANDIDATE_2']) await t.test(marker, async () => {
+    const {broker, calls} = harness({overrides: {verifyFaIdToken: async () => ({...claims(), identityMarker: marker})}});
+    assert.equal((await exchange(broker)).code, 'FA_IDENTITY_OUTSIDE_OPERATIONAL_SCOPE');
+    assert.equal(called(calls, 'source').length, 0); assert.equal(called(calls, 'sign').length, 0);
+  });
+});
+
+test('marcador da identidade precisa coincidir entre autenticação e autorização FA', async () => {
+  const value = source(); value.authUser.identityMarker = 'HOMOLOGATION_CANDIDATE_1';
+  const {broker, calls} = harness({overrides: {readFaAuthorization: async () => value}});
+  assert.equal((await exchange(broker)).code, 'FA_AUTH_IDENTITY_MARKER_CHANGED');
+  assert.equal(called(calls, 'sign').length, 0);
 });
 
 test('nega fonte parcial/cache/desatualizada/perfil revogado/vínculo divergente', async t => {
@@ -168,12 +438,12 @@ test('nega fonte parcial/cache/desatualizada/perfil revogado/vínculo divergente
 test('Google Auth sozinho não concede nenhuma permissão de Gestão', async () => {
   const value = source(); value.profile.permissions = {};
   const {broker, calls} = harness({overrides: {readFaAuthorization: async () => value}});
-  assert.equal((await exchange(broker)).code, 'FA_MANAGEMENT_DENIED');
+  assert.equal((await exchange(broker)).code, 'FB_ACCESS_DENIED');
   assert.equal(called(calls, 'sign').length, 0);
 });
 
 test('preserva direitos de área/grupo sem elevar participante comum a administrador', async () => {
-  const value = source(); value.profile.permissions = {};
+  const value = source(); value.profile.permissions = {trainingsRead:true};
   value.areas = [{id: 'area-quality', active: true, version: 3, memberUids: ['member-a'], managerUids: []}];
   value.documentAccess = {active: true, googleUid: 'google-member-a', groups: ['GENERAL']};
   const {broker, writes} = harness({overrides: {readFaAuthorization: async () => value}});
@@ -206,7 +476,7 @@ test('nega grupos indevidos/relação incompleta e ignora áreas/grupos revogado
     value.areas = [{id: 'area', active: false, version: 3, memberUids: ['member-a'], managerUids: ['member-a']}];
     value.documentAccess = {active: false, groups: ['GENERAL']};
     const {broker} = harness({overrides: {readFaAuthorization: async () => value}});
-    assert.equal((await exchange(broker)).code, 'FA_MANAGEMENT_DENIED');
+    assert.equal((await exchange(broker)).code, 'FB_ACCESS_DENIED');
   });
 });
 
@@ -226,6 +496,29 @@ test('nega Auth FB ausente/desativado/outra identidade sem criar ou importar usu
     assert.equal(called(calls, 'sign').length, 0);
     assert.equal(called(calls, 'write').length, 0);
   });
+});
+
+test('FB custom-token-only provision accepts only the FA-validated UID and keeps providerless state isolated', async () => {
+  const value = destinationUser();
+  value.user.emailVerified = false;
+  value.user.providerData = [];
+  const {broker, writes, calls} = harness({overrides: {getFbUser: async () => value}});
+  const result = await exchange(broker);
+  assert.equal(result.ok, true);
+  assert.equal(result.targets.FB.status, 'READY');
+  assert.equal(result.fbUid, 'member-a');
+  assert.equal(called(calls, 'sign').length, 1);
+  assert.equal(writes.length, 1);
+});
+
+test('FB custom-token-only account still rejects a destination with no matching verified FA identity', async () => {
+  const value = destinationUser();
+  value.user.providerData = [];
+  value.user.uid = 'other';
+  const {broker, calls, writes} = harness({overrides: {getFbUser: async () => value}});
+  assert.equal((await exchange(broker)).code, 'FB_AUTH_USER_INVALID');
+  assert.equal(called(calls, 'sign').length, 0);
+  assert.equal(writes.length, 0);
 });
 
 test('mudança de autorização após assinatura nega antes da escrita', async () => {
@@ -715,7 +1008,8 @@ test('HTTP sustenta cleanup/fence do broker real depois de retornar cancelamento
   const handle=createManagementBrokerHttp({enabled:true,broker,admitRequest:async()=>true,
     maxRequestMs:1000,cleanupDrainMs:1000,superviseExchange:value=>{completion=value;return true;}});
   const request=new Request('https://example.invalid/v1/management/session',{method:'POST',signal:controller.signal,
-    headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:JSON.stringify({faIdToken:'fake-private-fa-token'})});
+    headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:JSON.stringify({faIdToken:'fake-private-fa-token',
+      sourceProjectId:FA,targetProjectIds:{FB,FC}})});
   const pending=handle(request);await writeStarted.promise;controller.abort();
   const response=await pending, body=await response.json();
   assert.equal(response.status,504);assert.equal(body.requiresReconciliation,true);
@@ -724,7 +1018,7 @@ test('HTTP sustenta cleanup/fence do broker real depois de retornar cancelamento
   let settled=false;void completion.then(()=>{settled=true;});
   await new Promise(yes=>setImmediate(yes));assert.equal(settled,false);
   cleanup.resolve({applied:false,matched:false,fenced:true});
-  assert.deepEqual(await completion,{settled:true,started:true,requiresReconciliation:false,code:'BROKER_COMPLETED_AFTER_ABORT'});
+  assert.deepEqual(await completion,{settled:true,started:true,requiresReconciliation:true,code:'BROKER_COMPLETED_AFTER_ABORT'});
 });
 
 

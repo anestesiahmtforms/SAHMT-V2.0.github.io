@@ -1,5 +1,6 @@
-import {browserLocalPersistence, indexedDBLocalPersistence, initializeAuth, getAuth, connectAuthEmulator} from 'firebase/auth';
+import {browserLocalPersistence, indexedDBLocalPersistence, initializeAuth, getAuth, connectAuthEmulator, onAuthStateChanged} from 'firebase/auth';
 import {app} from './firebase-app.js';
+import {registerManagementPilotAuth} from './management-pilot-auth-diagnostics.js';
 
 function initializeSahmtAuth(firebaseApp) {
   if (!firebaseApp) return null;
@@ -15,6 +16,7 @@ function initializeSahmtAuth(firebaseApp) {
 }
 
 export const auth = initializeSahmtAuth(app);
+if (import.meta.env.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true') registerManagementPilotAuth('FA', auth, onAuthStateChanged);
 if (auth) {
   auth.languageCode = 'pt-BR';
   if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {

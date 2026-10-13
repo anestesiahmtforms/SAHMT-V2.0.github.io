@@ -5,9 +5,9 @@ import {doc, setDoc, getDocFromServer, getDocsFromServer, collection, query, whe
 import {assertFails, assertSucceeds, initializeTestEnvironment} from '@firebase/rules-unit-testing';
 
 const test = (name, execute) => nativeTest(name, {timeout: 30000}, execute);
-const PROJECT = 'demo-sahmt-management-rules', HOST = '127.0.0.1', PORT = 8187;
+const PROJECT = 'demo-sahmt-management-rules', HOST = '127.0.0.1', PORT = 8274;
 const permissions = ['admin','managementRead','managementManage','managementActivityWrite','managementIndicatorsRead',
-  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsManage',
+  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsRead','trainingsManage',
   'financeRead','financeWrite','financeManage'];
 const clone = value => JSON.parse(JSON.stringify(value));
 let env, member, other;

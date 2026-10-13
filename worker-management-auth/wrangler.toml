@@ -1,0 +1,27 @@
+name = "sahmt-auth-broker"
+main = "worker.js"
+compatibility_date = "2026-10-10"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# Local durable admission binding only. This does not create a Cloudflare
+# namespace until a future deployment is explicitly authorized.
+[[durable_objects.bindings]]
+name = "BROKER_STATE"
+class_name = "ManagementBrokerAdmissionState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ManagementBrokerAdmissionState"]
+
+# No route, custom domain, HMAC secret, Apps Script URL, Firebase credential,
+# Firebase binding, or deployment command is configured here.
+
+[vars]
+MANAGEMENT_AUTH_ENABLED = "false"
+MANAGEMENT_AUTH_FB_ENABLED = "false"
+MANAGEMENT_AUTH_FC_ENABLED = "false"
+MANAGEMENT_AUTH_PILOT_ONLY = "false"
+MANAGEMENT_AUTH_FC_PILOT_PROVISION = "false"
+MANAGEMENT_FIRST_LOGIN_ENABLED = "false"
+MANAGEMENT_GATEWAY_ENABLED = "false"

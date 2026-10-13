@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Pilot-only FC rules. The broker issues FC custom sessions only after
+// validating the current FA profile and the independent indicators permission.
+// Reads are limited to one document per query; all other access is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function authorizedIndicatorsSession() {
+      return database == '(default)' && request.auth != null &&
+        request.auth.uid is string && request.auth.uid.size() > 0 &&
+        request.auth.token.keys().hasAll(['firebase']) &&
+        request.auth.token.firebase is map &&
+        request.auth.token.firebase.keys().hasAll(['sign_in_provider']) &&
+        request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+
+    match /indicators/{indicatorId} {
+      allow get: if false;
+      allow list: if authorizedIndicatorsSession() &&
+        request.query.limit != null && request.query.limit <= 1;
+      allow create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

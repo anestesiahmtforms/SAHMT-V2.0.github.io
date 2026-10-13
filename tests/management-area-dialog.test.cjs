@@ -6,7 +6,7 @@ const {join} = require('node:path');
 const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 
 test('a entrada em Gestão não abre uma área; o clique abre o modal antes de consultar', async () => {
-  const start = source.indexOf("    if (route === 'management') {\n      if (!items.some");
+  const start = source.indexOf("    if (route === 'management') {\n      const projectAuthOptinEnabled");
   const end = source.indexOf("    } else {\n      const heading", start);
   assert.ok(start >= 0 && end > start, 'Trecho da abertura da área de Gestão não localizado no fixture VM.');
   const handlers = new Map();
@@ -14,8 +14,9 @@ test('a entrada em Gestão não abre uma área; o clique abre o modal antes de c
   const button = {dataset: {managementArea: 'area-1'}, classList: {toggle() {}}, setAttribute() {}, addEventListener: (event, fn) => handlers.set('click', fn)};
   const dialog = {open: false, showModal() {this.open = true; calls.push('modal');}, addEventListener: (event, fn) => handlers.set(event, fn)};
   const content = {isConnected:true, innerHTML: '', querySelector: selector => selector === '#management-area-dialog' ? dialog : null, querySelectorAll: () => [button]};
-  const context = vm.createContext({route: 'management', session:{user:{uid:'fictitious'},status:'signed-in',profile:{active:true,access:true}}, evaluationModuleGeneration:0, cleanupCurrentModule:null, currentRoute:()=> 'management', featureEnabledForRoute:()=>true, appFeatures:{}, evaluationUi:{mountManagementEvaluationAccess:()=>()=>{}}, items: [{id: 'area-1', name: 'Gestão clínica'}], selectedManagementAreaId: '', content, can: () => false, MANAGEMENT_AREA_SEED: [], escapeHtml: String, actionForm: () => '<form data-module-form="management"></form>', populateSelect: async () => {}, document: {querySelector: () => null}, managementActivityLoad: 0, loadManagementAreaActivities: async area => {calls.push(area.id);}});
-  await vm.runInContext('(async () => {\n' + source.slice(start, end).replace("await import('./performance-ui.js')", 'evaluationUi') + '\n}\n})()', context);
+  const context = vm.createContext({route: 'management', projectAuthOptinEnabled:false, session:{user:{uid:'fictitious'},status:'signed-in',profile:{active:true,access:true}}, evaluationModuleGeneration:0, cleanupCurrentModule:null, currentRoute:()=> 'management', featureEnabledForRoute:()=>true, appFeatures:{}, evaluationUi:{mountManagementEvaluationAccess:()=>()=>{}}, items: [{id: 'area-1', name: 'Gestão clínica'}], selectedManagementAreaId: '', content, can: () => false, MANAGEMENT_AREA_SEED: [], escapeHtml: String, actionForm: () => '<form data-module-form="management"></form>', populateSelect: async () => {}, document: {querySelector: () => null}, managementActivityLoad: 0, loadManagementAreaActivities: async area => {calls.push(area.id);}});
+  await vm.runInContext('(async () => {\n' + source.slice(start, end)
+    .replace("await import('./performance-ui.js')", 'evaluationUi') + '\n}\n})()', context);
   assert.deepEqual(calls, []);
   assert.match(content.innerHTML, /<dialog class="management-area-dialog"/);
   assert.match(content.innerHTML, /<form data-module-form="management">/);
@@ -23,4 +24,12 @@ test('a entrada em Gestão não abre uma área; o clique abre o modal antes de c
   assert.deepEqual(calls, ['modal', 'area-1']);
   handlers.get('close')();
   assert.equal(context.managementActivityLoad, 1);
+});
+
+test('the local opt-in exposes independent FB/FC choices and a combined choice only when both targets are enabled', () => {
+  assert.match(source, /management-firebase-enabled[^\n]+=== 'true' \|\|[\s\S]{0,100}indicators-firebase-enabled/);
+  assert.match(source, /data-project-auth-targets="FB"/);
+  assert.match(source, /data-project-auth-targets="FC"/);
+  assert.match(source, /data-project-auth-targets="FB,FC"/);
+  assert.match(source, /getFirebaseProjectAuthOptIn\(\)\.connect\(targetNames\)/);
 });

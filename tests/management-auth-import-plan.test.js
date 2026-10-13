@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {authImportPlanDigest, authSnapshotDigest, authSourceRecordDigest, authRawSnapshotDigest, prepareAuthImportPlan} from '../scripts/lib/management-auth-import-plan.js';
+import {authImportPlanDigest, authSnapshotDigest, authSourceRecordDigest, authRawSnapshotDigest, prepareAuthImportPlan, prepareAuthMigrationSimulation} from '../scripts/lib/management-auth-import-plan.js';
 
 const account = (uid = 'member-a', changes = {}) => ({
   uid,
@@ -250,6 +250,122 @@ test('readTime preserva frações válidas até nanossegundos sem afirmar freshn
   assert.equal(blocked.readiness.operationalFreshnessEvaluated, false);
 });
 
+test('FA→FC requer fcUid e preserva o UID FA sem sobrescrever conta equivalente', () => {
+  const sourceUser = account('synthetic-fc-user');
+  const target = snapshot('indicadores---sahmt', [account('synthetic-fc-user')]);
+  const links = [{memberId: 'synthetic-member', faUid: sourceUser.uid, fcUid: sourceUser.uid}];
+  const existing = prepareAuthImportPlan(source([sourceUser]), target, links);
+  assert.equal(existing.entries[0].action, 'SKIP');
+  assert.equal(existing.entries[0].fcUid, sourceUser.uid);
+  assert.equal(Object.hasOwn(existing.entries[0], 'fbUid'), false);
+  const absent = prepareAuthImportPlan(source([sourceUser]), snapshot('indicadores---sahmt', []), links);
+  assert.equal(absent.importRecords[0].uid, sourceUser.uid);
+  assert.deepEqual(absent.importRecords[0], account(sourceUser.uid));
+});
+
+test('simulação FA→FB/FC classifica quatro situações e resume sem dados pessoais', () => {
+  const sourceUsers = [
+    account('synthetic-create'),
+    account('synthetic-equivalent'),
+    account('synthetic-conflict'),
+    account('synthetic-password', {providerData: [...account('synthetic-password').providerData, {providerId: 'password', uid: 'synthetic-password@example.invalid'}], passwordHash: 'never-copy-hash'}),
+    account('synthetic-other-provider', {providerData: [{providerId: 'apple.com', uid: 'synthetic-apple-identity'}]})
+  ];
+  const fa = source(sourceUsers);
+  const equivalent = account('synthetic-equivalent');
+  const fb = snapshot('sahmt-gestao-5ae66', [equivalent, account('synthetic-other', {email: 'synthetic-conflict@example.invalid'})]);
+  const fc = snapshot('indicadores---sahmt', [equivalent]);
+  const links = sourceUsers.map(user => ({memberId: `member-${user.uid}`, faUid: user.uid, fbUid: user.uid, fcUid: user.uid}));
+  const sourceProfileSnapshot = {schemaVersion: 1, projectId: 'sahmt-17a16', coverage: {complete: true}, profiles: [
+    {id: 'synthetic-create', uid: 'synthetic-create', active: true, access: true, role: 'administrador_app', permissions: {}, displayName: 'PRIVATE NAME'},
+    {id: 'synthetic-equivalent', uid: 'synthetic-equivalent', active: true, access: true, role: 'profissional', permissions: {admin: true}},
+    {id: 'synthetic-conflict', uid: 'synthetic-conflict', active: true, access: true, role: 'profissional', permissions: {}},
+    {id: 'synthetic-password', uid: 'synthetic-password', active: true, access: false, role: 'profissional', permissions: {}},
+    {id: 'synthetic-other-provider', uid: 'synthetic-other-provider', active: true, access: true, role: 'profissional', permissions: {}}
+  ]};
+  const report = prepareAuthMigrationSimulation({sourceSnapshot: fa, destinationSnapshots: {FB: fb, FC: fc}, sourceProfileSnapshot, identityMappings: links});
+  assert.deepEqual(report.targets.FB.classifications, {create: 1, alreadyEquivalent: 1, conflict: 1, manualReview: 2});
+  assert.deepEqual(report.targets.FC.classifications, {create: 2, alreadyEquivalent: 1, conflict: 0, manualReview: 2});
+  assert.equal(report.applicationAdminPlan.sourceEligibleCount, 2);
+  assert.equal(report.applicationAdminPlan.sameAdminIdentitySetCoveredByAuthPlan, true);
+  assert.equal(report.applicationAdminPlan.effectivePrivilegesCopied, false);
+  assert.equal(report.applicationAdminPlan.cloudIamPermissionsGranted, false);
+  assert.equal(report.previewOnly, true);
+  assert.equal(report.writeEnabled, false);
+  const serialized = JSON.stringify(report);
+  for (const privateValue of ['synthetic-create', 'synthetic-equivalent', 'synthetic-conflict', 'synthetic-password', 'synthetic-other-provider', 'example.invalid', 'PRIVATE NAME', 'never-copy-hash', 'synthetic-apple-identity']) assert.equal(serialized.includes(privateValue), false);
+  assert.equal(report.issueCategoriesByTarget.FB.some(item => item.code === 'SOURCE_PASSWORD_PROVIDER_REQUIRES_REVIEW'), true);
+  assert.equal(report.issueCategoriesByTarget.FC.some(item => item.code === 'SOURCE_UNSUPPORTED_PROVIDER_REQUIRES_REVIEW'), true);
+});
+
+test('perfil ausente ou administrador inativo impede afirmar reconciliação do mesmo grupo', () => {
+  const user = account('synthetic-admin');
+  const report = prepareAuthMigrationSimulation({sourceSnapshot: source([user]), destinationSnapshots: {FB: snapshot('sahmt-gestao-5ae66', []), FC: snapshot('indicadores---sahmt', [])}, sourceProfileSnapshot: {schemaVersion: 1, projectId: 'sahmt-17a16', coverage: {complete: true}, profiles: [{uid: user.uid, active: false, access: true, role: 'administrador_app', permissions: {}}]}, identityMappings: [{memberId: 'synthetic-member', faUid: user.uid, fbUid: user.uid, fcUid: user.uid}]});
+  assert.equal(report.applicationAdminPlan.sourceEligibleCount, 0);
+  assert.equal(report.applicationAdminPlan.sameAdminIdentitySetCoveredByAuthPlan, false);
+  assert.equal(report.sourceIssueCategories.some(item => item.code === 'ADMIN_SIGNAL_INACTIVE_OR_ACCESS_DENIED'), true);
+});
+
+test('somente as duas identidades exatas e únicas ficam fora do lote; conta estrutural e antigos participantes são preservados', () => {
+  const owner = account('synthetic-owner', {email: 'fa-owner@example.invalid'});
+  const candidateOne = account('synthetic-candidate-one', {email: 'homologation-a@example.invalid'});
+  const candidateTwo = account('synthetic-candidate-two', {email: 'homologation-b@example.invalid'});
+  const previousParticipant = account('synthetic-previous-participant');
+  const operational = account('synthetic-operational');
+  const users = [owner, candidateOne, candidateTwo, previousParticipant, operational];
+  const links = users.map(user => ({memberId: `synthetic-member-${user.uid}`, faUid: user.uid, fbUid: user.uid, fcUid: user.uid}));
+  const profiles = users.map(user => ({uid: user.uid, active: true, access: true,
+    role: user.uid === previousParticipant.uid ? 'administrador_app' : 'profissional', permissions: {}}));
+  const report = prepareAuthMigrationSimulation({sourceSnapshot: source(users),
+    destinationSnapshots: {FB: snapshot('sahmt-gestao-5ae66', [account(candidateOne.uid)]), FC: snapshot('indicadores---sahmt', [])},
+    sourceProfileSnapshot: {schemaVersion: 1, projectId: 'sahmt-17a16', coverage: {complete: true}, profiles}, identityMappings: links,
+    structuralProtectedSourceIdentity: {faUid: owner.uid, sourceRecordSha256: authSourceRecordDigest(owner)}});
+  assert.deepEqual(report.migrationCohorts, {operationalSourceUsers: 2, structuralProtectedSourceUsers: 1, temporaryHomologationSourceUsers: 2, homologationExcludedFromInitialBatch: 2, identityReviewSourceUsersWithheld: 0});
+  assert.deepEqual(report.targets.FB.classifications, {create: 2, alreadyEquivalent: 0, conflict: 0, manualReview: 1});
+  assert.deepEqual(report.targets.FC.classifications, {create: 2, alreadyEquivalent: 0, conflict: 0, manualReview: 1});
+  assert.deepEqual(report.targets.FB.homologation, {sourceAccounts: 2, excludedFromInitialBatch: 2, alreadyPresentInDestination: 1});
+  assert.deepEqual(report.targets.FC.homologation, {sourceAccounts: 2, excludedFromInitialBatch: 2, alreadyPresentInDestination: 0});
+  assert.deepEqual(report.targets.FB.structuralProtected, {sourceAccounts: 1, approvalRequiredForChanges: 1, presentInDestination: 0});
+  assert.deepEqual(report.targets.FC.structuralProtected, {sourceAccounts: 1, approvalRequiredForChanges: 1, presentInDestination: 0});
+  assert.equal(report.applicationAdminPlan.sourceEligibleCount, 1);
+  assert.equal(report.retirementCandidates.confirmedByUniqueAuthUidAndEmail, 2);
+  assert.equal(report.retirementCandidates.unresolvedOrAmbiguous, 0);
+  assert.equal(report.retirementCandidates.structuralOwnerUidAndEmailConfirmed, true);
+  assert.equal(report.retirementCandidates.automaticDeletionEnabled, false);
+  assert.equal(report.retirementCandidates.historicalRecordsDeletionEnabled, false);
+  assert.equal(report.writeEnabled, false);
+  assert.equal(report.requiredBeforeAnyImport.includes('STRUCTURAL_ACCOUNT_IDENTITY_REVALIDATION_AND_EXPLICIT_APPROVAL_FOR_CHANGES'), true);
+  const serialized = JSON.stringify(report);
+  for (const user of users) assert.equal(serialized.includes(user.uid), false);
+  for (const address of ['homologation-a@example.invalid', 'homologation-b@example.invalid', 'fa-owner@example.invalid']) assert.equal(serialized.includes(address), false);
+  assert.throws(() => prepareAuthMigrationSimulation({sourceSnapshot: source(users),
+    destinationSnapshots: {FB: snapshot('sahmt-gestao-5ae66', []), FC: snapshot('indicadores---sahmt', [])},
+    sourceProfileSnapshot: {schemaVersion: 1, projectId: 'sahmt-17a16', coverage: {complete: true}, profiles}, identityMappings: links,
+    structuralProtectedSourceIdentity: {faUid: owner.uid, sourceRecordSha256: 'f'.repeat(64)}}), /STRUCTURAL_PROTECTED_IDENTITY_UNVERIFIED/);
+});
+
+test('identidade candidata ausente ou ambígua bloqueia confirmação e é retirada do lote para revisão', () => {
+  const owner = account('synthetic-owner', {email: 'fa-owner@example.invalid'});
+  const candidate = account('synthetic-candidate', {email: 'homologation-a@example.invalid'});
+  const duplicate = account('synthetic-candidate-duplicate', {email: 'homologation-a@example.invalid'});
+  const other = account('synthetic-other');
+  const users = [owner, candidate, duplicate, other];
+  const links = users.map(user => ({memberId: `member-${user.uid}`, faUid: user.uid, fbUid: user.uid, fcUid: user.uid}));
+  const profiles = users.map(user => ({uid: user.uid, active: true, access: true, role: 'profissional', permissions: {}}));
+  const report = prepareAuthMigrationSimulation({sourceSnapshot: source(users),
+    destinationSnapshots: {FB: snapshot('sahmt-gestao-5ae66', []), FC: snapshot('indicadores---sahmt', [])},
+    sourceProfileSnapshot: {schemaVersion: 1, projectId: 'sahmt-17a16', coverage: {complete: true}, profiles}, identityMappings: links,
+    structuralProtectedSourceIdentity: {faUid: owner.uid, sourceRecordSha256: authSourceRecordDigest(owner)}});
+  assert.equal(report.retirementCandidates.confirmedByUniqueAuthUidAndEmail, 0);
+  assert.equal(report.retirementCandidates.unresolvedOrAmbiguous, 2);
+  assert.equal(report.retirementCandidates.excludedFromInitialBatch, 2);
+  assert.equal(report.retirementCandidates.automaticDeletionEnabled, false);
+  assert.equal(report.sourceIssueCategories.some(row => row.code === 'RETIREMENT_CANDIDATE_IDENTITY_REVIEW_REQUIRED'), true);
+  assert.equal(report.targets.FB.sourceUsers, 2, 'only owner and unrelated source user remain in this preview set');
+  const serialized = JSON.stringify(report);
+  for (const user of users) assert.equal(serialized.includes(user.uid), false);
+});
+
 
 const unlinked = (id = 'unlinked-a', changes = {}) => account(id, {providerData: [], emailVerified: false, ...changes});
 const rawUnlinked = user => ({localId: user.uid, email: user.email, disabled: false, emailVerified: false, providerUserInfo: []});
@@ -305,6 +421,51 @@ test('opt-in privado propõe sete Google, adia53 sem usuário/permissão e não 
   assert.equal(plan.readiness.operationalFreshnessEvaluated, false);
   assert.equal(plan.selectionPolicy.evidenceScope, 'PRIVATE_OFFLINE_REVIEW_ONLY');
   assert.equal(plan.resultSha256, authImportPlanDigest(plan));
+});
+
+test('provisionamento custom-token-only exige evidência e mapeamento UID, sem declarar primeiro login pronto', () => {
+  const users = [account('google-a'), unlinked('preloaded-a')];
+  const options = deferOptions(users);
+  options.provisionCustomTokenOnlyUids = ['preloaded-a'];
+  const plan = prepare(users, [], mappings(users), options);
+  assert.equal(plan.ready, false);
+  assert.equal(plan.selectedImportReady, true);
+  assert.equal(plan.requiresFirstLoginLinkFlow, true);
+  assert.equal(plan.counts.create, 2);
+  assert.equal(plan.counts.customTokenOnly, 1);
+  assert.equal(plan.counts.customTokenOnlySelected, 1);
+  assert.equal(plan.counts.deferUnlinked, 0);
+  const entry = plan.entries.find(value => value.faUid === 'preloaded-a');
+  assert.equal(entry.action, 'CREATE_CUSTOM_TOKEN_ONLY');
+  assert.deepEqual(entry.importRecord.providerData, []);
+  assert.equal(entry.importRecord.uid, 'preloaded-a');
+  assert.equal(plan.importRecords.length, 2);
+  assert.equal(plan.requiredBeforeProduction.includes('CUSTOM_TOKEN_ONLY_USERS_REQUIRE_A_SECURE_FA_FIRST_LOGIN_LINK_FLOW'), true);
+  assert.equal(plan.resultSha256, authImportPlanDigest(plan));
+});
+
+test('custom-token-only equivalente já existente é preservado e não entra novamente no lote', () => {
+  const user = unlinked('preloaded-existing');
+  const options = deferOptions([user]);
+  options.provisionCustomTokenOnlyUids = [user.uid];
+  const plan = prepare([user], [user], mappings([user]), options);
+  assert.equal(plan.entries[0].action, 'SKIP');
+  assert.equal(plan.counts.skip, 1);
+  assert.equal(plan.importRecords.length, 0);
+  assert.equal(plan.ready, false);
+  assert.equal(plan.requiresFirstLoginLinkFlow, true);
+});
+
+test('protegida sai do grupo temporário somente com UID e digest do registro fonte verificados', () => {
+  const protectedUser = account('synthetic-protected-identity');
+  const temporary = ['synthetic-temp-a', 'synthetic-temp-b', 'synthetic-temp-c'].map(id => account(id));
+  const users = [protectedUser, ...temporary, account('synthetic-operational')];
+  const options = {structuralProtectedSourceIdentity: {faUid: protectedUser.uid, sourceRecordSha256: authSourceRecordDigest(protectedUser)}};
+  const plan = prepare(users, [], mappings(users), options);
+  assert.equal(plan.entries.find(value => value.faUid === protectedUser.uid).action, 'PROTECTED_REQUIRES_EXPLICIT_APPROVAL');
+  assert.equal(plan.importRecords.some(value => value.uid === protectedUser.uid), false);
+  assert.equal(plan.counts.protectedReview, 1);
+  assert.throws(() => prepare(users, [], mappings(users), {structuralProtectedSourceIdentity: {faUid: protectedUser.uid, sourceRecordSha256: 'f'.repeat(64)}}), /STRUCTURAL_PROTECTED_IDENTITY_UNVERIFIED/);
 });
 
 for (const [label, mutate, expectedCode] of [

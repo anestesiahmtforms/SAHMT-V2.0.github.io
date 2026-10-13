@@ -46,6 +46,76 @@ export function sourceUsageReviewObservationSha256(observation) {
   return createHash('sha256').update(JSON.stringify(packet)).digest('hex');
 }
 
+
+const HUMAN_REPORT_SOURCE = 'USER_CURRENT_USAGE_HUMAN_REPORT';
+const HUMAN_TEXT_PROVENANCE = 'HUMAN_USER_MESSAGE_TEXT';
+const QUARTER_AUTHORITY = 'EXPLICIT_HUMAN_FA_QUARTER_CAPTURE_REVIEW';
+const humanReportFailure = () => {throw Error('MANUAL_SOURCE_USAGE_HUMAN_REPORT_INVALID_OR_EXPIRED');};
+
+/** Literal text integrity only: the trusted conversation review supplies authority. */
+export function sourceUsageHumanReportTextSha256(reportedText) {
+  if (typeof reportedText !== 'string' || !reportedText.trim() || reportedText.length > 4096
+    || reportedText.includes('\u0000')) humanReportFailure();
+  return createHash('sha256').update(reportedText, 'utf8').digest('hex');
+}
+export function sourceUsageHumanReportUpperReads(reportedReads) {
+  if (!Number.isSafeInteger(reportedReads) || reportedReads < 0 || Object.is(reportedReads,-0)) humanReportFailure();
+  const upper = Number((BigInt(reportedReads) / 1000n + 1n) * 1000n);
+  if (!Number.isSafeInteger(upper)) humanReportFailure();
+  return upper;
+}
+export function sourceUsageHumanReportObservationSha256(observation) {
+  if (!plain(observation) || !plain(observation.reportProvenance)) humanReportFailure();
+  const packet = Object.fromEntries(['observationSource','project','quotaDayStart','reportedAt','reviewedAt',
+    'periodStart','periodKind','reportedReads','reads','reportedText','evidenceId','evidenceSha256',
+    'exactGlobalCutoff','totalUsageKnown','measuredTotalReads'].map(key => [key,observation[key]]));
+  packet.reportProvenance = Object.fromEntries(['schemaVersion','source','humanMessageId','evidenceId',
+    'evidenceSha256','reportedAt'].map(key => [key,observation.reportProvenance[key]]));
+  if (Object.values(packet).some(value => value === undefined)
+    || Object.values(packet.reportProvenance).some(value => value === undefined)) humanReportFailure();
+  return createHash('sha256').update(JSON.stringify(packet)).digest('hex');
+}
+function validateManualSourceUsageHumanReport({projectId,nowMs,observation,policy,quotaDayStart,decisionAt}) {
+  const reportedAt = Date.parse(observation.reportedAt), reviewedAt = Date.parse(observation.reviewedAt);
+  const report = observation.reportProvenance, authorization = policy.manualReportAuthorization;
+  const reportKeys = ['schemaVersion','source','humanMessageId','evidenceId','evidenceSha256','reportedAt'];
+  const authorityKeys = ['schemaVersion','authorized','authorizationSource','authorizationId',
+    'humanDecisionMessageId','projectId','authorizedPurpose','dailyReadLimit','quotaDayStart','approvedAt',
+    'reviewedAt','reportedAt','evidenceId','evidenceSha256','observationSha256','reportHumanMessageId',
+    'reportSource','maximumCaptureReserve'];
+  if (projectId !== SOURCE_PROJECT || policy.dailyReadLimit !== 45000
+    || !opaqueId(policy.manualReportEvidence) || observation.evidenceId !== policy.manualReportEvidence
+    || observation.project !== projectId || observation.quotaDayStart !== quotaDayStart
+    || observation.periodKind !== 'CURRENT_FA_QUOTA_DAY_TO_REPORT' || observation.periodStart !== quotaDayStart
+    || !Number.isFinite(reportedAt) || !Number.isFinite(reviewedAt) || reportedAt < Date.parse(quotaDayStart)
+    || reportedAt > reviewedAt || reviewedAt > nowMs || decisionAt > reviewedAt || nowMs-reportedAt > 300000
+    || !SHA.test(observation.evidenceSha256 || '') || policy.manualReportSha256 !== observation.evidenceSha256
+    || sourceUsageHumanReportTextSha256(observation.reportedText) !== observation.evidenceSha256
+    || observation.reads !== sourceUsageHumanReportUpperReads(observation.reportedReads)
+    || observation.exactGlobalCutoff !== false || observation.totalUsageKnown !== false || observation.measuredTotalReads !== null
+    || ['capturedAt','captureProvenance','displayedEstimate','metric','complete','fresh','latestPoint','verifiedAt']
+      .some(key => Object.hasOwn(observation,key))) humanReportFailure();
+  if (!plain(report) || Object.keys(report).length !== reportKeys.length
+    || !reportKeys.every(key => Object.hasOwn(report,key)) || report.schemaVersion !== 1
+    || report.source !== HUMAN_TEXT_PROVENANCE || !opaqueId(report.humanMessageId)
+    || report.evidenceId !== observation.evidenceId || report.evidenceSha256 !== observation.evidenceSha256
+    || report.reportedAt !== observation.reportedAt) humanReportFailure();
+  if (!plain(authorization) || Object.keys(authorization).length !== authorityKeys.length
+    || !authorityKeys.every(key => Object.hasOwn(authorization,key)) || authorization.schemaVersion !== 1
+    || authorization.authorized !== true || authorization.authorizationSource !== QUARTER_AUTHORITY
+    || !opaqueId(authorization.authorizationId) || !opaqueId(authorization.humanDecisionMessageId)
+    || authorization.projectId !== SOURCE_PROJECT || authorization.authorizedPurpose !== 'MANAGEMENT_BACKUP_ONLY'
+    || authorization.dailyReadLimit !== 45000 || authorization.quotaDayStart !== quotaDayStart
+    || authorization.approvedAt !== policy.humanDecisionAt || authorization.reviewedAt !== observation.reviewedAt
+    || authorization.reportedAt !== observation.reportedAt || authorization.evidenceId !== observation.evidenceId
+    || authorization.evidenceSha256 !== observation.evidenceSha256
+    || authorization.reportHumanMessageId !== report.humanMessageId || authorization.reportSource !== HUMAN_TEXT_PROVENANCE
+    || !Number.isSafeInteger(authorization.maximumCaptureReserve) || authorization.maximumCaptureReserve < 1
+    || authorization.maximumCaptureReserve !== policy.maximumCaptureReserve
+    || !SHA.test(authorization.observationSha256 || '')
+    || authorization.observationSha256 !== sourceUsageHumanReportObservationSha256(observation)) humanReportFailure();
+}
+
 function validateManualSourceUsageReview({projectId, nowMs, observation, policy, quotaDayStart, decisionAt}) {
   const capturedAt = Date.parse(observation.capturedAt), reviewedAt = Date.parse(observation.reviewedAt);
   const periodStart = Date.parse(observation.periodStart), quotaStart = Date.parse(quotaDayStart);
@@ -113,7 +183,10 @@ export function assessManagementReadBudget({projectId, nowMs, observation, polic
   const decisionAt = Date.parse(policy.humanDecisionAt);
   if (decisionAt > nowMs || decisionAt < Date.parse(quotaDayStart)) fail('BACKUP_DECISION_NOT_FOR_CURRENT_DAY');
   const manualReview = observation?.observationSource === 'USER_CURRENT_USAGE_DASHBOARD_REVIEW';
-  if (manualReview) {
+  const manualReport = observation?.observationSource === HUMAN_REPORT_SOURCE;
+  if (manualReport) {
+    validateManualSourceUsageHumanReport({projectId,nowMs,observation,policy,quotaDayStart,decisionAt});
+  } else if (manualReview) {
     validateManualSourceUsageReview({projectId, nowMs, observation, policy, quotaDayStart, decisionAt});
   } else {
   const verifiedAt = Date.parse(observation?.verifiedAt), latestPoint = Date.parse(observation?.latestPoint);
@@ -125,10 +198,11 @@ export function assessManagementReadBudget({projectId, nowMs, observation, polic
   if (!count(reservedReads) || reservedReads > policy.maximumCaptureReserve) fail('MANAGEMENT_CAPTURE_RESERVE_LIMIT');
   const estimatedWithMargin = observation.reads + legacyReservedReads + reservedReads + policy.appTrafficReserve + policy.metricLagReserve;
   if (!count(estimatedWithMargin) || estimatedWithMargin >= policy.dailyReadLimit) fail('MANAGEMENT_DAILY_LIMIT_OR_MARGIN');
-  return {allowed: true, projectId, quotaDayStart, reservedReads, estimatedWithMargin, remainingAfterMargin: policy.dailyReadLimit - estimatedWithMargin, localReservationOnly: true, exactGlobalCutoff: false, observationSource: manualReview ? observation.observationSource : 'CLOUD_MONITORING'};
+  return {allowed: true, projectId, quotaDayStart, reservedReads, estimatedWithMargin, remainingAfterMargin: policy.dailyReadLimit - estimatedWithMargin, localReservationOnly: true, exactGlobalCutoff: false, observationSource: manualReview || manualReport ? observation.observationSource : 'CLOUD_MONITORING'};
 }
 /** Sanitized provenance; an estimate is never presented as an exact project total. */
 export function describeManagementReadObservation(observation) {
+ if (observation?.observationSource === HUMAN_REPORT_SOURCE) return {observationSource:HUMAN_REPORT_SOURCE,totalUsageKnown:false,measuredTotalReads:null,reportedReads:observation.reportedReads,estimatedUpperReads:sourceUsageHumanReportUpperReads(observation.reportedReads),evidenceId:observation.evidenceId,reportSource:observation.reportProvenance?.source??null,reportedAt:observation.reportedAt,evidenceSha256:observation.evidenceSha256,periodKind:observation.periodKind,exactGlobalCutoff:false};
  if (observation?.observationSource === "USER_CURRENT_USAGE_DASHBOARD_REVIEW") return {observationSource:observation.observationSource,totalUsageKnown:false,measuredTotalReads:null,estimatedUpperReads:sourceUsageReviewUpperReads(observation.displayedEstimate),evidenceId:observation.evidenceId,captureSource:observation.captureProvenance?.source??null,displayedEstimate:observation.displayedEstimate,capturedAt:observation.capturedAt,evidenceSha256:observation.evidenceSha256,periodKind:observation.periodKind,exactGlobalCutoff:false};
  return {observationSource:"CLOUD_MONITORING",totalUsageKnown:false,measuredTotalReads:observation?.reads??null,metric:observation?.metric??null,latestPoint:observation?.latestPoint??null,exactGlobalCutoff:false};
 }

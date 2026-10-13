@@ -457,14 +457,36 @@ service cloud.firestore {
         data.status == 'PENDING_VALIDATION' && data.requestedAt == request.time &&
         request.auth.token.email_verified == true && can('checklistSign');
     }
+    function validFirstLoginCohort(data) {
+      return !data.keys().hasAny(['firstLoginCohort']) ||
+        data.firstLoginCohort in ['OPERATIONAL', 'STRUCTURAL', 'HOMOLOGATION', 'REVIEW'];
+    }
+    function firstLoginCohortDefaultOnCreate(data) {
+      return !data.keys().hasAny(['firstLoginCohort']) || data.firstLoginCohort == 'REVIEW';
+    }
+    function firstLoginCohortChangeAllowed() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['firstLoginCohort']) ||
+        (isAdmin() &&
+          request.resource.data.keys().hasAny(['firstLoginCohort']) &&
+          (!(resource.data.get('firstLoginCohort', 'REVIEW') in ['STRUCTURAL', 'HOMOLOGATION']) ||
+            request.resource.data.firstLoginCohort == resource.data.get('firstLoginCohort', 'REVIEW')));
+    }
+    function adminFirstLoginCohortUpdate(uid) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return isAdmin() && changed.hasAny(['firstLoginCohort']) &&
+        changed.hasOnly(['firstLoginCohort', 'updatedAt']) &&
+        request.resource.data.updatedAt == request.time &&
+        validUserProfile(request.resource.data, uid) && firstLoginCohortChangeAllowed();
+    }
     function validUserProfile(data, uid) {
       return data.keys().hasAll(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt', 'firstLoginCohort']) &&
+        validFirstLoginCohort(data) &&
         data.uid == uid && data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
         data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
         data.sigla is string && data.sigla.size() <= 20 && data.phone is string && data.phone.size() <= 40 &&
         data.active is bool && data.access is bool && data.role in ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'] &&
-        data.permissions is map && data.permissions.keys().hasOnly(['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) &&
+        data.permissions is map && data.permissions.keys().hasOnly(['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'occurrencesRead', 'occurrencesWrite', 'occurrencesAuditRead', 'usersManage', 'admin']) &&
         data.createdAt is timestamp && data.updatedAt is timestamp;
     }
     function validAccessRequest(data, uid) {
@@ -490,7 +512,8 @@ service cloud.firestore {
     }
     function mayManageUser(uid) {
       return request.auth.uid != uid && can('usersManage') && validUserProfile(request.resource.data, uid) &&
-        (!hasUserManagementPrivilege(request.resource.data) || isAdmin());
+        (!hasUserManagementPrivilege(request.resource.data) || isAdmin()) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['firstLoginCohort']);
     }
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
@@ -695,10 +718,11 @@ service cloud.firestore {
     }
     function validAppFeatures(features) {
       return features is map &&
-        features.keys().hasAll(['checklist', 'labels', 'trainings', 'management', 'notifications', 'esg', 'innovation']) &&
-        features.keys().hasOnly(['checklist', 'labels', 'trainings', 'management', 'notifications', 'esg', 'innovation']) &&
+        features.keys().hasAll(['checklist', 'labels', 'trainings', 'management', 'notifications', 'occurrences', 'esg', 'innovation']) &&
+        features.keys().hasOnly(['checklist', 'labels', 'trainings', 'management', 'notifications', 'occurrences', 'esg', 'innovation']) &&
         features.checklist is bool && features.labels is bool && features.trainings is bool &&
-        features.management is bool && features.notifications is bool && features.esg is bool && features.innovation is bool;
+        features.management is bool && features.notifications is bool && features.occurrences is bool &&
+        features.esg is bool && features.innovation is bool;
     }
     function validAppConfig(data) {
       return data.keys().hasAll(['id', 'features', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
@@ -1110,8 +1134,9 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || can('usersManage'));
       allow create: if can('usersManage') && validUserProfile(request.resource.data, uid) &&
+        firstLoginCohortDefaultOnCreate(request.resource.data) &&
         (!hasUserManagementPrivilege(request.resource.data) || isAdmin());
-      allow update: if mayManageUser(uid) || (activeUser() && request.auth.uid == uid && request.resource.data.uid == uid &&
+      allow update: if mayManageUser(uid) || adminFirstLoginCohortUpdate(uid) || (activeUser() && request.auth.uid == uid && request.resource.data.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'updatedAt']));
       allow delete: if false;
 

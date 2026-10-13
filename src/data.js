@@ -11,6 +11,7 @@ import {updateScheduleReleaseState, updateScheduleReleaseTimes} from './schedule
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {withGeneralReadPermissions} from './general-access.js';
+import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS} from './management-first-login-cohort.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, documentCollectionForWrite, documentGroupsFromAccess, mergeManagementDocuments, normalizeDocumentAccessEmail} from './document-access.js';
 
 const MAX_PAGE_SIZE = 50;
@@ -275,8 +276,10 @@ export async function createNotification(input, uid) {
   await setDoc(doc(db, 'notifications', id), {
     id, title, message, type: String(input.type || 'INFO'), audienceType,
     audienceValue: audienceType === 'ALL' ? '' : audienceValue,
-    createdAt: serverTimestamp(), createdByUid: uid, startAt: startDate, endAt: endDate,
-    active: true, priority, actionRoute: String(input.actionRoute || '')
+    createdAt: serverTimestamp(), createdByUid: uid,
+    updatedAt: serverTimestamp(), updatedByUid: uid,
+    startAt: startDate, endAt: endDate,
+    active: true, priority, actionRoute: String(input.actionRoute || ''), version: 1
   });
   return id;
 }
@@ -487,7 +490,7 @@ export async function saveUserProfile(input, actorUid) {
   const phone = String(input.phone || '').trim();
   const role = String(input.role || '').trim();
   const roleIds = ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'];
-  const permissionIds = ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin'];
+  const permissionIds = ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'occurrencesRead', 'occurrencesWrite', 'occurrencesAuditRead', 'usersManage', 'admin'];
   if (!/^[^\s\/]{1,128}$/.test(uid) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName || displayName.length > 120 || sigla.length > 20 || phone.length > 40 || !roleIds.includes(role)) {
     throw new Error('Confira UID, e-mail, nome, sigla, telefone e função antes de salvar.');
   }
@@ -496,6 +499,10 @@ export async function saveUserProfile(input, actorUid) {
     .filter(([permission, enabled]) => permissionIds.includes(permission) && enabled === true)), input);
   const ref = doc(db, 'users', uid);
   const current = await getDocFromServer(ref);
+  const currentCohort = current.exists() ? current.data().firstLoginCohort : undefined;
+  if (currentCohort !== undefined && !FIRST_LOGIN_COHORTS.includes(currentCohort)) {
+    throw new Error('A classificação de primeiro login existente é inválida; solicite revisão administrativa.');
+  }
   const record = {
     uid, email, displayName, sigla, phone,
     active: input.active === true,
@@ -505,6 +512,8 @@ export async function saveUserProfile(input, actorUid) {
     createdAt: current.exists() ? current.data().createdAt : serverTimestamp(),
     updatedAt: serverTimestamp()
   };
+  if (!current.exists()) record.firstLoginCohort = 'REVIEW';
+  else if (currentCohort !== undefined) record.firstLoginCohort = currentCohort;
   const requestRef = doc(db, 'accessRequests', uid);
   const accessRequest = await getDocFromServer(requestRef);
   if (accessRequest.exists() && accessRequest.data().status === 'PENDING') {
@@ -516,6 +525,26 @@ export async function saveUserProfile(input, actorUid) {
     await setDoc(ref, record);
   }
   return {id: uid, ...record};
+}
+
+export async function setFirstLoginCohort(uidInput, cohort) {
+  const uid = String(uidInput || '').trim();
+  if (!/^[^\s/]{1,128}$/.test(uid) || !FIRST_LOGIN_COHORTS.includes(cohort)) {
+    throw new Error('UID ou classificação de primeiro login inválidos.');
+  }
+  const ref = doc(db, 'users', uid);
+  const snapshot = await getDocFromServer(ref);
+  if (!snapshot.exists() || snapshot.data().uid !== uid) throw new Error('Perfil FA não encontrado ou inconsistente.');
+  const current = snapshot.data().firstLoginCohort;
+  if (current !== undefined && !FIRST_LOGIN_COHORTS.includes(current)) {
+    throw new Error('A classificação existente é inválida; solicite revisão administrativa.');
+  }
+  if (PROTECTED_FIRST_LOGIN_COHORTS.includes(current) && current !== cohort) {
+    throw new Error('Contas estruturais e de homologação estão protegidas contra reclassificação.');
+  }
+  if (current === cohort) return {uid, firstLoginCohort: current, changed: false};
+  await updateDoc(ref, {firstLoginCohort: cohort, updatedAt: serverTimestamp()});
+  return {uid, firstLoginCohort: cohort, changed: true};
 }
 
 export async function ensureManagementAreaCatalog(uid) {

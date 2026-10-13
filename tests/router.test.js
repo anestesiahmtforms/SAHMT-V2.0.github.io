@@ -15,3 +15,11 @@ test('rota desconhecida não altera a navegação atual', () => {
   navigate('apps-script');
   assert.equal(location.hash, '#/offline');
 });
+
+test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Escala',()=>{
+  navigate('occurrences');
+  assert.equal(location.hash,'#/occurrences');
+  assert.equal(currentRoute(),'occurrences');
+  navigate('events');
+  assert.equal(currentRoute(),'events');
+});

@@ -3,10 +3,13 @@ import {createHash, createHmac, timingSafeEqual} from 'node:crypto';
 // Local server protocol only: no transport, credentials, deployment or ledger.
 export const MANAGEMENT_GATEWAY_PROTOCOL_VERSION = 'SAHMT_MANAGEMENT_GATEWAY_V1';
 export const MANAGEMENT_GATEWAY_AUDIENCE = 'sahmt-management-dedicated-appscript-v1';
-export const MANAGEMENT_GATEWAY_OPERATIONS = Object.freeze(['AUTH_USER_LOOKUP_FA', 'AUTH_USER_LOOKUP_FB', 'SIGN_FB_CUSTOM_TOKEN']);
-export const MANAGEMENT_GATEWAY_DENIAL_CODES = Object.freeze(['GATEWAY_DISABLED', 'GATEWAY_ADMISSION_DENIED',
+export const MANAGEMENT_GATEWAY_OPERATIONS = Object.freeze(['AUTH_USER_LOOKUP_FA', 'AUTH_USER_LOOKUP_FB', 'AUTH_USER_LOOKUP_FC', 'SIGN_FB_CUSTOM_TOKEN', 'SIGN_FC_CUSTOM_TOKEN', 'FIRST_LOGIN_FA_SIGN']);
+export const MANAGEMENT_GATEWAY_DATA_OPERATIONS = Object.freeze(['READ_FA_AUTHORIZATION', 'READ_FB_LEASE', 'WRITE_FB_LEASE', 'INVALIDATE_FB_LEASE']);
+const ALL_OPERATIONS = [...MANAGEMENT_GATEWAY_OPERATIONS, ...MANAGEMENT_GATEWAY_DATA_OPERATIONS];
+export const MANAGEMENT_GATEWAY_DENIAL_CODES = Object.freeze(['GATEWAY_DISABLED', 'GATEWAY_ADMISSION_DENIED', 'GATEWAY_LOCK_BUSY',
   'GATEWAY_REPLAY_DENIED', 'GATEWAY_OPERATION_FAILED', 'GATEWAY_OPERATION_TIMEOUT', 'GATEWAY_RESULT_INVALID', 'GATEWAY_ABORTED']);
-const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66';
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt';
+const IDENTITY_MARKERS = ['STRUCTURAL_OWNER', 'HOMOLOGATION_CANDIDATE_1', 'HOMOLOGATION_CANDIDATE_2'];
 const REQUEST = 'WORKER_TO_APPS_SCRIPT', RESPONSE = 'APPS_SCRIPT_TO_WORKER';
 const CLAIMS = ['managementSourceProjectId', 'managementMemberId', 'managementSourceVersion',
   'managementSourceHash', 'managementPolicyVersion', 'managementSourceAuthTimeMs'];
@@ -71,7 +74,9 @@ function policyCopy(input) {
     && integer(p.maxEnvelopeBytes, 1024, 65536) && integer(p.operationTimeoutMs, 1, 120000)
     && integer(p.customTokenMaxTtlSeconds, 1, 3600), 'GATEWAY_POLICY_INVALID');
   if (p.enabledOperations === undefined) p.enabledOperations = Object.fromEntries(MANAGEMENT_GATEWAY_OPERATIONS.map(op => [op, false]));
-  demand(exact(p.enabledOperations, MANAGEMENT_GATEWAY_OPERATIONS)
+  demand(plain(p.enabledOperations) && MANAGEMENT_GATEWAY_OPERATIONS.every(op => Object.hasOwn(p.enabledOperations, op))
+    && Object.keys(p.enabledOperations).every(op => ALL_OPERATIONS.includes(op))
+    && MANAGEMENT_GATEWAY_DATA_OPERATIONS.every(op => p.enabledOperations[op] === undefined || typeof p.enabledOperations[op] === 'boolean')
     && MANAGEMENT_GATEWAY_OPERATIONS.every(op => typeof p.enabledOperations[op] === 'boolean'), 'GATEWAY_POLICY_INVALID');
   return p;
 }
@@ -81,28 +86,75 @@ function validateClaims(claims, policy) {
     && identifier(claims.managementPolicyVersion, 100) && integer(claims.managementSourceAuthTimeMs, 1)
     && Buffer.byteLength(gatewayCanonicalJson(claims)) <= 1000, 'GATEWAY_SIGN_BODY_INVALID');
 }
+function expectedDestination(operation) { return operation === 'SIGN_FC_CUSTOM_TOKEN' || operation === 'AUTH_USER_LOOKUP_FC' ? FC
+  : ['FIRST_LOGIN_FA_SIGN','READ_FA_AUTHORIZATION'].includes(operation) ? FA : FB; }
 function validateRequestBody(body, op, request, policy, time) {
-  if (op !== 'SIGN_FB_CUSTOM_TOKEN') { demand(exact(body, ['uid']) && identifier(body.uid), 'GATEWAY_LOOKUP_BODY_INVALID'); return; }
+  if (MANAGEMENT_GATEWAY_DATA_OPERATIONS.includes(op)) {
+    const fields = op === 'WRITE_FB_LEASE' ? ['uid','projectId','expectedRevision','lease']
+      : op === 'INVALIDATE_FB_LEASE' ? ['uid','projectId','expectedGrantId','expectedLeaseVersion','reasonCode'] : ['uid','projectId'];
+    demand(exact(body, fields) && identifier(body.uid) && body.projectId === expectedDestination(op), 'GATEWAY_DATA_BODY_INVALID');
+    if (op === 'WRITE_FB_LEASE') demand(plain(body.lease) && body.lease.faUid === body.uid && body.lease.fbUid === body.uid
+      && (body.expectedRevision === null || typeof body.expectedRevision === 'string'), 'GATEWAY_DATA_BODY_INVALID');
+    if (op === 'INVALIDATE_FB_LEASE') demand(identifier(body.expectedGrantId,100) && integer(body.expectedLeaseVersion,1)
+      && typeof body.reasonCode === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(body.reasonCode), 'GATEWAY_DATA_BODY_INVALID');
+    return;
+  }
+  if (op === 'FIRST_LOGIN_FA_SIGN') {
+    demand(exact(body, ['email', 'googleSub', 'issuedAtSeconds', 'expiresAtSeconds'])
+      && typeof body.email === 'string' && body.email.length <= 254 && body.email === body.email.trim().toLowerCase()
+      && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)
+      && identifier(body.googleSub, 128)
+      && integer(body.issuedAtSeconds, 1) && integer(body.expiresAtSeconds, 1)
+      && body.expiresAtSeconds > body.issuedAtSeconds
+      && body.expiresAtSeconds - body.issuedAtSeconds <= policy.customTokenMaxTtlSeconds
+      && body.issuedAtSeconds * 1000 <= time + policy.maxFutureSkewMs
+      && body.expiresAtSeconds * 1000 > time
+      && body.issuedAtSeconds * 1000 >= request.issuedAtMs - policy.maxFutureSkewMs - 999
+      && request.expiresAtMs - request.issuedAtMs <= 30000,
+    'GATEWAY_FIRST_LOGIN_BODY_INVALID');
+    return;
+  }
+  if (!['SIGN_FB_CUSTOM_TOKEN', 'SIGN_FC_CUSTOM_TOKEN'].includes(op)) { demand(exact(body, ['uid']) && identifier(body.uid), 'GATEWAY_LOOKUP_BODY_INVALID'); return; }
   demand(exact(body, ['uid', 'claims', 'issuedAtSeconds', 'expiresAtSeconds']) && identifier(body.uid), 'GATEWAY_SIGN_BODY_INVALID');
-  validateClaims(body.claims, policy);
+  if (op === 'SIGN_FB_CUSTOM_TOKEN') validateClaims(body.claims, policy);
+  else demand(exact(body.claims, ['sahmtFaSourceProjectId','sahmtOccurrencesCatalogRead','sahmtOccurrencesRead','sahmtOccurrencesWrite','sahmtOccurrencesAuditRead'])
+    && body.claims.sahmtFaSourceProjectId === FA
+    && ['sahmtOccurrencesCatalogRead','sahmtOccurrencesRead','sahmtOccurrencesWrite','sahmtOccurrencesAuditRead'].every(key => typeof body.claims[key] === 'boolean')
+    && (!body.claims.sahmtOccurrencesCatalogRead || body.claims.sahmtOccurrencesWrite), 'GATEWAY_SIGN_BODY_INVALID');
   const iat = body.issuedAtSeconds, exp = body.expiresAtSeconds;
   demand(integer(iat, 1) && integer(exp, 1) && integer(iat * 1000, 1) && integer(exp * 1000, 1)
     && exp > iat && exp - iat <= policy.customTokenMaxTtlSeconds && iat * 1000 <= time + policy.maxFutureSkewMs
     && exp * 1000 > time && iat * 1000 >= request.issuedAtMs - policy.maxFutureSkewMs - 999
-    && body.claims.managementSourceAuthTimeMs <= iat * 1000 + policy.maxFutureSkewMs, 'GATEWAY_SIGN_TIME_INVALID');
+    && (op === 'SIGN_FC_CUSTOM_TOKEN' || body.claims.managementSourceAuthTimeMs <= iat * 1000 + policy.maxFutureSkewMs), 'GATEWAY_SIGN_TIME_INVALID');
 }
 function validateResult(body, op, request) {
-  if (op === 'SIGN_FB_CUSTOM_TOKEN') {
+  if (MANAGEMENT_GATEWAY_DATA_OPERATIONS.includes(op)) {
+    demand(plain(body) && body.projectId === expectedDestination(op), 'GATEWAY_RESULT_INVALID');
+    return; // The broker validates the full snapshot/lease semantics.
+  }
+  if (op === 'FIRST_LOGIN_FA_SIGN') {
+    demand(plain(body) && (body.status === 'ALREADY_LINKED'
+      ? exact(body, ['status', 'uid']) && identifier(body.uid, 128)
+      : body.status === 'FIRST_LOGIN' && exact(body, ['status', 'uid', 'signedJwt'])
+        && identifier(body.uid, 128) && typeof body.signedJwt === 'string' && body.signedJwt.length <= 16000
+        && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(body.signedJwt)
+      || body.status === 'DENIED' && exact(body, ['status', 'code'])
+        && ['FA_ACCOUNT_NOT_FOUND','FA_ACCOUNT_AMBIGUOUS','FA_PROFILE_NOT_AUTHORIZED',
+          'FA_ACCOUNT_NOT_IN_OPERATIONAL_COHORT','FA_PROVIDER_CONFLICT','FA_PROTECTED_IDENTITY'].includes(body.code)), 'GATEWAY_RESULT_INVALID');
+    return;
+  }
+  if (op === 'SIGN_FB_CUSTOM_TOKEN' || op === 'SIGN_FC_CUSTOM_TOKEN') {
     demand(exact(body, ['keyId', 'signedJwt']) && keyIdentifier(body.keyId) && typeof body.signedJwt === 'string'
       && body.signedJwt.length <= 16000 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(body.signedJwt), 'GATEWAY_RESULT_INVALID'); return;
   }
   demand(exact(body, ['users']) && Array.isArray(body.users) && body.users.length <= 1, 'GATEWAY_RESULT_INVALID');
   for (const user of body.users) {
     demand(plain(user) && ['localId', 'emailVerified', 'providerUserInfo'].every(k => Object.hasOwn(user, k))
-      && Object.keys(user).every(k => ['localId', 'emailVerified', 'providerUserInfo', 'disabled', 'validSince'].includes(k))
+      && Object.keys(user).every(k => ['localId', 'emailVerified', 'providerUserInfo', 'disabled', 'validSince', 'identityMarker'].includes(k))
       && user.localId === request.body.uid && typeof user.emailVerified === 'boolean'
       && (user.disabled === undefined || typeof user.disabled === 'boolean') && Array.isArray(user.providerUserInfo)
       && user.providerUserInfo.length <= 20, 'GATEWAY_RESULT_INVALID');
+    if (user.identityMarker !== undefined) demand(IDENTITY_MARKERS.includes(user.identityMarker), 'GATEWAY_RESULT_INVALID');
     if (user.validSince !== undefined) demand(typeof user.validSince === 'string' && /^(0|[1-9]\d*)$/.test(user.validSince)
       && integer(Number(user.validSince) * 1000), 'GATEWAY_RESULT_INVALID');
     const providers = new Set();
@@ -130,8 +182,9 @@ export function createManagementGatewayProtocol({policy, secret, now = Date.now,
     gatewayCanonicalJson(input, {maxBytes: p.maxEnvelopeBytes});
     const t = time(), fields = direction === REQUEST ? ENVELOPE : [...ENVELOPE, 'requestHash', 'status', 'code'];
     demand(exact(input, fields) && input.schemaVersion === 1 && input.protocolVersion === p.protocolVersion && input.audience === p.audience
-      && input.keyId === p.keyId && input.direction === direction && input.sourceProjectId === FA && input.destinationProjectId === FB
-      && MANAGEMENT_GATEWAY_OPERATIONS.includes(input.operation) && hex(input.requestId, 32) && hex(input.nonce, 32), 'GATEWAY_ENVELOPE_INVALID');
+      && input.keyId === p.keyId && input.direction === direction && input.sourceProjectId === FA
+      && input.destinationProjectId === expectedDestination(input.operation)
+      && ALL_OPERATIONS.includes(input.operation) && hex(input.requestId, 32) && hex(input.nonce, 32), 'GATEWAY_ENVELOPE_INVALID');
     demand(integer(input.issuedAtMs, 1) && integer(input.expiresAtMs, 1) && input.expiresAtMs > input.issuedAtMs
       && input.expiresAtMs - input.issuedAtMs <= p.maximumTtlMs && input.issuedAtMs <= t.wall + p.maxFutureSkewMs
       && t.wall < input.expiresAtMs, 'GATEWAY_ENVELOPE_TIME_INVALID');
@@ -153,7 +206,7 @@ export function createManagementGatewayProtocol({policy, secret, now = Date.now,
     gatewayCanonicalJson(input, {maxBytes: p.maxEnvelopeBytes});
     demand(exact(input, ['operation', 'requestId', 'nonce', 'issuedAtMs', 'expiresAtMs', 'body']), 'GATEWAY_REQUEST_INPUT_INVALID');
     const request = {schemaVersion: 1, protocolVersion: p.protocolVersion, audience: p.audience, keyId: p.keyId,
-      direction: REQUEST, sourceProjectId: FA, destinationProjectId: FB, ...copy(input), bodySha256: hash(input.body, p.maxEnvelopeBytes), signature: ''};
+      direction: REQUEST, sourceProjectId: FA, destinationProjectId: expectedDestination(input.operation), ...copy(input), bodySha256: hash(input.body, p.maxEnvelopeBytes), signature: ''};
     request.signature = signature(request, REQUEST); return verifyRequest(request);
   };
   const createResponse = (input, result) => {
@@ -228,7 +281,7 @@ export function createManagementGatewayProtocol({policy, secret, now = Date.now,
     if (handlers === undefined) return null;
     demand(plain(handlers), 'GATEWAY_DISABLED');
     const descriptors = Object.getOwnPropertyDescriptors(handlers);
-    demand(Reflect.ownKeys(descriptors).every(k => typeof k === 'string' && MANAGEMENT_GATEWAY_OPERATIONS.includes(k)
+    demand(Reflect.ownKeys(descriptors).every(k => typeof k === 'string' && ALL_OPERATIONS.includes(k)
       && Object.hasOwn(descriptors[k], 'value') && descriptors[k].enumerable), 'GATEWAY_DISABLED');
     const handler = descriptors[op]?.value; if (handler === undefined) return null;
     demand(plain(handler), 'GATEWAY_DISABLED'); const fields = Object.getOwnPropertyDescriptors(handler);
@@ -243,7 +296,7 @@ export function createManagementGatewayProtocol({policy, secret, now = Date.now,
       demand(p.enabledOperations[request.operation] === true && handler?.enabled === true, 'GATEWAY_DISABLED');
       ctx = bounded(request, context); await admit(request, request, context.claimNonce, ctx);
       const result = await ctx.invoke(() => handler.dispatch(copy(request.body), {...ctx.context(), operation: request.operation,
-        projectId: request.operation === 'AUTH_USER_LOOKUP_FA' ? FA : FB}), 'GATEWAY_OPERATION_FAILED');
+        projectId: request.operation === 'AUTH_USER_LOOKUP_FA' ? FA : request.destinationProjectId}), 'GATEWAY_OPERATION_FAILED');
       ctx.assertLive();
       try { return createResponse(request, {status: 'SUCCESS', code: 'OK', body: result}); }
       catch (error) { if (error instanceof GatewayError && ['GATEWAY_RESULT_INVALID', 'GATEWAY_JSON_INVALID', 'GATEWAY_JSON_TOO_LARGE',

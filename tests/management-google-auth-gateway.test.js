@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, sign} from 'node:crypto';
 import {createManagementGoogleAuthAdapter} from '../scripts/lib/management-google-auth-adapter.js';
+import {MANAGEMENT_GATEWAY_DENIAL_CODES} from '../scripts/lib/management-gateway-protocol.js';
 
-const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', TIME = 1800000000000, SECONDS = TIME / 1000;
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt', TIME = 1800000000000, SECONDS = TIME / 1000;
 const SIGNER = 'management-broker@' + FB + '.iam.gserviceaccount.com';
+const FC_SIGNER = 'indicators-broker@' + FC + '.iam.gserviceaccount.com';
 const FA_CERTS = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 const IAM_CERTS = 'https://www.googleapis.com/service_accounts/v1/metadata/x509/' + SIGNER;
+const FC_IAM_CERTS = 'https://www.googleapis.com/service_accounts/v1/metadata/x509/' + FC_SIGNER;
 const IAM_URL = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/' + SIGNER + ':signJwt';
 const AUD = 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit';
 const keyA = generateKeyPairSync('rsa', {modulusLength: 2048}), keyB = generateKeyPairSync('rsa', {modulusLength: 2048});
@@ -26,6 +29,10 @@ const policy = () => ({operationTimeoutMs: 1000, maxResponseBytes: 65536, maxRes
 const user = () => ({localId: 'member-a', email: 'private-synthetic@example.invalid', emailVerified: true,
   disabled: false, validSince: String(SECONDS - 100), providerUserInfo: [{providerId: 'google.com', rawId: 'google-id-a'}],
   customAttributes: '{"admin":true}', passwordHash: 'never-return-hash', salt: 'never-return-salt'});
+const protectedIdentityPolicy=()=>({schemaVersion:1,identities:[
+  {marker:'STRUCTURAL_OWNER',uid:'structural-uid',email:'owner@example.invalid'},
+  {marker:'HOMOLOGATION_CANDIDATE_1',uid:'homologation-uid-1',email:'homologation-1@example.invalid'},
+  {marker:'HOMOLOGATION_CANDIDATE_2',uid:'homologation-uid-2',email:'homologation-2@example.invalid'}]});
 function response(url, data, {headers = {}, status = 200, body, redirected = false} = {}) {
   const bytes = new TextEncoder().encode(typeof data === 'string' ? data : JSON.stringify(data)); let delivered = false;
   return {url, status, redirected, headers: new Headers({'content-type': 'application/json', ...headers}), body: body || {
@@ -44,7 +51,7 @@ function harness({fetchOverride, credentialOverride, suppliedPolicy = policy(), 
     throw new Error('Unexpected synthetic endpoint');
   };
   const adapter = createManagementGoogleAuthAdapter({enabled, fetchImpl, signerServiceAccountEmail: signer,
-    policy: suppliedPolicy, clock: () => time, getAdminAccessToken: async (request, context) => {
+    protectedIdentityPolicy:protectedIdentityPolicy(),policy: suppliedPolicy, clock: () => time, getAdminAccessToken: async (request, context) => {
       credentials.push({request, context}); const value = {credentialType: 'google-oauth2', accessToken: 'opaque-server-oauth-access',
         expiresAtMs: time + 600000, scopes: request.scopes}; return credentialOverride ? credentialOverride(value, request, context) : value;
     }});
@@ -62,16 +69,62 @@ function gatewayHarness({overrides = {}, adapterOptions = {}, policyOverride} = 
     lookupAuthUser: async (request, context) => {calls.push(['lookup',request,context]);return {users:[state.user]};},
     signFbCustomToken: async (request, context) => {calls.push(['sign',request,context]);return {keyId:'key-a',signedJwt:jwt({
       iss:SIGNER,sub:SIGNER,aud:AUD,uid:request.uid,claims:request.claims,iat:request.issuedAtSeconds,exp:request.expiresAtSeconds})};},
+    signFcCustomToken: async (request, context) => {calls.push(['sign-fc',request,context]);return {keyId:'key-a',signedJwt:jwt({
+      iss:FC_SIGNER,sub:FC_SIGNER,aud:AUD,uid:request.uid,claims:request.claims,iat:request.issuedAtSeconds,exp:request.expiresAtSeconds})};},
     ...overrides
   };
-  const adapter=createManagementGoogleAuthAdapter({enabled:true,privilegedGateway,signerServiceAccountEmail:SIGNER,
+  const adapter=createManagementGoogleAuthAdapter({enabled:true,privilegedGateway,signerServiceAccountEmail:SIGNER,fcSignerServiceAccountEmail:FC_SIGNER,
     policy:policyOverride||policy(),clock:()=>time,fetchImpl:async(url,options)=>{
-      calls.push(['public',url,options]);assert.ok(url===FA_CERTS||url===IAM_CERTS);
+      calls.push(['public',url,options]);assert.ok(url===FA_CERTS||url===IAM_CERTS||url===FC_IAM_CERTS);
       assert.equal(options.headers.Authorization,undefined);
       return response(url,{'key-a':publicPem(keyA)},{headers:{'cache-control':'public, max-age=60'}});
     },...adapterOptions});
   return {adapter,calls,state,advance:ms=>{time+=ms;}};
 }
+
+test('pilot FA verification exposes only closed stages and codes and stays off by default',async()=>{
+  const off=gatewayHarness();
+  await assert.rejects(off.adapter.verifyFaIdToken('private-token',true),error=>error.code==='JWT_FORMAT_INVALID'&&!Object.hasOwn(error,'diagnostic'));
+  const cases=[
+    {token:'private-token',stage:'TOKEN_DECODE',code:'JWT_FORMAT_INVALID'},
+    {token:jwt({...payload(),aud:'wrong-project'}),stage:'TOKEN_CLAIMS',code:'FA_TOKEN_PROJECT_INVALID'},
+    {options:{fetchImpl:async()=>{throw Error('private-token@example.invalid');}},stage:'PUBLIC_KEYS',code:'GOOGLE_AUTH_ADAPTER_FAILED'},
+    {overrides:{lookupAuthUser:async()=>{throw Object.assign(Error('private-token@example.invalid'),{code:'GATEWAY_OPERATION_DENIED'});}},stage:'AUTH_LOOKUP',code:'GATEWAY_OPERATION_DENIED',principal:'GOOGLE_AUTH_ADAPTER_FAILED'},
+    {overrides:{lookupAuthUser:async()=>{throw Object.assign(Error('private-token@example.invalid'),{code:'PRIVATE_TOKEN'});}},stage:'AUTH_LOOKUP',code:'DIAGNOSTIC_UNAVAILABLE',principal:'GOOGLE_AUTH_ADAPTER_FAILED'},
+    {mutate:user=>{user.disabled=true;},stage:'AUTH_BINDING',code:'FA_AUTH_USER_DISABLED_OR_UNVERIFIED'},
+    {mutate:user=>{user.validSince=String(SECONDS+1);},stage:'REVOCATION',code:'FA_TOKEN_REVOKED'}
+  ];
+  for(const entry of cases){
+    const h=gatewayHarness({adapterOptions:{pilotDiagnostics:true,...entry.options},overrides:entry.overrides});
+    entry.mutate?.(h.state.user);
+    await assert.rejects(h.adapter.verifyFaIdToken(entry.token||jwt(payload()),true),error=>{
+      assert.equal(error.code,entry.principal||entry.code);
+      assert.deepEqual(error.diagnostic,{stage:entry.stage,code:entry.code});
+      assert.equal(JSON.stringify(error).includes('private'),false);return true;
+    });
+  }
+});
+
+test('pilot lookup diagnosis retains authenticated closed Gateway reason and never a raw response',async()=>{
+ for(const pilotDiagnostics of [false,true])for(const code of [...MANAGEMENT_GATEWAY_DENIAL_CODES,'private-uid@example.invalid']){
+  const h=gatewayHarness({adapterOptions:{pilotDiagnostics},overrides:{lookupAuthUser:async(_request,context)=>{
+   assert.equal(context.pilotDiagnostics,pilotDiagnostics?true:undefined);
+   throw Object.assign(Error('private raw response'),{code:'GATEWAY_OPERATION_DENIED',gatewayDenialCode:code,
+    token:'private-token',uid:'private-uid'});
+  }}});
+  await assert.rejects(h.adapter.verifyFaIdToken(jwt(payload()),true),error=>{
+   assert.equal(error.code,'GOOGLE_AUTH_ADAPTER_FAILED');assert.equal(error.message,'GOOGLE_AUTH_ADAPTER_FAILED');
+   assert.deepEqual(error.diagnostic,pilotDiagnostics?{stage:'AUTH_LOOKUP',code:MANAGEMENT_GATEWAY_DENIAL_CODES.includes(code)
+    ?code:'GATEWAY_OPERATION_DENIED'}:undefined);
+   assert.equal(JSON.stringify(error).includes('private'),false);return true;
+  });
+ }
+});
+
+test('Google public key requests use workerd-compatible manual redirects with response pinning',async()=>{
+  const h=gatewayHarness();await h.adapter.verifyFaIdToken(jwt(payload()),true);
+  assert.equal(h.calls.find(call=>call[0]==='public')[2].redirect,'manual');
+});
 
 test('dedicated gateway keeps administrative OAuth away from Worker; current lookup every verification',async()=>{
   const h=gatewayHarness();for(let i=0;i<2;i++)assert.equal((await h.adapter.verifyFaIdToken(jwt(payload()),true)).uid,'member-a');
@@ -95,6 +148,16 @@ test('gateway signing retains exact expected JWT and RSA verification',async()=>
   assert.deepEqual(data,{iss:SIGNER,sub:SIGNER,aud:AUD,iat:SECONDS,exp:SECONDS+600,uid:'member-a',claims:claims()});
   const request=h.calls.find(c=>c[0]==='sign')[1];assert.deepEqual(Object.keys(request).sort(),['claims','expiresAtSeconds','issuedAtSeconds','uid']);
   assert.equal(h.calls.some(c=>c[0]==='lookup'),false);
+});
+
+test('gateway FC signer uses an independent FC principal and no permission claims',async()=>{
+  const h=gatewayHarness();const token=await h.adapter.createFcCustomToken('member-a');
+  assert.deepEqual(JSON.parse(Buffer.from(token.split('.')[1],'base64url')),
+    {iss:FC_SIGNER,sub:FC_SIGNER,aud:AUD,iat:SECONDS,exp:SECONDS+600,uid:'member-a',claims:{
+      sahmtFaSourceProjectId:'sahmt-17a16',sahmtOccurrencesCatalogRead:false,sahmtOccurrencesRead:false,sahmtOccurrencesWrite:false,sahmtOccurrencesAuditRead:false}});
+  const request=h.calls.find(c=>c[0]==='sign-fc')[1];
+  assert.deepEqual(Object.keys(request).sort(),['claims','expiresAtSeconds','issuedAtSeconds','uid']);
+  assert.deepEqual(request.claims,{sahmtFaSourceProjectId:'sahmt-17a16',sahmtOccurrencesCatalogRead:false,sahmtOccurrencesRead:false,sahmtOccurrencesWrite:false,sahmtOccurrencesAuditRead:false});assert.equal(h.calls.some(c=>c[0]==='lookup'),false);
 });
 
 test('gateway and administrative credential modes are mutually exclusive before effects',async t=>{

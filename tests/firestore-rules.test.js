@@ -25,7 +25,7 @@ before(async () => {
 });
 
 beforeEach(async () => testEnvironment.clearFirestore());
-after(async () => testEnvironment.cleanup());
+after(async () => testEnvironment?.cleanup());
 
 function accessProfile(uid, permissions = {}, overrides = {}) {
   return {uid, email: `${uid}@example.invalid`, displayName: uid, sigla: '', phone: '', active: true, access: true, role: 'anestesiologista', permissions, createdAt: 'test', updatedAt: 'test', ...overrides};
@@ -1327,7 +1327,7 @@ test('feature flags da aplicação exigem administrador, campos válidos e vers�
   const user = testEnvironment.authenticatedContext('feature-user').firestore();
   const accessManager = testEnvironment.authenticatedContext('feature-access-manager').firestore();
   const configRef = doc(admin, 'appConfig', 'app');
-  const features = {checklist: true, labels: true, trainings: true, management: true, notifications: true, esg: false, innovation: false};
+  const features = {checklist: true, labels: true, trainings: true, management: true, notifications: true, occurrences: false, esg: false, innovation: false};
   const config = {
     id: 'app', features, createdByUid: 'feature-admin', createdAt: serverTimestamp(),
     updatedByUid: 'feature-admin', updatedAt: serverTimestamp(), version: 1
@@ -1342,13 +1342,17 @@ test('feature flags da aplicação exigem administrador, campos válidos e vers�
     features: {...features, checklist: false}, updatedByUid: 'feature-admin',
     updatedAt: serverTimestamp(), version: 2
   }));
+  await assertSucceeds(updateDoc(configRef, {
+    features: {...features, occurrences: true}, updatedByUid: 'feature-admin',
+    updatedAt: serverTimestamp(), version: 3
+  }));
   await assertFails(updateDoc(configRef, {
     features: {...features, labels: false}, updatedByUid: 'feature-admin',
-    updatedAt: serverTimestamp(), version: 4
+    updatedAt: serverTimestamp(), version: 5
   }));
   await assertFails(updateDoc(configRef, {
     features: {...features, unknown: true}, updatedByUid: 'feature-admin',
-    updatedAt: serverTimestamp(), version: 3
+    updatedAt: serverTimestamp(), version: 4
   }));
   await assertFails(deleteDoc(configRef));
 });
@@ -1376,6 +1380,39 @@ test('gestor de acessos administra perfis comuns sem conceder acesso administrat
   await assertFails(setDoc(doc(manager, 'users', 'access-manager'), {...accessProfile('access-manager', {usersManage: true}), permissions: {admin: true}, updatedAt: new Date()}));
   await assertSucceeds(setDoc(doc(manager, 'users', 'new-staff'), {...ordinary, active: false, access: false, updatedAt: new Date()}));
   await assertFails(deleteDoc(doc(manager, 'users', 'staff')));
+});
+
+test('firstLoginCohort defaults to REVIEW; only admin can classify, without changing privileges, and protected groups stay locked', async () => {
+  await seedProfiles([
+    accessProfile('admin', {admin: true}, {role: 'administrador_app', createdAt: new Date(), updatedAt: new Date()}),
+    accessProfile('manager', {usersManage: true}, {createdAt: new Date(), updatedAt: new Date()}),
+    accessProfile('staff', {}, {createdAt: new Date(), updatedAt: new Date()}),
+    accessProfile('structural', {}, {firstLoginCohort: 'STRUCTURAL', createdAt: new Date(), updatedAt: new Date()}),
+    accessProfile('homologation', {}, {firstLoginCohort: 'HOMOLOGATION', createdAt: new Date(), updatedAt: new Date()})
+  ]);
+  const admin = testEnvironment.authenticatedContext('admin').firestore();
+  const manager = testEnvironment.authenticatedContext('manager').firestore();
+  const staff = testEnvironment.authenticatedContext('staff').firestore();
+
+  const newReview = accessProfile('new-review', {}, {firstLoginCohort: 'REVIEW', createdAt: new Date(), updatedAt: new Date()});
+  await assertSucceeds(setDoc(doc(manager, 'users', 'new-review'), newReview));
+  await assertFails(setDoc(doc(manager, 'users', 'manager-operational'), accessProfile('manager-operational', {}, {firstLoginCohort: 'OPERATIONAL', createdAt: new Date(), updatedAt: new Date()})));
+  await assertFails(setDoc(doc(admin, 'users', 'admin-operational-create'), accessProfile('admin-operational-create', {}, {firstLoginCohort: 'OPERATIONAL', createdAt: new Date(), updatedAt: new Date()})));
+  await assertFails(setDoc(doc(manager, 'users', 'invalid-cohort'), accessProfile('invalid-cohort', {}, {firstLoginCohort: 'ADMIN', createdAt: new Date(), updatedAt: new Date()})));
+
+  await assertFails(updateDoc(doc(manager, 'users', 'staff'), {firstLoginCohort: 'OPERATIONAL', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(staff, 'users', 'staff'), {firstLoginCohort: 'OPERATIONAL', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(staff, 'users', 'staff'), {firstLoginCohort: 'OPERATIONAL', role: 'administrador_app', permissions: {admin: true}, updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(admin, 'users', 'staff'), {firstLoginCohort: 'ADMIN', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(admin, 'users', 'staff'), {firstLoginCohort: 'OPERATIONAL', role: 'administrador_app', permissions: {admin: true}, updatedAt: serverTimestamp()}));
+
+  await assertSucceeds(updateDoc(doc(admin, 'users', 'admin'), {firstLoginCohort: 'OPERATIONAL', updatedAt: serverTimestamp()}));
+  const adminAfter = (await getDoc(doc(admin, 'users', 'admin'))).data();
+  assert.equal(adminAfter.firstLoginCohort, 'OPERATIONAL');
+  assert.equal(adminAfter.role, 'administrador_app');
+  assert.equal(adminAfter.permissions.admin, true);
+  await assertFails(updateDoc(doc(admin, 'users', 'structural'), {firstLoginCohort: 'OPERATIONAL', updatedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(admin, 'users', 'homologation'), {firstLoginCohort: 'REVIEW', updatedAt: serverTimestamp()}));
 });
 
 test('assinatura de checklist permanece bloqueada até existir fluxo de relatório íntegro', async () => {

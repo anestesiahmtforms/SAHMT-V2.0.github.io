@@ -52,7 +52,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   vm.runInContext(features.replace(/^export /gm, '') + '\n' + main.slice(labelStart, labelEnd), context);
   const loadModule = extractFunction('loadModule', {async: true}).replace(/import\((['"])([^'"]+)\1\)/g, 'fakeImport("$2")');
   vm.runInContext([
-    extractFunction('can'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
+    extractFunction('can'), extractFunction('hasOccurrencePermission'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
     extractFunction('actionForm'), loadModule,
     'globalThis.realModuleUi = {can, moduleCards, managementUtilityCards, actionForm, loadModule};'
   ].join('\n'), context);
@@ -122,13 +122,13 @@ test('link direto de Gestão bloqueia antes de renderizar e carregar; revogaçã
   }
 });
 
-test('Escala mostra Treinamentos e Notificações para um perfil comum aprovado sem conceder permissões', () => {
+test('Escala mantém Treinamentos e oculta o novo botão de ocorrências enquanto a flag está desligada', () => {
   const session = approved();
   const before = structuredClone(session);
   const h = harness({session});
   assert.deepEqual(visibleRoutes(h), ['training']);
   assert.match(h.ui.moduleCards(), /<strong>Desempenho<\/strong>/);
-  assert.match(h.ui.moduleCards(), /<strong>NOTIFICAÇÕES DE EVENTOS<\/strong>/);
+  assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
   for (const permission of ['trainingsRead', 'trainingsManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) {
     assert.equal(h.ui.can(permission), false, `${permission} continua sem concessão`);
   }
@@ -136,6 +136,18 @@ test('Escala mostra Treinamentos e Notificações para um perfil comum aprovado 
   assert.equal(h.ui.actionForm('training'), '');
   assert.equal(h.ui.actionForm('notifications'), '');
   assert.deepEqual(session, before);
+});
+
+test('o botão antigo de notificações abre Registro de Ocorrências para todo usuário ativo e autorizado', () => {
+  for (const session of [approved(), approved({notificationsRead: false, occurrencesWrite: false}, 'gestor')]) {
+    const before = structuredClone(session);
+    const h = harness({session, appFeatures: {occurrences: true, notifications: false}});
+    const cards = h.ui.moduleCards();
+    assert.equal((cards.match(/data-route="occurrences"/g) || []).length, 1);
+    assert.match(cards, /<strong>REGISTRO DE OCORRÊNCIAS<\/strong>/);
+    assert.doesNotMatch(cards, /NOTIFICAÇÕES DE EVENTOS|data-route="notifications"/);
+    assert.deepEqual(session, before);
+  }
 });
 
 test('flags false nas permissões não ocultam os cartões comuns nem alteram o mapa do perfil', () => {
@@ -241,10 +253,10 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista']) {
     assert.match(h.content.innerHTML, /ainda não tem acesso/);
   });
 }
-test('Informações fica somente em Gestão para administrador; Home contém atalho futuro sem rota', () => {
+test('Informações fica somente em Gestão para administrador; o cartão de ocorrências depende da flag', () => {
   const h = harness({session:approved({}, 'administrador_app')});
   assert.match(h.ui.managementUtilityCards(), /data-route="notifications"/);
   assert.match(h.ui.managementUtilityCards(), /<strong>INFORMAÇÕES<\/strong>/);
   assert.doesNotMatch(h.ui.moduleCards(), /data-route="notifications"/);
-  assert.match(h.ui.moduleCards(), /disabled aria-label="Notificações de Eventos · em breve"/);
+  assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
 });

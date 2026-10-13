@@ -1,9 +1,42 @@
 import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
 import {profileForPresentation} from './profile-presentation.js';
+import {reconcileFirebaseSecondarySessions, signOutAllFirebaseProjects} from './firebase-secondary-session-lifecycle.js';
+import {isManagementFaFirstLoginPending, observeManagementFaFirstLoginAuthUid,
+  subscribeManagementFaFirstLoginPending} from './management-fa-first-login-state.js';
+import {createManagementGoogleLogin} from './management-google-login.js';
+import {managementFaFirstLoginConfig} from './management-fa-first-login-config.js';
 
 let retryCurrentProfile = null;
 let authApiPromise = null;
+let firstLoginRuntimePromise = null;
+
+async function loadFirstLoginRuntime(api) {
+  if (!managementFaFirstLoginConfig.enabled) return null;
+  if (!firstLoginRuntimePromise) {
+    firstLoginRuntimePromise = Promise.all([
+      import('./management-fa-first-login.js'),
+      import('./management-fa-first-login-transport.js'),
+      import('./management-fa-google-identity.js')
+    ]).then(([flowModule, transportModule, identityModule]) => {
+      const endpoint = managementFaFirstLoginConfig.endpoint;
+      const clientId = managementFaFirstLoginConfig.googleClientId;
+      const brokerOrigin = managementFaFirstLoginConfig.allowedBrokerOrigin;
+      const endpointUrl = new URL(endpoint);
+      if (!brokerOrigin || endpointUrl.origin !== brokerOrigin) throw new Error('FIRST_LOGIN_ORIGIN_INVALID');
+      const transport = transportModule.createManagementFaFirstLoginTransport({enabled: true,
+        endpoint: endpointUrl.href, allowedBrokerOrigins: [brokerOrigin], fetchImpl: globalThis.fetch?.bind(globalThis)});
+      const requestGoogleIdToken = identityModule.createGoogleIdentityTokenRequester({clientId});
+      const flow = flowModule.createManagementFaFirstLoginFlow({enabled: true, auth: api.auth,
+        requestGoogleIdToken, claimFirstLogin: transport.claimFirstLogin,
+        googleCredential: flowModule.createGoogleCredentialFactory(api.GoogleAuthProvider),
+        signInWithCustomToken: api.signInWithCustomToken, signInWithCredential: api.signInWithCredential,
+        linkWithCredential: api.linkWithCredential, reload: api.reload, signOut: api.signOut});
+      return Object.freeze({flow, transport});
+    }).catch(error => { firstLoginRuntimePromise = null; throw error; });
+  }
+  return firstLoginRuntimePromise;
+}
 
 function loadAuthApi() {
   if (!authApiPromise) {
@@ -32,6 +65,8 @@ export function watchSession(onState) {
   let authUnsubscribe = null;
   let auth = null;
   let profileUnsubscribe = null;
+  let firstLoginPendingUnsubscribe = null;
+  let lastAuthUid;
   let generation = 0;
   let onlineHandler = null;
   const clearOnlineHandler = () => {
@@ -72,18 +107,48 @@ export function watchSession(onState) {
     if (!user) return Promise.resolve(false);
     return loadProfile(user);
   };
+  firstLoginPendingUnsubscribe = subscribeManagementFaFirstLoginPending((pending) => {
+    if (disposed) return;
+    const user = auth?.currentUser;
+    if (pending) {
+      generation++;
+      clearOnlineHandler();
+      profileUnsubscribe?.();
+      profileUnsubscribe = null;
+      if (user) onState({status: 'first-login-linking', user});
+    } else if (user) {
+      void reconcileFirebaseSecondarySessions(user.uid);
+      void loadProfile(user);
+    }
+  });
   onState({status: 'checking'});
   loadAuthApi().then(({onAuthStateChanged, auth: initializedAuth}) => {
     if (disposed) return;
     auth = initializedAuth;
     authUnsubscribe = onAuthStateChanged(auth, async (user) => {
       if (disposed) return;
+      const uid = user?.uid || null;
+      observeManagementFaFirstLoginAuthUid(uid);
+      if (uid !== lastAuthUid) {
+        lastAuthUid = uid;
+        // Secondary cleanup is intentionally detached from FA profile loading:
+        // FB/FC outages must never delay or fail the primary session.
+        if (!isManagementFaFirstLoginPending()) void reconcileFirebaseSecondarySessions(uid);
+      }
       if (!user) {
         generation++;
         clearOnlineHandler();
         profileUnsubscribe?.();
         profileUnsubscribe = null;
         onState({status: 'signed-out'});
+        return;
+      }
+      if (isManagementFaFirstLoginPending()) {
+        generation++;
+        clearOnlineHandler();
+        profileUnsubscribe?.();
+        profileUnsubscribe = null;
+        onState({status: 'first-login-linking', user});
         return;
       }
       await loadProfile(user);
@@ -94,6 +159,7 @@ export function watchSession(onState) {
     clearOnlineHandler();
     authUnsubscribe?.();
     profileUnsubscribe?.();
+    firstLoginPendingUnsubscribe?.();
     retryCurrentProfile = null;
   };
 }
@@ -178,16 +244,23 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
 }
 
 export async function signInGoogle() {
-  const {GoogleAuthProvider, browserPopupRedirectResolver, signInWithPopup, auth} = await loadAuthApi();
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({prompt: 'select_account'});
-  return signInWithPopup(auth, provider, browserPopupRedirectResolver);
+  const api = await loadAuthApi();
+  const popupSignIn = () => {
+    const provider = new api.GoogleAuthProvider();
+    provider.setCustomParameters({prompt: 'select_account'});
+    return api.signInWithPopup(api.auth, provider, api.browserPopupRedirectResolver);
+  };
+  const enabled = managementFaFirstLoginConfig.enabled;
+  if (!enabled) return popupSignIn();
+  const runtime = await loadFirstLoginRuntime(api);
+  const login = createManagementGoogleLogin({enabled, firstLogin: runtime?.flow, popupSignIn});
+  return login.signIn();
 }
 
 export async function signOutGlobal() {
   if (!firebaseConfigured) return false;
   const {signOut, auth} = await loadAuthApi();
-  if (!auth) return;
+  if (!auth) return false;
   const user = auth.currentUser;
   if (user) {
     const [pendingOperations, pendingTrainingProgress] = await Promise.all([
@@ -203,6 +276,5 @@ export async function signOutGlobal() {
     if (pendingCount > 0 && !discard) return false;
     await clearUserLocalData(user.uid, {clearOutbox: discard});
   }
-  await signOut(auth);
-  return true;
+  return signOutAllFirebaseProjects({signOutPrimary: () => signOut(auth)});
 }

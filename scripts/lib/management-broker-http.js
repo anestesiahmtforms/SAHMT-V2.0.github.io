@@ -1,5 +1,7 @@
+import {sanitizedManagementPilotDiagnostic} from '../../src/firebase-project-broker-errors.js';
 const ORIGIN = 'https://anestesiahmtforms.github.io';
 const ROUTE = '/v1/management/session';
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt';
 const MAX_BYTES = 20 * 1024;
 const MAX_CHUNKS = 512;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(value);
@@ -7,11 +9,11 @@ class HttpDenial extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
 }
 const deny = (status, code) => { throw new HttpDenial(status, code); };
-function response(status, body, origin) {
+function httpResponse(status, body, origin, allowedOrigin) {
   const headers = new Headers({'Content-Type':'application/json; charset=utf-8',
     'Cache-Control':'no-store', Pragma:'no-cache', 'X-Content-Type-Options':'nosniff', Vary:'Origin'});
-  if (origin === ORIGIN) {
-    headers.set('Access-Control-Allow-Origin', ORIGIN);
+  if (origin === allowedOrigin) {
+    headers.set('Access-Control-Allow-Origin', allowedOrigin);
     headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     headers.set('Access-Control-Allow-Headers', 'Content-Type');
   }
@@ -41,10 +43,15 @@ async function boundedBody(request, signal, deadlineEnded) {
     try { body = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)); }
     catch { deny(400, 'BROKER_BODY_INVALID'); }
     if (!body || typeof body !== 'object' || Array.isArray(body)
-      || Object.keys(body).length !== 1 || !Object.hasOwn(body,'faIdToken')
+      || Object.keys(body).length !== 3 || !Object.hasOwn(body,'faIdToken')
       || typeof body.faIdToken !== 'string' || body.faIdToken.length < 1
-      || body.faIdToken.length > 16000) deny(400,'BROKER_BODY_INVALID');
-    return {faIdToken:body.faIdToken};
+      || body.faIdToken.length > 16000 || body.sourceProjectId !== FA
+      || !body.targetProjectIds || typeof body.targetProjectIds !== 'object' || Array.isArray(body.targetProjectIds)) deny(400,'BROKER_BODY_INVALID');
+    const targets = body.targetProjectIds, names = Object.keys(targets);
+    if (names.length < 1 || names.length > 2
+      || names.some(name => !['FB','FC'].includes(name)) || (Object.hasOwn(targets,'FB') && targets.FB !== FB)
+      || (Object.hasOwn(targets,'FC') && targets.FC !== FC)) deny(400,'BROKER_BODY_INVALID');
+    return {faIdToken:body.faIdToken, sourceProjectId:FA, targetProjectIds:Object.freeze(Object.fromEntries(names.map(name=>[name,targets[name]])))};
   } finally {
     signal.removeEventListener('abort',abort);
     void reader.cancel().catch(() => {});
@@ -52,10 +59,17 @@ async function boundedBody(request, signal, deadlineEnded) {
   }
 }
 /** HTTPS transport only: no listener, deployment, credentials or default activation. */
-export function createManagementBrokerHttp({enabled=false, broker, admitRequest, superviseExchange, maxRequestMs, cleanupDrainMs}={}) {
-  return async function handle(request) {
+export function createManagementBrokerHttp({enabled=false, broker, admitRequest, superviseExchange, maxRequestMs, cleanupDrainMs,
+  allowedOrigin=ORIGIN,pilotOnly=false}={}) {
+  let parsedOrigin;
+  try { parsedOrigin = new URL(allowedOrigin); } catch { throw new Error('BROKER_ORIGIN_CONFIGURATION_INVALID'); }
+  if (typeof allowedOrigin !== 'string' || parsedOrigin.protocol !== 'https:' || parsedOrigin.origin !== allowedOrigin
+    || parsedOrigin.username || parsedOrigin.password || parsedOrigin.hostname.includes('*'))
+    throw new Error('BROKER_ORIGIN_CONFIGURATION_INVALID');
+  const response = (status, body, origin) => httpResponse(status, body, origin, allowedOrigin);
+  return async function handle(request, env, executionContext) {
     const origin = request.headers.get('Origin');
-    let controller, timer, requestAbort, finishSupervision, started = false, body = null;
+    let controller, timer, requestAbort, finishSupervision, started = false, body = null, admissionRelease = null, exchangeRequiresReconciliation = false;
     try {
       if (enabled !== true) return response(503,{ok:false,code:'BROKER_HTTP_DISABLED'},origin);
       if (!broker || typeof broker.exchange !== 'function' || typeof admitRequest !== 'function' || typeof superviseExchange !== 'function'
@@ -66,7 +80,7 @@ export function createManagementBrokerHttp({enabled=false, broker, admitRequest,
       if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
         deny(400,'BROKER_URL_INVALID');
       if (url.pathname !== ROUTE) deny(404,'BROKER_ROUTE_NOT_FOUND');
-      if (origin !== ORIGIN) deny(403,'BROKER_ORIGIN_DENIED');
+      if (origin !== allowedOrigin) deny(403,'BROKER_ORIGIN_DENIED');
       if (request.method === 'OPTIONS') {
         if (request.headers.get('Access-Control-Request-Method') !== 'POST') deny(405,'BROKER_METHOD_DENIED');
         const requested = (request.headers.get('Access-Control-Request-Headers') || '').toLowerCase().split(',').map(v=>v.trim()).filter(Boolean);
@@ -98,7 +112,10 @@ export function createManagementBrokerHttp({enabled=false, broker, admitRequest,
         if (deadlineEnded()) deny(504,'BROKER_HTTP_DEADLINE_EXCEEDED');
         const admitted = await admitRequest({origin,route:ROUTE,method:'POST'},{signal:controller.signal});
         if (deadlineEnded()) deny(504,'BROKER_HTTP_DEADLINE_EXCEEDED');
-        if (admitted !== true) deny(429,'BROKER_REQUEST_LIMITED');
+        if (admitted === true) admissionRelease = null;
+        else if (admitted && typeof admitted === 'object' && admitted.allowed === true && typeof admitted.release === 'function')
+          admissionRelease = admitted.release;
+        else deny(429,'BROKER_REQUEST_LIMITED');
         body = await boundedBody(request,controller.signal,deadlineEnded);
         if (deadlineEnded()) deny(504,'BROKER_HTTP_DEADLINE_EXCEEDED');
         let supervisionTimer, settled=false;
@@ -112,10 +129,12 @@ export function createManagementBrokerHttp({enabled=false, broker, admitRequest,
           supervisionTimer=setTimeout(()=>finishSupervision({settled:false,started,requiresReconciliation:started,
             code:'BROKER_COMPLETION_UNCONFIRMED'}),lifetime);
         });
-        if (superviseExchange(completion,{maximumLifetimeMs:Math.ceil(lifetime),responseDeadlineMs:maxRequestMs,cleanupDrainMs}) !== true) {
+        if (superviseExchange(completion,{maximumLifetimeMs:Math.ceil(lifetime),responseDeadlineMs:maxRequestMs,cleanupDrainMs,
+          releaseAdmission:admissionRelease,executionContext}) !== true) {
           finishSupervision({settled:true,started:false,requiresReconciliation:false,code:'BROKER_SUPERVISOR_REJECTED'});
           deny(503,'BROKER_SUPERVISOR_REJECTED');
         }
+        admissionRelease = null;
         if (deadlineEnded()) {
           finishSupervision({settled:true,started:false,requiresReconciliation:false,code:'BROKER_REQUEST_CANCELLED'});
           deny(504,'BROKER_HTTP_DEADLINE_EXCEEDED');
@@ -135,22 +154,46 @@ export function createManagementBrokerHttp({enabled=false, broker, admitRequest,
           deny(504,'BROKER_HTTP_DEADLINE_EXCEEDED');
         }
         if (result?.ok !== true) {
+          const diagnostic=pilotOnly===true?sanitizedManagementPilotDiagnostic(result?.diagnostic):null;
           finishSupervision({settled:true,started:true,requiresReconciliation:result?.ok !== false || result?.requiresReconciliation === true,
             code:'BROKER_DENIED'});
           return response(result?.code === 'BROKER_DISABLED' ? 503 : 403,
           {ok:false,code:typeof result?.code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(result.code)
-            ? result.code : 'BROKER_EXCHANGE_DENIED',requiresReconciliation:result?.ok !== false || result?.requiresReconciliation === true},origin);
+            ? result.code : 'BROKER_EXCHANGE_DENIED',requiresReconciliation:result?.ok !== false || result?.requiresReconciliation === true,
+            ...(diagnostic?{diagnostic}:{})},origin);
         }
-        if (result.sourceProjectId !== 'sahmt-17a16' || result.destinationProjectId !== 'sahmt-gestao-5ae66'
-          || !safeId(result.faUid) || result.faUid.length>128 || result.faUid !== result.fbUid
-          || !safeId(result.memberId) || !safeId(result.policyVersion)
-          || !Number.isSafeInteger(result.leaseVersion) || result.leaseVersion<1
-          || typeof result.customToken !== 'string' || result.customToken.length<1 || result.customToken.length>16000)
+        exchangeRequiresReconciliation = result.requiresReconciliation === true;
+        const expectedNames = Object.keys(body.targetProjectIds), targets = result?.targets;
+        const validUnavailable = value => ['DENIED','UNAVAILABLE'].includes(value.status)
+          && typeof value.code === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(value.code)
+          && Object.keys(value).length === (Object.hasOwn(value,'diagnostic') ? 4 : 3)
+          && Object.keys(value).every(key=>['projectId','status','code','diagnostic'].includes(key));
+        const validTarget = (name, value) => name === 'FB'
+          ? value && value.projectId === FB && (value.status === 'READY'
+            ? Object.keys(value).length === 4 && value.uid === result.faUid && typeof value.customToken === 'string'
+              && value.customToken.length > 0 && value.customToken.length <= 16000
+            : validUnavailable(value))
+          : value && (value.status === 'READY'
+            ? Object.keys(value).length === 4 && value.projectId === FC && value.uid === result.faUid
+              && typeof value.customToken === 'string' && value.customToken.length > 0 && value.customToken.length <= 16000
+            : value.projectId === FC && validUnavailable(value));
+        const fbReady = targets?.FB?.status === 'READY';
+        if (result.sourceProjectId !== FA || !safeId(result.faUid) || result.faUid.length>128
+          || (fbReady && (result.destinationProjectId !== FB || result.faUid !== result.fbUid
+            || !safeId(result.memberId) || !safeId(result.policyVersion)
+            || !Number.isSafeInteger(result.leaseVersion) || result.leaseVersion<1))
+          || (targets?.FB?.status !== 'READY' && ['destinationProjectId','fbUid','memberId','policyVersion','leaseVersion','customToken'].some(key => Object.hasOwn(result,key)))
+          || !targets || Object.keys(targets).length !== expectedNames.length
+          || expectedNames.some(name=>!Object.hasOwn(targets,name)||!validTarget(name,targets[name])))
           { finishSupervision({settled:true,started:true,requiresReconciliation:true,code:'BROKER_RESPONSE_INVALID'});
             deny(502,'BROKER_RESPONSE_INVALID'); }
-        const success = response(200,{ok:true,sourceProjectId:result.sourceProjectId,destinationProjectId:result.destinationProjectId,
-          faUid:result.faUid,fbUid:result.fbUid,memberId:result.memberId,leaseVersion:result.leaseVersion,
-          policyVersion:result.policyVersion,customToken:result.customToken},origin);
+        const responseTargets=Object.fromEntries(expectedNames.map(name=>{
+          const target=targets[name];
+          if(target.status==='READY')return [name,target];
+          const diagnostic=pilotOnly===true?sanitizedManagementPilotDiagnostic(target.diagnostic):null;
+          return [name,{projectId:target.projectId,status:target.status,code:target.code,...(diagnostic?{diagnostic}:{})}];
+        }));
+        const success = response(200,{schemaVersion:1,sourceProjectId:FA,faUid:result.faUid,targets:responseTargets},origin);
         return success;
       };
       try {
@@ -160,7 +203,7 @@ export function createManagementBrokerHttp({enabled=false, broker, admitRequest,
           deny(504,'BROKER_HTTP_DEADLINE_EXCEEDED');
         }
         if (started && result.status === 200)
-          finishSupervision?.({settled:true,started:true,requiresReconciliation:false,code:'BROKER_COMPLETED'});
+          finishSupervision?.({settled:true,started:true,requiresReconciliation:exchangeRequiresReconciliation,code:'BROKER_COMPLETED'});
         return result;
       }
       finally { controller.signal.removeEventListener('abort',abort); }
@@ -170,6 +213,7 @@ export function createManagementBrokerHttp({enabled=false, broker, admitRequest,
           requiresReconciliation:started},origin);
     } finally {
       if(!started) finishSupervision?.({settled:true,started:false,requiresReconciliation:false,code:'BROKER_NOT_STARTED'});
+      if(admissionRelease) { try { await admissionRelease(); } catch { /* expired slot is reclaimed by the durable TTL */ } }
       body=null;
       controller?.abort();
       clearTimeout(timer);

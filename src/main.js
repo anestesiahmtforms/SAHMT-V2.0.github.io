@@ -9,7 +9,7 @@ import {mergeReportPendingRecords} from './report-pending.js';
 import {confirmedLiveReportRecords} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
-import {retryAuthenticatedProfile, signInGoogle, watchSession} from './auth.js';
+import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
 import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
@@ -27,6 +27,8 @@ import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offlin
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
+import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
+import {createManagementProjectAuthAutoConnector} from './management-project-auth-auto-connect.js';
 
 const app = document.querySelector('#app');
 const STARTUP_BANNER_DURATION_MS = 3000;
@@ -45,6 +47,7 @@ function preloadStartupReports(user) {
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
+const firstLoginCohortAdminUiEnabled = firstLoginCohortAdminEnabled();
 const labels = {
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
@@ -52,6 +55,7 @@ const labels = {
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
   notifications: ['INFORMAÇÕES', 'Comunicados do SAHMT'],
+  occurrences: ['REGISTRO DE OCORRÊNCIAS', 'Relato de ocorrências e não conformidades'],
   people: ['Pessoas', 'Contatos e cadastros da equipe'],
   admin: ['Administração', 'Usuários e configurações'],
   offline: ['Sincronização', 'Ações aguardando confirmação do Firestore']
@@ -71,9 +75,21 @@ const userPermissions = [
   ['documentsManage', 'Gerenciar documentos'], ['qualityManage', 'Gerenciar qualidade'], ['equipmentManage', 'Gerenciar equipamentos'], ['peopleManage', 'Gerenciar pessoas'],
   ['financeRead', 'Consultar financeiro'], ['financeWrite', 'Registrar financeiro'], ['financeManage', 'Administrar financeiro'],
   ['notificationsRead', 'Consultar notificações'], ['notificationsManage', 'Gerenciar notificações'],
+  ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências'],
+  ['occurrencesAuditRead', 'Consultar auditoria de ocorrências'],
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
+const managementProjectAuthAutoConnector = createManagementProjectAuthAutoConnector({
+  enabled: import.meta.env.VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED === 'true',
+  loadConnect: async () => {
+    const {getFirebaseProjectAuthOptIn} = await import('./firebase-project-auth-browser.js');
+    const optIn = getFirebaseProjectAuthOptIn();
+    return targetNames => optIn.connect(targetNames);
+  },
+  isCurrent: uid => session.status === 'signed-in' && session.user?.uid === uid && session.profile?.active === true
+    && session.profile?.access === true && navigator.onLine
+});
 let notice = '';
 let outboxRetryTimer = null;
 let outboxRetryAt = 0;
@@ -530,13 +546,24 @@ function loginView() {
 }
 
 function moduleCards() {
-  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], people: ['peopleManage'], admin: ['usersManage']};
+  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], occurrences: ['occurrencesRead','occurrencesWrite','occurrencesAuditRead'], people: ['peopleManage'], admin: ['usersManage']};
   const commonModules = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true ? ['training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin'].includes(route) && (commonModules.includes(route) || permissionFor[route]?.some(can)) && featureEnabledForRoute(route, appFeatures)).map(([route, [title, subtitle]]) => route === 'notifications' ? `<button class="module-card" type="button" disabled aria-label="Notificações de Eventos · em breve"><img class="module-icon" src="${import.meta.env.BASE_URL}assets/modules/notificacoes-eventos.svg" alt="" width="40" height="40" loading="lazy" decoding="async"><span><strong>NOTIFICAÇÕES DE EVENTOS</strong><small>Em breve</small></span><span class="arrow" aria-hidden="true">›</span></button>` : `<button class="module-card" data-route="${route}">
+  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences'].includes(route)
+    && (route === 'notifications' ? commonModules.includes(route) : commonModules.includes(route) || permissionFor[route]?.some(can))
+    && (route === 'notifications' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
+      ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
+      : `<button class="module-card" data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
+}
+
+function hasOccurrencePermission() {
+  // Registration is open to every active, accessible FA user. Reading the
+  // general list and audit history remain separately permissioned in FC.
+  return session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true
+    && featureEnabledForRoute('occurrences', appFeatures);
 }
 
 function managementUtilityCards() {
@@ -766,10 +793,10 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : route === 'management' || route === 'training' ? 'HOME' : 'Voltar para Home'}</button></section>`;
-  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : ''}">
-    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : ''}</div></header>
-    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : route === 'management' || route === 'training' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
+    <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
+    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -993,6 +1020,24 @@ async function loadModule(route) {
     if (!current()) return;
     cleanupCurrentModule = mountPerformanceModule(content, {uid: requestUid, profile: session.profile, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: current,
       onOpenGovernance: () => { if (current() && featureEnabledForRoute('management', appFeatures)) navigate('management'); }});
+    return;
+  }
+  if (route === 'occurrences') {
+    if (!hasOccurrencePermission()) {
+      content.innerHTML = '<p class="empty-state" role="status">O acesso ao Registro de Ocorrências depende de um perfil ativo e autorizado.</p>';
+      return;
+    }
+    const requestUid = session.user?.uid;
+    const generation = evaluationModuleGeneration;
+    const current = () => generation === evaluationModuleGeneration && content.isConnected && currentRoute() === 'occurrences'
+      && session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true
+      && session.profile?.access === true && featureEnabledForRoute('occurrences', appFeatures) && hasOccurrencePermission();
+    const [{getIndicatorsAuth,getIndicatorsFirestore},{mountOccurrenceModule}] = await Promise.all([
+      import('./indicators-firebase-app.js'), import('./occurrences-ui.js')
+    ]);
+    if (!current()) return;
+    cleanupCurrentModule = mountOccurrenceModule(content,{uid:requestUid,displayName:session.profile?.displayName||session.user?.displayName||'Usuário',
+      auth:getIndicatorsAuth(),db:getIndicatorsFirestore(),permissions:{...session.profile.permissions,occurrencesWrite:true},isCurrent:current});
     return;
   }
   if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {
@@ -1239,13 +1284,49 @@ async function loadModule(route) {
       return;
     }
     if (route === 'management') {
+      const projectAuthOptinEnabled = document.querySelector('meta[name="firebase-project-auth-optin"]')?.content === 'true' &&
+        (document.querySelector('meta[name="management-firebase-enabled"]')?.content === 'true' ||
+          document.querySelector('meta[name="indicators-firebase-enabled"]')?.content === 'true') &&
+        Boolean(document.querySelector('meta[name="firebase-project-auth-endpoint"]')?.content?.trim()) &&
+        Boolean(document.querySelector('meta[name="firebase-project-auth-allowed-origin"]')?.content?.trim());
+      const enabledProjectTargets = {
+        FB: document.querySelector('meta[name="management-firebase-enabled"]')?.content === 'true',
+        FC: document.querySelector('meta[name="indicators-firebase-enabled"]')?.content === 'true'
+      };
+      const projectAuthButtons = projectAuthOptinEnabled ? [
+        ...(enabledProjectTargets.FB ? ['<button class="secondary-button" type="button" data-project-auth-targets="FB">Conectar Educação (FB)</button>'] : []),
+        ...(enabledProjectTargets.FC ? ['<button class="secondary-button" type="button" data-project-auth-targets="FC">Conectar Resultados (FC)</button>'] : []),
+        ...(enabledProjectTargets.FB && enabledProjectTargets.FC
+          ? ['<button class="secondary-button" type="button" data-project-auth-targets="FB,FC">Conectar FB + FC</button>'] : [])
+      ].join('') : '';
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
       const areas = items.map((item) => `<button class="area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"><span class="module-mark">${escapeHtml(item.shortName || item.icon || 'GE')}</span><span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.innerHTML = `<div id="management-evaluation-access"></div>${projectAuthOptinEnabled ? `<section class="project-auth-optin"><p>Conecte somente os projetos necessários. O login principal continua no FA.</p><div class="project-auth-optin__actions">${projectAuthButtons}</div><p id="project-auth-status" class="record-meta" role="status" aria-live="polite"></p></section>` : ''}${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.querySelectorAll('[data-project-auth-targets]').forEach((button) => button.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const status = content.querySelector('#project-auth-status');
+        const targetNames = button.dataset.projectAuthTargets.split(',');
+        const actionButtons = [...content.querySelectorAll('[data-project-auth-targets]')];
+        actionButtons.forEach(item => { item.disabled = true; });
+        if (status) status.textContent = 'Conectando às sessões selecionadas…';
+        try {
+          // Manual reconnect is available when the optional background attempt failed.
+          const {getFirebaseProjectAuthOptIn} = await import('./firebase-project-auth-browser.js');
+          const result = await getFirebaseProjectAuthOptIn().connect(targetNames);
+          const targetState = result?.targets || {};
+          const label = name => targetState[name]?.status === 'ready' ? 'conectado'
+            : targetState[name]?.code === 'FC_TOKEN_SIGN_FAILED' ? 'indisponível' : 'não conectado';
+          if (status) status.textContent = result?.status === 'ready' || result?.status === 'partial'
+            ? `Sessões: ${targetNames.map(name => `${name} ${label(name)}`).join('; ')}.`
+            : 'Não foi possível conectar as sessões selecionadas. O login principal continua disponível.';
+        } catch {
+          if (status) status.textContent = 'Não foi possível conectar as sessões selecionadas. O login principal continua disponível.';
+        } finally { actionButtons.forEach(item => { if (item.isConnected) item.disabled = false; }); }
+      }));
       const evaluationHost = content.querySelector('#management-evaluation-access');
       const requestUid = session.user?.uid;
       const generation = evaluationModuleGeneration;
@@ -1500,7 +1581,11 @@ async function loadAdminModule(content) {
       const permissionSummary = Object.keys(profile.permissions || {}).filter((key) => profile.permissions[key] === true).length;
       const privileged = profile.role === 'administrador_app' || profile.permissions?.admin === true || profile.permissions?.usersManage === true;
       const editControl = self ? '<span class="record-meta">Perfil atual</span>' : privileged && !can('admin') ? '<span class="record-meta">Edição restrita a administrador</span>' : `<button type="button" class="secondary-button" data-edit-user="${escapeHtml(profile.uid)}">Editar</button>`;
-      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><code>${escapeHtml(profile.uid || '')}</code></div>${editControl}</article>`;
+      const cohort = firstLoginCohortForDisplay(profile.firstLoginCohort);
+      const protectedCohort = PROTECTED_FIRST_LOGIN_COHORTS.includes(profile.firstLoginCohort);
+      const cohortControl = firstLoginCohortAdminUiEnabled && can('admin') ? `<div class="first-login-cohort-controls"><label>Primeiro login<select data-first-login-cohort="${escapeHtml(profile.uid)}" ${protectedCohort ? 'disabled' : ''}>${FIRST_LOGIN_COHORTS.map((value) => `<option value="${value}" ${cohort === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>${protectedCohort ? '<small>Classificação protegida; não pode ser reclassificada por este painel.</small>' : `<button type="button" class="secondary-button" data-save-first-login-cohort="${escapeHtml(profile.uid)}">Salvar classificação</button>`}<small data-first-login-cohort-status="${escapeHtml(profile.uid)}">A classificação não altera função, permissões, atividade ou acesso.</small></div>` : '';
+      const cohortSummary = firstLoginCohortAdminUiEnabled && can('admin') ? `<small>Primeiro login: ${cohort}${profile.firstLoginCohort ? '' : ' · não classificado'}</small>` : '';
+      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${cohortControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
     content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
@@ -1584,6 +1669,30 @@ async function loadAdminModule(content) {
       status.textContent = 'Escolha a função e marque somente as permissões necessárias antes de salvar.';
       content.querySelector('#admin-user-editor').open = true;
       form.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }));
+    content.querySelectorAll('[data-save-first-login-cohort]').forEach((button) => button.addEventListener('click', async () => {
+      if (!firstLoginCohortAdminUiEnabled || !can('admin')) return;
+      const row = button.closest('[data-admin-user-row]');
+      const select = row?.querySelector('[data-first-login-cohort]');
+      const cohortStatus = row?.querySelector('[data-first-login-cohort-status]');
+      const targetUid = button.dataset.saveFirstLoginCohort;
+      const reviewerUid = session.user?.uid;
+      if (!select || !cohortStatus || !targetUid || !reviewerUid) return;
+      button.disabled = true;
+      cohortStatus.textContent = 'Salvando classificação…';
+      try {
+        const {setFirstLoginCohort} = await import('./data.js');
+        const result = await setFirstLoginCohort(targetUid, select.value);
+        if (session.user?.uid !== reviewerUid) return;
+        cohortStatus.textContent = result.changed ? `Classificação ${result.firstLoginCohort} salva. Nenhuma permissão foi alterada.` : 'A classificação já estava atualizada.';
+        button.disabled = false;
+      } catch (error) {
+        if (session.user?.uid !== reviewerUid) return;
+        cohortStatus.textContent = error.code === 'permission-denied'
+          ? 'O Firestore recusou a alteração. Somente administrador autorizado pode classificar.'
+          : 'Não foi possível salvar a classificação. Confira o perfil e tente novamente.';
+        button.disabled = false;
+      }
     }));
     content.querySelector('#admin-user-search').addEventListener('input', (event) => {
       const term = event.target.value.trim().toLowerCase();
@@ -4296,6 +4405,11 @@ async function render() {
     navigate('home');
     return;
   }
+  if (requestedRoute === 'occurrences' && !hasOccurrencePermission()) {
+    notice = 'Registro de Ocorrências exige autorização específica no perfil.';
+    navigate('home');
+    return;
+  }
   if (!featureEnabledForRoute(requestedRoute, appFeatures)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
     navigate('home');
@@ -4452,6 +4566,12 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+    if (next.status === 'signed-in') {
+      if (!unchangedPresentation && typeof window !== 'undefined'
+        && typeof managementProjectAuthAutoConnector !== 'undefined') {
+        window.setTimeout(() => { void managementProjectAuthAutoConnector.update({uid:next.user?.uid, profile:next.profile}); }, 0);
+      }
+    } else if (typeof managementProjectAuthAutoConnector !== 'undefined') managementProjectAuthAutoConnector.invalidate();
   notice = '';
   if (startupBannerActive && next.status === 'signed-in') {
     if (userChanged) preloadStartupReports(next.user);
@@ -4493,11 +4613,17 @@ async function refreshAppFeatures(uid, force = false) {
     console.warn('[SAHMT] Configuração de módulos indisponível; usando padrões locais:', error.code || error.message);
   }
 }
-window.addEventListener('hashchange', () => { if (session.status === 'signed-in') void render(); });
+window.addEventListener('hashchange', () => {
+  if (session.status === 'signed-in') {
+    void render();
+    if (currentRoute() !== 'home') void managementProjectAuthAutoConnector.retry();
+  }
+});
 window.addEventListener('online', () => {
   cleanupCurrentModule?.setOnline?.(true);
   liveReports.setOnline(true);
   if (session.status === 'signed-in') {
+    void managementProjectAuthAutoConnector.retry();
     for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'reconnect');
     void refreshAppFeatures(session.user.uid, true);
     void syncOutbox();
@@ -4513,6 +4639,7 @@ document.addEventListener('visibilitychange', () => {
     invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
   } else {
     cleanupCurrentModule?.resume?.();
+    if (session.status === 'signed-in' && currentRoute() !== 'home') void managementProjectAuthAutoConnector.retry();
     const scopes = suspendedReportScopes; suspendedReportScopes = [];
     for (const scope of scopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, scope, {force: true});
   }
@@ -4540,6 +4667,10 @@ if (startupBannerActive) window.setTimeout(() => {
   void render();
 }, STARTUP_BANNER_DURATION_MS);
 watchSession(sessionChanged);
+
+if (import.meta.env.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true') {
+  void import('./management-pilot-auth-diagnostics.js').then(module => module.mountManagementPilotAuthDiagnostics({signOut: signOutGlobal})).catch(() => {});
+}
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`, {scope: import.meta.env.BASE_URL}).catch((error) => console.error('[SAHMT PWA] Service Worker', error)));

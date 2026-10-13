@@ -8,7 +8,7 @@ import {createManagementAuthBroker} from '../scripts/lib/management-auth-broker.
 // there are no emulators, credentials, project API calls or production records.
 const FA='sahmt-17a16',FB='sahmt-gestao-5ae66',UID='synthetic-member-a',BASE=Date.parse('2026-10-09T12:00:00Z');
 const permissionNames=['admin','managementRead','managementManage','managementActivityWrite','managementIndicatorsRead',
-  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsManage','financeRead','financeWrite','financeManage'];
+  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsRead','trainingsManage','financeRead','financeWrite','financeManage'];
 const clone=value=>JSON.parse(JSON.stringify(value));
 const canon=value=>Array.isArray(value)?'['+value.map(canon).join(',')+']':value&&typeof value==='object'
   ?'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+canon(value[key])).join(',')+'}':JSON.stringify(value);
@@ -26,7 +26,7 @@ const decode=item=>Object.hasOwn(item,'stringValue')?item.stringValue:Object.has
   :Object.hasOwn(item,'booleanValue')?item.booleanValue:Object.hasOwn(item,'nullValue')?null:Object.hasOwn(item,'arrayValue')
     ?(item.arrayValue.values??[]).map(decode):decodeFields(item.mapValue.fields??{});
 const decodeFields=map=>Object.fromEntries(Object.entries(map).map(([key,item])=>[key,decode(item)]));
-const permissions=()=>Object.fromEntries(permissionNames.map(key=>[key,key==='managementRead']));
+const permissions=()=>Object.fromEntries(permissionNames.map(key=>[key,['managementRead','trainingsRead','managementIndicatorsRead'].includes(key)]));
 const policy=()=>({schemaVersion:1,policyVersion:'synthetic-policy-v1',operationTimeoutMs:1000,maxResponseBytes:1048576,maxResponseChunks:100,
   maxSnapshotAgeMs:5000,maxFutureSkewMs:0,sourceMaxAgeMs:5000,sourceMaxLeaseMs:10000,leaseMaxDurationMs:10000,
   maxReservationRecords:100,maxSourceVersions:100,readBudget:{dailyLimits:{[FA]:45000,[FB]:35000},limitApprovalEvidence:'USER_FA_DAILY_LIMIT_45000_2026_10_08',
@@ -94,7 +94,7 @@ function harness(options={}){
     getAdminAccessToken:options.credential??(async()=>{calls.push({operation:'credential'});return {credentialType:'google-oauth2',accessToken:'synthetic-oauth-token',
       expiresAtMs:time+60000,scopes:['https://www.googleapis.com/auth/datastore']};}),
     readFaAuthUser:options.auth??(async()=>{calls.push({operation:'auth'});return {schemaVersion:1,projectId:FA,fromCache:false,hasPendingWrites:false,readTimeMs:time,
-      user:{uid:UID,disabled:false,emailVerified:true,googleUid:'synthetic-google-a',tokensValidAfterTimeMs:0,providerData:[{providerId:'google.com',uid:'synthetic-google-a'}]}};}),
+      user:{uid:UID,disabled:false,emailVerified:true,googleUid:'synthetic-google-a',identityMarker:null,tokensValidAfterTimeMs:0,providerData:[{providerId:'google.com',uid:'synthetic-google-a'}]}};}),
     reserveFirestoreReads:budget,clock:()=>time});
   return {...control,adapter,reserveFirestoreReads:budget};
 }
@@ -192,6 +192,15 @@ test('fresh production source and current Auth are normalized for the broker',as
   assert.equal('accessToken' in result,false);assert.equal(count(h,'auth'),1);assert.equal(count(h,'batchGet'),1);
   assert.equal(h.calls[0].request.dailyLimit,45000);
 });
+test('source FA with no FB binding remains usable for an independently authorized FC-only exchange',async()=>{
+  const h=harness(),value=source();value.binding=null;value.profile.permissions.managementIndicatorsRead=true;h.put(sourceName,value);
+  const projection=await h.adapter.readFaAuthorization({projectId:FA,uid:UID});assert.equal(projection.binding,null);
+  const broker=brokerFor(h,{createFcCustomToken:async()=> 'synthetic-fc-token'});
+  const result=await broker.exchange({faIdToken:'synthetic-proof',sourceProjectId:FA,targetProjectIds:{FC:'indicadores---sahmt'}});
+  assert.equal(result.ok,true);assert.equal(result.targets.FC.status,'READY');assert.equal(result.targets.FC.customToken,'synthetic-fc-token');
+  assert.equal(result.fbUid,undefined);assert.equal(count(h,'commit'),0);
+  assert.equal(h.calls.filter(call=>call.operation==='reserve'&&call.request.projectId===FB).length,0);
+});
 test('preview, stale, incomplete, wrong version/hash/binding or private source fields are denied',async t=>{
   const cases=[
     s=>{s.productionAuthorized=false;},s=>{s.coverageComplete=false;},s=>{s.confirmedAtMs=BASE-6000;},s=>{s.validUntilMs=BASE;},
@@ -253,6 +262,8 @@ function brokerFor(h,change={}){
         return {uid:UID,sub:UID,aud:FA,iss:'https://securetoken.google.com/'+FA,auth_time:BASE/1000-2,iat:BASE/1000-1,exp:BASE/1000+60,
           email_verified:true,firebase:{sign_in_provider:'google.com',identities:{'google.com':['synthetic-google-a']}}};},
       getFbUser:async()=>({schemaVersion:1,projectId:FB,fromCache:false,hasPendingWrites:false,readTimeMs:h.time(),
+        user:{uid:UID,disabled:false,emailVerified:true,providerData:[{providerId:'google.com',uid:'synthetic-google-a'}]}}),
+      getFcUser:async()=>({schemaVersion:1,projectId:'indicadores---sahmt',fromCache:false,hasPendingWrites:false,readTimeMs:h.time(),
         user:{uid:UID,disabled:false,emailVerified:true,providerData:[{providerId:'google.com',uid:'synthetic-google-a'}]}}),
       createFbCustomToken:async()=> 'synthetic-custom-token',...change}});
 }

@@ -1,9 +1,12 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {sanitizedManagementPilotDiagnostic} from '../../src/firebase-project-broker-errors.js';
 
 // Server core only. This file has no Firebase SDK, network, credentials, storage,
 // user import/create executor or HTTP endpoint. Every privileged action is an adapter.
 const FA = 'sahmt-17a16';
 const FB = 'sahmt-gestao-5ae66';
+const FC = 'indicadores---sahmt';
+const NON_OPERATIONAL_IDENTITY_MARKERS = new Set(['STRUCTURAL_OWNER', 'HOMOLOGATION_CANDIDATE_1', 'HOMOLOGATION_CANDIDATE_2']);
 const QUOTA_TIMEZONE = 'America/Los_Angeles';
 const LEGACY_DAILY_READ_LIMIT = 35000;
 const FA_LIMIT_APPROVAL = 'USER_FA_DAILY_LIMIT_45000_2026_10_08';
@@ -12,7 +15,7 @@ const quotaDay = time => new Intl.DateTimeFormat('en-CA', {timeZone: QUOTA_TIMEZ
 const permissions = [
   'admin', 'managementRead', 'managementManage', 'managementActivityWrite',
   'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
-  'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsManage',
+  'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsRead', 'trainingsManage',
   'financeRead', 'financeWrite', 'financeManage'
 ];
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -51,6 +54,11 @@ function validatePolicy(policy) {
     && integer(policy.cleanupTimeoutMs, 1) && policy.cleanupTimeoutMs <= 2147483647
     && integer(policy.maxFutureSkewMs), 'BROKER_POLICY_INVALID');
   const budget = policy.readBudget;
+  if (budget?.mode === 'REQUEST_BOUNDED') {
+    demand(budget.maxReadsPerExchange === 32, 'BROKER_READ_BUDGET_POLICY_REQUIRED');
+    return Object.freeze({...policy, readBudget:Object.freeze({mode:'REQUEST_BOUNDED',maxReadsPerExchange:32,
+      operationReadBounds:Object.freeze({readFaAuthorization:1,readFbLease:1,writeFbLease:2,invalidateFbLease:2})})});
+  }
   demand(object(budget) && budget.quotaTimezone === QUOTA_TIMEZONE
     && integer(budget.maxMeasurementAgeMs, 1) && budget.maxMeasurementAgeMs <= 300000 && integer(budget.applicationReserveReads, 1)
     && integer(budget.metricLagReserveReads, 1) && object(budget.operationReadBounds), 'BROKER_READ_BUDGET_POLICY_REQUIRED');
@@ -99,7 +107,10 @@ function validateClaims(claims, time, policy) {
     && claims.exp * 1000 > time, 'FA_TOKEN_TIME_INVALID');
   const googleIds = claims.firebase?.identities?.['google.com'];
   demand(Array.isArray(googleIds) && googleIds.length === 1 && id(googleIds[0], 128), 'FA_GOOGLE_IDENTITY_INVALID');
-  return {uid: claims.uid, googleUid: googleIds[0], authTimeMs: claims.auth_time * 1000, expiresAtMs: claims.exp * 1000};
+  const identityMarker = claims.identityMarker === undefined ? null : claims.identityMarker;
+  demand(identityMarker === null || NON_OPERATIONAL_IDENTITY_MARKERS.has(identityMarker), 'FA_IDENTITY_MARKER_INVALID');
+  demand(!NON_OPERATIONAL_IDENTITY_MARKERS.has(identityMarker), 'FA_IDENTITY_OUTSIDE_OPERATIONAL_SCOPE');
+  return {uid: claims.uid, googleUid: googleIds[0], identityMarker, authTimeMs: claims.auth_time * 1000, expiresAtMs: claims.exp * 1000};
 }
 
 function fresh(snapshot, projectId, time, policy, code) {
@@ -121,12 +132,15 @@ function validateSource(snapshot, verified, time, policy) {
   demand(snapshot.productionAuthorized === true && integer(snapshot.authorizationVersion, 1), 'FA_PRODUCTION_AUTHORIZATION_REQUIRED');
   const {profile, binding, authUser, areas, documentAccess} = snapshot;
   demand(object(authUser) && authUser.uid === verified.uid && authUser.disabled === false
-    && authUser.emailVerified === true && authUser.googleUid === verified.googleUid, 'FA_AUTH_USER_INVALID');
+    && authUser.emailVerified === true && authUser.googleUid === verified.googleUid
+    && (authUser.identityMarker === null || typeof authUser.identityMarker === 'string' && NON_OPERATIONAL_IDENTITY_MARKERS.has(authUser.identityMarker)), 'FA_AUTH_USER_INVALID');
+  demand(authUser.identityMarker === verified.identityMarker, 'FA_AUTH_IDENTITY_MARKER_CHANGED');
   demand(integer(authUser.tokensValidAfterTimeMs) && verified.authTimeMs >= authUser.tokensValidAfterTimeMs, 'FA_SESSION_REVOKED');
   demand(object(profile) && profile.uid === verified.uid && id(profile.memberId)
     && profile.active === true && profile.access === true, 'FA_PROFILE_REVOKED_OR_MISSING');
-  demand(object(binding) && binding.sourceProjectId === FA && binding.destinationProjectId === FB
-    && binding.faUid === verified.uid && binding.fbUid === verified.uid
+  demand(Object.hasOwn(snapshot, 'binding'), 'FA_MEMBER_BINDING_INVALID');
+  if (binding !== null) demand(object(binding) && binding.sourceProjectId === FA
+    && binding.destinationProjectId === FB && binding.faUid === verified.uid && binding.fbUid === verified.uid
     && binding.memberId === profile.memberId, 'FA_MEMBER_BINDING_INVALID');
   demand(typeof profile.role === 'string' && profile.role.length <= 100 && object(profile.permissions), 'FA_PERMISSIONS_INVALID');
   const effectivePermissions = {};
@@ -134,8 +148,18 @@ function validateSource(snapshot, verified, time, policy) {
     demand(profile.permissions[key] === undefined || typeof profile.permissions[key] === 'boolean', 'FA_PERMISSIONS_INVALID');
     effectivePermissions[key] = profile.permissions[key] === true;
   }
-  // Match the current FA administrator predicate; no role comes from the request.
-  effectivePermissions.admin = profile.role === 'administrador_app' || effectivePermissions.admin;
+  const occurrencePermissions = {};
+  for (const key of ['occurrencesRead', 'occurrencesAuditRead']) {
+    demand(profile.permissions[key] === undefined || typeof profile.permissions[key] === 'boolean', 'FA_PERMISSIONS_INVALID');
+    occurrencePermissions[key] = profile.permissions[key] === true;
+  }
+  // Occurrences is an all-active-users write workflow by product policy.
+  // This grant is derived only after the trusted FA profile has passed the
+  // active/access and protected-identity checks; it never grants read/audit,
+  // administrative, Education, or indicators permissions.
+  occurrencePermissions.occurrencesWrite = true;
+  // Keep the global FA admin signal scoped to FA. FB and FC authorization
+  // below requires each destination's explicit module-specific permission.
   demand(Array.isArray(areas) && areas.length <= 1000, 'FA_AREA_RELATIONS_INVALID');
   const memberAreaIds = [], managerAreaIds = [], seenAreas = new Set();
   for (const area of areas) {
@@ -154,12 +178,20 @@ function validateSource(snapshot, verified, time, policy) {
     && documentAccess.groups.every(group => ['GENERAL', 'RESTRICTED'].includes(group)), 'FA_DOCUMENT_ACCESS_INVALID');
   if (documentAccess.active) demand(documentAccess.googleUid === verified.googleUid, 'FA_DOCUMENT_ACCESS_IDENTITY_INVALID');
   const documentGroups = documentAccess.active ? [...documentAccess.groups].sort() : [];
+  // Each destination is authorized below using only its own trusted FA permissions.
+  // An FB binding/member record is optional for FC-only sessions.
   const managementAllowed = Object.values(effectivePermissions).some(value => value)
     || memberAreaIds.length > 0 || managerAreaIds.length > 0 || documentGroups.length > 0;
-  demand(managementAllowed, 'FA_MANAGEMENT_DENIED');
+  // An explicit valid binding is honored. When no binding exists, the server
+  // still binds by the validated FA UID and the FB Auth UID; the browser cannot
+  // supply either mapping. A present but mismatched binding remains a denial.
+  const fbBound = binding === null || object(binding) && binding.sourceProjectId === FA && binding.destinationProjectId === FB
+    && binding.faUid === verified.uid && binding.fbUid === verified.uid
+    && id(profile.memberId) && binding.memberId === profile.memberId;
   const source = {
-    sourceProjectId: FA, destinationProjectId: FB, faUid: binding.faUid, fbUid: binding.fbUid, memberId: binding.memberId, authorizationVersion: snapshot.authorizationVersion,
-    active: true, managementAllowed, role: profile.role, permissions: effectivePermissions,
+    sourceProjectId: FA, destinationProjectId: FB, faUid: verified.uid, fbUid: verified.uid,
+    memberId: profile.memberId, fbBound, authorizationVersion: snapshot.authorizationVersion,
+    active: true, managementAllowed, role: profile.role, permissions: effectivePermissions, occurrencePermissions,
     memberAreaIds: memberAreaIds.sort(), managerAreaIds: managerAreaIds.sort(), documentGroups,
     sourceAuthValidAfterTimeMs: authUser.tokensValidAfterTimeMs, googleUid: verified.googleUid
   };
@@ -170,10 +202,35 @@ function validateDestinationUser(snapshot, verified, time, policy) {
   fresh(snapshot, FB, time, policy, 'FB_AUTH_USER_NOT_FRESH');
   demand(object(snapshot.user), 'FB_AUTH_USER_MISSING');
   const user = snapshot.user;
-  demand(user.uid === verified.uid && user.disabled === false && user.emailVerified === true, 'FB_AUTH_USER_INVALID');
-  demand(Array.isArray(user.providerData) && user.providerData.length === 1
+  demand(user.uid === verified.uid && user.disabled === false && typeof user.emailVerified === 'boolean', 'FB_AUTH_USER_INVALID');
+  demand(Array.isArray(user.providerData), 'FB_GOOGLE_IDENTITY_MISMATCH');
+  if (user.providerData.length === 0) {
+    // FA has already verified Google identity, verified email and exact UID.
+    // Imported FB custom-token-only users may intentionally have no provider.
+    return {uid: user.uid, disabled: user.disabled, emailVerified: user.emailVerified, providerMode: 'CUSTOM_TOKEN_ONLY'};
+  }
+  demand(user.providerData.length === 1 && user.emailVerified === true
     && user.providerData[0].providerId === 'google.com' && user.providerData[0].uid === verified.googleUid, 'FB_GOOGLE_IDENTITY_MISMATCH');
-  return {uid: user.uid, disabled: user.disabled, emailVerified: user.emailVerified, googleUid: user.providerData[0].uid};
+  return {uid: user.uid, disabled: user.disabled, emailVerified: user.emailVerified,
+    googleUid: user.providerData[0].uid, providerMode: 'GOOGLE_LINKED'};
+}
+
+function validateFcDestinationUser(snapshot, verified, time, policy) {
+  fresh(snapshot, FC, time, policy, 'FC_AUTH_USER_NOT_FRESH');
+  demand(object(snapshot.user), 'FC_AUTH_USER_MISSING');
+  const user = snapshot.user;
+  demand(user.uid === verified.uid && user.disabled === false && typeof user.emailVerified === 'boolean', 'FC_AUTH_USER_INVALID');
+  demand(Array.isArray(user.providerData), 'FC_GOOGLE_IDENTITY_MISMATCH');
+  if (user.providerData.length === 0) {
+    // FC may have a deliberately provisioned UID without a linked provider.
+    // The server-verified FA identity and exact destination UID remain required.
+    return {uid: user.uid, disabled: user.disabled, emailVerified: user.emailVerified, providerMode: 'CUSTOM_TOKEN_ONLY'};
+  }
+  demand(user.providerData.length === 1 && user.emailVerified === true
+    && user.providerData[0].providerId === 'google.com' && user.providerData[0].uid === verified.googleUid,
+    'FC_GOOGLE_IDENTITY_MISMATCH');
+  return {uid: user.uid, disabled: user.disabled, emailVerified: user.emailVerified,
+    googleUid: user.providerData[0].uid, providerMode: 'GOOGLE_LINKED'};
 }
 
 function validatePriorLease(snapshot, source, time, policy) {
@@ -204,7 +261,18 @@ function validatePriorLease(snapshot, source, time, policy) {
  * with exact project IDs and a coherent, fresh FA authorization projection.
  * Signing is not authorization: FB Rules must enforce this lease themselves.
  */
-export function createManagementAuthBroker({enabled = false, policy: suppliedPolicy, adapters = {}, clock = Date.now, newGrantId = randomUUID, onAudit = () => {}} = {}) {
+export function createManagementAuthBroker({enabled = false, policy: suppliedPolicy, adapters = {}, clock = Date.now,
+  newGrantId = randomUUID, onAudit = () => {}, pilotUidAllowlist = null, fcPilotProvisionUid = null, pilotDiagnostics = false} = {}) {
+  if (pilotUidAllowlist !== null) {
+    demand(Array.isArray(pilotUidAllowlist) && pilotUidAllowlist.length === 1
+      && id(pilotUidAllowlist[0], 128), 'BROKER_PILOT_UID_ALLOWLIST_INVALID');
+    pilotUidAllowlist = new Set(pilotUidAllowlist);
+  }
+  if (fcPilotProvisionUid !== null) {
+    demand(typeof fcPilotProvisionUid === 'string' && id(fcPilotProvisionUid, 128)
+      && pilotUidAllowlist instanceof Set && pilotUidAllowlist.size === 1 && pilotUidAllowlist.has(fcPilotProvisionUid),
+    'BROKER_FC_PILOT_PROVISION_INVALID');
+  }
   // Local replay/accounting checks complement, never replace, the durable budget ledger.
   const usedReservations = new Map(), projectReadFloors = new Map();
   const audit = (outcome, code, phase) => {
@@ -216,9 +284,10 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
   };
   async function exchange(body, {signal} = {}) {
     if (enabled !== true) return Object.freeze({ok: false, code: 'BROKER_DISABLED'});
-    let phase = 'preflight', verified, source, prior, lease, customToken = null, faIdToken = null;
+    let phase = 'preflight', verified, source, prior, lease, customToken = null, fcCustomToken = null, faIdToken = null;
     let policy, startedAtMs, deadlineMs, wallDeadlineMs, cleanupDeadlineMs, cleanupWallDeadlineMs;
-    let writeAttempted = false;
+    let writeAttempted = false, boundedReads = 0, diagnostic = null;
+    const diagnosticFields = () => pilotDiagnostics === true && pilotUidAllowlist && diagnostic ? {diagnostic} : {};
     const readClock = (cleanup = false) => {
       const result = clock();
       demand(integer(result), 'BROKER_CLOCK_INVALID');
@@ -230,20 +299,24 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
       return result;
     };
     const time = () => readClock(false);
-    const runAdapter = async (name, code, args, cleanup = false) => {
+    const runAdapter = async (name, code, args, cleanup = false, maximumDurationMs) => {
       const start = readClock(cleanup);
       if (cleanup && cleanupDeadlineMs === undefined) {
         cleanupDeadlineMs = start + policy.cleanupTimeoutMs;
         cleanupWallDeadlineMs = performance.now() + policy.cleanupTimeoutMs;
       }
-      let limit = cleanup ? cleanupDeadlineMs : deadlineMs;
-      let wallLimit = cleanup ? cleanupWallDeadlineMs : wallDeadlineMs;
+      let limit = cleanup ? cleanupDeadlineMs : maximumDurationMs === undefined ? deadlineMs : Math.min(deadlineMs, start + maximumDurationMs);
+      let wallLimit = cleanup ? cleanupWallDeadlineMs : maximumDurationMs === undefined ? wallDeadlineMs : Math.min(wallDeadlineMs, performance.now() + maximumDurationMs);
       const remaining = Math.min(limit - start, wallLimit - performance.now());
       const timeoutCode = cleanup ? 'BROKER_CLEANUP_DEADLINE_EXCEEDED' : 'BROKER_DEADLINE_EXCEEDED';
       demand(remaining > 0, timeoutCode);
       demand(typeof adapters[name] === 'function', 'BROKER_ADAPTER_UNAVAILABLE');
       let reservation;
-      if (firestoreOperations[name]) {
+      if (firestoreOperations[name] && policy.readBudget.mode === 'REQUEST_BOUNDED') {
+        boundedReads += policy.readBudget.operationReadBounds[name];
+        demand(boundedReads <= policy.readBudget.maxReadsPerExchange, 'FIRESTORE_REQUEST_READ_BOUND_EXCEEDED');
+      }
+      if (firestoreOperations[name] && policy.readBudget.mode !== 'REQUEST_BOUNDED') {
         const request = Object.freeze({projectId: firestoreOperations[name], operation: name,
           maximumReads: policy.readBudget.operationReadBounds[name], dailyLimit: policy.readBudget.dailyLimits[firestoreOperations[name]],
           quotaTimezone: QUOTA_TIMEZONE, quotaDay: quotaDay(start),
@@ -296,7 +369,11 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
         const completedAtMs = readClock(cleanup);
         demand(completedAtMs <= limit && performance.now() <= wallLimit, timeoutCode);
         return result;
-      } catch (error) { if (error instanceof BrokerDenial) throw error; deny(code); }
+      } catch (error) {
+        if (!cleanup && pilotDiagnostics === true && pilotUidAllowlist)
+          diagnostic = sanitizedManagementPilotDiagnostic(error?.diagnostic);
+        if (error instanceof BrokerDenial) throw error; deny(code);
+      }
       finally { clearTimeout(timer); if (abortListener) signal.removeEventListener('abort', abortListener); }
     };
     const invoke = (name, code, ...args) => runAdapter(name, code, args);
@@ -305,68 +382,152 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
       demand(object(body) && typeof body.faIdToken === 'string' && body.faIdToken.length > 0 && body.faIdToken.length <= 16000, 'FA_TOKEN_REQUIRED');
       // Client UIDs, roles, permissions, binding, project and expiry fields are ignored.
       faIdToken = body.faIdToken;
+      let targetNames = ['FB'];
+      if (body.targetProjectIds !== undefined) {
+        const requested = body.targetProjectIds;
+        demand(object(requested) && Object.keys(requested).length >= 1 && Object.keys(requested).length <= 2
+          && Object.keys(requested).every(name => ['FB', 'FC'].includes(name))
+          && (!Object.hasOwn(requested, 'FB') || requested.FB === FB)
+          && (!Object.hasOwn(requested, 'FC') || requested.FC === FC), 'BROKER_TARGETS_INVALID');
+        targetNames = Object.keys(requested);
+      }
       startedAtMs = readClock(); deadlineMs = startedAtMs + policy.maxExecutionMs;
       wallDeadlineMs = performance.now() + policy.maxExecutionMs;
       demand(Number.isSafeInteger(deadlineMs), 'BROKER_POLICY_INVALID');
-      for (const name of ['verifyFaIdToken', 'readFaAuthorization', 'getFbUser', 'readFbLease', 'writeFbLease', 'invalidateFbLease', 'createFbCustomToken', 'reserveFirestoreReads']) demand(typeof adapters[name] === 'function', 'BROKER_ADAPTER_UNAVAILABLE');
+      for (const name of ['verifyFaIdToken', 'readFaAuthorization']) demand(typeof adapters[name] === 'function', 'BROKER_ADAPTER_UNAVAILABLE');
       phase = 'verify-fa';
       verified = validateClaims(await invoke('verifyFaIdToken', 'FA_TOKEN_REJECTED', faIdToken, true), time(), policy);
       phase = 'read-source';
       source = validateSource(await invoke('readFaAuthorization', 'FA_AUTHORIZATION_READ_FAILED', {uid: verified.uid, projectId: FA}), verified, time(), policy);
-      phase = 'read-target';
-      const target = validateDestinationUser(await invoke('getFbUser', 'FB_AUTH_USER_READ_FAILED', {uid: verified.uid, projectId: FB}), verified, time(), policy);
-      prior = validatePriorLease(await invoke('readFbLease', 'FB_LEASE_READ_FAILED', {uid: verified.uid, projectId: FB}), source, time(), policy);
-      const confirmedAtMs = time(), grantId = newGrantId();
-      demand(id(grantId, 100), 'BROKER_GRANT_ID_INVALID');
-      const validUntilMs = Math.min(confirmedAtMs + policy.leaseDurationMs, verified.expiresAtMs);
-      demand(integer(validUntilMs) && validUntilMs > confirmedAtMs, 'BROKER_POLICY_INVALID');
-      lease = {
-        schemaVersion: 1, sourceProjectId: FA, destinationProjectId: FB,
-        faUid: source.faUid, fbUid: source.fbUid, memberId: source.memberId,
-        leaseVersion: prior.leaseVersion + 1, grantId, sourceVersion: source.authorizationVersion,
-        policyVersion: policy.version, sourceHash: source.sourceHash,
-        active: true, revoked: false, managementAllowed: source.managementAllowed,
-        role: source.role, permissions: copy(source.permissions), memberAreaIds: [...source.memberAreaIds],
-        managerAreaIds: [...source.managerAreaIds], documentGroups: [...source.documentGroups],
-        sourceAuthValidAfterTimeMs: source.sourceAuthValidAfterTimeMs, confirmedAtMs, validUntilMs
-      };
-      const claims = {
-        managementSourceProjectId: FA, managementMemberId: source.memberId,
-        managementSourceVersion: source.authorizationVersion, managementSourceHash: source.sourceHash,
-        managementPolicyVersion: policy.version, managementSourceAuthTimeMs: verified.authTimeMs
-      };
-      demand(Buffer.byteLength(JSON.stringify(claims), 'utf8') <= 1000, 'FB_TOKEN_CLAIMS_TOO_LARGE');
-      phase = 'sign-token';
-      // A signed token is kept local until its lease and all final checks succeed.
-      customToken = await invoke('createFbCustomToken', 'FB_TOKEN_SIGN_FAILED', verified.uid, claims);
-      demand(typeof customToken === 'string' && customToken.length > 0 && customToken.length <= 16000, 'FB_TOKEN_SIGN_INVALID');
-      const revalidate = async () => {
-        const nextVerified = validateClaims(await invoke('verifyFaIdToken', 'FA_TOKEN_REJECTED', faIdToken, true), time(), policy);
-        demand(same(nextVerified, verified), 'FA_SESSION_CHANGED');
-        const nextSource = validateSource(await invoke('readFaAuthorization', 'FA_AUTHORIZATION_READ_FAILED', {uid: verified.uid, projectId: FA}), nextVerified, time(), policy);
-        demand(nextSource.authorizationVersion === source.authorizationVersion && nextSource.sourceHash === source.sourceHash, 'FA_AUTHORIZATION_CHANGED');
-        const nextTarget = validateDestinationUser(await invoke('getFbUser', 'FB_AUTH_USER_READ_FAILED', {uid: verified.uid, projectId: FB}), nextVerified, time(), policy);
-        demand(same(nextTarget, target), 'FB_AUTH_USER_CHANGED');
-        demand(lease.validUntilMs > time(), 'FB_LEASE_EXPIRED');
-      };
-      phase = 'revalidate-before-write';
-      await revalidate();
-      phase = 'commit-lease';
-      // runAdapter marks the possible write only after its read reservation succeeds.
-      const committed = await invoke('writeFbLease', 'FB_LEASE_WRITE_FAILED', {uid: verified.uid, projectId: FB, expectedRevision: prior.revision, lease: copy(lease)});
-      if (committed?.applied === false) { writeAttempted = false; deny('FB_LEASE_CAS_CONFLICT'); }
-      demand(committed?.applied === true && committed.projectId === FB && id(committed.revision, 200), 'FB_LEASE_WRITE_UNCONFIRMED');
-      phase = 'revalidate-after-write';
-      await revalidate();
-      const accepted = await invoke('readFbLease', 'FB_LEASE_READ_FAILED', {uid: verified.uid, projectId: FB});
-      fresh(accepted, FB, time(), policy, 'FB_LEASE_NOT_FRESH');
-      demand(accepted.exists === true && accepted.revision === committed.revision && same(accepted.lease, lease), 'FB_LEASE_COMMIT_CHANGED');
-      demand(lease.validUntilMs > time(), 'FB_LEASE_EXPIRED');
-      phase = 'return-token';
-      audit('granted', 'LEASE_CONFIRMED', phase);
-      return Object.freeze({ok: true, sourceProjectId: FA, destinationProjectId: FB,
-        faUid: source.faUid, fbUid: source.fbUid, memberId: source.memberId,
-        leaseVersion: lease.leaseVersion, policyVersion: policy.version, customToken});
+      // A single-identity pilot is enforced after FA verification and source
+      // authorization, before any destination lookup, lease write or signing.
+      if (pilotUidAllowlist) demand(pilotUidAllowlist.has(source.faUid), 'BROKER_PILOT_UID_DENIED');
+      const targets = {};
+      const fbAuthorized = source.permissions.trainingsRead || source.permissions.trainingsManage;
+      const fcAuthorized = source.permissions.managementIndicatorsRead || source.permissions.managementIndicatorsWrite
+        || source.occurrencePermissions.occurrencesWrite;
+      let requiresReconciliation = false;
+      if (targetNames.includes('FC')) {
+        if (!fcAuthorized) targets.FC = Object.freeze({projectId: FC, status: 'DENIED', code: 'FC_ACCESS_DENIED'});
+        else {
+          try {
+            demand(typeof adapters.getFcUser === 'function' && typeof adapters.createFcCustomToken === 'function', 'BROKER_ADAPTER_UNAVAILABLE');
+            phase = 'read-fc-target';
+            const initialTarget = await invoke('getFcUser', 'FC_AUTH_USER_READ_FAILED', {uid: verified.uid, projectId: FC});
+            let target;
+            let provisionOnSignIn = false;
+            if (fcPilotProvisionUid === verified.uid && object(initialTarget) && initialTarget.user === null) {
+              fresh(initialTarget, FC, time(), policy, 'FC_AUTH_USER_NOT_FRESH');
+              target = null;
+              provisionOnSignIn = true;
+            } else target = validateFcDestinationUser(initialTarget, verified, time(), policy);
+            phase = 'sign-fc-token';
+            const fcSigningWindowMs = Math.max(1, Math.min(15000, Math.floor(policy.maxExecutionMs / 3)));
+            const fcClaims = Object.freeze({sahmtFaSourceProjectId: FA,
+              sahmtOccurrencesCatalogRead: source.occurrencePermissions.occurrencesWrite,
+              sahmtOccurrencesRead: source.occurrencePermissions.occurrencesRead,
+              sahmtOccurrencesWrite: source.occurrencePermissions.occurrencesWrite,
+              sahmtOccurrencesAuditRead: source.occurrencePermissions.occurrencesAuditRead});
+            fcCustomToken = await runAdapter('createFcCustomToken', 'FC_TOKEN_SIGN_FAILED', [verified.uid, fcClaims], false, fcSigningWindowMs);
+            demand(typeof fcCustomToken === 'string' && fcCustomToken.length > 0 && fcCustomToken.length <= 16000, 'FC_TOKEN_SIGN_INVALID');
+            const currentSnapshot = await invoke('getFcUser', 'FC_AUTH_USER_READ_FAILED', {uid: verified.uid, projectId: FC});
+            let currentTarget;
+            if (provisionOnSignIn && object(currentSnapshot) && currentSnapshot.user === null) {
+              fresh(currentSnapshot, FC, time(), policy, 'FC_AUTH_USER_NOT_FRESH');
+              currentTarget = null;
+            } else currentTarget = validateFcDestinationUser(currentSnapshot, verified, time(), policy);
+            demand(same(currentTarget, target) || provisionOnSignIn && target === null && currentTarget !== null,
+              'FC_AUTH_USER_CHANGED');
+            const finalVerified = validateClaims(await invoke('verifyFaIdToken', 'FA_TOKEN_REJECTED', faIdToken, true), time(), policy);
+            demand(same(finalVerified, verified), 'FA_SESSION_CHANGED');
+            const finalSource = validateSource(await invoke('readFaAuthorization', 'FA_AUTHORIZATION_READ_FAILED', {uid: verified.uid, projectId: FA}), finalVerified, time(), policy);
+            demand(finalSource.sourceHash === source.sourceHash && finalSource.authorizationVersion === source.authorizationVersion, 'FA_AUTHORIZATION_CHANGED');
+            targets.FC = Object.freeze({projectId: FC, status: 'READY', uid: source.faUid, customToken: fcCustomToken});
+          } catch (error) {
+            const code = error instanceof BrokerDenial && /^[A-Z][A-Z0-9_]{1,79}$/.test(error.code)
+              ? error.code : 'FC_TOKEN_SIGN_FAILED';
+            targets.FC = Object.freeze({projectId: FC, status: 'UNAVAILABLE', code});
+            fcCustomToken = null;
+          }
+        }
+      }
+      if (targetNames.includes('FB')) {
+        if (!fbAuthorized) targets.FB = Object.freeze({projectId: FB, status: 'DENIED', code: 'FB_ACCESS_DENIED'});
+        else if (!source.fbBound) targets.FB = Object.freeze({projectId: FB, status: 'DENIED', code: 'FB_ACCOUNT_BINDING_REQUIRED'});
+        else {
+          try {
+            phase = 'read-target';
+            for (const name of ['getFbUser','readFbLease','writeFbLease','invalidateFbLease','createFbCustomToken',
+              ...(policy.readBudget.mode === 'REQUEST_BOUNDED' ? [] : ['reserveFirestoreReads'])])
+              demand(typeof adapters[name] === 'function', 'BROKER_ADAPTER_UNAVAILABLE');
+            const target = validateDestinationUser(await invoke('getFbUser', 'FB_AUTH_USER_READ_FAILED', {uid: verified.uid, projectId: FB}), verified, time(), policy);
+            prior = validatePriorLease(await invoke('readFbLease', 'FB_LEASE_READ_FAILED', {uid: verified.uid, projectId: FB}), source, time(), policy);
+            const confirmedAtMs = time(), grantId = newGrantId();
+            demand(id(grantId, 100), 'BROKER_GRANT_ID_INVALID');
+            const validUntilMs = Math.min(confirmedAtMs + policy.leaseDurationMs, verified.expiresAtMs);
+            demand(integer(validUntilMs) && validUntilMs > confirmedAtMs, 'BROKER_POLICY_INVALID');
+            lease = {schemaVersion: 1, sourceProjectId: FA, destinationProjectId: FB,
+              faUid: source.faUid, fbUid: source.fbUid, memberId: source.memberId,
+              leaseVersion: prior.leaseVersion + 1, grantId, sourceVersion: source.authorizationVersion,
+              policyVersion: policy.version, sourceHash: source.sourceHash, active: true, revoked: false,
+              managementAllowed: source.managementAllowed, role: source.role, permissions: copy(source.permissions),
+              memberAreaIds: [...source.memberAreaIds], managerAreaIds: [...source.managerAreaIds],
+              documentGroups: [...source.documentGroups], sourceAuthValidAfterTimeMs: source.sourceAuthValidAfterTimeMs,
+              confirmedAtMs, validUntilMs};
+            const claims = {managementSourceProjectId: FA, managementMemberId: source.memberId,
+              managementSourceVersion: source.authorizationVersion, managementSourceHash: source.sourceHash,
+              managementPolicyVersion: policy.version, managementSourceAuthTimeMs: verified.authTimeMs};
+            demand(Buffer.byteLength(JSON.stringify(claims), 'utf8') <= 1000, 'FB_TOKEN_CLAIMS_TOO_LARGE');
+            phase = 'sign-token';
+            customToken = await invoke('createFbCustomToken', 'FB_TOKEN_SIGN_FAILED', verified.uid, claims);
+            demand(typeof customToken === 'string' && customToken.length > 0 && customToken.length <= 16000, 'FB_TOKEN_SIGN_INVALID');
+            const revalidate = async () => {
+              const nextVerified = validateClaims(await invoke('verifyFaIdToken', 'FA_TOKEN_REJECTED', faIdToken, true), time(), policy);
+              demand(same(nextVerified, verified), 'FA_SESSION_CHANGED');
+              const nextSource = validateSource(await invoke('readFaAuthorization', 'FA_AUTHORIZATION_READ_FAILED', {uid: verified.uid, projectId: FA}), nextVerified, time(), policy);
+              demand(nextSource.authorizationVersion === source.authorizationVersion && nextSource.sourceHash === source.sourceHash, 'FA_AUTHORIZATION_CHANGED');
+              const nextTarget = validateDestinationUser(await invoke('getFbUser', 'FB_AUTH_USER_READ_FAILED', {uid: verified.uid, projectId: FB}), nextVerified, time(), policy);
+              demand(same(nextTarget, target), 'FB_AUTH_USER_CHANGED');
+              demand(lease.validUntilMs > time(), 'FB_LEASE_EXPIRED');
+            };
+            phase = 'revalidate-before-write'; await revalidate(); phase = 'commit-lease';
+            const committed = await invoke('writeFbLease', 'FB_LEASE_WRITE_FAILED', {uid: verified.uid, projectId: FB,
+              expectedRevision: prior.revision, lease: copy(lease)});
+            if (committed?.applied === false) { writeAttempted = false; deny('FB_LEASE_CAS_CONFLICT'); }
+            demand(committed?.applied === true && committed.projectId === FB && id(committed.revision, 200), 'FB_LEASE_WRITE_UNCONFIRMED');
+            phase = 'revalidate-after-write'; await revalidate();
+            const accepted = await invoke('readFbLease', 'FB_LEASE_READ_FAILED', {uid: verified.uid, projectId: FB});
+            fresh(accepted, FB, time(), policy, 'FB_LEASE_NOT_FRESH');
+            demand(accepted.exists === true && accepted.revision === committed.revision && same(accepted.lease, lease), 'FB_LEASE_COMMIT_CHANGED');
+            demand(lease.validUntilMs > time(), 'FB_LEASE_EXPIRED');
+            targets.FB = Object.freeze({projectId: FB, status: 'READY', uid: source.faUid, customToken});
+          } catch (error) {
+            let code = error instanceof BrokerDenial && /^[A-Z][A-Z0-9_]{1,79}$/.test(error.code) ? error.code : 'FB_AUTH_UNAVAILABLE';
+            if (writeAttempted && lease) {
+              try {
+                const invalidated = await runAdapter('invalidateFbLease', 'FB_LEASE_CLEANUP_UNCONFIRMED', [{uid: verified.uid,
+                  projectId: FB, expectedGrantId: lease.grantId, expectedLeaseVersion: lease.leaseVersion, reasonCode: code}], true);
+                demand(invalidated?.fenced === true && (invalidated.applied === true
+                  || (invalidated.applied === false && invalidated.matched === false)), 'FB_LEASE_CLEANUP_UNCONFIRMED');
+              } catch { code = 'FB_LEASE_CLEANUP_FAILED'; requiresReconciliation = true; }
+            }
+            customToken = null; targets.FB = Object.freeze({projectId: FB, status: 'UNAVAILABLE', code});
+          }
+        }
+      }
+      const anyReady = Object.values(targets).some(target => target.status === 'READY');
+      if (!anyReady) {
+        const unavailable = Object.values(targets).find(target => target.status === 'UNAVAILABLE');
+        const denied = Object.values(targets).find(target => target.status === 'DENIED');
+        const code = unavailable?.code || denied?.code || 'FA_MANAGEMENT_DENIED';
+        audit('denied', code, phase);
+        return Object.freeze({ok: false, code, requiresReconciliation, ...diagnosticFields()});
+      }
+      phase = 'return-token'; audit('granted', 'TARGET_AUTH_CONFIRMED', phase);
+      return Object.freeze({ok: true, sourceProjectId: FA,
+        ...(targets.FB?.status === 'READY' ? {destinationProjectId: FB, fbUid: source.fbUid,
+          memberId: source.memberId, leaseVersion: lease.leaseVersion, policyVersion: policy.version, customToken} : {}),
+        faUid: source.faUid, targets: Object.freeze(targets), requiresReconciliation});
     } catch (error) {
       let code = error instanceof BrokerDenial ? error.code : 'BROKER_OPERATION_FAILED';
       let requiresReconciliation = false;
@@ -380,8 +541,8 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
         } catch { code = 'FB_LEASE_CLEANUP_FAILED'; requiresReconciliation = true; }
       }
       audit('denied', code, phase);
-      return Object.freeze({ok: false, code, requiresReconciliation});
-    } finally { faIdToken = null; customToken = null; }
+      return Object.freeze({ok: false, code, requiresReconciliation, ...diagnosticFields()});
+    } finally { faIdToken = null; customToken = null; fcCustomToken = null; }
   }
   return Object.freeze({exchange});
 }

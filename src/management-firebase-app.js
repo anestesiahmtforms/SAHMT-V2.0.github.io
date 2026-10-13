@@ -1,10 +1,12 @@
 import {getApps, initializeApp} from 'firebase/app';
+import {getFirestore} from 'firebase/firestore';
 import {managementFirebaseConfig, managementFirebaseEnabled} from './management-firebase-config.js';
+import {FIREBASE_PROJECTS} from './firebase-projects.js';
 
 export function getManagementApp({enabled = managementFirebaseEnabled} = {}) {
   if (!enabled) return null;
   if (!managementFirebaseConfig.valid) throw new Error('A configuração Firebase de Gestão não está completa ou não corresponde ao projeto aprovado.');
-  const existing = getApps().find((item) => item.name === 'sahmt-management');
+  const existing = getApps().find((item) => item.name === FIREBASE_PROJECTS.FB.appName);
   if (existing) {
     if (existing.options?.projectId !== managementFirebaseConfig.projectId
       || existing.options?.appId !== managementFirebaseConfig.appId
@@ -13,5 +15,11 @@ export function getManagementApp({enabled = managementFirebaseEnabled} = {}) {
     }
     return existing;
   }
-  return initializeApp(managementFirebaseConfig, 'sahmt-management');
+  return initializeApp(managementFirebaseConfig, FIREBASE_PROJECTS.FB.appName);
+}
+
+/** Returns only the FB Firestore instance, and only when the FB feature is enabled. */
+export function getManagementFirestore({enabled = managementFirebaseEnabled} = {}) {
+  const app = getManagementApp({enabled});
+  return app ? getFirestore(app) : null;
 }

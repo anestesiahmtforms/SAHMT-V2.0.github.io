@@ -1,7 +1,11 @@
 import {createPublicKey, verify as verifySignature, X509Certificate} from 'node:crypto';
+import {RETIREMENT_IDENTITY_MARKERS} from './management-retirement-candidate-identities.js';
+import {managementProtectedIdentityMarker, validateManagementProtectedIdentityPolicy} from './management-protected-identity-policy.js';
+import {sanitizedManagementPilotDiagnostic} from '../../src/firebase-project-broker-errors.js';
+import {MANAGEMENT_GATEWAY_DENIAL_CODES} from './management-gateway-protocol.js';
 
 // Server preparation only. No global fetch, ADC discovery, private key or host.
-const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66';
+const FA = 'sahmt-17a16', FB = 'sahmt-gestao-5ae66', FC = 'indicadores---sahmt';
 const FA_CERTS = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 const FIREBASE_AUDIENCE = 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit';
 const AUTH_SCOPE = 'https://www.googleapis.com/auth/identitytoolkit', IAM_SCOPE = 'https://www.googleapis.com/auth/iam';
@@ -44,7 +48,7 @@ function validateFaClaims(claims, time, policy) {
   demand(Array.isArray(googleIds) && googleIds.length === 1 && identifier(googleIds[0], 128), 'FA_GOOGLE_IDENTITY_INVALID');
   return googleIds[0];
 }
-function normalizedUser(result, uid) {
+function normalizedUser(result, uid, projectId, identityContext) {
   demand(object(result) && Array.isArray(result.users) && result.users.length === 1 && object(result.users[0]), 'AUTH_USER_MISSING_OR_AMBIGUOUS');
   const user = result.users[0];
   demand(user.localId === uid && user.tenantId === undefined && (user.disabled === undefined || typeof user.disabled === 'boolean')
@@ -57,7 +61,11 @@ function normalizedUser(result, uid) {
     return Object.freeze({providerId: provider.providerId, uid: provider.rawId});
   });
   demand(new Set(providers.map(provider => provider.providerId)).size === providers.length, 'AUTH_PROVIDER_INVALID');
-  return Object.freeze({uid, disabled: user.disabled === true, emailVerified: user.emailVerified,
+  const identityMarker = projectId !== FA ? null : identityContext.gatewayMode
+    ? user.identityMarker === undefined ? null : user.identityMarker
+    : managementProtectedIdentityMarker({uid: user.localId, email: user.email}, identityContext.protectedIdentityPolicy);
+  demand(identityMarker === null || RETIREMENT_IDENTITY_MARKERS.includes(identityMarker), 'AUTH_IDENTITY_MARKER_INVALID');
+  return Object.freeze({uid, disabled: user.disabled === true, emailVerified: user.emailVerified, identityMarker,
     providerData: Object.freeze(providers), tokensValidAfterTimeMs: validSince * 1000});
 }
 function approvedClaims(claims) {
@@ -95,16 +103,17 @@ function validateGatewayLookup(data) {
   demand(exactKeys(data, ['users']) && Array.isArray(data.users) && data.users.length <= 1, 'GATEWAY_LOOKUP_RESPONSE_INVALID');
   for (const user of data.users) {
     const fields = ['localId', 'disabled', 'emailVerified', 'validSince', 'providerUserInfo'];
-    demand(object(user) && Object.keys(user).every(key => fields.includes(key))
+    demand(object(user) && Object.keys(user).every(key => [...fields, 'identityMarker'].includes(key))
       && ['localId', 'emailVerified', 'providerUserInfo'].every(key => Object.hasOwn(user, key))
       && Array.isArray(user.providerUserInfo) && user.providerUserInfo.length <= 20, 'GATEWAY_LOOKUP_RESPONSE_INVALID');
+    if (user.identityMarker !== undefined) demand(RETIREMENT_IDENTITY_MARKERS.includes(user.identityMarker), 'GATEWAY_LOOKUP_RESPONSE_INVALID');
     for (const provider of user.providerUserInfo)
       demand(exactKeys(provider, ['providerId', 'rawId']), 'GATEWAY_LOOKUP_RESPONSE_INVALID');
   }
 }
 
 export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, getAdminAccessToken, privilegedGateway,
-  signerServiceAccountEmail, policy, clock = Date.now} = {}) {
+  signerServiceAccountEmail, fcSignerServiceAccountEmail, protectedIdentityPolicy, policy, clock = Date.now, pilotDiagnostics = false} = {}) {
   let disposed = false;
   const active = new Map(), keyCache = new Map();
   const gatewayMode = privilegedGateway !== undefined;
@@ -115,7 +124,10 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
         && typeof privilegedGateway.lookupAuthUser === 'function' && typeof privilegedGateway.signFbCustomToken === 'function'
         : typeof getAdminAccessToken === 'function')
       && typeof signerServiceAccountEmail === 'string'
-      && new RegExp('^[a-z][a-z0-9-]{4,28}[a-z0-9]@' + FB + '\\.iam\\.gserviceaccount\\.com$').test(signerServiceAccountEmail), 'GOOGLE_AUTH_ADAPTER_CONFIG_INVALID');
+      && new RegExp('^[a-z][a-z0-9-]{4,28}[a-z0-9]@' + FB + '\\.iam\\.gserviceaccount\\.com$').test(signerServiceAccountEmail)
+      && (fcSignerServiceAccountEmail === undefined || typeof fcSignerServiceAccountEmail === 'string'
+        && new RegExp('^[a-z][a-z0-9-]{4,28}[a-z0-9]@' + FC + '\\.iam\\.gserviceaccount\\.com$').test(fcSignerServiceAccountEmail))
+      && (fcSignerServiceAccountEmail === undefined || !gatewayMode || typeof privilegedGateway.signFcCustomToken === 'function'), 'GOOGLE_AUTH_ADAPTER_CONFIG_INVALID');
     demand(object(policy) && integer(policy.operationTimeoutMs, 1) && policy.operationTimeoutMs <= 120000
       && integer(policy.maxResponseBytes, 1) && policy.maxResponseBytes <= 262144
       && integer(policy.maxResponseChunks, 1) && policy.maxResponseChunks <= 1024
@@ -123,9 +135,14 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
       && integer(policy.maxFutureSkewMs) && policy.maxFutureSkewMs <= 60000
       && integer(policy.maxIdTokenLifetimeSeconds, 1) && policy.maxIdTokenLifetimeSeconds <= 3600
       && integer(policy.customTokenLifetimeSeconds, 1) && policy.customTokenLifetimeSeconds <= 3600, 'GOOGLE_AUTH_POLICY_INVALID');
+    if (!gatewayMode) {
+      try { validateManagementProtectedIdentityPolicy(protectedIdentityPolicy); }
+      catch (error) { throw new AuthAdapterError(['AUTH_IDENTITY_POLICY_UNAVAILABLE','AUTH_IDENTITY_POLICY_INVALID'].includes(error?.message)
+        ? error.message : 'AUTH_IDENTITY_POLICY_INVALID'); }
+    }
   };
   const execute = work => async (...args) => {
-    let controller, timer, abortListener, external, externalSignal;
+    let controller, timer, abortListener, external, externalSignal, ctx;
     try {
       configured(); external = args.at(-1); if (!object(external)) external = {};
       externalSignal = external.signal;
@@ -147,7 +164,8 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
         return time;
       };
       const arm = () => { clearTimeout(timer); timer = setTimeout(() => cancel('GOOGLE_AUTH_TIMEOUT'), Math.max(1, Math.ceil(Math.min(deadline - clock(), wallDeadline - performance.now())))); };
-      const ctx = {controller, assertLive, requestContext: () => Object.freeze({signal: controller.signal, deadlineMs: deadline}), limit: expiresAt => {
+      ctx = {controller, assertLive, diagnosticStage:'CONFIG', requestContext: () => Object.freeze({signal: controller.signal, deadlineMs: deadline,
+        ...(pilotDiagnostics === true ? {pilotDiagnostics:true} : {})}), limit: expiresAt => {
         const time = assertLive(); demand(integer(expiresAt) && expiresAt > time, 'GOOGLE_ADMIN_CREDENTIAL_EXPIRED');
         deadline = Math.min(deadline, expiresAt); wallDeadline = Math.min(wallDeadline, performance.now() + expiresAt - time); arm();
       }};
@@ -155,7 +173,12 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
       if (externalSignal?.aborted) cancel('GOOGLE_AUTH_ABORTED'); else arm();
       const task = Promise.resolve().then(() => { assertLive(); return work(ctx, ...args); });
       const result = await Promise.race([task, cancelled]); assertLive(); return result;
-    } catch (error) { if (error instanceof AuthAdapterError) throw new AuthAdapterError(error.code); throw new AuthAdapterError('GOOGLE_AUTH_ADAPTER_FAILED'); }
+    } catch (error) {
+      const sanitized = new AuthAdapterError(error instanceof AuthAdapterError ? error.code : 'GOOGLE_AUTH_ADAPTER_FAILED');
+      if (pilotDiagnostics === true) sanitized.diagnostic = sanitizedManagementPilotDiagnostic({
+        stage:ctx?.diagnosticStage || 'CONFIG',code:ctx?.diagnosticCode || sanitized.code});
+      throw sanitized;
+    }
     finally { controller?.abort(); clearTimeout(timer);
       try { externalSignal?.removeEventListener?.('abort', abortListener); } catch {}
       if (controller) active.delete(controller); }
@@ -163,7 +186,7 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
   const responseJson = async (url, options, ctx) => {
     ctx.assertLive();
     const response = await fetchImpl(url, {...options, headers: {...options.headers, Accept: 'application/json'},
-      cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal: ctx.controller.signal});
+      cache: 'no-store', credentials: 'omit', redirect: 'manual', referrerPolicy: 'no-referrer', signal: ctx.controller.signal});
     const receivedAtMs = ctx.assertLive(), receivedAtWall = performance.now();
     demand(response?.status === 200 && response.redirected !== true && response.url === url
       && /^application\/json(?:\s*;|$)/i.test(response.headers?.get?.('content-type') || ''), 'GOOGLE_RESPONSE_REJECTED');
@@ -215,7 +238,8 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
     demand(keys.has(kid), 'JWT_KEY_NOT_FOUND'); return keys.get(kid);
   };
   const signature = async (jwt, url, ctx) => {
-    const key = await keyFor(url, jwt.header.kid, ctx); ctx.assertLive();
+    ctx.diagnosticStage = 'PUBLIC_KEYS';
+    const key = await keyFor(url, jwt.header.kid, ctx); ctx.assertLive(); ctx.diagnosticStage = 'JWT_SIGNATURE';
     demand(verifySignature('RSA-SHA256', jwt.signingInput, key, jwt.signature), 'JWT_SIGNATURE_INVALID'); ctx.assertLive();
   };
   const adminCredential = async (projectId, purpose, scope, ctx) => {
@@ -231,11 +255,20 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
     ctx.limit(credential.expiresAtMs); return credential.accessToken;
   };
   const lookup = async (projectId, uid, ctx) => {
-    demand([FA, FB].includes(projectId) && identifier(uid, 128), 'AUTH_LOOKUP_REQUEST_INVALID');
+    ctx.diagnosticStage = 'AUTH_LOOKUP';
+    demand([FA, FB, FC].includes(projectId) && identifier(uid, 128), 'AUTH_LOOKUP_REQUEST_INVALID');
     if (gatewayMode) {
-      const data = await privilegedGateway.lookupAuthUser(Object.freeze({projectId, uid}), ctx.requestContext());
+      let data;
+      try { data = await privilegedGateway.lookupAuthUser(Object.freeze({projectId, uid}), ctx.requestContext()); }
+      catch (error) {
+        const code = pilotDiagnostics === true && error?.code === 'GATEWAY_OPERATION_DENIED'
+          && MANAGEMENT_GATEWAY_DENIAL_CODES.includes(error?.gatewayDenialCode) ? error.gatewayDenialCode : error?.code;
+        ctx.diagnosticCode = sanitizedManagementPilotDiagnostic({stage:'AUTH_LOOKUP',code})?.code;
+        throw error;
+      }
       ctx.assertLive(); validateGatewayLookup(data);
-      const user = normalizedUser(data, uid); ctx.assertLive(); return user;
+      if (projectId !== FA && data.users[0]?.identityMarker !== undefined) throw new AuthAdapterError('GATEWAY_LOOKUP_RESPONSE_INVALID');
+      const user = normalizedUser(data, uid, projectId, {gatewayMode, protectedIdentityPolicy}); ctx.assertLive(); return user;
     }
     let token = await adminCredential(projectId, 'auth-users-get', AUTH_SCOPE, ctx);
     try {
@@ -244,21 +277,25 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
         {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token}, body: JSON.stringify({localId: [uid]})}, ctx);
       const age = result.headers.get('age');
       demand(age === null || /^0+$/.test(age), 'AUTH_LOOKUP_CACHED_RESPONSE');
-      const user = normalizedUser(result.data, uid); ctx.assertLive(); return user;
+      const user = normalizedUser(result.data, uid, projectId, {gatewayMode, protectedIdentityPolicy}); ctx.assertLive(); return user;
     } finally { token = null; }
   };
   const verifyFaIdToken = execute(async (ctx, token, checkRevoked) => {
     demand(checkRevoked === true, 'FA_REVOCATION_CHECK_REQUIRED');
-    const jwt = decodeJwt(token), googleUid = validateFaClaims(jwt.payload, ctx.assertLive(), policy);
+    ctx.diagnosticStage = 'TOKEN_DECODE'; const jwt = decodeJwt(token);
+    ctx.diagnosticStage = 'TOKEN_CLAIMS'; const googleUid = validateFaClaims(jwt.payload, ctx.assertLive(), policy);
     await signature(jwt, FA_CERTS, ctx);
     const user = await lookup(FA, jwt.payload.sub, ctx);
+    ctx.diagnosticStage = 'AUTH_BINDING';
     demand(user.disabled === false && user.emailVerified === true, 'FA_AUTH_USER_DISABLED_OR_UNVERIFIED');
     const googleProviders = user.providerData.filter(provider => provider.providerId === 'google.com');
     demand(googleProviders.length === 1 && googleProviders[0].uid === googleUid, 'FA_AUTH_PROVIDER_CHANGED');
-    demand(jwt.payload.auth_time * 1000 >= user.tokensValidAfterTimeMs, 'FA_TOKEN_REVOKED');
+    ctx.diagnosticStage = 'REVOCATION'; demand(jwt.payload.auth_time * 1000 >= user.tokensValidAfterTimeMs, 'FA_TOKEN_REVOKED');
+    ctx.diagnosticStage = 'TOKEN_CLAIMS';
     validateFaClaims(jwt.payload, ctx.assertLive(), policy);
     return Object.freeze({uid: jwt.payload.sub, sub: jwt.payload.sub, aud: FA, iss: 'https://securetoken.google.com/' + FA,
       iat: jwt.payload.iat, exp: jwt.payload.exp, auth_time: jwt.payload.auth_time, email_verified: true,
+      identityMarker: user.identityMarker,
       firebase: Object.freeze({sign_in_provider: 'google.com', identities: Object.freeze({'google.com': Object.freeze([googleUid])})})});
   });
   const getFaUser = execute(async (ctx, request) => {
@@ -273,6 +310,12 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
     demand(object(request) && request.projectId === FB && identifier(request.uid, 128), 'FB_USER_REQUEST_INVALID');
     const user = await lookup(FB, request.uid, ctx);
     return Object.freeze({schemaVersion: 1, projectId: FB, fromCache: false, hasPendingWrites: false,
+      readTimeMs: ctx.assertLive(), user});
+  });
+  const getFcUser = execute(async (ctx, request) => {
+    demand(object(request) && request.projectId === FC && identifier(request.uid, 128), 'FC_USER_REQUEST_INVALID');
+    const user = await lookup(FC, request.uid, ctx);
+    return Object.freeze({schemaVersion: 1, projectId: FC, fromCache: false, hasPendingWrites: false,
       readTimeMs: ctx.assertLive(), user});
   });
   const createFbCustomToken = execute(async (ctx, uid, suppliedClaims) => {
@@ -303,7 +346,44 @@ export function createManagementGoogleAuthAdapter({enabled = false, fetchImpl, g
       demand(jwt.payload.exp * 1000 > ctx.assertLive(), 'CUSTOM_TOKEN_EXPIRED'); return response.data.signedJwt;
     } finally { token = null; }
   });
-  return Object.freeze({verifyFaIdToken, getFaUser, getFbUser, createFbCustomToken,
-    readFaAuthUser: getFaUser, readFbUser: getFbUser, signFbCustomToken: createFbCustomToken,
+  const createFcCustomToken = execute(async (ctx, uid, claims = {sahmtFaSourceProjectId:FA,sahmtOccurrencesCatalogRead:false,
+    sahmtOccurrencesRead:false,sahmtOccurrencesWrite:false,sahmtOccurrencesAuditRead:false}) => {
+    demand(typeof fcSignerServiceAccountEmail === 'string'
+      && new RegExp('^[a-z][a-z0-9-]{4,28}[a-z0-9]@' + FC + '\\.iam\\.gserviceaccount\\.com$').test(fcSignerServiceAccountEmail),
+    'FC_SIGNER_NOT_CONFIGURED');
+    demand(identifier(uid, 128) && claims && Object.getPrototypeOf(claims) === Object.prototype
+      && Object.keys(claims).sort().join(',') === ['sahmtFaSourceProjectId','sahmtOccurrencesCatalogRead','sahmtOccurrencesRead','sahmtOccurrencesWrite','sahmtOccurrencesAuditRead'].sort().join(',')
+      && claims.sahmtFaSourceProjectId === FA
+      && ['sahmtOccurrencesCatalogRead','sahmtOccurrencesRead','sahmtOccurrencesWrite','sahmtOccurrencesAuditRead'].every(key => typeof claims[key] === 'boolean')
+      && (!claims.sahmtOccurrencesCatalogRead || claims.sahmtOccurrencesWrite), 'CUSTOM_TOKEN_UID_INVALID');
+    const time = ctx.assertLive(), iat = Math.floor(time / 1000);
+    const payload = {iss: fcSignerServiceAccountEmail, sub: fcSignerServiceAccountEmail,
+      aud: FIREBASE_AUDIENCE, iat, exp: iat + policy.customTokenLifetimeSeconds, uid, claims: {...claims}};
+    if (gatewayMode) {
+      const data = await privilegedGateway.signFcCustomToken(Object.freeze({uid, claims: Object.freeze({...claims}),
+        issuedAtSeconds: iat, expiresAtSeconds: payload.exp}), ctx.requestContext());
+      ctx.assertLive(); jsonData(data);
+      demand(exactKeys(data, ['keyId', 'signedJwt']) && identifier(data.keyId) && typeof data.signedJwt === 'string', 'GATEWAY_SIGN_RESPONSE_INVALID');
+      const jwt = decodeJwt(data.signedJwt);
+      demand(jwt.header.kid === data.keyId && same(jwt.payload, payload), 'IAM_SIGN_PAYLOAD_CHANGED');
+      await signature(jwt, 'https://www.googleapis.com/service_accounts/v1/metadata/x509/' + fcSignerServiceAccountEmail, ctx);
+      demand(jwt.payload.exp * 1000 > ctx.assertLive(), 'CUSTOM_TOKEN_EXPIRED'); return data.signedJwt;
+    }
+    let token = await adminCredential(FC, 'iam-sign-jwt', IAM_SCOPE, ctx);
+    try {
+      const url = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/' + fcSignerServiceAccountEmail + ':signJwt';
+      ctx.assertLive();
+      const response = await responseJson(url, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
+        body: JSON.stringify({payload: JSON.stringify(payload)})}, ctx);
+      demand(identifier(response.data.keyId) && typeof response.data.signedJwt === 'string', 'IAM_SIGN_RESPONSE_INVALID');
+      const jwt = decodeJwt(response.data.signedJwt);
+      demand(jwt.header.kid === response.data.keyId && same(jwt.payload, payload), 'IAM_SIGN_PAYLOAD_CHANGED');
+      await signature(jwt, 'https://www.googleapis.com/service_accounts/v1/metadata/x509/' + fcSignerServiceAccountEmail, ctx);
+      demand(jwt.payload.exp * 1000 > ctx.assertLive(), 'CUSTOM_TOKEN_EXPIRED'); return response.data.signedJwt;
+    } finally { token = null; }
+  });
+  return Object.freeze({verifyFaIdToken, getFaUser, getFbUser, getFcUser, createFbCustomToken, createFcCustomToken,
+    readFaAuthUser: getFaUser, readFbUser: getFbUser, readFcUser: getFcUser, signFbCustomToken: createFbCustomToken,
+    signFcCustomToken: createFcCustomToken,
     dispose: () => { disposed = true; for (const cancel of active.values()) cancel('GOOGLE_AUTH_ABORTED'); active.clear(); keyCache.clear(); }});
 }

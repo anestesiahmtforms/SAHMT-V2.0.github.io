@@ -1,12 +1,7 @@
-const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+import {normalizeFirebaseWebConfig} from './firebase-projects.js';
 
 export function normalizeManagementFirebaseConfig(source = {}) {
-  const config = Object.fromEntries(requiredKeys.map((key) => [key, typeof source[key] === 'string' ? source[key].trim() : '']));
-  const valid = requiredKeys.every((key) => config[key].length > 0)
-    && config.projectId === 'sahmt-gestao-5ae66'
-    && config.authDomain === 'sahmt-gestao-5ae66.firebaseapp.com'
-    && config.appId.startsWith('1:613953519880:web:');
-  return Object.freeze({ ...config, valid });
+  return normalizeFirebaseWebConfig(source, 'FB', {appIdPrefix: '1:613953519880:web:'});
 }
 
 const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};

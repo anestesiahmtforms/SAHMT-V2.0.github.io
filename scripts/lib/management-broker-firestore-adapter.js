@@ -7,7 +7,7 @@ const SCOPE = 'https://www.googleapis.com/auth/datastore';
 const operations = Object.freeze({readFaAuthorization: FA, readFbLease: FB, writeFbLease: FB, invalidateFbLease: FB});
 const minimumReads = Object.freeze({readFaAuthorization: 1, readFbLease: 1, writeFbLease: 2, invalidateFbLease: 2});
 const permissions = ['admin','managementRead','managementManage','managementActivityWrite','managementIndicatorsRead',
-  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsManage',
+  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsRead','trainingsManage',
   'financeRead','financeWrite','financeManage'];
 const leaseKeys = ['schemaVersion','sourceProjectId','destinationProjectId','faUid','fbUid','memberId','leaseVersion','grantId',
   'sourceVersion','policyVersion','sourceHash','active','revoked','managementAllowed','role','permissions','memberAreaIds',
@@ -310,7 +310,7 @@ export function createManagementBrokerFirestoreAdapter({enabled = false,fetchImp
     const profile=data.profile;need(exact(profile,['uid','memberId','active','access','role','permissions']) && profile.uid === request.uid
       && id(profile.memberId) && profile.active === true && profile.access === true && typeof profile.role === 'string' && profile.role.length <= 100
       && exact(profile.permissions,permissions) && permissions.every(key=>typeof profile.permissions[key] === 'boolean'),'FA_SOURCE_PROFILE_INVALID');
-    need(exact(data.binding,['sourceProjectId','destinationProjectId','faUid','fbUid','memberId']) && data.binding.sourceProjectId === FA
+    if(data.binding!==null)need(exact(data.binding,['sourceProjectId','destinationProjectId','faUid','fbUid','memberId']) && data.binding.sourceProjectId === FA
       && data.binding.destinationProjectId === FB && data.binding.faUid === request.uid && data.binding.fbUid === request.uid
       && data.binding.memberId === profile.memberId,'FA_SOURCE_BINDING_INVALID');
     const members=[],managers=[],seen=new Set();need(Array.isArray(data.areas) && data.areas.length <= 1000,'FA_SOURCE_AREAS_INVALID');
@@ -342,7 +342,8 @@ export function createManagementBrokerFirestoreAdapter({enabled = false,fetchImp
     need(previous || sourceVersions.size < policy.maxSourceVersions,'FA_SOURCE_VERSION_CAPACITY_EXCEEDED');sourceVersions.set(request.uid,{version:data.sourceVersion,hash:data.sourceHash});
     return {schemaVersion:1,projectId:FA,fromCache:false,hasPendingWrites:false,readTimeMs:record.readTimeMs,consistentRead:true,coverageComplete:true,
       productionAuthorized:true,authorizationVersion:data.authorizationVersion,sourceRevision:record.revision,
-      authUser:{uid:request.uid,disabled:false,emailVerified:true,googleUid:auth.user.googleUid,tokensValidAfterTimeMs:auth.user.tokensValidAfterTimeMs},
+      authUser:{uid:request.uid,disabled:false,emailVerified:true,googleUid:auth.user.googleUid,
+        identityMarker:auth.user.identityMarker ?? null,tokensValidAfterTimeMs:auth.user.tokensValidAfterTimeMs},
       profile,binding:data.binding,areas:data.areas,documentAccess:access};
   });
   const readFbLease=execute('readFbLease',async(request,ctx)=>{
