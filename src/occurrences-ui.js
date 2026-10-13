@@ -83,16 +83,18 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     } catch {if(isCurrent())auditRoot.innerHTML='<p class="empty-state">Não foi possível carregar a auditoria autorizada.</p>';}
   };
   const categoryHost=root.querySelector('[data-occurrence-category-host]');
-  const open=async formId=>{
+  const open=async (formId,{direct=false}={})=>{
     if(!access.write||!isCurrent()||saving||loading)return;
     const form=getOccurrenceForm(formId);if(!form)return;
-    const categoryStatus=categoryHost.querySelector('.occurrence-category-status');
+    const categoryDialog=categoryHost.querySelector('dialog');
+    const categoryStatus=direct?root.querySelector('.occurrence-module-status'):categoryHost.querySelector('.occurrence-category-status');
     loading=true;
     if(categoryStatus)categoryStatus.textContent='Carregando…';
-    categoryHost.querySelector('[data-occurrence-group-cancel]').disabled=true;
+    const categoryBack=direct?null:categoryHost.querySelector('[data-occurrence-group-cancel]');
+    if(categoryBack)categoryBack.disabled=true;
     try {catalogs=(await repository.loadCatalog({uid})).catalogs;} catch {if(isCurrent()&&categoryStatus)categoryStatus.textContent='O catálogo privado ainda não está disponível no Firestore FC.';return;}
-    finally {loading=false;const back=categoryHost.querySelector('[data-occurrence-group-cancel]');if(back)back.disabled=false;}
-    if(!isCurrent()||!categoryHost.querySelector('dialog')?.open)return;
+    finally {loading=false;if(categoryBack)categoryBack.disabled=false;}
+    if(!isCurrent()||(!direct&&!categoryDialog?.open))return;
     if(categoryStatus)categoryStatus.textContent='';
     host.innerHTML=occurrenceFormMarkup(form,catalogs,displayName);
     const dialog=host.querySelector('dialog'), formElement=host.querySelector('form'), status=host.querySelector('.occurrence-form-status'), saveButton=host.querySelector('[data-occurrence-save]'), cancelButton=host.querySelector('[data-occurrence-cancel]');
@@ -128,6 +130,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   };
   root.querySelectorAll('[data-occurrence-group]').forEach(button=>button.addEventListener('click',()=>{
     if(!isCurrent()||saving||loading)return;
+    const forms=FORM_ORDER[button.dataset.occurrenceGroup];
+    if(forms?.length===1){void open(forms[0],{direct:true});return;}
     categoryHost.innerHTML=occurrenceCategoryMarkup(button.dataset.occurrenceGroup,{canWrite:access.write});
     const dialog=categoryHost.querySelector('dialog');
     categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>dialog.close());
