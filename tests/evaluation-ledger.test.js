@@ -230,7 +230,8 @@ function checklistFixture({complete=false,own=false,activated=true,ack=false}={}
   const id=ack?`${day}_${signerUid}`:`${day}_${snapshot.fingerprint}_${signerUid}`;
   const request={id,day,revision:snapshot.fingerprint,signerUid,declaration:true,status:'PENDING_VALIDATION',
     justification:ack?'Declaro que tomei ciência das informações deste relatório.':'Revisão fictícia controlada do Checklist'};
-  if(ack)Object.assign(request,{recordKind:'ACKNOWLEDGEMENT',signerName:`Pessoa ${signerUid}`,acknowledgedAt:new Date('2026-10-03T10:00:00Z'),rotationSigla:'AA',rotationPosition:1});
+  if(ack)Object.assign(request,{recordKind:'ACKNOWLEDGEMENT',signerName:`Pessoa ${signerUid}`,
+    acknowledgedAt:new Date('2026-10-03T10:00:00Z'),rotationSigla:'AA',rotationPosition:1});
   else request.requestedAt=new Date('2026-10-03T10:00:00Z');
   h.seed('checklistSignatureRequests',id,request);
   return {...h,day,id,signerUid,snapshot};
@@ -408,10 +409,11 @@ test('ciência preserva transferência diária, autoria e natureza do registro s
 
 test('ciência usa o rodízio de Eventos para pontuar o próprio indicado com zero',()=>{
  const h=checklistFixture({ack:true});h.seed('scheduleDays',h.day,{positions:[{position:1,sigla:'AA'},{position:2,sigla:'BB'}],highlights:{events:['EVENTO:AA:AA:event-fixture']}});
- const request=h.get('checklistSignatureRequests',h.id);h.seed('checklistSignatureRequests',h.id,{...request,revision:h.ctx.readTrustedChecklistSnapshot_(h.day,null,{eventRotation:true}).fingerprint,rotationSigla:'BB',rotationPosition:2});
+  const request=h.get('checklistSignatureRequests',h.id);h.seed('checklistSignatureRequests',h.id,{...request,revision:h.ctx.readTrustedChecklistSnapshot_(h.day,null,{eventRotation:true}).fingerprint,rotationSigla:'BB',rotationPosition:1});
  assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
  assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,0);
  assert.equal(h.values('checklistSignatures')[0].responsibleUid,'person-b');
+  assert.equal(h.values('checklistSignatures')[0].snapshot.position,1);
 });
 
 test('ciência sem rodízio confirmado permanece registrada e não gera pontuação',()=>{

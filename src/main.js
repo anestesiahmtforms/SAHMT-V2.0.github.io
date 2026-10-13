@@ -265,6 +265,8 @@ function invalidateChecklistSignature(message) {
   if (confirm) confirm.disabled = true;
   const prepare = document.querySelector('#checklist-signature-prepare');
   if (prepare) prepare.disabled = true;
+  const preparePending = document.querySelector('#checklist-pending-prepare');
+  if (preparePending) preparePending.disabled = true;
   if (document.querySelector('#checklist-confirmation-dialog')?.open) {
     const status = document.querySelector('#checklist-signature-status');
     if (status) status.textContent = message;
@@ -290,6 +292,15 @@ function updateChecklistResponsibilityUI() {
   }
   const prepare = document.querySelector('#checklist-signature-prepare');
   if (prepare) prepare.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
+  const preparePending = document.querySelector('#checklist-pending-prepare');
+  if (preparePending) {
+    const selected = rotation?.current === true ? rotation.rotation : null;
+    const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
+    preparePending.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint) ||
+      !selected || selected.position !== 1 || selected.sigla !== ownSigla;
+    preparePending.title = !selected ? 'Aguardando a confirmação do rodízio.'
+      : selected.sigla !== ownSigla ? 'Esta ciência fica disponível para a sigla na posição efetiva 1 do dia.' : '';
+  }
 }
 async function subscribeLiveReport(kind, scope, callbacks) {
   if (kind === 'events' || kind === 'labels') {
@@ -1763,7 +1774,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
     const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
-    const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>Rodízio da escala</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>Dar ciência do Checklist</span></button></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">Dar ciência do Checklist</h3><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div></dialog>`;
+    const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>Rodízio da escala</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><div class="checklist-confirmation-actions"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled>CHECAGEM SEM PENDÊNCIAS</button><button class="secondary-button checklist-confirmation-button checklist-confirmation-button--pending" id="checklist-pending-prepare" type="button" disabled>CHECAGEM COM PENDÊNCIAS</button></div></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">CIÊNCIA DO CHECKLIST</h3></header><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div><footer class="checklist-confirmation-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit">VOLTAR</button></form></footer></dialog>`;
     reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
       if (!reportScopeCurrent(scope)) return;
@@ -1771,11 +1782,19 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       if (station) showChecklistStationBanner(station, resolvedRecordFor(station), day, stations, {fromQr: false});
     });
     const prepareSignature = content.querySelector('#checklist-signature-prepare');
+    const preparePending = content.querySelector('#checklist-pending-prepare');
     const confirmationDialog = content.querySelector('#checklist-confirmation-dialog');
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
-    if (prepareSignature) prepareSignature.onclick = async () => {
+    if (preparePending) preparePending.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
+    const prepareChecklistConfirmation = async (outcome) => {
       if (!canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint)) return;
+      if (outcome === 'WITH_PENDING') {
+        const rotationState = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
+        const selected = rotationState?.current === true ? rotationState.rotation : null;
+        const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
+        if (!selected || selected.position !== 1 || selected.sigla !== ownSigla) return;
+      }
       if (!confirmationDialog.open) confirmationDialog.showModal();
       content.querySelector('#checklist-confirmation-title')?.focus({preventScroll: true});
       const status = content.querySelector('#checklist-signature-status');
@@ -1783,7 +1802,8 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       const previewToken = confirmationDialog._checklistSignatureRequest = {};
       const previewCurrent = () => confirmationDialog._checklistSignatureRequest === previewToken && confirmationDialog.isConnected && document.querySelector('#checklist-confirmation-dialog') === confirmationDialog && reportScopeCurrent(scope) && checklistReportContext?.fingerprint === fingerprint;
       prepareSignature.disabled = true;
-      status.textContent = 'Preparando o registro de ciência…';
+      if (preparePending) preparePending.disabled = true;
+      status.textContent = 'Preparando a checagem…';
       try {
         const {getChecklistSignaturePreview} = await import('./checklist-signature.js');
         if (!checklistSignatureCurrent(scope, fingerprint)) return;
@@ -1808,8 +1828,23 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           prepareSignature.disabled = true;
           return;
         }
-        previewTarget.innerHTML = `<div class="checklist-signature-review"><p>Relatório: ${preview.total - preview.missing}/${preview.total} estações respondidas.${preview.missing ? ` ${preview.missing} pendente(s).` : ''}</p><p>A ciência registra a leitura destas informações. Não declara execução das verificações nem conformidade dos equipamentos. A pontuação segue a regra diária do rodízio e será apurada pelo serviço.</p><label class="checklist-declaration"><input type="checkbox" id="checklist-signature-declaration"> ${escapeHtml(preview.declaration)}</label><button class="primary-button" type="button" id="checklist-signature-confirm" disabled>Dar ciência</button></div>`;
-        status.textContent = 'Leia o relatório e confirme sua ciência.';
+        const pendingCount = Number.isInteger(preview.pendingCount) ? preview.pendingCount : preview.missing;
+        if (outcome === 'WITHOUT_PENDING' && pendingCount > 0) {
+          previewTarget.replaceChildren();
+          status.textContent = 'Há pendências no Checklist. Use CHECAGEM COM PENDÊNCIAS.';
+          return;
+        }
+        if (outcome === 'WITH_PENDING' && pendingCount === 0) {
+          previewTarget.replaceChildren();
+          status.textContent = 'Não há pendências registradas para esta checagem.';
+          return;
+        }
+        const pendingContext = outcome === 'WITH_PENDING'
+          ? '<p>O número 1 do dia está registrando ciência de que houve pendências na checagem do Arsenal.</p>'
+          : '';
+        const submitLabel = outcome === 'WITH_PENDING' ? 'ENVIAR CIÊNCIA DAS PENDÊNCIAS' : 'CHECAGEM SEM PENDÊNCIAS';
+        previewTarget.innerHTML = `<div class="checklist-signature-review">${pendingContext}<label class="checklist-declaration"><input type="checkbox" id="checklist-signature-declaration"> ${escapeHtml(preview.declaration)}</label><button class="primary-button" type="button" id="checklist-signature-confirm" disabled>${submitLabel}</button></div>`;
+        status.textContent = outcome === 'WITH_PENDING' ? 'Confirme a ciência das pendências registradas no relatório.' : 'Confirme a declaração para registrar a checagem.';
         const declaration = previewTarget.querySelector('#checklist-signature-declaration');
         const confirm = previewTarget.querySelector('#checklist-signature-confirm');
         const updateEnabled = () => { confirm.disabled = !declaration.checked || !checklistSignatureCurrent(scope, fingerprint); };
@@ -1817,7 +1852,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
         confirm.addEventListener('click', async () => {
           if (!previewCurrent() || !checklistSignatureCurrent(scope, fingerprint)) return;
           confirm.disabled = true;
-          status.textContent = 'Registrando sua ciência no Firestore…';
+          status.textContent = 'Registrando a checagem no Firestore…';
           try {
             const {signChecklistReport} = await import('./checklist-signature.js');
             if (!checklistSignatureCurrent(scope, fingerprint)) return;
@@ -1826,7 +1861,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             await signChecklistReport({day, revision: preview.revision, declaration: declaration.checked, uid,
               signerName: session.profile?.displayName || '', rotationSigla: rotation?.sigla || null, rotationPosition: rotation?.position ?? null});
             if (!previewCurrent()) return;
-            status.textContent = 'Ciência registrada. Pontuação aguardando apuração.';
+            status.textContent = outcome === 'WITH_PENDING' ? 'Ciência das pendências registrada.' : 'Checagem sem pendências registrada.';
             confirmationDialog.close();
             await loadDailyChecklist(stations, day);
           } catch (error) {
@@ -1839,9 +1874,15 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
         if (!previewCurrent()) return;
         status.textContent = error.message || 'Não foi possível conferir a revisão do relatório.';
       } finally {
-        if (previewCurrent() && prepareSignature.isConnected) prepareSignature.disabled = !canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint);
+        if (previewCurrent()) {
+          const disabled = !canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint);
+          if (prepareSignature.isConnected) prepareSignature.disabled = disabled;
+          if (preparePending?.isConnected) preparePending.disabled = disabled;
+        }
       }
     };
+    if (prepareSignature) prepareSignature.onclick = () => prepareChecklistConfirmation('WITHOUT_PENDING');
+    if (preparePending) preparePending.onclick = () => prepareChecklistConfirmation('WITH_PENDING');
   } catch (error) {
     if (!reportScopeCurrent(scope)) return;
     content.innerHTML = `<p class="empty-state">Não foi possível carregar o checklist. ${escapeHtml(error.message || '')}</p>`;

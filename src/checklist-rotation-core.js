@@ -101,6 +101,6 @@ export function resolveChecklistRotationCore({schedule = null, day, vacations = 
   }
   const position = ordered.find(item => item.siglas.some(member => !excluded.has(member)));
   if (!position) return {sigla: null, position: null, complete: true, reason: 'Nenhuma sigla disponível no rodízio desta escala.'};
-  return {sigla: position.siglas.find(member => !excluded.has(member)), position: position.position, complete: true,
-    reason: 'Primeira sigla disponível no rodízio da escala.'};
+  return {sigla: position.siglas.find(member => !excluded.has(member)), position: 1, complete: true,
+    reason: 'Primeira posição efetivamente ocupada no rodízio da escala.'};
 }

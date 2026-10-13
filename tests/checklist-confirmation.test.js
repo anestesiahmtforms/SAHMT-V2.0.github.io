@@ -66,10 +66,16 @@ test('rodapé separa rodízio da escala do botão de confirmação, e revisão f
  const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  const footer=source.match(/<footer class="checklist-confirmation-footer">([\s\S]*?)<\/footer>/)?.[1];
  assert.ok(footer);
- assert.equal((footer.match(/<button\b/g)||[]).length,1);
- assert.match(footer,/<div class="checklist-rotation-summary"><span>Rodízio da escala<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><button\b[^>]*id="checklist-signature-prepare"[^>]*><span>Dar ciência do Checklist<\/span><\/button>/);
+ assert.equal((footer.match(/<button\b/g)||[]).length,2);
+ assert.match(footer,/<div class="checklist-rotation-summary"><span>Rodízio da escala<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><div class="checklist-confirmation-actions"><button\b[^>]*id="checklist-signature-prepare"[^>]*>CHECAGEM SEM PENDÊNCIAS<\/button><button\b[^>]*id="checklist-pending-prepare"[^>]*>CHECAGEM COM PENDÊNCIAS<\/button><\/div>/);
  assert.doesNotMatch(footer,/checklist-signature-status|checklist-signature-preview|Revisar e assinar|Assinatura do responsável/);
  assert.match(source,/confirmationDialog\.showModal\(\)/);
+ assert.match(source,/ENVIAR CIÊNCIA DAS PENDÊNCIAS/);
+ assert.match(source,/CHECAGEM SEM PENDÊNCIAS/);
+ assert.match(source,/O número 1 do dia está registrando ciência de que houve pendências na checagem do Arsenal/);
+ assert.match(source,/selected\.position !== 1 \|\| selected\.sigla !== ownSigla/);
+ assert.doesNotMatch(source,/pendingJustification|checklistOutcome/);
+ assert.doesNotMatch(source,/A ciência registra a leitura destas informações|Não declara execução das verificações/);
  assert.doesNotMatch(source,/watchChecklistResponsibility\(scope, acceptResponsibility/);
  assert.doesNotMatch(source,/getChecklistDayResponsible\(scope\)/);
  assert.match(source,/checklistSignatureCurrent\(scope,/);
@@ -84,4 +90,14 @@ test('relatório diário tem Voltar no final do modal, sem botão de fechar no c
  assert.doesNotMatch(header,/<button/);
  assert.match(dialog,/<footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar<\/button><\/form><\/footer><\/dialog>/);
  assert.ok(dialog.indexOf('class="checklist-report-footer"') > dialog.indexOf('class="module-content checklist-report-content"'));
+});
+
+test('modal da ciência mantém Voltar no rodapé, centralizado e com altura ajustada ao conteúdo',()=>{
+ const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+ const markup=source.match(/<dialog class="checklist-confirmation-dialog"[\s\S]*?<\/dialog>/)?.[0];
+ assert.ok(markup);assert.doesNotMatch(markup.match(/<header[\s\S]*?<\/header>/)?.[0]||'',/<button/);
+ assert.match(markup,/<footer class="checklist-confirmation-dialog__footer"><form method="dialog"><button[^>]*>VOLTAR<\/button><\/form><\/footer><\/dialog>/);
+ const style=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
+ assert.match(style,/\.checklist-confirmation-dialog\[open\]\{display:grid;align-content:start;gap:10px\}/);
+ assert.match(style,/\.checklist-confirmation-dialog\{[\s\S]{0,180}height:fit-content/);
 });

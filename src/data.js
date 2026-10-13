@@ -1924,6 +1924,7 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
   const request = snapshot.exists() ? snapshot.data() : null;
   return {
     day, revision, total: entries.length, missing: entries.filter((entry) => !entry.condition).length,
+    pendingCount: entries.filter((entry) => entry.condition !== 'SIM').length,
     responsible: null,
     declaration: 'Declaro que tomei ciência das informações deste relatório.',
     requestStatus: request?.status || '', requestId: request?.id || '', validationMessage: request?.validationMessage || ''

@@ -26,7 +26,8 @@ function checklistScienceSelfTest_() {
   const input = {day: '2026-10-13', schedule: {positions: [{position: 1, sigla: 'AA'}, {position: 2, sigla: 'BB'}], highlights: {events: []}}, vacations: []};
   if (resolveChecklistRotationCore(input).sigla !== 'AA') throw new Error('CHECKLIST_SCIENCE_SELF_TEST_FAILED');
   input.schedule.highlights.events = ['EVENTO:AA:AA:synthetic'];
-  if (resolveChecklistRotationCore(input).sigla !== 'BB') throw new Error('CHECKLIST_SCIENCE_SELF_TEST_FAILED');
+  const shifted = resolveChecklistRotationCore(input);
+  if (shifted.sigla !== 'BB' || shifted.position !== 1) throw new Error('CHECKLIST_SCIENCE_SELF_TEST_FAILED');
   const own = evaluationPlanChecklistTransfer_(null, {day: input.day, responsibleUid: 'synthetic-a', signerUid: 'synthetic-a', signatureId: 'synthetic-self'});
   const other = evaluationPlanChecklistTransfer_(null, {day: input.day, responsibleUid: 'synthetic-a', signerUid: 'synthetic-b', signatureId: 'synthetic-other'});
   const again = evaluationPlanChecklistTransfer_(other.state, {day: input.day, responsibleUid: 'synthetic-a', signerUid: 'synthetic-b', signatureId: 'synthetic-repeat'});

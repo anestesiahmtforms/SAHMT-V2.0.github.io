@@ -16,7 +16,7 @@ test('alteração de Eventos no documento compartilhado recalcula primeiro dispo
  const h=harness();h.schedule([]);h.subscriptions.get('vacations')({docs:[],metadata:{fromCache:false,hasPendingWrites:false},docChanges:()=>[]});h.name('AA');
  assert.equal(h.payloads.at(-1).rotation.sigla,'AA');assert.equal(h.payloads.at(-1).current,true);
  h.schedule(['EVENTO:AA:AA:event-fixture']);h.name('BB');
- assert.equal(h.payloads.at(-1).rotation.sigla,'BB');assert.equal(h.payloads.at(-1).rotation.position,2);assert.equal(h.payloads.at(-1).current,true);
+ assert.equal(h.payloads.at(-1).rotation.sigla,'BB');assert.equal(h.payloads.at(-1).rotation.position,1);assert.equal(h.payloads.at(-1).current,true);
  h.schedule([]);h.name('AA');assert.equal(h.payloads.at(-1).rotation.sigla,'AA');
  h.stop();assert.equal(h.subscriptions.size,0);
 });
