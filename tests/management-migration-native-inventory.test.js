@@ -9,12 +9,14 @@ const TIME=Date.parse('2026-10-09T15:00:00.000Z');
 const sources=readdirSync(new URL('../apps-script-v2/',import.meta.url)).filter(name=>name.endsWith('.gs')).sort()
   .map(name=>({name,source:readFileSync(new URL('../apps-script-v2/'+name,import.meta.url),'utf8')}));
 const helper=readFileSync(new URL('../apps-script/ManagementMigrationInventory.gs',import.meta.url),'utf8');
+const reviewedFixture=JSON.parse(readFileSync(new URL('./fixtures/legacy-inventory-reviewed-functions.json',import.meta.url),'utf8'));
+const fixtureModule=name=>name==='evaluationPublishCategorySummary_'?'EvaluationLedger.gs':'ChecklistValidation.gs';
 const forbidden=()=>{throw Error('SYNTHETIC_FORBIDDEN_SIDE_EFFECT');};
 const trigger=(handler,source='CLOCK',event='CLOCK')=>({getHandlerFunction:()=>handler,getTriggerSource:()=>source,
   getEventType:()=>event,getUniqueId:forbidden,getTriggerSourceId:forbidden});
 const clean=value=>JSON.parse(JSON.stringify(value));
 function harness({triggers=[],properties={},changeSource=(_name,source)=>source,projectId=PROJECT,
-  scriptOverrides={},propertyOverrides={},clock=()=>TIME,omit=[]}={}) {
+  scriptOverrides={},propertyOverrides={},clock=()=>TIME,omit=[],useReviewedFixture=true}={}) {
   const logs=[],reads=[],calls={network:0,triggerWrites:0,propertyWrites:0,token:0};
   const script={getScriptId:()=>projectId,getProjectTriggers:()=>triggers,
     getOAuthToken:()=>{calls.token++;return forbidden();},newTrigger:()=>{calls.triggerWrites++;return forbidden();},
@@ -33,6 +35,11 @@ function harness({triggers=[],properties={},changeSource=(_name,source)=>source,
     FormApp:new Proxy({}, {get:()=>forbidden}),Session:new Proxy({}, {get:()=>forbidden}),
     Logger:{log:message=>logs.push(message)}});
   for(const {name,source} of sources)if(!omit.includes(name))vm.runInContext(changeSource(name,source),context,{filename:name});
+  // This legacy inventory pins the original review. Keep its contract tests on
+  // those bodies; separately prove that today's unreviewed changes are rejected.
+  if(useReviewedFixture)for(const row of reviewedFixture.functions)if(!omit.includes(fixtureModule(row.name))) {
+    vm.runInContext(changeSource(fixtureModule(row.name),row.source),context,{filename:'legacy-reviewed-functions.fixture'});
+  }
   vm.runInContext(helper,context,{filename:'ManagementMigrationInventory.gs'});
   const run=()=>clean(context.consultarInventarioMigracaoGestaoSahmtV2());
   return {context,run,logs,reads,calls};
@@ -43,7 +50,29 @@ function zeroEffects(h,result) {
     'authWritesIssued','propertyWrites','triggerWrites','financialWrites','externalRequestsIssued','allSideEffects'])assert.equal(result[key],0,key);
 }
 
-test('observes pinned current FA producer code without executing any writer',()=>{
+test('legacy fixture bodies match the unchanged operational review hashes',()=>{
+  const h=harness();const rows=h.context.SAHMT_MIGRATION_INVENTORY_REVIEW_.functions;
+  assert.equal(reviewedFixture.functions.length,4);
+  assert.equal(new Set(reviewedFixture.functions.map(row=>row.name)).size,4);
+  for(const row of reviewedFixture.functions) {
+    const pinned=rows.find(candidate=>candidate.name===row.name);
+    assert.ok(pinned,row.name);
+    assert.equal(createHash('sha256').update(row.source.replace(/\r\n?/g,'\n')).digest('hex'),pinned.sha256,row.name);
+    assert.equal(row.sha256,pinned.sha256,row.name);
+    assert.equal(h.context[row.name].toString().replace(/\r\n?/g,'\n'),row.source,row.name);
+  }
+});
+
+test('current Checklist science source fails closed against the legacy review',()=>{
+  const h=harness({useReviewedFixture:false});const result=h.run();
+  assert.equal(result.status,'INVENTORY_REQUIRES_REVIEW');
+  assert.equal(result.knownSourceCoverageVerified,false);assert.equal(result.writerState,'UNKNOWN');
+  assert.equal(result.sourceVerification.changedFunctionCount,4);
+  assert.ok(result.blockers.includes('MMI_SOURCE_NOT_PINNED_TO_REVIEW'));
+  zeroEffects(h,result);
+});
+
+test('observes the original reviewed FA producer code without executing any writer',()=>{
   const h=harness({triggers:[trigger('validatePendingManagementScoreReviews'),trigger('syncSparkReportsPeriodically'),
     trigger('onEvaluationFormSubmit','FORMS','ON_FORM_SUBMIT')]});
   const result=h.run();assert.equal(result.status,'KNOWN_NATIVE_SOURCE_OBSERVED');
@@ -170,7 +199,10 @@ for(const difference of [-1,30000])test('invalid observation duration remains fa
 });
 
 test('line-ending normalization preserves identical reviewed source without accepting content changes',()=>{
-  const h=harness({changeSource:(_name,source)=>source.replace(/\r\n?/g,'\n')});assert.equal(h.run().knownSourceCoverageVerified,true);
+  for(const ending of ['\n','\r\n']) {
+    const h=harness({changeSource:(_name,source)=>source.replace(/\r\n?/g,'\n').replace(/\n/g,ending)});
+    assert.equal(h.run().knownSourceCoverageVerified,true);
+  }
 });
 
 
