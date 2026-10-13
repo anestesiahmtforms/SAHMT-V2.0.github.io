@@ -62,16 +62,21 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
 function visibleRoutes(h) {
   return [...h.ui.moduleCards().matchAll(/data-route="([^"]+)"/g)].map((match) => match[1]);
 }
+function cardMarkup(h, route) {
+  return h.ui.moduleCards().match(new RegExp(`<button\\b(?=[^>]*data-route="${route}")[^>]*>[\\s\\S]*?<\\/button>`))?.[0] || '';
+}
 
 const legacyManagementPermissions = ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage'];
 
 for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) {
-  test(`Gestão não aparece nem carrega para ${role}, mesmo com permissões antigas`, async () => {
+  test(`Gestão aparece inativa e não carrega para ${role}, mesmo com permissões antigas`, async () => {
     for (const permission of legacyManagementPermissions) {
       const session = approved({[permission]: true}, role);
       const before = structuredClone(session);
       const h = harness({session, route: 'management'});
-      assert.equal(visibleRoutes(h).includes('management'), false, permission);
+      assert.equal(visibleRoutes(h).includes('management'), true, permission);
+      assert.match(cardMarkup(h, 'management'), /disabled/);
+      assert.match(cardMarkup(h, 'management'), /Aguardando liberação do administrador/);
       await h.ui.loadModule('management');
       assert.deepEqual(h.navigations, ['home'], permission);
       assert.deepEqual(h.imports, [], permission);
@@ -122,11 +127,14 @@ test('link direto de Gestão bloqueia antes de renderizar e carregar; revogaçã
   }
 });
 
-test('Escala mantém Treinamentos e oculta o novo botão de ocorrências enquanto a flag está desligada', () => {
+test('Gestão e Desempenho aparecem inativos para usuários comuns enquanto aguardam liberação', () => {
   const session = approved();
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['training']);
+  assert.deepEqual(visibleRoutes(h), ['management', 'training']);
+  assert.match(cardMarkup(h, 'management'), /disabled/);
+  assert.match(cardMarkup(h, 'training'), /disabled/);
+  assert.match(h.ui.moduleCards(), /<strong>Gestão<\/strong>/);
   assert.match(h.ui.moduleCards(), /<strong>Desempenho<\/strong>/);
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
   for (const permission of ['trainingsRead', 'trainingsManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) {
@@ -154,7 +162,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
   const session = approved({trainingsRead: false, notificationsRead: false, labelsWrite: true});
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['labels', 'training']);
+  assert.deepEqual(visibleRoutes(h), ['labels', 'management', 'training']);
   assert.equal(h.ui.can('trainingsRead'), false);
   assert.equal(h.ui.can('notificationsRead'), false);
   assert.deepEqual(session, before);
@@ -164,6 +172,8 @@ test('administradores preservam os cartões e os controles administrativos exist
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
     assert.deepEqual(visibleRoutes(h), ['events', 'labels', 'management', 'checklist', 'training']);
+    assert.doesNotMatch(cardMarkup(h, 'management'), /disabled/);
+    assert.doesNotMatch(cardMarkup(h, 'training'), /disabled/);
     assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);
     assert.match(h.ui.actionForm('training'), /id="training-catalog-form"/);
     assert.match(h.ui.actionForm('notifications'), /data-module-form="notifications"/);
@@ -186,20 +196,22 @@ test('o acesso comum aos cartões exige sessão aprovada e ambos os indicadores 
   for (const session of sessions) assert.deepEqual(visibleRoutes(harness({session})), [], JSON.stringify(session));
 });
 
-test('desativar módulos globalmente continua ocultando os cartões para comuns e administradores', () => {
-  for (const session of [approved(), approved({}, 'administrador_app')]) {
-    const h = harness({session, appFeatures: {trainings: false, notifications: false}});
-    const routes = visibleRoutes(h);
-    assert.equal(routes.includes('training'), false);
-    assert.equal(routes.includes('notifications'), false);
-  }
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), []);
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['training']);
+test('Gestão e Desempenho continuam visíveis e inativos para comuns com as flags desligadas', () => {
+  const common = harness({session: approved(), appFeatures: {management: false, trainings: false, notifications: false}});
+  assert.deepEqual(visibleRoutes(common), ['management', 'training']);
+  assert.match(cardMarkup(common, 'management'), /disabled/);
+  assert.match(cardMarkup(common, 'training'), /disabled/);
+  assert.equal(visibleRoutes(common).includes('notifications'), false);
+  const admin = harness({session: approved({}, 'administrador_app'), appFeatures: {management: false, trainings: false, notifications: false}});
+  assert.equal(visibleRoutes(admin).includes('training'), false);
+  assert.equal(visibleRoutes(admin).includes('notifications'), false);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), ['management', 'training']);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['management', 'training']);
 });
 
 test('permissões de leitura existentes permitem consultar sem mostrar formulários de gestão', () => {
   const h = harness({session: approved({trainingsRead: true, notificationsRead: true})});
-  assert.deepEqual(visibleRoutes(h), ['training']);
+  assert.deepEqual(visibleRoutes(h), ['management', 'training']);
   assert.equal(h.ui.can('trainingsRead'), true);
   assert.equal(h.ui.can('notificationsRead'), true);
   assert.equal(h.ui.can('trainingsManage'), false);

@@ -542,16 +542,21 @@ function loginView() {
 
 function moduleCards() {
   const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], occurrences: ['occurrencesRead','occurrencesWrite','occurrencesAuditRead'], people: ['peopleManage'], admin: ['usersManage']};
-  const commonModules = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true ? ['training', 'notifications'] : [];
+  const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
+  const commonModules = commonUserActive ? ['management', 'training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
   return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences'].includes(route)
     && (route === 'notifications' ? commonModules.includes(route) : commonModules.includes(route) || permissionFor[route]?.some(can))
-    && (route === 'notifications' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
+    && (route === 'notifications' || (commonUserActive && !can('admin') && ['management', 'training'].includes(route)) || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
       ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
-      : `<button class="module-card" data-route="${route}">
+      : (() => {
+        const lockedForCommonUser = commonUserActive && !can('admin') && ['management', 'training'].includes(route);
+        const lockedAttributes = lockedForCommonUser ? ' disabled aria-disabled="true" class="module-card module-card--inactive" title="Aguardando liberação do administrador"' : ' class="module-card"';
+        return `<button${lockedAttributes} data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
-    <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
-  </button>`).join('');
+    <span><strong>${title}</strong><small>${lockedForCommonUser ? 'Aguardando liberação do administrador' : subtitle}</small></span>${lockedForCommonUser ? '' : '<span class="arrow" aria-hidden="true">›</span>'}
+  </button>`;
+      })()).join('');
 }
 
 function hasOccurrencePermission() {
