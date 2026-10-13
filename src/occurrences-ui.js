@@ -1,7 +1,19 @@
-import {OCCURRENCE_FORMS, OCCURRENCE_GROUPS, OCCURRENCE_PENDING_FORM, getOccurrenceForm, validateOccurrenceValues} from './occurrence-schema.js';
+import {OCCURRENCE_GROUPS, getOccurrenceForm, validateOccurrenceValues} from './occurrence-schema.js';
 import {createOccurrenceRepository} from './occurrence-data.js';
 
-const FORM_ORDER = Object.freeze({A:['F01','F02','PENDING_ONCOLOGY','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
+const FORM_ORDER = Object.freeze({A:['F01','F02','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
+const ICONS = Object.freeze({
+  care:'<path d="M12 3 20 6v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="M12 8v8M8 12h8"/>',
+  ethics:'<path d="M12 3v17M7 21h10M5 7h14M5 7l-3 7h6zM19 7l-3 7h6z"/>',
+  privacy:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>',
+  checklist:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M8 10l1 1 2-2M13 10h3M8 16l1 1 2-2M13 16h3"/>',
+  medication:'<path d="m9 5 10 10M5 9l4-4a5 5 0 0 1 7 7l-4 4a5 5 0 0 1-7-7z"/>',
+  equipment:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M6 11h3l2-4 3 7 2-3h2"/>',
+  supplies:'<path d="m3 7 9-4 9 4v11l-9 4-9-4zM3 7l9 4 9-4M12 11v11M7 5l9 4"/>',
+  fall:'<circle cx="15" cy="4" r="2"/><path d="m13 8-4 3-5-1M13 8l4 4h4M13 8l-1 7-5 5M12 15l5 5"/>'
+});
+const FORM_ICONS=Object.freeze({F01:'medication',F02:'medication',F03:'care',F04:'care',F05:'fall',F06:'equipment',F07:'supplies',F08:'ethics',F09:'privacy',F10:'checklist'});
+const iconMarkup = key => `<svg class="occurrence-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[key]}</svg>`;
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const dayLocal = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; };
 const fieldLabel = item => `${escape(item.label)}${item.required ? ' *' : ''}`;
@@ -12,15 +24,15 @@ export function occurrenceModuleAccess(permissions = {}) {
 }
 
 export function occurrenceGroupMarkup() {
-  return OCCURRENCE_GROUPS.map(group => `<button type="button" class="occurrence-group" data-occurrence-group="${group.id}" aria-haspopup="dialog"><span>${escape(group.title)}</span><span class="occurrence-group__arrow" aria-hidden="true">›</span></button>`).join('');
+  const icons={A:'care',B:'ethics',C:'privacy',D:'checklist'};
+  return OCCURRENCE_GROUPS.map(group => `<button type="button" class="occurrence-group" data-occurrence-group="${group.id}" aria-haspopup="dialog">${iconMarkup(icons[group.id])}<span class="occurrence-button-label">${escape(group.title.toLocaleUpperCase('pt-BR'))}</span><span class="occurrence-group__arrow" aria-hidden="true">›</span></button>`).join('');
 }
 
 export function occurrenceCategoryMarkup(groupId,{canWrite=true}={}) {
   const group=OCCURRENCE_GROUPS.find(item=>item.id===groupId);
   if(!group)return '';
-  return `<dialog class="occurrence-dialog occurrence-category-dialog" aria-labelledby="occurrence-category-title"><div class="occurrence-dialog__form"><header class="occurrence-dialog__header"><p class="eyebrow">REGISTRO DE OCORRÊNCIA</p><h3 id="occurrence-category-title" tabindex="-1" autofocus>${escape(group.title)}</h3></header><div class="occurrence-dialog__body"><div class="occurrence-group__items">${FORM_ORDER[group.id].map(id => {
-    if (id === 'PENDING_ONCOLOGY') return `<button type="button" class="occurrence-form-launch occurrence-form-launch--pending" disabled><span>${escape(OCCURRENCE_PENDING_FORM.label)}</span><small>${escape(OCCURRENCE_PENDING_FORM.status)}</small></button>`;
-    const form=getOccurrenceForm(id); return `<button type="button" class="occurrence-form-launch" data-occurrence-form="${id}" ${canWrite?'':'disabled'}><span>${escape(form.title)}</span><small>${canWrite?'Formulário de Registro':'Sem autorização para registrar'}</small></button>`;
+  return `<dialog class="occurrence-dialog occurrence-category-dialog" aria-labelledby="occurrence-category-title"><div class="occurrence-dialog__form"><header class="occurrence-dialog__header"><h3 id="occurrence-category-title" tabindex="-1" autofocus>${escape(group.title.toLocaleUpperCase('pt-BR'))}</h3></header><div class="occurrence-dialog__body"><div class="occurrence-group__items" style="--occurrence-options:${FORM_ORDER[group.id].length}">${FORM_ORDER[group.id].map(id => {
+    const form=getOccurrenceForm(id); return `<button type="button" class="occurrence-form-launch" data-occurrence-form="${id}" ${canWrite?'':'disabled'}>${iconMarkup(FORM_ICONS[id])}<span class="occurrence-button-label">${escape(form.title.toLocaleUpperCase('pt-BR'))}</span></button>`;
   }).join('')}</div><p class="occurrence-category-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer occurrence-dialog__footer--single"><button type="button" class="secondary-button" data-occurrence-group-cancel>VOLTAR</button></footer></div></dialog>`;
 }
 
@@ -47,7 +59,7 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
   const classification=form.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${form.classification.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
   const details=form.fields.filter(item=>!generalIds.has(item.id));
   const additional=details.length?`<section class="occurrence-form-section"><h4>Dados do formulário</h4><div class="occurrence-form-grid">${details.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
-  return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><p class="eyebrow">REGISTRO DE OCORRÊNCIA</p><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title)}</h3></header><div class="occurrence-dialog__body">${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
+  return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title.toLocaleUpperCase('pt-BR'))}</h3></header><div class="occurrence-dialog__body">${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
 }
 
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID()}={}) {
