@@ -204,7 +204,9 @@ function managementDocumentSaver(db, uid) {
     get: ref => transaction.get(ref), set: (ref, value) => transaction.set(ref, sdkValue(value)),
     update: (ref, value) => transaction.update(ref, sdkValue(value))
   }));
-  const ctx = {db, authModule: {auth}, doc, getDocFromServer, runTransaction: sdkTransaction, serverTimestamp, crypto: {randomUUID},
+  const ctx = {db, identityDb:db, managementDatabase:async()=>db, managementProfileCollection:()=> 'users',
+    managementProfileData:(_database,snapshot)=>snapshot.exists()?snapshot.data():null,
+    authModule: {auth}, doc, getDocFromServer, runTransaction: sdkTransaction, serverTimestamp, crypto: {randomUUID},
     DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks,
     normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite, normalizeDriveDocumentUrl};
   vm.createContext(ctx); vm.runInContext(access + saving + reconciliation, ctx);
