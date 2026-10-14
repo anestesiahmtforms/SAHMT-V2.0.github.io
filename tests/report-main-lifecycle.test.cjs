@@ -158,8 +158,8 @@ async function signatureHarness() {
   h.next({records:stations,truncated:false},{sourceKey:'catalog'});h.next(result);await open;
   const scope=h.subscriptions[0].scope;
   h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Responsável fictício'}});
-  const small=()=>({isConnected:true,disabled:false,textContent:'',innerHTML:'',focus(){},querySelector:()=>null,addEventListener(){}});
-  for(const selector of ['#checklist-signature-prepare','#checklist-signature-status','#checklist-signature-preview','#checklist-responsible-name','#checklist-confirmation-title']) h.nodes.set(selector,small());
+  const small=()=>({isConnected:true,disabled:false,textContent:'',innerHTML:'',focus(){},replaceChildren(){this.innerHTML='';},querySelector:()=>null,addEventListener(){}});
+  for(const selector of ['#checklist-signature-prepare','#checklist-signature-status','#checklist-signature-preview','#checklist-responsible-name','#checklist-preceptor-name','#checklist-confirmation-title']) h.nodes.set(selector,small());
   const dialog=small();dialog.open=false;dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};h.nodes.set('#checklist-confirmation-dialog',dialog);
   const content=h.nodes.get('#module-content');content.querySelector=selector=>h.nodes.get(selector)||null;content.querySelectorAll=()=>[];
   Object.assign(h.ctx,{checklistDayMode:()=> 'today', stationIsInDateRange:()=>true,stationIsValidOn:()=>true,summarizeChecklistDay:()=>({}),resolveChecklistDayRecord:()=>null,sortChecklistStationsForDisplay:value=>[...value],
