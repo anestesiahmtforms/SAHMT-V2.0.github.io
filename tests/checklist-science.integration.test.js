@@ -22,6 +22,7 @@ test('ciência isolada usa consultas e commits Firestore reais no emulador, pres
  const pending=h.ctx.listPendingChecklistScienceRequests_(h.ctx.checklistScienceAssertOperator_().activatedAt);
  assert.deepEqual(JSON.parse(JSON.stringify(pending)),[{id}]);
  assert.equal(h.ctx.validateChecklistSignatureRequest_({id},{scienceOnly:true}),'VALIDATED');
+ assert.equal(h.ctx.evaluationDrainChecklistDeliveries_({scienceOnly:true}).delivered,1);
  assert.equal(h.get('checklistSignatureRequests',id).pointsAwarded,1);
  assert.equal(h.get('checklistSignatureRequests',id).responsibleAdjustment,-1);
  const before=h.values('evaluationLedger').length;
