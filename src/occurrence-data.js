@@ -63,7 +63,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (catalogCache?.uid === uid) return catalogCache.value;
     let snapshot;
     try { snapshot = await api.getDocFromServer(api.doc(db, CATALOGS, 'current')); }
-    catch { throw new Error('OCCURRENCE_CATALOG_UNAVAILABLE'); }
+    catch (error) { throw new Error(error?.code === 'permission-denied'
+      ? 'OCCURRENCE_CATALOG_PERMISSION_DENIED' : 'OCCURRENCE_CATALOG_UNAVAILABLE'); }
     if (!snapshot?.exists?.()) throw new Error('OCCURRENCE_CATALOG_UNAVAILABLE');
     const value = validateOccurrenceCatalogDocument(snapshot.data());
     if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');

@@ -62,6 +62,29 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
   return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title.toLocaleUpperCase('pt-BR'))}</h3></header><div class="occurrence-dialog__body">${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
 }
 
+const recoverableCatalogErrors = new Set(['OCCURRENCE_SESSION_INVALID', 'OCCURRENCE_PERMISSION_DENIED',
+  'OCCURRENCE_AUTHORIZATION_UNAVAILABLE', 'OCCURRENCE_CATALOG_UNAVAILABLE', 'OCCURRENCE_CATALOG_PERMISSION_DENIED']);
+
+export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent,reconnect}={}) {
+  try { return await repository.loadCatalog({uid}); }
+  catch (error) {
+    if (!recoverableCatalogErrors.has(error?.message) || !isCurrent()) throw error;
+    const result=await reconnect();
+    if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    if (result?.targets?.FC?.status!=='ready') throw new Error('OCCURRENCE_FC_CONNECTION_UNAVAILABLE');
+    return repository.loadCatalog({uid});
+  }
+}
+
+export function occurrenceCatalogErrorMessage(error) {
+  if (error?.message==='OCCURRENCE_PERMISSION_DENIED'||error?.message==='OCCURRENCE_CATALOG_PERMISSION_DENIED')
+    return 'A sessão FC não recebeu a permissão para ler o catálogo. Entre novamente no app.';
+  if (error?.message==='OCCURRENCE_FC_CONNECTION_UNAVAILABLE'||error?.message==='OCCURRENCE_SESSION_INVALID')
+    return 'Não foi possível conectar sua sessão ao FC. Tente abrir o formulário novamente.';
+  if (error?.message==='OCCURRENCE_CATALOG_INVALID') return 'O catálogo do FC está em formato inválido. Avise a administração.';
+  return 'Não foi possível ler o catálogo do FC agora. Tente novamente.';
+}
+
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID()}={}) {
   const access=occurrenceModuleAccess(permissions);
   if(!access.any||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
@@ -92,7 +115,13 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(categoryStatus)categoryStatus.textContent='Carregando…';
     const categoryBack=direct?null:categoryHost.querySelector('[data-occurrence-group-cancel]');
     if(categoryBack)categoryBack.disabled=true;
-    try {catalogs=(await repository.loadCatalog({uid})).catalogs;} catch {if(isCurrent()&&categoryStatus)categoryStatus.textContent='O catálogo privado ainda não está disponível no Firestore FC.';return;}
+    try {
+      catalogs=(await loadOccurrenceCatalogForSession({repository,uid,isCurrent,reconnect:async()=>{
+        if(categoryStatus)categoryStatus.textContent='Reconectando ao FC…';
+        const {getFirebaseProjectAuthOptIn}=await import('./firebase-project-auth-browser.js');
+        return getFirebaseProjectAuthOptIn().connect(['FC']);
+      }})).catalogs;
+    } catch(error) {if(isCurrent()&&categoryStatus)categoryStatus.textContent=occurrenceCatalogErrorMessage(error);return;}
     finally {loading=false;if(categoryBack)categoryBack.disabled=false;}
     if(!isCurrent()||(!direct&&!categoryDialog?.open))return;
     if(categoryStatus)categoryStatus.textContent='';

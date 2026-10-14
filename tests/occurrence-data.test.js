@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createOccurrenceRepository} from '../src/occurrence-data.js';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 
-function harness({claims={}, failTransaction=false, current=true}={}) {
+function harness({claims={}, failTransaction=false, failCatalogRead=false, current=true}={}) {
   const store = new Map(), calls=[];
   const db={projectId:'indicadores---sahmt'};
   const user={uid:'uid-synthetic',async getIdTokenResult(force){calls.push(['token',force]);return {claims:{firebase:{sign_in_provider:'custom'},sahmtFaSourceProjectId:'sahmt-17a16',...claims}};}};
@@ -14,7 +14,10 @@ function harness({claims={}, failTransaction=false, current=true}={}) {
     orderBy:(field,direction)=>({field,direction}), limit:value=>({limit:value}),
     query:(collection,...args)=>({collection,...Object.assign({},...args)}),
     serverTimestamp:()=>({syntheticServerTimestamp:true}),
-    getDocFromServer:async ref=>({exists:()=>store.has(ref.path),data:()=>store.get(ref.path)}),
+    getDocFromServer:async ref=>{
+      if(failCatalogRead)throw Object.assign(new Error('private Firestore response'),{code:'permission-denied'});
+      return {exists:()=>store.has(ref.path),data:()=>store.get(ref.path)};
+    },
     getDocsFromServer:async()=>({docs:[]}),
     runTransaction:async(_db,work)=>{
       if(failTransaction) throw Object.assign(new Error('private document content'),{code:'permission-denied'});
@@ -38,6 +41,11 @@ test('nega catálogo e escrita sem claims emitidos pelo servidor para o FA e FC'
   await assert.rejects(repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_PERMISSION_DENIED'});
   await assert.rejects(repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});
   assert.equal(calls.filter(([name])=>name==='token').length,2);
+});
+
+test('falha de permissão no Firestore FC recebe código distinto de catálogo ausente',async()=>{
+  const {repository}=harness({claims:allClaims,failCatalogRead:true});
+  await assert.rejects(repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_CATALOG_PERMISSION_DENIED'});
 });
 
 test('grava relatório anonimizado, auditoria restrita e claim pendente em um commit idempotente', async()=>{

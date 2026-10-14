@@ -1,7 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
-import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess} from '../src/occurrences-ui.js';
+import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage} from '../src/occurrences-ui.js';
+
+test('catálogo reconecta uma vez ao FC quando a sessão está sem autorização',async()=>{
+  let reads=0,connects=0;
+  const result=await loadOccurrenceCatalogForSession({uid:'synthetic',isCurrent:()=>true,
+    repository:{loadCatalog:async()=>{if(++reads===1)throw Error('OCCURRENCE_PERMISSION_DENIED');return {catalogs:{ok:[]}};}},
+    reconnect:async()=>{connects++;return {targets:{FC:{status:'ready'}}};}});
+  assert.equal(reads,2);assert.equal(connects,1);assert.deepEqual(result,{catalogs:{ok:[]}});
+});
+
+test('catálogo não reconecta após troca de usuário e não mascara falha de vínculo',async()=>{
+  let connects=0;
+  await assert.rejects(loadOccurrenceCatalogForSession({uid:'synthetic',isCurrent:()=>false,
+    repository:{loadCatalog:async()=>{throw Error('OCCURRENCE_SESSION_INVALID');}},
+    reconnect:async()=>{connects++;return {targets:{FC:{status:'ready'}}};}}),/OCCURRENCE_SESSION_INVALID/);
+  assert.equal(connects,0);
+  await assert.rejects(loadOccurrenceCatalogForSession({uid:'synthetic',isCurrent:()=>true,
+    repository:{loadCatalog:async()=>{throw Error('OCCURRENCE_CATALOG_UNAVAILABLE');}},
+    reconnect:async()=>({targets:{FC:{status:'unavailable'}}})}),/OCCURRENCE_FC_CONNECTION_UNAVAILABLE/);
+  assert.match(occurrenceCatalogErrorMessage(Error('OCCURRENCE_PERMISSION_DENIED')),/permissão/);
+});
 
 test('grupos mostram os dez formulários e removem o atalho oncológico',()=>{
   const markup=['A','B','C','D'].map(id=>occurrenceCategoryMarkup(id,{canWrite:true})).join('');
