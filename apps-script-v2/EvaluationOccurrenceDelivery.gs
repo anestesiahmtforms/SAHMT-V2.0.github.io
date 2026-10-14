@@ -17,9 +17,18 @@ function evaluationOccurrenceEvidence_(report, audit, claim) {
 function evaluationOccurrenceEnabled_() {
   return evaluationProject_() === SAHMT_EVALUATION_FB && sahmtV2Properties_().getProperty('SAHMT_V2_OCCURRENCE_SCORING_ENABLED') === 'true';
 }
-function evaluationDeliverOccurrence_(reportId, expectedUid) {
+function evaluationOccurrenceAssertOperator_() {
   if (!evaluationOccurrenceEnabled_()) throw new Error('OCCURRENCE_SCORING_DISABLED');
-  evaluationAssertOperator_(true);
+  // Occurrence awards are independent of the Forms evaluation rollout. The
+  // destination still requires an explicit server-side approval marker.
+  evaluationAssertOperator_(false);
+  const runtime = evaluationGet_('evaluationRuntime', 'state');
+  if (!runtime || runtime.occurrenceScoringApproved !== true ||
+      !Number.isInteger(runtime.performanceRevision) || runtime.performanceRevision < 0)
+    throw new Error('OCCURRENCE_SCORING_NOT_APPROVED');
+}
+function evaluationDeliverOccurrence_(reportId, expectedUid) {
+  evaluationOccurrenceAssertOperator_();
   if (!/^[A-Fa-f0-9-]{36}$/.test(reportId || '')) throw new Error('OCCURRENCE_SCORE_ID_INVALID');
   const receiptId = 'fc-occurrence-' + sha256Hex_(reportId);
   const result = evaluationRunTransaction_(function (transaction) {
@@ -68,7 +77,7 @@ function evaluationDeliverOccurrence_(reportId, expectedUid) {
 /** Bounded recovery tool only. Does not install a timer or scan report contents. */
 function recuperarPontuacoesOcorrenciasFbV1() {
   if (!evaluationOccurrenceEnabled_()) return {code: 'OCCURRENCE_SCORING_DISABLED', delivered: 0, pending: 0};
-  evaluationAssertOperator_(true);
+  evaluationOccurrenceAssertOperator_();
   const claims = evaluationQuery_('occurrenceScoreClaims', [firestoreFilter_('status', 'EQUAL', {stringValue: 'PENDING_VALIDATION'})], [], 20, ['id']);
   const result = {code: 'OCCURRENCE_SCORE_RECOVERY', delivered: 0, pending: 0};
   claims.forEach(function (claim) { try { evaluationDeliverOccurrence_(claim.id); result.delivered++; } catch (_) { result.pending++; } });

@@ -3,6 +3,7 @@ import {harness} from './evaluation-fb-harness.js';
 const ID='12345678-1234-1234-1234-123456789abc';
 function setup({anonymous=false}={}) {
  const h=harness();h.properties.set('SAHMT_V2_OCCURRENCE_SCORING_ENABLED','true');const createdAt=new Date('2026-10-03T12:00:00Z');
+ h.seed('evaluationRuntime','state',{homologationVerified:false,occurrenceScoringApproved:true,performanceRevision:0,performanceDirty:true});
  h.seed('users','fixture',{uid:'fixture',active:true,access:true});
  h.seed('occurrenceReports',ID,{schemaVersion:1,id:ID,formId:'F03',anonymous,pointsClaimed:2,pointsStatus:'PENDING_VALIDATION',createdAt,description:'NARRATIVE_NOT_TO_COPY'});
  h.seed('occurrenceAudit',ID,{schemaVersion:1,reportId:ID,uid:'fixture',formId:'F03',anonymous,createdAt});
@@ -23,6 +24,12 @@ test('anonymous occurrence retains its label/privacy and same private two-point 
  assert.equal('uid' in h.data('occurrenceReports',ID),false);
 });
 test('no scoring when flag is off',()=>{const h=setup();h.properties.delete('SAHMT_V2_OCCURRENCE_SCORING_ENABLED');const before=h.requests.length;assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID),/DISABLED/);assert.equal(h.requests.length,before);});
+test('occurrence approval is independent of general Forms activation and fails closed without marker',()=>{
+ const h=setup();h.properties.delete('SAHMT_V2_EVALUATION_ENABLED');h.properties.delete('SAHMT_V2_EVALUATION_HOMOLOGATED');
+ h.ctx.evaluationDeliverOccurrence_(ID);assert.equal(h.values('evaluationLedger').length,1);
+ const denied=setup();denied.seed('evaluationRuntime','state',{homologationVerified:true,performanceRevision:0});
+ assert.throws(()=>denied.ctx.evaluationDeliverOccurrence_(ID),/NOT_APPROVED/);assert.equal(denied.values('evaluationLedger').length,0);
+});
 test('forged amount, owner, pairing or timestamps cannot generate a credit',()=>{
  for(const [collection,patch] of [['occurrenceScoreClaims',{points:20}],['occurrenceAudit',{uid:'other'}],['occurrenceReports',{formId:'F10'}],['occurrenceAudit',{createdAt:new Date('2026-10-03T11:00:00Z')}],['users',{active:false}]]){
   const h=setup(),id=collection==='users'?'fixture':ID;h.seed(collection,id,{...h.get(collection,id),...patch});assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID));assert.equal(h.values('evaluationLedger').length,0);
