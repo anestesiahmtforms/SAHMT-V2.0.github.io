@@ -1794,6 +1794,15 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  box-sizing:border-box;width:min(94vw,520px);height:fit-content;max-height:calc(90dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
  position:fixed;inset:0;min-height:0;margin:auto;padding:14px;border:2px solid #fff;border-radius:18px;background:#edf4f6;color:#173957;overflow:auto;overscroll-behavior:contain
 }
+.checklist-confirmation-footer>.checklist-confirmation-actions>.checklist-confirmation-button--scheduled{
+ background:linear-gradient(145deg,#37b777,#147343);color:#fff;opacity:1;cursor:default;box-shadow:0 3px 0 #0c5130
+}
+.checklist-confirmation-footer>.checklist-confirmation-actions>.checklist-confirmation-button--alternate{
+ background:linear-gradient(145deg,#ffe29a,#e9b737);color:#302407;opacity:1;cursor:default;box-shadow:0 3px 0 #a97f16
+}
+.checklist-confirmation-footer>.checklist-confirmation-actions>.checklist-confirmation-button--recorded{opacity:1;cursor:default}
+#checklist-conference-signer{display:block;margin-top:6px;font-size:.95rem;font-weight:800;line-height:1.25;text-transform:none;overflow-wrap:anywhere}
+#checklist-conference-signer[hidden]{display:none}
 .checklist-confirmation-dialog[open]{display:grid;align-content:start;gap:10px}
 .checklist-confirmation-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
 .checklist-confirmation-dialog>header{display:flex;justify-content:center;align-items:center;gap:8px}

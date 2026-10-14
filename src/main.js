@@ -145,6 +145,7 @@ let checklistCatalogLive = null;
 let checklistModuleStations = [];
 let checklistResponsibilityLive = null;
 let checklistRotationLive = null;
+let checklistConferenceLive = null;
 let suspendedReportScopes = [];
 const reportPermissions = {
   events: ['eventsRead', 'eventsWrite'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
@@ -256,7 +257,7 @@ function closeReportLive(kind, reason = 'close') {
   const waiter = reportWaiters.get(kind); if (waiter) settleReportWaiter(kind, waiter.key, false);
   if (kind === 'labels') { loadedLabelRecords = []; if (reason === 'close') document.querySelector('#label-report-results')?.replaceChildren(); }
   if (kind === 'events') { loadedEventReportRecords = []; eventReportSourceRecords = []; if (reason === 'close') document.querySelector('#event-report-results')?.replaceChildren(); }
-  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; checklistRotationLive = null; }
+  if (kind === 'checklist') { checklistReportContext = null; checklistResponsibilityLive = null; checklistRotationLive = null; checklistConferenceLive = null; }
 }
 function invalidateChecklistSignature(message) {
   const dialog = document.querySelector('#checklist-confirmation-dialog');
@@ -273,9 +274,15 @@ function invalidateChecklistSignature(message) {
 function checklistSignatureCurrent(scope, fingerprint) {
   const state = liveReports.get('checklist')?.snapshot();
   const result = reportPayloads.get('checklist')?.report;
-  return reportScopeCurrent(scope) && state?.confirmed && !result?.truncated && !result?.historyIncomplete && !result?.localPending &&
+  return !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
+    reportScopeCurrent(scope) && state?.confirmed && !result?.truncated && !result?.historyIncomplete && !result?.localPending &&
     !reportPayloads.get('checklist')?.catalog?.truncated &&
     checklistReportContext?.fingerprint === fingerprint && can('checklistSign') && scope.day === todayInputValue() && navigator.onLine;
+}
+function checklistConferenceCanOpen(scope) {
+  const conference = checklistConferenceLive?.key === scope.key ? checklistConferenceLive : null;
+  return conference?.ready === true && !conference.confirmation && !conference.error &&
+    !conference.fromCache && !conference.hasPendingWrites;
 }
 function updateChecklistResponsibilityUI() {
   const state = reportStates.get('checklist'), scope = state?.scope;
@@ -289,7 +296,21 @@ function updateChecklistResponsibilityUI() {
       : rotation?.ready || rotation?.error ? (rotation.reason || 'Escalado indisponível para esta data.') : 'Consultando escala…';
   }
   const prepare = document.querySelector('#checklist-signature-prepare');
-  if (prepare) prepare.disabled = !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
+  const conference = checklistConferenceLive?.key === scope.key ? checklistConferenceLive : null;
+  const confirmation = conference?.confirmation;
+  const signer = document.querySelector('#checklist-conference-signer');
+  if (signer) { signer.textContent = confirmation?.signerName || ''; signer.hidden = !confirmation; }
+  if (prepare) {
+    prepare.classList?.toggle('checklist-confirmation-button--scheduled', confirmation?.kind === 'scheduled');
+    prepare.classList?.toggle('checklist-confirmation-button--alternate', confirmation?.kind === 'alternate');
+    prepare.classList?.toggle('checklist-confirmation-button--recorded', confirmation?.kind === 'recorded');
+    prepare.disabled = !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
+    if (confirmation) prepare.title = 'Conferência registrada por ' + confirmation.signerName;
+  }
+  if (confirmation) {
+    const dialog = document.querySelector('#checklist-confirmation-dialog');
+    if (dialog?.open) dialog.close();
+  }
 }
 async function subscribeLiveReport(kind, scope, callbacks) {
   if (kind === 'events' || kind === 'labels') {
@@ -302,14 +323,26 @@ async function subscribeLiveReport(kind, scope, callbacks) {
     import('./report-live-data.js'), import('./checklist-report-listener.js'), import('./outbox.js')
   ]);
   if (!callbacks.isCurrent()) return () => {};
-  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, sequence = 0, idsKey = null;
+  let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, conferenceStop = null, sequence = 0, idsKey = null;
   const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
   const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
   let catalogServerSeen = false, writtenCatalog = '', catalogWriteSequence = 0;
   const current = () => !stopped && callbacks.isCurrent();
-  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
+  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); conferenceStop?.(); };
   const error = failure => { if (current()) { stop(); callbacks.error(failure); } };
   if (scope.mode === 'daily') {
+    void import('./checklist-conference-listener.js').then(module => current()
+      ? module.watchChecklistConference({...scope, ownSigla: session.profile?.sigla, readSignatures: can('checklistRead')}, payload => {
+        if (!current()) return;
+        checklistConferenceLive = {...payload, key: scope.key};
+        updateChecklistResponsibilityUI();
+      }) : null).then(unsubscribe => {
+        if (!current()) unsubscribe?.(); else conferenceStop = unsubscribe;
+      }).catch(error => {
+        if (!current()) return;
+        checklistConferenceLive = {key: scope.key, ready: true, error};
+        updateChecklistResponsibilityUI();
+      });
     // Rotation is schedule information; it never authorizes a signature.
     void import('./checklist-rotation-listener.js').then(module => current() ? module.watchChecklistRotation(scope, payload => {
       if (!current()) return;
@@ -1768,7 +1801,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
     const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
-    const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>ESCALADO</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><div class="checklist-confirmation-actions"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled>CONFERÊNCIA DO PRECEPTOR</button></div></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">CONFERÊNCIA DO PRECEPTOR</h3></header><p class="checklist-preceptor-name"><strong id="checklist-preceptor-name"></strong></p><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div><footer class="checklist-confirmation-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit">VOLTAR</button></form></footer></dialog>`;
+    const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>ESCALADO</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><div class="checklist-confirmation-actions"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>CONFERÊNCIA DO PRECEPTOR</span><strong id="checklist-conference-signer" hidden></strong></button></div></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">CONFERÊNCIA DO PRECEPTOR</h3></header><p class="checklist-preceptor-name"><strong id="checklist-preceptor-name"></strong></p><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div><footer class="checklist-confirmation-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit">VOLTAR</button></form></footer></dialog>`;
     reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
       if (!reportScopeCurrent(scope)) return;
@@ -1784,7 +1817,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
     const prepareChecklistConfirmation = async () => {
-      if (!canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint)) return;
+      if (!canPrepareSignature || !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, fingerprint)) return;
       const signerName = session.profile?.displayName || '';
       content.querySelector('#checklist-preceptor-name').textContent = signerName || 'Nome de perfil indisponível';
       if (!confirmationDialog.open) confirmationDialog.showModal();
@@ -1847,8 +1880,12 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
               signerName, rotationSigla: rotation?.sigla || null, rotationPosition: rotation?.position ?? null});
             if (!previewCurrent()) return;
+            const sigla = String(session.profile?.sigla || '').trim().toUpperCase();
+            checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,
+              confirmation: {signerName, kind: sigla && rotation?.sigla ? (sigla === rotation.sigla ? 'scheduled' : 'alternate') : 'recorded', validated: false}};
             status.textContent = 'Conferência do preceptor registrada.';
             confirmationDialog.close();
+            updateChecklistResponsibilityUI();
             await loadDailyChecklist(stations, day);
           } catch (error) {
             if (!previewCurrent()) return;
@@ -4569,7 +4606,7 @@ function sessionChanged(next) {
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (userChanged || next.status !== 'signed-in') {
-    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistRotationLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
+    startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistRotationLive = null; checklistConferenceLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
     for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
   }
   if (next.status !== 'signed-in' || userChanged) {

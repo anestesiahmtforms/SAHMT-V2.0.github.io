@@ -43,7 +43,7 @@ async function harness({kind='events',pendingRead}={}) {
   ctx.can=permission=>ctx.session.status==='signed-in'&&ctx.session.profile.active!==false&&ctx.session.profile.access!==false&&ctx.session.profile.permissions?.[permission]===true;
   let helpers=source.slice(source.indexOf('// Report state is transient'),source.indexOf('const preloadedDataUsers ='));
   helpers=helpers.replace('subscribe: subscribeLiveReport,','subscribe: fakeSubscribe,');
-  vm.runInContext(helpers+'\nglobalThis.testReports={liveReports,reportStates,reportPayloads,reportWaiters,reportPaintKeys,setContext:value=>checklistReportContext=value,setResponsibility:value=>checklistResponsibilityLive=value,getContext:()=>checklistReportContext};',ctx);
+  vm.runInContext(helpers+'\nglobalThis.testReports={liveReports,reportStates,reportPayloads,reportWaiters,reportPaintKeys,setContext:value=>checklistReportContext=value,setResponsibility:value=>checklistResponsibilityLive=value,getContext:()=>checklistReportContext,setConference:value=>checklistConferenceLive=value};',ctx);
   const sessions=source.slice(source.indexOf('function sessionChanged('),source.indexOf("window.addEventListener('hashchange'"));
   vm.runInContext(sessions.replaceAll("await import('./data-lite.js')",'mockLite'),ctx);
   const next=(data,{index=subscriptions.length-1,sourceKey='report',...metadata}={})=>subscriptions[index].hooks.next(sourceKey,{data,complete:true,fromCache:false,hasPendingWrites:false,...metadata});
@@ -158,6 +158,7 @@ async function signatureHarness() {
   h.next({records:stations,truncated:false},{sourceKey:'catalog'});h.next(result);await open;
   const scope=h.subscriptions[0].scope;
   h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Responsável fictício'}});
+  h.ctx.testReports.setConference({key:scope.key,ready:true,fromCache:false,hasPendingWrites:false,confirmation:null});
   const small=()=>({isConnected:true,disabled:false,textContent:'',innerHTML:'',focus(){},replaceChildren(){this.innerHTML='';},querySelector:()=>null,addEventListener(){}});
   for(const selector of ['#checklist-signature-prepare','#checklist-signature-status','#checklist-signature-preview','#checklist-responsible-name','#checklist-preceptor-name','#checklist-confirmation-title']) h.nodes.set(selector,small());
   const dialog=small();dialog.open=false;dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};h.nodes.set('#checklist-confirmation-dialog',dialog);
@@ -183,6 +184,19 @@ test('integração main: preview sem ownership não substitui rascunho mesmo na 
   h.dialog._checklistSignatureRequest={};h.preview.innerHTML='Rascunho da consulta nova';h.status.textContent='Consulta nova';
   h.waiting.resolve({requestStatus:'PENDING_VALIDATION'});await pending;
   assert.equal(h.preview.innerHTML,'Rascunho da consulta nova');assert.equal(h.status.textContent,'Consulta nova');h.close();
+});
+
+test('conferência concluída pinta o botão, mantém o nome e impede reabrir o modal',async()=>{
+  for(const kind of ['scheduled','alternate']) {
+    const h=await signatureHarness(),classes=new Set();
+    h.prepare.classList={toggle:(name,enabled)=>enabled?classes.add(name):classes.delete(name)};
+    const name={textContent:'',hidden:true};h.nodes.set('#checklist-conference-signer',name);
+    h.ctx.testReports.setConference({key:h.scope.key,ready:true,fromCache:false,confirmation:{kind,signerName:'Nome registrado'}});
+    h.ctx.updateChecklistResponsibilityUI();
+    assert.equal(h.prepare.disabled,true);assert.equal(name.textContent,'Nome registrado');assert.equal(name.hidden,false);
+    assert.equal(classes.has('checklist-confirmation-button--'+kind),true);
+    await h.prepare.onclick();assert.equal(h.dialog.open,false);h.close();
+  }
 });
 
 function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {

@@ -10,7 +10,7 @@ const sources=readdirSync(new URL('../apps-script-v2/',import.meta.url)).filter(
   .map(name=>({name,source:readFileSync(new URL('../apps-script-v2/'+name,import.meta.url),'utf8')}));
 const helper=readFileSync(new URL('../apps-script/ManagementMigrationInventory.gs',import.meta.url),'utf8');
 const reviewedFixture=JSON.parse(readFileSync(new URL('./fixtures/legacy-inventory-reviewed-functions.json',import.meta.url),'utf8'));
-const fixtureModule=name=>name==='evaluationPublishCategorySummary_'?'EvaluationLedger.gs':'ChecklistValidation.gs';
+const fixtureModule=name=>reviewedFixture.functions.find(row=>row.name===name)?.module || (name==='evaluationPublishCategorySummary_'?'EvaluationLedger.gs':'ChecklistValidation.gs');
 const forbidden=()=>{throw Error('SYNTHETIC_FORBIDDEN_SIDE_EFFECT');};
 const trigger=(handler,source='CLOCK',event='CLOCK')=>({getHandlerFunction:()=>handler,getTriggerSource:()=>source,
   getEventType:()=>event,getUniqueId:forbidden,getTriggerSourceId:forbidden});
@@ -52,8 +52,8 @@ function zeroEffects(h,result) {
 
 test('legacy fixture bodies match the unchanged operational review hashes',()=>{
   const h=harness();const rows=h.context.SAHMT_MIGRATION_INVENTORY_REVIEW_.functions;
-  assert.equal(reviewedFixture.functions.length,4);
-  assert.equal(new Set(reviewedFixture.functions.map(row=>row.name)).size,4);
+  assert.equal(reviewedFixture.functions.length,7);
+  assert.equal(new Set(reviewedFixture.functions.map(row=>row.name)).size,7);
   for(const row of reviewedFixture.functions) {
     const pinned=rows.find(candidate=>candidate.name===row.name);
     assert.ok(pinned,row.name);
@@ -63,11 +63,11 @@ test('legacy fixture bodies match the unchanged operational review hashes',()=>{
   }
 });
 
-test('current Checklist science source fails closed against the legacy review',()=>{
+test('current Checklist and event-driven reporting source fails closed against the legacy review',()=>{
   const h=harness({useReviewedFixture:false});const result=h.run();
   assert.equal(result.status,'INVENTORY_REQUIRES_REVIEW');
   assert.equal(result.knownSourceCoverageVerified,false);assert.equal(result.writerState,'UNKNOWN');
-  assert.equal(result.sourceVerification.changedFunctionCount,4);
+  assert.equal(result.sourceVerification.changedFunctionCount,7);
   assert.ok(result.blockers.includes('MMI_SOURCE_NOT_PINNED_TO_REVIEW'));
   zeroEffects(h,result);
 });

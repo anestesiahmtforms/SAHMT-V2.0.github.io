@@ -67,13 +67,13 @@ test('rodapé separa rodízio da escala do botão de confirmação, e revisão f
  const footer=source.match(/<footer class="checklist-confirmation-footer">([\s\S]*?)<\/footer>/)?.[1];
  assert.ok(footer);
  assert.equal((footer.match(/<button\b/g)||[]).length,1);
- assert.match(footer,/<div class="checklist-rotation-summary"><span>ESCALADO<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><div class="checklist-confirmation-actions"><button\b[^>]*id="checklist-signature-prepare"[^>]*>CONFERÊNCIA DO PRECEPTOR<\/button><\/div>/);
+ assert.match(footer,/<div class="checklist-rotation-summary"><span>ESCALADO<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><div class="checklist-confirmation-actions"><button\b[^>]*id="checklist-signature-prepare"[^>]*><span>CONFERÊNCIA DO PRECEPTOR<\/span><strong id="checklist-conference-signer" hidden><\/strong><\/button><\/div>/);
  assert.doesNotMatch(footer,/checklist-signature-status|checklist-signature-preview|Revisar e assinar|Assinatura do responsável/);
  assert.match(source,/confirmationDialog\.showModal\(\)/);
  assert.doesNotMatch(source,/CHECAGEM SEM PENDÊNCIAS|CHECAGEM COM PENDÊNCIAS|checklist-pending-prepare|checklist-signature-declaration/);
  assert.match(source,/checklist-preceptor-name'\)\.textContent = signerName/);
  assert.match(source,/Arsenais ativos conferidos, e situações não conformes encaminhadas/);
- assert.match(source,/prepare\.disabled = !checklistSignatureCurrent\(scope, checklistReportContext\?\.fingerprint\)/);
+ assert.match(source,/prepare\.disabled = !checklistConferenceCanOpen\(scope\) \|\| !checklistSignatureCurrent\(scope, checklistReportContext\?\.fingerprint\)/);
  assert.doesNotMatch(source,/selected\.position !== 1|posição efetiva 1 do dia/);
  assert.doesNotMatch(source,/pendingJustification|checklistOutcome/);
  assert.doesNotMatch(source,/A ciência registra a leitura destas informações|Não declara execução das verificações/);
