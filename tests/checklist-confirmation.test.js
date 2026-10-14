@@ -66,14 +66,14 @@ test('rodapé separa rodízio da escala do botão de confirmação, e revisão f
  const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  const footer=source.match(/<footer class="checklist-confirmation-footer">([\s\S]*?)<\/footer>/)?.[1];
  assert.ok(footer);
- assert.equal((footer.match(/<button\b/g)||[]).length,2);
- assert.match(footer,/<div class="checklist-rotation-summary"><span>Rodízio da escala<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><div class="checklist-confirmation-actions"><button\b[^>]*id="checklist-signature-prepare"[^>]*>CHECAGEM SEM PENDÊNCIAS<\/button><button\b[^>]*id="checklist-pending-prepare"[^>]*>CHECAGEM COM PENDÊNCIAS<\/button><\/div>/);
+ assert.equal((footer.match(/<button\b/g)||[]).length,1);
+ assert.match(footer,/<div class="checklist-rotation-summary"><span>ESCALADO<\/span><strong id="checklist-rotation-name"[^>]*>[^<]*<\/strong><\/div><div class="checklist-confirmation-actions"><button\b[^>]*id="checklist-signature-prepare"[^>]*>CONFERÊNCIA DO PRECEPTOR<\/button><\/div>/);
  assert.doesNotMatch(footer,/checklist-signature-status|checklist-signature-preview|Revisar e assinar|Assinatura do responsável/);
  assert.match(source,/confirmationDialog\.showModal\(\)/);
- assert.match(source,/ENVIAR CIÊNCIA DAS PENDÊNCIAS/);
- assert.match(source,/CHECAGEM SEM PENDÊNCIAS/);
- assert.match(source,/Esta checagem registra ciência de que houve pendências na conferência do Arsenal/);
- assert.match(source,/preparePending\.disabled = !checklistSignatureCurrent\(scope, checklistReportContext\?\.fingerprint\)/);
+ assert.doesNotMatch(source,/CHECAGEM SEM PENDÊNCIAS|CHECAGEM COM PENDÊNCIAS|checklist-pending-prepare|checklist-signature-declaration/);
+ assert.match(source,/checklist-preceptor-name'\)\.textContent = signerName/);
+ assert.match(source,/Arsenais ativos conferidos, e situações não conformes encaminhadas/);
+ assert.match(source,/prepare\.disabled = !checklistSignatureCurrent\(scope, checklistReportContext\?\.fingerprint\)/);
  assert.doesNotMatch(source,/selected\.position !== 1|posição efetiva 1 do dia/);
  assert.doesNotMatch(source,/pendingJustification|checklistOutcome/);
  assert.doesNotMatch(source,/A ciência registra a leitura destas informações|Não declara execução das verificações/);
@@ -93,7 +93,7 @@ test('relatório diário tem Voltar no final do modal, sem botão de fechar no c
  assert.ok(dialog.indexOf('class="checklist-report-footer"') > dialog.indexOf('class="module-content checklist-report-content"'));
 });
 
-test('modal da ciência mantém Voltar no rodapé, centralizado e com altura ajustada ao conteúdo',()=>{
+test('modal do preceptor mantém Voltar no rodapé, centralizado e com altura ajustada ao conteúdo',()=>{
  const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  const markup=source.match(/<dialog class="checklist-confirmation-dialog"[\s\S]*?<\/dialog>/)?.[0];
  assert.ok(markup);assert.doesNotMatch(markup.match(/<header[\s\S]*?<\/header>/)?.[0]||'',/<button/);

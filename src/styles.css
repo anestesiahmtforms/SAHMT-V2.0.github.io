@@ -1784,16 +1784,15 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .checklist-rotation-summary{display:grid;justify-items:center;gap:2px;padding:5px 8px;margin:0 0 5px;text-align:center;color:#173957;font-size:clamp(.68rem,2.4vw,.84rem);line-height:1.2}
 .checklist-rotation-summary>span{font-weight:700}
 .checklist-rotation-summary>strong{max-width:100%;overflow-wrap:anywhere}
-.checklist-confirmation-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-width:620px;margin-inline:auto}
+.checklist-confirmation-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;max-width:520px;margin-inline:auto}
 .checklist-confirmation-footer>.checklist-confirmation-actions>.checklist-confirmation-button{
  display:grid;place-items:center;width:100%;min-width:0;min-height:62px;margin:0;padding:7px 8px;border:2px solid #fff;border-radius:14px;
  background:linear-gradient(145deg,#2a8bcc,#0d3257);color:#fff;box-shadow:0 3px 0 #092743;
  font-size:clamp(.68rem,2.5vw,.88rem);font-weight:950;line-height:1.2;text-align:center;text-transform:uppercase
 }
-.checklist-confirmation-actions>.checklist-confirmation-button--pending{background:linear-gradient(145deg,#ad6220,#71421e)}
 .checklist-confirmation-dialog{
  box-sizing:border-box;width:min(94vw,520px);height:fit-content;max-height:calc(90dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
- margin:auto;padding:14px;border:2px solid #fff;border-radius:18px;background:#edf4f6;color:#173957;overflow:auto;overscroll-behavior:contain
+ position:fixed;inset:0;min-height:0;margin:auto;padding:14px;border:2px solid #fff;border-radius:18px;background:#edf4f6;color:#173957;overflow:auto;overscroll-behavior:contain
 }
 .checklist-confirmation-dialog[open]{display:grid;align-content:start;gap:10px}
 .checklist-confirmation-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
@@ -1803,7 +1802,10 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .checklist-confirmation-dialog #checklist-signature-preview{max-height:none;overflow:visible}
 .checklist-confirmation-dialog .checklist-signature-review{display:grid;gap:10px}
 .checklist-confirmation-dialog .checklist-signature-review p{margin:0;font-size:.8rem;line-height:1.35}
-.checklist-confirmation-dialog .checklist-declaration{margin:0}
+.checklist-confirmation-dialog .checklist-preceptor-name{margin:0;text-align:center;font-size:1.05rem;line-height:1.35;overflow-wrap:anywhere}
+.checklist-confirmation-dialog #checklist-signature-status{margin:0;text-align:center}
+.checklist-confirmation-dialog #checklist-signature-status:empty{display:none}
+.checklist-confirmation-dialog #checklist-signature-confirm{width:100%;min-height:56px;padding:12px;text-align:center;white-space:normal;line-height:1.35;text-transform:none}
 .checklist-confirmation-dialog__footer{margin:0;padding-top:2px}
 .checklist-confirmation-dialog__footer form{margin:0}
 .checklist-confirmation-dialog__footer button{display:block;width:100%;min-height:40px;padding:6px 10px;border:1px solid #b8cbd3;border-radius:11px;background:#fff;color:#173957;font-weight:900}
