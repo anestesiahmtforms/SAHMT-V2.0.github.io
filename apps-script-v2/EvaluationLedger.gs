@@ -2,7 +2,7 @@
  * Legacy scores are imported only through the verified FB delivery adapter. */
 const SAHMT_V2_EVALUATION_LEDGER = Object.freeze({maxWrites: 450, maxUsers: 400, maxAwards: 10000, maxAttempts: 4});
 
-// The operational database and identity authority remain FA. No global Config switch.
+// FA remains the identity and operational authority. Management scoring lives in FB.
 const SAHMT_EVALUATION_FB = 'sahmt-gestao-5ae66';
 const SAHMT_EVALUATION_FC = 'indicadores---sahmt';
 const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
@@ -15,9 +15,11 @@ const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
 const SAHMT_EVALUATION_TRANSACTIONS = new Map();
 function evaluationProject_() {
   const configured = sahmtV2Properties_().getProperty('SAHMT_V2_EVALUATION_PROJECT_ID');
-  if (!configured || configured === SAHMT_V2_CONFIG.projectId) return SAHMT_V2_CONFIG.projectId;
-  if (configured !== SAHMT_EVALUATION_FB) throw new Error('EVALUATION_PROJECT_INVALID');
-  return configured;
+  if (configured && configured !== SAHMT_V2_CONFIG.projectId && configured !== SAHMT_EVALUATION_FB)
+    throw new Error('EVALUATION_PROJECT_INVALID');
+  // This release makes FB authoritative even when an old FA property remains.
+  // Rollback uses the previous Apps Script deployment version and preserves both ledgers.
+  return SAHMT_EVALUATION_FB;
 }
 function evaluationCollectionProject_(collectionId) {
   if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_EVALUATION_FC;

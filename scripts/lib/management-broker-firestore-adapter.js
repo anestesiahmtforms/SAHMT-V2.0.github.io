@@ -8,7 +8,7 @@ const operations = Object.freeze({readFaAuthorization: FA, readFbLease: FB, writ
 const minimumReads = Object.freeze({readFaAuthorization: 1, readFbLease: 1, writeFbLease: 2, invalidateFbLease: 2});
 const permissions = ['admin','managementRead','managementManage','managementActivityWrite','managementIndicatorsRead',
   'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsRead','trainingsManage',
-  'financeRead','financeWrite','financeManage'];
+  'financeRead','financeWrite','financeManage','notificationsRead','notificationsManage'];
 const leaseKeys = ['schemaVersion','sourceProjectId','destinationProjectId','faUid','fbUid','memberId','leaseVersion','grantId',
   'sourceVersion','policyVersion','sourceHash','active','revoked','managementAllowed','role','permissions','memberAreaIds',
   'managerAreaIds','documentGroups','sourceAuthValidAfterTimeMs','confirmedAtMs','validUntilMs'];
@@ -115,13 +115,15 @@ function policySnapshot(supplied) {
     && budget.operationReadBounds[operation]+budget.applicationReserveReads+budget.metricLagReserveReads < budget.dailyLimits[operations[operation]],'FIRESTORE_READ_BOUND_INVALID');
   return policy;
 }
+
+const noticePermissionKeys=['notificationsRead','notificationsManage'];
+const permissionShape=value=>plain(value)&&Object.keys(value).every(k=>permissions.includes(k)&&typeof value[k]==='boolean')&&permissions.every(k=>noticePermissionKeys.includes(k)?value[k]===undefined||typeof value[k]==='boolean':typeof value[k]==='boolean');
 function validateLease(data,uid,policy,live = false,time = 0) {
   need(exact(data,leaseKeys) && data.schemaVersion === 1 && data.sourceProjectId === FA && data.destinationProjectId === FB
     && data.faUid === uid && data.fbUid === uid && id(data.memberId) && integer(data.leaseVersion,1)
     && id(data.grantId,100) && integer(data.sourceVersion,1) && id(data.policyVersion,100) && hash(data.sourceHash)
     && typeof data.active === 'boolean' && typeof data.revoked === 'boolean' && typeof data.managementAllowed === 'boolean'
-    && typeof data.role === 'string' && data.role.length <= 100 && exact(data.permissions,permissions)
-    && permissions.every(key => typeof data.permissions[key] === 'boolean')
+    && typeof data.role === 'string' && data.role.length <= 100 && permissionShape(data.permissions)
     && integer(data.sourceAuthValidAfterTimeMs) && integer(data.confirmedAtMs,1) && integer(data.validUntilMs,1)
     && data.validUntilMs >= data.confirmedAtMs && data.validUntilMs-data.confirmedAtMs <= policy.leaseMaxDurationMs,'FIRESTORE_LEASE_INVALID');
   for (const key of ['memberAreaIds','managerAreaIds']) need(Array.isArray(data[key]) && data[key].length <= 1000
@@ -309,7 +311,7 @@ export function createManagementBrokerFirestoreAdapter({enabled = false,fetchImp
       && data.validUntilMs-data.confirmedAtMs <= policy.sourceMaxLeaseMs && integer(data.sourceAuthValidAfterTimeMs),'FA_SOURCE_CONTEXT_INVALID');
     const profile=data.profile;need(exact(profile,['uid','memberId','active','access','role','permissions']) && profile.uid === request.uid
       && id(profile.memberId) && profile.active === true && profile.access === true && typeof profile.role === 'string' && profile.role.length <= 100
-      && exact(profile.permissions,permissions) && permissions.every(key=>typeof profile.permissions[key] === 'boolean'),'FA_SOURCE_PROFILE_INVALID');
+      && permissionShape(profile.permissions),'FA_SOURCE_PROFILE_INVALID');
     if(data.binding!==null)need(exact(data.binding,['sourceProjectId','destinationProjectId','faUid','fbUid','memberId']) && data.binding.sourceProjectId === FA
       && data.binding.destinationProjectId === FB && data.binding.faUid === request.uid && data.binding.fbUid === request.uid
       && data.binding.memberId === profile.memberId,'FA_SOURCE_BINDING_INVALID');

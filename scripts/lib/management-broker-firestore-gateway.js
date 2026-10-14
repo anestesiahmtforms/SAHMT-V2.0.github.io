@@ -10,7 +10,7 @@ const projects=Object.freeze({readFaAuthorization:FA,readFbLease:FB,writeFbLease
 const minima={readFaAuthorization:1,readFbLease:1,writeFbLease:2,invalidateFbLease:2};
 const ops=Object.keys(projects), mutates=op=>['writeFbLease','invalidateFbLease'].includes(op);
 const permissionKeys=['admin','managementRead','managementManage','managementActivityWrite','managementIndicatorsRead',
-  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsRead','trainingsManage','financeRead','financeWrite','financeManage'];
+  'managementIndicatorsWrite','managementPlansManage','documentsManage','equipmentManage','qualityManage','trainingsRead','trainingsManage','financeRead','financeWrite','financeManage','notificationsRead','notificationsManage'];
 const leaseKeys=['schemaVersion','sourceProjectId','destinationProjectId','faUid','fbUid','memberId','leaseVersion','grantId',
   'sourceVersion','policyVersion','sourceHash','active','revoked','managementAllowed','role','permissions','memberAreaIds','managerAreaIds',
   'documentGroups','sourceAuthValidAfterTimeMs','confirmedAtMs','validUntilMs'];
@@ -56,11 +56,14 @@ function policyCopy(value){
     &&typeof p.enabledOperations[op]==='boolean','FIRESTORE_GATEWAY_POLICY_INVALID');
   return freeze(p);
 }
+
+const noticePermissionKeys=['notificationsRead','notificationsManage'];
+const permissionShape=value=>plain(value)&&Object.keys(value).every(k=>permissionKeys.includes(k)&&typeof value[k]==='boolean')&&permissionKeys.every(k=>noticePermissionKeys.includes(k)?value[k]===undefined||typeof value[k]==='boolean':typeof value[k]==='boolean');
 function validateLease(v,uid,p,live,time){
   need(exact(v,leaseKeys)&&v.schemaVersion===1&&v.sourceProjectId===FA&&v.destinationProjectId===FB&&v.faUid===uid&&v.fbUid===uid
     &&id(v.memberId,200)&&integer(v.leaseVersion,1)&&id(v.grantId,100)&&integer(v.sourceVersion,1)&&id(v.policyVersion,100)&&hex(v.sourceHash,64)
     &&['active','revoked','managementAllowed'].every(k=>typeof v[k]==='boolean')&&typeof v.role==='string'&&v.role.length<=100
-    &&exact(v.permissions,permissionKeys)&&permissionKeys.every(k=>typeof v.permissions[k]==='boolean')
+    &&permissionShape(v.permissions)
     &&integer(v.sourceAuthValidAfterTimeMs)&&integer(v.confirmedAtMs,1)&&integer(v.validUntilMs,1)&&v.validUntilMs>=v.confirmedAtMs
     &&v.validUntilMs-v.confirmedAtMs<=p.leaseMaxDurationMs,'FIRESTORE_GATEWAY_LEASE_INVALID');
   for(const k of ['memberAreaIds','managerAreaIds'])need(Array.isArray(v[k])&&v[k].length<=1000&&v[k].every(x=>id(x,200))&&new Set(v[k]).size===v[k].length,'FIRESTORE_GATEWAY_LEASE_INVALID');
@@ -88,7 +91,7 @@ function validateResult(body,request,p,time){
       &&body.authUser.disabled===false&&body.authUser.emailVerified===true&&id(body.authUser.googleUid)&&integer(body.authUser.tokensValidAfterTimeMs),'FIRESTORE_GATEWAY_SOURCE_INVALID');
     const profile=body.profile;need(exact(profile,['uid','memberId','active','access','role','permissions'])&&profile.uid===uid&&id(profile.memberId,200)
       &&profile.active===true&&profile.access===true&&typeof profile.role==='string'&&profile.role.length<=100
-      &&plain(profile.permissions)&&permissionKeys.every(k=>typeof profile.permissions[k]==='boolean')
+      &&plain(profile.permissions)&&permissionKeys.every(k=>noticePermissionKeys.includes(k)?profile.permissions[k]===undefined||typeof profile.permissions[k]==='boolean':typeof profile.permissions[k]==='boolean')
       &&Object.keys(profile.permissions).every(k=>[...permissionKeys,'occurrencesRead','occurrencesAuditRead'].includes(k)
         &&typeof profile.permissions[k]==='boolean'),'FIRESTORE_GATEWAY_SOURCE_INVALID');
     if(body.binding!==null)need(exact(body.binding,['sourceProjectId','destinationProjectId','faUid','fbUid','memberId'])&&body.binding.sourceProjectId===FA

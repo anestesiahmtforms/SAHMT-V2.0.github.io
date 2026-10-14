@@ -55,14 +55,15 @@ service cloud.firestore {
           'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
           'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsRead', 'trainingsManage',
           'financeRead', 'financeWrite', 'financeManage'
-        ]) &&
+        , 'notificationsRead', 'notificationsManage']) &&
         data.permissions.admin is bool && data.permissions.managementRead is bool &&
         data.permissions.managementManage is bool && data.permissions.managementActivityWrite is bool &&
         data.permissions.managementIndicatorsRead is bool && data.permissions.managementIndicatorsWrite is bool &&
         data.permissions.managementPlansManage is bool && data.permissions.documentsManage is bool &&
         data.permissions.equipmentManage is bool && data.permissions.qualityManage is bool &&
         data.permissions.trainingsRead is bool && data.permissions.trainingsManage is bool && data.permissions.financeRead is bool &&
-        data.permissions.financeWrite is bool && data.permissions.financeManage is bool;
+        data.permissions.financeWrite is bool && data.permissions.financeManage is bool &&
+        data.permissions.get('notificationsRead', false) is bool && data.permissions.get('notificationsManage', false) is bool;
     }
     function validManagementLease(data) {
       return leaseFields(data) && data.schemaVersion is int && data.schemaVersion == 1 &&
@@ -931,6 +932,41 @@ service cloud.firestore {
         request.resource.data.managementAreaId == get(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.managementAreaId);
       allow update: if managementDomainEnabled() && (can('equipmentManage') && validMaintenanceTransition(recordId));
       allow delete: if managementDomainEnabled() && (false);
+    }
+
+
+    function noticeCanRead() { return profile().permissions.get('notificationsRead',false) == true || profile().permissions.get('notificationsManage',false) == true; }
+    function noticeCanManage() { return profile().permissions.get('notificationsManage',false) == true; }
+    function noticeAreaMatches(data) {
+      let p=/databases/$(database)/documents/managementAreas/$(data.audienceValue);
+      return data.audienceType == 'MANAGEMENT_AREA' && exists(p) && get(p).data.active == true &&
+        (get(p).data.memberUids.hasAny([request.auth.uid]) || get(p).data.managerUids.hasAny([request.auth.uid]));
+    }
+    match /notifications/{noticeId} {
+      function validNotice(data) {
+        return data.keys().hasAll(['id','title','message','type','audienceType','audienceValue','createdAt','createdByUid','updatedAt','updatedByUid','startAt','endAt','active','priority','actionRoute','version']) &&
+          data.keys().hasOnly(['id','title','message','type','audienceType','audienceValue','createdAt','createdByUid','updatedAt','updatedByUid','startAt','endAt','active','priority','actionRoute','version']) &&
+          data.id == noticeId && data.title is string && data.title.size()>0 && data.title.size()<=120 && data.message is string && data.message.size()>0 && data.message.size()<=1200 &&
+          data.type in ['INFO','WARNING','ACTION'] && data.audienceType == 'MANAGEMENT_AREA' && identifier(data.audienceValue,128) &&
+          exists(/databases/$(database)/documents/managementAreas/$(data.audienceValue)) &&
+          data.createdAt is timestamp && data.updatedAt == request.time && data.updatedByUid == request.auth.uid && data.createdByUid is string &&
+          data.startAt is timestamp && data.endAt is timestamp && data.endAt>=data.startAt && data.active is bool && data.priority is int && data.priority>=0 && data.priority<=5 &&
+          data.actionRoute in ['', 'home','events','labels','management','checklist','training','people','admin'] && data.version is int && data.version>0;
+      }
+      allow read: if managementDomainEnabled() && (noticeCanManage() || noticeCanRead() && resource.data.active == true && noticeAreaMatches(resource.data));
+      allow create: if managementDomainEnabled() && noticeCanManage() && validNotice(request.resource.data) && request.resource.data.createdByUid==request.auth.uid && request.resource.data.createdAt==request.time;
+      allow update: if managementDomainEnabled() && noticeCanManage() && validNotice(request.resource.data) && request.resource.data.createdByUid==resource.data.createdByUid && request.resource.data.createdAt==resource.data.createdAt && request.resource.data.version==resource.data.version+1;
+      allow delete: if false;
+    }
+    match /notificationReceipts/{uid}/reads/{noticeId} {
+      allow read: if managementDomainEnabled() && request.auth.uid==uid && noticeCanRead();
+      allow create: if managementDomainEnabled() && request.auth.uid==uid && noticeCanRead() &&
+        request.resource.data.keys().hasOnly(['id','notificationId','uid','readAt']) &&
+        request.resource.data.id==noticeId && request.resource.data.notificationId==noticeId && request.resource.data.uid==uid && request.resource.data.readAt==request.time &&
+        exists(/databases/$(database)/documents/notifications/$(noticeId)) &&
+        get(/databases/$(database)/documents/notifications/$(noticeId)).data.active == true &&
+        (noticeCanManage() || noticeAreaMatches(get(/databases/$(database)/documents/notifications/$(noticeId)).data));
+      allow update,delete: if false;
     }
 
     match /{document=**} {

@@ -1,3 +1,4 @@
+import {notificationReference, mergeNotificationDomains} from './notification-domain.js';
 import {managementDataProject, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
@@ -189,12 +190,34 @@ export async function saveAppFeatures(input, actorUid) {
   return features;
 }
 
-export async function listNotifications(profile, {pageSize = 100, canManage = false} = {}) {
+export async function listNotifications(profile, options = {}) {
+  return mergeNotificationDomains({enabled:managementDataProject==='FB',pageSize:options.pageSize,
+    fa:()=>listIdentityNotifications(profile,options),fb:()=>listManagementNotifications(profile,options)});
+}
+async function listManagementNotifications(profile,{pageSize=100}={}) {
+  if(!profile?.uid)return [];
+  const db=await managementDatabase(profile.uid), lease=await getDocFromServer(doc(db,'managementAuthorizationLeases',profile.uid));
+  const access=lease.exists()?lease.data():null;
+  if(!access||access.permissions?.notificationsRead!==true&&access.permissions?.notificationsManage!==true)return [];
+  const manage=access.permissions.notificationsManage===true;
+  const relations=manage?[]:await Promise.all(['memberUids','managerUids'].map(field=>getDocsFromServer(query(collection(db,'managementAreas'),where('active','==',true),where(field,'array-contains',profile.uid),limit(26)))));
+  if(relations.some(result=>result.size>25))throw Error('NOTIFICATION_AREA_COVERAGE_EXCEEDED');
+  const areas=[...new Set(relations.flatMap(result=>result.docs.map(item=>item.id)))];
+  if(!manage&&!areas.length)return [];
+  const batches=manage?[null]:Array.from({length:Math.ceil(areas.length/5)},(_,i)=>areas.slice(i*5,i*5+5));
+  const now=Timestamp.now();const snapshots=await Promise.all(batches.map(ids=>getDocsFromServer(query(collection(db,'notifications'),
+    where('audienceType','==','MANAGEMENT_AREA'),where('active','==',true),where('startAt','<=',now),where('endAt','>=',now),
+    ...(ids?[where('audienceValue','in',ids)]:[]),orderBy('priority','desc'),limit(Math.min(100,Math.max(1,pageSize)))))));
+  const records=[...new Map(snapshots.flatMap(snap=>snap.docs.map(item=>[item.id,{id:item.id,...item.data()}]))).values()];
+  const reads=await Promise.all(records.map(item=>getDocFromServer(doc(db,'notificationReceipts',profile.uid,'reads',item.id))));
+  return records.map((item,i)=>({...item,read:reads[i].exists()}));
+}
+async function listIdentityNotifications(profile, {pageSize = 100, canManage = false} = {}) {
   const uid = profile?.uid;
   if (!uid) return [];
   const now = Timestamp.now();
   if (canManage) {
-    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
+    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), ...(managementDataProject==='FB'?[where('audienceType','in',['ALL','USER','ROLE','SIGLA','GROUP'])]:[]), where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
     const nowMs = now.toMillis();
     return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).filter((item) => {
       const start = typeof item.startAt?.toMillis === 'function' ? item.startAt.toMillis() : new Date(item.startAt).getTime();
@@ -203,8 +226,8 @@ export async function listNotifications(profile, {pageSize = 100, canManage = fa
     });
   }
   const [memberAreas, managedAreas, groups] = await Promise.all([
-    getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50))),
-    getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('managerUids', 'array-contains', uid), limit(50))),
+    managementDataProject==='FB'?Promise.resolve({docs:[]}):getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50))),
+    managementDataProject==='FB'?Promise.resolve({docs:[]}):getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('managerUids', 'array-contains', uid), limit(50))),
     getDocsFromServer(query(collection(db, 'notificationGroups'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50)))
   ]);
   const targets = new Map();
@@ -250,7 +273,11 @@ export async function listNotifications(profile, {pageSize = 100, canManage = fa
 
 export async function markNotificationRead(notificationId, uid) {
   if (!notificationId || !uid) throw new Error('Comunicado ou usuário inválido.');
-  const ref = doc(db, 'users', uid, 'notificationReads', notificationId);
+  const reference=notificationReference(notificationId);
+  if(reference.target==='FB'&&managementDataProject!=='FB')throw Error('NOTIFICATION_DESTINATION_DISABLED');
+  notificationId=reference.id;
+  const target=reference.target==='FB'?await managementDatabase(uid):db;
+  const ref = reference.target==='FB'?doc(target,'notificationReceipts',uid,'reads',notificationId):doc(target, 'users', uid, 'notificationReads', notificationId);
   try {
     await setDoc(ref, {id: notificationId, notificationId, uid, readAt: serverTimestamp()});
     return true;
@@ -277,7 +304,8 @@ export async function createNotification(input, uid) {
     throw new Error('Confira título, mensagem, público, datas e prioridade.');
   }
   const id = crypto.randomUUID();
-  await setDoc(doc(db, 'notifications', id), {
+  const target=managementDataProject==='FB'&&audienceType==='MANAGEMENT_AREA'?await managementDatabase(uid):db;
+  await setDoc(doc(target, 'notifications', id), {
     id, title, message, type: String(input.type || 'INFO'), audienceType,
     audienceValue: audienceType === 'ALL' ? '' : audienceValue,
     createdAt: serverTimestamp(), createdByUid: uid,

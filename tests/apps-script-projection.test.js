@@ -7,6 +7,7 @@ const source = readFileSync(new URL('../apps-script-v2/Config.gs', import.meta.u
 const syncSource = readFileSync(new URL('../apps-script-v2/SparkReportSync.gs', import.meta.url), 'utf8');
 const context = vm.createContext({encodeURIComponent});
 vm.runInContext(source, context);
+vm.runInContext(readFileSync(new URL('../apps-script-v2/EvaluationLedger.gs',import.meta.url),'utf8'),context);
 vm.runInContext(syncSource, context);
 
 test('scanner Spark seleciona somente os campos da projeção de relatório', () => {
@@ -33,4 +34,16 @@ test('scanner Spark seleciona somente os campos da projeção de relatório', ()
 
   assert.equal(Object.hasOwn(projections, 'users'), false);
   assert.equal(Object.hasOwn(projections, 'labels'), false);
+});
+
+test('manual recovery routes domain to FB while retaining operational FA and isolated cursors',()=>{
+ const props=new Map([['SAHMT_V2_EVALUATION_PROJECT_ID','sahmt-gestao-5ae66']]);
+ const c=vm.createContext({encodeURIComponent});
+ for(const f of ['Config.gs','EvaluationLedger.gs','SparkReportSync.gs'])vm.runInContext(readFileSync(new URL('../apps-script-v2/'+f,import.meta.url),'utf8'),c);
+ c.sahmtV2Properties_=()=>({getProperty:k=>props.get(k)||null,setProperty:(k,v)=>props.set(k,v)});
+ c.firestoreFieldsToJs_=f=>f;const urls=[];c.firestoreRequest_=(url)=>{urls.push(url);return [];};
+ for(const type of ['events','trainings'])c.listSparkReportChanges_({type,changedAt:'updatedAt'},1);
+ assert.ok(urls[0].includes("/projects/sahmt-17a16/"));assert.ok(urls[1].includes("/projects/sahmt-gestao-5ae66/"));
+ c.saveSparkReportCursor_({type:'trainings'},{_cursorTimestamp:'2026-01-01T00:00:00Z',_cursorName:'projects/sahmt-gestao-5ae66\/databases/(default)/documents/trainings/synthetic'});
+ assert.ok(props.has('SAHMT_V2_SPARK_REPORT_CURSOR_FB_trainings'));assert.ok(!props.has('SAHMT_V2_SPARK_REPORT_CURSOR_trainings'));
 });

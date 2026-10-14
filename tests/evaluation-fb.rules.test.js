@@ -200,3 +200,20 @@ test('revocation and cutoff block all migrated domain writes and reads',async()=
  await assertFails(getDocFromServer(doc(dbFor(),'trainings','synthetic-video')));
  await assertFails(updateDoc(doc(dbFor(),'managementAreas','fixture-area'),{managerUids:['member'],version:2,updatedByUid:'member',updatedAt:serverTimestamp()}));
 });
+
+test('area notices require explicit notification permission and live FB area membership',async()=>{
+ await enableManagement();const db=dbFor();
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'notifications','area-notice'),{id:'area-notice',audienceType:'MANAGEMENT_AREA',audienceValue:'fixture-area',active:true}));
+ await assertFails(getDocFromServer(doc(db,'notifications','area-notice')));
+ member.lease.permissions.notificationsRead=true;await seedLease(member);
+ await assertSucceeds(getDocsFromServer(query(collection(db,'notifications'),where('active','==',true),where('audienceType','==','MANAGEMENT_AREA'),where('audienceValue','in',['fixture-area']))));
+ await assertSucceeds(setDoc(doc(db,'notificationReceipts','member','reads','area-notice'),{id:'area-notice',notificationId:'area-notice',uid:'member',readAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(db,'notificationReceipts','other','reads','area-notice'),{id:'area-notice',notificationId:'area-notice',uid:'other',readAt:serverTimestamp()}));
+ await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'managementAreas','fixture-area'),{memberUids:[]}));
+ await assertFails(getDocFromServer(doc(db,'notifications','area-notice')));
+});
+test('area notice publisher needs notificationsManage; management admin alone is insufficient',async()=>{
+ await enableManagement({managementManage:true,admin:true});const db=dbFor(),ref=doc(db,'notifications','new');
+ const data={id:'new',title:'Notice',message:'Synthetic',type:'INFO',audienceType:'MANAGEMENT_AREA',audienceValue:'fixture-area',createdAt:serverTimestamp(),updatedAt:serverTimestamp(),createdByUid:'member',updatedByUid:'member',startAt:new Date(),endAt:new Date(Date.now()+60000),active:true,priority:1,actionRoute:'management',version:1};
+ await assertFails(setDoc(ref,data));member.lease.permissions.notificationsManage=true;await seedLease(member);await assertSucceeds(setDoc(ref,data));await assertFails(setDoc(doc(db,'notifications','general'),{...data,id:'general',audienceType:'ALL',audienceValue:''}));
+});

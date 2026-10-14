@@ -16,7 +16,7 @@ const permissions = [
   'admin', 'managementRead', 'managementManage', 'managementActivityWrite',
   'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage',
   'documentsManage', 'equipmentManage', 'qualityManage', 'trainingsRead', 'trainingsManage',
-  'financeRead', 'financeWrite', 'financeManage'
+  'financeRead','financeWrite','financeManage','notificationsRead','notificationsManage'
 ];
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const id = (value, max = 200) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\s/\x00-\x1f]/.test(value);
@@ -147,6 +147,7 @@ function validateSource(snapshot, verified, time, policy) {
   const effectivePermissions = {};
   for (const key of permissions) {
     demand(profile.permissions[key] === undefined || typeof profile.permissions[key] === 'boolean', 'FA_PERMISSIONS_INVALID');
+    if (['notificationsRead','notificationsManage'].includes(key) && profile.permissions[key] === undefined) continue;
     effectivePermissions[key] = profile.permissions[key] === true;
   }
   const occurrencePermissions = {};
@@ -181,7 +182,7 @@ function validateSource(snapshot, verified, time, policy) {
   const documentGroups = documentAccess.active ? [...documentAccess.groups].sort() : [];
   // Each destination is authorized below using only its own trusted FA permissions.
   // An FB binding/member record is optional for FC-only sessions.
-  const managementAllowed = Object.values(effectivePermissions).some(value => value)
+  const managementAllowed = Object.entries(effectivePermissions).some(([key,value]) => !['notificationsRead','notificationsManage'].includes(key) && value)
     || memberAreaIds.length > 0 || managerAreaIds.length > 0 || documentGroups.length > 0;
   // An explicit valid binding is honored. When no binding exists, the server
   // still binds by the validated FA UID and the FB Auth UID; the browser cannot

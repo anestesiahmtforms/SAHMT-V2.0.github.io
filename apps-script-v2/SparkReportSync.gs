@@ -133,7 +133,7 @@ function installSahmtV2SparkReportTrigger() {
 function resetSahmtV2SparkReportCursors() {
   const properties = sahmtV2Properties_();
   SAHMT_V2_SPARK_REPORT_SCAN.resources.forEach(function (config) {
-    properties.deleteProperty(SAHMT_V2_SPARK_REPORT_SCAN.cursorPrefix + config.type);
+    properties.deleteProperty(sparkReportCursorKey_(config));
   });
   properties.setProperty(SAHMT_V2_SPARK_REPORT_SCAN.rotationProperty, '0');
   return {reset: true, resources: SAHMT_V2_SPARK_REPORT_SCAN.resources.length};
@@ -149,12 +149,19 @@ function requireSparkReportTabs_(spreadsheet) {
   });
 }
 
+function sparkReportProject_(config) {
+  if (typeof evaluationCollectionProject_ !== 'function') throw new Error('REPORT_ROUTING_UNAVAILABLE');
+  return evaluationCollectionProject_(config.type);
+}
+function sparkReportCursorKey_(config) {
+  return SAHMT_V2_SPARK_REPORT_SCAN.cursorPrefix + (sparkReportProject_(config) === SAHMT_V2_CONFIG.projectId ? '' : 'FB_') + config.type;
+}
 function listSparkReportChanges_(config, limit) {
   const collectionConfig = SAHMT_V2_RESOURCE_TABS[config.type];
   const reportConfig = collectionConfig && SAHMT_V2_REPORT_TABS[collectionConfig];
   if (!reportConfig) throw new Error('Coleção sem projeção de relatório: ' + config.type + '.');
   const properties = sahmtV2Properties_();
-  const saved = properties.getProperty(SAHMT_V2_SPARK_REPORT_SCAN.cursorPrefix + config.type);
+  const saved = properties.getProperty(sparkReportCursorKey_(config));
   const cursor = saved ? JSON.parse(saved) : null;
   const fieldPaths = Array.from(new Set(['id', 'version', config.changedAt].concat(reportConfig.fields.filter(function (field) {
     return !['syncKey', 'resourceType', 'idRegistro'].includes(field);
@@ -168,6 +175,7 @@ function listSparkReportChanges_(config, limit) {
     ],
     limit: limit
   };
+  if (cursor && !String(cursor.name || '').startsWith('projects/' + sparkReportProject_(config) + '/databases/(default)/documents/' + config.type + '/')) throw new Error('REPORT_CURSOR_PROJECT_MISMATCH');
   if (cursor) structured.startAt = {
     before: false,
     values: [
@@ -175,7 +183,7 @@ function listSparkReportChanges_(config, limit) {
       {referenceValue: cursor.name}
     ]
   };
-  const response = firestoreRequest_(firestoreDocumentsUrl_(':runQuery'), {
+  const response = firestoreRequest_(evaluationDocumentsUrl_(':runQuery', sparkReportProject_(config)), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({structuredQuery: structured})
   });
   return (Array.isArray(response) ? response : []).filter(function (item) { return item.document; }).map(function (item) {
@@ -190,7 +198,7 @@ function listSparkReportChanges_(config, limit) {
 
 function saveSparkReportCursor_(config, document) {
   if (!document._cursorTimestamp || !document._cursorName) throw new Error('Documento sem cursor temporal válido: ' + config.type + '/' + document.id + '.');
-  sahmtV2Properties_().setProperty(SAHMT_V2_SPARK_REPORT_SCAN.cursorPrefix + config.type, JSON.stringify({
+  sahmtV2Properties_().setProperty(sparkReportCursorKey_(config), JSON.stringify({
     timestamp: document._cursorTimestamp, name: document._cursorName
   }));
 }

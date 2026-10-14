@@ -1168,3 +1168,11 @@ test('broker accepts explicit measurement age policy at300000 with unchanged fre
   const f=harness({suppliedPolicy:value,overrides:{reserveFirestoreReads:separatedReservationAdapter()}});
   assert.equal((await exchange(f.broker)).ok,true);
 });
+
+test('projection upgrade renews legacy leases and separates domain activation without inventing notice rights',async()=>{
+ let stage=0;const h=harness({overrides:{readFaAuthorization:async()=>{const value=source();value.authorizationVersion=stage===0?7:stage===1?14:15;if(stage===2){value.profile.permissions.notificationsRead=true;value.profile.permissions.notificationsManage=false;}return value;}}});
+ assert.equal((await exchange(h.broker)).ok,true);assert.equal(Object.hasOwn(h.control.stored().permissions,'notificationsRead'),false);
+ stage=1;assert.equal((await exchange(h.broker)).ok,true);assert.equal(h.control.stored().sourceVersion,14);
+ stage=2;assert.equal((await exchange(h.broker)).ok,true);assert.equal(h.control.stored().sourceVersion,15);assert.equal(h.control.stored().permissions.notificationsRead,true);assert.equal(h.control.stored().permissions.notificationsManage,false);
+ assert.equal(h.writes.length,3);
+});

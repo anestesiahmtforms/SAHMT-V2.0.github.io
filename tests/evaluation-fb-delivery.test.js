@@ -17,8 +17,10 @@ function pending(h, {same = false, day = '2026-10-03'} = {}) {
   });
   return {id: h.values('checklistScoreOutbox').at(-1).id, requestId, signature};
 }
-test('default remains FA; invalid project fails closed', () => {
-  const h = harness({project:'FA'}); assert.equal(h.ctx.evaluationProject_(),'sahmt-17a16');
+test('cutover routes scoring to FB even with an old FA property; invalid project fails closed', () => {
+  const h = harness({project:'FA'}); assert.equal(h.ctx.evaluationProject_(),'sahmt-gestao-5ae66');
+  h.properties.set('SAHMT_V2_EVALUATION_PROJECT_ID','sahmt-17a16');
+  assert.equal(h.ctx.evaluationProject_(),'sahmt-gestao-5ae66');
   h.properties.set('SAHMT_V2_EVALUATION_PROJECT_ID','arbitrary'); assert.throws(()=>h.ctx.evaluationProject_(),/PROJECT_INVALID/);
 });
 
@@ -33,7 +35,7 @@ test('all management producers share FB while operational and identity sources s
  for(const collection of ['occurrenceReports','occurrenceAudit','occurrenceScoreClaims'])
  assert.equal(h.ctx.evaluationCollectionProject_(collection),'indicadores---sahmt');
  assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FB');
- h.properties.delete('SAHMT_V2_EVALUATION_PROJECT_ID');assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR');
+ h.properties.delete('SAHMT_V2_EVALUATION_PROJECT_ID');assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FB');
 });
 test('FA evidence/outbox and FB paired scoring are separated and repeatable', () => {
   const h=harness(), e=pending(h);

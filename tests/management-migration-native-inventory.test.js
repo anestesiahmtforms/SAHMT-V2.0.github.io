@@ -72,17 +72,18 @@ test('current Checklist and event-driven reporting source fails closed against t
   zeroEffects(h,result);
 });
 
-test('observes the original reviewed FA producer code without executing any writer',()=>{
+test('observes native triggers but keeps changed operational source unapproved',()=>{
   const h=harness({triggers:[trigger('validatePendingManagementScoreReviews'),trigger('syncSparkReportsPeriodically'),
     trigger('onEvaluationFormSubmit','FORMS','ON_FORM_SUBMIT')]});
-  const result=h.run();assert.equal(result.status,'KNOWN_NATIVE_SOURCE_OBSERVED');
-  assert.equal(result.knownSourceCoverageVerified,true);assert.equal(result.writerState,'RUNNING_FA_ONLY');
+  const result=h.run();assert.equal(result.status,'INVENTORY_REQUIRES_REVIEW');
+  assert.equal(result.knownSourceCoverageVerified,false);assert.equal(result.writerState,'UNKNOWN');
   assert.equal(result.configuredFirestoreProjectId,'sahmt-17a16');assert.equal(result.databaseId,'(default)');
-  assert.match(result.configurationSha256,/^[a-f0-9]{64}$/);assert.match(result.sourceBasisSha256,/^[a-f0-9]{64}$/);
+  assert.equal(result.configurationSha256,null);assert.match(result.sourceBasisSha256,/^[a-f0-9]{64}$/);
   assert.equal(result.sourceVerification.reviewedModuleCount,12);assert.equal(result.sourceVerification.reviewedFunctionCount,228);
-  assert.equal(result.sourceVerification.verifiedFunctionCount,228);assert.deepEqual(result.blockers,[]);
+  assert.equal(result.sourceVerification.verifiedFunctionCount,225);assert.equal(result.sourceVerification.changedFunctionCount,3);
+  assert.deepEqual(result.blockers,['MMI_SOURCE_NOT_PINNED_TO_REVIEW']);
   assert.equal(result.observedAt,new Date(TIME).toISOString());assert.equal(result.native.visibleCurrentUserTriggerCount,3);
-  assert.ok(result.native.knownJobs.every(job=>job.firestoreProjectId==='sahmt-17a16'&&job.potentiallyExecutable===true));
+  assert.ok(result.native.knownJobs.every(job=>job.potentiallyExecutable===true));
   assert.ok(result.native.knownJobs.every(job=>job.executionState==='UNVERIFIED'&&!Object.hasOwn(job,'enabled')));
   assert.equal(result.native.knownJobs.some(job=>job.firestoreProjectId==='sahmt-gestao-5ae66'),false);
   zeroEffects(h,result);assert.equal(h.logs.length,1);assert.deepEqual(JSON.parse(h.logs[0]),result);
@@ -93,7 +94,7 @@ test('never certifies other users, a global inventory or stopped writers from an
   assert.equal(result.scope,'APPS_SCRIPT_CURRENT_PROJECT_ONLY');assert.equal(result.triggerVisibility,'CURRENT_USER_ONLY');
   assert.equal(result.otherTriggerOwnersInventoried,false);assert.equal(result.unknownManualOrSimpleProducersInventoried,false);
   assert.equal(result.globalNativeProducerAbsenceCertified,false);assert.equal(result.destinationNativeTriggersAbsent,false);
-  assert.equal(result.writerState,'RUNNING_FA_ONLY');assert.equal(result.native.knownJobs.length,0);zeroEffects(h,result);
+  assert.equal(result.writerState,'UNKNOWN');assert.equal(result.native.knownJobs.length,0);zeroEffects(h,result);
 });
 
 test('reads only three declared keys and exposes only safe state enums',()=>{
@@ -198,15 +199,18 @@ for(const difference of [-1,30000])test('invalid observation duration remains fa
   assert.ok(result.blockers.includes('MMI_CAPTURE_TIME_INVALID'));zeroEffects(h,result);
 });
 
-test('line-ending normalization preserves identical reviewed source without accepting content changes',()=>{
+test('line-ending normalization preserves the same fail-closed review result',()=>{
+  let digest=null;
   for(const ending of ['\n','\r\n']) {
     const h=harness({changeSource:(_name,source)=>source.replace(/\r\n?/g,'\n').replace(/\n/g,ending)});
-    assert.equal(h.run().knownSourceCoverageVerified,true);
+    const result=h.run();assert.equal(result.knownSourceCoverageVerified,false);
+    assert.ok(result.blockers.includes('MMI_SOURCE_NOT_PINNED_TO_REVIEW'));
+    if(digest!==null)assert.equal(result.sourceBasisSha256,digest);digest=result.sourceBasisSha256;
   }
 });
 
 
 test('native exceptions forged with a helper code cannot leak private provider content',()=>{
   const h=harness({propertyOverrides:{getProperty:()=>{throw Error('MMI_SYNTHETIC_PRIVATE_SECRET');}}});const result=h.run();
-  assert.deepEqual(result.blockers,['MMI_OBSERVATION_UNAVAILABLE']);assert.doesNotMatch(h.logs[0],/MMI_SYNTHETIC_PRIVATE_SECRET/);zeroEffects(h,result);
+  assert.deepEqual(result.blockers,['MMI_OBSERVATION_UNAVAILABLE','MMI_SOURCE_NOT_PINNED_TO_REVIEW']);assert.doesNotMatch(h.logs[0],/MMI_SYNTHETIC_PRIVATE_SECRET/);zeroEffects(h,result);
 });
