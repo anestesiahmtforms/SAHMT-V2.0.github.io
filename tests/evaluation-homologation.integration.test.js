@@ -65,6 +65,7 @@ test('unchanged trusted Apps Script engine reconciles evaluation over REAL Fires
     const snapshot=h.ctx.readTrustedChecklistSnapshot_(day),id=`${day}_${snapshot.fingerprint}_${manager}`;
     h.seed('checklistSignatureRequests',id,{id,day,revision:snapshot.fingerprint,signerUid:manager,declaration:true,status:'PENDING_VALIDATION',justification:'Revisão manual fictícia e controlada na homologação'});
     assert.equal(h.ctx.validateChecklistSignatureRequest_({id}),'VALIDATED');assert.equal(h.get('checklistSignatures',`${day}_${snapshot.revision}`).missing,1);
+    const delivery=h.ctx.evaluationDrainChecklistDeliveries_();assert.equal(delivery.delivered,1);assert.equal(delivery.pending,0);
     const transfer=h.get('evaluationChecklistTransfers',day);assert.equal(transfer.members[person].points,-1);assert.equal(transfer.members[manager].points,1);
     const count=h.values('evaluationLedger').length;assert.equal(h.ctx.evaluationApplyChecklistTransfer_(day,person,manager,'accepted-revision-later').status,'DUPLICATE');assert.equal(h.values('evaluationLedger').length,count);
     const award=h.values('evaluationAwards').find(a=>a.transferId===`checklist-${day}` && a.leg==='CREDIT');
@@ -75,8 +76,8 @@ test('unchanged trusted Apps Script engine reconciles evaluation over REAL Fires
   });
   await t.test('failed real emulator write precondition publishes no partial transaction',()=>{
     const profile=h.get('users',person),before=h.values('evaluationLedger').length;
-    assert.throws(()=>h.ctx.evaluationRunTransaction_(tx=>({writes:[h.ctx.evaluationWrite_('evaluationProbe','must-not-exist',{value:'fictional'},null,[]),h.ctx.evaluationWrite_('users',person,{displayName:'Must not commit'}, {_updateTime:'2000-01-01T00:00:00.000000Z'},[])],result:'SHOULD_NOT_COMMIT'})),/emulator HTTP/);
-    assert.equal(h.get('evaluationProbe','must-not-exist'),null);assert.equal(h.get('users',person).displayName,profile.displayName);assert.equal(h.values('evaluationLedger').length,before);
+    assert.throws(()=>h.ctx.evaluationRunTransaction_(tx=>({writes:[h.ctx.evaluationWrite_('evaluationProbe','must-not-exist',{value:'fictional'},null,[]),h.ctx.evaluationWrite_('evaluationProbe','stale-precondition',{value:'Must not commit'}, {_updateTime:'2000-01-01T00:00:00.000000Z'},[])],result:'SHOULD_NOT_COMMIT'})),/emulator HTTP/);
+    assert.equal(h.get('evaluationProbe','must-not-exist'),null);assert.equal(h.get('evaluationProbe','stale-precondition'),null);assert.equal(h.get('users',person).displayName,profile.displayName);assert.equal(h.values('evaluationLedger').length,before);
     assert.ok(h.requests.some(r=>r.path.endsWith(':commit') && r.status>=400));assert.ok(h.requests.some(r=>r.path.endsWith(':rollback')));
   });
   await t.test('all financial engine reads/transactions ran exclusively against demo emulator',()=>{

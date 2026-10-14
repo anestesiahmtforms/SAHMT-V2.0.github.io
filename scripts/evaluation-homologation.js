@@ -85,7 +85,22 @@ export function createEmulatorReplay({projectId=HOMOLOGATION_PROJECT, emulatorHo
   // authorization gate, correction, or summarizer is replaced.
   ctx.firestoreDocumentsUrl_=path=>target.documents+path;
   ctx.firestoreDocumentName_=name;
-  ctx.firestoreRequest_=transport;
+  // The production engine now routes its financial collections to FB. Keep
+  // this isolated replay on the single demo emulator for every project.
+  ctx.evaluationDocumentsUrl_=(path,projectId)=>{
+    if(projectId && !['sahmt-17a16','sahmt-gestao-5ae66','indicadores---sahmt'].includes(projectId))
+      throw new Error('Unsupported evaluation project in isolated replay.');
+    return target.documents+path;
+  };
+  // Keep the engine's project checks intact. Translate its known FA/FB/FC
+  // document names only at this emulator-only transport boundary.
+  ctx.firestoreRequest_=(url,options={})=>{
+    const payload=typeof options.payload==='string'
+      ? options.payload.replace(/projects\/(?:sahmt-17a16|sahmt-gestao-5ae66|indicadores---sahmt)\/databases\/\(default\)\/documents\//g,
+        `projects/${HOMOLOGATION_PROJECT}/databases/(default)/documents/`)
+      : options.payload;
+    return transport(url,{...options,payload});
+  };
   ctx.formsEvaluationGoogleRequest_=url=>{if(!google.has(url))throw new Error('External Google request has no captured fixture.');return structuredClone(google.get(url));};
   const seed=(collection,id,fields)=>transport(`${target.documents}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`,{method:'PATCH',payload:JSON.stringify({fields:ctx.firestoreFieldsFromJs_(fields)})});
   const get=(collection,id)=>{const result=ctx.evaluationGet_(collection,id);return result?plain(ctx.evaluationClean_(result)):null;};
@@ -129,7 +144,7 @@ export function fictionalReplayCapture(replay) {
   const question=(id,title,points=0,extra={})=>({itemId:`item-${id}`,title,questionItem:{question:{questionId:id,grading:{pointValue:points,...(points?{correctAnswers:{answers:[{value:'A'}]}}:{})},...(points?{choiceQuestion:{type:'RADIO',options:[{value:'A'},{value:'B'}]}}:{textQuestion:{paragraph:true}}),...extra}}});
   const metadata={formId,info:{title:'[HOMOLOGAÇÃO SAHMT] Matéria inteiramente fictícia'},responderUri:'https://docs.google.com/forms/d/e/FictionalPublicAlias123456/viewform',settings:{emailCollectionType:'VERIFIED',quizSettings:{isQuiz:true}},items:[question('ack','[SAHMT:ACK] Ciência',0,{choiceQuestion:{type:'RADIO',options:[{value:'SIM'},{value:'NÃO'}]}}),question('problem','[SAHMT:SUGGESTION_PROBLEM] Problema'),question('proposal','[SAHMT:SUGGESTION_PROPOSAL] Proposta'),question('benefit','[SAHMT:SUGGESTION_BENEFIT] Benefício'),question('test','Questão fictícia de cinco pontos',5)]};
   const configuration=replay.ctx.formsEvaluationConfiguration_(metadata,{modalities:{acknowledgement:true,suggestion:true,test:true}});
-  const profiles=Object.values(roles).map((uid,index)=>({id:uid,uid,email:`${uid}@example.invalid`,displayName:`Pessoa fictícia ${index+1}`,sigla:['AA','BB','CC'][index],active:true,access:true,role:index===2?'administrador_app':'usuario',permissions:{checklistSign:true}}));
+  const profiles=Object.values(roles).map((uid,index)=>({id:uid,uid,email:`${uid}@example.invalid`,displayName:`Pessoa fictícia ${index+1}`,sigla:['AA','BB','CC'][index],active:true,access:true,role:index===2?'administrador_app':'usuario',permissions:{checklistSign:true,...(index===2?{managementManage:true}:{})}}));
   const config={id:formId,formId,status:'READY',creditScopeId:'homologation-matter',version:1,configVersion:1,eligibleUids:Object.values(roles),managerAreaId:areaId,managerUid:roles.managerUid,assignmentId:areaId,modalities:{acknowledgement:true,suggestion:true,test:true},...plain(configuration),responderUrl:metadata.responderUri,materialUrls:[],materialSnapshot:[],materialFingerprint:replay.ctx.formsEvaluationHash_([]),validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-12-31T23:59:59.000Z',firstEligibleAt:'2026-01-01T00:00:00.000Z'};
   const assignment={id:areaId,areaId,uid:roles.managerUid,version:1,effectiveAt:'2026-01-01T00:00:00.000Z'};
   const answer=value=>({textAnswers:{answers:[{value}]}});

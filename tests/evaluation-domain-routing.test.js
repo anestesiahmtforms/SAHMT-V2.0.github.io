@@ -13,15 +13,15 @@ function setup(project='FB') {
   return h;
 }
 
-test('legacy validators query the selected domain and never reuse an FA cursor in FB',()=>{
+test('legacy validators query FB even with an old FA setting and never reuse an FA cursor',()=>{
   for(const project of ['FA','FB']) {
-    const h=setup(project),expected=project==='FB'?'sahmt-gestao-5ae66':'sahmt-17a16';
+    const h=setup(project),expected='sahmt-gestao-5ae66';
     h.properties.set('SAHMT_V2_TRAINING_VALIDATION_CURSOR','projects/sahmt-17a16/databases/(default)/documents/trainingCompletions/old');
     h.properties.set('SAHMT_V2_MANAGEMENT_SCORE_CURSOR','projects/sahmt-17a16/databases/(default)/documents/activityScoreReviews/old');
     h.ctx.listPendingTrainingCompletions_();h.ctx.listPendingManagementScoreReviews_();
     const reads=h.requests.filter(r=>r.body.structuredQuery);assert.ok(reads.length>=2);
     assert.ok(reads.every(r=>r.url.includes('/'+expected+'/')));
-    if(project==='FB') assert.ok(reads.every(r=>!r.body.structuredQuery.startAt));
+    assert.ok(reads.every(r=>!r.body.structuredQuery.startAt));
   }
 });
 
@@ -42,5 +42,5 @@ test('backend refuses a foreign project write before making a commit request',()
  test('FA administrator does not become a destination administrator without explicit permission',()=>{
   const h=setup();const profile={uid:'fixture',active:true,access:true,role:'administrador_app',permissions:{}};
   assert.equal(h.ctx.evaluationAdmin_(profile),false);profile.permissions.managementManage=true;assert.equal(h.ctx.evaluationAdmin_(profile),true);
-  const fa=setup('FA');delete profile.permissions.managementManage;assert.equal(fa.ctx.evaluationAdmin_(profile),true);
+  const fa=setup('FA');delete profile.permissions.managementManage;assert.equal(fa.ctx.evaluationAdmin_(profile),false);
  });
