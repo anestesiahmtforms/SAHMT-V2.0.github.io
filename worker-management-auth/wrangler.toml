@@ -20,6 +20,7 @@ new_sqlite_classes = ["ManagementBrokerAdmissionState"]
 [vars]
 MANAGEMENT_AUTH_ENABLED = "false"
 MANAGEMENT_AUTH_FB_ENABLED = "false"
+MANAGEMENT_DOMAIN_ENABLED = "false"
 MANAGEMENT_AUTH_FC_ENABLED = "false"
 MANAGEMENT_AUTH_PILOT_ONLY = "false"
 MANAGEMENT_AUTH_FC_PILOT_PROVISION = "false"

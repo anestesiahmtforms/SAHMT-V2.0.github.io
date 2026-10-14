@@ -1,7 +1,8 @@
+import {managementDataProject, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
-import {db} from './firebase.js';
+import {db, db as identityDb} from './firebase.js';
 import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
@@ -125,13 +126,14 @@ export async function listVacationsForDate(day, {pageSize = 100} = {}) {
 }
 
 export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} = {}) {
+  const moduleDb = ['management','training'].includes(module) ? await managementDatabase(uid) : db;
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
   const maxPageSize = module === 'checklist' ? 200 : MAX_PAGE_SIZE;
   const cacheKey = module === 'checklist' ? 'all' : 'active';
   const constraints = [...(module === 'checklist' ? [] : [where('active', '==', true)]), orderBy(config.order, config.direction), limit(Math.min(maxPageSize, Math.max(1, pageSize)))];
   try {
-    const result = await getDocsFromServer(query(collection(db, config.name), ...constraints));
+    const result = await getDocsFromServer(query(collection(moduleDb, config.name), ...constraints));
     const items = result.docs.map((item) => ({id: item.id, ...item.data()}));
     if (uid && SAFE_CACHE_MODULES.has(module)) await writeSafeCache(uid, config.name, cacheKey, items);
     return items;
@@ -146,6 +148,7 @@ export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} 
 }
 
 export async function getManagementArea(areaId) {
+  const db = await managementDatabase();
   if (!['area-gestao-da-qualidade', 'area-gestao-financeira'].includes(areaId)) return null;
   const snapshot = await getDocFromServer(doc(db, 'managementAreas', areaId));
   return snapshot.exists() && snapshot.data().active === true ? {id: snapshot.id, ...snapshot.data()} : null;
@@ -549,6 +552,7 @@ export async function setFirstLoginCohort(uidInput, cohort) {
 }
 
 export async function ensureManagementAreaCatalog(uid) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('É necessária uma conexão para preparar o catálogo de Gestão.');
   return runTransaction(db, async (transaction) => {
@@ -580,6 +584,7 @@ export async function ensureManagementAreaCatalog(uid) {
 }
 
 export async function updateManagementAreaAssignments(areaId, {managerUids, memberUids, version} = {}, uid) {
+  const db = await managementDatabase();
   if (!uid || !areaId || !Number.isInteger(version) || version < 0) {
     throw new Error('Atualize a área e confira a sessão antes de alterar responsáveis.');
   }
@@ -605,6 +610,7 @@ export async function updateManagementAreaAssignments(areaId, {managerUids, memb
 }
 
 export async function listManagementActivities(managementAreaId, {pageSize = 30} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const maxItems = Math.min(50, Math.max(1, pageSize));
   const dueResult = await getDocsFromServer(query(
@@ -631,11 +637,13 @@ export async function listManagementActivities(managementAreaId, {pageSize = 30}
 const MANAGEMENT_TASK_SCORING_RULE_ID = 'management-task-completion-v1';
 
 export async function getManagementTaskScoringRule() {
+  const db = await managementDatabase();
   const snapshot = await getDocFromServer(doc(db, 'scoringRules', MANAGEMENT_TASK_SCORING_RULE_ID));
   return snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
 }
 
 export async function saveManagementTaskScoringRule(input, uid) {
+  const db = await managementDatabase();
   const name = String(input.name || '').trim();
   const description = String(input.description || '').trim();
   const points = Number(input.points);
@@ -667,6 +675,7 @@ export async function saveManagementTaskScoringRule(input, uid) {
 }
 
 export async function completeManagementActivity(activityId, uid) {
+  const db = await managementDatabase();
   if (!activityId || activityId.length > 128 || !uid) throw new Error('Não foi possível identificar esta atividade ou sessão.');
   const activityRef = doc(db, 'activities', activityId);
   const interactionId = `completion-${activityId}`;
@@ -704,9 +713,10 @@ export async function completeManagementActivity(activityId, uid) {
 }
 
 export async function cancelManagementActivity(activityId, uid) {
+  const db = await managementDatabase();
   if (!activityId || activityId.length > 128 || !uid) throw new Error('Não foi possível identificar esta atividade ou sessão.');
   const activityRef = doc(db, 'activities', activityId);
-  const profileRef = doc(db, 'users', uid);
+  const profileRef = doc(db, managementProfileCollection(db), uid);
   const interactionId = `cancellation-${activityId}`;
   const interactionRef = doc(db, 'activityInteractions', interactionId);
   return runTransaction(db, async (transaction) => {
@@ -721,7 +731,7 @@ export async function cancelManagementActivity(activityId, uid) {
       }
       return {cancelled: true, alreadyCancelled: true};
     }
-    const profile = profileSnapshot.exists() ? profileSnapshot.data() : {};
+    const profile = managementProfileData(db, profileSnapshot) || {};
     const isManager = profile.active === true && profile.access === true && (profile.role === 'administrador_app' || profile.permissions?.admin === true || profile.permissions?.managementManage === true);
     if (!['OPEN', 'IN_PROGRESS'].includes(activity.status) || (activity.createdByUid !== uid && !isManager)) {
       throw new Error('Somente quem criou a atividade ou a Gestão pode cancelá-la.');
@@ -741,13 +751,14 @@ export async function cancelManagementActivity(activityId, uid) {
 }
 
 async function scopedDocumentAccess(managementAreaId, actorUid) {
+  const db = await managementDatabase();
   const {auth} = await import('./firebase-auth.js');
   const user = auth?.currentUser;
   if (!user || actorUid && user.uid !== actorUid) throw new Error('A sessão expirou. Entre novamente.');
   const checkSession = () => {
     if (auth.currentUser?.uid !== user.uid) throw new Error('A sessão mudou. Entre novamente.');
   };
-  const snapshot = await getDocFromServer(doc(db, 'users', user.uid));
+  const snapshot = await getDocFromServer(doc(identityDb, 'users', user.uid));
   checkSession();
   const profile = snapshot.exists() ? snapshot.data() : null;
   if (profile?.active !== true || profile?.access !== true) throw new Error('Seu acesso foi revogado.');
@@ -767,12 +778,13 @@ async function scopedDocumentAccess(managementAreaId, actorUid) {
   let email;
   try { email = normalizeDocumentAccessEmail(token.claims.email); }
   catch { return {groups: [], manages: false, checkSession}; }
-  const access = await getDocFromServer(doc(db, 'documentAccessEmails', email));
+  const access = await getDocFromServer(doc(identityDb, 'documentAccessEmails', email));
   checkSession();
   return {groups: documentGroupsFromAccess(access.exists() ? access.data() : null, email), manages: false, checkSession};
 }
 
 export async function listManagementDocuments(managementAreaId, {includeInactive = false, pageSize = 50, actorUid} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const access = await scopedDocumentAccess(managementAreaId, actorUid);
   const constraints = [where('managementAreaId', '==', managementAreaId)];
@@ -794,6 +806,7 @@ export async function listManagementDocuments(managementAreaId, {includeInactive
 }
 
 export async function saveManagementDocument(input, uid) {
+  const db = await managementDatabase();
   const id = String(input.documentId || '').trim() || crypto.randomUUID();
   const managementAreaId = String(input.managementAreaId || '').trim();
   const title = String(input.title || '').trim();
@@ -812,11 +825,11 @@ export async function saveManagementDocument(input, uid) {
   if (!access.manages) throw new Error('Você não tem permissão para editar documentos desta área.');
   await runTransaction(db, async (transaction) => {
     const [snapshot, profileSnapshot, areaSnapshot] = await Promise.all([
-      transaction.get(ref), transaction.get(doc(db, 'users', uid)),
+      transaction.get(ref), transaction.get(doc(db, managementProfileCollection(db), uid)),
       managementAreaId === DOCUMENT_MANAGEMENT_AREA_ID ? transaction.get(doc(db, 'managementAreas', managementAreaId)) : Promise.resolve(null)
     ]);
     access.checkSession();
-    const profile = profileSnapshot.exists() ? profileSnapshot.data() : null;
+    const profile = managementProfileData(db, profileSnapshot);
     const area = areaSnapshot?.exists() ? {...areaSnapshot.data(), id: areaSnapshot.id} : {id: managementAreaId};
     if (!canManageManagementDocuments(profile, area, uid)) throw new Error('Sua permissão para editar documentos desta área foi revogada.');
     const reconcileAllowed = canReconcileManagementDocumentLinks(profile);
@@ -826,7 +839,7 @@ export async function saveManagementDocument(input, uid) {
         ...content, id, version: 1, publishedAt: serverTimestamp(), createdByUid: uid,
         createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp()
       });
-      if (reconcileAllowed) queueEvaluationReconciliation(transaction, uid);
+      if (reconcileAllowed) queueEvaluationReconciliation(transaction, uid, db);
       return;
     }
     const existing = snapshot.data();
@@ -834,7 +847,7 @@ export async function saveManagementDocument(input, uid) {
         Object.keys(content).every((key) => existing[key] === content[key])) return;
     if (existing.version !== currentVersion || currentVersion < 1) throw new Error('Este documento foi atualizado por outra pessoa. Atualize a lista antes de editar.');
     transaction.update(ref, {...content, updatedByUid: uid, updatedAt: serverTimestamp(), version: currentVersion + 1});
-    if (reconcileAllowed) queueEvaluationReconciliation(transaction, uid);
+    if (reconcileAllowed) queueEvaluationReconciliation(transaction, uid, db);
   });
   return id;
 }
@@ -858,7 +871,7 @@ export async function saveDocumentAccessEmail(input, uid) {
   });
 }
 
-function queueEvaluationReconciliation(transaction, uid) {
+function queueEvaluationReconciliation(transaction, uid, db) {
   const id = crypto.randomUUID().replaceAll('-', '');
   transaction.set(doc(db, 'evaluationRequests', id), {
     id, type: 'RECONCILE_LINKS', actorUid: uid, status: 'PENDING', payload: {}, createdAt: serverTimestamp()
@@ -866,6 +879,7 @@ function queueEvaluationReconciliation(transaction, uid) {
 }
 
 export async function listEquipmentForArea(managementAreaId, {pageSize = 100} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const snapshot = await getDocsFromServer(query(
     collection(db, 'equipment'),
@@ -877,18 +891,21 @@ export async function listEquipmentForArea(managementAreaId, {pageSize = 100} = 
 }
 
 export async function listEquipmentEventsForArea(managementAreaId, {pageSize = 100} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const snapshot = await getDocsFromServer(query(collection(db, 'equipmentEvents'), where('managementAreaId', '==', managementAreaId), orderBy('createdAt', 'desc'), limit(Math.min(200, Math.max(1, pageSize)))));
   return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
 export async function listMaintenanceRecordsForArea(managementAreaId, {pageSize = 100} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const snapshot = await getDocsFromServer(query(collection(db, 'maintenanceRecords'), where('managementAreaId', '==', managementAreaId), orderBy('updatedAt', 'desc'), limit(Math.min(200, Math.max(1, pageSize)))));
   return snapshot.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
 export async function saveEquipment(input, uid) {
+  const db = await managementDatabase();
   const tag = String(input.tag || '').trim().toUpperCase();
   const id = String(input.equipmentId || tag).trim();
   const managementAreaId = String(input.managementAreaId || '').trim();
@@ -919,6 +936,7 @@ export async function saveEquipment(input, uid) {
 }
 
 export async function setEquipmentActive(equipmentId, active, expectedVersion, uid) {
+  const db = await managementDatabase();
   if (!equipmentId || !uid || typeof active !== 'boolean' || !Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('Equipamento ou versão inválidos.');
   const ref = doc(db, 'equipment', equipmentId);
   await runTransaction(db, async (transaction) => {
@@ -930,6 +948,7 @@ export async function setEquipmentActive(equipmentId, active, expectedVersion, u
 }
 
 export async function recordEquipmentEvent(input, uid) {
+  const db = await managementDatabase();
   const id = String(input.eventId || '').trim();
   const equipmentId = String(input.equipmentId || '').trim();
   const type = String(input.type || '').trim();
@@ -960,6 +979,7 @@ export async function recordEquipmentEvent(input, uid) {
 }
 
 export async function createMaintenanceRecord(input, uid) {
+  const db = await managementDatabase();
   const id = String(input.recordId || '').trim();
   const equipmentId = String(input.equipmentId || '').trim();
   const type = String(input.type || '').trim();
@@ -987,6 +1007,7 @@ export async function createMaintenanceRecord(input, uid) {
 }
 
 export async function transitionMaintenanceRecord(recordId, nextStatus, uid) {
+  const db = await managementDatabase();
   if (!recordId || !uid || !['IN_PROGRESS', 'COMPLETED'].includes(nextStatus)) throw new Error('Registro ou estado inválidos.');
   const ref = doc(db, 'maintenanceRecords', recordId);
   await runTransaction(db, async (transaction) => {
@@ -1000,6 +1021,7 @@ export async function transitionMaintenanceRecord(recordId, nextStatus, uid) {
 }
 
 export async function transitionManagementActivity(activityId, nextStatus, uid) {
+  const db = await managementDatabase();
   if (!activityId || !uid || nextStatus !== 'IN_PROGRESS') {
     throw new Error('Não foi possível identificar a atividade ou o próximo estado.');
   }
@@ -1021,6 +1043,7 @@ export async function transitionManagementActivity(activityId, nextStatus, uid) 
 }
 
 export async function listActivityInteractions(activityId, uid, {canReadAll = false, pageSize = 20} = {}) {
+  const db = await managementDatabase();
   if (!activityId || !uid) return [];
   const constraints = [where('activityId', '==', activityId)];
   if (!canReadAll) constraints.push(where('uid', '==', uid));
@@ -1030,12 +1053,14 @@ export async function listActivityInteractions(activityId, uid, {canReadAll = fa
 }
 
 export async function getActivityScoreReview(activityId) {
+  const db = await managementDatabase();
   if (!activityId) return null;
   const snapshot = await getDocFromServer(doc(db, 'activityScoreReviews', activityId));
   return snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
 }
 
 export async function listManagementActivityScoreReviews(managementAreaId, {pageSize = 50} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const snapshot = await getDocsFromServer(query(
     collection(db, 'activityScoreReviews'),
@@ -1046,6 +1071,7 @@ export async function listManagementActivityScoreReviews(managementAreaId, {page
 }
 
 export async function submitManagementActivityScoreReview(activityId, uid, decision, note = '') {
+  const db = await managementDatabase();
   const cleanNote = String(note || '').trim().slice(0, 500);
   if (!activityId || activityId.length > 128 || !uid || !['APPROVE', 'REJECT'].includes(decision) ||
       (decision === 'REJECT' && cleanNote.length < 8)) {
@@ -1086,6 +1112,7 @@ export async function submitManagementActivityScoreReview(activityId, uid, decis
 }
 
 export async function addActivityInteraction(activityId, content, uid) {
+  const db = await managementDatabase();
   const cleanContent = String(content || '').trim();
   if (!activityId || !uid || !cleanContent || cleanContent.length > 1000) throw new Error('Escreva um comentário de até 1.000 caracteres.');
   const id = crypto.randomUUID();
@@ -1096,6 +1123,7 @@ export async function addActivityInteraction(activityId, content, uid) {
 }
 
 export async function listManagementIndicators(managementAreaId, {pageSize = 30} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const snapshot = await getDocsFromServer(query(
     collection(db, 'indicators'),
@@ -1108,6 +1136,7 @@ export async function listManagementIndicators(managementAreaId, {pageSize = 30}
 }
 
 export async function listIndicatorMeasurements(indicatorId, {pageSize = 12} = {}) {
+  const db = await managementDatabase();
   if (!indicatorId) return [];
   const snapshot = await getDocsFromServer(query(
     collection(db, 'indicatorMeasurements'),
@@ -1119,6 +1148,7 @@ export async function listIndicatorMeasurements(indicatorId, {pageSize = 12} = {
 }
 
 export async function createManagementIndicator(input, uid) {
+  const db = await managementDatabase();
   const managementAreaId = String(input.managementAreaId || '').trim();
   const name = String(input.name || '').trim();
   const unit = String(input.unit || '').trim();
@@ -1138,6 +1168,7 @@ export async function createManagementIndicator(input, uid) {
 }
 
 export async function recordIndicatorMeasurement(indicator, input, uid) {
+  const db = await managementDatabase();
   const period = String(input.period || '').trim();
   const value = Number(input.value);
   const notes = String(input.notes || '').trim();
@@ -1164,6 +1195,7 @@ export async function recordIndicatorMeasurement(indicator, input, uid) {
 }
 
 export async function listManagementActionPlans(managementAreaId, {pageSize = 30} = {}) {
+  const db = await managementDatabase();
   if (!managementAreaId) return [];
   const snapshot = await getDocsFromServer(query(
     collection(db, 'actionPlans'), where('managementAreaId', '==', managementAreaId),
@@ -1173,6 +1205,7 @@ export async function listManagementActionPlans(managementAreaId, {pageSize = 30
 }
 
 export async function listManagementActionPlanItems(planIds, {pageSize = 200} = {}) {
+  const db = await managementDatabase();
   const ids = [...new Set((planIds || []).filter((id) => typeof id === 'string' && id))].slice(0, 30);
   if (!ids.length) return [];
   const snapshot = await getDocsFromServer(query(
@@ -1182,6 +1215,7 @@ export async function listManagementActionPlanItems(planIds, {pageSize = 200} = 
 }
 
 export async function createManagementActionPlanItem(input, uid) {
+  const db = await managementDatabase();
   const planId = String(input.planId || '').trim();
   const id = String(input.itemId || '').trim();
   const description = String(input.description || '').trim();
@@ -1221,6 +1255,7 @@ export async function createManagementActionPlanItem(input, uid) {
 }
 
 export async function completeManagementActionPlanItem(itemId, uid) {
+  const db = await managementDatabase();
   if (!itemId || !uid) throw new Error('Ação ou usuário inválido.');
   await runTransaction(db, async (transaction) => {
     const ref = doc(db, 'actionPlanItems', itemId);
@@ -1233,6 +1268,7 @@ export async function completeManagementActionPlanItem(itemId, uid) {
 }
 
 export async function createManagementActionPlan(input, uid) {
+  const db = await managementDatabase();
   const managementAreaId = String(input.managementAreaId || '').trim();
   const title = String(input.title || '').trim();
   const description = String(input.description || '').trim();
@@ -1252,6 +1288,7 @@ export async function createManagementActionPlan(input, uid) {
 }
 
 export async function transitionManagementActionPlan(planId, nextStatus, uid) {
+  const db = await managementDatabase();
   if (!planId || !uid || !['IN_PROGRESS', 'COMPLETED'].includes(nextStatus)) throw new Error('Plano ou estado inválido.');
   await runTransaction(db, async (transaction) => {
     const ref = doc(db, 'actionPlans', planId);
@@ -1553,6 +1590,7 @@ export async function listChecklistStations({pageSize = 200} = {}) {
 }
 
 export async function listTrainingCatalogForAdmin({pageSize = 100} = {}) {
+  const db = await managementDatabase();
   const result = await getDocsFromServer(query(
     collection(db, 'trainings'),
     orderBy('order', 'asc'),
@@ -1563,6 +1601,7 @@ export async function listTrainingCatalogForAdmin({pageSize = 100} = {}) {
 }
 
 export async function saveTrainingCatalogRecord(input, uid) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar o catálogo de treinamentos.');
   const title = String(input.title || '').trim().replace(/\s+/g, ' ');
@@ -1628,6 +1667,7 @@ function learningActivityInWindow(activity, now = Date.now()) {
 }
 
 export async function listLearningActivities(profile, uid, {pageSize = 100} = {}) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const take = Math.min(100, Math.max(1, pageSize));
   const base = [where('status', '==', 'ACTIVE'), where('showInTraining', '==', true)];
@@ -1643,6 +1683,7 @@ export async function listLearningActivities(profile, uid, {pageSize = 100} = {}
 }
 
 export async function listLearningActivitiesForAdmin({pageSize = 100} = {}) {
+  const db = await managementDatabase();
   const result = await getDocsFromServer(query(
     collection(db, 'learningActivities'),
     orderBy('order', 'asc'),
@@ -1652,6 +1693,7 @@ export async function listLearningActivitiesForAdmin({pageSize = 100} = {}) {
 }
 
 export async function listLearningActivityReceipts(uid, activities) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const activityIds = [...new Set((activities || []).map((activity) => activity.id).filter(Boolean))];
   const snapshots = await Promise.all(Array.from({length: Math.ceil(activityIds.length / 30)}, (_, index) => {
@@ -1662,6 +1704,7 @@ export async function listLearningActivityReceipts(uid, activities) {
 }
 
 export async function saveLearningActivity(input, uid) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar as atividades de aprendizagem.');
   const id = String(input.id || crypto.randomUUID().replaceAll('-', '')).trim();
@@ -1716,12 +1759,13 @@ export async function saveLearningActivity(input, uid) {
       updatedByUid: uid, updatedAt: serverTimestamp()
     };
     transaction.set(activityRef, record);
-    queueEvaluationReconciliation(transaction, uid);
+    queueEvaluationReconciliation(transaction, uid, db);
     return record;
   });
 }
 
 export async function acknowledgeLearningActivity(activity, uid) {
+  const db = await managementDatabase();
   if (!uid || !activity?.id) throw new Error('Não foi possível identificar a atividade ou a sessão.');
   if (activity.completionKind !== 'ACKNOWLEDGEMENT' || !['ONCE', 'ONCE_PER_VERSION'].includes(activity.recurrenceMode)) {
     throw new Error('Esta atividade não aceita confirmação de ciência.');
@@ -1984,6 +2028,7 @@ function mergeWatchedRanges(ranges, duration) {
 function trainingProgressId(uid, trainingId) { return `${uid}_${trainingId}`; }
 
 export async function startTrainingInFirestore(uid, trainingId) {
+  const db = await managementDatabase();
   if (!uid || !trainingId || trainingId.length > 128) throw new Error('Não foi possível identificar o treinamento ou a sessão.');
   const receiptId = trainingProgressId(uid, trainingId);
   const receiptRef = doc(db, 'trainingReceipts', receiptId);
@@ -2018,6 +2063,7 @@ export async function startTrainingInFirestore(uid, trainingId) {
 }
 
 export async function completeTrainingInFirestore(uid, trainingId, {ended = false} = {}) {
+  const db = await managementDatabase();
   if (!uid || !trainingId || trainingId.length > 128) throw new Error('Não foi possível identificar o treinamento ou a sessão.');
   if (ended !== true) throw new Error('O player ainda não sinalizou o encerramento do vídeo.');
   const progressId = trainingProgressId(uid, trainingId);
@@ -2067,6 +2113,7 @@ export async function completeTrainingInFirestore(uid, trainingId, {ended = fals
 }
 
 export async function getMyScoreTotal(uid) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const cache = await readSafeCache(uid, 'scores', 'total');
   if (!navigator.onLine) return {total: cache?.data?.total ?? null, stale: true};
@@ -2085,6 +2132,7 @@ export async function getMyScoreTotal(uid) {
 }
 
 export async function listTrainingProgress(uid, {pageSize = 100} = {}) {
+  const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
   try {
@@ -2146,6 +2194,7 @@ export async function listTrainingProgress(uid, {pageSize = 100} = {}) {
 }
 
 export async function saveTrainingProgress(uid, trainingId, {duration, lastPosition, watchedRanges, completionRequested = false} = {}) {
+  const db = await managementDatabase();
   if (!uid || !trainingId) throw new Error('Não foi possível identificar o treinamento desta sessão.');
   duration = Number(duration);
   lastPosition = Number(lastPosition);
@@ -2235,10 +2284,10 @@ function dateSortValue(value) {
   return value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
 }
 
-function buildRecordBatch(batch, {collectionName, data, uid, requestId}) {
+function buildRecordBatch(batch, {collectionName, data, uid, requestId}, database = db) {
   stageOperationalWrite(batch, {
     collectionName, data, uid, requestId, now: serverTimestamp(),
-    recordRef: doc(db, collectionName, requestId)
+    recordRef: doc(database, collectionName, requestId)
   });
 }
 
@@ -2253,6 +2302,7 @@ function canonicalValue(value) {
 }
 
 async function confirmCommittedMutation({collectionName, data, uid, requestId}) {
+  const db = collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
   const snapshot = await getDocFromServer(doc(db, collectionName, requestId));
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
@@ -2273,7 +2323,7 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
 
 async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  const payload = {collectionName, data};
+  const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject} : {})};
   if (!navigator.onLine) {
     if (!mayQueueOffline(collectionName)) throw new Error('Etiquetas precisam de conexão para serem confirmadas; os dados do paciente não ficam salvos neste aparelho.');
     await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
@@ -2295,8 +2345,9 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
       throw error;
     }
   }
-  const batch = writeBatch(db);
-  buildRecordBatch(batch, {collectionName, data, uid, requestId});
+  const targetDb = collectionName === 'activities' ? await managementDatabase(uid) : db;
+  const batch = writeBatch(targetDb);
+  buildRecordBatch(batch, {collectionName, data, uid, requestId}, targetDb);
   try {
     await batch.commit();
     return {id: requestId, pendingFirestore: false};
@@ -2384,6 +2435,8 @@ export async function flushOutbox(uid, {requestId} = {}) {
     for (const operation of operations) {
       try {
         assertQueuedOperationShape(operation, uid);
+        if (operation.type === 'activities' && (operation.payload.dataProject || 'FA') !== managementDataProject)
+          throw Object.assign(new Error('Atividade da base anterior preservada para conciliação. Nenhum envio foi feito.'), {code:'domain-cutover-review'});
         if (operation.type === 'scheduleReleases') {
           await applyScheduleSiglaRelease(operation.payload, uid);
         } else if (operation.type === 'eventEdits') {
@@ -2393,8 +2446,9 @@ export async function flushOutbox(uid, {requestId} = {}) {
           if (collectionName === 'events' && data.scheduleSigla) {
             await createScheduledEvent(data, {uid, requestId: operation.requestId});
           } else {
-            const batch = writeBatch(db);
-            buildRecordBatch(batch, {collectionName, data, uid, requestId: operation.requestId});
+            const targetDb = collectionName === 'activities' ? await managementDatabase(uid) : db;
+            const batch = writeBatch(targetDb);
+            buildRecordBatch(batch, {collectionName, data, uid, requestId: operation.requestId}, targetDb);
             await batch.commit();
           }
         }
@@ -2404,7 +2458,7 @@ export async function flushOutbox(uid, {requestId} = {}) {
         void flushOperationalSheetDelivery(uid);
         window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: operation.type}}));
       } catch (error) {
-        if (error.code !== 'invalid-outbox-operation') {
+        if (!['invalid-outbox-operation','domain-cutover-review'].includes(error.code)) {
           try {
             if (operation.type === 'scheduleReleases') throw error;
             const committed = operation.type === 'eventEdits'
@@ -2422,7 +2476,7 @@ export async function flushOutbox(uid, {requestId} = {}) {
         }
         const attempts = operation.attempts + 1;
         const conflict = error.code === 'stale-version' && operation.type === 'eventEdits';
-        const permanent = ['permission-denied', 'invalid-argument', 'failed-precondition', 'invalid-outbox-operation'].includes(error.code);
+        const permanent = ['permission-denied', 'invalid-argument', 'failed-precondition', 'invalid-outbox-operation', 'domain-cutover-review'].includes(error.code);
         const delay = Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10));
         await updateQueuedOperation(uid, operation.requestId, {
           status: conflict ? 'conflict' : permanent ? 'failed' : 'queued',

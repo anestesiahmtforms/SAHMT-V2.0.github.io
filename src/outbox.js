@@ -1,3 +1,6 @@
+const LOCAL_MANAGEMENT_PROJECT = (import.meta.env || {}).VITE_MANAGEMENT_DATA_PROJECT || 'FA';
+const DOMAIN_CACHE_KINDS = new Set(['managementAreas','trainings','trainingProgress','scores']);
+
 const DB_NAME = 'sahmt-v2-local';
 const DB_VERSION = 3;
 const PROFILES = 'profiles';
@@ -92,7 +95,10 @@ export async function readCachedProfile(uid, maxAgeMs = 24 * 60 * 60 * 1000) {
   return value;
 }
 
-function cacheKey(uid, kind, id) { return `${uid}::${kind}::${id}`; }
+function cacheKey(uid, kind, id) {
+  const scoped = DOMAIN_CACHE_KINDS.has(kind) && LOCAL_MANAGEMENT_PROJECT !== 'FA' ? `${LOCAL_MANAGEMENT_PROJECT}:${kind}` : kind;
+  return `${uid}::${scoped}::${id}`;
+}
 
 function getUserOperations(uid, status) {
   return transact(OUTBOX, 'readonly', (store) => store.index('uidStatus').getAll(IDBKeyRange.only([uid, status])));
@@ -117,14 +123,15 @@ export async function readSafeCache(uid, kind, id) {
 
 export async function pendingTrainingProgressCount(uid) {
   if (!uid) return 0;
-  const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
-  return (cache?.data?.records || []).filter((item) => item.syncPending).length;
+  return (await listPendingTrainingProgress(uid)).length;
 }
 
 export async function listPendingTrainingProgress(uid) {
   if (!uid) return [];
   const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
-  return (cache?.data?.records || []).filter((item) => item.syncPending).sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
+  const legacy = LOCAL_MANAGEMENT_PROJECT === 'FA' ? null : await transact(CACHE, 'readonly', store=>store.get(`${uid}::trainingProgress::mine`));
+  const retained = (legacy?.data?.records || []).filter(item=>item.syncPending).map(item=>({...item, sourceProject:'FA', destinationChanged:true, syncConflict:true, syncError:'Progresso anterior à mudança de base preservado. Precisa de conciliação antes de qualquer envio.'}));
+  return [...(cache?.data?.records || []).filter((item) => item.syncPending), ...retained].sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
 }
 
 export async function updateCachedTrainingProgress(uid, trainingId, update, {requirePending = true} = {}) {
@@ -179,6 +186,7 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (!uid || !type || !resourceId) throw new Error('A operação offline precisa de usuário, tipo e ID estável.');
   if (!ALLOWED_OUTBOX_TYPES.has(type)) throw new Error('Esta ação não está habilitada para sincronização offline.');
   if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
+  if (type === 'activities') payload = {...payload, dataProject:payload.dataProject || LOCAL_MANAGEMENT_PROJECT};
   const item = {requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''};
   const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);

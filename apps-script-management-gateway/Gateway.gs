@@ -393,7 +393,7 @@ function mgwGoogleJson_(url, payload, configured, request, execution) {
   } catch (error) { if (error && MGW_DENIALS_.indexOf(error.gatewayCode) >= 0) throw error; mgwDeny_('GATEWAY_OPERATION_FAILED'); }
   finally { token = null; }
 }
-function mgwLookup_(request, configured, execution) {
+function mgwLookup_(request, configured, execution, trustedIdentity) {
   var project = request.operation === 'AUTH_USER_LOOKUP_FA' ? MGW_FA_ : request.operation === 'AUTH_USER_LOOKUP_FC' ? MGW_FC_ : MGW_FB_;
   var identityPolicy = project === MGW_FA_ ? mgwProtectedIdentityPolicy_() : null;
   var result = mgwGoogleJson_('https://identitytoolkit.googleapis.com/v1/projects/' + project + '/accounts:lookup',
@@ -419,6 +419,7 @@ function mgwLookup_(request, configured, execution) {
   }
   if (user.disabled !== undefined) filtered.disabled = user.disabled;
   if (user.validSince !== undefined) filtered.validSince = user.validSince;
+  if (typeof trustedIdentity === 'function' && project === MGW_FA_) trustedIdentity(user.email);
   return {users: [filtered]};
 }
 function mgwProtectedIdentityPolicy_() {
@@ -822,6 +823,9 @@ var MGW_LEASE_FIELDS_ = ['schemaVersion','sourceProjectId','destinationProjectId
 function mgwDataBody_(op, body, config, time) {
   var keys = op === 'WRITE_FB_LEASE' ? ['uid','projectId','expectedRevision','lease']
     : op === 'INVALIDATE_FB_LEASE' ? ['uid','projectId','expectedGrantId','expectedLeaseVersion','reasonCode'] : ['uid','projectId'];
+  if (op === 'READ_FA_AUTHORIZATION' && Object.prototype.hasOwnProperty.call(body,'includeManagementDomain')) {
+    keys.push('includeManagementDomain'); mgwRequire_(body.includeManagementDomain === true,'GATEWAY_ADMISSION_DENIED');
+  }
   mgwRequire_(mgwKeys_(body,keys) && mgwId_(body.uid,128) && ['.','..'].indexOf(body.uid) < 0
     && body.projectId === mgwDestination_(op),'GATEWAY_ADMISSION_DENIED');
   if (op === 'WRITE_FB_LEASE') {
@@ -927,15 +931,18 @@ function mgwDataOperation_(request,configured,execution) {
       mgwRequire_(source.permissions[k]===undefined||typeof source.permissions[k]==='boolean','GATEWAY_RESULT_INVALID');
       if(source.permissions[k]!==undefined)perms[k]=source.permissions[k];
     });
-    var auth=mgwLookup_({operation:'AUTH_USER_LOOKUP_FA',body:{uid:body.uid},expiresAtMs:request.expiresAtMs,issuedAtMs:request.issuedAtMs},configured,execution);
+    var trustedEmail=null;
+    var auth=mgwLookup_({operation:'AUTH_USER_LOOKUP_FA',body:{uid:body.uid},expiresAtMs:request.expiresAtMs,issuedAtMs:request.issuedAtMs},configured,execution,function(email){trustedEmail=email;});
     mgwRequire_(auth.users.length===1,'GATEWAY_ADMISSION_DENIED');var user=auth.users[0],providers=user.providerUserInfo.filter(function(p){return p.providerId==='google.com';});
     mgwRequire_(user.disabled!==true&&user.emailVerified===true&&providers.length===1&&user.identityMarker===undefined,'GATEWAY_ADMISSION_DENIED');
+    var domain=body.includeManagementDomain===true ? mgwManagementDomainContext_(body.uid,providers[0].rawId,trustedEmail,call) : {areas:[],documentAccess:{active:false,groups:[]}};
+    trustedEmail=null;
     var memberId=source.memberId===undefined?body.uid:source.memberId;mgwRequire_(mgwId_(memberId,200),'GATEWAY_RESULT_INVALID');
     return {schemaVersion:1,projectId:MGW_FA_,fromCache:false,hasPendingWrites:false,readTimeMs:mgwLive_(request,config.policy,execution),
       consistentRead:true,coverageComplete:true,productionAuthorized:true,authorizationVersion:version,
       authUser:{uid:body.uid,disabled:false,emailVerified:true,googleUid:providers[0].rawId,identityMarker:null,tokensValidAfterTimeMs:Number(user.validSince||'0')*1000},
       profile:{uid:body.uid,memberId:memberId,active:true,access:true,role:source.role,permissions:perms},binding:null,
-      areas:[],documentAccess:{active:false,groups:[]}};
+      areas:domain.areas,documentAccess:domain.documentAccess};
   }
   if(op==='READ_FB_LEASE') {
     var response=call('get',database+'/documents/managementAuthorizationLeases/'+encodeURIComponent(body.uid),null),doc=response.data;
@@ -977,4 +984,39 @@ function mgwDataOperation_(request,configured,execution) {
     return op==='WRITE_FB_LEASE'?{applied:true,projectId:MGW_FB_,revision:result.data.writeResults[0].updateTime}
       :{applied:matched,matched:matched,fenced:true,projectId:MGW_FB_};
   } finally {if(!commitSent){try{call('post',database+'/documents:rollback',{transaction:transaction});}catch(_){}}}
+}
+
+// Called only for the signed FB-domain request; FC never depends on an FB read.
+function mgwManagementDomainContext_(uid,googleUid,email,call) {
+  mgwRequire_(mgwId_(uid,128)&&mgwId_(googleUid,128)&&typeof email==='string','GATEWAY_ADMISSION_DENIED');
+  email=email.trim().toLowerCase();
+  mgwRequire_(email.length<=254&&/^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email),'GATEWAY_ADMISSION_DENIED');
+  var base='projects/'+MGW_FB_+'/databases/(default)/documents/';
+  var rows=call('post',base.slice(0,-1)+':runQuery',{structuredQuery:{
+    from:[{collectionId:'managementAreas'}],select:{fields:['active','memberUids','managerUids'].map(function(k){return {fieldPath:k};})},
+    where:{compositeFilter:{op:'OR',filters:['memberUids','managerUids'].map(function(k){return {fieldFilter:{field:{fieldPath:k},op:'ARRAY_CONTAINS',value:{stringValue:uid}}};})}},limit:26
+  }}).data;
+  mgwRequire_(Array.isArray(rows)&&rows.length<=26,'GATEWAY_RESULT_INVALID');
+  var areas=[],seen={};
+  rows.forEach(function(row){
+    if(!row.document){mgwRequire_(row.readTime&&rows.length===1,'GATEWAY_RESULT_INVALID');return;}
+    var doc=row.document;mgwRequire_(typeof doc.name==='string'&&doc.name.indexOf(base+'managementAreas/')===0,'GATEWAY_RESULT_INVALID');
+    var id=doc.name.slice((base+'managementAreas/').length),data=mgwFieldsDecode_(doc.fields);
+    mgwRequire_(mgwId_(id,128)&&!seen[id]&&typeof data.active==='boolean','GATEWAY_RESULT_INVALID');seen[id]=true;
+    ['memberUids','managerUids'].forEach(function(k){mgwRequire_(Array.isArray(data[k])&&data[k].length<=100&&data[k].every(function(v){return mgwId_(v,128);})&&new Set(data[k]).size===data[k].length,'GATEWAY_RESULT_INVALID');});
+    mgwRequire_(data.memberUids.indexOf(uid)>=0||data.managerUids.indexOf(uid)>=0,'GATEWAY_RESULT_INVALID');
+    areas.push({id:id,active:data.active,version:mgwTimestampMicros_(doc.updateTime),memberUids:data.memberUids,managerUids:data.managerUids});
+  });
+  // Overflow is never reported as complete authorization coverage.
+  mgwRequire_(areas.length<=25,'GATEWAY_RESULT_INVALID');areas.sort(function(a,b){return a.id<b.id?-1:a.id>b.id?1:0;});
+  var name='projects/'+MGW_FA_+'/databases/(default)/documents/documentAccessEmails/'+email;
+  var result=call('get','projects/'+MGW_FA_+'/databases/(default)/documents/documentAccessEmails/'+encodeURIComponent(email)+'?mask.fieldPaths=id&mask.fieldPaths=email&mask.fieldPaths=active&mask.fieldPaths=groups',null);
+  var access={active:false,groups:[]};
+  if(!result.missing){
+    mgwRequire_(result.data&&result.data.name===name,'GATEWAY_RESULT_INVALID');
+    var acl=mgwFieldsDecode_(result.data.fields);
+    mgwRequire_(acl.id===email&&acl.email===email&&typeof acl.active==='boolean'&&Array.isArray(acl.groups)&&acl.groups.length<=2&&new Set(acl.groups).size===acl.groups.length&&acl.groups.every(function(g){return ['GENERAL','RESTRICTED'].indexOf(g)>=0;}),'GATEWAY_RESULT_INVALID');
+    if(acl.active)access={active:true,groups:acl.groups.slice().sort(),googleUid:googleUid};
+  }
+  return {areas:areas,documentAccess:access};
 }

@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import vm from 'node:vm';
-const files = ['Config.gs','ChecklistRotationCore.gs','ChecklistValidation.gs','ChecklistScienceRelease.gs','ChecklistProjection.gs','EvaluationLedger.gs','EvaluationChecklistDelivery.gs','EvaluationOccurrenceDelivery.gs'];
+const files = ['Config.gs','ChecklistRotationCore.gs','ChecklistValidation.gs','ChecklistScienceRelease.gs','ChecklistProjection.gs','EvaluationLedger.gs','EvaluationChecklistDelivery.gs','EvaluationOccurrenceDelivery.gs','EvaluationLegacyScoreDelivery.gs'];
 const source = files.map(file => readFileSync(new URL('../apps-script-v2/'+file, import.meta.url), 'utf8')).join('\n');
 const plain = value => JSON.parse(JSON.stringify(value));
 export function harness({activated = true, project = 'FB'} = {}) {

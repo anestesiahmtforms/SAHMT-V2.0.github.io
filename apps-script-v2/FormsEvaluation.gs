@@ -15,7 +15,7 @@ function formsEvaluationStable_(value) {
 }
 function formsEvaluationId_(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(value); }
 function formsEvaluationActive_(profile) { return profile && profile.active === true && profile.access === true; }
-function formsEvaluationAdmin_(profile) { return formsEvaluationActive_(profile) && (profile.role === 'administrador_app' || (profile.permissions || {}).admin === true); }
+function formsEvaluationAdmin_(profile) { return formsEvaluationActive_(profile) && evaluationAdmin_(profile); }
 function formsEvaluationLink_(value) {
   const input = String(value || '').trim();
   let match = input.match(/^https:\/\/forms\.gle\/([A-Za-z0-9_-]{4,200})\/?(?:[?#].*)?$/);

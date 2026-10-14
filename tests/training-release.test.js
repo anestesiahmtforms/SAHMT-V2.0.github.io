@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import vm from 'node:vm';
 
-const source = ['EvaluationLedger.gs','FormsEvaluation.gs','TrainingRelease.gs'].map(file => readFileSync(new URL(`../apps-script-v2/${file}`, import.meta.url), 'utf8')).join('\n');
+const source = ['Config.gs','EvaluationLedger.gs','FormsEvaluation.gs','TrainingRelease.gs'].map(file => readFileSync(new URL(`../apps-script-v2/${file}`, import.meta.url), 'utf8')).join('\n');
 const plain = value => JSON.parse(JSON.stringify(value));
 const copy = value => structuredClone(value);
 const hash = value => createHash('sha256').update(value).digest('hex');

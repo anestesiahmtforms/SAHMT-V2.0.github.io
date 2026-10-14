@@ -32,6 +32,10 @@ function validatePendingTrainingCompletions() {
     } else {
       properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));
     }
+    if (evaluationProject_() === SAHMT_EVALUATION_FB) {
+      try { result.performanceDelivery=recuperarPontuacoesValidadasFbV1(); }
+      catch (_) { result.performanceDelivery={code:'LEGACY_SCORE_DELIVERY_PENDING'}; }
+    }
     return result;
   } finally {
     lock.releaseLock();
@@ -160,6 +164,7 @@ function validateTrainingCompletionClaim_(claim) {
     trainingUpdateWrite_(progress._documentName, progress._updateTime, {completionStatus: 'VALIDATED', updatedAt: now}),
     trainingUpdateWrite_(receipt._documentName, receipt._updateTime, {accessPointsStatus: receipt.accessPointsClaimed > 0 ? 'VALIDATED' : 'NOT_APPLICABLE'})
   ]);
+  if (evaluationProject_() === SAHMT_EVALUATION_FB) writes.push.apply(writes,evaluationLegacyScoreTaskWrites_(writes));
   firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });
@@ -216,7 +221,7 @@ function updateTrainingValidationStatus_(claim, status, message) {
 function trainingProfileCanRead_(profile, uid) {
   const permissions = profile.permissions || {};
   return profile.uid === uid && profile.active === true && profile.access === true &&
-    (profile.role === 'administrador_app' || permissions.admin === true || permissions.trainingsRead === true || permissions.trainingsManage === true);
+    (evaluationAdmin_(profile) || permissions.trainingsRead === true || permissions.trainingsManage === true);
 }
 
 function trainingValidPoints_(value) {

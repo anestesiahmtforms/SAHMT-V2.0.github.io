@@ -55,9 +55,10 @@ function validatePolicy(policy) {
     && integer(policy.maxFutureSkewMs), 'BROKER_POLICY_INVALID');
   const budget = policy.readBudget;
   if (budget?.mode === 'REQUEST_BOUNDED') {
-    demand(budget.maxReadsPerExchange === 32, 'BROKER_READ_BUDGET_POLICY_REQUIRED');
-    return Object.freeze({...policy, readBudget:Object.freeze({mode:'REQUEST_BOUNDED',maxReadsPerExchange:32,
-      operationReadBounds:Object.freeze({readFaAuthorization:1,readFbLease:1,writeFbLease:2,invalidateFbLease:2})})});
+    const domain = budget.managementDomain === true;
+    demand((budget.managementDomain === undefined || typeof budget.managementDomain === 'boolean') && budget.maxReadsPerExchange === (domain ? 128 : 32), 'BROKER_READ_BUDGET_POLICY_REQUIRED');
+    return Object.freeze({...policy, readBudget:Object.freeze({mode:'REQUEST_BOUNDED',maxReadsPerExchange:domain ? 128 : 32,
+      operationReadBounds:Object.freeze({readFaAuthorization:domain ? 28 : 1,readFbLease:1,writeFbLease:2,invalidateFbLease:2})})});
   }
   demand(object(budget) && budget.quotaTimezone === QUOTA_TIMEZONE
     && integer(budget.maxMeasurementAgeMs, 1) && budget.maxMeasurementAgeMs <= 300000 && integer(budget.applicationReserveReads, 1)

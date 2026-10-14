@@ -24,13 +24,14 @@ import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
-import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
+import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures, secondaryDomainAccess} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 import {createManagementProjectAuthAutoConnector} from './management-project-auth-auto-connect.js';
 
 const app = document.querySelector('#app');
+const secondaryDomainProjects = Object.freeze({management:import.meta.env.VITE_MANAGEMENT_DATA_PROJECT || 'FA', training:import.meta.env.VITE_EVALUATION_DATA_PROJECT || 'FA'});
 const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
@@ -582,7 +583,8 @@ function moduleCards() {
     && (route === 'notifications' || (commonUserActive && !can('admin') && ['management', 'training'].includes(route)) || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
       ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
       : (() => {
-        const lockedForCommonUser = commonUserActive && !can('admin') && ['management', 'training'].includes(route);
+        const lockedForCommonUser = commonUserActive && !can('admin') && ['management', 'training'].includes(route)
+          && !secondaryDomainAccess(route, session.profile, secondaryDomainProjects);
         const lockedAttributes = lockedForCommonUser ? ' disabled aria-disabled="true" class="module-card module-card--inactive" title="Aguardando liberação do administrador"' : ' class="module-card"';
         return `<button${lockedAttributes} data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
@@ -1023,7 +1025,7 @@ function showScheduleContacts(contacts, context = {}) {
 }
 
 async function loadModule(route) {
-  if (route === 'management' && !can('admin')) {
+  if (route === 'management' && !can('admin') && !secondaryDomainAccess(route, session.profile, secondaryDomainProjects)) {
     navigate('home');
     return;
   }
@@ -1437,7 +1439,7 @@ async function loadOfflineView(target) {
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
       const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
-      const invalidLocalOperation = item.lastErrorCode === 'invalid-outbox-operation';
+      const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
       const operationStatus = item.status === 'conflict'
@@ -1478,7 +1480,7 @@ async function loadOfflineView(target) {
       const comparison = remote ? `<small class="sync-error">Firestore: ${remotePercent}% (${Math.floor(remote.lastPosition || 0)} s de ${Math.floor(remote.duration || 0)} s). Cópia local: ${percent}% (${Math.floor(item.lastPosition || 0)} s de ${Math.floor(item.duration || 0)} s). As durações diferem; o progresso não foi mesclado.</small>` : '';
       const retry = item.syncConflict ? '' : `<button class="secondary-button" type="button" data-retry-training="${escapeHtml(item.trainingId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar este progresso novamente</button>`;
       const error = item.syncError ? `<small class="sync-error">Falha: ${escapeHtml(item.syncError)}${item.syncAttempts ? ` · ${item.syncAttempts} tentativa(s)` : ''}</small>${retry}` : '<small>Aguardando sincronização</small>';
-      return `<li><strong>Treinamento · ${escapeHtml(item.trainingId)}</strong><small>${percent}% concluído · posição ${Math.floor(item.lastPosition || 0)} s</small>${comparison}${error}<button class="text-button" type="button" data-discard-training="${escapeHtml(item.trainingId)}">Descartar cópia local</button></li>`;
+      return `<li><strong>Treinamento · ${escapeHtml(item.trainingId)}</strong><small>${percent}% concluído · posição ${Math.floor(item.lastPosition || 0)} s</small>${comparison}${error}${item.destinationChanged ? '<small>Cópia FA preservada para conciliação administrativa.</small>' : `<button class="text-button" type="button" data-discard-training="${escapeHtml(item.trainingId)}">Descartar cópia local</button>`}</li>`;
     }).join('');
     const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
     target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
@@ -4474,8 +4476,8 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
-  if (requestedRoute === 'management' && !can('admin')) {
-    notice = 'Gestão é exclusiva de administradores.';
+  if (requestedRoute === 'management' && !can('admin') && !secondaryDomainAccess(requestedRoute, session.profile, secondaryDomainProjects)) {
+    notice = 'Acesso à Gestão ainda não foi liberado para este perfil.';
     navigate('home');
     return;
   }

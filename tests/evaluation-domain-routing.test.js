@@ -38,3 +38,9 @@ test('backend refuses a foreign project write before making a commit request',()
   assert.throws(()=>h.ctx.evaluationRunTransaction_(()=>({writes:[{update:{name:'projects/sahmt-17a16/databases/(default)/documents/scores/fixture',fields:{}}}],result:true})),/CROSS_PROJECT/);
   assert.equal(h.requests.filter(r=>r.url.endsWith(':commit')&&r.body.writes?.length).length,0);
 });
+
+ test('FA administrator does not become a destination administrator without explicit permission',()=>{
+  const h=setup();const profile={uid:'fixture',active:true,access:true,role:'administrador_app',permissions:{}};
+  assert.equal(h.ctx.evaluationAdmin_(profile),false);profile.permissions.managementManage=true;assert.equal(h.ctx.evaluationAdmin_(profile),true);
+  const fa=setup('FA');delete profile.permissions.managementManage;assert.equal(fa.ctx.evaluationAdmin_(profile),true);
+ });

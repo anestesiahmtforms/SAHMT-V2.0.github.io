@@ -20,7 +20,7 @@ function approved(permissions = {}, role = 'anestesiologista') {
   return {status: 'signed-in', user: {uid: 'pessoa-ficticia'}, profile: {active: true, access: true, role, permissions}};
 }
 
-function harness({session = approved(), appFeatures = {}, route = 'home', hasContent = true} = {}) {
+function harness({session = approved(), appFeatures = {}, route = 'home', hasContent = true, secondaryDomainProjects = {}} = {}) {
   const imports = [];
   const queries = [];
   const navigations = [];
@@ -32,7 +32,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
   const context = vm.createContext({
-    session, appFeatures, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
+    session, appFeatures, secondaryDomainProjects, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     currentRoute: () => context.route,
     document: {querySelector: (selector) => selector === '#module-content' && hasContent ? content : null},
     navigate: (target) => navigations.push(target),
@@ -89,7 +89,7 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) 
 function renderHarness(session) {
   const navigations = [], loads = [], shells = [];
   const context = vm.createContext({
-    session, appFeatures: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
+    session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
     liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),
     labelReportLoad: 0, labelReportLoadingMore: false, labelReportState: 'idle',
     cleanupLabelMedia: null, cleanupCurrentModule: null, startupBannerActive: false,
@@ -101,7 +101,7 @@ function renderHarness(session) {
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
     updateInformationBanner() {}, updateOutboxStatus: async () => {}, navigator: {onLine: false}
   });
-  vm.runInContext(`${extractFunction('can')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
+  vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
 }
 
@@ -271,4 +271,21 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
   assert.match(h.ui.managementUtilityCards(), /<strong>INFORMAÇÕES<\/strong>/);
   assert.doesNotMatch(h.ui.moduleCards(), /data-route="notifications"/);
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
+});
+
+test('liberação FB habilita somente o domínio explicitamente autorizado', () => {
+ const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FB',training:'FB'}});
+ assert.doesNotMatch(cardMarkup(h,'management'), /disabled/);
+ assert.match(cardMarkup(h,'training'), /disabled/);
+ const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FB',training:'FB'}});
+ assert.match(cardMarkup(p,'management'), /disabled/);
+ assert.doesNotMatch(cardMarkup(p,'training'), /disabled/);
+});
+test('liberação de domínio exige perfil ativo e permissão booleana', () => {
+ const h=harness();
+ for(const profile of [null,{active:false,access:true,permissions:{managementRead:true}},
+ {active:true,access:false,permissions:{managementRead:true}},
+ {active:true,access:true,role:'administrador_app',permissions:{}},
+ {active:true,access:true,permissions:{managementRead:'true'}}])
+ assert.equal(h.context.secondaryDomainAccess('management',profile,{management:'FB'}),false);
 });

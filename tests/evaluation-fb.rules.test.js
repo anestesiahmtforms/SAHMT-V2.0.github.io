@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import {before, beforeEach, after, test as nativeTest} from 'node:test';
 import assert from 'node:assert/strict';
-import {doc, setDoc, getDocFromServer, getDocsFromServer, collection, query, where, serverTimestamp, updateDoc, deleteDoc, setLogLevel} from 'firebase/firestore';
+import {doc, setDoc, getDocFromServer, getDocsFromServer, collection, query, where, limit, serverTimestamp, updateDoc, deleteDoc, setLogLevel} from 'firebase/firestore';
 import {assertFails, assertSucceeds, initializeTestEnvironment} from '@firebase/rules-unit-testing';
 
 const test = (name, execute) => nativeTest(name, {timeout: 30000}, execute);
@@ -150,3 +150,53 @@ beforeEach(async()=>{
   });
 });
 
+
+async function enableManagement(extraPermissions={}) {
+ await enableEvaluation();member.lease.permissions={...member.lease.permissions,trainingsRead:true,...extraPermissions};await seedLease(member);
+ await env.withSecurityRulesDisabled(async c=>{
+ const db=c.firestore();await updateDoc(doc(db,'managementRuntime','domainCutover'),{managementEnabled:true});
+ await setDoc(doc(db,'trainings','synthetic-video'),{id:'synthetic-video',title:'Sintético',description:'',videoId:'abcdefghijk',videoUrl:'https://www.youtube.com/watch?v=abcdefghijk',accessPoints:1,completionPoints:2,order:1,active:true,createdByUid:'admin',updatedByUid:'admin',createdAt:new Date(),updatedAt:new Date(),version:1});
+ await setDoc(doc(db,'managementAreas','fixture-area'),{id:'fixture-area',active:true,managerUids:[],memberUids:['member'],version:1});
+ });
+}
+test('management cutover absent still denies full training and domain queries',async()=>{
+ await enableEvaluation();await assertFails(getDocsFromServer(query(collection(dbFor(),'trainings'),limit(50))));
+ await assertFails(getDocsFromServer(collection(dbFor(),'managementAreas')));
+});
+test('FB cutover enables full catalog and own training progress without FA profiles',async()=>{
+ await enableManagement();const db=dbFor();
+ await assertSucceeds(getDocsFromServer(query(collection(db,'trainings'),limit(50))));
+ await assertSucceeds(getDocFromServer(doc(db,'trainings','synthetic-video')));
+ await assertSucceeds(getDocsFromServer(query(collection(db,'trainingProgress'),where('uid','==','member'))));
+ await assertFails(getDocsFromServer(collection(db,'trainingProgress')));
+ await assertSucceeds(getDocsFromServer(collection(db,'managementAreas')));
+});
+test('ordinary member cannot create catalog or award their own points',async()=>{
+ await enableManagement();const db=dbFor();
+ for(const name of ['trainings','scores','evaluationLedger','scoringRules','managementAuthorizationLeases'])
+ await assertFails(setDoc(doc(db,name,'forged'),{id:'forged',uid:'member',points:100}));
+});
+test('valid training creation needs explicit trainingsManage and preserves schema',async()=>{
+ await enableManagement();const db=dbFor(),r=doc(db,'trainings','created');
+ const data={id:'created',title:'Sintético',description:'',videoId:'abcdefghijk',videoUrl:'https://www.youtube.com/watch?v=abcdefghijk',accessPoints:0,completionPoints:0,order:0,active:true,createdByUid:'member',updatedByUid:'member',createdAt:serverTimestamp(),updatedAt:serverTimestamp(),version:1};
+ await assertFails(setDoc(r,data));member.lease.permissions.trainingsManage=true;await seedLease(member);
+ await assertSucceeds(setDoc(r,data));await assertFails(updateDoc(r,{points:999}));await assertFails(deleteDoc(r));
+});
+test('FA admin role alone cannot administer migrated training catalog',async()=>{
+ await enableManagement();member.lease.role='administrador_app';await seedLease(member);
+ await assertFails(updateDoc(doc(dbFor(),'trainings','synthetic-video'),{title:'alterado',version:2,updatedByUid:'member',updatedAt:serverTimestamp()}));
+});
+test('document audience uses trusted lease groups with no copied FA ACL',async()=>{
+ await enableManagement();await env.withSecurityRulesDisabled(async c=>{
+ await setDoc(doc(c.firestore(),'scopedDocuments','general-content'),{id:'general-content',active:true,managementAreaId:'fixture-area',audienceGroup:'GENERAL'});
+ await setDoc(doc(c.firestore(),'scopedDocuments','restricted-content'),{id:'restricted-content',active:true,managementAreaId:'fixture-area',audienceGroup:'RESTRICTED'});
+ });const db=dbFor();
+ await assertSucceeds(getDocsFromServer(query(collection(db,'scopedDocuments'),where('managementAreaId','==','fixture-area'),where('active','==',true),where('audienceGroup','in',['GENERAL']),limit(50))));
+ await assertFails(getDocFromServer(doc(db,'scopedDocuments','restricted-content')));
+ member.lease.documentGroups=[];await seedLease(member);await assertFails(getDocFromServer(doc(db,'scopedDocuments','general-content')));
+});
+test('revocation and cutoff block all migrated domain writes and reads',async()=>{
+ await enableManagement({trainingsManage:true});member.lease.revoked=true;await seedLease(member);
+ await assertFails(getDocFromServer(doc(dbFor(),'trainings','synthetic-video')));
+ await assertFails(updateDoc(doc(dbFor(),'managementAreas','fixture-area'),{managerUids:['member'],version:2,updatedByUid:'member',updatedAt:serverTimestamp()}));
+});

@@ -92,6 +92,9 @@ function validateRequestBody(body, op, request, policy, time) {
   if (MANAGEMENT_GATEWAY_DATA_OPERATIONS.includes(op)) {
     const fields = op === 'WRITE_FB_LEASE' ? ['uid','projectId','expectedRevision','lease']
       : op === 'INVALIDATE_FB_LEASE' ? ['uid','projectId','expectedGrantId','expectedLeaseVersion','reasonCode'] : ['uid','projectId'];
+    if (op === 'READ_FA_AUTHORIZATION' && Object.hasOwn(body,'includeManagementDomain')) {
+      fields.push('includeManagementDomain'); demand(body.includeManagementDomain === true,'GATEWAY_DATA_BODY_INVALID');
+    }
     demand(exact(body, fields) && identifier(body.uid) && body.projectId === expectedDestination(op), 'GATEWAY_DATA_BODY_INVALID');
     if (op === 'WRITE_FB_LEASE') demand(plain(body.lease) && body.lease.faUid === body.uid && body.lease.fbUid === body.uid
       && (body.expectedRevision === null || typeof body.expectedRevision === 'string'), 'GATEWAY_DATA_BODY_INVALID');

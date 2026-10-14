@@ -92,7 +92,9 @@ function accessHarness({profile = approvedManager, area = assignedDocumentArea, 
   const email = 'document-manager@example.invalid';
   const user = {uid: 'document-manager', getIdTokenResult: async () => ({claims: {email, email_verified: true, firebase: {sign_in_provider: 'google.com'}}})};
   const auth = {currentUser: user};
-  const ctx = {db: {}, authModule: {auth}, DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments,
+  const ctx = {db: {}, identityDb: {}, managementDatabase:async()=>({}), managementProfileCollection:()=> 'users',
+    managementProfileData:(_db,snapshot)=>snapshot.exists()?snapshot.data():null,
+    authModule: {auth}, DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments,
     normalizeDocumentAccessEmail, documentGroupsFromAccess, doc: (_, collection, id) => ({collection, id}),
     getDocFromServer: async ref => {
       calls.push(ref); const value = ref.collection === 'users' ? profile : ref.collection === 'managementAreas' ? area :
@@ -214,7 +216,7 @@ test('perfil ausente e troca de sessão durante leitura do vínculo bloqueiam an
 const listing = dataSource.slice(dataSource.indexOf('export async function listManagementDocuments('), dataSource.indexOf('export async function saveManagementDocument(')).replace('export ', '');
 function listHarness({groups = ['GENERAL'], manages = false, checkSession = () => {}} = {}) {
   const calls = [];
-  const ctx = {db: {}, scopedDocumentAccess: async () => ({groups, manages, checkSession}), mergeManagementDocuments,
+  const ctx = {db: {}, managementDatabase:async()=>({}), scopedDocumentAccess: async () => ({groups, manages, checkSession}), mergeManagementDocuments,
     where: (...args) => ({where: args}), orderBy: (...args) => ({orderBy: args}), limit: value => ({limit: value}),
     collection: (_, name) => name, query: (collection, ...constraints) => ({collection, constraints}),
     getDocsFromServer: async request => {calls.push(request); return {docs: [{id: 'shared-id', data: () => ({publishedAt: new Date(), active: true})}]};}};

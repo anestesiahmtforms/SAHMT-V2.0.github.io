@@ -62,6 +62,8 @@ export function buildManagementAuthRuntime(env,{fetchImpl=globalThis.fetch,now=D
     signerServiceAccountEmail:MANAGEMENT_SIGNERS.FB,fcSignerServiceAccountEmail:MANAGEMENT_SIGNERS.FC,clock:now,
     policy:{operationTimeoutMs:15000,maxResponseBytes:65536,maxResponseChunks:128,maxKeyCacheMs:3600000,
       maxFutureSkewMs:5000,maxIdTokenLifetimeSeconds:3600,customTokenLifetimeSeconds:600}});
+  const managementDomain = flag(env,'MANAGEMENT_DOMAIN_ENABLED');
+  if(managementDomain && !enabled.FB)throw Error('WORKER_MANAGEMENT_DOMAIN_REQUIRES_FB');
   const brokerPolicy={schemaVersion:1,version:MANAGEMENT_POLICY_VERSION,...MANAGEMENT_RUNTIME_DEFAULTS,
     readBudget:{mode:'REQUEST_BOUNDED',maxReadsPerExchange:32}};
   const adapters={...auth,readFaAuthorization:gateway.readFaAuthorization,readFbLease:gateway.readFbLease,
@@ -69,7 +71,8 @@ export function buildManagementAuthRuntime(env,{fetchImpl=globalThis.fetch,now=D
   // Each destination gets its own deadline and cleanup path. FC timeouts cannot
   // consume the FB execution window, and FB lease errors cannot discard FC.
   const brokers=Object.fromEntries(['FB','FC'].map(name=>[name,createManagementAuthBroker({enabled:true,
-    policy:brokerPolicy,adapters,clock:now,pilotUidAllowlist:pilotAllowlist,pilotDiagnostics:pilotOnly,
+    policy:managementDomain && name==='FB' ? {...brokerPolicy,readBudget:{mode:'REQUEST_BOUNDED',managementDomain:true,maxReadsPerExchange:128}} : brokerPolicy,
+    adapters:managementDomain && name==='FB' ? {...adapters,readFaAuthorization:(body,context)=>gateway.readFaAuthorization({...body,includeManagementDomain:true},context)} : adapters,clock:now,pilotUidAllowlist:pilotAllowlist,pilotDiagnostics:pilotOnly,
     ...(name==='FC'&&fcPilotProvision?{fcPilotProvisionUid:pilotAllowlist[0]}:{})})]));
   const broker={async exchange(body,context={}) {
     const requested=body?.targetProjectIds;

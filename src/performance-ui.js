@@ -3,7 +3,7 @@ import {reconcileReportMarkup} from './report-dom.js';
 import {renderCatalogFolders} from './catalog-folders.js';
 
 const CATEGORIES = new Set(['PERFORMANCE', 'GOVERNANCE']);
-const MODALITY_LABELS = {ACKNOWLEDGEMENT: 'Ciência', SUGGESTION: 'Sugestão aprovada', TEST: 'Teste', MATERIAL: 'Material', QUESTIONS: 'Questões', CHECKLIST_TRANSFER: 'Transferência do Checklist', CHECKLIST: 'Checklist', OCCURRENCE: 'Registro de ocorrências'};
+const MODALITY_LABELS = {ACKNOWLEDGEMENT: 'Ciência', SUGGESTION: 'Sugestão aprovada', TEST: 'Teste', MATERIAL: 'Material', QUESTIONS: 'Questões', CHECKLIST_TRANSFER: 'Transferência do Checklist', CHECKLIST: 'Checklist', OCCURRENCE: 'Registro de ocorrências', TRAINING_ACCESS: 'Acesso ao treinamento', TRAINING_COMPLETION: 'Conclusão do treinamento', MANAGEMENT_TASK: 'Atividade de Gestão'};
 const STATUS_LABELS = {PENDING: 'Pendente', PENDING_VALIDATION: 'Pendente', CONFIGURATION_PENDING: 'Configuração pendente', READY: 'Configurada', APPROVED: 'Aprovada', CONFIRMED: 'Confirmado', REJECTED: 'Recusada', NEEDS_REVIEW: 'Requer revisão', INACTIVE: 'Inativa', FAILED: 'Falha'};
 const REQUEST_LABELS = {ASSIGN_MANAGER: 'Atribuição de gestor', CONFIGURE_ACTIVITY: 'Configuração de atividade', REVIEW_SUGGESTION: 'Revisão de sugestão', REQUEST_GOVERNANCE: 'Revisão de material ou questões', REVIEW_GOVERNANCE: 'Validação da revisão', CORRECT_SCORE: 'Correção de pontuação', RECONCILE_LINKS: 'Reconciliação de formulários'};
 const escapeHtml = (value = '') => String(value ?? '').replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));

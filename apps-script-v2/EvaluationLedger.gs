@@ -1,5 +1,5 @@
 /* Trusted Spark ledger. Browser requests are never a source of points.
- * Legacy scores are deliberately not read or changed by this engine. */
+ * Legacy scores are imported only through the verified FB delivery adapter. */
 const SAHMT_V2_EVALUATION_LEDGER = Object.freeze({maxWrites: 450, maxUsers: 400, maxAwards: 10000, maxAttempts: 4});
 
 // The operational database and identity authority remain FA. No global Config switch.
@@ -65,7 +65,10 @@ function evaluationCategoryFields_(category) {
 
 function evaluationValidPoints_(value) { return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1000000; }
 function evaluationActiveProfile_(profile, uid) { return !!profile && profile.uid === uid && profile.active === true && profile.access === true; }
-function evaluationAdmin_(profile) { return !!profile && (profile.role === 'administrador_app' || profile.permissions && profile.permissions.admin === true); }
+function evaluationAdmin_(profile) {
+  return !!profile && (profile.role === 'administrador_app' || profile.permissions && profile.permissions.admin === true) &&
+    (evaluationProject_() !== SAHMT_EVALUATION_FB || !!profile.permissions && profile.permissions.managementManage === true);
+}
 function evaluationClean_(value) {
   const result = {};
   Object.keys(value || {}).forEach(function (key) { if (key[0] !== '_' && value[key] !== undefined) result[key] = value[key]; });
@@ -83,8 +86,10 @@ function evaluationPlanAward_(previous, input, options) {
   options = options || {};
   const id = input.id || evaluationAwardId_(input);
   const category = evaluationCategoryFields_(input.category);
-  const allowed = input.category === 'PERFORMANCE' ? ['ACKNOWLEDGEMENT', 'SUGGESTION', 'TEST', 'CHECKLIST', 'OCCURRENCE'] : ['MATERIAL', 'QUESTIONS'];
+  const allowed = input.category === 'PERFORMANCE' ? ['ACKNOWLEDGEMENT', 'SUGGESTION', 'TEST', 'CHECKLIST', 'OCCURRENCE', 'TRAINING_ACCESS', 'TRAINING_COMPLETION', 'MANAGEMENT_TASK'] : ['MATERIAL', 'QUESTIONS'];
   if (!allowed.includes(input.modality) || !evaluationValidPoints_(input.points)) throw new Error('Modalidade ou pontuação inválida.');
+  if (!options.correction && ['TRAINING_ACCESS','TRAINING_COMPLETION','MANAGEMENT_TASK'].includes(input.modality) &&
+      (options.legacyVerified !== true || input.points < 0 || input.points > 1000)) throw new Error('LEGACY_SCORE_VERIFICATION_REQUIRED');
   if (!options.correction) {
     const defaults = {ACKNOWLEDGEMENT: [0, 1], SUGGESTION: [0, 2], MATERIAL: [0, 1], QUESTIONS: [0, 1], CHECKLIST: [-1, 0, 1], OCCURRENCE: [2]};
     if (defaults[input.modality] && !defaults[input.modality].includes(input.points)) throw new Error('Pontuação fora da regra da modalidade.');

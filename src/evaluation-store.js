@@ -1,3 +1,6 @@
+import {createManagementLeaseAccess} from './management-lease-access.js';
+const managementLeaseAccess=createManagementLeaseAccess();
+
 /** One authoritative evaluation database. Never read both projects or fall back
  * to FA after an FB error. Identity and permissions continue to originate in FA. */
 export async function resolveEvaluationStore({faDb, auth, sdk, target = 'FA', loadSecondary}) {
@@ -23,9 +26,9 @@ export async function resolveEvaluationStore({faDb, auth, sdk, target = 'FA', lo
   return {db, identityDb: faDb, sdk, auth, assertSession, target};
 }
 
-export async function loadEvaluationStore({faDb, auth, sdk}) {
+export async function loadEvaluationStore({faDb, auth, sdk, target}) {
   const env = import.meta.env || {};
-  return resolveEvaluationStore({faDb, auth, sdk, target: env.VITE_EVALUATION_DATA_PROJECT || 'FA', loadSecondary: async uid => {
+  return resolveEvaluationStore({faDb, auth, sdk, target: target || env.VITE_EVALUATION_DATA_PROJECT || 'FA', loadSecondary: async uid => {
     const [{getFirebaseProjectAuthOptIn}, {getManagementApp, getManagementFirestore}, authSdk] = await Promise.all([
       import('./firebase-project-auth-browser.js'), import('./management-firebase-app.js'), import('firebase/auth')
     ]);
@@ -34,10 +37,10 @@ export async function loadEvaluationStore({faDb, auth, sdk}) {
     let secondaryAuth;
     try { secondaryAuth = authSdk.initializeAuth(app, {persistence: authSdk.inMemoryPersistence}); }
     catch (error) { if (error?.code !== 'auth/already-initialized') throw error; secondaryAuth = authSdk.getAuth(app); }
-    if (secondaryAuth.currentUser?.uid !== uid) {
-      const result = await getFirebaseProjectAuthOptIn().connect(['FB']);
-      if (result?.targets?.FB?.status !== 'ready') throw new Error('EVALUATION_FB_UNAVAILABLE');
-    }
-    return {auth: secondaryAuth, db: getManagementFirestore()};
+    const db=getManagementFirestore(), firestore=await import('firebase/firestore');
+    await managementLeaseAccess.ensure({uid,faAuth:auth,secondaryAuth,
+      readLease:async()=>{const snap=await firestore.getDocFromServer(firestore.doc(db,'managementAuthorizationLeases',uid));return snap.exists()?snap.data():null;},
+      connect:()=>getFirebaseProjectAuthOptIn().connect(['FB'])});
+    return {auth:secondaryAuth,db};
   }});
 }

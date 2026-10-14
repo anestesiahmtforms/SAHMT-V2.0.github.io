@@ -213,3 +213,16 @@ test('an isolated origin can only be configured for the server single-user pilot
   {fetchImpl:f.fetchImpl,now:()=>TIME}), /WORKER_PILOT_POLICY_INVALID/);
  assert.equal(f.operations.length, 0);
 });
+
+ test('FB domain context is opt-in and never added to FC source requests',async()=>{
+  const domainRequests=[];
+  const f=operationalFixture({env:{MANAGEMENT_DOMAIN_ENABLED:'true'},beforeGateway:envelope=>{if(envelope.operation==='READ_FA_AUTHORIZATION')domainRequests.push(envelope.body.includeManagementDomain===true);}});
+  const response=await f.workerFetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({faIdToken:f.token,sourceProjectId:FA,targetProjectIds:{FB,FC}})});
+  const result=await response.json();assert.equal(result.targets.FB.status,'READY');assert.equal(result.targets.FC.status,'READY');
+  assert.ok(domainRequests.includes(true));assert.ok(domainRequests.includes(false));await Promise.all(f.completions);
+ });
+ test('FB area read failure does not stop the independent FC session',async()=>{
+  const f=operationalFixture({env:{MANAGEMENT_DOMAIN_ENABLED:'true'},failDomainRead:true});
+  const response=await f.workerFetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({faIdToken:f.token,sourceProjectId:FA,targetProjectIds:{FB,FC}})});
+  const result=await response.json();assert.equal(result.targets.FB.status,'UNAVAILABLE');assert.equal(result.targets.FC.status,'READY');await Promise.all(f.completions);
+ });

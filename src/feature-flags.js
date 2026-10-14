@@ -30,3 +30,12 @@ export function featureEnabledForRoute(route, features = DEFAULT_APP_FEATURES) {
   const feature = Object.entries(FEATURE_ROUTE).find(([, targetRoute]) => targetRoute === route)?.[0];
   return !feature || normalizeAppFeatures(features)[feature] === true;
 }
+
+/** UI release follows the explicit data cutover; server rules remain authoritative. */
+export function secondaryDomainAccess(route, profile, projects = {}) {
+  if (profile?.active !== true || profile?.access !== true) return false;
+  const permissions = profile.permissions || {};
+  const keys = route === 'management' ? ['managementRead','managementManage'] :
+    route === 'training' ? ['trainingsRead','trainingsManage'] : [];
+  return projects[route] === 'FB' && keys.some(key=>permissions[key] === true);
+}

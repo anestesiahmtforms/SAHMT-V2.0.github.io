@@ -38,6 +38,10 @@ export function operationalFixture(options={}) {
   if(url.startsWith('https://firestore.googleapis.com/v1/')){
    const parsed=new URL(url),path=decodeURIComponent(parsed.pathname.slice(4)),body=request.payload?JSON.parse(request.payload):null;
    if(options.firestoreStatus)return response({error:{status:'PERMISSION_DENIED',message:'secret user email@example.invalid'}},{status:options.firestoreStatus});
+   if(path.endsWith(':runQuery')) {
+    if(options.failDomainRead)return response({error:{status:'PERMISSION_DENIED'}},{status:403});
+    return response([{readTime:new Date(TIME).toISOString()}]);
+   }
    if(request.method==='get'){const doc=docs.get(path);return doc?response(copy(doc)):response({error:{status:'NOT_FOUND'}},{status:404});}
    if(path.endsWith(':beginTransaction')){const id=Buffer.from('transaction-'+(++serial)).toString('base64');transactions.set(id,new Map([...docs].map(([k,v])=>[k,copy(v)])));return response({transaction:id});}
    if(path.endsWith(':batchGet'))return response(body.documents.map(name=>{const doc=(transactions.get(body.transaction)||docs).get(name);return {...(doc?{found:copy(doc)}:{missing:name}),readTime:new Date(TIME).toISOString()};}));
