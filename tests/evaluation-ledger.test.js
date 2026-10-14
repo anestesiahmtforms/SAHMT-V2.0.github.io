@@ -5,10 +5,10 @@ import {createHash} from 'node:crypto';
 import vm from 'node:vm';
 import {getChecklistDayResponsible} from '../src/checklist-responsibility-projection.js';
 
-const files = ['Config.gs', 'ChecklistRotationCore.gs', 'ChecklistValidation.gs', 'ChecklistScienceRelease.gs', 'ChecklistProjection.gs', 'EvaluationLedger.gs'];
+const files = ['Config.gs', 'ChecklistRotationCore.gs', 'ChecklistValidation.gs', 'ChecklistScienceRelease.gs', 'ChecklistProjection.gs', 'EvaluationLedger.gs', 'EvaluationChecklistDelivery.gs'];
 const source = files.map(file => readFileSync(new URL(`../apps-script-v2/${file}`, import.meta.url), 'utf8')).join('\n');
 const plain = value => JSON.parse(JSON.stringify(value));
-const profile = (uid, extra = {}) => ({uid, active:true, access:true, role:'usuario', permissions:{checklistSign:true}, displayName:`Pessoa ${uid}`, email:`${uid}@example.invalid`, ...extra});
+const profile = (uid, extra = {}) => ({uid, active:true, access:true, role:'usuario', permissions:{checklistSign:true,...(extra.role==='administrador_app'?{managementManage:true}:{})}, displayName:`Pessoa ${uid}`, email:`${uid}@example.invalid`, ...extra});
 const base = (extra = {}) => ({uid:'person-a', category:'PERFORMANCE', modality:'ACKNOWLEDGEMENT', creditScopeId:'matter', activityId:'form-fixture', areaId:'area-fixture', version:1, points:1, sourceFingerprint:'source-1', sourceType:'FORM_VERIFIED', sourceId:'response-fixture', ...extra});
 function acceptedSignature(h,day,responsibleUid,signerUid) {
   const snapshot={date:day,responsibleUid,entries:[]},revision=h.ctx.sha256Hex_(JSON.stringify(snapshot)),id=`${day}_${revision}`;
@@ -25,7 +25,7 @@ function harness({activated = true} = {}) {
       formatDate:()=>'2026-10-03'}, PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key)||null})}});
   vm.runInContext(source, ctx);
   ctx.sahmtV2Properties_ = () => ({getProperty:key=>properties.get(key)||null,setProperty:(key,value)=>properties.set(key,value)});
-  const name = (collection,id) => ctx.firestoreDocumentName_(collection,id);
+  const name = (collection,id) => ctx.evaluationDocumentName_(collection,id);
   function seed(collection,id,data) { const doc = {name:name(collection,id), fields:plain(ctx.firestoreFieldsFromJs_(data)), updateTime:`v${++counter}`, createTime:`v${counter}`}; store.set(doc.name,doc); return doc; }
   function data(collection,id) { const item=store.get(name(collection,id)); return item ? plain(ctx.firestoreFieldsToJs_(item.fields)) : null; }
   function get(collection,id) { const doc=store.get(name(collection,id)); return doc ? ctx.evaluationDocument_(doc) : null; }
@@ -74,6 +74,10 @@ function harness({activated = true} = {}) {
     seed('evaluationRuntime','state',{homologationVerified:true});
   }
   return {ctx,seed,data,get,store,commits,requests,properties,values:collection=>Array.from(store.values()).filter(doc=>doc.name.startsWith(name(collection,''))).map(doc=>plain(ctx.firestoreFieldsToJs_(doc.fields))),beforeCommit:callback=>{beforeCommit=callback;}};
+}
+function deliverChecklistOutbox(h, options) {
+  for(const event of h.values('checklistScoreOutbox').filter(item=>item.status==='PENDING'))
+    h.ctx.evaluationDeliverChecklistEvent_(event.id,options);
 }
 
 test('modalidades têm regras fixas e categorias não podem ser trocadas', () => {
@@ -242,12 +246,14 @@ test('validador real aceita assinatura própria completa com zero e substituta i
     const h=checklistFixture(input);
     const result=h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id));assert.equal(result,'VALIDATED');
     assert.equal(h.values('checklistSignatures').length,1);assert.equal(h.values('scores').length,0);
+    const sourceCommit=h.commits.at(-1);
+    for(const collection of ['checklistSignatures','checklistSignatureRequests','checklistScoreOutbox','checklistResponsibilities'])assert.ok(sourceCommit.writes.some(write=>write.update.name.includes(`/${collection}/`)),collection);
+    assert.ok(sourceCommit.writes.filter(write=>write.update.name.includes('/checklistSignatures/')).every(write=>write.updateTransforms.some(transform=>transform.fieldPath==='signedAt')));
+    deliverChecklistOutbox(h);
     assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,input.own?0:1);
     assert.equal(h.data('checklistSignatures',`${h.day}_${h.snapshot.revision}`).missing,input.complete?0:1);
     assert.equal(h.data('checklistResponsibilities',h.day).responsible.uid,'person-a');
-    const commit=h.commits.at(-1);
-    for(const collection of ['checklistSignatures','checklistSignatureRequests','evaluationAwards','evaluationLedger','evaluationChecklistTransfers','checklistResponsibilities'])assert.ok(commit.writes.some(write=>write.update.name.includes(`/${collection}/`)),collection);
-    assert.ok(commit.writes.filter(write=>write.update.name.includes('/checklistSignatures/')).every(write=>write.updateTransforms.some(transform=>transform.fieldPath==='signedAt')));
+    assert.ok(h.commits.some(commit=>['evaluationAwards','evaluationLedger','evaluationChecklistTransfers'].every(collection=>commit.writes.some(write=>write.update.name.includes(`/${collection}/`)))));
   }
 });
 
@@ -265,11 +271,12 @@ test('pendente não pontua; pedido recusado/desatualizado não grava assinatura 
 });
 
 test('nova revisão aceita no mesmo dia não repete transferência de obrigação diária', () => {
-  const h=checklistFixture();h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id));
+  const h=checklistFixture();h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id));deliverChecklistOutbox(h);
   h.seed('checklists','second-response',{date:h.day,stationId:'station-fixture',condition:'SIM',occurrence:'',createdAt:new Date('2026-10-03T11:00:00Z')});
   const snapshot=h.ctx.readTrustedChecklistSnapshot_(h.day),id=`${h.day}_${snapshot.fingerprint}_person-a`;
   h.seed('checklistSignatureRequests',id,{id,day:h.day,revision:snapshot.fingerprint,signerUid:'person-a',declaration:true,status:'PENDING_VALIDATION',justification:'Segunda revisão fictícia aceita'});
   assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',id)),'VALIDATED');
+  deliverChecklistOutbox(h);
   assert.equal(h.values('checklistSignatures').length,2);assert.equal(h.values('evaluationLedger').length,2);
   assert.equal(h.data('checklistSignatureRequests',id).pointsAwarded,0);assert.equal(h.data('checklistSignatureRequests',id).evaluationStatus,'DUPLICATE');
 });
@@ -281,12 +288,13 @@ test('revogação enquanto o validador trabalha aborta commit e revalida acesso 
 });
 
 test('par inconsistente nunca produz novo crédito silencioso', () => {
-  const h=checklistFixture();h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id));
+  const h=checklistFixture();h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id));deliverChecklistOutbox(h);
   const credit=h.values('evaluationAwards').find(item=>item.leg==='CREDIT');h.seed('evaluationAwards',credit.id,{...credit,points:7});
   h.seed('checklists','new-response',{date:h.day,stationId:'station-fixture',condition:'SIM',occurrence:'',createdAt:new Date('2026-10-03T11:00:00Z')});
   const snapshot=h.ctx.readTrustedChecklistSnapshot_(h.day),id=`${h.day}_${snapshot.fingerprint}_person-a`;
   h.seed('checklistSignatureRequests',id,{id,day:h.day,revision:snapshot.fingerprint,signerUid:'person-a',declaration:true,status:'PENDING_VALIDATION',justification:'Estado inconsistente fictício'});
-  assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',id)),'NEEDS_REVIEW');assert.equal(h.values('evaluationLedger').length,2);
+  assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',id)),'VALIDATED');
+  assert.throws(()=>deliverChecklistOutbox(h));assert.equal(h.values('evaluationLedger').length,2);
 });
 
 test('segundo componente de governança adiciona apenas ponto faltante', () => {
@@ -397,13 +405,15 @@ test('ciência preserva transferência diária, autoria e natureza do registro s
  for(const own of [true,false]) {
  const h=checklistFixture({own,ack:true});
  assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
+ const sourceCommit=h.commits.at(-1);
+ deliverChecklistOutbox(h);
  const receipt=h.data('checklistSignatures',`${h.day}_${h.snapshot.revision}`);
  assert.equal(receipt.recordKind,'ACKNOWLEDGEMENT');assert.equal(receipt.declarationText,'Declaro que tomei ciência das informações deste relatório.');
  assert.equal(receipt.signerUid,h.signerUid);assert.equal(receipt.missing,1);
  assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,own?0:1);
  assert.equal(h.data('checklistSignatureRequests',h.id).responsibleAdjustment,own?0:-1);
  assert.equal(receipt.acknowledgedAt,'2026-10-03T10:00:00.000Z');
- assert.ok(h.commits.at(-1).writes.find(w=>w.update.name.includes('/checklistSignatures/')).updateTransforms.some(t=>t.fieldPath==='signedAt'));
+ assert.ok(sourceCommit.writes.find(w=>w.update.name.includes('/checklistSignatures/')).updateTransforms.some(t=>t.fieldPath==='signedAt'));
  }
 });
 
@@ -446,6 +456,7 @@ test('ativação exclusiva da ciência apura o par e resumo sem habilitar outras
   const h=scienceFixture({own});
   assert.throws(()=>h.ctx.evaluationAssertOperator_(true));
   assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id},{scienceOnly:true}),'VALIDATED');
+  deliverChecklistOutbox(h,{scienceOnly:true});
   assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,own?0:1);
   assert.equal(h.ctx.evaluationPublishCategorySummary_('PERFORMANCE',{scienceOnly:true}).status,'CONFIRMED');
   assert.equal(h.data('evaluationSummaries',h.signerUid).performanceTotal,own?0:1);
