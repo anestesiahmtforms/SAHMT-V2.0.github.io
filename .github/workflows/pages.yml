@@ -42,6 +42,8 @@ jobs:
         run: npm run test:management-rules
       - name: Run Etiquetas AI Worker tests
         run: npm run test:label-ai-worker
+      - name: Run operational spreadsheet delivery tests
+        run: node --test tests/operational-sheet-control.test.js tests/operational-sheet-push.test.js tests/operational-sheet-delivery.test.js worker-management-auth/worker.test.js
       - name: Run Firestore Rules tests
         run: npm run test:rules
       - name: Run isolated evaluation transactions
@@ -75,6 +77,7 @@ jobs:
           VITE_APP_CHECK_SITE_KEY: ${{ vars.VITE_APP_CHECK_SITE_KEY }}
           VITE_LABEL_AI_ENDPOINT: ${{ vars.VITE_LABEL_AI_ENDPOINT }}
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
+          VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
         run: npm run build
       - name: Include local-only review tools
         run: mkdir -p dist/tools && cp tools/catalog-review.html dist/tools/catalog-review.html && cp tools/user-contact-review.html dist/tools/user-contact-review.html

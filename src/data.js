@@ -1,4 +1,5 @@
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
+import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db} from './firebase.js';
 import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
@@ -2261,6 +2262,16 @@ async function confirmCommittedMutation({collectionName, data, uid, requestId}) 
 }
 
 export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID()} = {}) {
+  await prepareOperationalSheetDelivery(collectionName, requestId, uid);
+  const result = await createOperationalRecordInFirestore(collectionName, data, {uid, requestId});
+  if (!result.pendingFirestore) {
+    await confirmOperationalSheetDelivery(collectionName, requestId, uid);
+    void flushOperationalSheetDelivery(uid);
+  }
+  return result;
+}
+
+async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const payload = {collectionName, data};
   if (!navigator.onLine) {
@@ -2387,8 +2398,10 @@ export async function flushOutbox(uid, {requestId} = {}) {
             await batch.commit();
           }
         }
+        await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
         await removeQueuedOperation(uid, operation.requestId);
         synced++;
+        void flushOperationalSheetDelivery(uid);
         window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: operation.type}}));
       } catch (error) {
         if (error.code !== 'invalid-outbox-operation') {
@@ -2398,8 +2411,10 @@ export async function flushOutbox(uid, {requestId} = {}) {
               ? await confirmCommittedEventEdit(operation.payload.eventId, operation.payload.data, uid, operation.requestId, operation.payload.expectedVersion + 1)
               : await confirmCommittedMutation({collectionName: operation.payload.collectionName, data: operation.payload.data, uid, requestId: operation.requestId});
             if (committed) {
+              await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
               await removeQueuedOperation(uid, operation.requestId);
               synced++;
+              void flushOperationalSheetDelivery(uid);
               window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, replay: true}}));
               continue;
             }

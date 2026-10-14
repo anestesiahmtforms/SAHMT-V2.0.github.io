@@ -4586,6 +4586,9 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+  if (next.status === 'signed-in' && userChanged) {
+    void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(next.user.uid)).catch(() => {});
+  }
     if (next.status === 'signed-in') {
       if (!unchangedPresentation && typeof window !== 'undefined'
         && typeof managementProjectAuthAutoConnector !== 'undefined') {
@@ -4643,6 +4646,7 @@ window.addEventListener('online', () => {
   cleanupCurrentModule?.setOnline?.(true);
   liveReports.setOnline(true);
   if (session.status === 'signed-in') {
+    void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
     void managementProjectAuthAutoConnector.retry();
     for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'reconnect');
     void refreshAppFeatures(session.user.uid, true);

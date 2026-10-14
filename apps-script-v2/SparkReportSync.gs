@@ -19,6 +19,13 @@ const SAHMT_V2_SPARK_REPORT_SCAN = Object.freeze({
 });
 
 function syncSparkReportsPeriodically() {
+  return cancelarIntervalosPlanilhaV1();
+}
+function recoverLegacySparkReportsManually() {
+  oscOwner_();
+  if (sahmtV2Properties_().getProperty('SAHMT_OPERATIONAL_SHEETS_READY') === 'YES') {
+    throw new Error('Utilize sincronizarRegistrosOperacionaisV1 para as abas operacionais em português.');
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {skipped: 'another run holds the lock'};
   try {
@@ -120,16 +127,7 @@ function reportValuesForSpark_(config, job, record) {
 }
 
 function installSahmtV2SparkReportTrigger() {
-  const spreadsheetId = sahmtV2SpreadsheetId_();
-  sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
-  requireSparkReportTabs_(SpreadsheetApp.openById(spreadsheetId));
-  // Probe the direct collection scan before creating recurring work.
-  listSparkReportChanges_(SAHMT_V2_SPARK_REPORT_SCAN.resources[0], 1);
-  const existing = ScriptApp.getProjectTriggers().filter(function (trigger) {
-    return trigger.getHandlerFunction() === 'syncSparkReportsPeriodically';
-  });
-  if (!existing.length) ScriptApp.newTrigger('syncSparkReportsPeriodically').timeBased().everyMinutes(5).create();
-  return {installed: true, existing: existing.length > 0};
+  return cancelarIntervalosPlanilhaV1();
 }
 
 function resetSahmtV2SparkReportCursors() {

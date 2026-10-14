@@ -1,5 +1,8 @@
 function setupSahmtV2Reporting() {
   const properties = sahmtV2Properties_();
+  if (properties.getProperty('SAHMT_OPERATIONAL_SHEETS_READY') === 'YES') {
+    throw new Error('O controle operacional já está instalado; preserve os cabeçalhos em português.');
+  }
   const folder = sahmtV2RequirePrivateFolder_();
   if (properties.getProperty(SAHMT_V2_CONFIG.destinationApprovalProperty) !== 'YES') {
     throw new Error('Antes da configuração, confirme que a pasta oficial de relatórios tem acesso restrito e defina SAHMT_V2_REPORTS_DESTINATION_APPROVED=YES nas propriedades do script.');

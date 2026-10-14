@@ -1,4 +1,5 @@
 import {buildManagementAuthRuntime} from './runtime.js';
+import {relayOperationalSheet} from './operational-sheet-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
 import {createManagementFaFirstLoginHttp} from '../scripts/lib/management-fa-first-login-http.js';
 import {ManagementBrokerAdmissionState, createManagementAuthWorkerRuntime as createAdmissionRuntime} from './admission-state.js';
@@ -42,6 +43,8 @@ export function createManagementAuthWorker({buildRuntime} = {}) {
 
   return Object.freeze({
     async fetch(request, env, context) {
+      if (new URL(request.url).pathname === '/v1/operational-sheets/notify')
+        return relayOperationalSheet(request, env);
       try {
         await runtimeFor(env);
         const url = new URL(request.url);
