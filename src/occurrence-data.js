@@ -47,7 +47,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const user = auth.currentUser;
     if (!user || user.uid !== uid || typeof user.getIdTokenResult !== 'function') throw new Error('OCCURRENCE_SESSION_INVALID');
     let result;
-    try { result = await user.getIdTokenResult(true); }
+    try { result = await user.getIdTokenResult(false); }
     catch { throw new Error('OCCURRENCE_AUTHORIZATION_UNAVAILABLE'); }
     const claims = result?.claims;
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');

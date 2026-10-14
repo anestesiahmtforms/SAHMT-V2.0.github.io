@@ -1,7 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
-import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage} from '../src/occurrences-ui.js';
+import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage,createOccurrenceSessionGate} from '../src/occurrences-ui.js';
+
+test('leituras simultâneas aguardam uma única conexão FC e preservam o UID',async()=>{
+  const auth={currentUser:null};let calls=0;
+  const gate=createOccurrenceSessionGate({auth,uid:'synthetic',isCurrent:()=>true,connect:async()=>{
+    calls++;auth.currentUser={uid:'synthetic'};return {targets:{FC:{status:'ready'}}};
+  }});
+  await Promise.all([gate(),gate(),gate()]);
+  assert.equal(calls,1);
+  await gate();assert.equal(calls,1);
+  auth.currentUser=null;
+  await gate();assert.equal(calls,2);
+});
+
+test('conexão FC divergente ou sessão FA trocada não libera leituras',async()=>{
+  const auth={currentUser:null};
+  const gate=createOccurrenceSessionGate({auth,uid:'synthetic',isCurrent:()=>true,connect:async()=>{
+    auth.currentUser={uid:'other'};return {targets:{FC:{status:'ready'}}};
+  }});
+  await assert.rejects(gate(),{message:'OCCURRENCE_FC_CONNECTION_UNAVAILABLE'});
+  let current=true;
+  const switched=createOccurrenceSessionGate({auth:{currentUser:null},uid:'synthetic',isCurrent:()=>current,
+    connect:async()=>{current=false;return {targets:{FC:{status:'ready'}}};}});
+  await assert.rejects(switched(),{message:'OCCURRENCE_SESSION_CHANGED'});
+});
+
+test('nova leitura aguarda o resultado do broker mesmo depois de Auth preencher o usuário',async()=>{
+  const auth={currentUser:null};let finish;
+  const gate=createOccurrenceSessionGate({auth,uid:'synthetic',isCurrent:()=>true,connect:async()=>{
+    auth.currentUser={uid:'synthetic'};
+    return new Promise(resolve=>{finish=resolve;});
+  }});
+  const first=gate();await Promise.resolve();
+  let completed=false;const second=gate().then(()=>{completed=true;});
+  await Promise.resolve();assert.equal(completed,false);
+  finish({targets:{FC:{status:'ready'}}});await Promise.all([first,second]);
+  assert.equal(completed,true);
+});
 
 test('catálogo reconecta uma vez ao FC quando a sessão está sem autorização',async()=>{
   let reads=0,connects=0;
@@ -19,8 +56,19 @@ test('catálogo não reconecta após troca de usuário e não mascara falha de v
   assert.equal(connects,0);
   await assert.rejects(loadOccurrenceCatalogForSession({uid:'synthetic',isCurrent:()=>true,
     repository:{loadCatalog:async()=>{throw Error('OCCURRENCE_CATALOG_UNAVAILABLE');}},
-    reconnect:async()=>({targets:{FC:{status:'unavailable'}}})}),/OCCURRENCE_FC_CONNECTION_UNAVAILABLE/);
+    reconnect:async()=>{connects++;return {targets:{FC:{status:'unavailable'}}};}}),/OCCURRENCE_CATALOG_UNAVAILABLE/);
+  assert.equal(connects,0);
   assert.match(occurrenceCatalogErrorMessage(Error('OCCURRENCE_PERMISSION_DENIED')),/permissão/);
+});
+
+test('falha de rede no token ou catálogo não dispara nova autenticação no FC',async()=>{
+  for(const code of ['OCCURRENCE_AUTHORIZATION_UNAVAILABLE','OCCURRENCE_CATALOG_UNAVAILABLE']){
+    let connects=0;
+    await assert.rejects(loadOccurrenceCatalogForSession({uid:'synthetic',isCurrent:()=>true,
+      repository:{loadCatalog:async()=>{throw Error(code);}},
+      reconnect:async()=>{connects++;return {targets:{FC:{status:'ready'}}};}}),{message:code});
+    assert.equal(connects,0);
+  }
 });
 
 test('grupos mostram os dez formulários e removem o atalho oncológico',()=>{

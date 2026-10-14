@@ -36,6 +36,16 @@ const input={uid:'uid-synthetic',displayName:'Profissional Sintético',anonymous
     immediateAction:'Ação sintética',eventPeriod:'Opção sintética 1'}};
 const allClaims={sahmtOccurrencesCatalogRead:true,sahmtOccurrencesWrite:true,sahmtOccurrencesRead:true};
 
+test('consultas consecutivas no FC usam o token gerenciado pelo SDK sem renovação forçada', async()=>{
+  const {repository,calls,store}=harness({claims:{...allClaims,sahmtOccurrencesAuditRead:true}});
+  store.set('occurrenceCatalogs/current',{schemaVersion:1,catalogs});
+  await repository.loadCatalog({uid:input.uid});
+  await repository.loadCatalog({uid:input.uid});
+  await repository.list({uid:input.uid});
+  await repository.listAudit({uid:input.uid});
+  assert.deepEqual(calls.filter(([name])=>name==='token').map(([,force])=>force),[false,false,false,false]);
+});
+
 test('nega catálogo e escrita sem claims emitidos pelo servidor para o FA e FC', async()=>{
   const {repository,calls}=harness();
   await assert.rejects(repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_PERMISSION_DENIED'});

@@ -63,7 +63,7 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
 }
 
 const recoverableCatalogErrors = new Set(['OCCURRENCE_SESSION_INVALID', 'OCCURRENCE_PERMISSION_DENIED',
-  'OCCURRENCE_AUTHORIZATION_UNAVAILABLE', 'OCCURRENCE_CATALOG_UNAVAILABLE', 'OCCURRENCE_CATALOG_PERMISSION_DENIED']);
+  'OCCURRENCE_CATALOG_PERMISSION_DENIED']);
 
 export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent,reconnect}={}) {
   try { return await repository.loadCatalog({uid}); }
@@ -85,23 +85,42 @@ export function occurrenceCatalogErrorMessage(error) {
   return 'Não foi possível ler o catálogo do FC agora. Tente novamente.';
 }
 
+export function createOccurrenceSessionGate({auth,uid,isCurrent,connect}={}) {
+  let pending=null;
+  return () => {
+    if (!isCurrent?.()) return Promise.reject(new Error('OCCURRENCE_SESSION_CHANGED'));
+    if (pending) return pending;
+    if (auth?.currentUser?.uid===uid) return Promise.resolve();
+    pending=Promise.resolve().then(connect).then(result=>{
+      if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if (result?.targets?.FC?.status!=='ready'||auth?.currentUser?.uid!==uid)
+        throw new Error('OCCURRENCE_FC_CONNECTION_UNAVAILABLE');
+    }).finally(()=>{pending=null;});
+    return pending;
+  };
+}
+
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID()}={}) {
   const access=occurrenceModuleAccess(permissions);
   if(!access.any||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
   const repository=createOccurrenceRepository({db,auth,idGenerator,isCurrent});
+  const ensureSession=createOccurrenceSessionGate({auth,uid,isCurrent,connect:async()=>{
+    const {getFirebaseProjectAuthOptIn}=await import('./firebase-project-auth-browser.js');
+    return getFirebaseProjectAuthOptIn().connect(['FC']);
+  }});
   let catalogs={},saving=false,loading=false,pendingRecordId=null;
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Rascunhos não são armazenados localmente.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
   const loadRecords=async()=>{
     if(!access.read||!records)return;
-    try {const items=await repository.list({uid,pageSize:30}); if(!isCurrent())return;
+    try {await ensureSession();const items=await repository.list({uid,pageSize:30}); if(!isCurrent())return;
       records.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formTitle)}</strong><small>${escape(item.occurredOn||'—')} · ${escape(item.authorLabel||'Anônimo')}</small><p>${escape(item.occurrence||'Registro de não conformidade')}</p><small class="record-meta">Pontuação: ${escape(item.pointsStatus||'PENDING_VALIDATION')}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhuma ocorrência disponível.</p>';
     } catch {if(isCurrent())records.innerHTML='<p class="empty-state" role="status">Não foi possível carregar os registros autorizados.</p>';}
   };
   const auditRoot=root.querySelector('[data-occurrence-audit]');
   const loadAudit=async()=>{
     if(!access.audit||!auditRoot)return;
-    try {const items=await repository.listAudit({uid,pageSize:30});if(!isCurrent())return;
+    try {await ensureSession();const items=await repository.listAudit({uid,pageSize:30});if(!isCurrent())return;
       auditRoot.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formId)}</strong><small>${escape(item.anonymous?'Identidade preservada em trilha restrita':'Registro autenticado')} · ${escape(item.reportId)}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhum evento de auditoria disponível.</p>';
     } catch {if(isCurrent())auditRoot.innerHTML='<p class="empty-state">Não foi possível carregar a auditoria autorizada.</p>';}
   };
@@ -116,6 +135,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     const categoryBack=direct?null:categoryHost.querySelector('[data-occurrence-group-cancel]');
     if(categoryBack)categoryBack.disabled=true;
     try {
+      if(auth.currentUser?.uid!==uid&&categoryStatus)categoryStatus.textContent='Conectando ao FC…';
+      await ensureSession();
       catalogs=(await loadOccurrenceCatalogForSession({repository,uid,isCurrent,reconnect:async()=>{
         if(categoryStatus)categoryStatus.textContent='Reconectando ao FC…';
         const {getFirebaseProjectAuthOptIn}=await import('./firebase-project-auth-browser.js');
