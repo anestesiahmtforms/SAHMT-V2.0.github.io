@@ -136,7 +136,7 @@ function fixture() {
   files.set(roots[3][0],{ownerMetadata:{id:roots[3][0],mimeType:'application/vnd.google-apps.folder',trashed:false,parents:['1AHqrb1elRlNSmw8L3t_z53gTOo6YjLU2'],inheritedPermissionsDisabled:true,owners:[{emailAddress:operator,permissionId:'owner-id'}],capabilities:{canShare:true,canDisableInheritedPermissions:true}},permissions:[{id:'owner-id',type:'user',role:'owner',emailAddress:operator}]});
   ctx.formsEvaluationMaterialSnapshot_ = urls => urls.map(url=>({fileId:url.split('/')[5],contentHash:'synthetic verified content',contentHashFormat:'stable',contentVerified:true}));
   properties.set('SAHMT_V2_EVALUATION_ALLOWED_EMAILS',operator);
-  const profile=(uid,email,admin=false)=>({uid,email,active:true,access:true,role:'usuario',permissions:admin?{admin:true}:{}});
+  const profile=(uid,email,admin=false)=>({uid,email,active:true,access:true,role:'usuario',permissions:admin?{admin:true,managementManage:true}:{}});
   seed('users','admin',profile('admin',operator,true));seed('users','manager',profile('manager','manager@example.invalid'));seed('users','general',profile('general','general@example.invalid'));seed('users','restricted',profile('restricted','restricted@example.invalid'));
   seed('managementAreas',area,{active:true});seed('evaluationAssignments',area,{areaId:area,uid:'manager',version:1});
   seed('documentAccessEmails','general@example.invalid',{email:'general@example.invalid',active:true,groups:['GENERAL']});seed('documentAccessEmails','restricted@example.invalid',{email:'restricted@example.invalid',active:true,groups:['RESTRICTED']});
@@ -175,7 +175,7 @@ test('active admin identity, existing assignment and active area are required wi
   }
 });
 test('allowlisted operator and manifest administrator remain independent existing identities',()=>{
-  const h=fixture();h.seed('users','admin',{uid:'admin',email:'independent-admin@example.invalid',active:true,access:true,permissions:{admin:true}});
+  const h=fixture();h.seed('users','admin',{uid:'admin',email:'independent-admin@example.invalid',active:true,access:true,permissions:{admin:true,managementManage:true}});
   h.seed('users','manager',{uid:'manager',email:operator,active:true,access:true,permissions:{}});
   for(const file of h.files.values())if(file.ownerMetadata?.mimeType==='application/pdf')file.permissions.push({id:'admin-writer',type:'user',role:'writer',emailAddress:'independent-admin@example.invalid'});
   const beforeProfiles=copy([...h.store].filter(([key])=>key.startsWith('users/'))),loaded=h.load(),item=h.manifest.items[0];
