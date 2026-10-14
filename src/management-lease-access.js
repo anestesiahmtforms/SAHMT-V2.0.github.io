@@ -21,7 +21,10 @@ export function createManagementLeaseAccess({now=Date.now,marginMs=30000}={}) {
     value.confirmedAtMs<=now()&&value.validUntilMs>now()+marginMs&&value.validUntilMs-value.confirmedAtMs<=300000;
    if(!valid(lease)){
     cached=null;const result=await connect();assertCurrent();
-    if(result?.targets?.FB?.status!=='ready'||secondaryAuth.currentUser?.uid!==uid)throw Error('MANAGEMENT_LEASE_RENEWAL_FAILED');
+    if(result?.targets?.FB?.status!=='ready'||secondaryAuth.currentUser?.uid!==uid){
+     const code=result?.targets?.FB?.code||result?.code;
+     throw Error('MANAGEMENT_LEASE_RENEWAL_FAILED'+(typeof code==='string'&&/^[A-Z][A-Z0-9_]{1,79}$/.test(code)?': '+code:''));
+    }
     lease=await readLease();assertCurrent();
    }
    if(!valid(lease)||secondaryAuth.currentUser?.uid!==uid)throw Error('MANAGEMENT_LEASE_INVALID');
