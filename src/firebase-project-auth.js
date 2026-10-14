@@ -36,7 +36,7 @@ export function createFirebaseProjectAuthCoordinator({enabled = false, faAuth, t
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000 || typeof now !== 'function')
     throw new Error('FIREBASE_PROJECT_AUTH_CONFIG_INVALID');
 
-  let disposed = false, generation = 0, pending = null, targetAttemptSequence = 0;
+  let disposed = false, generation = 0, pending = null, pendingNames = null, pendingUser = null, targetAttemptSequence = 0;
   const latestTargetAttempt = new Map();
   const connect = (requestedTargetNames = names) => {
     if (disposed) return Promise.resolve(Object.freeze({status: 'unavailable', code: 'COORDINATOR_DISPOSED'}));
@@ -44,10 +44,21 @@ export function createFirebaseProjectAuthCoordinator({enabled = false, faAuth, t
     if (!selectedNames.length || new Set(selectedNames).size !== selectedNames.length
       || selectedNames.some(name => !names.includes(name)))
       return Promise.resolve(Object.freeze({status: 'blocked', code: 'FIREBASE_PROJECT_TARGETS_INVALID', targets: Object.freeze({})}));
-    if (pending) return pending;
     const selectedProjectIds = Object.freeze(Object.fromEntries(selectedNames.map(name => [name, FIREBASE_PROJECTS[name].projectId])));
     const faUser = faAuth.currentUser;
     if (!faUser || !id(faUser.uid)) return Promise.resolve(Object.freeze({status: 'blocked', code: 'FA_SESSION_MISSING', targets: Object.freeze({})}));
+    if (pending) {
+      if (pendingUser !== faUser) return Promise.resolve(Object.freeze({status: 'blocked', code: 'FA_CONTEXT_CHANGED', targets: Object.freeze({})}));
+      const inFlight = pending;
+      if (!selectedNames.every(name => pendingNames.includes(name))) return inFlight.then(() => connect(selectedNames));
+      return inFlight.then(result => {
+        if (!result?.targets || !selectedNames.every(name => Object.hasOwn(result.targets, name))) return result;
+        const selected = Object.freeze(Object.fromEntries(selectedNames.map(name => [name, result.targets[name]])));
+        const values = Object.values(selected);
+        return Object.freeze({...result, status: values.every(value => value.status === 'ready') ? 'ready'
+          : values.some(value => value.status === 'ready') ? 'partial' : 'blocked', targets: selected});
+      });
+    }
     const myGeneration = ++generation, start = now();
     if (!Number.isSafeInteger(start) || start < 1) return Promise.resolve(Object.freeze({status: 'unavailable', code: 'CLOCK_INVALID', targets: Object.freeze({})}));
     const controller = new AbortController();
@@ -131,10 +142,13 @@ export function createFirebaseProjectAuthCoordinator({enabled = false, faAuth, t
     }, timeoutMs); });
     const attempt = Promise.race([work, timed]).finally(() => {
       clearTimeout(timer);
-      if (pending === attempt) pending = null;
+      if (pending === attempt) { pending = null; pendingNames = null; pendingUser = null; }
     });
     pending = attempt;
+    pendingNames = selectedNames;
+    pendingUser = faUser;
     return attempt;
   };
   return Object.freeze({enabled: true, connect, dispose: () => { disposed = true; generation++; }});
 }
+

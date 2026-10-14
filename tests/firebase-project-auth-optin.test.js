@@ -30,6 +30,26 @@ test('opt-in keeps separate lazy runtimes for destination subsets',async()=>{
   assert.deepEqual(loaded,[['FB'],['FC']]);assert.deepEqual(connected,[['FB'],['FC'],['FB']]);
 });
 
+test('shared runtime reuses an in-flight full connection for a destination subset',async()=>{
+  let loads=0,connects=0,release;
+  const optin=createFirebaseProjectAuthOptIn({enabled:true,runtimeKey:()=> 'all',loadRuntime:async()=>{
+    loads++;
+    let pending;
+    return {connect:async names=>{
+      if(!pending){connects++;pending=new Promise(resolve=>{release=()=>resolve({status:'ready',targets:{FB:{status:'ready'},FC:{status:'ready'}}});});}
+      const result=await pending;
+      return names?.length===1?{status:'ready',targets:{[names[0]]:result.targets[names[0]]}}:result;
+    }};
+  }});
+  const both=optin.connect(['FB','FC']),fc=optin.connect(['FC']);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(loads,1);
+  assert.equal(connects,1);
+  release();
+  assert.equal((await both).targets.FB.status,'ready');
+  assert.deepEqual(Object.keys((await fc).targets),['FC']);
+});
+
 test('disabled runtime failure is sanitized and disposal blocks later loads', async () => {
   let loads = 0;
   const optin = createFirebaseProjectAuthOptIn({enabled: true, loadRuntime: async () => {
@@ -55,3 +75,4 @@ test('dispose during load never connects the resulting runtime', async () => {
   assert.equal(connects, 0);
   assert.equal(disposed, 1);
 });
+

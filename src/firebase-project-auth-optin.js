@@ -1,5 +1,5 @@
 /** Lazy, user-initiated bridge. A disabled coordinator never loads Firebase SDKs. */
-export function createFirebaseProjectAuthOptIn({enabled = false, loadRuntime} = {}) {
+export function createFirebaseProjectAuthOptIn({enabled = false, loadRuntime, runtimeKey} = {}) {
   if (enabled !== true) return Object.freeze({enabled: false,
     connect: async () => Object.freeze({status: 'disabled'}), dispose: () => {}});
   if (typeof loadRuntime !== 'function') throw new Error('FIREBASE_PROJECT_AUTH_RUNTIME_INVALID');
@@ -7,7 +7,9 @@ export function createFirebaseProjectAuthOptIn({enabled = false, loadRuntime} = 
   const connect = async (targetNames) => {
     if (disposed) return Object.freeze({status: 'unavailable', code: 'OPTIN_DISPOSED'});
     try {
-      const key = Array.isArray(targetNames) ? [...targetNames].sort().join(',') : 'default';
+      const key = typeof runtimeKey === 'function' ? runtimeKey(targetNames)
+        : Array.isArray(targetNames) ? [...targetNames].sort().join(',') : 'default';
+      if (typeof key !== 'string' || !key) throw new Error('FIREBASE_PROJECT_AUTH_RUNTIME_KEY_INVALID');
       if (!runtimePromises.has(key)) runtimePromises.set(key, Promise.resolve().then(() => loadRuntime(targetNames))
         .catch(error => { runtimePromises.delete(key); throw error; }));
       const runtime = await runtimePromises.get(key);
@@ -21,3 +23,4 @@ export function createFirebaseProjectAuthOptIn({enabled = false, loadRuntime} = 
     for (const pending of runtimePromises.values()) void pending.then(runtime => runtime?.dispose?.()).catch(() => {});
   }});
 }
+
