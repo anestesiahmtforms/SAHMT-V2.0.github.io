@@ -1,5 +1,6 @@
 import {buildManagementAuthRuntime} from './runtime.js';
 import {relayOperationalSheet} from './operational-sheet-relay.js';
+import {relayOccurrenceScore} from './occurrence-score-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
 import {createManagementFaFirstLoginHttp} from '../scripts/lib/management-fa-first-login-http.js';
 import {ManagementBrokerAdmissionState, createManagementAuthWorkerRuntime as createAdmissionRuntime} from './admission-state.js';
@@ -43,6 +44,14 @@ export function createManagementAuthWorker({buildRuntime} = {}) {
 
   return Object.freeze({
     async fetch(request, env, context) {
+      if (new URL(request.url).pathname === '/v1/evaluation/occurrence') {
+        if (env?.OCCURRENCE_SCORING_ENABLED !== 'true' || request.method !== 'POST') return relayOccurrenceScore(request, env || {});
+        try {
+          const runtime = await runtimeFor(env);
+          if (runtime.maxRequestMs < 55000) return relayOccurrenceScore(request, env);
+          return await relayOccurrenceScore(request, env, {admitRequest: runtime.admitRequest});
+        } catch { return relayOccurrenceScore(request, env); }
+      }
       if (new URL(request.url).pathname === '/v1/operational-sheets/notify')
         return relayOperationalSheet(request, env);
       try {

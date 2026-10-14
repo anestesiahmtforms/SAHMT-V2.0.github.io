@@ -1,5 +1,6 @@
 /** Dedicated signed receiver. No Firestore reads; trusts only the private Worker HMAC. */
 function doPost(event) {
+  if (event && event.parameter && event.parameter.action === 'occurrence-score-v1') return evaluationOccurrenceHttp_(event);
   let request=null,secret=null;
   try {
     const props=sahmtV2Properties_();

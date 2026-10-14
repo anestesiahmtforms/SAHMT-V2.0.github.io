@@ -129,7 +129,7 @@ function formsEvaluationAll_(collection, filters, tx) {
 }
 function formsEvaluationCommitWrites_(writes) {
   if (!writes.length) return;
-  firestoreRequest_(firestoreDocumentsUrl_(':commit'), {method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})});
+  firestoreRequest_(evaluationDocumentsUrl_(':commit'), {method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})});
 }
 function formsEvaluationWriteRecord_(collection, id, changes, previous) {
   formsEvaluationCommitWrites_([evaluationWrite_(collection, id, changes, previous, ['updatedAt'])]);
@@ -1087,7 +1087,7 @@ function processEvaluationRequests() {
     } catch (_) { properties.deleteProperty(cursorKey); }
     const filters = [firestoreFilter_('status', 'EQUAL', {stringValue: 'PENDING'})];
     const order = [{fieldPath: 'createdAt', direction: 'ASCENDING'}, {fieldPath: '__name__', direction: 'ASCENDING'}];
-    const start = cursor ? {values: [{timestampValue: cursor.createdAt}, {referenceValue: firestoreDocumentName_('evaluationRequests', cursor.id)}], before: false} : null;
+    const start = cursor ? {values: [{timestampValue: cursor.createdAt}, {referenceValue: evaluationDocumentName_('evaluationRequests', cursor.id)}], before: false} : null;
     let requests = evaluationQuery_('evaluationRequests', filters, order, SAHMT_V2_EVALUATION_FORMS.maxRequests, null, null, start);
     // Wrap only after reaching the end. Old retryable requests keep PENDING and cannot monopolize every run.
     if (!requests.length && cursor) { properties.deleteProperty(cursorKey); requests = evaluationQuery_('evaluationRequests', filters, order, SAHMT_V2_EVALUATION_FORMS.maxRequests); }

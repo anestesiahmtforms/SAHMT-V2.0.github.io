@@ -2,7 +2,8 @@
 async function store() {
   const [{db}, sdk, {auth}] = await Promise.all([import('./firebase.js'), import('firebase/firestore'), import('./firebase-auth.js')]);
   if (!db) throw new Error('A integração de avaliação não está disponível.');
-  return {db, sdk, auth};
+  const {loadEvaluationStore} = await import('./evaluation-store.js');
+  return loadEvaluationStore({faDb: db, sdk, auth});
 }
 const categories = ['PERFORMANCE', 'GOVERNANCE'];
 const canonical = value => value && typeof value === 'object' ? Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']' : '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
@@ -39,11 +40,15 @@ export function validateEvaluationRequest(type, payload) {
 }
 
 async function actor(store, uid) {
+  store.assertSession?.();
   if (!validId(uid)) throw new Error('A sessão expirou. Entre novamente.');
-  const snap = await store.sdk.getDocFromServer(store.sdk.doc(store.db, 'users', uid));
+  if (store.auth?.currentUser?.uid !== uid) throw new Error('A sessão expirou. Entre novamente.');
+  const snap = await store.sdk.getDocFromServer(store.sdk.doc(store.identityDb, 'users', uid));
+  store.assertSession?.();
   const profile = snap.exists() ? snap.data() : null;
   if (!profile?.active || !profile.access) throw new Error('Seu acesso foi revogado.');
-  return {...profile, uid, isAdmin: profile.role === 'administrador_app' || profile.permissions?.admin === true};
+  const faAdmin = profile.role === 'administrador_app' || profile.permissions?.admin === true;
+  return {...profile, uid, isAdmin: faAdmin && (store.target !== 'FB' || profile.permissions?.managementManage === true)};
 }
 const rows = snapshot => snapshot.docs.map(doc => ({...doc.data(), id: doc.id}));
 async function listAll({db, sdk}, name, filters = []) {
@@ -80,6 +85,7 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
       if (closed) break;
       const release = sdk.onSnapshot(ref, {includeMetadataChanges: true}, snap => {
         if (closed) return;
+        try { service.assertSession?.(); } catch (error) { fail(error); return; }
         values.set(key, multiple ? rows(snap) : snap.exists() ? {...snap.data(), id: snap.id} : null);
         metadata.set(key, {fromCache: snap.metadata?.fromCache !== false, pending: snap.metadata?.hasPendingWrites === true || snap.docs?.some(doc => doc.metadata?.hasPendingWrites === true)});
         const ready = metadata.size === sources.length;
@@ -114,7 +120,7 @@ async function evaluationActorGroups(service, actorUid) {
   const email = claims.email.trim().toLowerCase();
   if (email.length > 254 || !/^[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) return [];
   let snapshot;
-  try { snapshot = await service.sdk.getDocFromServer(service.sdk.doc(service.db, 'documentAccessEmails', email)); } catch { return []; }
+  try { snapshot = await service.sdk.getDocFromServer(service.sdk.doc(service.identityDb, 'documentAccessEmails', email)); } catch { return []; }
   const access = snapshot.exists() ? snapshot.data() : null;
   return access?.active === true && access.email === email && Array.isArray(access.groups)
     ? [...new Set(access.groups.filter(group => ['GENERAL', 'RESTRICTED'].includes(group)))] : [];
@@ -122,7 +128,7 @@ async function evaluationActorGroups(service, actorUid) {
 export async function listEvaluationPeople(actorUid) {
   const service = await store(), profile = await actor(service, actorUid);
   if (!profile.isAdmin) throw new Error('A seleção de usuários exige acesso administrativo.');
-  return (await listAll(service, 'users')).map(item => ({id: item.id, uid: item.id, displayName: item.displayName || item.name || item.sigla || item.id, sigla: item.sigla || '', active: item.active === true && item.access === true}));
+  return (await listAll({...service, db: service.identityDb}, 'users')).map(item => ({id: item.id, uid: item.id, displayName: item.displayName || item.name || item.sigla || item.id, sigla: item.sigla || '', active: item.active === true && item.access === true}));
 }
 export async function listEvaluationAssignments(actorUid) {
   const service = await store(), profile = await actor(service, actorUid);
@@ -148,7 +154,9 @@ export async function submitEvaluationRequest(type, payload, actorUid, {requestI
   const ref = sdk.doc(db, 'evaluationRequests', requestId);
   // Repeating this action reuses its ID. A completed request is never reset to PENDING.
   await sdk.runTransaction(db, async transaction => {
+    service.assertSession?.();
     const current = await transaction.get(ref);
+    service.assertSession?.();
     if (current.exists()) {
       const old = current.data();
       if (old.actorUid !== actorUid || old.type !== type || canonical(old.payload) !== canonical(payload)) throw new Error('Este identificador pertence a outra solicitação.');

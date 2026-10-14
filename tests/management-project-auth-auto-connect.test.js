@@ -6,6 +6,8 @@ const profile = (permissions = {}, extra = {}) => ({active:true, access:true, ro
 
 test('automatic targets are independently derived from the FA profile as request hints', () => {
   assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true})), ['FB','FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementRead:true})), ['FB','FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementManage:true})), ['FB','FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({managementIndicatorsRead:true})), ['FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({trainingsManage:true,managementIndicatorsWrite:true})), ['FB','FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({admin:true})), ['FC']);

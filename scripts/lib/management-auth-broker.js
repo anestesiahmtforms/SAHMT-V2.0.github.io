@@ -403,7 +403,8 @@ export function createManagementAuthBroker({enabled = false, policy: suppliedPol
       // authorization, before any destination lookup, lease write or signing.
       if (pilotUidAllowlist) demand(pilotUidAllowlist.has(source.faUid), 'BROKER_PILOT_UID_DENIED');
       const targets = {};
-      const fbAuthorized = source.permissions.trainingsRead || source.permissions.trainingsManage;
+      const fbAuthorized = source.permissions.managementRead || source.permissions.managementManage
+        || source.permissions.trainingsRead || source.permissions.trainingsManage;
       const fcAuthorized = source.permissions.managementIndicatorsRead || source.permissions.managementIndicatorsWrite
         || source.occurrencePermissions.occurrencesWrite;
       let requiresReconciliation = false;

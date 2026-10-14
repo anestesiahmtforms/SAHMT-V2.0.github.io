@@ -31,6 +31,10 @@ function harness(){
   function commit(writes){for(const w of writes){const current=store.get(key(w.c,w.id));if(w.previous===null&&current||w.previous?._updateTime&&w.previous._updateTime!==current?._updateTime)throw Error('CAS');}for(const w of writes){const old=get(w.c,w.id)||{};const patch=clone(w.changes);for(const name of w.times)patch[name]=new Date();seed(w.c,w.id,{...old,...patch});}commits.push(writes);}
   ctx.evaluationGet_=get;
   ctx.firestoreDocumentName_=(c,id)=>`projects/fake/databases/(default)/documents/${c}/${id}`;
+  ctx.evaluationProject_=()=> 'sahmt-17a16';
+  ctx.evaluationCollectionProject_=()=> 'sahmt-17a16';
+  ctx.evaluationDocumentName_=ctx.firestoreDocumentName_;
+  ctx.evaluationDocumentsUrl_=suffix=>ctx.firestoreDocumentsUrl_(suffix);
   ctx.evaluationQuery_=(c,filters=[],order=[],limit=100,projection=null,tx=null,cursor=null)=>{
     queries.push({c,filters:clone(filters),order:clone(order),tx,cursor:clone(cursor)});
     let docs=Array.from(store.entries()).filter(([k])=>k.startsWith(`${c}/`)).map(([,value])=>clone(value));

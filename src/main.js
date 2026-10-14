@@ -75,7 +75,7 @@ const userPermissions = [
   ['documentsManage', 'Gerenciar documentos'], ['qualityManage', 'Gerenciar qualidade'], ['equipmentManage', 'Gerenciar equipamentos'], ['peopleManage', 'Gerenciar pessoas'],
   ['financeRead', 'Consultar financeiro'], ['financeWrite', 'Registrar financeiro'], ['financeManage', 'Administrar financeiro'],
   ['notificationsRead', 'Consultar notificações'], ['notificationsManage', 'Gerenciar notificações'],
-  ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências'],
+  ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências (FC)'],
   ['occurrencesAuditRead', 'Consultar auditoria de ocorrências'],
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
 ];

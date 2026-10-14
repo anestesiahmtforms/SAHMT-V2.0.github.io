@@ -2,6 +2,61 @@
  * Legacy scores are deliberately not read or changed by this engine. */
 const SAHMT_V2_EVALUATION_LEDGER = Object.freeze({maxWrites: 450, maxUsers: 400, maxAwards: 10000, maxAttempts: 4});
 
+// The operational database and identity authority remain FA. No global Config switch.
+const SAHMT_EVALUATION_FB = 'sahmt-gestao-5ae66';
+const SAHMT_EVALUATION_FC = 'indicadores---sahmt';
+const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
+  'managementAreas', 'activities', 'activityInteractions', 'activityScoreReviews',
+  'indicators', 'indicatorMeasurements', 'actionPlans', 'actionPlanItems',
+  'documents', 'scopedDocuments', 'equipment', 'equipmentEvents', 'maintenanceRecords',
+  'scoringRules', 'scores', 'learningActivities', 'learningActivityReceipts',
+  'trainings', 'trainingProgress', 'trainingReceipts', 'trainingCompletions'
+]);
+const SAHMT_EVALUATION_TRANSACTIONS = new Map();
+function evaluationProject_() {
+  const configured = sahmtV2Properties_().getProperty('SAHMT_V2_EVALUATION_PROJECT_ID');
+  if (!configured || configured === SAHMT_V2_CONFIG.projectId) return SAHMT_V2_CONFIG.projectId;
+  if (configured !== SAHMT_EVALUATION_FB) throw new Error('EVALUATION_PROJECT_INVALID');
+  return configured;
+}
+function evaluationCollectionProject_(collectionId) {
+  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_EVALUATION_FC;
+  return /^evaluation[A-Z]/.test(collectionId) || SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS.includes(collectionId)
+    ? evaluationProject_() : SAHMT_V2_CONFIG.projectId;
+}
+function evaluationCursorProperty_(base) {
+  return base + (evaluationProject_() === SAHMT_EVALUATION_FB ? '_FB' : '');
+}
+function evaluationDocumentsUrl_(path, projectId) {
+  projectId = projectId || evaluationProject_();
+  if (![SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FB, SAHMT_EVALUATION_FC].includes(projectId)) throw new Error('EVALUATION_PROJECT_INVALID');
+  return 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents' + path;
+}
+function evaluationDocumentName_(collectionId, documentId) {
+  return 'projects/' + evaluationCollectionProject_(collectionId) + '/databases/(default)/documents/' + collectionId + '/' + documentId;
+}
+function evaluationReadTransaction_(transaction, projectId) {
+  const context = SAHMT_EVALUATION_TRANSACTIONS.get(transaction);
+  if (!context || context.projectId === projectId) return transaction;
+  if (context.projectId !== SAHMT_EVALUATION_FB || ![SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FC].includes(projectId)) throw new Error('EVALUATION_CROSS_PROJECT_TRANSACTION');
+  // Source authorization/evidence is read from FA, never from a copied user profile.
+  // It is validated before the destination commit; this is not a cross-project atomic transaction.
+  if (!context.sourceTransactions[projectId]) context.sourceTransactions[projectId] = firestoreRequest_(evaluationDocumentsUrl_(':beginTransaction', projectId),
+    {method: 'post', contentType: 'application/json', payload: '{}'}).transaction;
+  return context.sourceTransactions[projectId];
+}
+function checklistSourceTransaction_(callback) {
+  return evaluationRunTransaction_(callback, {projectId: SAHMT_V2_CONFIG.projectId});
+}
+function evaluationGetProjected_(collectionId, documentId, fieldPaths) {
+  const projectId = evaluationCollectionProject_(collectionId);
+  if (projectId === SAHMT_V2_CONFIG.projectId) return getFirestoreDocument_(collectionId, documentId, fieldPaths);
+  const mask = (fieldPaths || []).map(function (field) { return 'mask.fieldPaths=' + encodeURIComponent(field); }).join('&');
+  try {
+    return evaluationDocument_(firestoreRequest_(evaluationDocumentsUrl_('/' + encodeURIComponent(collectionId) + '/' + encodeURIComponent(documentId), projectId) + (mask ? '?' + mask : ''), {method: 'get'}));
+  } catch (error) { if (error.status === 404) return null; throw error; }
+}
+
 function evaluationCategoryFields_(category) {
   if (category === 'PERFORMANCE') return {prefix: 'performance', total: 'performanceTotal', count: 'performanceCount', revision: 'performanceRevision', dirty: 'performanceDirty', status: 'performanceStatus'};
   if (category === 'GOVERNANCE') return {prefix: 'governance', total: 'governanceTotal', count: 'governanceCount', revision: 'governanceRevision', dirty: 'governanceDirty', status: 'governanceStatus'};
@@ -28,10 +83,10 @@ function evaluationPlanAward_(previous, input, options) {
   options = options || {};
   const id = input.id || evaluationAwardId_(input);
   const category = evaluationCategoryFields_(input.category);
-  const allowed = input.category === 'PERFORMANCE' ? ['ACKNOWLEDGEMENT', 'SUGGESTION', 'TEST', 'CHECKLIST'] : ['MATERIAL', 'QUESTIONS'];
+  const allowed = input.category === 'PERFORMANCE' ? ['ACKNOWLEDGEMENT', 'SUGGESTION', 'TEST', 'CHECKLIST', 'OCCURRENCE'] : ['MATERIAL', 'QUESTIONS'];
   if (!allowed.includes(input.modality) || !evaluationValidPoints_(input.points)) throw new Error('Modalidade ou pontuação inválida.');
   if (!options.correction) {
-    const defaults = {ACKNOWLEDGEMENT: [0, 1], SUGGESTION: [0, 2], MATERIAL: [0, 1], QUESTIONS: [0, 1], CHECKLIST: [-1, 0, 1]};
+    const defaults = {ACKNOWLEDGEMENT: [0, 1], SUGGESTION: [0, 2], MATERIAL: [0, 1], QUESTIONS: [0, 1], CHECKLIST: [-1, 0, 1], OCCURRENCE: [2]};
     if (defaults[input.modality] && !defaults[input.modality].includes(input.points)) throw new Error('Pontuação fora da regra da modalidade.');
     if (input.modality === 'TEST' && (input.points < 0 || !Number.isFinite(input.maxTestScore) || input.maxTestScore < input.points)) throw new Error('Nota corrigida ou máximo não confirmado.');
   }
@@ -139,13 +194,15 @@ function evaluationAssertOperator_(activation) {
   return email;
 }
 
-function evaluationGet_(collectionId, documentId, transaction) {
+function evaluationGet_(collectionId, documentId, transaction, fieldPaths) {
   if (!transaction) {
-    const result = getFirestoreDocument_(collectionId, documentId);
+    const result = evaluationGetProjected_(collectionId, documentId, fieldPaths);
     return result ? Object.assign(result, {_name: result._documentName}) : null;
   }
-  const response = firestoreRequest_(firestoreDocumentsUrl_(':batchGet'), {method: 'post', contentType: 'application/json',
-    payload: JSON.stringify({documents: [firestoreDocumentName_(collectionId, documentId)], transaction: transaction})});
+  const projectId = evaluationCollectionProject_(collectionId);
+  const response = firestoreRequest_(evaluationDocumentsUrl_(':batchGet', projectId), {method: 'post', contentType: 'application/json',
+    payload: JSON.stringify(Object.assign({documents: [evaluationDocumentName_(collectionId, documentId)], transaction: evaluationReadTransaction_(transaction, projectId)},
+      fieldPaths ? {mask: {fieldPaths: fieldPaths}} : {}))});
   const document = (Array.isArray(response) ? response : [response]).find(function (item) { return item.found; });
   if (!document) return null;
   return evaluationDocument_(document.found);
@@ -164,33 +221,47 @@ function evaluationQuery_(collectionId, filters, orderBy, maximum, fieldPaths, t
   if (orderBy.length) query.orderBy = orderBy.map(function (item) { return {field: {fieldPath: item.fieldPath}, direction: item.direction}; });
   if (fieldPaths && fieldPaths.length) query.select = {fields: fieldPaths.map(function (field) { return {fieldPath: field}; })};
   if (cursor) query.startAt = cursor;
-  const body = {structuredQuery: query}; if (transaction) body.transaction = transaction;
-  const response = firestoreRequest_(firestoreDocumentsUrl_(':runQuery'), {method: 'post', contentType: 'application/json', payload: JSON.stringify(body)});
+  const projectId = evaluationCollectionProject_(collectionId);
+  const body = {structuredQuery: query}; if (transaction) body.transaction = evaluationReadTransaction_(transaction, projectId);
+  const response = firestoreRequest_(evaluationDocumentsUrl_(':runQuery', projectId), {method: 'post', contentType: 'application/json', payload: JSON.stringify(body)});
   return (Array.isArray(response) ? response : []).filter(function (item) { return item.document; }).map(function (item) { return evaluationDocument_(item.document); });
 }
 
 function evaluationWrite_(collectionId, documentId, changes, previous, serverTimeFields) {
   const fields = evaluationClean_(changes);
   (serverTimeFields || []).forEach(function (field) { delete fields[field]; });
-  const write = {update: {name: firestoreDocumentName_(collectionId, documentId), fields: firestoreFieldsFromJs_(fields)},
+  const write = {update: {name: evaluationDocumentName_(collectionId, documentId), fields: firestoreFieldsFromJs_(fields)},
     currentDocument: previous ? previous._updateTime ? {updateTime: previous._updateTime} : previous : {exists: false}};
   if (previous && previous.exists !== false) write.updateMask = {fieldPaths: Object.keys(fields)};
   if (serverTimeFields && serverTimeFields.length) write.updateTransforms = serverTimeFields.map(function (field) { return {fieldPath: field, setToServerValue: 'REQUEST_TIME'}; });
   return write;
 }
 
-function evaluationRunTransaction_(callback) {
+function evaluationRunTransaction_(callback, options) {
+  const projectId = options && options.projectId || evaluationProject_();
+  const endpoint = function (operation) { return evaluationDocumentsUrl_(operation, projectId); };
   for (let attempt = 0; attempt < SAHMT_V2_EVALUATION_LEDGER.maxAttempts; attempt++) {
-    const started = firestoreRequest_(firestoreDocumentsUrl_(':beginTransaction'), {method: 'post', contentType: 'application/json', payload: '{}'});
+    const started = firestoreRequest_(endpoint(':beginTransaction'), {method: 'post', contentType: 'application/json', payload: '{}'});
+    const context = {projectId: projectId, sourceTransactions: {}};
+    SAHMT_EVALUATION_TRANSACTIONS.set(started.transaction, context);
     try {
       const planned = callback(started.transaction);
       if (!planned || !Array.isArray(planned.writes) || planned.writes.length > SAHMT_V2_EVALUATION_LEDGER.maxWrites) throw new Error('O commit excede o orçamento seguro ou não foi planejado.');
-      firestoreRequest_(firestoreDocumentsUrl_(':commit'), {method: 'post', contentType: 'application/json', payload: JSON.stringify({transaction: started.transaction, writes: planned.writes})});
+      const prefix = 'projects/' + projectId + '/databases/(default)/documents/';
+      if (planned.writes.some(function (write) { return !write.update || !write.update.name.startsWith(prefix); })) throw new Error('EVALUATION_CROSS_PROJECT_WRITE');
+      Object.keys(context.sourceTransactions).sort().forEach(function (sourceProject) {
+        firestoreRequest_(evaluationDocumentsUrl_(':commit', sourceProject), {method: 'post', contentType: 'application/json', payload: JSON.stringify({transaction: context.sourceTransactions[sourceProject], writes: []})});
+        delete context.sourceTransactions[sourceProject];
+      });
+      firestoreRequest_(endpoint(':commit'), {method: 'post', contentType: 'application/json', payload: JSON.stringify({transaction: started.transaction, writes: planned.writes})});
       return planned.result;
     } catch (error) {
-      try { firestoreRequest_(firestoreDocumentsUrl_(':rollback'), {method: 'post', contentType: 'application/json', payload: JSON.stringify({transaction: started.transaction})}); } catch (_) {}
+      try { firestoreRequest_(endpoint(':rollback'), {method: 'post', contentType: 'application/json', payload: JSON.stringify({transaction: started.transaction})}); } catch (_) {}
+      Object.keys(context.sourceTransactions).forEach(function (sourceProject) {
+        try { firestoreRequest_(evaluationDocumentsUrl_(':rollback', sourceProject), {method: 'post', contentType: 'application/json', payload: JSON.stringify({transaction: context.sourceTransactions[sourceProject]})}); } catch (_) {}
+      });
       if ((error.status !== 409 && error.status !== 412) || attempt + 1 === SAHMT_V2_EVALUATION_LEDGER.maxAttempts) throw error;
-    }
+    } finally { SAHMT_EVALUATION_TRANSACTIONS.delete(started.transaction); }
   }
 }
 

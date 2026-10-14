@@ -28,7 +28,7 @@ function refreshChecklistResponsibilityProjection() {
 }
 
 function writeCurrentChecklistResponsibilityProjection_() {
-  return evaluationRunTransaction_(function (transaction) {
+  return checklistSourceTransaction_(function (transaction) {
     const day = checklistSaoPauloDay_(), previous = evaluationGet_('checklistResponsibilities', day, transaction);
     try {
       const snapshot = readTrustedChecklistSnapshot_(day, transaction);
@@ -64,7 +64,7 @@ function reconcileChecklistResponsibilities() {
   accepted.forEach(function (request) {
     if (!request.day || seen.has(request.day) || !request.finalSignatureId) return;
     seen.add(request.day);
-    const outcome = evaluationRunTransaction_(function (transaction) {
+    const outcome = checklistSourceTransaction_(function (transaction) {
       const signature = evaluationGet_('checklistSignatures', request.finalSignatureId, transaction);
       if (!signature || signature.date !== request.day || signature.id !== request.finalSignatureId || signature.declaration !== true ||
           !signature.snapshot || !signature.signedAt || signature.revision !== checklistStoredSnapshotRevision_(signature.snapshot) ||

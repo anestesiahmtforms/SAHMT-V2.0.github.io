@@ -63,7 +63,7 @@ function validateChecklistSignatureRequest_(request, options) {
   options = options || {};
   if (options.scienceOnly === true) checklistScienceAssertOperator_();
   else evaluationAssertOperator_(true);
-  return evaluationRunTransaction_(function (transaction) {
+  return checklistSourceTransaction_(function (transaction) {
     const current = evaluationGet_('checklistSignatureRequests', request.id, transaction);
     if (!current || current.status !== 'PENDING_VALIDATION') return {writes: [], result: 'DUPLICATE'};
     if (options.scienceOnly === true) {
@@ -131,7 +131,11 @@ function validateChecklistSignatureRequest_(request, options) {
       declarationText: isAcknowledgement ? 'Declaro que tomei ciência das informações deste relatório.' : 'Confirmação do relatório conforme fluxo anterior'
     };
     let transfer;
-    try { transfer = evaluationApplyChecklistTransfer_(current.day, snapshot.responsible.responsibleUid, current.signerUid, signatureId, {transaction: transaction}); }
+    try {
+      transfer = evaluationProject_() === SAHMT_EVALUATION_FB
+        ? evaluationQueueChecklistDelivery_(signature, current.id, transaction)
+        : evaluationApplyChecklistTransfer_(current.day, snapshot.responsible.responsibleUid, current.signerUid, signatureId, {transaction: transaction});
+    }
     catch (error) {
       if (error.status) throw error;
       return reject('NEEDS_REVIEW', String(error && error.message || 'Pontuação pendente de revisão.').slice(0, 300));

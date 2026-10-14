@@ -27,7 +27,8 @@ export function validateOccurrenceCatalogDocument(value) {
   return Object.freeze({schemaVersion:1, catalogs:Object.freeze(catalogs)});
 }
 
-export function createOccurrenceRepository({db, auth, firestore = {}, idGenerator = () => crypto.randomUUID(), isCurrent = () => true} = {}) {
+export function createOccurrenceRepository({db, auth, firestore = {}, idGenerator = () => crypto.randomUUID(), isCurrent = () => true,
+  notifyScore = options => import('./occurrence-scoring-delivery.js').then(module=>module.notifyConfiguredOccurrenceScore(options))} = {}) {
   const api = {
     collection: firestore.collection || collection,
     doc: firestore.doc || doc,
@@ -118,6 +119,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
         return 'saved';
       });
       if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      // A confirmed FC record is not undone by FB unavailability. Its existing
+      // pending claim supports recovery; no point amount is sent by the browser.
+      Promise.resolve().then(()=>notifyScore({id:recordId,uid,auth,isCurrent})).catch(()=>{});
       return Object.freeze({status:result,id:recordId,pointsStatus:'PENDING_VALIDATION'});
     } catch (error) {
       if (['OCCURRENCE_SESSION_CHANGED','OCCURRENCE_RECONCILIATION_REQUIRED'].includes(error?.message)) throw error;

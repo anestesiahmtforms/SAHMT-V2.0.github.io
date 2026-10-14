@@ -70,7 +70,7 @@ function instalarCienciaChecklistV1() {
   try {
     verificarProntidaoCienciaChecklistV1();
     properties.setProperty(SAHMT_CHECKLIST_SCIENCE_ENABLED, 'false');
-    evaluationRunTransaction_(function (transaction) {
+    checklistSourceTransaction_(function (transaction) {
       const previous = evaluationGet_('checklistScienceRuntime', 'state', transaction);
       if (previous && previous.release !== SAHMT_CHECKLIST_SCIENCE_RELEASE) throw new Error('CHECKLIST_SCIENCE_RELEASE_CONFLICT');
       return {writes: [evaluationWrite_('checklistScienceRuntime', 'state', {enabled: true, release: SAHMT_CHECKLIST_SCIENCE_RELEASE}, previous,
@@ -97,7 +97,7 @@ function desativarCienciaChecklistV1() {
   if (!lock.tryLock(1000)) throw new Error('CHECKLIST_SCIENCE_BUSY');
   try {
     sahmtV2Properties_().setProperty(SAHMT_CHECKLIST_SCIENCE_ENABLED, 'false');
-    evaluationRunTransaction_(function (transaction) {
+    checklistSourceTransaction_(function (transaction) {
       const previous = evaluationGet_('checklistScienceRuntime', 'state', transaction);
       return {writes: previous ? [evaluationWrite_('checklistScienceRuntime', 'state', {enabled: false}, previous, ['updatedAt'])] : [], result: true};
     });
@@ -120,6 +120,7 @@ function validatePendingChecklistScienceRequests() {
         else if (outcome === 'REJECTED') result.rejected++;
       } catch (_) { result.retried++; }
     });
+    if (evaluationProject_() === SAHMT_EVALUATION_FB) result.delivery = evaluationDrainChecklistDeliveries_({scienceOnly: true});
     const summary = evaluationPublishCategorySummary_('PERFORMANCE', {scienceOnly: true});
     result.summary = summary.status; console.log(JSON.stringify(result)); return result;
   } finally { lock.releaseLock(); }

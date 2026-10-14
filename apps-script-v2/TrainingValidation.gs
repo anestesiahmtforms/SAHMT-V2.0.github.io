@@ -28,9 +28,9 @@ function validatePendingTrainingCompletions() {
       }
     });
     if (batch.length) {
-      properties.setProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty, batch[batch.length - 1]._documentName);
+      properties.setProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty), batch[batch.length - 1]._documentName);
     } else {
-      properties.deleteProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty);
+      properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));
     }
     return result;
   } finally {
@@ -49,7 +49,7 @@ function installTrainingValidationTrigger() {
 
 function listPendingTrainingCompletions_() {
   const properties = PropertiesService.getScriptProperties();
-  const cursor = properties.getProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty);
+  const cursor = properties.getProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));
   const structured = {
     from: [{collectionId: 'trainingCompletions'}],
     where: {fieldFilter: {field: {fieldPath: 'validationStatus'}, op: 'EQUAL', value: {stringValue: 'PENDING_VALIDATION'}}},
@@ -61,7 +61,7 @@ function listPendingTrainingCompletions_() {
     limit: SAHMT_V2_TRAINING_VALIDATION.pageSize
   };
   if (cursor) structured.startAt = {before: false, values: [{referenceValue: cursor}]};
-  const response = firestoreRequest_(firestoreDocumentsUrl_(':runQuery'), {
+  const response = firestoreRequest_(evaluationDocumentsUrl_(':runQuery'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({structuredQuery: structured})
   });
   const documents = (Array.isArray(response) ? response : []).filter(function (item) { return item.document; }).map(function (item) {
@@ -71,7 +71,7 @@ function listPendingTrainingCompletions_() {
   });
   if (!documents.length && cursor) {
     // Wrap around so claims inserted before the saved document are not missed.
-    properties.deleteProperty(SAHMT_V2_TRAINING_VALIDATION.cursorProperty);
+    properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));
     return listPendingTrainingCompletions_();
   }
   return {documents: documents};
@@ -87,13 +87,13 @@ function validateTrainingCompletionClaim_(claim) {
 
   const receiptId = claim.uid + '_' + claim.trainingId;
   const progressId = receiptId;
-  const receipt = getFirestoreDocument_('trainingReceipts', receiptId, [
+  const receipt = evaluationGetProjected_('trainingReceipts', receiptId, [
     'uid', 'trainingId', 'sourceType', 'trainingVersion', 'accessPointsClaimed', 'completionPointsClaimed', 'startedAt'
   ]);
-  const progress = getFirestoreDocument_('trainingProgress', progressId, [
+  const progress = evaluationGetProjected_('trainingProgress', progressId, [
     'uid', 'trainingId', 'status', 'completionStatus', 'startedAt', 'completedAt', 'duration', 'watchedRanges'
   ]);
-  const profile = getFirestoreDocument_('users', claim.uid, [
+  const profile = evaluationGetProjected_('users', claim.uid, [
     'uid', 'active', 'access', 'role', 'permissions.admin', 'permissions.trainingsRead', 'permissions.trainingsManage'
   ]);
   if (!receipt || !progress || !profile) {
@@ -136,7 +136,7 @@ function validateTrainingCompletionClaim_(claim) {
   if (receipt.accessPointsClaimed > 0) {
     const accessScore = trainingScoreRecord_('training-access-' + key, claim.uid, 'trainingStart', receiptId,
       'training-access-v1', receipt.accessPointsClaimed, receipt.trainingVersion);
-    const existingAccess = getFirestoreDocument_('scores', accessScore.id,
+    const existingAccess = evaluationGetProjected_('scores', accessScore.id,
       ['id', 'uid', 'sourceType', 'sourceId', 'ruleId', 'trainingVersion', 'points']);
     if (existingAccess && !trainingSameScore_(existingAccess, accessScore)) {
       return updateTrainingValidationStatus_(claim, 'NEEDS_REVIEW', 'Já existe um lançamento de acesso divergente para esta conclusão.');
@@ -146,7 +146,7 @@ function validateTrainingCompletionClaim_(claim) {
   if (claim.points > 0) {
     const completionScore = trainingScoreRecord_('training-completion-' + key, claim.uid, 'trainingCompletion', claim.id,
       'training-completion-v1', claim.points, receipt.trainingVersion);
-    const existingCompletion = getFirestoreDocument_('scores', completionScore.id,
+    const existingCompletion = evaluationGetProjected_('scores', completionScore.id,
       ['id', 'uid', 'sourceType', 'sourceId', 'ruleId', 'trainingVersion', 'points']);
     if (existingCompletion && !trainingSameScore_(existingCompletion, completionScore)) {
       return updateTrainingValidationStatus_(claim, 'NEEDS_REVIEW', 'Já existe um lançamento de conclusão divergente.');
@@ -160,7 +160,7 @@ function validateTrainingCompletionClaim_(claim) {
     trainingUpdateWrite_(progress._documentName, progress._updateTime, {completionStatus: 'VALIDATED', updatedAt: now}),
     trainingUpdateWrite_(receipt._documentName, receipt._updateTime, {accessPointsStatus: receipt.accessPointsClaimed > 0 ? 'VALIDATED' : 'NOT_APPLICABLE'})
   ]);
-  firestoreRequest_(firestoreDocumentsUrl_(':commit'), {
+  firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });
   return 'VALIDATED';
@@ -189,13 +189,13 @@ function trainingWatchedCoverage_(ranges, duration) {
 
 function updateTrainingValidationStatus_(claim, status, message) {
   const now = new Date();
-  const progress = getFirestoreDocument_('trainingProgress', claim.uid + '_' + claim.trainingId,
+  const progress = evaluationGetProjected_('trainingProgress', claim.uid + '_' + claim.trainingId,
     ['status', 'completionStatus']);
   const writes = [trainingUpdateWrite_(claim.name, claim.updateTime, {
     validationStatus: status, validatedAt: now, validationMessage: String(message || '').slice(0, 300),
     pointsStatus: claim.points > 0 ? status : 'NOT_APPLICABLE'
   })];
-  const receipt = getFirestoreDocument_('trainingReceipts', claim.uid + '_' + claim.trainingId,
+  const receipt = evaluationGetProjected_('trainingReceipts', claim.uid + '_' + claim.trainingId,
     ['accessPointsStatus']);
   if (receipt && receipt.accessPointsStatus === 'PENDING_VALIDATION') {
     writes.push(trainingUpdateWrite_(receipt._documentName, receipt._updateTime, {
@@ -207,7 +207,7 @@ function updateTrainingValidationStatus_(claim, status, message) {
       completionStatus: status, completionValidationMessage: String(message || '').slice(0, 300), updatedAt: now
     }));
   }
-  firestoreRequest_(firestoreDocumentsUrl_(':commit'), {
+  firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });
   return status;
@@ -240,7 +240,7 @@ function trainingSameScore_(existing, expected) {
 }
 
 function trainingScoreCreateWrite_(score) {
-  return {update: {name: firestoreDocumentName_('scores', score.id), fields: firestoreFieldsFromJs_(score)}, currentDocument: {exists: false}};
+  return {update: {name: evaluationDocumentName_('scores', score.id), fields: firestoreFieldsFromJs_(score)}, currentDocument: {exists: false}};
 }
 
 function trainingUpdateWrite_(name, updateTime, changes) {

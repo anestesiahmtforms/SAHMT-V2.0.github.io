@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 
 export const HOMOLOGATION_PROJECT = 'demo-sahmt-v2';
-const GS_FILES = ['Config.gs', 'ChecklistRotationCore.gs', 'ChecklistScienceRelease.gs', 'ChecklistValidation.gs', 'ChecklistProjection.gs', 'EvaluationLedger.gs', 'FormsEvaluation.gs'];
+const GS_FILES = ['Config.gs', 'ChecklistRotationCore.gs', 'ChecklistScienceRelease.gs', 'ChecklistValidation.gs', 'ChecklistProjection.gs', 'EvaluationLedger.gs', 'EvaluationChecklistDelivery.gs','EvaluationOccurrenceDelivery.gs', 'FormsEvaluation.gs'];
 const PROTECTED_FORMS = new Set(['1NFqJHXOiHInHtQlmZMOTKHgjgmeYB4TxJ9s2p8xRTmc', '1z-T7EL_FN1blDQa9Cn8SybHV_pJOr1dnVObVtHXtcmc']);
 const plain = value => JSON.parse(JSON.stringify(value));
 

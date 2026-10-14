@@ -24,8 +24,8 @@ function validatePendingManagementScoreReviews() {
         console.error('Falha ao validar pontuação da atividade ' + review.activityId + ': ' + String(error && error.message || error).slice(0, 300));
       }
     });
-    if (batch.length) properties.setProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty, batch[batch.length - 1]._documentName);
-    else properties.deleteProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty);
+    if (batch.length) properties.setProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty), batch[batch.length - 1]._documentName);
+    else properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty));
     return result;
   } finally {
     lock.releaseLock();
@@ -43,7 +43,7 @@ function installManagementScoreValidationTrigger() {
 
 function listPendingManagementScoreReviews_() {
   const properties = PropertiesService.getScriptProperties();
-  const cursor = properties.getProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty);
+  const cursor = properties.getProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty));
   const structured = {
     from: [{collectionId: 'activityScoreReviews'}],
     where: {fieldFilter: {field: {fieldPath: 'status'}, op: 'EQUAL', value: {stringValue: 'PENDING_VALIDATION'}}},
@@ -55,7 +55,7 @@ function listPendingManagementScoreReviews_() {
     limit: SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.pageSize
   };
   if (cursor) structured.startAt = {before: false, values: [{referenceValue: cursor}]};
-  const response = firestoreRequest_(firestoreDocumentsUrl_(':runQuery'), {
+  const response = firestoreRequest_(evaluationDocumentsUrl_(':runQuery'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({structuredQuery: structured})
   });
   const documents = (Array.isArray(response) ? response : []).filter(function (item) { return item.document; }).map(function (item) {
@@ -65,7 +65,7 @@ function listPendingManagementScoreReviews_() {
     });
   });
   if (!documents.length && cursor) {
-    properties.deleteProperty(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty);
+    properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty));
     return listPendingManagementScoreReviews_();
   }
   return {documents: documents};
@@ -77,18 +77,18 @@ function validateManagementScoreReview_(review) {
       !(review.createdAt instanceof Date) || !managementScoreValidPoints_(review.points)) {
     return updateManagementScoreReview_(review, 'NEEDS_REVIEW', 'Solicitação de revisão fora do contrato.');
   }
-  const activity = getFirestoreDocument_('activities', review.activityId, [
+  const activity = evaluationGetProjected_('activities', review.activityId, [
     'id', 'managementAreaId', 'status', 'active', 'evidenceRequired', 'pointsEnabled', 'responsibleUids',
     'points', 'scoringRuleId', 'scoringRuleVersion'
   ]);
   const completionId = 'completion-' + review.activityId;
-  const completion = getFirestoreDocument_('activityInteractions', completionId,
+  const completion = evaluationGetProjected_('activityInteractions', completionId,
     ['activityId', 'type', 'uid', 'pointsClaimed', 'pointsStatus']);
-  const reviewer = getFirestoreDocument_('users', review.reviewerUid, [
+  const reviewer = evaluationGetProjected_('users', review.reviewerUid, [
     'uid', 'active', 'access', 'role', 'permissions.admin', 'permissions.managementManage',
     'permissions.qualityManage', 'permissions.managementRead'
   ]);
-  const area = getFirestoreDocument_('managementAreas', review.managementAreaId, ['managerUids']);
+  const area = evaluationGetProjected_('managementAreas', review.managementAreaId, ['managerUids']);
   if (!activity || !completion || !reviewer || !area) {
     return updateManagementScoreReview_(review, 'NEEDS_REVIEW', 'Atividade, conclusão, perfil ou área não está disponível.');
   }
@@ -119,13 +119,13 @@ function validateManagementScoreReview_(review) {
       ruleId: activity.scoringRuleId, ruleVersion: activity.scoringRuleVersion,
       points: activity.points, createdByUid: review.reviewerUid, approvedByUid: review.reviewerUid, createdAt: new Date()
     };
-    const existing = getFirestoreDocument_('scores', scoreId,
+    const existing = evaluationGetProjected_('scores', scoreId,
       ['id', 'uid', 'sourceType', 'sourceId', 'ruleId', 'ruleVersion', 'points']);
     if (existing && !managementScoreMatches_(existing, expected)) {
       return updateManagementScoreReview_(review, 'NEEDS_REVIEW', 'Já existe um lançamento divergente para esta atividade.');
     }
     if (!existing) writes.push({
-      update: {name: firestoreDocumentName_('scores', scoreId), fields: firestoreFieldsFromJs_(expected)},
+      update: {name: evaluationDocumentName_('scores', scoreId), fields: firestoreFieldsFromJs_(expected)},
       currentDocument: {exists: false}
     });
   }
@@ -133,7 +133,7 @@ function validateManagementScoreReview_(review) {
   writes.push(managementScoreReviewUpdateWrite_(review, {
     status: finalStatus, validationStatus: 'VALIDATED', validatedAt: now, validationMessage: ''
   }));
-  firestoreRequest_(firestoreDocumentsUrl_(':commit'), {
+  firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });
   return finalStatus;
@@ -171,7 +171,7 @@ function updateManagementScoreReview_(review, status, message) {
     status: status, validationStatus: status === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : 'VALIDATED',
     validatedAt: new Date(), validationMessage: String(message || '').slice(0, 300)
   })];
-  firestoreRequest_(firestoreDocumentsUrl_(':commit'), {
+  firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });
   return status;
