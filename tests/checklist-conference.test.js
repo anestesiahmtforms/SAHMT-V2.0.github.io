@@ -1,10 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {checklistConferenceDisplay,createChecklistConferenceListener} from '../src/checklist-conference-listener.js';
+import * as dates from '../src/checklist-date.js';
 
 const day='2026-10-13',uid='synthetic-preceptor';
 const request={day,signerUid:uid,signerName:'Preceptor de teste',recordKind:'ACKNOWLEDGEMENT',declaration:true,rotationSigla:'AA',status:'PENDING_VALIDATION'};
 const signature={id:'signed',date:day,signerUid:uid,signerName:'Preceptor de teste',responsibleUid:uid,declaration:true,signedAt:new Date('2026-10-13T12:00:00Z')};
+test('conference requires a current confirmed check for every active station',()=>{
+  assert.equal(typeof dates.checklistConferenceReadiness,'function');
+  const stations=[{id:'a',active:true},{id:'b',active:true},{id:'inactive',active:false},{id:'future',active:true,start:'2026-10-15'}];
+  const a={stationId:'a',date:day,condition:'SIM'},b={stationId:'b',date:day,condition:'NAO'};
+  assert.deepEqual(dates.checklistConferenceReadiness(day,stations,[a]),{ready:false,total:2,missing:1});
+  assert.deepEqual(dates.checklistConferenceReadiness(day,stations,[a,b]),{ready:true,total:2,missing:0});
+  for(const incomplete of [{...b,date:'2026-10-12'},{...b,inherited:true},{...b,pendingSync:true},
+    {...b,hasPendingWrites:true},{...b,syncFailed:true},{...b,condition:''},{...b,active:false}]) {
+    assert.equal(dates.checklistConferenceReadiness(day,stations,[a,incomplete]).ready,false);
+  }
+  assert.equal(dates.checklistConferenceReadiness(day,[{id:'inactive',active:false}],[]).ready,true);
+});
 test('own acknowledgement immediately shows green for scheduled member and yellow for replacement',()=>{
   assert.deepEqual(checklistConferenceDisplay({day,uid,ownSigla:'AA',request}),{kind:'scheduled',signerName:'Preceptor de teste',validated:false});
   assert.equal(checklistConferenceDisplay({day,uid,ownSigla:'BB',request}).kind,'alternate');

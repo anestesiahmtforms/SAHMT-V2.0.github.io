@@ -35,6 +35,20 @@ export function summarizeChecklistDay(day, today, stations, records) {
   return {mode, text, total, recorded, conforming, nonconforming, inherited, pendingSync: values.some((record) => record.pendingSync || record.syncFailed)};
 }
 
+export function checklistConferenceReadiness(day, stations, records) {
+  const active = stations.filter(station => station.active === true && stationIsInDateRange(station, day));
+  const current = new Map();
+  for (const record of records) {
+    if (record.date === day && record.inherited !== true && !current.has(record.stationId)) current.set(record.stationId, record);
+  }
+  const missing = active.filter(station => {
+    const record = current.get(station.id);
+    return !record || !['SIM', 'NAO'].includes(record.condition) || record.active === false || record.sheetDeleted ||
+      record.pendingSync || record.pendingFirestore || record.syncFailed || record.syncConflict || record.hasPendingWrites;
+  }).length;
+  return {ready: missing === 0, total: active.length, missing};
+}
+
 function recordTime(record) {
   const value = record?.createdAt;
   if (value instanceof Date) return value.getTime();

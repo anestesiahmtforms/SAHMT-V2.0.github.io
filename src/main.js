@@ -22,7 +22,7 @@ import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMai
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canManageManagementDocuments} from './document-access.js';
-import {checklistDayMode, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
+import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -277,7 +277,17 @@ function checklistSignatureCurrent(scope, fingerprint) {
   return !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
     reportScopeCurrent(scope) && state?.confirmed && !result?.truncated && !result?.historyIncomplete && !result?.localPending &&
     !reportPayloads.get('checklist')?.catalog?.truncated &&
-    checklistReportContext?.fingerprint === fingerprint && can('checklistSign') && scope.day === todayInputValue() && navigator.onLine;
+    checklistReportContext?.fingerprint === fingerprint && checklistReportContext?.conferenceComplete === true &&
+    Boolean(checklistConferenceRotation(scope)) &&
+    can('checklistSign') && scope.day === todayInputValue() && navigator.onLine;
+}
+function checklistConferenceRotation(scope) {
+  const state = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
+  const rotation = state?.rotation;
+  return state?.ready === true && state.current === true && !state.error && !state.fromCache &&
+    !state.hasPendingWrites && !state.truncated && typeof rotation?.name === 'string' && rotation.name.trim() &&
+    /^(?:[A-Z]{2}|L2)$/.test(rotation.sigla || '') && Number.isInteger(rotation.position) &&
+    rotation.position >= 1 && rotation.position <= 30 ? rotation : null;
 }
 function checklistConferenceCanOpen(scope) {
   const conference = checklistConferenceLive?.key === scope.key ? checklistConferenceLive : null;
@@ -1776,7 +1786,9 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     for (const record of records) if (!latestByStation.has(record.stationId)) latestByStation.set(record.stationId, record);
     const priorByStation = new Map();
     for (const record of result.priorRecords || []) if (!priorByStation.has(record.stationId)) priorByStation.set(record.stationId, record);
-    checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation, fingerprint, scopeKey: scope.key};
+    const conferenceReadiness = checklistConferenceReadiness(day, applicableStations, records);
+    checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation, fingerprint, scopeKey: scope.key,
+      conferenceComplete: conferenceReadiness.ready};
     const summary = summarizeChecklistDay(day, todayInputValue(), applicableStations, records);
     const resolvedRecordFor = (station) => resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
     const displayStations = sortChecklistStationsForDisplay(stations, resolvedRecordFor)
@@ -1797,10 +1809,12 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       ? 'Resolva as respostas locais pendentes antes da assinatura.'
       : result.stale
         ? 'Assinaturas exigem conferência online do relatório.'
+        : !conferenceReadiness.ready
+          ? `Falta checar ${conferenceReadiness.missing} arsenal(is) ativo(s) hoje para liberar a conferência.`
         : !applicableStations.length
           ? 'Cadastre ao menos uma estação vigente antes de revisar o relatório.'
           : '';
-    const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
+    const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && conferenceReadiness.ready && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
     const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>ESCALADO</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><div class="checklist-confirmation-actions"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>CONFERÊNCIA DO PRECEPTOR</span><strong id="checklist-conference-signer" hidden></strong></button></div></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">CONFERÊNCIA DO PRECEPTOR</h3></header><p class="checklist-preceptor-name"><strong id="checklist-preceptor-name"></strong></p><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div><footer class="checklist-confirmation-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit">VOLTAR</button></form></footer></dialog>`;
     reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
@@ -1874,11 +1888,14 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
               invalidateChecklistSignature('Seu perfil mudou. Reabra a conferência para confirmar sua identificação.');
               return;
             }
-            const rotationState = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
-            const rotation = rotationState?.current === true ? rotationState.rotation : null;
+            const rotation = checklistConferenceRotation(scope);
+            if (!rotation) {
+              invalidateChecklistSignature('Aguarde a confirmação do escalado antes de registrar a conferência.');
+              return;
+            }
             // The explicit confirmation keeps the existing acknowledgement contract and server-side scoring.
             await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
-              signerName, rotationSigla: rotation?.sigla || null, rotationPosition: rotation?.position ?? null});
+              signerName, rotationSigla: rotation.sigla, rotationPosition: rotation.position});
             if (!previewCurrent()) return;
             const sigla = String(session.profile?.sigla || '').trim().toUpperCase();
             checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,

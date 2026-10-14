@@ -43,13 +43,18 @@ async function harness({kind='events',pendingRead}={}) {
   ctx.can=permission=>ctx.session.status==='signed-in'&&ctx.session.profile.active!==false&&ctx.session.profile.access!==false&&ctx.session.profile.permissions?.[permission]===true;
   let helpers=source.slice(source.indexOf('// Report state is transient'),source.indexOf('const preloadedDataUsers ='));
   helpers=helpers.replace('subscribe: subscribeLiveReport,','subscribe: fakeSubscribe,');
-  vm.runInContext(helpers+'\nglobalThis.testReports={liveReports,reportStates,reportPayloads,reportWaiters,reportPaintKeys,setContext:value=>checklistReportContext=value,setResponsibility:value=>checklistResponsibilityLive=value,getContext:()=>checklistReportContext,setConference:value=>checklistConferenceLive=value};',ctx);
+  vm.runInContext(helpers+'\nglobalThis.testReports={liveReports,reportStates,reportPayloads,reportWaiters,reportPaintKeys,setContext:value=>checklistReportContext=value,setResponsibility:value=>checklistResponsibilityLive=value,getContext:()=>checklistReportContext,setConference:value=>checklistConferenceLive=value,setRotation:value=>checklistRotationLive=value};',ctx);
   const sessions=source.slice(source.indexOf('function sessionChanged('),source.indexOf("window.addEventListener('hashchange'"));
   vm.runInContext(sessions.replaceAll("await import('./data-lite.js')",'mockLite'),ctx);
   const next=(data,{index=subscriptions.length-1,sourceKey='report',...metadata}={})=>subscriptions[index].hooks.next(sourceKey,{data,complete:true,fromCache:false,hasPendingWrites:false,...metadata});
   const payload=(id,fields={})=>({records:id?[{id,date:'2026-10-02',active:true,version:1,createdByUid:'user-a',...fields}]:[],nextCursor:null});
   const close=()=>ctx.testReports.liveReports.clear('test-end');
   return {ctx,nodes,subscriptions,paints,stops,pendingReads,next,payload,close,route:value=>{route=value;},renders:()=>renders};
+}
+
+function confirmedRotation(scope) {
+  return {key:scope.key,ready:true,current:true,fromCache:false,hasPendingWrites:false,
+    rotation:{name:'Escalado fictício',sigla:'AA',position:1}};
 }
 
 test('integração main: dia A → B descarta A atrasado e encerra o listener antes de consultar B',async()=>{
@@ -99,7 +104,8 @@ test('integração main: Checklist incompleto ou catálogo pendente nunca confir
   const catalog={records:[{id:'arsenal',order:1}],truncated:false},report={records:[],priorRecords:[],nextCursor:null,historyIncomplete:true,truncated:false};
   h.next(catalog,{sourceKey:'catalog'});h.next(report);await open;
   const scope=h.subscriptions[0].scope,indicator=h.nodes.get('#checklist-report-sync');
-  h.ctx.testReports.setContext({fingerprint:'current'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Pessoa fictícia'}});
+  h.ctx.testReports.setRotation(confirmedRotation(scope));
+  h.ctx.testReports.setContext({conferenceComplete:true,fingerprint:'current'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Pessoa fictícia'}});
   assert.equal(indicator.classList.values.has('label-report-sync--synced'),false);assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),false);
   h.next({...report,historyIncomplete:false});assert.equal(indicator.classList.values.has('label-report-sync--synced'),true);assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),true);
   h.next(catalog,{sourceKey:'catalog',hasPendingWrites:true});assert.equal(indicator.classList.values.has('label-report-sync--synced'),false);assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),false);
@@ -110,10 +116,11 @@ test('integração main: ciência preparada exige o mesmo conteúdo, sem depende
   const h=await harness({kind:'checklist'});const open=h.ctx.startReportLive('checklist');await settle();
   h.next({records:[],truncated:false},{sourceKey:'catalog'});h.next({records:[],priorRecords:[],historyIncomplete:false,truncated:false});await open;
   const scope=h.subscriptions[0].scope, responsible={name:'Pessoa fictícia A'};
-  h.ctx.testReports.setContext({fingerprint:'before'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible});
+  h.ctx.testReports.setRotation(confirmedRotation(scope));
+  h.ctx.testReports.setContext({conferenceComplete:true,fingerprint:'before'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible});
   const signature=h.ctx.reportFingerprint(responsible);assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),true);
-  h.ctx.testReports.setContext({fingerprint:'after'});assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),false);
-  h.ctx.testReports.setContext({fingerprint:'before'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Pessoa fictícia B'}});
+  h.ctx.testReports.setContext({conferenceComplete:true,fingerprint:'after'});assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),false);
+  h.ctx.testReports.setContext({conferenceComplete:true,fingerprint:'before'});h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Pessoa fictícia B'}});
   assert.equal(h.ctx.checklistSignatureCurrent(scope,'before',signature),true);h.close();
 });
 
@@ -151,19 +158,21 @@ test('integração main: pré-carga do dia atual transfere o mesmo listener ao r
   lease.close();assert.deepEqual(h.stops,[]);h.close();
 });
 
-async function signatureHarness() {
+async function signatureHarness({checked = true} = {}) {
+  const {checklistConferenceReadiness} = await import('../src/checklist-date.js');
   const h=await harness({kind:'checklist'}),waiting=deferred();
   const open=h.ctx.startReportLive('checklist');await settle();
-  const stations=[{id:'arsenal-fictício',name:'Arsenal fictício',active:true,order:1}],result={records:[],priorRecords:[],historyIncomplete:false,truncated:false};
+  const stations=[{id:'arsenal-fictício',name:'Arsenal fictício',active:true,order:1}],result={records:checked?[{id:'checked-today',stationId:'arsenal-fictício',date:'2026-10-02',condition:'SIM'}]:[],priorRecords:[],historyIncomplete:false,truncated:false};
   h.next({records:stations,truncated:false},{sourceKey:'catalog'});h.next(result);await open;
   const scope=h.subscriptions[0].scope;
   h.ctx.testReports.setResponsibility({key:scope.key,confirmed:true,responsible:{name:'Responsável fictício'}});
+  h.ctx.testReports.setRotation(confirmedRotation(scope));
   h.ctx.testReports.setConference({key:scope.key,ready:true,fromCache:false,hasPendingWrites:false,confirmation:null});
   const small=()=>({isConnected:true,disabled:false,textContent:'',innerHTML:'',focus(){},replaceChildren(){this.innerHTML='';},querySelector:()=>null,addEventListener(){}});
   for(const selector of ['#checklist-signature-prepare','#checklist-signature-status','#checklist-signature-preview','#checklist-responsible-name','#checklist-preceptor-name','#checklist-confirmation-title']) h.nodes.set(selector,small());
   const dialog=small();dialog.open=false;dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;};h.nodes.set('#checklist-confirmation-dialog',dialog);
   const content=h.nodes.get('#module-content');content.querySelector=selector=>h.nodes.get(selector)||null;content.querySelectorAll=()=>[];
-  Object.assign(h.ctx,{checklistDayMode:()=> 'today', stationIsInDateRange:()=>true,stationIsValidOn:()=>true,summarizeChecklistDay:()=>({}),resolveChecklistDayRecord:()=>null,sortChecklistStationsForDisplay:value=>[...value],
+  Object.assign(h.ctx,{checklistConferenceReadiness,checklistDayMode:()=> 'today', stationIsInDateRange:()=>true,stationIsValidOn:()=>true,summarizeChecklistDay:()=>({}),resolveChecklistDayRecord:()=>null,sortChecklistStationsForDisplay:value=>[...value],
     checklistArsenalFunction:()=>'',checklistArsenalButtonLabel:station=>station.name,interactionDateTime:String,formatRecordDate:String,reconcileReportMarkup:(target,html)=>{target.innerHTML=html;},
     mockSignature:{getChecklistSignaturePreview:()=>waiting.promise}});
   const daily=source.slice(source.indexOf('async function loadDailyChecklist('),source.indexOf('function revealChecklistStation(')).replaceAll("await import('./checklist-signature.js')",'mockSignature');
@@ -173,7 +182,7 @@ async function signatureHarness() {
 
 test('integração main: erro tardio de preview não apaga rascunho nem aviso da revisão nova',async()=>{
   const h=await signatureHarness();const pending=h.prepare.onclick();
-  h.preview.innerHTML='Justificativa preservada';h.ctx.testReports.setContext({fingerprint:'outra revisão'});
+  h.preview.innerHTML='Justificativa preservada';h.ctx.testReports.setContext({conferenceComplete:true,fingerprint:'outra revisão'});
   h.ctx.invalidateChecklistSignature('O relatório mudou. Revise a revisão nova.');
   h.waiting.reject(new Error('Falha da consulta antiga'));await pending;
   assert.equal(h.status.textContent,'O relatório mudou. Revise a revisão nova.');assert.equal(h.preview.innerHTML,'Justificativa preservada');assert.equal(h.prepare.disabled,true);h.close();
@@ -197,6 +206,40 @@ test('conferência concluída pinta o botão, mantém o nome e impede reabrir o 
     assert.equal(classes.has('checklist-confirmation-button--'+kind),true);
     await h.prepare.onclick();assert.equal(h.dialog.open,false);h.close();
   }
+});
+
+test('arsenal ativo sem checagem hoje bloqueia abertura e uma mudança posterior invalida confirmação',async()=>{
+  const missing=await signatureHarness({checked:false});
+  assert.equal(missing.prepare.disabled,true);await missing.prepare.onclick();assert.equal(missing.dialog.open,false);missing.close();
+  const complete=await signatureHarness();
+  assert.equal(complete.ctx.checklistSignatureCurrent(complete.scope,complete.ctx.testReports.getContext().fingerprint),true);
+  const context=complete.ctx.testReports.getContext();
+  complete.ctx.testReports.setContext({...context,conferenceComplete:false});complete.ctx.updateChecklistResponsibilityUI();
+  assert.equal(complete.prepare.disabled,true);
+  assert.equal(complete.ctx.checklistSignatureCurrent(complete.scope,context.fingerprint),false);complete.close();
+});
+
+test('rodízio ausente, desatualizado ou inválido bloqueia a abertura da conferência',async()=>{
+  const cases=[()=>null,valid=>({...valid,current:false}),valid=>({...valid,key:'outro-dia'}),
+    valid=>({...valid,fromCache:true}),valid=>({...valid,hasPendingWrites:true}),
+    valid=>({...valid,error:Error('Escala indisponível')}),valid=>({...valid,rotation:{...valid.rotation,sigla:''}}),
+    valid=>({...valid,rotation:{...valid.rotation,position:0}}),valid=>({...valid,rotation:{...valid.rotation,position:31}})];
+  for(const invalid of cases) {
+    const h=await signatureHarness();h.ctx.testReports.setRotation(invalid(confirmedRotation(h.scope)));
+    h.ctx.updateChecklistResponsibilityUI();h.waiting.resolve({requestStatus:'PENDING_VALIDATION'});
+    await h.prepare.onclick();assert.equal(h.dialog.open,false);assert.equal(h.prepare.disabled,true);h.close();
+  }
+});
+
+test('perder o rodízio depois do preview impede gravar pedido imutável sem escalado',async()=>{
+  const h=await signatureHarness(),writes=[];let confirmClick;
+  const confirm={disabled:false,addEventListener:(_event,callback)=>{confirmClick=callback;}};
+  h.preview.querySelector=selector=>selector==='#checklist-signature-confirm'?confirm:null;
+  h.ctx.mockSignature.signChecklistReport=async request=>{writes.push(request);};
+  h.waiting.resolve({requestStatus:'',revision:'a'.repeat(64)});await h.prepare.onclick();
+  assert.equal(h.dialog.open,true);assert.equal(typeof confirmClick,'function');
+  h.ctx.testReports.setRotation({...confirmedRotation(h.scope),current:false});
+  await confirmClick();assert.equal(writes.length,0);h.close();
 });
 
 function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
@@ -285,10 +328,11 @@ test('Checklist: indicador fica na faixa da data sem ocupar a linha expansível 
   }
 });
 
- test('ciência permite qualquer elegível sem aguardar responsável ou rodízio', async()=>{
+ test('ciência permite qualquer elegível com rodízio confirmado sem exigir que seja o escalado', async()=>{
  const h=await harness({kind:'checklist'}),open=h.ctx.startReportLive('checklist');await settle();
  h.next({records:[],truncated:false},{sourceKey:'catalog'});h.next({records:[],priorRecords:[],historyIncomplete:false,truncated:false});await open;
- const scope=h.subscriptions[0].scope;h.ctx.testReports.setContext({fingerprint:'current'});h.ctx.testReports.setResponsibility(null);
+ const scope=h.subscriptions[0].scope;h.ctx.testReports.setContext({conferenceComplete:true,fingerprint:'current'});h.ctx.testReports.setResponsibility(null);
+ h.ctx.testReports.setRotation({...confirmedRotation(scope),rotation:{name:'Outro escalado fictício',sigla:'BB',position:2}});
  assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),true);
  h.ctx.session.profile.permissions.checklistSign=false;
  assert.equal(h.ctx.checklistSignatureCurrent(scope,'current'),false);h.close();
