@@ -20,10 +20,9 @@ export function getFirebaseProjectAuthOptIn() {
   const allowedOrigin = env.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN?.trim() || '';
   let endpointOrigin = '';
   try { endpointOrigin = new URL(endpoint).origin; } catch {}
-  instance = createFirebaseProjectAuthOptIn({enabled: enabled && Boolean(allowedOrigin) && endpointOrigin === allowedOrigin, loadRuntime: async requestedNames => {
-    const names = Array.isArray(requestedNames) ? [...requestedNames] : [...defaultTargets];
-    if (!names.length || new Set(names).size !== names.length || names.some(name => !configuredTargets[name]))
-      throw new Error('FIREBASE_PROJECT_TARGET_DISABLED');
+  instance = createFirebaseProjectAuthOptIn({enabled: enabled && Boolean(allowedOrigin) && endpointOrigin === allowedOrigin,
+    runtimeKey: () => 'secondary-projects', loadRuntime: async () => {
+    const names = [...defaultTargets];
     const [fa, authSdk, fb, fc, {createFirebaseProjectAuthCoordinator}, {createFirebaseProjectBrokerTransport}] = await Promise.all([
       import('./firebase-auth.js'), import('firebase/auth'),
       names.includes('FB') ? import('./management-firebase-app.js').catch(() => null) : null,
@@ -58,8 +57,15 @@ export function getFirebaseProjectAuthOptIn() {
     }
     // Never request a token or a lease for a destination with no prepared Auth.
     const preparedNames = names.filter(name => targets[name]);
+    const select = requestedNames => {
+      const selected = Array.isArray(requestedNames) ? [...requestedNames] : [...names];
+      if (!selected.length || new Set(selected).size !== selected.length || selected.some(name => !configuredTargets[name]))
+        throw new Error('FIREBASE_PROJECT_TARGET_DISABLED');
+      return selected;
+    };
     if (!preparedNames.length) return Object.freeze({
-      connect: async () => Object.freeze({status: 'blocked', targets: Object.freeze(unavailable)}), dispose() {}
+      connect: async requestedNames => Object.freeze({status: 'blocked',
+        targets: Object.freeze(Object.fromEntries(select(requestedNames).map(name => [name, unavailable[name]])))}), dispose() {}
     });
     const broker = createFirebaseProjectBrokerTransport({enabled: true, endpoint,
       timeoutMs: SECONDARY_AUTH_TIMEOUT_MS,
@@ -67,11 +73,14 @@ export function getFirebaseProjectAuthOptIn() {
     const coordinator = createFirebaseProjectAuthCoordinator({enabled: true, faAuth: fa.auth,
       timeoutMs: SECONDARY_AUTH_TIMEOUT_MS,
       targets, targetNames: preparedNames, broker, signInWithCustomToken: authSdk.signInWithCustomToken});
-    return Object.freeze({async connect() {
-      const result = await coordinator.connect();
-      if (preparedNames.length === names.length) return result;
+    return Object.freeze({async connect(requestedNames) {
+      const selected = select(requestedNames), available = selected.filter(name => targets[name]);
+      if (!available.length) return Object.freeze({status: 'blocked',
+        targets: Object.freeze(Object.fromEntries(selected.map(name => [name, unavailable[name]])))});
+      const result = await coordinator.connect(available);
+      if (available.length === selected.length) return result;
       return Object.freeze({...result, status: result.status === 'ready' ? 'partial' : result.status,
-        targets: Object.freeze({...unavailable, ...result.targets})});
+        targets: Object.freeze({...Object.fromEntries(selected.filter(name => unavailable[name]).map(name => [name, unavailable[name]])), ...result.targets})});
     }, dispose() { coordinator.dispose(); broker.dispose(); }});
   }});
   const connect = instance.connect;
@@ -83,3 +92,4 @@ export function getFirebaseProjectAuthOptIn() {
   }});
   return instance;
 }
+

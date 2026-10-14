@@ -66,6 +66,39 @@ test('coordinator can request FC alone while FB is configured but has no login a
   assert.equal(targets.FB.auth.currentUser,null);assert.equal(targets.FC.auth.currentUser.uid,'same-uid');
 });
 
+test('concurrent FC request reuses the full connection without another broker exchange',async()=>{
+  const targets=makeTargets(),faUser={uid:'same-uid',getIdToken:async()=> 'fa-id-token'};
+  let release,exchanges=0;
+  const coordinator=createFirebaseProjectAuthCoordinator({enabled:true,faAuth:{currentUser:faUser},targets,
+    broker:{exchangeTargets:async()=>{exchanges++;return new Promise(resolve=>{release=()=>resolve(tokenResponse());});}},
+    signInWithCustomToken:async auth=>{const user={uid:faUser.uid};auth.currentUser=user;return {user};},now:()=>1000,timeoutMs:1000});
+  const all=coordinator.connect(['FB','FC']);
+  const fc=coordinator.connect(['FC']);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(exchanges,1);
+  release();
+  assert.equal((await all).status,'ready');
+  assert.deepEqual(Object.keys((await fc).targets),['FC']);
+});
+
+test('a different target waits for the pending request instead of receiving the wrong result',async()=>{
+  const targets=makeTargets(),faUser={uid:'same-uid',getIdToken:async()=> 'fa-id-token'};
+  const requests=[];let release;
+  const coordinator=createFirebaseProjectAuthCoordinator({enabled:true,faAuth:{currentUser:faUser},targets,
+    broker:{exchangeTargets:async request=>{requests.push(Object.keys(request.targetProjectIds));
+      if(requests.length===1)await new Promise(resolve=>{release=resolve;});
+      return {schemaVersion:1,sourceProjectId:FA,faUid:faUser.uid,targets:Object.fromEntries(Object.keys(request.targetProjectIds)
+        .map(name=>[name,tokenResponse().targets[name]]))};}},
+    signInWithCustomToken:async auth=>{const user={uid:faUser.uid};auth.currentUser=user;return {user};},now:()=>1000,timeoutMs:1000});
+  const fc=coordinator.connect(['FC']),fb=coordinator.connect(['FB']);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(requests,[['FC']]);
+  release();
+  assert.equal((await fc).targets.FC.status,'ready');
+  assert.equal((await fb).targets.FB.status,'ready');
+  assert.deepEqual(requests,[['FC'],['FB']]);
+});
+
 test('FC failure does not sign out or block a successful FB session', async () => {
   const targets = makeTargets();
   targets.FC.auth.app.options.projectId = 'wrong-project';
@@ -205,3 +238,4 @@ test('coordinator preserves only closed transport codes and numeric HTTP status'
     assert.equal(result.httpStatus,expected.httpStatus);assert.equal(JSON.stringify(result).includes('private'),false);
   }
 });
+
