@@ -21,7 +21,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "test:evaluation-integration": "firebase emulators:exec --project demo-sahmt-v2 --only firestore \"node --test --test-concurrency=1 tests/evaluation-homologation.integration.test.js\"",
     "test:checklist-integration": "firebase emulators:exec --config firebase.checklist.test.json --project demo-sahmt-v2 --only firestore \"node --test tests/checklist-science.integration.test.js\"",
-    "test:secondary-domain": "node --test tests/evaluation-domain-routing.test.js tests/evaluation-fb-delivery.test.js tests/evaluation-occurrence-delivery.test.js tests/evaluation-store.test.js tests/occurrence-score-transport.test.js tests/indicators-user-access-plan.test.js tests/occurrence-access-plan.test.js worker-management-auth/worker.test.js tests/management-domain-cutover.test.js tests/management-domain-authorization.test.js tests/management-lease-access.test.js tests/evaluation-legacy-score-delivery.test.js tests/secondary-domain-release-package.test.js tests/notification-domain.test.js tests/identity-cutover-rules.test.js tests/fa-domain-retirement.test.js"
+    "test:secondary-domain": "node --test tests/evaluation-domain-routing.test.js tests/evaluation-fb-delivery.test.js tests/evaluation-occurrence-delivery.test.js tests/evaluation-store.test.js tests/occurrence-score-transport.test.js tests/indicators-user-access-plan.test.js tests/occurrence-access-plan.test.js worker-management-auth/worker.test.js tests/management-domain-cutover.test.js tests/management-domain-authorization.test.js tests/management-lease-access.test.js tests/evaluation-legacy-score-delivery.test.js tests/secondary-domain-release-package.test.js tests/notification-domain.test.js tests/identity-cutover-rules.test.js tests/fa-domain-retirement.test.js",
+    "prepare:fa-consolidation": "node scripts/prepare-fa-consolidation.mjs"
   },
   "dependencies": {
     "firebase": "^12.19.0",

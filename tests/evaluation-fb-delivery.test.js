@@ -17,27 +17,28 @@ function pending(h, {same = false, day = '2026-10-03'} = {}) {
   });
   return {id: h.values('checklistScoreOutbox').at(-1).id, requestId, signature};
 }
-test('cutover routes scoring to FB even with an old FA property; invalid project fails closed', () => {
-  const h = harness({project:'FA'}); assert.equal(h.ctx.evaluationProject_(),'sahmt-gestao-5ae66');
+test('consolidation routes scoring to FA despite an obsolete secondary property', () => {
+  const h = harness({project:'FA'}); assert.equal(h.ctx.evaluationProject_(),'sahmt-17a16');
   h.properties.set('SAHMT_V2_EVALUATION_PROJECT_ID','sahmt-17a16');
-  assert.equal(h.ctx.evaluationProject_(),'sahmt-gestao-5ae66');
+  assert.equal(h.ctx.evaluationProject_(),'sahmt-17a16');
+  h.properties.set('SAHMT_V2_EVALUATION_PROJECT_ID','sahmt-gestao-5ae66');assert.equal(h.ctx.evaluationProject_(),'sahmt-17a16');
   h.properties.set('SAHMT_V2_EVALUATION_PROJECT_ID','arbitrary'); assert.throws(()=>h.ctx.evaluationProject_(),/PROJECT_INVALID/);
 });
 
-test('all management producers share FB while operational and identity sources stay FA',()=>{
+test('all management and operational producers share FA; occurrence source remains FC until its separate cutover',()=>{
  const h=harness();
  for(const collection of ['managementAreas','activities','activityInteractions','activityScoreReviews','indicators',
  'indicatorMeasurements','actionPlans','actionPlanItems','documents','scopedDocuments','equipment','equipmentEvents',
  'maintenanceRecords','scoringRules','scores','learningActivities','learningActivityReceipts','trainings','trainingProgress',
- 'trainingReceipts','trainingCompletions','evaluationFormConfigs']) assert.equal(h.ctx.evaluationCollectionProject_(collection),'sahmt-gestao-5ae66');
+ 'trainingReceipts','trainingCompletions','evaluationFormConfigs']) assert.equal(h.ctx.evaluationCollectionProject_(collection),'sahmt-17a16');
  for(const collection of ['users','documentAccessEmails','checklists','checklistSignatures','events','labels','scheduleDays'])
  assert.equal(h.ctx.evaluationCollectionProject_(collection),'sahmt-17a16');
  for(const collection of ['occurrenceReports','occurrenceAudit','occurrenceScoreClaims'])
  assert.equal(h.ctx.evaluationCollectionProject_(collection),'indicadores---sahmt');
- assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FB');
- h.properties.delete('SAHMT_V2_EVALUATION_PROJECT_ID');assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FB');
+ assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FA_CONSOLIDATED_V1');
+ h.properties.delete('SAHMT_V2_EVALUATION_PROJECT_ID');assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FA_CONSOLIDATED_V1');
 });
-test('FA evidence/outbox and FB paired scoring are separated and repeatable', () => {
+test('historical checklist outbox and paired scoring are repeatable in FA', () => {
   const h=harness(), e=pending(h);
   assert.equal(h.values('evaluationLedger').length,0);
   h.ctx.evaluationDeliverChecklistEvent_(e.id); h.ctx.evaluationDeliverChecklistEvent_(e.id);
@@ -46,7 +47,7 @@ test('FA evidence/outbox and FB paired scoring are separated and repeatable', ()
   assert.equal(h.data('checklistScoreOutbox',e.id).status,'DELIVERED');
   assert.equal(h.data('checklistSignatureRequests',e.requestId).pointsAwarded,1);
   for(const [path] of h.store) {
-    if (/\/evaluation[A-Z]/.test(path)) assert.match(path,/projects\/sahmt-gestao-5ae66\//);
+    if (/\/evaluation[A-Z]/.test(path)) assert.match(path,/projects\/sahmt-17a16\//);
     if (/\/(users|checklistSignatures|checklistScoreOutbox)\//.test(path)) assert.match(path,/projects\/sahmt-17a16\//);
   }
 });
@@ -55,9 +56,9 @@ test('scheduled person receives no credit and no debit', () => {
   assert.deepEqual(h.values('evaluationLedger').map(x=>x.points),[0]);
   assert.equal(h.data('checklistSignatureRequests',e.requestId).pointsAwarded,0);
 });
-test('FB outage leaves FA conference and pending delivery intact', () => {
+test('scoring outage leaves an accepted conference and pending delivery intact', () => {
   const h=harness(),e=pending(h),original=h.ctx.firestoreRequest_;
-  h.ctx.firestoreRequest_=(url,o)=>{if(url.includes('/sahmt-gestao-5ae66/'))throw Object.assign(new Error('offline'),{status:503});return original(url,o);};
+  h.ctx.firestoreRequest_=(url,o)=>{if(url.endsWith(':beginTransaction'))throw Object.assign(new Error('offline'),{status:503});return original(url,o);};
   assert.throws(()=>h.ctx.evaluationDeliverChecklistEvent_(e.id));
   assert.equal(h.data('checklistScoreOutbox',e.id).status,'PENDING'); assert.ok(h.data('checklistSignatures',e.signature.id));
   h.ctx.firestoreRequest_=original; h.ctx.evaluationDeliverChecklistEvent_(e.id); assert.equal(h.values('evaluationLedger').length,2);
@@ -84,7 +85,7 @@ test('field order returned by Firestore does not invalidate canonical payload',(
   h.ctx.evaluationDeliverChecklistEvent_(e.id);assert.equal(h.values('evaluationLedger').length,2);
 });
 test('mixed-project commit is rejected before writing',()=>{
-  const h=harness();assert.throws(()=>h.ctx.evaluationRunTransaction_(()=>({writes:[h.ctx.evaluationWrite_('users','x',{active:true},null)],result:true})),/CROSS_PROJECT_WRITE/);
+  const h=harness();assert.throws(()=>h.ctx.evaluationRunTransaction_(()=>({writes:[{update:{name:'projects/sahmt-gestao-5ae66/databases/(default)/documents/scores/x',fields:{}}}],result:true})),/CROSS_PROJECT_WRITE/);
   assert.equal(h.data('users','x'),null);
 });
 test('drain uses bounded FA pending query and skips delivered events',()=>{

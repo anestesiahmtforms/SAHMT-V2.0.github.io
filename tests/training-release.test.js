@@ -39,6 +39,7 @@ function fixture() {
   ctx.sahmtV2Properties_ = () => ctx.PropertiesService.getScriptProperties();
   ctx.firestoreFilter_ = (field,op,value) => ({field:{fieldPath:field},op,value});
   ctx.evaluationGet_ = get;
+  seed('managementRuntime','faConsolidation',{schemaVersion:1,release:'fa-consolidation-v1',status:'ACTIVE',sourceProjectId:'sahmt-gestao-5ae66',destinationProjectId:'sahmt-17a16',planSha256:'a'.repeat(64),verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});
   ctx.formsEvaluationAll_ = (collection, filters=[]) => [...store.entries()].filter(([key])=>key.startsWith(`${collection}/`)).map(([,value])=>copy(value)).filter(value=>filters.every(filter=>value[filter.field.fieldPath]===filter.value.stringValue));
   ctx.evaluationWrite_ = (collection,id,changes,previous=null,times=[]) => ({collection,id,changes:copy(changes),previous:copy(previous),times});
   ctx.evaluationRunTransaction_ = callback => {

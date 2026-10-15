@@ -1,8 +1,9 @@
 /* Trusted Spark ledger. Browser requests are never a source of points.
- * Legacy scores are imported only through the verified FB delivery adapter. */
+ * Legacy scores are imported only through the verified delivery adapter. */
 const SAHMT_V2_EVALUATION_LEDGER = Object.freeze({maxWrites: 450, maxUsers: 400, maxAwards: 10000, maxAttempts: 4});
 
-// FA remains the identity and operational authority. Management scoring lives in FB.
+// FA is the identity and consolidated management/performance authority.
+// FB remains a historical attribution for migrated receipts, never a destination.
 const SAHMT_EVALUATION_FB = 'sahmt-gestao-5ae66';
 const SAHMT_EVALUATION_FC = 'indicadores---sahmt';
 const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
@@ -13,13 +14,21 @@ const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
   'trainings', 'trainingProgress', 'trainingReceipts', 'trainingCompletions'
 ]);
 const SAHMT_EVALUATION_TRANSACTIONS = new Map();
+function evaluationAssertConsolidationActive_() {
+  const state=evaluationGet_('managementRuntime','faConsolidation');
+  if (!state || state.schemaVersion!==1 || state.release!=='fa-consolidation-v1' || state.status!=='ACTIVE' ||
+      state.sourceProjectId!==SAHMT_EVALUATION_FB || state.destinationProjectId!==SAHMT_V2_CONFIG.projectId ||
+      !/^[a-f0-9]{64}$/.test(state.planSha256||'') || !Number.isSafeInteger(state.verifiedDocuments) || state.verifiedDocuments<1 ||
+      state.plannedDocuments!==state.verifiedDocuments || state.migrationCode!=='FA_CONSOLIDATION_VERIFIED')
+    throw new Error('EVALUATION_FA_CONSOLIDATION_INACTIVE');
+}
 function evaluationProject_() {
   const configured = sahmtV2Properties_().getProperty('SAHMT_V2_EVALUATION_PROJECT_ID');
   if (configured && configured !== SAHMT_V2_CONFIG.projectId && configured !== SAHMT_EVALUATION_FB)
     throw new Error('EVALUATION_PROJECT_INVALID');
-  // This release makes FB authoritative even when an old FA property remains.
-  // Rollback uses the previous Apps Script deployment version and preserves both ledgers.
-  return SAHMT_EVALUATION_FB;
+  // Old routing properties remain backed up but cannot reopen FB. The
+  // server-owned FA consolidation marker independently gates score writes.
+  return SAHMT_V2_CONFIG.projectId;
 }
 function evaluationCollectionProject_(collectionId) {
   if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_EVALUATION_FC;
@@ -27,9 +36,11 @@ function evaluationCollectionProject_(collectionId) {
     ? evaluationProject_() : SAHMT_V2_CONFIG.projectId;
 }
 function evaluationCursorProperty_(base) {
-  return base + (evaluationProject_() === SAHMT_EVALUATION_FB ? '_FB' : '');
+  evaluationProject_();
+  return base + '_FA_CONSOLIDATED_V1';
 }
 function evaluationDocumentsUrl_(path, projectId) {
+  if (path === ':commit' || path === ':batchWrite') evaluationAssertConsolidationActive_();
   projectId = projectId || evaluationProject_();
   if (![SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FB, SAHMT_EVALUATION_FC].includes(projectId)) throw new Error('EVALUATION_PROJECT_INVALID');
   return 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents' + path;
@@ -40,7 +51,7 @@ function evaluationDocumentName_(collectionId, documentId) {
 function evaluationReadTransaction_(transaction, projectId) {
   const context = SAHMT_EVALUATION_TRANSACTIONS.get(transaction);
   if (!context || context.projectId === projectId) return transaction;
-  if (context.projectId !== SAHMT_EVALUATION_FB || ![SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FC].includes(projectId)) throw new Error('EVALUATION_CROSS_PROJECT_TRANSACTION');
+  if (context.projectId !== SAHMT_V2_CONFIG.projectId || projectId !== SAHMT_EVALUATION_FC) throw new Error('EVALUATION_CROSS_PROJECT_TRANSACTION');
   // Source authorization/evidence is read from FA, never from a copied user profile.
   // It is validated before the destination commit; this is not a cross-project atomic transaction.
   if (!context.sourceTransactions[projectId]) context.sourceTransactions[projectId] = firestoreRequest_(evaluationDocumentsUrl_(':beginTransaction', projectId),
@@ -69,7 +80,7 @@ function evaluationValidPoints_(value) { return typeof value === 'number' && Num
 function evaluationActiveProfile_(profile, uid) { return !!profile && profile.uid === uid && profile.active === true && profile.access === true; }
 function evaluationAdmin_(profile) {
   return !!profile && (profile.role === 'administrador_app' || profile.permissions && profile.permissions.admin === true) &&
-    (evaluationProject_() !== SAHMT_EVALUATION_FB || !!profile.permissions && profile.permissions.managementManage === true);
+    !!profile.permissions && profile.permissions.managementManage === true;
 }
 function evaluationClean_(value) {
   const result = {};
@@ -193,6 +204,7 @@ function evaluationAssertOperator_(activation) {
   const allowed = String(properties.getProperty('SAHMT_V2_EVALUATION_ALLOWED_EMAILS') || '').split(/[;,\s]+/).map(function (value) { return value.toLowerCase(); }).filter(Boolean);
   const email = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
   if (!email || !allowed.includes(email)) throw new Error('Operador não autorizado para a avaliação. Configure a allowlist explicitamente.');
+  evaluationAssertConsolidationActive_();
   if (activation) {
     const runtime = evaluationGet_('evaluationRuntime', 'state');
     if (properties.getProperty('SAHMT_V2_EVALUATION_ENABLED') !== 'true' || properties.getProperty('SAHMT_V2_EVALUATION_HOMOLOGATED') !== 'true' ||
@@ -245,6 +257,7 @@ function evaluationWrite_(collectionId, documentId, changes, previous, serverTim
 }
 
 function evaluationRunTransaction_(callback, options) {
+  evaluationAssertConsolidationActive_();
   const projectId = options && options.projectId || evaluationProject_();
   const endpoint = function (operation) { return evaluationDocumentsUrl_(operation, projectId); };
   for (let attempt = 0; attempt < SAHMT_V2_EVALUATION_LEDGER.maxAttempts; attempt++) {

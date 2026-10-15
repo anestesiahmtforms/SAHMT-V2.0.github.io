@@ -1,4 +1,5 @@
-const LOCAL_MANAGEMENT_PROJECT = (import.meta.env || {}).VITE_MANAGEMENT_DATA_PROJECT || 'FA';
+const LOCAL_MANAGEMENT_PROJECT = 'FA';
+const DOMAIN_CACHE_GENERATION = 'FA_CONSOLIDATED_V1';
 const DOMAIN_CACHE_KINDS = new Set(['managementAreas','trainings','trainingProgress','scores']);
 
 const DB_NAME = 'sahmt-v2-local';
@@ -96,7 +97,7 @@ export async function readCachedProfile(uid, maxAgeMs = 24 * 60 * 60 * 1000) {
 }
 
 function cacheKey(uid, kind, id) {
-  const scoped = DOMAIN_CACHE_KINDS.has(kind) && LOCAL_MANAGEMENT_PROJECT !== 'FA' ? `${LOCAL_MANAGEMENT_PROJECT}:${kind}` : kind;
+  const scoped = DOMAIN_CACHE_KINDS.has(kind) ? `${DOMAIN_CACHE_GENERATION}:${kind}` : kind;
   return `${uid}::${scoped}::${id}`;
 }
 
@@ -129,8 +130,11 @@ export async function pendingTrainingProgressCount(uid) {
 export async function listPendingTrainingProgress(uid) {
   if (!uid) return [];
   const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
-  const legacy = LOCAL_MANAGEMENT_PROJECT === 'FA' ? null : await transact(CACHE, 'readonly', store=>store.get(`${uid}::trainingProgress::mine`));
-  const retained = (legacy?.data?.records || []).filter(item=>item.syncPending).map(item=>({...item, sourceProject:'FA', destinationChanged:true, syncConflict:true, syncError:'Progresso anterior à mudança de base preservado. Precisa de conciliação antes de qualquer envio.'}));
+  const historical = await transact(CACHE, 'readonly', store=>store.index('uid').getAll(uid));
+  const retained = historical.filter(entry=>entry.kind==='trainingProgress'&&entry.id==='mine'&&entry.key!==cacheKey(uid,'trainingProgress','mine'))
+    .flatMap(entry=>(entry.data?.records||[]).filter(item=>item.syncPending).map(item=>({...item,
+      sourceProject:entry.key.includes('::FB:')?'FB':'FA',destinationChanged:true,syncConflict:true,
+      syncError:'Progresso anterior à mudança de base preservado. Precisa de conciliação antes de qualquer envio.'})));
   return [...(cache?.data?.records || []).filter((item) => item.syncPending), ...retained].sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
 }
 

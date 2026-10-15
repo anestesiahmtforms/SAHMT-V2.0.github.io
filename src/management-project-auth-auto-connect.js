@@ -6,10 +6,9 @@ export function managementProjectAuthTargets(profile) {
   if (!plain(profile) || profile.active !== true || profile.access !== true) return Object.freeze([]);
   const permissions = plain(profile.permissions) ? profile.permissions : {};
   const targets = [];
-  // FB remains permission-scoped. FC is also needed by the Occurrences
+  // Management/performance already use FA. Only the remaining Occurrences
   // workflow, whose write permission is granted by server policy to every
   // active and accessible FA profile. The broker independently revalidates.
-  if (['managementRead', 'managementManage', 'trainingsRead', 'trainingsManage'].some(key => permissions[key] === true)) targets.push('FB');
   if (profile.active === true && profile.access === true
     || permissions.managementIndicatorsRead === true || permissions.managementIndicatorsWrite === true) targets.push('FC');
   return Object.freeze(targets);

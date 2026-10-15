@@ -22,10 +22,10 @@ test('forged legacy amount, rule or owner cannot be imported',()=>{
  const {h,score}=setup();h.seed('scores',score.id,{...score,...patch});assert.throws(()=>h.ctx.evaluationDeliverLegacyScore_(score.id));assert.equal(h.values('evaluationLedger').length,0);
  }
 });
-test('task writes accompany only new validated score writes and are disabled on FA',()=>{
+test('task writes accompany new validated score writes in consolidated FA',()=>{
  const {h,score}=setup();const write={update:{name:h.ctx.evaluationDocumentName_('scores',score.id),fields:h.ctx.firestoreFieldsFromJs_(score)},currentDocument:{exists:false}};
- const tasks=h.ctx.evaluationLegacyScoreTaskWrites_([write]);assert.equal(tasks.length,1);assert.ok(tasks[0].update.name.includes('/sahmt-gestao-5ae66/'));assert.equal(tasks[0].currentDocument.exists,false);
- const fa=harness({project:'FA'});assert.equal(fa.ctx.evaluationLegacyScoreTaskWrites_([write]).length,0);
+ const tasks=h.ctx.evaluationLegacyScoreTaskWrites_([write]);assert.equal(tasks.length,1);assert.ok(tasks[0].update.name.includes('/sahmt-17a16/'));assert.equal(tasks[0].currentDocument.exists,false);
+ const fa=harness({project:'FA'});assert.equal(fa.ctx.evaluationLegacyScoreTaskWrites_([write]).length,1);
 });
 test('verified modality cannot be awarded through generic unverified input',()=>{
  const {h,score}=setup();const award=h.ctx.evaluationLegacyScoreAward_(score);

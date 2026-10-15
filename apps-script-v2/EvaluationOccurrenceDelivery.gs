@@ -15,7 +15,7 @@ function evaluationOccurrenceEvidence_(report, audit, claim) {
     formId: claim.formId, createdAt: stamp(claim.createdAt), points: 2};
 }
 function evaluationOccurrenceEnabled_() {
-  return evaluationProject_() === SAHMT_EVALUATION_FB && sahmtV2Properties_().getProperty('SAHMT_V2_OCCURRENCE_SCORING_ENABLED') === 'true';
+  return evaluationProject_() === SAHMT_V2_CONFIG.projectId && sahmtV2Properties_().getProperty('SAHMT_V2_OCCURRENCE_SCORING_ENABLED') === 'true';
 }
 function evaluationOccurrenceAssertOperator_() {
   if (!evaluationOccurrenceEnabled_()) throw new Error('OCCURRENCE_SCORING_DISABLED');
@@ -69,7 +69,7 @@ function evaluationDeliverOccurrence_(reportId, expectedUid) {
     if (sha256Hex_(evaluationDeliveryCanonical_(evaluationOccurrenceEvidence_(report, audit, claim))) !== result.fingerprint) throw new Error('OCCURRENCE_SCORE_CONFLICT');
     if (claim.status === 'VALIDATED' && report.pointsStatus === 'VALIDATED') return {writes: [], result: true};
     return {writes: [evaluationWrite_('occurrenceScoreClaims', reportId,
-      {status: 'VALIDATED', destinationProjectId: SAHMT_EVALUATION_FB, awardId: result.awardId}, claim, ['validatedAt']),
+      {status: 'VALIDATED', destinationProjectId: evaluationProject_(), awardId: result.awardId}, claim, ['validatedAt']),
       evaluationWrite_('occurrenceReports', reportId, {pointsStatus: 'VALIDATED'}, report, [])], result: true};
   }, {projectId: SAHMT_EVALUATION_FC});
   return {status: result.status};

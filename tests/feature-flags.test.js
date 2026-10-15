@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from '../src/feature-flags.js';
+import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures,secondaryDomainAccess} from '../src/feature-flags.js';
 
 test('flags padrão mantêm módulos publicados ativos e ESG/Inovação inativos', () => {
   assert.deepEqual(DEFAULT_APP_FEATURES, {
@@ -39,4 +39,12 @@ test('mapeia flags aos caminhos de módulos e deixa rotas fixas inalteradas', ()
   for (const route of ['home', 'events', 'people', 'admin', 'offline', 'unknown']) {
     assert.equal(featureEnabledForRoute(route, features), true, `${route} não possui feature flag`);
   }
+});
+test('consolidated management and performance entry require their FA permissions',()=>{
+ const profile={active:true,access:true,permissions:{managementRead:true,trainingsRead:true}};
+ assert.equal(secondaryDomainAccess('management',profile,{management:'FA'}),true);
+ assert.equal(secondaryDomainAccess('training',profile,{training:'FA'}),true);
+ assert.equal(secondaryDomainAccess('management',profile,{management:'FB'}),false);
+ assert.equal(secondaryDomainAccess('management',{...profile,access:false},{management:'FA'}),false);
+ assert.equal(secondaryDomainAccess('management',{...profile,permissions:{}},{management:'FA'}),false);
 });

@@ -154,7 +154,9 @@ function sparkReportProject_(config) {
   return evaluationCollectionProject_(config.type);
 }
 function sparkReportCursorKey_(config) {
-  return SAHMT_V2_SPARK_REPORT_SCAN.cursorPrefix + (sparkReportProject_(config) === SAHMT_V2_CONFIG.projectId ? '' : 'FB_') + config.type;
+  const base=SAHMT_V2_SPARK_REPORT_SCAN.cursorPrefix+config.type;
+  return SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS.includes(config.type)||/^evaluation[A-Z]/.test(config.type)
+    ? evaluationCursorProperty_(base) : base;
 }
 function listSparkReportChanges_(config, limit) {
   const collectionConfig = SAHMT_V2_RESOURCE_TABS[config.type];

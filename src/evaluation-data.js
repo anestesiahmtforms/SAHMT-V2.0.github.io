@@ -48,7 +48,7 @@ async function actor(store, uid) {
   const profile = snap.exists() ? snap.data() : null;
   if (!profile?.active || !profile.access) throw new Error('Seu acesso foi revogado.');
   const faAdmin = profile.role === 'administrador_app' || profile.permissions?.admin === true;
-  return {...profile, uid, isAdmin: faAdmin && (store.target !== 'FB' || profile.permissions?.managementManage === true)};
+  return {...profile, uid, isAdmin: faAdmin && profile.permissions?.managementManage === true};
 }
 const rows = snapshot => snapshot.docs.map(doc => ({...doc.data(), id: doc.id}));
 async function listAll({db, sdk}, name, filters = []) {

@@ -120,7 +120,7 @@ function validatePendingChecklistScienceRequests() {
         else if (outcome === 'REJECTED') result.rejected++;
       } catch (_) { result.retried++; }
     });
-    if (evaluationProject_() === SAHMT_EVALUATION_FB) result.delivery = evaluationDrainChecklistDeliveries_({scienceOnly: true});
+    result.delivery = evaluationDrainChecklistDeliveries_({scienceOnly: true});
     const summary = evaluationPublishCategorySummary_('PERFORMANCE', {scienceOnly: true});
     result.summary = summary.status; console.log(JSON.stringify(result)); return result;
   } finally { lock.releaseLock(); }

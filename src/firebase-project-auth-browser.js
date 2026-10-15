@@ -4,7 +4,7 @@ import {registerManagementPilotAuth, beginManagementPilotConnect, finishManageme
 const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
 const enabled = env.VITE_FIREBASE_PROJECT_AUTH_ENABLED === 'true';
 const configuredTargets = Object.freeze({
-  FB: env.VITE_MANAGEMENT_FIREBASE_ENABLED === 'true',
+  FB: false,
   FC: env.VITE_INDICATORS_FIREBASE_ENABLED === 'true'
 });
 const defaultTargets = Object.freeze(Object.keys(configuredTargets).filter(name => configuredTargets[name]));

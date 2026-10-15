@@ -5,14 +5,14 @@ import {createManagementProjectAuthAutoConnector, managementProjectAuthTargets} 
 const profile = (permissions = {}, extra = {}) => ({active:true, access:true, role:'anestesiologista', permissions, ...extra});
 
 test('automatic targets are independently derived from the FA profile as request hints', () => {
-  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true})), ['FB','FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({managementRead:true})), ['FB','FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({managementManage:true})), ['FB','FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true})), ['FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementRead:true})), ['FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementManage:true})), ['FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({managementIndicatorsRead:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({trainingsManage:true,managementIndicatorsWrite:true})), ['FB','FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({trainingsManage:true,managementIndicatorsWrite:true})), ['FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({admin:true})), ['FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({}, {role:'administrador_app'})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true}, {role:'administrador_app'})), ['FB','FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true}, {role:'administrador_app'})), ['FC']);
   assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true,managementIndicatorsRead:true}, {active:false})), []);
   assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true}, {access:false})), []);
   assert.deepEqual(managementProjectAuthTargets(profile({})), ['FC']);
@@ -35,7 +35,7 @@ test('active user requests FC and authorized FB once in background; duplicate pr
   const first=connector.update(ctx), duplicate=connector.update(ctx);
   assert.strictEqual(first,duplicate);
   assert.deepEqual(await first,{status:'partial'});
-  assert.equal(calls,1); assert.deepEqual(requested,[['FB','FC']]);
+  assert.equal(calls,1); assert.deepEqual(requested,[['FC']]);
 });
 
 test('occurrence-only active user requests FC and never FB', async () => {
@@ -47,9 +47,9 @@ test('occurrence-only active user requests FC and never FB', async () => {
 });
 
 test('source user switch drops a late result from the prior connection attempt', async () => {
-  let currentUid='uid-a', resolveConnect;
+  let currentUid='uid-a', resolveConnect,attempt=0;
   const connector=createManagementProjectAuthAutoConnector({enabled:true,
-    loadConnect:async()=>async targets=>targets[0] === 'FB'
+    loadConnect:async()=>async targets=>++attempt === 1
       ? new Promise(resolve=>{resolveConnect=resolve;}) : {status:'ready'},isCurrent:uid=>uid===currentUid});
   const pending=connector.update({uid:'uid-a',profile:profile({trainingsRead:true})});
   await new Promise(resolve=>setImmediate(resolve));

@@ -73,20 +73,20 @@ function harness({enabled = true, targetNames = ['FB','FC'], appMissing, existin
   return {calls,auths,instance:context.getFirebaseProjectAuthOptIn()};
 }
 
-test('browser composes real FB/FC module exports and authenticates both with one FA proof',async()=>{
+test('browser never initializes FB after consolidation; remaining FC flow preserves FA identity',async()=>{
   const h=harness();const result=await h.instance.connect();
-  assert.equal(result.status,'ready');assert.deepEqual(h.calls.signIn.sort(),['FB','FC']);
-  assert.equal(h.calls.fetch,1);assert.equal(h.calls.fbApp,1);assert.equal(h.calls.fcAuth,1);
-  assert.deepEqual(h.calls.budgets,[90000,90000]);assert.deepEqual(h.calls.registered,['FB','FC']);
+  assert.equal(result.status,'ready');assert.deepEqual(h.calls.signIn.sort(),['FC']);
+  assert.equal(h.calls.fetch,1);assert.equal(h.calls.fbApp,0);assert.equal(h.calls.fcAuth,1);
+  assert.deepEqual(h.calls.budgets,[90000,90000]);assert.deepEqual(h.calls.registered,['FC']);
   assert.deepEqual(h.calls.reports,['ready']);assert.equal(h.auths.FA.currentUser.uid,'synthetic-pilot-uid');
   h.instance.dispose();
 });
 
-test('browser honors FB-only and FC-only module contracts without initializing the other target',async()=>{
+test('legacy FB-only configuration stays disabled; FC-only still uses its isolated contract',async()=>{
   for(const alias of ['FB','FC']) {
     const h=harness({targetNames:[alias]});const result=await h.instance.connect();
-    assert.equal(result.status,'ready');assert.deepEqual(h.calls.signIn,[alias]);
-    assert.equal(h.calls.fbApp,alias==='FB'?1:0);assert.equal(h.calls.fcAuth,alias==='FC'?1:0);h.instance.dispose();
+    assert.equal(result.status,alias==='FB'?'disabled':'ready');assert.deepEqual(h.calls.signIn,alias==='FB'?[]:['FC']);
+    assert.equal(h.calls.fbApp,0);assert.equal(h.calls.fcAuth,alias==='FC'?1:0);h.instance.dispose();
   }
 });
 
@@ -95,27 +95,24 @@ test('browser stays disabled without importing SDKs or sending requests',async()
   assert.equal(h.calls.imports.length,0);assert.equal(h.calls.fetch,0);
 });
 
-test('null app/auth fails closed before broker while the existing FB Auth fallback remains supported',async()=>{
-  for(const alias of ['FB','FC']) {
+test('missing FC auth fails closed and an existing FB session is never reused',async()=>{
+  for(const alias of ['FC']) {
     const h=harness({targetNames:[alias],appMissing:alias});
     const result = await h.instance.connect();
     assert.equal(result.status,'blocked');assert.equal(result.targets[alias].code,'TARGET_AUTH_UNAVAILABLE');assert.equal(h.calls.fetch,0);
     assert.equal(h.calls.initialize.length,0);h.instance.dispose();
   }
   const existing=harness({targetNames:['FB'],existingFb:true});
-  assert.equal((await existing.instance.connect()).status,'ready');assert.equal(existing.calls.fallback,1);existing.instance.dispose();
+  assert.equal((await existing.instance.connect()).status,'disabled');assert.equal(existing.calls.fallback,0);existing.instance.dispose();
 });
 
-test('target import, getter and SDK failures preserve the other destination and do not request failed target tokens',async()=>{
+test('FB failures are irrelevant to consolidated modules and FC failure never falls back to FB',async()=>{
   for(const failure of ['FB_IMPORT','FC_IMPORT','FB_GETTER','FC_GETTER','FB_SDK']) {
     const h=harness({failure}), faUser=h.auths.FA.currentUser;
-    const unavailable=failure.startsWith('FB')?'FB':'FC', available=unavailable==='FB'?'FC':'FB';
     const result=await h.instance.connect();
-    assert.equal(result.status,'partial',failure);
-    assert.equal(result.targets[unavailable].code,'TARGET_AUTH_UNAVAILABLE',failure);
-    assert.equal(result.targets[available].status,'ready',failure);
-    assert.deepEqual(h.calls.requested,[[available]],failure);
-    assert.deepEqual(h.calls.signIn,[available],failure);
+    if(failure.startsWith('FB')){assert.equal(result.status,'ready');assert.deepEqual(h.calls.signIn,['FC']);}
+    else{assert.equal(result.status,'blocked');assert.equal(result.targets.FC.code,'TARGET_AUTH_UNAVAILABLE');assert.deepEqual(h.calls.signIn,[]);}
+    assert.equal(h.calls.fbApp,0);assert.equal(h.calls.imports.includes('./management-firebase-app.js'),false);
     assert.equal(h.auths.FA.currentUser,faUser,failure);
     assert.equal(JSON.stringify(result).includes('private'),false,failure);h.instance.dispose();
   }
@@ -125,7 +122,7 @@ test('two unavailable targets fail closed without token retrieval or HTTP',async
   const h=harness({bothMissing:true});
   h.auths.FA.currentUser.getIdToken=async()=>{throw Error('must not request FA token');};
   const result=await h.instance.connect();
-  assert.equal(result.status,'blocked');assert.equal(result.targets.FB.code,'TARGET_AUTH_UNAVAILABLE');
+  assert.equal(result.status,'blocked');assert.equal(result.targets.FB,undefined);
   assert.equal(result.targets.FC.code,'TARGET_AUTH_UNAVAILABLE');assert.equal(h.calls.fetch,0);
   assert.equal(h.calls.budgets.length,0);h.instance.dispose();
 });

@@ -1,0 +1,39 @@
+{
+  "code": "FA_CONSOLIDATION_LOCAL_PREPARATION",
+  "checks": [
+    {
+      "name": "apps-script-syntax",
+      "passed": true
+    },
+    {
+      "name": "consolidation-tests",
+      "passed": true
+    },
+    {
+      "name": "domain-tests",
+      "passed": true
+    },
+    {
+      "name": "management-tests",
+      "passed": true
+    },
+    {
+      "name": "secondary-domain-tests",
+      "passed": true
+    },
+    {
+      "name": "build",
+      "passed": true
+    }
+  ],
+  "remoteWrites": 0,
+  "productionReady": false,
+  "localReady": true,
+  "externalGates": [
+    "source-writer-barrier",
+    "final-delta-and-backup",
+    "verified-copy",
+    "backend-version-and-control-markers",
+    "production-build-and-authenticated-validation"
+  ]
+}

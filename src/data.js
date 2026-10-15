@@ -1,5 +1,5 @@
 import {notificationReference, mergeNotificationDomains} from './notification-domain.js';
-import {managementDataProject, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
+import {managementDataProject, managementDataGeneration, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
@@ -2351,7 +2351,7 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
 
 async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject} : {})};
+  const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject,dataGeneration:managementDataGeneration} : {})};
   if (!navigator.onLine) {
     if (!mayQueueOffline(collectionName)) throw new Error('Etiquetas precisam de conexão para serem confirmadas; os dados do paciente não ficam salvos neste aparelho.');
     await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
@@ -2463,7 +2463,7 @@ export async function flushOutbox(uid, {requestId} = {}) {
     for (const operation of operations) {
       try {
         assertQueuedOperationShape(operation, uid);
-        if (operation.type === 'activities' && (operation.payload.dataProject || 'FA') !== managementDataProject)
+        if (operation.type === 'activities' && (operation.payload.dataProject !== managementDataProject || operation.payload.dataGeneration !== managementDataGeneration))
           throw Object.assign(new Error('Atividade da base anterior preservada para conciliação. Nenhum envio foi feito.'), {code:'domain-cutover-review'});
         if (operation.type === 'scheduleReleases') {
           await applyScheduleSiglaRelease(operation.payload, uid);
