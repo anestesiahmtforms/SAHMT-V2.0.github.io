@@ -17,6 +17,11 @@ service cloud.firestore {
 
     function evaluationOwn(data) { return activeUser() && (isAdmin() || data.uid == request.auth.uid); }
 
+
+    function evaluationPrivateDetail(data) {
+      return activeUser() && (data.uid == request.auth.uid || (isAdmin() &&
+        (data.category == 'GOVERNANCE' || (profile().permissions.keys().hasAny(['occurrencesAuditRead']) && profile().permissions.occurrencesAuditRead == true))));
+    }
     match /evaluationActivities/{id} {
       function evaluationGroupAccess(group) {
         let accessPath = /databases/$(database)/documents/documentAccessEmails/$(request.auth.token.email.lower());
@@ -37,8 +42,8 @@ service cloud.firestore {
         evaluationGroupEligible(resource.data));
       allow write: if false;
     }
-    match /evaluationAwards/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
-    match /evaluationLedger/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
+    match /evaluationAwards/{id} { allow read: if evaluationPrivateDetail(resource.data); allow write: if false; }
+    match /evaluationLedger/{id} { allow read: if evaluationPrivateDetail(resource.data); allow write: if false; }
     match /evaluationSummaries/{uid} { allow read: if activeUser() && (request.auth.uid == uid || isAdmin()); allow write: if false; }
     match /evaluationReference/{id} { allow read: if activeUser() && id == 'team'; allow write: if false; }
     match /evaluationAssignments/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
@@ -1558,6 +1563,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
     // BEGIN OCCURRENCES_FA_V1
+    match /{occurrenceCollection}/{reportId} {
     function occurrenceDomainActive_() {
       let path = /databases/$(database)/documents/occurrenceRuntime/faConsolidation;
       return exists(path) && get(path).data.status == 'ACTIVE';
@@ -1623,29 +1629,18 @@ service cloud.firestore {
         claim.createdAt == request.time;
     }
 
-    match /occurrenceCatalogs/current {
-      allow get: if occurrence_canCatalog();
-      allow list, create, update, delete: if false;
-    }
-    match /occurrenceReports/{reportId} {
-      allow get: if occurrence_canReadReport(reportId);
-      allow list: if occurrence_canRead() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if occurrence_canWrite() && !exists(occurrence_reportPath(reportId)) &&
-        occurrence_validReport(reportId, request.resource.data) && occurrence_pairedAfter(reportId);
-      allow update, delete: if false;
-    }
-    match /occurrenceAudit/{reportId} {
-      allow get: if occurrence_canReadPrivate(reportId);
-      allow list: if occurrence_canAudit() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if occurrence_canWrite() && !exists(occurrence_auditPath(reportId)) &&
-        occurrence_validAudit(reportId, request.resource.data) && occurrence_pairedAfter(reportId);
-      allow update, delete: if false;
-    }
-    match /occurrenceScoreClaims/{reportId} {
-      allow get: if occurrence_canReadPrivate(reportId);
-      allow list: if occurrence_canAudit() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if occurrence_canWrite() && !exists(occurrence_scorePath(reportId)) &&
-        occurrence_validScoreClaim(reportId, request.resource.data) && occurrence_pairedAfter(reportId);
+
+      allow get: if (occurrenceCollection == 'occurrenceCatalogs' && reportId == 'current' && occurrence_canCatalog()) ||
+        (occurrenceCollection == 'occurrenceReports' && occurrence_canReadReport(reportId)) ||
+        (occurrenceCollection in ['occurrenceAudit','occurrenceScoreClaims'] && occurrence_canReadPrivate(reportId));
+      allow list: if request.query.limit != null && request.query.limit <= 50 &&
+        ((occurrenceCollection == 'occurrenceReports' && occurrence_canRead()) ||
+         (occurrenceCollection in ['occurrenceAudit','occurrenceScoreClaims'] && occurrence_canAudit()));
+      allow create: if occurrence_canWrite() &&
+        ((occurrenceCollection == 'occurrenceReports' && !exists(occurrence_reportPath(reportId)) && occurrence_validReport(reportId, request.resource.data)) ||
+         (occurrenceCollection == 'occurrenceAudit' && !exists(occurrence_auditPath(reportId)) && occurrence_validAudit(reportId, request.resource.data)) ||
+         (occurrenceCollection == 'occurrenceScoreClaims' && !exists(occurrence_scorePath(reportId)) && occurrence_validScoreClaim(reportId, request.resource.data))) &&
+        occurrence_pairedAfter(reportId);
       allow update, delete: if false;
     }
     // END OCCURRENCES_FA_V1

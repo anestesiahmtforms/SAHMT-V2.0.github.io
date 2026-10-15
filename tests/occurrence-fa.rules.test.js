@@ -1,6 +1,6 @@
 import {readFile} from 'node:fs/promises';import {before,beforeEach,after,test} from 'node:test';import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
-import {doc,collection,query,limit,getDocFromServer,getDocsFromServer,runTransaction,setDoc,updateDoc,serverTimestamp} from 'firebase/firestore';
+import {doc,collection,query,where,collectionGroup,limit,getDocFromServer,getDocsFromServer,runTransaction,setDoc,updateDoc,serverTimestamp} from 'firebase/firestore';
 const PROJECT='demo-sahmt-v2',PORT=8279,uid='synthetic-member',id='10000000-0000-4000-8000-000000000001';let env;
 const user=(id=uid)=>env.authenticatedContext(id,{firebase:{sign_in_provider:'google.com'}}).firestore();
 const report=(extra={})=>({schemaVersion:1,id,formId:'F01',formTitle:'Synthetic',occurredOn:'2026-10-15',occurrence:'Synthetic',description:'Synthetic',classification:{},details:{},anonymous:true,authorLabel:'Anônimo',pointsClaimed:2,pointsStatus:'PENDING_VALIDATION',createdAt:serverTimestamp(),...extra});
@@ -13,7 +13,7 @@ const commit=(db,{r=report(),a=audit(),c=claim()}={})=>runTransaction(db,async t
 });
 before(async()=>{
  assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:'+PORT);
- env=await initializeTestEnvironment({projectId:PROJECT,firestore:{host:'127.0.0.1',port:PORT,rules:await readFile(new URL('../firestore.rules',import.meta.url),'utf8')}});
+ env=await initializeTestEnvironment({projectId:PROJECT,firestore:{host:'127.0.0.1',port:PORT,rules:await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE||new URL('../firestore.rules',import.meta.url),'utf8')}});
 });
 after(async()=>env?.cleanup());
 beforeEach(async()=>{
@@ -60,4 +60,33 @@ test('browser cannot edit points, overwrite prior report, grant audit or activat
 test('retired or absent activation marker closes all new occurrence writes',async()=>{
  await seed('occurrenceRuntime','faConsolidation',{status:'PREPARING'});await assertFails(commit(user()));
  await assertFails(getDocFromServer(doc(user(),'occurrenceCatalogs','current')));
+});
+
+test('anonymous author cannot be recovered through migrated performance awards or ledger',async()=>{
+ await seed('users','admin',{uid:'admin',active:true,access:true,role:'administrador_app',permissions:{managementManage:true,occurrencesRead:true}});
+ await seed('users','audit-admin',{uid:'audit-admin',active:true,access:true,role:'administrador_app',permissions:{managementManage:true,occurrencesAuditRead:true}});
+ for(const name of ['evaluationAwards','evaluationLedger']){
+  await seed(name,'historical',{uid,category:'PERFORMANCE',modality:'OCCURRENCE',sourceId:id,evidence:{reportId:id},points:2});
+  await seed(name,'governance',{uid,category:'GOVERNANCE',modality:'MATERIAL',points:1});
+  const db=user('admin');
+  await assertFails(getDocFromServer(doc(db,name,'historical')));
+  await assertFails(getDocsFromServer(query(collection(db,name),where('uid','==',uid),where('category','==','PERFORMANCE'))));
+  await assertFails(getDocsFromServer(collectionGroup(db,name)));
+  await assertSucceeds(getDocFromServer(doc(user(),name,'historical')));
+  await assertSucceeds(getDocFromServer(doc(user('audit-admin'),name,'historical')));
+  await assertSucceeds(getDocsFromServer(query(collection(user('audit-admin'),name),where('uid','==',uid),where('category','==','PERFORMANCE'))));
+  await assertSucceeds(getDocsFromServer(query(collection(db,name),where('uid','==',uid),where('category','==','GOVERNANCE'))));
+ }
+ await seed('evaluationSummaries',uid,{uid,performanceTotal:2});
+ await assertSucceeds(getDocFromServer(doc(user('admin'),'evaluationSummaries',uid)));
+ await seed('users','audit-admin',{uid:'audit-admin',active:true,access:true,role:'administrador_app',permissions:{managementManage:true}});
+ await assertFails(getDocFromServer(doc(user('audit-admin'),'evaluationLedger','historical')));
+});
+test('scoped occurrence validators do not open other roots, catalogs or nested collections',async()=>{
+ const db=user();
+ for(const path of [['unrelated',id],['occurrenceCatalogs','unapproved'],['unrelated','parent','occurrenceReports',id]]){
+  await assertFails(setDoc(doc(db,...path),report()));
+  await assertFails(getDocFromServer(doc(db,...path)));
+ }
+ await assertFails(getDocsFromServer(collectionGroup(db,'occurrenceReports')));
 });

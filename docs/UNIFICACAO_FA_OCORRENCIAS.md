@@ -18,7 +18,9 @@
 
 ## Rules e recuperação
 
-As Rules FA publicadas receberam somente o bloco de Ocorrências, mantendo os controles de Gestão e os demais módulos. O bloco equivalente está versionado em `firestore.rules`. O gerador permite conferir a preservação do texto preexistente. No FC, um marcador de aposentadoria fecha os clientes antigos. Ambos os releases anteriores estão guardados na cópia privada.
+As Rules FA receberam o bloco de Ocorrências, mantendo os controles de Gestão e os demais módulos. O bloco equivalente está versionado em `firestore.rules`. Os validadores de Ocorrências ficam em um escopo exato de dois segmentos, com nome de coleção explícito em cada autorização, evitando aumentar a árvore global de funções. No FC, um marcador de aposentadoria fecha os clientes antigos. Ambos os releases anteriores estão guardados na cópia privada.
+
+A revisão também protegeu a autoria indireta: os livros `evaluationAwards` e `evaluationLedger` contêm referências aos relatos. Para consultar o detalhamento de Desempenho de outra pessoa, o administrador precisa de `occurrencesAuditRead=true`; o próprio titular continua acessando seus lançamentos. Totais agregados e Governança permanecem disponíveis. A interface não abre consultas proibidas e explica a restrição. Isso cobre registros históricos sem reescrever pontos, recibos ou identidades. `fa-occurrence-privacy-release.mjs` prepara e guarda o release anterior antes da aplicação; exige ausência de alteração concorrente e confere a publicação.
 
 Marcadores privados FA exigem cópia completa antes da ativação. Fonte Apps Script, versões de implantação, Rules, configuração/versões do Worker e dados foram guardados em `%LOCALAPPDATA%\SAHMT\fa-consolidation`, fora do Git.
 
