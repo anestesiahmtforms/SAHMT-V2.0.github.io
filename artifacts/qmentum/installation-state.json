@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "code": "QMENTUM_RULES_AND_TRANSPORT_VERIFIED_MODULE_DISABLED",
-  "observedAt": "2026-10-15T23:45:11.015Z",
+  "observedAt": "2026-10-15T23:59:40.582Z",
   "projectId": "sahmt-17a16",
   "configurationDocuments": 4,
   "enabled": false,
@@ -22,7 +22,7 @@
   "rulesCreateHttpStatus": 200,
   "rulesReleaseHttpStatus": 200,
   "backendFiles": 29,
-  "backendVersion": 15,
+  "backendVersion": 16,
   "manifestChanged": false,
   "newTriggers": 0,
   "aiEnabled": false,
@@ -40,15 +40,15 @@
   "previousWritesPerMonthlySave": 14,
   "transport": {
     "workerEnabled": true,
-    "gatewayEnabled": true,
     "secondaryAuthRetired": true,
     "hmacResponseVerified": true,
     "anonymousWorkerHttpStatus": 401,
     "regularSignedDeniedCode": "QMENTUM_PERMISSION_DENIED",
-    "regularReplayCode": "QMENTUM_REPLAY_DENIED"
+    "regularReplayCode": "QMENTUM_REPLAY_DENIED",
+    "appsScriptWriteEnabled": true
   },
   "localTests": {
-    "qmentum": 88,
+    "qmentum": 93,
     "qmentumRules": 12,
     "allRules": 101,
     "domain": 957,
@@ -56,7 +56,8 @@
     "managementSkipped": 3,
     "browserChecks": 112,
     "viewports": 4,
-    "runtimeBrowser": 1
+    "runtimeBrowser": 1,
+    "restEmulator": 3
   },
   "realBusinessWriteVerified": false,
   "participationPoints": {
@@ -69,5 +70,6 @@
     "transportGate": "QMENTUM_WRITE_ENABLED=false",
     "privateBackupProtected": true,
     "recordsDeleted": 0
-  }
+  },
+  "realRestVerificationTransactionVerified": true
 }

@@ -17,7 +17,26 @@ function qmServerList_(parent,collection,maximum) {
 function qmServerWrite_(path,data,old) {
   return {update:{name:'projects/sahmt-17a16/databases/(default)/documents/'+path,fields:firestoreFieldsFromJs_(data)},currentDocument:old?{updateTime:old._updateTime}:{exists:false}};
 }
-function qmServerCommit_(writes){firestoreRequest_(firestoreDocumentsUrl_(':commit'),{method:'post',contentType:'application/json',payload:JSON.stringify({writes:writes})});}
+function qmServerCommit_(writes){
+  const guards=writes.filter(function(w){return typeof w.verify==='string';}),updates=writes.filter(function(w){return typeof w.verify!=='string';});
+  const request=function(suffix,body){return firestoreRequest_(firestoreDocumentsUrl_(suffix),{method:'post',contentType:'application/json',payload:JSON.stringify(body)});};
+  // `verify` is an internal plan item, not a Firestore REST Write operation.
+  // Read those documents in a transaction and compare their metadata; the
+  // transaction read set protects them atomically without rewriting profiles.
+  if(!guards.length)return request(':commit',{writes:updates});
+  guards.forEach(function(g){if(!g.currentDocument||typeof g.currentDocument.updateTime!=='string'&&typeof g.currentDocument.exists!=='boolean')throw Error('QMENTUM_PRECONDITION_INVALID');});
+  const tx=request(':beginTransaction',{options:{readWrite:{}}}).transaction;
+  if(typeof tx!=='string'||!tx)throw Error('QMENTUM_TRANSACTION_INVALID');
+  let committed=false;
+  try{
+    const names=Array.from(new Set(guards.map(function(g){return g.verify;})));
+    const responses=request(':batchGet',{documents:names,transaction:tx,mask:{fieldPaths:['schemaVersion']}});
+    if(!Array.isArray(responses))throw Error('QMENTUM_TRANSACTION_READ_INVALID');
+    const found={};responses.forEach(function(r){if(r.found)found[r.found.name]=r.found;else if(r.missing)found[r.missing]=null;});
+    guards.forEach(function(g){const d=found[g.verify],p=g.currentDocument;if(!Object.prototype.hasOwnProperty.call(found,g.verify)||p.exists===false&&d||p.exists===true&&!d||p.updateTime&&(!d||d.updateTime!==p.updateTime))throw Error('QMENTUM_VERSION_CONFLICT');});
+    const result=request(':commit',{writes:updates,transaction:tx});committed=true;return result;
+  }finally{if(!committed)try{request(':rollback',{transaction:tx});}catch(_){} }
+}
 function qmServerClean_(d){const out={};Object.keys(d).forEach(function(k){if(k[0]!=='_')out[k]=d[k];});return out;}
 function qmServerFacts_(job){
   const rows=qmServerList_('qmentumUnits/'+job.unitId,'months',121);

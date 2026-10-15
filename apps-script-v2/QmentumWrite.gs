@@ -87,7 +87,7 @@ function qmWriteConfigureHttp_(event) {
     const prefix='SAHMT_QM_CONFIG_NONCE_',all=props.getProperties(),now=Date.now();let count=0;
     Object.keys(all).filter(function(k){return k.indexOf(prefix)===0;}).forEach(function(k){if(Number(all[k])<=now)props.deleteProperty(k);else count++;});
     if(props.getProperty(prefix+request.nonce)||count>=16||request.expiresAt<=Date.now())throw Error('REPLAY');
-    if(request.enabled){const config=qmServerGet_('qmentumConfig/current');if(!config||config.enabled!==false)throw Error('GATE');}
+    if(request.enabled){const config=qmServerGet_('qmentumConfig/current');if(!config||config.enabled!==false)throw Error('GATE');qmServerCommit_([{verify:config._name,currentDocument:{updateTime:config._updateTime}}]);}
     props.setProperty(prefix+request.nonce,String(request.expiresAt+5000));props.setProperty('QMENTUM_WRITE_ENABLED',request.enabled?'true':'false');
     return reply(request.enabled?'QMENTUM_WRITE_TRANSPORT_ENABLED':'QMENTUM_WRITE_TRANSPORT_DISABLED');
   }catch(_){return request&&/^[a-f0-9]{32}$/.test(request.nonce||'')&&secret?reply('QMENTUM_CONFIG_DENIED'):ospJson_({code:'QMENTUM_CONFIG_DENIED'});}
