@@ -273,11 +273,11 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
 });
 
-test('liberação FB habilita somente o domínio explicitamente autorizado', () => {
- const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FB',training:'FB'}});
+test('liberação no FA consolidado habilita somente o domínio explicitamente autorizado', () => {
+ const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
  assert.doesNotMatch(cardMarkup(h,'management'), /disabled/);
  assert.match(cardMarkup(h,'training'), /disabled/);
- const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FB',training:'FB'}});
+ const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
  assert.match(cardMarkup(p,'management'), /disabled/);
  assert.doesNotMatch(cardMarkup(p,'training'), /disabled/);
 });
@@ -287,5 +287,5 @@ test('liberação de domínio exige perfil ativo e permissão booleana', () => {
  {active:true,access:false,permissions:{managementRead:true}},
  {active:true,access:true,role:'administrador_app',permissions:{}},
  {active:true,access:true,permissions:{managementRead:'true'}}])
- assert.equal(h.context.secondaryDomainAccess('management',profile,{management:'FB'}),false);
+ assert.equal(h.context.secondaryDomainAccess('management',profile,{management:'FA'}),false);
 });

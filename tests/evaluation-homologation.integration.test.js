@@ -58,14 +58,14 @@ test('unchanged trusted Apps Script engine reconciles evaluation over REAL Fires
     const final=h.get('evaluationReference','team');for(const key of ['maxPerformance','allZero','eligibleCount','performanceRevision','performanceStatus'])assert.equal(final[key],before[key],key);
     assert.equal(h.get('evaluationSummaries',person).performanceTotal,6);
   });
-  await t.test('accepted own obligation is zero; actual incomplete signature transfers -1/+1 once per day and correction is atomic',()=>{
+  await t.test('accepted own obligation is zero; FA signature transfers -1/+1 atomically without secondary delivery',()=>{
     const day=h.ctx.checklistSaoPauloDay_(),prior=new Date(`${day}T12:00:00Z`);prior.setUTCDate(prior.getUTCDate()-1);const ownDay=prior.toISOString().slice(0,10);
     assert.equal(h.ctx.evaluationApplyChecklistTransfer_(ownDay,person,person,'fictional-accepted-own-signature').status,'APPLIED');assert.equal(h.get('evaluationChecklistTransfers',ownDay).amount,0);
     h.seed('scheduleDays',day,{positions:['AA','BB','CC']});h.seed('contacts','AA',{active:true,sigla:'AA',name:'Pessoa fictícia 1'});h.seed('stations','fictional-station',{active:true,order:1,name:'Arsenal inteiramente fictício'});
     const snapshot=h.ctx.readTrustedChecklistSnapshot_(day),id=`${day}_${snapshot.fingerprint}_${manager}`;
     h.seed('checklistSignatureRequests',id,{id,day,revision:snapshot.fingerprint,signerUid:manager,declaration:true,status:'PENDING_VALIDATION',justification:'Revisão manual fictícia e controlada na homologação'});
     assert.equal(h.ctx.validateChecklistSignatureRequest_({id}),'VALIDATED');assert.equal(h.get('checklistSignatures',`${day}_${snapshot.revision}`).missing,1);
-    const delivery=h.ctx.evaluationDrainChecklistDeliveries_();assert.equal(delivery.delivered,1);assert.equal(delivery.pending,0);
+    const delivery=h.ctx.evaluationDrainChecklistDeliveries_();assert.equal(delivery.delivered,0);assert.equal(delivery.pending,0);
     const transfer=h.get('evaluationChecklistTransfers',day);assert.equal(transfer.members[person].points,-1);assert.equal(transfer.members[manager].points,1);
     const count=h.values('evaluationLedger').length;assert.equal(h.ctx.evaluationApplyChecklistTransfer_(day,person,manager,'accepted-revision-later').status,'DUPLICATE');assert.equal(h.values('evaluationLedger').length,count);
     const award=h.values('evaluationAwards').find(a=>a.transferId===`checklist-${day}` && a.leg==='CREDIT');

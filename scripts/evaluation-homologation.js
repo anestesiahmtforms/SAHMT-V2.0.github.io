@@ -85,7 +85,7 @@ export function createEmulatorReplay({projectId=HOMOLOGATION_PROJECT, emulatorHo
   // authorization gate, correction, or summarizer is replaced.
   ctx.firestoreDocumentsUrl_=path=>target.documents+path;
   ctx.firestoreDocumentName_=name;
-  // The production engine now routes its financial collections to FB. Keep
+  // The production engine consolidates its evaluation collections in FA. Keep
   // this isolated replay on the single demo emulator for every project.
   ctx.evaluationDocumentsUrl_=(path,projectId)=>{
     if(projectId && !['sahmt-17a16','sahmt-gestao-5ae66','indicadores---sahmt'].includes(projectId))
@@ -105,7 +105,7 @@ export function createEmulatorReplay({projectId=HOMOLOGATION_PROJECT, emulatorHo
   const seed=(collection,id,fields)=>transport(`${target.documents}/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`,{method:'PATCH',payload:JSON.stringify({fields:ctx.firestoreFieldsFromJs_(fields)})});
   const get=(collection,id)=>{const result=ctx.evaluationGet_(collection,id);return result?plain(ctx.evaluationClean_(result)):null;};
   const values=collection=>plain(ctx.evaluationQuery_(collection,[],[],10000).map(doc=>ctx.evaluationClean_(doc)));
-  const enable=()=>{properties.set('SAHMT_V2_EVALUATION_ENABLED','true');properties.set('SAHMT_V2_EVALUATION_HOMOLOGATED','true');seed('evaluationRuntime','state',{homologationVerified:true});};
+  const enable=()=>{properties.set('SAHMT_V2_EVALUATION_ENABLED','true');properties.set('SAHMT_V2_EVALUATION_HOMOLOGATED','true');seed('managementRuntime','faConsolidation',{schemaVersion:1,release:'fa-consolidation-v1',status:'ACTIVE',sourceProjectId:'sahmt-gestao-5ae66',destinationProjectId:'sahmt-17a16',planSha256:'a'.repeat(64),verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});seed('evaluationRuntime','state',{homologationVerified:true});};
   const invoke=(method,payload,actorUid)=>{ctx.evaluationAssertOperator_(true);return ctx.evaluationRunTransaction_(tx=>ctx[method](payload,actorUid,tx));};
   return {ctx,target,sourceHashes,requests,properties,google,seed,get,values,enable,invoke,transport};
 }

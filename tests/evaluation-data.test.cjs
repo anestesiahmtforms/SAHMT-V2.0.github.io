@@ -3,12 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../src/evaluation-data.js'), 'utf8').replaceAll('export ', '').replaceAll("import('./firebase.js')", 'Promise.resolve({db: fakeDb})').replaceAll("import('./firebase-auth.js')", 'Promise.resolve({auth: fakeAuth})').replaceAll("import('firebase/firestore')", 'Promise.resolve(fakeSdk)').replaceAll("import('./evaluation-store.js')", 'Promise.resolve({loadEvaluationStore: async ({faDb, sdk, auth}) => ({db: faDb, identityDb: faDb, sdk, auth})})');
-function setup({admin = false, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false} = {}) {
+function setup({admin = false, managementManage = admin, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false} = {}) {
   const listeners = [], events = [], errors = [];
   const sdk = {doc: (_db, name, id) => ({name, id}), collection: (_db, name) => ({name}), where: (...args) => ({where: args}), query: (...args) => args, orderBy: (...args) => ({orderBy: args}), limit: count => ({limit: count}), documentId: () => '__name__', startAfter: cursor => ({startAfter: cursor}),
     getDocFromServer: async ref => ref?.name === 'documentAccessEmails'
       ? (groupReadDenied ? Promise.reject(new Error('permission-denied')) : {exists: () => accessGroups.length > 0, data: () => ({email: 'fixture@example.invalid', active: accessGroups.length > 0, groups: accessGroups})})
-      : ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {}})}),
+      : ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {managementManage}})}),
     getDocsFromServer: async query => {
       const collection = query.find(item => item?.name)?.name;
       const filters = query.filter(item => item?.where).map(item => item.where);
@@ -24,6 +24,10 @@ function setup({admin = false, revoked = false, accessGroups = ['GENERAL'], clai
   return {context, listeners, events, errors, watch, tick};
 }
 test('cleanup imediato impede listeners após a carga assíncrona', async () => { const h = setup(); h.watch()(); await h.tick(); assert.equal(h.listeners.length, 0); });
+test('consolidação FA não concede administração de desempenho apenas pelo papel', async () => {
+ const h=setup({admin:true,managementManage:false});h.watch({subjectUid:'other'});await h.tick();
+ assert.equal(h.listeners.length,0);assert.equal(h.errors.length,1);
+});
 test('consulta de terceiros exige admin; revogação bloqueia antes de observar', async () => { for (const [configuration, options] of [[{}, {subjectUid: 'other'}], [{revoked: true}, {}]]) { const h = setup(configuration); h.watch(options); await h.tick(); assert.equal(h.listeners.length, 0); assert.equal(h.errors.length, 1); } });
 test('listeners privados usam UID/categoria e máximo agregado sem scores', async () => {
   const h = setup(); const stop = h.watch(); await h.tick(); assert.equal(h.listeners.length, 6);

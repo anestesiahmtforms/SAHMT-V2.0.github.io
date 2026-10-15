@@ -69,6 +69,7 @@ function harness({activated = true} = {}) {
     if(matched) {const doc=store.get(name(decodeURIComponent(matched[1]),decodeURIComponent(matched[2])));if(!doc)throw Object.assign(new Error('missing'),{status:404});return plain(doc);}
     throw new Error(`Unexpected mock request ${url}`);
   };
+  seed('managementRuntime','faConsolidation',{schemaVersion:1,release:'fa-consolidation-v1',status:'ACTIVE',sourceProjectId:'sahmt-gestao-5ae66',destinationProjectId:'sahmt-17a16',planSha256:'a'.repeat(64),verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});
   if (activated) {
     properties.set('SAHMT_V2_EVALUATION_ENABLED','true'); properties.set('SAHMT_V2_EVALUATION_HOMOLOGATED','true');
     seed('evaluationRuntime','state',{homologationVerified:true});
@@ -247,7 +248,8 @@ test('validador real aceita assinatura própria completa com zero e substituta i
     const result=h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',h.id));assert.equal(result,'VALIDATED');
     assert.equal(h.values('checklistSignatures').length,1);assert.equal(h.values('scores').length,0);
     const sourceCommit=h.commits.at(-1);
-    for(const collection of ['checklistSignatures','checklistSignatureRequests','checklistScoreOutbox','checklistResponsibilities'])assert.ok(sourceCommit.writes.some(write=>write.update.name.includes(`/${collection}/`)),collection);
+    for(const collection of ['checklistSignatures','checklistSignatureRequests','evaluationChecklistTransfers','checklistResponsibilities'])assert.ok(sourceCommit.writes.some(write=>write.update.name.includes(`/${collection}/`)),collection);
+    assert.equal(h.values('checklistScoreOutbox').length,0);
     assert.ok(sourceCommit.writes.filter(write=>write.update.name.includes('/checklistSignatures/')).every(write=>write.updateTransforms.some(transform=>transform.fieldPath==='signedAt')));
     deliverChecklistOutbox(h);
     assert.equal(h.data('checklistSignatureRequests',h.id).pointsAwarded,input.own?0:1);
@@ -293,8 +295,8 @@ test('par inconsistente nunca produz novo crédito silencioso', () => {
   h.seed('checklists','new-response',{date:h.day,stationId:'station-fixture',condition:'SIM',occurrence:'',createdAt:new Date('2026-10-03T11:00:00Z')});
   const snapshot=h.ctx.readTrustedChecklistSnapshot_(h.day),id=`${h.day}_${snapshot.fingerprint}_person-a`;
   h.seed('checklistSignatureRequests',id,{id,day:h.day,revision:snapshot.fingerprint,signerUid:'person-a',declaration:true,status:'PENDING_VALIDATION',justification:'Estado inconsistente fictício'});
-  assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',id)),'VALIDATED');
-  assert.throws(()=>deliverChecklistOutbox(h));assert.equal(h.values('evaluationLedger').length,2);
+  assert.equal(h.ctx.validateChecklistSignatureRequest_(h.get('checklistSignatureRequests',id)),'NEEDS_REVIEW');
+  assert.equal(h.values('evaluationLedger').length,2);
 });
 
 test('segundo componente de governança adiciona apenas ponto faltante', () => {

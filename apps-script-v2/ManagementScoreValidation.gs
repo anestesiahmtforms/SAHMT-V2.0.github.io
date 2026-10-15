@@ -26,7 +26,7 @@ function validatePendingManagementScoreReviews() {
     });
     if (batch.length) properties.setProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty), batch[batch.length - 1]._documentName);
     else properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty));
-    if (evaluationProject_() === SAHMT_EVALUATION_FB) {
+    if (evaluationProject_() === SAHMT_V2_CONFIG.projectId) {
       try { result.performanceDelivery=recuperarPontuacoesValidadasFbV1(); }
       catch (_) { result.performanceDelivery={code:'LEGACY_SCORE_DELIVERY_PENDING'}; }
     }
@@ -120,7 +120,7 @@ function validateManagementScoreReview_(review) {
     const scoreId = managementActivityScoreId_(review.activityId, completion.uid);
     const expected = {
       id: scoreId, uid: completion.uid, sourceType: 'MANAGEMENT_TASK_COMPLETION', sourceId: completionId,
-      ruleId: activity.scoringRuleId, ruleVersion: activity.scoringRuleVersion,
+      ruleId: activity.scoringRuleId, ruleVersion: activity.scoringRuleVersion, originProjectId:SAHMT_V2_CONFIG.projectId,
       points: activity.points, createdByUid: review.reviewerUid, approvedByUid: review.reviewerUid, createdAt: new Date()
     };
     const existing = evaluationGetProjected_('scores', scoreId,
@@ -137,7 +137,7 @@ function validateManagementScoreReview_(review) {
   writes.push(managementScoreReviewUpdateWrite_(review, {
     status: finalStatus, validationStatus: 'VALIDATED', validatedAt: now, validationMessage: ''
   }));
-  if (evaluationProject_() === SAHMT_EVALUATION_FB) writes.push.apply(writes,evaluationLegacyScoreTaskWrites_(writes));
+  writes.push.apply(writes,evaluationLegacyScoreTaskWrites_(writes));
   firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });

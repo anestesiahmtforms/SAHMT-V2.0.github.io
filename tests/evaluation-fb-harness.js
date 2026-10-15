@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const files = ['Config.gs','ChecklistRotationCore.gs','ChecklistValidation.gs','ChecklistScienceRelease.gs','ChecklistProjection.gs','EvaluationLedger.gs','EvaluationChecklistDelivery.gs','EvaluationOccurrenceDelivery.gs','EvaluationLegacyScoreDelivery.gs'];
 const source = files.map(file => readFileSync(new URL('../apps-script-v2/'+file, import.meta.url), 'utf8')).join('\n');
 const plain = value => JSON.parse(JSON.stringify(value));
-export function harness({activated = true, project = 'FB'} = {}) {
+export function harness({activated = true, project = 'FA'} = {}) {
   const store = new Map(), transactions = new Map(), commits = [], requests = [];
   let counter = 0, beforeCommit;
   const properties = new Map([['SAHMT_V2_EVALUATION_ALLOWED_EMAILS','operator@example.invalid']]);
@@ -12,7 +12,8 @@ export function harness({activated = true, project = 'FB'} = {}) {
     encodeURIComponent, Session:{getEffectiveUser:()=>({getEmail:()=> 'operator@example.invalid'})},
     Utilities:{DigestAlgorithm:{SHA_256:'SHA_256'},Charset:{UTF_8:'UTF_8'},computeDigest:(_algorithm,text)=>Array.from(createHash('sha256').update(text).digest()),
       formatDate:()=>'2026-10-03'}, PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties.get(key)||null})}});
-  if (project === 'FB') properties.set('SAHMT_V2_EVALUATION_PROJECT_ID', 'sahmt-gestao-5ae66');
+  if (project !== 'FA') throw new Error('TEST_HARNESS_SECONDARY_REMOVED');
+  properties.set('SAHMT_V2_EVALUATION_PROJECT_ID', 'sahmt-17a16');
   vm.runInContext(source, ctx);
   ctx.sahmtV2Properties_ = () => ({getProperty:key=>properties.get(key)||null,setProperty:(key,value)=>properties.set(key,value)});
   const name = (collection,id) => ctx.evaluationDocumentName_(collection,id);
@@ -61,6 +62,7 @@ export function harness({activated = true, project = 'FB'} = {}) {
     if(matched) {const doc=store.get(decodeURIComponent(url.match(/projects\/[^?]+/)[0]));if(!doc)throw Object.assign(new Error('missing'),{status:404});return plain(doc);}
     throw new Error(`Unexpected mock request ${url}`);
   };
+  seed('managementRuntime','faConsolidation',{schemaVersion:1,release:'fa-consolidation-v1',status:'ACTIVE',sourceProjectId:'sahmt-gestao-5ae66',destinationProjectId:'sahmt-17a16',planSha256:'a'.repeat(64),verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});
   if (activated) {
     properties.set('SAHMT_V2_EVALUATION_ENABLED','true'); properties.set('SAHMT_V2_EVALUATION_HOMOLOGATED','true');
     seed('evaluationRuntime','state',{homologationVerified:true});

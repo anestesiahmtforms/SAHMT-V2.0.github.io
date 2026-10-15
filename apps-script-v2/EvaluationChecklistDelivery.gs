@@ -26,7 +26,7 @@ function evaluationQueueChecklistDelivery_(signature, requestId, transaction) {
 }
 function evaluationDeliverChecklistEvent_(id, options) {
   options = options || {};
-  if (evaluationProject_() !== SAHMT_EVALUATION_FB) throw new Error('CHECKLIST_FB_DELIVERY_DISABLED');
+  evaluationProject_();
   if (options.scienceOnly === true) checklistScienceAssertOperator_(); else evaluationAssertOperator_(true);
   const result = evaluationRunTransaction_(function (transaction) {
     const event = evaluationGet_('checklistScoreOutbox', id, transaction);
@@ -68,7 +68,7 @@ function evaluationDeliverChecklistEvent_(id, options) {
   return {status: result.status};
 }
 function evaluationDrainChecklistDeliveries_(options) {
-  if (evaluationProject_() !== SAHMT_EVALUATION_FB) return {status: 'DISABLED', delivered: 0, pending: 0};
+  evaluationProject_();
   const result = {status: 'COMPLETE', delivered: 0, pending: 0};
   const events = evaluationQuery_('checklistScoreOutbox', [firestoreFilter_('status', 'EQUAL', {stringValue: 'PENDING'})], [], 20, ['id']);
   events.forEach(function (event) {

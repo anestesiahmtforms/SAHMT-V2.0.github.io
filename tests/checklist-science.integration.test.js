@@ -12,6 +12,9 @@ test('ciência isolada usa consultas e commits Firestore reais no emulador, pres
  h.seed('scheduleDays',day,{date:day,positions:[{position:1,sigla:'AA'},{position:2,sigla:'BB'}],highlights:{events:[]}});
  h.seed('stations','synthetic-station',{id:'synthetic-station',active:true,name:'Synthetic station',order:1});
  h.seed('checklistScienceRuntime','state',{enabled:true,release:'checklist-science-v1',activatedAt:new Date(Date.now()-60000)});
+ h.seed('managementRuntime','faConsolidation',{schemaVersion:1,release:'fa-consolidation-v1',status:'ACTIVE',
+  sourceProjectId:'sahmt-gestao-5ae66',destinationProjectId:'sahmt-17a16',planSha256:'a'.repeat(64),
+  verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});
  h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_ENABLED','true');
  h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_OPERATOR','operator@example.invalid');
  assert.throws(()=>h.ctx.evaluationAssertOperator_(true));
@@ -22,7 +25,7 @@ test('ciência isolada usa consultas e commits Firestore reais no emulador, pres
  const pending=h.ctx.listPendingChecklistScienceRequests_(h.ctx.checklistScienceAssertOperator_().activatedAt);
  assert.deepEqual(JSON.parse(JSON.stringify(pending)),[{id}]);
  assert.equal(h.ctx.validateChecklistSignatureRequest_({id},{scienceOnly:true}),'VALIDATED');
- assert.equal(h.ctx.evaluationDrainChecklistDeliveries_({scienceOnly:true}).delivered,1);
+ assert.equal(h.ctx.evaluationDrainChecklistDeliveries_({scienceOnly:true}).delivered,0);
  assert.equal(h.get('checklistSignatureRequests',id).pointsAwarded,1);
  assert.equal(h.get('checklistSignatureRequests',id).responsibleAdjustment,-1);
  const before=h.values('evaluationLedger').length;

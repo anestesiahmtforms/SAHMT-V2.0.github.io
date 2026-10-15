@@ -31,11 +31,11 @@ export function featureEnabledForRoute(route, features = DEFAULT_APP_FEATURES) {
   return !feature || normalizeAppFeatures(features)[feature] === true;
 }
 
-/** UI release follows the explicit data cutover; server rules remain authoritative. */
+/** Consolidated FA entry remains permission-scoped; Rules are authoritative. */
 export function secondaryDomainAccess(route, profile, projects = {}) {
   if (profile?.active !== true || profile?.access !== true) return false;
   const permissions = profile.permissions || {};
   const keys = route === 'management' ? ['managementRead','managementManage'] :
     route === 'training' ? ['trainingsRead','trainingsManage'] : [];
-  return projects[route] === 'FB' && keys.some(key=>permissions[key] === true);
+  return projects[route] === 'FA' && keys.some(key=>permissions[key] === true);
 }

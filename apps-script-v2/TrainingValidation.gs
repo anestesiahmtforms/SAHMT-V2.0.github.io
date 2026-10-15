@@ -32,7 +32,7 @@ function validatePendingTrainingCompletions() {
     } else {
       properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));
     }
-    if (evaluationProject_() === SAHMT_EVALUATION_FB) {
+    if (evaluationProject_() === SAHMT_V2_CONFIG.projectId) {
       try { result.performanceDelivery=recuperarPontuacoesValidadasFbV1(); }
       catch (_) { result.performanceDelivery={code:'LEGACY_SCORE_DELIVERY_PENDING'}; }
     }
@@ -164,7 +164,7 @@ function validateTrainingCompletionClaim_(claim) {
     trainingUpdateWrite_(progress._documentName, progress._updateTime, {completionStatus: 'VALIDATED', updatedAt: now}),
     trainingUpdateWrite_(receipt._documentName, receipt._updateTime, {accessPointsStatus: receipt.accessPointsClaimed > 0 ? 'VALIDATED' : 'NOT_APPLICABLE'})
   ]);
-  if (evaluationProject_() === SAHMT_EVALUATION_FB) writes.push.apply(writes,evaluationLegacyScoreTaskWrites_(writes));
+  writes.push.apply(writes,evaluationLegacyScoreTaskWrites_(writes));
   firestoreRequest_(evaluationDocumentsUrl_(':commit'), {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({writes: writes})
   });
@@ -245,7 +245,7 @@ function trainingSameScore_(existing, expected) {
 }
 
 function trainingScoreCreateWrite_(score) {
-  return {update: {name: evaluationDocumentName_('scores', score.id), fields: firestoreFieldsFromJs_(score)}, currentDocument: {exists: false}};
+  return {update: {name: evaluationDocumentName_('scores', score.id), fields: firestoreFieldsFromJs_(Object.assign({},score,{originProjectId:SAHMT_V2_CONFIG.projectId}))}, currentDocument: {exists: false}};
 }
 
 function trainingUpdateWrite_(name, updateTime, changes) {

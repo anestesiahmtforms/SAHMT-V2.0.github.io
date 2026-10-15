@@ -4,8 +4,11 @@ import {resolveEvaluationStore} from '../src/evaluation-store.js';
 const setup=()=>({faDb:{app:{options:{projectId:'sahmt-17a16'}}}, auth:{currentUser:{uid:'fixture'}},sdk:{}});
 const fb=()=>({db:{app:{options:{projectId:'sahmt-gestao-5ae66'}}},auth:{currentUser:{uid:'fixture'}}});
 test('FA default never initializes FB',async()=>{const x=setup();const s=await resolveEvaluationStore({...x,loadSecondary:()=>{throw Error('unexpected');}});assert.equal(s.db,x.faDb);});
-test('FB data and FA identity have distinct stores with preserved UID',async()=>{const x=setup(),secondary=fb(),s=await resolveEvaluationStore({...x,target:'FB',loadSecondary:async()=>secondary});assert.equal(s.db,secondary.db);assert.equal(s.identityDb,x.faDb);s.assertSession();});
-test('FB failure never falls back to FA',async()=>{await assert.rejects(()=>resolveEvaluationStore({...setup(),target:'FB',loadSecondary:async()=>{throw Error('offline');}}),/offline/);});
-test('wrong project or UID rejected',async()=>{for(const modify of [x=>x.auth.currentUser.uid='other',x=>x.db.app.options.projectId='sahmt-17a16']){const x=fb();modify(x);await assert.rejects(()=>resolveEvaluationStore({...setup(),target:'FB',loadSecondary:async()=>x}),/MISMATCH/);}});
-test('delayed result after user switch rejected',async()=>{const x=setup();await assert.rejects(()=>resolveEvaluationStore({...x,target:'FB',loadSecondary:async()=>{x.auth.currentUser={uid:'other'};return fb();}}),/sessão expirou/);});
-test('logout or FB session loss invalidates existing store',async()=>{const x=setup(),secondary=fb(),s=await resolveEvaluationStore({...x,target:'FB',loadSecondary:async()=>secondary});secondary.auth.currentUser=null;assert.throws(()=>s.assertSession(),/SESSION_ENDED/);secondary.auth.currentUser={uid:'fixture'};x.auth.currentUser=null;assert.throws(()=>s.assertSession(),/sessão expirou/);});
+test('stale FB target and foreign database fail closed',async()=>{
+ await assert.rejects(()=>resolveEvaluationStore({...setup(),target:'FB',loadSecondary:async()=>fb()}),/CONFIGURATION_INVALID/);
+ const x=setup();x.faDb.app.options.projectId='sahmt-gestao-5ae66';await assert.rejects(()=>resolveEvaluationStore(x),/CONFIGURATION_INVALID/);
+});
+test('logout, account switch and replacement session with the same UID invalidate old views',async()=>{
+ for(const replacement of [null,{uid:'other'},{uid:'fixture'}]){const x=setup(),store=await resolveEvaluationStore(x);x.auth.currentUser=replacement;assert.throws(()=>store.assertSession(),/sessão expirou/);}
+});
+test('an unauthenticated view cannot acquire the evaluation store',async()=>{const x=setup();x.auth.currentUser=null;await assert.rejects(()=>resolveEvaluationStore(x),/sessão expirou/);});

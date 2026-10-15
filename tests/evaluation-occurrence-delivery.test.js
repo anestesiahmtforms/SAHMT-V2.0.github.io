@@ -42,8 +42,8 @@ test('FC acknowledgement failure recovers from existing FB receipt',()=>{
  assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID));assert.equal(h.values('evaluationLedger').length,1);assert.equal(h.data('occurrenceScoreClaims',ID).status,'PENDING_VALIDATION');
  h.ctx.evaluationDeliverOccurrence_(ID);assert.equal(h.values('evaluationLedger').length,1);assert.equal(h.data('occurrenceScoreClaims',ID).status,'VALIDATED');
 });
-test('FB outage never removes the FC occurrence or creates a confirmed claim',()=>{
- const h=setup(),original=h.ctx.firestoreRequest_;h.ctx.firestoreRequest_=(url,o)=>{if(url.includes('/sahmt-gestao-5ae66/'))throw Error('unavailable');return original(url,o);};
+test('FA scoring outage never removes the FC occurrence or creates a confirmed claim',()=>{
+ const h=setup(),original=h.ctx.firestoreRequest_;h.ctx.firestoreRequest_=(url,o)=>{if(url.includes('/sahmt-17a16/'))throw Error('unavailable');return original(url,o);};
  assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID));assert.equal(h.data('occurrenceReports',ID).pointsStatus,'PENDING_VALIDATION');assert.equal(h.values('evaluationLedger').length,0);
 });
 test('recovery is bounded, only queries pending claims and does not scan reports',()=>{
