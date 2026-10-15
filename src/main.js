@@ -1066,12 +1066,12 @@ async function loadModule(route) {
     const current = () => generation === evaluationModuleGeneration && content.isConnected && currentRoute() === 'occurrences'
       && session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true
       && session.profile?.access === true && featureEnabledForRoute('occurrences', appFeatures) && hasOccurrencePermission();
-    const [{getIndicatorsAuth,getIndicatorsFirestore},{mountOccurrenceModule}] = await Promise.all([
-      import('./indicators-firebase-app.js'), import('./occurrences-ui.js')
+    const [{auth},{db},{mountOccurrenceModule}] = await Promise.all([
+      import('./firebase-auth.js'), import('./firebase.js'), import('./occurrences-ui.js')
     ]);
     if (!current()) return;
     cleanupCurrentModule = mountOccurrenceModule(content,{uid:requestUid,displayName:session.profile?.displayName||session.user?.displayName||'Usuário',
-      auth:getIndicatorsAuth(),db:getIndicatorsFirestore(),permissions:{...session.profile.permissions,occurrencesWrite:true},isCurrent:current});
+      auth,db,permissions:{...session.profile.permissions,occurrencesWrite:true},isCurrent:current});
     return;
   }
   if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {

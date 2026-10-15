@@ -72,12 +72,17 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
     const {db, sdk} = service;
     const profile = await actor(service, actorUid); if (closed) return;
     if (subjectUid !== actorUid && !profile.isAdmin) throw new Error('Você pode consultar somente sua avaliação.');
+    // Ledger details can link an anonymous report to its author. Keep totals
+    // available without issuing a broad query that Rules must reject.
+    const detailsRestricted = category === 'PERFORMANCE' && subjectUid !== actorUid && profile.permissions?.occurrencesAuditRead !== true;
     const privateQuery = (name, field = 'uid', extra = []) => sdk.query(sdk.collection(db, name), sdk.where(field, '==', subjectUid), ...extra);
     const sources = [
       ['summary', sdk.doc(db, 'evaluationSummaries', subjectUid), false],
       ['reference', sdk.doc(db, 'evaluationReference', 'team'), false],
-      ['ledger', privateQuery('evaluationLedger', 'uid', [sdk.where('category', '==', category), sdk.orderBy('createdAt', 'desc'), sdk.limit(count + 1)]), true],
-      ['awards', privateQuery('evaluationAwards', 'uid', [sdk.where('category', '==', category)]), true],
+      ...(!detailsRestricted ? [
+        ['ledger', privateQuery('evaluationLedger', 'uid', [sdk.where('category', '==', category), sdk.orderBy('createdAt', 'desc'), sdk.limit(count + 1)]), true],
+        ['awards', privateQuery('evaluationAwards', 'uid', [sdk.where('category', '==', category)]), true]
+      ] : []),
       ['requests', privateQuery('evaluationRequests', 'actorUid'), true],
       ...(category === 'PERFORMANCE' ? [['participations', privateQuery('evaluationParticipations'), true]] : [['revisions', privateQuery('evaluationGovernanceRevisions'), true]])
     ];
@@ -91,7 +96,7 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
         const ready = metadata.size === sources.length;
         const ledger = values.get('ledger') || [];
         onData({summary: values.get('summary') || null, reference: values.get('reference') || null, ledger: ledger.slice(0, count), hasMore: ledger.length > count, loadedLimit: count,
-          awards: values.get('awards') || [], participations: values.get('participations') || [], revisions: values.get('revisions') || [], requests: values.get('requests') || [],
+          awards: detailsRestricted ? null : values.get('awards') || [], detailsRestricted, participations: values.get('participations') || [], revisions: values.get('revisions') || [], requests: values.get('requests') || [],
           fromCache: !ready || [...metadata.values()].some(item => item.fromCache), pendingWrites: [...metadata.values()].some(item => item.pending), complete: ready});
       }, fail);
       if (closed) release(); else releases.push(release);

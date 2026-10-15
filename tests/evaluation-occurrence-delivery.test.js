@@ -9,14 +9,15 @@ function setup({anonymous=false}={}) {
  h.seed('occurrenceAudit',ID,{schemaVersion:1,reportId:ID,uid:'fixture',formId:'F03',anonymous,createdAt});
  h.seed('occurrenceScoreClaims',ID,{schemaVersion:1,id:ID,source:'REGISTRO_OCORRENCIA',sourceId:ID,uid:'fixture',formId:'F03',points:2,status:'PENDING_VALIDATION',createdAt});return h;
 }
-test('FC produces exactly two points in FB and keeps original reports in FC',()=>{
+test('migrated FC evidence produces exactly two points in FA without leaving FA',()=>{
  const h=setup();h.ctx.evaluationDeliverOccurrence_(ID,'fixture');h.ctx.evaluationDeliverOccurrence_(ID,'fixture');
  assert.deepEqual(h.values('evaluationLedger').map(x=>x.points),[2]);assert.equal(h.values('evaluationSourceReceipts').length,1);
  assert.equal(h.data('occurrenceScoreClaims',ID).status,'VALIDATED');assert.equal(h.data('occurrenceReports',ID).pointsStatus,'VALIDATED');
  assert.equal(h.data('evaluationSummaries','fixture').performanceTotal,2);
  assert.equal(h.data('evaluationReference','team').performanceStatus,'CONFIRMED');
  assert.equal(h.data('occurrenceReports',ID).description,'NARRATIVE_NOT_TO_COPY');
- assert.ok([...h.store].filter(([p])=>p.includes('/sahmt-gestao-5ae66/')).every(([,d])=>!JSON.stringify(d).includes('NARRATIVE_NOT_TO_COPY')));
+ assert.ok([...h.store].filter(([p])=>/\/(evaluationLedger|evaluationAwards|evaluationSourceReceipts)\//.test(p)).every(([,d])=>!JSON.stringify(d).includes('NARRATIVE_NOT_TO_COPY')));
+ assert.ok(h.requests.every(r=>!r.url.includes('/indicadores---sahmt/')&&!r.url.includes('/sahmt-gestao-5ae66/')));
  const reads=h.requests.filter(r=>r.body.documents?.some(p=>p.includes('/occurrenceReports/')));assert.ok(reads.every(r=>r.body.mask && !r.body.mask.fieldPaths.includes('description')));
 });
 test('anonymous occurrence retains its label/privacy and same private two-point credit',()=>{
@@ -38,7 +39,7 @@ test('forged amount, owner, pairing or timestamps cannot generate a credit',()=>
 test('notification cannot credit another author',()=>{const h=setup();assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID,'other'),/AUTHOR_MISMATCH/);assert.equal(h.values('evaluationLedger').length,0);});
 test('FC acknowledgement failure recovers from existing FB receipt',()=>{
  const h=setup(),original=h.ctx.firestoreRequest_;let failed=false;
- h.ctx.firestoreRequest_=(url,o)=>{const b=JSON.parse(o?.payload||'{}');if(!failed&&url.includes('/indicadores---sahmt/')&&url.endsWith(':commit')&&b.writes?.length){failed=true;throw Error('network');}return original(url,o);};
+ h.ctx.firestoreRequest_=(url,o)=>{const b=JSON.parse(o?.payload||'{}');if(!failed&&url.includes('/sahmt-17a16/')&&url.endsWith(':commit')&&b.writes?.some(w=>w.update?.name.includes('/occurrenceScoreClaims/'))){failed=true;throw Error('network');}return original(url,o);};
  assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID));assert.equal(h.values('evaluationLedger').length,1);assert.equal(h.data('occurrenceScoreClaims',ID).status,'PENDING_VALIDATION');
  h.ctx.evaluationDeliverOccurrence_(ID);assert.equal(h.values('evaluationLedger').length,1);assert.equal(h.data('occurrenceScoreClaims',ID).status,'VALIDATED');
 });
@@ -48,7 +49,7 @@ test('FA scoring outage never removes the FC occurrence or creates a confirmed c
 });
 test('recovery is bounded, only queries pending claims and does not scan reports',()=>{
  const h=setup();assert.equal(h.ctx.recuperarPontuacoesOcorrenciasFbV1().delivered,1);assert.equal(h.ctx.recuperarPontuacoesOcorrenciasFbV1().delivered,0);
- const queries=h.requests.filter(r=>r.body.structuredQuery && r.url.includes('/indicadores---sahmt/'));assert.ok(queries.every(r=>r.body.structuredQuery.from[0].collectionId==='occurrenceScoreClaims' && r.body.structuredQuery.limit===20));
+ const queries=h.requests.filter(r=>r.body.structuredQuery?.from[0].collectionId==='occurrenceScoreClaims');assert.ok(queries.length>0);assert.ok(queries.every(r=>r.url.includes('/sahmt-17a16/')&&r.body.structuredQuery.limit===20));
 });
 
 test('failed summary publication leaves claim pending and retry never doubles the award',()=>{

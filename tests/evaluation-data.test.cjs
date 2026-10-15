@@ -3,12 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../src/evaluation-data.js'), 'utf8').replaceAll('export ', '').replaceAll("import('./firebase.js')", 'Promise.resolve({db: fakeDb})').replaceAll("import('./firebase-auth.js')", 'Promise.resolve({auth: fakeAuth})').replaceAll("import('firebase/firestore')", 'Promise.resolve(fakeSdk)').replaceAll("import('./evaluation-store.js')", 'Promise.resolve({loadEvaluationStore: async ({faDb, sdk, auth}) => ({db: faDb, identityDb: faDb, sdk, auth})})');
-function setup({admin = false, managementManage = admin, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false} = {}) {
+function setup({admin = false, managementManage = admin, occurrencesAuditRead = false, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false} = {}) {
   const listeners = [], events = [], errors = [];
   const sdk = {doc: (_db, name, id) => ({name, id}), collection: (_db, name) => ({name}), where: (...args) => ({where: args}), query: (...args) => args, orderBy: (...args) => ({orderBy: args}), limit: count => ({limit: count}), documentId: () => '__name__', startAfter: cursor => ({startAfter: cursor}),
     getDocFromServer: async ref => ref?.name === 'documentAccessEmails'
       ? (groupReadDenied ? Promise.reject(new Error('permission-denied')) : {exists: () => accessGroups.length > 0, data: () => ({email: 'fixture@example.invalid', active: accessGroups.length > 0, groups: accessGroups})})
-      : ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {managementManage}})}),
+      : ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {managementManage, occurrencesAuditRead}})}),
     getDocsFromServer: async query => {
       const collection = query.find(item => item?.name)?.name;
       const filters = query.filter(item => item?.where).map(item => item.where);
@@ -24,6 +24,19 @@ function setup({admin = false, managementManage = admin, revoked = false, access
   return {context, listeners, events, errors, watch, tick};
 }
 test('cleanup imediato impede listeners após a carga assíncrona', async () => { const h = setup(); h.watch()(); await h.tick(); assert.equal(h.listeners.length, 0); });
+
+test('cross-user performance without audit observes totals without fetching private detail', async () => {
+ const h=setup({admin:true});h.watch({subjectUid:'other'});await h.tick();
+ assert.equal(h.errors.length,0);assert.equal(h.listeners.length,4);
+ assert.equal(h.listeners.some(item=>['evaluationAwards','evaluationLedger'].includes(item.query?.[0]?.name)),false);
+ for(const l of h.listeners)l.next(Array.isArray(l.query)?{docs:[],metadata:{fromCache:false}}:{exists:()=>true,data:()=>({}),metadata:{fromCache:false}});
+ assert.equal(h.events.at(-1).detailsRestricted,true);assert.equal(h.events.at(-1).awards,null);assert.equal(h.events.at(-1).complete,true);
+});
+test('explicit audit enables cross-user details; own records and governance remain available',async()=>{
+ for(const [options,watch]of [[{admin:true,occurrencesAuditRead:true},{subjectUid:'other'}],[{admin:true},{}],[{admin:true},{subjectUid:'other',category:'GOVERNANCE'}]]){
+  const h=setup(options);h.watch(watch);await h.tick();assert.equal(h.errors.length,0);assert.equal(h.listeners.length,6);
+ }
+});
 test('consolidação FA não concede administração de desempenho apenas pelo papel', async () => {
  const h=setup({admin:true,managementManage:false});h.watch({subjectUid:'other'});await h.tick();
  assert.equal(h.listeners.length,0);assert.equal(h.errors.length,1);

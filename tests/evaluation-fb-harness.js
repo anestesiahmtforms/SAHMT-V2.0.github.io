@@ -63,6 +63,7 @@ export function harness({activated = true, project = 'FA'} = {}) {
     throw new Error(`Unexpected mock request ${url}`);
   };
   seed('managementRuntime','faConsolidation',{schemaVersion:1,release:'fa-consolidation-v1',status:'ACTIVE',sourceProjectId:'sahmt-gestao-5ae66',destinationProjectId:'sahmt-17a16',planSha256:'a'.repeat(64),verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});
+  seed('occurrenceRuntime','faConsolidation',{status:'ACTIVE',release:'occurrence-fa-consolidation-v1',sourceProjectId:'indicadores---sahmt',destinationProjectId:'sahmt-17a16',planSha256:'b'.repeat(64),verifiedDocuments:1,plannedDocuments:1,migrationCode:'FA_CONSOLIDATION_VERIFIED'});
   if (activated) {
     properties.set('SAHMT_V2_EVALUATION_ENABLED','true'); properties.set('SAHMT_V2_EVALUATION_HOMOLOGATED','true');
     seed('evaluationRuntime','state',{homologationVerified:true});

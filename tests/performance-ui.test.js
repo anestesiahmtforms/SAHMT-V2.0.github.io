@@ -8,6 +8,10 @@ const performance = snapshot => evaluationPresentation(snapshot,{subjectUid:'per
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test('performance percentage uses only confirmed performance and one decimal',()=>{const result=performance(state());assert.equal(result.total,4);assert.equal(result.percentage,50);assert.equal(result.percentageLabel,'50,0%');});
+test('private cross-user details can be withheld without hiding a server-confirmed aggregate',()=>{
+ const snapshot={...state(),detailsRestricted:true,awards:null,ledger:[]};
+ assert.equal(performance(snapshot).confirmed,true);assert.equal(performance(snapshot).total,4);
+});
 test('governance changes cannot change performance or its reference percentage',()=>{const first=state(),second=structuredClone(first);second.summary.governanceTotal=-99;second.summary.governanceRevision++;second.reference.governanceRevision++;assert.deepEqual(performance(second),performance(first));});
 test('negative confirmed performance is preserved',()=>{const result=performance(state(-2,8));assert.equal(result.total,-2);assert.equal(result.percentage,-25);assert.equal(result.percentageLabel,'-25,0%');});
 test('all zero shows zero percent only with consistent confirmed reference',()=>{const input=state(0,0);input.reference.allZero=true;assert.equal(performance(input).percentageLabel,'0,0%');});

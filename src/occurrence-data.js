@@ -43,16 +43,17 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   let catalogCache = null;
 
   const requirePermission = async (uid, claimName) => {
-    if (!db || !auth || !boundedText(uid, 128) || typeof isCurrent !== 'function' || !isCurrent()) throw new Error('OCCURRENCE_SESSION_INVALID');
+    if (db?.app?.options?.projectId !== SOURCE_PROJECT || !auth || !boundedText(uid, 128) || typeof isCurrent !== 'function' || !isCurrent()) throw new Error('OCCURRENCE_SESSION_INVALID');
     const user = auth.currentUser;
-    if (!user || user.uid !== uid || typeof user.getIdTokenResult !== 'function') throw new Error('OCCURRENCE_SESSION_INVALID');
-    let result;
-    try { result = await user.getIdTokenResult(false); }
+    if (!user || user.uid !== uid) throw new Error('OCCURRENCE_SESSION_INVALID');
+    let snapshot;
+    try { snapshot = await api.getDocFromServer(api.doc(db, 'users', uid)); }
     catch { throw new Error('OCCURRENCE_AUTHORIZATION_UNAVAILABLE'); }
-    const claims = result?.claims;
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
-    if (!plain(claims) || claims.firebase?.sign_in_provider !== 'custom'
-      || claims.sahmtFaSourceProjectId !== SOURCE_PROJECT || claims[claimName] !== true) {
+    const profile=snapshot?.exists?.()?snapshot.data():null;
+    const permission={sahmtOccurrencesRead:'occurrencesRead',sahmtOccurrencesAuditRead:'occurrencesAuditRead'}[claimName];
+    if (!plain(profile) || profile.uid !== uid || profile.active !== true || profile.access !== true
+      || (permission && profile.permissions?.[permission] !== true)) {
       throw new Error('OCCURRENCE_PERMISSION_DENIED');
     }
     return user;
@@ -95,7 +96,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       classification,details,anonymous,authorLabel:anonymous ? 'Anônimo' : displayName.trim(),
       pointsClaimed:2,pointsStatus:'PENDING_VALIDATION',createdAt:api.serverTimestamp()});
     const audit = Object.freeze({schemaVersion:1,reportId:recordId,uid,formId,anonymous,createdAt:api.serverTimestamp()});
-    const scoreClaim = Object.freeze({schemaVersion:1,id:recordId,source:'REGISTRO_OCORRENCIA',sourceId:recordId,
+    const scoreClaim = Object.freeze({schemaVersion:1,id:recordId,source:'REGISTRO_OCORRENCIA',sourceId:recordId,originProjectId:SOURCE_PROJECT,
       uid,formId,points:2,status:'PENDING_VALIDATION',createdAt:api.serverTimestamp()});
     if (jsonBytes({...report,createdAt:'timestamp'}) > MAX_RECORD_BYTES) throw new Error('OCCURRENCE_RECORD_TOO_LARGE');
 

@@ -73,56 +73,11 @@ function harness({enabled = true, targetNames = ['FB','FC'], appMissing, existin
   return {calls,auths,instance:context.getFirebaseProjectAuthOptIn()};
 }
 
-test('browser never initializes FB after consolidation; remaining FC flow preserves FA identity',async()=>{
-  const h=harness();const result=await h.instance.connect();
-  assert.equal(result.status,'ready');assert.deepEqual(h.calls.signIn.sort(),['FC']);
-  assert.equal(h.calls.fetch,1);assert.equal(h.calls.fbApp,0);assert.equal(h.calls.fcAuth,1);
-  assert.deepEqual(h.calls.budgets,[90000,90000]);assert.deepEqual(h.calls.registered,['FC']);
-  assert.deepEqual(h.calls.reports,['ready']);assert.equal(h.auths.FA.currentUser.uid,'synthetic-pilot-uid');
-  h.instance.dispose();
-});
-
-test('legacy FB-only configuration stays disabled; FC-only still uses its isolated contract',async()=>{
-  for(const alias of ['FB','FC']) {
-    const h=harness({targetNames:[alias]});const result=await h.instance.connect();
-    assert.equal(result.status,alias==='FB'?'disabled':'ready');assert.deepEqual(h.calls.signIn,alias==='FB'?[]:['FC']);
-    assert.equal(h.calls.fbApp,0);assert.equal(h.calls.fcAuth,alias==='FC'?1:0);h.instance.dispose();
-  }
-});
-
-test('browser stays disabled without importing SDKs or sending requests',async()=>{
-  const h=harness({enabled:false});assert.equal((await h.instance.connect()).status,'disabled');
-  assert.equal(h.calls.imports.length,0);assert.equal(h.calls.fetch,0);
-});
-
-test('missing FC auth fails closed and an existing FB session is never reused',async()=>{
-  for(const alias of ['FC']) {
-    const h=harness({targetNames:[alias],appMissing:alias});
-    const result = await h.instance.connect();
-    assert.equal(result.status,'blocked');assert.equal(result.targets[alias].code,'TARGET_AUTH_UNAVAILABLE');assert.equal(h.calls.fetch,0);
-    assert.equal(h.calls.initialize.length,0);h.instance.dispose();
-  }
-  const existing=harness({targetNames:['FB'],existingFb:true});
-  assert.equal((await existing.instance.connect()).status,'disabled');assert.equal(existing.calls.fallback,0);existing.instance.dispose();
-});
-
-test('FB failures are irrelevant to consolidated modules and FC failure never falls back to FB',async()=>{
-  for(const failure of ['FB_IMPORT','FC_IMPORT','FB_GETTER','FC_GETTER','FB_SDK']) {
-    const h=harness({failure}), faUser=h.auths.FA.currentUser;
-    const result=await h.instance.connect();
-    if(failure.startsWith('FB')){assert.equal(result.status,'ready');assert.deepEqual(h.calls.signIn,['FC']);}
-    else{assert.equal(result.status,'blocked');assert.equal(result.targets.FC.code,'TARGET_AUTH_UNAVAILABLE');assert.deepEqual(h.calls.signIn,[]);}
-    assert.equal(h.calls.fbApp,0);assert.equal(h.calls.imports.includes('./management-firebase-app.js'),false);
-    assert.equal(h.auths.FA.currentUser,faUser,failure);
-    assert.equal(JSON.stringify(result).includes('private'),false,failure);h.instance.dispose();
-  }
-});
-
-test('two unavailable targets fail closed without token retrieval or HTTP',async()=>{
-  const h=harness({bothMissing:true});
-  h.auths.FA.currentUser.getIdToken=async()=>{throw Error('must not request FA token');};
-  const result=await h.instance.connect();
-  assert.equal(result.status,'blocked');assert.equal(result.targets.FB,undefined);
-  assert.equal(result.targets.FC.code,'TARGET_AUTH_UNAVAILABLE');assert.equal(h.calls.fetch,0);
-  assert.equal(h.calls.budgets.length,0);h.instance.dispose();
-});
+for(const [name,configuration]of [['stale enabled flags',{}],['FB only',{targetNames:['FB']}],['FC only',{targetNames:['FC']}],['disabled flags',{enabled:false}],['missing secondary apps',{bothMissing:true}],['secondary import failure',{failure:'FC_IMPORT'}]]){
+ test('FA-only browser never initializes secondary auth: '+name,async()=>{
+  const h=harness(configuration),user=h.auths.FA.currentUser;
+  assert.equal((await h.instance.connect()).status,'disabled');
+  assert.deepEqual(h.calls.imports,[]);assert.equal(h.calls.fetch,0);assert.deepEqual(h.calls.signIn,[]);
+  assert.equal(h.auths.FA.currentUser,user);h.instance.dispose();
+ });
+}

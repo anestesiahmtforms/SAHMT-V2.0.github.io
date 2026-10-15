@@ -213,8 +213,8 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     page.dataset.evaluationState = presentation.state;
     const ledger = ownRecords(snapshot, 'ledger', selectedUid, category);
     const groups = evaluationAwardGroups(snapshot.awards, {subjectUid: selectedUid, category}).map(group => ({...group, title: activityFor(group.activityId)?.title || group.title}));
-    markup('[data-evaluation-records]', `<h4>${category === 'GOVERNANCE' ? 'Revisões aprovadas' : 'Matérias e atividades pontuadas'}</h4>${awardGroupMarkup(groups.filter(group => !group.checklist), ledger, category)}`);
-    if (category === 'PERFORMANCE') markup('[data-evaluation-checklist]', `<h4>Ajustes do Checklist</h4>${awardGroupMarkup(groups.filter(group => group.checklist), ledger, category)}`);
+    markup('[data-evaluation-records]', `<h4>${category === 'GOVERNANCE' ? 'Revisões aprovadas' : 'Matérias e atividades pontuadas'}</h4>${snapshot.detailsRestricted ? '<p class="record-meta">Saldo disponível. O detalhamento de outra pessoa exige permissão de auditoria de ocorrências para preservar a autoria dos relatos anônimos.</p>' : awardGroupMarkup(groups.filter(group => !group.checklist), ledger, category)}`);
+    if (category === 'PERFORMANCE') markup('[data-evaluation-checklist]', snapshot.detailsRestricted ? '' : `<h4>Ajustes do Checklist</h4>${awardGroupMarkup(groups.filter(group => group.checklist), ledger, category)}`);
     markup('[data-evaluation-pending]', pendingMarkup(snapshot, selectedUid, category));
     if (category === 'GOVERNANCE') {
       const approved = ownRecords(snapshot, 'revisions', selectedUid).filter(item => item.status === 'APPROVED');

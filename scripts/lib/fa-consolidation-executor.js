@@ -1,4 +1,4 @@
-import {FA_PROJECT,prepareFaConsolidationPlan,faConsolidationReport} from './fa-consolidation-plan.js';
+import {FA_PROJECT,FC_PROJECT,prepareFaConsolidationPlan,prepareFcConsolidationPlan,faConsolidationReport} from './fa-consolidation-plan.js';
 import {snapshotDigest} from './management-split-plan.js';
 const demand=(condition,code)=>{if(!condition)throw Error(code);};
 const gates=['backupVerified','restorationVerified','sourceWritersStopped','destinationWritersStopped','quotaBudgetVerified','sharedDataReviewed','backendPrepared','oldClientsBlocked'];
@@ -8,7 +8,7 @@ const gates=['backupVerified','restorationVerified','sourceWritersStopped','dest
  * A commit with uncertain outcome is stopped; a new invocation rereads it. */
 export async function executeFaConsolidation({input,plan,mode='DRY_RUN',destinationProjectId=FA_PROJECT,
  approval,adapter,checkpoint,onCheckpoint,maxWrites=50,maxReads=5000,clock=Date.now}={}){
- const expected=prepareFaConsolidationPlan(structuredClone(input));
+ const expected=(input?.source?.projectId===FC_PROJECT?prepareFcConsolidationPlan:prepareFaConsolidationPlan)(structuredClone(input));
  demand(plan&&snapshotDigest(plan)===snapshotDigest(expected),'CONSOLIDATION_PLAN_CHANGED');
  demand(['DRY_RUN','APPLY'].includes(mode)&&destinationProjectId===FA_PROJECT,'CONSOLIDATION_EXECUTION_SCOPE_INVALID');
  if(mode==='DRY_RUN')return faConsolidationReport(expected);

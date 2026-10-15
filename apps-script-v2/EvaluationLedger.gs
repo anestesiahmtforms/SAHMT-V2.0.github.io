@@ -31,7 +31,7 @@ function evaluationProject_() {
   return SAHMT_V2_CONFIG.projectId;
 }
 function evaluationCollectionProject_(collectionId) {
-  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_EVALUATION_FC;
+  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_V2_CONFIG.projectId;
   return /^evaluation[A-Z]/.test(collectionId) || SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS.includes(collectionId)
     ? evaluationProject_() : SAHMT_V2_CONFIG.projectId;
 }

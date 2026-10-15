@@ -40,6 +40,10 @@ jobs:
         run: npm run test:management
       - name: Run FA consolidation safety tests
         run: node scripts/test-fa-consolidation.mjs
+      - name: Run unified FA Occurrences unit tests
+        run: node --test tests/occurrence-schema.test.js tests/occurrence-data.test.js tests/occurrence-ui.test.js tests/occurrence-fa-store.test.js tests/occurrence-fa-rules-builder.test.js tests/occurrence-worker-fa.test.js tests/evaluation-occurrence-delivery.test.js tests/occurrence-score-transport.test.js
+      - name: Run unified FA Occurrences Rules tests
+        run: npx firebase emulators:exec --config firebase.fa-consolidation.integration.test.json --project demo-sahmt-v2 --only firestore --non-interactive "node --test tests/occurrence-fa.rules.test.js"
       - name: Run management destination Rules tests
         run: npm run test:management-rules
       - name: Run Etiquetas AI Worker tests
@@ -74,9 +78,9 @@ jobs:
           VITE_INDICATORS_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_INDICATORS_FIREBASE_STORAGE_BUCKET }}
           VITE_INDICATORS_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_INDICATORS_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_INDICATORS_FIREBASE_APP_ID: ${{ vars.VITE_INDICATORS_FIREBASE_APP_ID }}
-          VITE_INDICATORS_FIREBASE_ENABLED: ${{ vars.VITE_INDICATORS_FIREBASE_ENABLED }}
-          VITE_FIREBASE_PROJECT_AUTH_ENABLED: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ENABLED }}
-          VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED }}
+          VITE_INDICATORS_FIREBASE_ENABLED: 'false'
+          VITE_FIREBASE_PROJECT_AUTH_ENABLED: 'false'
+          VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED: 'false'
           VITE_FIREBASE_PROJECT_AUTH_ENDPOINT: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ENDPOINT }}
           VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN }}
           VITE_APP_CHECK_SITE_KEY: ${{ vars.VITE_APP_CHECK_SITE_KEY }}

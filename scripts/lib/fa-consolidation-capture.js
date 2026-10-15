@@ -1,4 +1,4 @@
-import {FA_CONSOLIDATION_COLLECTIONS,FA_PROJECT,FB_PROJECT} from './fa-consolidation-plan.js';
+import {FA_CONSOLIDATION_COLLECTIONS,FA_PROJECT,FB_PROJECT,FC_PROJECT,FC_CONSOLIDATION_COLLECTIONS} from './fa-consolidation-plan.js';
 import {validateSplitSnapshot} from './management-split-plan.js';
 const demand=(condition,code)=>{if(!condition)throw Error(code);};
 const identifier=value=>typeof value==='string'&&value.length>0&&Buffer.byteLength(value)<=1500&&!/[\/\\\x00-\x1f]/.test(value)&&!['.','..'].includes(value);
@@ -6,10 +6,12 @@ const identifier=value=>typeof value==='string'&&value.length>0&&Buffer.byteLeng
 /** Bounded administrative read only. Both HTTP forms below are list methods;
  * there is no generic request method and no create/update/delete/commit path.
  * A single readTime is carried through every page and subcollection. */
-export async function captureFaConsolidationSnapshot({projectId,scope,readTime,accessToken,fetchImpl,
- maxDocuments=3000,maxRequests=6000,maxBytes=64*1024*1024,includeRootInventory=false}={}){
- demand([FA_PROJECT,FB_PROJECT].includes(projectId)&&Array.isArray(scope)&&scope.length>0
-  &&new Set(scope).size===scope.length&&scope.every(x=>FA_CONSOLIDATION_COLLECTIONS.includes(x)),'CONSOLIDATION_CAPTURE_SCOPE_INVALID');
+export function captureFaConsolidationSnapshot(options){return captureScoped(options,[FA_PROJECT,FB_PROJECT],FA_CONSOLIDATION_COLLECTIONS);}
+export function captureFcConsolidationSnapshot(options){return captureScoped(options,[FA_PROJECT,FC_PROJECT],FC_CONSOLIDATION_COLLECTIONS);}
+async function captureScoped({projectId,scope,readTime,accessToken,fetchImpl,
+ maxDocuments=3000,maxRequests=6000,maxBytes=64*1024*1024,includeRootInventory=false}={},projects,collectionsAllowed){
+ demand(projects.includes(projectId)&&Array.isArray(scope)&&scope.length>0
+  &&new Set(scope).size===scope.length&&scope.every(x=>collectionsAllowed.includes(x)),'CONSOLIDATION_CAPTURE_SCOPE_INVALID');
  demand(typeof accessToken==='string'&&accessToken.length>0&&typeof fetchImpl==='function'
   &&Number.isFinite(Date.parse(readTime))&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z$/.test(readTime),'CONSOLIDATION_CAPTURE_CONFIG_INVALID');
  demand([maxDocuments,maxRequests,maxBytes].every(x=>Number.isSafeInteger(x)&&x>0)
