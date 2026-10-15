@@ -105,7 +105,7 @@ service cloud.firestore {
         let path = /databases/$(database)/documents/evaluationAwards/$(p.awardId);
         return isAdmin() && p.keys().hasAll(['awardId', 'category', 'expectedAwardVersion', 'correctedPoints', 'reason']) &&
           p.keys().hasOnly(['awardId', 'category', 'expectedAwardVersion', 'correctedPoints', 'reason']) && evaluationId(p.awardId) &&
-          p.category in ['PERFORMANCE', 'GOVERNANCE'] && exists(path) && get(path).data.category == p.category &&
+          p.category in ['PERFORMANCE', 'GOVERNANCE'] && exists(path) && evaluationPrivateDetail(get(path).data) && get(path).data.category == p.category &&
           p.expectedAwardVersion is int && p.expectedAwardVersion >= 0 && p.correctedPoints is number && p.correctedPoints >= -100000 && p.correctedPoints <= 100000 && evaluationText(p.reason, 8, 1000);
       }
       function validEvaluationRequest(data, id) {

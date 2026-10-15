@@ -10,7 +10,7 @@ beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    for (const [uid, permissions, overrides] of [['member', {trainingsRead: true, checklistRead: true}, {}], ['other', {trainingsRead: true}, {}], ['manager', {managementRead: true}, {}], ['admin', {admin: true}, {role: 'administrador_app'}], ['revoked', {admin: true}, {access: false}]]) await setDoc(doc(db, 'users', uid), {uid, role: 'anestesiologista', active: true, access: true, permissions, ...overrides});
+    for (const [uid, permissions, overrides] of [['member', {trainingsRead: true, checklistRead: true}, {}], ['other', {trainingsRead: true}, {}], ['manager', {managementRead: true}, {}], ['admin', {admin: true, occurrencesAuditRead: true}, {role: 'administrador_app'}], ['revoked', {admin: true}, {access: false}]]) await setDoc(doc(db, 'users', uid), {uid, role: 'anestesiologista', active: true, access: true, permissions, ...overrides});
     await setDoc(doc(db, 'evaluationAwards', 'award'), {uid: 'member', category: 'PERFORMANCE', points: 1, awardVersion: 1});
     await setDoc(doc(db, 'evaluationAwards', 'governance'), {uid: 'manager', category: 'GOVERNANCE', points: 1, awardVersion: 1});
     await setDoc(doc(db, 'evaluationLedger', 'ledger'), {uid: 'member', category: 'PERFORMANCE', points: 1});

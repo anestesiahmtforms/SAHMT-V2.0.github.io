@@ -4,7 +4,6 @@ const demand=(value,code)=>{if(!value)throw Error(code);};
  * Aggregate totals and governance remain independently readable. */
 export function prepareOccurrenceLedgerPrivacyRules(source){
  demand(typeof source==='string','OCCURRENCE_LEDGER_RULES_INPUT_INVALID');
- if(source.includes('function evaluationPrivateDetail(data)'))return source;
  const helper=`
     function evaluationPrivateDetail(data) {
       return activeUser() && (data.uid == request.auth.uid || (isAdmin() &&
@@ -12,12 +11,17 @@ export function prepareOccurrenceLedgerPrivacyRules(source){
     }
 `;
  demand(source.includes('    match /evaluationActivities/'),'OCCURRENCE_LEDGER_RULES_SOURCE_CHANGED');
- let result=source.replace('    match /evaluationActivities/',helper+'    match /evaluationActivities/');
+ let result=source.includes('function evaluationPrivateDetail(data)')?source:source.replace('    match /evaluationActivities/',helper+'    match /evaluationActivities/');
  for(const collection of ['evaluationAwards','evaluationLedger']){
   const expression=new RegExp('(match /'+collection+'/\\{id\\} \\{[^}]*?)evaluationOwn\\(resource.data\\)');
-  demand(expression.test(result),'OCCURRENCE_LEDGER_RULES_SOURCE_CHANGED');
-  result=result.replace(expression,'$1evaluationPrivateDetail(resource.data)');
+  if(expression.test(result))result=result.replace(expression,'$1evaluationPrivateDetail(resource.data)');
+  else demand(new RegExp('match /'+collection+'/\\{id\\} \\{[^}]*evaluationPrivateDetail\\(resource.data\\)').test(result),'OCCURRENCE_LEDGER_RULES_SOURCE_CHANGED');
  }
+ // A guessed award ID must not turn correction requests into an author oracle.
+ const correction='exists(path) && get(path).data.category == p.category &&';
+ const guarded='exists(path) && evaluationPrivateDetail(get(path).data) && get(path).data.category == p.category &&';
+ if(result.includes(correction))result=result.replace(correction,guarded);
+ else demand(result.includes(guarded),'OCCURRENCE_CORRECTION_RULES_SOURCE_CHANGED');
  return result;
 }
 /** Collection validators stay in one exact two-segment scope. Every allow

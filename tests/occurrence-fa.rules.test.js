@@ -2,7 +2,7 @@ import {readFile} from 'node:fs/promises';import {before,beforeEach,after,test} 
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
 import {doc,collection,query,where,collectionGroup,limit,getDocFromServer,getDocsFromServer,runTransaction,setDoc,updateDoc,serverTimestamp} from 'firebase/firestore';
 const PROJECT='demo-sahmt-v2',PORT=8279,uid='synthetic-member',id='10000000-0000-4000-8000-000000000001';let env;
-const user=(id=uid)=>env.authenticatedContext(id,{firebase:{sign_in_provider:'google.com'}}).firestore();
+const user=(id=uid)=>env.authenticatedContext(id,{email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();
 const report=(extra={})=>({schemaVersion:1,id,formId:'F01',formTitle:'Synthetic',occurredOn:'2026-10-15',occurrence:'Synthetic',description:'Synthetic',classification:{},details:{},anonymous:true,authorLabel:'Anônimo',pointsClaimed:2,pointsStatus:'PENDING_VALIDATION',createdAt:serverTimestamp(),...extra});
 const audit=(extra={})=>({schemaVersion:1,reportId:id,uid,formId:'F01',anonymous:true,createdAt:serverTimestamp(),...extra});
 const claim=(extra={})=>({schemaVersion:1,id,source:'REGISTRO_OCORRENCIA',sourceId:id,originProjectId:'sahmt-17a16',uid,formId:'F01',points:2,status:'PENDING_VALIDATION',createdAt:serverTimestamp(),...extra});
@@ -77,6 +77,11 @@ test('anonymous author cannot be recovered through migrated performance awards o
   await assertSucceeds(getDocsFromServer(query(collection(user('audit-admin'),name),where('uid','==',uid),where('category','==','PERFORMANCE'))));
   await assertSucceeds(getDocsFromServer(query(collection(db,name),where('uid','==',uid),where('category','==','GOVERNANCE'))));
  }
+ // A caller guessing the deterministic award ID cannot probe authors via a
+ // correction that would otherwise distinguish an existing award.
+ const correction={id:'synthetic-correction',type:'CORRECT_SCORE',actorUid:'admin',payload:{awardId:'historical',category:'PERFORMANCE',expectedAwardVersion:0,correctedPoints:2,reason:'Synthetic correction'},status:'PENDING',createdAt:serverTimestamp()};
+ await assertFails(setDoc(doc(user('admin'),'evaluationRequests',correction.id),correction));
+ await assertSucceeds(setDoc(doc(user('audit-admin'),'evaluationRequests',correction.id),{...correction,actorUid:'audit-admin'}));
  await seed('evaluationSummaries',uid,{uid,performanceTotal:2});
  await assertSucceeds(getDocFromServer(doc(user('admin'),'evaluationSummaries',uid)));
  await seed('users','audit-admin',{uid:'audit-admin',active:true,access:true,role:'administrador_app',permissions:{managementManage:true}});
