@@ -1,7 +1,8 @@
 import {snapshotDigest} from './management-split-plan.js';
 const allowed={
- 'sahmt-17a16':new Set(['managementRuntime/faConsolidation','managementRuntime/domainCutover']),
- 'sahmt-gestao-5ae66':new Set(['managementRuntime/domainCutover'])
+ 'sahmt-17a16':new Set(['managementRuntime/faConsolidation','managementRuntime/domainCutover','occurrenceRuntime/faConsolidation']),
+ 'sahmt-gestao-5ae66':new Set(['managementRuntime/domainCutover']),
+ 'indicadores---sahmt':new Set(['occurrenceRuntime/faConsolidation'])
 };
 const demand=(value,code)=>{if(!value)throw Error(code);};
 /** Only the three reviewed runtime documents, masked CAS patches. */

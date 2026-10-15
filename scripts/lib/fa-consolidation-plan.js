@@ -3,6 +3,8 @@ import {managementDomainCollections} from './secondary-domain-release-package.js
 
 export const FA_PROJECT='sahmt-17a16';
 export const FB_PROJECT='sahmt-gestao-5ae66';
+export const FC_PROJECT='indicadores---sahmt';
+export const FC_CONSOLIDATION_COLLECTIONS=Object.freeze(['occurrenceReports','occurrenceAudit','occurrenceScoreClaims','occurrenceCatalogs']);
 export const FA_CONSOLIDATION_COLLECTIONS=Object.freeze([...managementDomainCollections,
  'evaluationActivities','evaluationFormConfigs','evaluationLinks','evaluationParticipations','evaluationAssignments',
  'evaluationAssignmentHistory','evaluationGovernanceRevisions','evaluationRequests','evaluationAwards','evaluationLedger',
@@ -18,8 +20,31 @@ const validReason=value=>typeof value==='string'&&value.trim().length>=8&&value.
 
 /** Pure dry-run over typed REST snapshots. Contains no credential, network,
  * source deletion, points calculation or production apply capability. */
-export function prepareFaConsolidationPlan({source,destination,scope,resolutions=[],sharedPaths=[]}={}) {
- demand(source?.projectId===FB_PROJECT&&destination?.projectId===FA_PROJECT,'CONSOLIDATION_PROJECT_INVALID');
+export function prepareFaConsolidationPlan(input){return prepareScopedPlan(input,FB_PROJECT,allowed,shared);}
+export function prepareFcConsolidationPlan(input){
+ const {planSha256,...plan}=prepareScopedPlan(input,FC_PROJECT,new Set(FC_CONSOLIDATION_COLLECTIONS),new Set());
+ const rows=new Map(input.source.documents.map(row=>[row.path,row]));
+ const problems=[];
+ for(const row of input.source.documents){
+  const [collection,id]=row.path.split('/');
+  if(!['occurrenceReports','occurrenceAudit','occurrenceScoreClaims'].includes(collection))continue;
+  const report=rows.get('occurrenceReports/'+id)?.fields,audit=rows.get('occurrenceAudit/'+id)?.fields,claim=rows.get('occurrenceScoreClaims/'+id)?.fields;
+  let code=null;
+  if(!report||!audit||!claim)code='OCCURRENCE_RELATION_INCOMPLETE';
+  else if(report.id?.stringValue!==id||audit.reportId?.stringValue!==id||claim.sourceId?.stringValue!==id||claim.id?.stringValue!==id
+   ||!audit.uid?.stringValue||audit.uid.stringValue!==claim.uid?.stringValue
+   ||audit.formId?.stringValue!==report.formId?.stringValue||claim.formId?.stringValue!==report.formId?.stringValue
+   ||audit.anonymous?.booleanValue!==report.anonymous?.booleanValue)code='OCCURRENCE_IDENTITY_MISMATCH';
+  else if(!report.createdAt?.timestampValue||report.createdAt.timestampValue!==audit.createdAt?.timestampValue||report.createdAt.timestampValue!==claim.createdAt?.timestampValue)code='OCCURRENCE_TIMESTAMP_MISMATCH';
+  if(code&&!problems.some(item=>item.path.endsWith('/'+id)&&item.code===code))problems.push({path:row.path,code});
+ }
+ const catalog=rows.get('occurrenceCatalogs/current');
+ if(!catalog?.fields?.catalogs?.mapValue||catalog.fields.schemaVersion?.integerValue!=='1')problems.push({path:'occurrenceCatalogs/current',code:'OCCURRENCE_CATALOG_MISSING_OR_INVALID'});
+ plan.conflicts.push(...problems);plan.counts.conflicts=plan.conflicts.length;plan.ready=plan.conflicts.length===0;
+ return {...plan,planSha256:digest(plan)};
+}
+function prepareScopedPlan({source,destination,scope,resolutions=[],sharedPaths=[]}={},sourceProjectId,allowed,shared) {
+ demand(source?.projectId===sourceProjectId&&destination?.projectId===FA_PROJECT,'CONSOLIDATION_PROJECT_INVALID');
  validateSplitSnapshot(source);validateSplitSnapshot(destination);
  demand(Array.isArray(scope)&&scope.length>0&&new Set(scope).size===scope.length&&scope.every(name=>allowed.has(name)),'CONSOLIDATION_SCOPE_INVALID');
  demand(scope.every(name=>source.coverage.rootCollections.includes(name)&&destination.coverage.rootCollections.includes(name)),'CONSOLIDATION_SNAPSHOT_COVERAGE_MISSING');
@@ -48,8 +73,8 @@ export function prepareFaConsolidationPlan({source,destination,scope,resolutions
  const rewrite=(value,unmapped)=>{
   if(Array.isArray(value))return value.map(item=>rewrite(item,unmapped));
   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>{
-   if(key==='referenceValue'&&typeof item==='string'&&item.startsWith(prefix(FB_PROJECT))){
-    const path=item.slice(prefix(FB_PROJECT).length);
+   if(key==='referenceValue'&&typeof item==='string'&&item.startsWith(prefix(sourceProjectId))){
+    const path=item.slice(prefix(sourceProjectId).length);
     if(sourceByPath.has(path))return [key,prefix(FA_PROJECT)+path];
     unmapped.add(path);
    }
@@ -90,7 +115,7 @@ export function prepareFaConsolidationPlan({source,destination,scope,resolutions
  }
  demand(consumed.size===decisions.size,'CONSOLIDATION_RESOLUTION_UNUSED');
  counts.writes=counts.create+counts.update;counts.conflicts=conflicts.length;
- const plan={schemaVersion:1,code:'FA_CONSOLIDATION_DRY_RUN',sourceProjectId:FB_PROJECT,destinationProjectId:FA_PROJECT,databaseId:'(default)',
+ const plan={schemaVersion:1,code:'FA_CONSOLIDATION_DRY_RUN',sourceProjectId,destinationProjectId:FA_PROJECT,databaseId:'(default)',
   sourceSnapshotSha256:digest(source),destinationSnapshotSha256:digest(destination),scope:[...scope].sort(),
   ready:conflicts.length===0,counts,operations,conflicts,sourcePreserved:true,identityChanges:0,scoreRecalculations:0};
  return {...plan,planSha256:digest(plan)};

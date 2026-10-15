@@ -5,17 +5,17 @@ import {createManagementProjectAuthAutoConnector, managementProjectAuthTargets} 
 const profile = (permissions = {}, extra = {}) => ({active:true, access:true, role:'anestesiologista', permissions, ...extra});
 
 test('automatic targets are independently derived from the FA profile as request hints', () => {
-  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({managementRead:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({managementManage:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({managementIndicatorsRead:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({trainingsManage:true,managementIndicatorsWrite:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({admin:true})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({}, {role:'administrador_app'})), ['FC']);
-  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true}, {role:'administrador_app'})), ['FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementRead:true})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementManage:true})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({managementIndicatorsRead:true})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({trainingsManage:true,managementIndicatorsWrite:true})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({admin:true})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({}, {role:'administrador_app'})), []);
+  assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true}, {role:'administrador_app'})), []);
   assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true,managementIndicatorsRead:true}, {active:false})), []);
   assert.deepEqual(managementProjectAuthTargets(profile({trainingsRead:true}, {access:false})), []);
-  assert.deepEqual(managementProjectAuthTargets(profile({})), ['FC']);
+  assert.deepEqual(managementProjectAuthTargets(profile({})), []);
 });
 
 test('disabled-by-default connector performs no lazy load or broker request', async () => {
@@ -28,7 +28,7 @@ test('disabled-by-default connector performs no lazy load or broker request', as
 
 test('active user requests FC and authorized FB once in background; duplicate profile events deduplicate', async () => {
   let calls = 0, currentUid = 'uid-a'; const requested = [];
-  const connector = createManagementProjectAuthAutoConnector({enabled:true,
+  const connector = createManagementProjectAuthAutoConnector({enabled:true,selectTargets:p=>p?.active===true&&p?.access===true?['FC']:[],
     loadConnect:async()=>async targets=>{calls++;requested.push([...targets]);return {status:'partial'};},
     isCurrent:uid=>uid===currentUid});
   const ctx={uid:'uid-a',profile:profile({trainingsRead:true})};
@@ -40,7 +40,7 @@ test('active user requests FC and authorized FB once in background; duplicate pr
 
 test('occurrence-only active user requests FC and never FB', async () => {
   let requested;
-  const connector = createManagementProjectAuthAutoConnector({enabled:true,
+  const connector = createManagementProjectAuthAutoConnector({enabled:true,selectTargets:p=>p?.active===true&&p?.access===true?['FC']:[],
     loadConnect:async()=>async targets=>{requested=[...targets];return {status:'ready'};}, isCurrent:()=>true});
   await connector.update({uid:'uid-fc',profile:profile({})});
   assert.deepEqual(requested,['FC']);
@@ -48,7 +48,7 @@ test('occurrence-only active user requests FC and never FB', async () => {
 
 test('source user switch drops a late result from the prior connection attempt', async () => {
   let currentUid='uid-a', resolveConnect,attempt=0;
-  const connector=createManagementProjectAuthAutoConnector({enabled:true,
+  const connector=createManagementProjectAuthAutoConnector({enabled:true,selectTargets:p=>p?.active===true&&p?.access===true?['FC']:[],
     loadConnect:async()=>async targets=>++attempt === 1
       ? new Promise(resolve=>{resolveConnect=resolve;}) : {status:'ready'},isCurrent:uid=>uid===currentUid});
   const pending=connector.update({uid:'uid-a',profile:profile({trainingsRead:true})});
@@ -61,7 +61,7 @@ test('source user switch drops a late result from the prior connection attempt',
 
 test('revoked FA access invalidates a pending request without blocking FA', async () => {
   let allowed=true, resolveConnect;
-  const connector=createManagementProjectAuthAutoConnector({enabled:true,
+  const connector=createManagementProjectAuthAutoConnector({enabled:true,selectTargets:p=>p?.active===true&&p?.access===true?['FC']:[],
     loadConnect:async()=>async()=>new Promise(resolve=>{resolveConnect=resolve;}),isCurrent:()=>allowed});
   const pending=connector.update({uid:'uid-a',profile:profile({trainingsRead:true})});
   await new Promise(resolve=>setImmediate(resolve));
@@ -73,7 +73,7 @@ test('revoked FA access invalidates a pending request without blocking FA', asyn
 
 test('network retry is explicit, and broker failure remains a non-blocking result', async () => {
   let attempts=0;
-  const connector=createManagementProjectAuthAutoConnector({enabled:true,
+  const connector=createManagementProjectAuthAutoConnector({enabled:true,selectTargets:p=>p?.active===true&&p?.access===true?['FC']:[],
     loadConnect:async()=>async()=>{attempts++;throw new Error('private failure');},isCurrent:()=>true});
   const ctx={uid:'uid-a',profile:profile({trainingsRead:true})};
   assert.deepEqual(await connector.update(ctx),{status:'unavailable'});

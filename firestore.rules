@@ -1557,5 +1557,98 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
+    // BEGIN OCCURRENCES_FA_V1
+    function occurrenceDomainActive_() {
+      let path = /databases/$(database)/documents/occurrenceRuntime/faConsolidation;
+      return exists(path) && get(path).data.status == 'ACTIVE';
+    }
+    function occurrence_signedFromFa() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid && occurrenceDomainActive_(); }
+    function occurrence_canCatalog() { return occurrence_signedFromFa(); }
+    function occurrence_canWrite() { return occurrence_signedFromFa(); }
+    function occurrence_canRead() { return occurrence_signedFromFa() && profile().permissions.keys().hasAny(['occurrencesRead']) && profile().permissions.occurrencesRead == true; }
+    function occurrence_canAudit() { return occurrence_signedFromFa() && profile().permissions.keys().hasAny(['occurrencesAuditRead']) && profile().permissions.occurrencesAuditRead == true; }
+    function occurrence_reportPath(id) { return /databases/$(database)/documents/occurrenceReports/$(id); }
+    function occurrence_auditPath(id) { return /databases/$(database)/documents/occurrenceAudit/$(id); }
+    function occurrence_scorePath(id) { return /databases/$(database)/documents/occurrenceScoreClaims/$(id); }
+    function occurrence_canReadReport(id) {
+      return occurrence_canRead() || (occurrence_canWrite() && resource == null) ||
+        (occurrence_canWrite() && exists(occurrence_auditPath(id)) && get(occurrence_auditPath(id)).data.uid == request.auth.uid);
+    }
+    function occurrence_canReadPrivate(id) {
+      return occurrence_canAudit() || (occurrence_canWrite() && resource == null) ||
+        (occurrence_canWrite() && resource.data.uid == request.auth.uid);
+    }
+    function occurrence_validReport(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
+          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
+          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
+        data.schemaVersion == 1 && data.id == reportId &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.formTitle is string && data.formTitle.size() > 0 && data.formTitle.size() <= 180 &&
+        data.classification is map && data.classification.keys().size() <= 4 &&
+        data.details is map && data.details.keys().size() <= 20 &&
+        data.anonymous is bool && data.authorLabel is string && data.authorLabel.size() > 0 && data.authorLabel.size() <= 120 &&
+        (data.anonymous == true ? data.authorLabel == 'Anônimo' : data.authorLabel != 'Anônimo') &&
+        data.pointsClaimed == 2 && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
+        (data.formId == 'F10' ? data.occurredOn == null && data.occurrence == null && data.description == null :
+          data.occurredOn is string && data.occurredOn.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 180 &&
+          data.description is string && data.description.size() > 0 && data.description.size() <= 5000);
+    }
+    function occurrence_validAudit(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
+        data.schemaVersion == 1 && data.reportId == reportId && data.uid == request.auth.uid &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.anonymous is bool && data.createdAt == request.time;
+    }
+    function occurrence_validScoreClaim(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','originProjectId','uid','formId','points','status','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','id','source','sourceId','originProjectId','uid','formId','points','status','createdAt']) &&
+        data.schemaVersion == 1 && data.id == reportId && data.source == 'REGISTRO_OCORRENCIA' &&
+        data.sourceId == reportId && data.originProjectId == 'sahmt-17a16' && data.uid == request.auth.uid &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.points == 2 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
+    }
+    function occurrence_pairedAfter(reportId) {
+      let report = getAfter(occurrence_reportPath(reportId)).data;
+      let audit = getAfter(occurrence_auditPath(reportId)).data;
+      let claim = getAfter(occurrence_scorePath(reportId)).data;
+      return report.id == reportId && report.createdAt == request.time &&
+        audit.reportId == reportId && audit.uid == request.auth.uid && audit.formId == report.formId &&
+        audit.anonymous == report.anonymous && audit.createdAt == request.time &&
+        claim.id == reportId && claim.sourceId == reportId && claim.uid == request.auth.uid &&
+        claim.formId == report.formId && claim.points == 2 && claim.status == 'PENDING_VALIDATION' &&
+        claim.createdAt == request.time;
+    }
+
+    match /occurrenceCatalogs/current {
+      allow get: if occurrence_canCatalog();
+      allow list, create, update, delete: if false;
+    }
+    match /occurrenceReports/{reportId} {
+      allow get: if occurrence_canReadReport(reportId);
+      allow list: if occurrence_canRead() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if occurrence_canWrite() && !exists(occurrence_reportPath(reportId)) &&
+        occurrence_validReport(reportId, request.resource.data) && occurrence_pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    match /occurrenceAudit/{reportId} {
+      allow get: if occurrence_canReadPrivate(reportId);
+      allow list: if occurrence_canAudit() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if occurrence_canWrite() && !exists(occurrence_auditPath(reportId)) &&
+        occurrence_validAudit(reportId, request.resource.data) && occurrence_pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    match /occurrenceScoreClaims/{reportId} {
+      allow get: if occurrence_canReadPrivate(reportId);
+      allow list: if occurrence_canAudit() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if occurrence_canWrite() && !exists(occurrence_scorePath(reportId)) &&
+        occurrence_validScoreClaim(reportId, request.resource.data) && occurrence_pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    // END OCCURRENCES_FA_V1
+
   }
 }

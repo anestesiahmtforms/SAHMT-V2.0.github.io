@@ -65,38 +65,27 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
 const recoverableCatalogErrors = new Set(['OCCURRENCE_SESSION_INVALID', 'OCCURRENCE_PERMISSION_DENIED',
   'OCCURRENCE_CATALOG_PERMISSION_DENIED']);
 
-export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent,reconnect}={}) {
-  try { return await repository.loadCatalog({uid}); }
-  catch (error) {
-    if (!recoverableCatalogErrors.has(error?.message) || !isCurrent()) throw error;
-    const result=await reconnect();
-    if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');
-    if (result?.targets?.FC?.status!=='ready') throw new Error('OCCURRENCE_FC_CONNECTION_UNAVAILABLE');
-    return repository.loadCatalog({uid});
-  }
+export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent}={}) {
+  if(!isCurrent())throw new Error('OCCURRENCE_SESSION_CHANGED');
+  const result=await repository.loadCatalog({uid});
+  if(!isCurrent())throw new Error('OCCURRENCE_SESSION_CHANGED');
+  return result;
 }
 
 export function occurrenceCatalogErrorMessage(error) {
   if (error?.message==='OCCURRENCE_PERMISSION_DENIED'||error?.message==='OCCURRENCE_CATALOG_PERMISSION_DENIED')
-    return 'A sessão FC não recebeu a permissão para ler o catálogo. Entre novamente no app.';
+    return 'Seu perfil não tem permissão para ler o catálogo. Entre novamente no app.';
   if (error?.message==='OCCURRENCE_FC_CONNECTION_UNAVAILABLE'||error?.message==='OCCURRENCE_SESSION_INVALID')
-    return 'Não foi possível conectar sua sessão ao FC. Tente abrir o formulário novamente.';
-  if (error?.message==='OCCURRENCE_CATALOG_INVALID') return 'O catálogo do FC está em formato inválido. Avise a administração.';
-  return 'Não foi possível ler o catálogo do FC agora. Tente novamente.';
+    return 'Sua sessão não está disponível. Entre novamente no app.';
+  if (error?.message==='OCCURRENCE_CATALOG_INVALID') return 'O catálogo está em formato inválido. Avise a administração.';
+  return 'Não foi possível ler o catálogo agora. Tente novamente.';
 }
 
-export function createOccurrenceSessionGate({auth,uid,isCurrent,connect}={}) {
-  let pending=null;
+export function createOccurrenceSessionGate({auth,uid,isCurrent}={}) {
   return () => {
     if (!isCurrent?.()) return Promise.reject(new Error('OCCURRENCE_SESSION_CHANGED'));
-    if (pending) return pending;
     if (auth?.currentUser?.uid===uid) return Promise.resolve();
-    pending=Promise.resolve().then(connect).then(result=>{
-      if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');
-      if (result?.targets?.FC?.status!=='ready'||auth?.currentUser?.uid!==uid)
-        throw new Error('OCCURRENCE_FC_CONNECTION_UNAVAILABLE');
-    }).finally(()=>{pending=null;});
-    return pending;
+    return Promise.reject(new Error('OCCURRENCE_SESSION_INVALID'));
   };
 }
 
@@ -104,10 +93,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   const access=occurrenceModuleAccess(permissions);
   if(!access.any||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
   const repository=createOccurrenceRepository({db,auth,idGenerator,isCurrent});
-  const ensureSession=createOccurrenceSessionGate({auth,uid,isCurrent,connect:async()=>{
-    const {getFirebaseProjectAuthOptIn}=await import('./firebase-project-auth-browser.js');
-    return getFirebaseProjectAuthOptIn().connect(['FC']);
-  }});
+  const ensureSession=createOccurrenceSessionGate({auth,uid,isCurrent});
   let catalogs={},saving=false,loading=false,pendingRecordId=null;
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Rascunhos não são armazenados localmente.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
@@ -135,13 +121,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     const categoryBack=direct?null:categoryHost.querySelector('[data-occurrence-group-cancel]');
     if(categoryBack)categoryBack.disabled=true;
     try {
-      if(auth.currentUser?.uid!==uid&&categoryStatus)categoryStatus.textContent='Conectando ao FC…';
       await ensureSession();
-      catalogs=(await loadOccurrenceCatalogForSession({repository,uid,isCurrent,reconnect:async()=>{
-        if(categoryStatus)categoryStatus.textContent='Reconectando ao FC…';
-        const {getFirebaseProjectAuthOptIn}=await import('./firebase-project-auth-browser.js');
-        return getFirebaseProjectAuthOptIn().connect(['FC']);
-      }})).catalogs;
+      catalogs=(await loadOccurrenceCatalogForSession({repository,uid,isCurrent})).catalogs;
     } catch(error) {if(isCurrent()&&categoryStatus)categoryStatus.textContent=occurrenceCatalogErrorMessage(error);return;}
     finally {loading=false;if(categoryBack)categoryBack.disabled=false;}
     if(!isCurrent()||(!direct&&!categoryDialog?.open))return;

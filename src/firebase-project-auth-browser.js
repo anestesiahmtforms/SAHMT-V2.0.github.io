@@ -5,7 +5,7 @@ const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.
 const enabled = env.VITE_FIREBASE_PROJECT_AUTH_ENABLED === 'true';
 const configuredTargets = Object.freeze({
   FB: false,
-  FC: env.VITE_INDICATORS_FIREBASE_ENABLED === 'true'
+  FC: false
 });
 const defaultTargets = Object.freeze(Object.keys(configuredTargets).filter(name => configuredTargets[name]));
 // Apps Script performs separate authenticated round trips for lookup, lease and signing.

@@ -11,7 +11,9 @@ function evaluationOccurrenceEvidence_(report, audit, claim) {
       !['PENDING_VALIDATION', 'VALIDATED'].includes(report.pointsStatus) || !stamp(claim.createdAt) ||
       stamp(claim.createdAt) !== stamp(report.createdAt) || stamp(claim.createdAt) !== stamp(audit.createdAt))
     throw new Error('OCCURRENCE_SCORE_EVIDENCE_INVALID');
-  return {schemaVersion: 1, sourceProjectId: SAHMT_EVALUATION_FC, sourceId: id, uid: claim.uid,
+  const origin = claim.originProjectId || SAHMT_EVALUATION_FC;
+  if (![SAHMT_V2_CONFIG.projectId,SAHMT_EVALUATION_FC].includes(origin)) throw new Error('OCCURRENCE_SCORE_EVIDENCE_INVALID');
+  return {schemaVersion: 1, sourceProjectId: origin, sourceId: id, uid: claim.uid,
     formId: claim.formId, createdAt: stamp(claim.createdAt), points: 2};
 }
 function evaluationOccurrenceEnabled_() {
@@ -19,6 +21,12 @@ function evaluationOccurrenceEnabled_() {
 }
 function evaluationOccurrenceAssertOperator_() {
   if (!evaluationOccurrenceEnabled_()) throw new Error('OCCURRENCE_SCORING_DISABLED');
+  const migration=evaluationGet_('occurrenceRuntime','faConsolidation');
+  if(!migration || migration.status!=='ACTIVE' || migration.release!=='occurrence-fa-consolidation-v1' ||
+      migration.sourceProjectId!==SAHMT_EVALUATION_FC || migration.destinationProjectId!==SAHMT_V2_CONFIG.projectId ||
+      !/^[a-f0-9]{64}$/.test(migration.planSha256||'') || !Number.isSafeInteger(migration.verifiedDocuments) ||
+      migration.verifiedDocuments<1 || migration.plannedDocuments!==migration.verifiedDocuments ||
+      migration.migrationCode!=='FA_CONSOLIDATION_VERIFIED') throw new Error('OCCURRENCE_FA_CONSOLIDATION_INACTIVE');
   // Occurrence awards are independent of the Forms evaluation rollout. The
   // destination still requires an explicit server-side approval marker.
   evaluationAssertOperator_(false);
@@ -46,13 +54,13 @@ function evaluationDeliverOccurrence_(reportId, expectedUid) {
       return {writes: [], result: receipt.result};
     }
     const award = {uid: evidence.uid, category: 'PERFORMANCE', modality: 'OCCURRENCE', creditScopeId: 'fc-occurrence-' + reportId,
-      activityId: 'fc-occurrence-' + reportId, areaId: '', version: 1, points: 2, sourceType: 'FC_OCCURRENCE_VERIFIED',
-      sourceId: reportId, sourceFingerprint: fingerprint, evidence: {sourceProjectId: SAHMT_EVALUATION_FC, reportId: reportId, formId: evidence.formId}};
+      activityId: 'fc-occurrence-' + reportId, areaId: '', version: 1, points: 2, sourceType: evidence.sourceProjectId===SAHMT_EVALUATION_FC?'FC_OCCURRENCE_VERIFIED':'FA_OCCURRENCE_VERIFIED',
+      sourceId: reportId, sourceFingerprint: fingerprint, evidence: {sourceProjectId: evidence.sourceProjectId, reportId: reportId, formId: evidence.formId}};
     const applied = evaluationApplyAwards_([award], {transaction: transaction});
     if (applied.status === 'NEEDS_REVIEW') throw new Error('OCCURRENCE_SCORE_REVIEW_REQUIRED');
     const outcome = {status: applied.status, awardId: applied.awards[0].awardId, fingerprint: fingerprint};
     applied.writes.push(evaluationWrite_('evaluationSourceReceipts', receiptId,
-      {id: receiptId, sourceProjectId: SAHMT_EVALUATION_FC, sourceId: reportId, fingerprint: fingerprint, result: outcome}, null, ['createdAt']));
+      {id: receiptId, sourceProjectId: evidence.sourceProjectId, sourceId: reportId, fingerprint: fingerprint, result: outcome}, null, ['createdAt']));
     return {writes: applied.writes, result: outcome};
   });
   // Publish the performance summary before acknowledging the source. If this
@@ -71,7 +79,7 @@ function evaluationDeliverOccurrence_(reportId, expectedUid) {
     return {writes: [evaluationWrite_('occurrenceScoreClaims', reportId,
       {status: 'VALIDATED', destinationProjectId: evaluationProject_(), awardId: result.awardId}, claim, ['validatedAt']),
       evaluationWrite_('occurrenceReports', reportId, {pointsStatus: 'VALIDATED'}, report, [])], result: true};
-  }, {projectId: SAHMT_EVALUATION_FC});
+  }, {projectId: SAHMT_V2_CONFIG.projectId});
   return {status: result.status};
 }
 /** Bounded recovery tool only. Does not install a timer or scan report contents. */

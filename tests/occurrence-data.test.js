@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {createOccurrenceRepository} from '../src/occurrence-data.js';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 
-function harness({claims={}, failTransaction=false, failCatalogRead=false, current=true}={}) {
+function harness({claims={}, active=true, failTransaction=false, failCatalogRead=false, current=true}={}) {
   const store = new Map(), calls=[];
-  const db={projectId:'indicadores---sahmt'};
+  const db={app:{options:{projectId:'sahmt-17a16'}}};
   const user={uid:'uid-synthetic',async getIdTokenResult(force){calls.push(['token',force]);return {claims:{firebase:{sign_in_provider:'custom'},sahmtFaSourceProjectId:'sahmt-17a16',...claims}};}};
   const auth={currentUser:user};
   const firestore={
@@ -15,6 +15,7 @@ function harness({claims={}, failTransaction=false, failCatalogRead=false, curre
     query:(collection,...args)=>({collection,...Object.assign({},...args)}),
     serverTimestamp:()=>({syntheticServerTimestamp:true}),
     getDocFromServer:async ref=>{
+      if(ref.collection==='users'){calls.push(['profile']);return {exists:()=>true,data:()=>({uid:'uid-synthetic',active,access:true,permissions:{occurrencesRead:claims.sahmtOccurrencesRead===true,occurrencesAuditRead:claims.sahmtOccurrencesAuditRead===true}})};}
       if(failCatalogRead)throw Object.assign(new Error('private Firestore response'),{code:'permission-denied'});
       return {exists:()=>store.has(ref.path),data:()=>store.get(ref.path)};
     },
@@ -43,14 +44,14 @@ test('consultas consecutivas no FC usam o token gerenciado pelo SDK sem renovaç
   await repository.loadCatalog({uid:input.uid});
   await repository.list({uid:input.uid});
   await repository.listAudit({uid:input.uid});
-  assert.deepEqual(calls.filter(([name])=>name==='token').map(([,force])=>force),[false,false,false,false]);
+  assert.equal(calls.filter(([name])=>name==='token').length,0);assert.equal(calls.filter(([name])=>name==='profile').length,4);
 });
 
-test('nega catálogo e escrita sem claims emitidos pelo servidor para o FA e FC', async()=>{
-  const {repository,calls}=harness();
+test('nega catálogo e escrita para perfil FA inativo independentemente de claims antigos', async()=>{
+  const {repository,calls}=harness({active:false});
   await assert.rejects(repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_PERMISSION_DENIED'});
   await assert.rejects(repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});
-  assert.equal(calls.filter(([name])=>name==='token').length,2);
+  assert.equal(calls.filter(([name])=>name==='token').length,0);assert.equal(calls.filter(([name])=>name==='profile').length,2);
 });
 
 test('falha de permissão no Firestore FC recebe código distinto de catálogo ausente',async()=>{

@@ -3,26 +3,18 @@ const plain = value => value !== null && typeof value === 'object' && !Array.isA
 
 /** Targets are only a client-side request hint; the broker reauthorizes each one. */
 export function managementProjectAuthTargets(profile) {
-  if (!plain(profile) || profile.active !== true || profile.access !== true) return Object.freeze([]);
-  const permissions = plain(profile.permissions) ? profile.permissions : {};
-  const targets = [];
-  // Management/performance already use FA. Only the remaining Occurrences
-  // workflow, whose write permission is granted by server policy to every
-  // active and accessible FA profile. The broker independently revalidates.
-  if (profile.active === true && profile.access === true
-    || permissions.managementIndicatorsRead === true || permissions.managementIndicatorsWrite === true) targets.push('FC');
-  return Object.freeze(targets);
+  return Object.freeze([]);
 }
 
 /** Non-blocking, per-user coordinator for opt-in background secondary sessions. */
-export function createManagementProjectAuthAutoConnector({enabled = false, loadConnect, isCurrent} = {}) {
-  if (typeof enabled !== 'boolean' || typeof loadConnect !== 'function' || typeof isCurrent !== 'function')
+export function createManagementProjectAuthAutoConnector({enabled = false, loadConnect, isCurrent,selectTargets=managementProjectAuthTargets} = {}) {
+  if (typeof enabled !== 'boolean' || typeof loadConnect !== 'function' || typeof isCurrent !== 'function'||typeof selectTargets!=='function')
     throw new Error('MANAGEMENT_PROJECT_AUTH_AUTO_CONNECT_CONFIG_INVALID');
   let generation = 0, currentKey = null, currentPromise = null, lastRequest = null;
 
   const update = ({uid, profile} = {}) => {
     lastRequest = uid ? {uid, profile} : null;
-    const targets = managementProjectAuthTargets(profile);
+    const targets = selectTargets(profile);
     if (!enabled || typeof uid !== 'string' || !uid || targets.length === 0) {
       generation++; currentKey = null; currentPromise = null;
       return Promise.resolve(Object.freeze({status: enabled ? 'skipped' : 'disabled'}));

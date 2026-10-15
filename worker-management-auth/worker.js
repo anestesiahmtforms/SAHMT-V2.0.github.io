@@ -1,4 +1,4 @@
-import {buildManagementAuthRuntime} from './runtime.js';
+import {buildManagementAuthRuntime,MANAGEMENT_RUNTIME_DEFAULTS} from './runtime.js';
 import {relayOperationalSheet} from './operational-sheet-relay.js';
 import {relayOccurrenceScore} from './occurrence-score-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
@@ -11,10 +11,16 @@ export {createManagementAppsScriptGatewayFromEnv} from './apps-script-gateway-ad
 const disabled = createManagementBrokerHttp({enabled: false});
 
 /** Dedicated Worker entrypoint. Runtime adapters are supplied only by trusted host code. */
-export function createManagementAuthWorker({buildRuntime} = {}) {
+export function createManagementAuthWorker({buildRuntime,buildOperationalRuntime} = {}) {
   const runtimes = new WeakMap();
   const handlers = new WeakMap();
   const firstLoginHandlers = new WeakMap();
+  const operationalRuntimes = new WeakMap();
+  const operationalFor = env => {
+    if(typeof buildOperationalRuntime!=='function')return runtimeFor(env);
+    if(!operationalRuntimes.has(env))operationalRuntimes.set(env,Promise.resolve().then(()=>buildOperationalRuntime(env)).catch(error=>{operationalRuntimes.delete(env);throw error;}));
+    return operationalRuntimes.get(env);
+  };
   const runtimeFor = env => {
     if (!env || (typeof env !== 'object' && typeof env !== 'function') || typeof buildRuntime !== 'function')
       return Promise.reject(new Error('WORKER_RUNTIME_UNAVAILABLE'));
@@ -47,13 +53,14 @@ export function createManagementAuthWorker({buildRuntime} = {}) {
       if (new URL(request.url).pathname === '/v1/evaluation/occurrence') {
         if (env?.OCCURRENCE_SCORING_ENABLED !== 'true' || request.method !== 'POST') return relayOccurrenceScore(request, env || {});
         try {
-          const runtime = await runtimeFor(env);
+          const runtime = await operationalFor(env);
           if (runtime.maxRequestMs < 55000) return relayOccurrenceScore(request, env);
           return await relayOccurrenceScore(request, env, {admitRequest: runtime.admitRequest});
         } catch { return relayOccurrenceScore(request, env); }
       }
       if (new URL(request.url).pathname === '/v1/operational-sheets/notify')
         return relayOperationalSheet(request, env);
+      if(env?.MANAGEMENT_SECONDARY_AUTH_RETIRED==='true'&&new URL(request.url).pathname!=='/v1/auth/first-login')return disabled(request);
       try {
         await runtimeFor(env);
         const url = new URL(request.url);
@@ -93,5 +100,7 @@ export function createManagementAuthWorkerWithBroker({buildBroker, buildFirstLog
 }
 
 // The runtime is complete but only explicit, validated server bindings can enable it.
-const worker = createManagementAuthWorker({buildRuntime:buildManagementAuthRuntime});
+const worker = createManagementAuthWorker({buildRuntime:buildManagementAuthRuntime,
+  buildOperationalRuntime:env=>createAdmissionRuntime({broker:{exchange:async()=>({ok:false,code:'SECONDARY_AUTH_RETIRED'})},
+    stateBinding:env?.BROKER_STATE,...MANAGEMENT_RUNTIME_DEFAULTS})});
 export default worker;
