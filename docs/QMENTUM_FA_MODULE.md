@@ -120,4 +120,16 @@ Ordem após autorização específica:
 
 **Reversão:** desabilitar `qmentumConfig/current.enabled`; executar `desativarAgendadorQmentumV1()` para bloquear IA e remover somente seu acionador; retirar o acesso ao módulo na publicação seguinte. Preservar entradas, históricos, fontes e versões. Restaurar Rules/fonte anteriores somente após conferir o delta; não apagar módulos atuais nem reabrir FB/FC.
 
+## Ciência e sugestões da análise crítica
+
+- A ciência registra 1 ponto em Desempenho; uma sugestão aprovada registra mais 2. São acumuláveis: total 3. A sugestão pendente ou não aprovada não pontua.
+- Os botões aparecem na análise trimestral revisada e compatível com os dados atuais. Não pontuam uma tela vazia, um pedido de IA nem uma análise desatualizada.
+- `qmentumParticipations/{analysisId}_{uid}_{modality}` recebe somente pedido imutável, sem campo de pontos. Ciência e sugestão são independentes. Uma sugestão por pessoa/versão da análise.
+- `qmentumParticipationReviews/{participationId}` recebe parecer imutável de gestor autorizado da unidade, diferente do autor. Aprovação não exige implementação da sugestão.
+- `QmentumParticipation.gs` revalida, em transação FA, o perfil, a concessão de unidade, a configuração, a análise revisada e os seis meses relevantes. Usa `evaluationApplyAwards_`, não escreve saldo do navegador. Modalidades existentes `ACKNOWLEDGEMENT` (1) e `SUGGESTION` (2).
+- O crédito é único por pessoa, unidade, indicador, trimestre e modalidade; regenerar a análise não multiplica os pontos. O ledger mantém auditoria de versões e preserva correções administrativas.
+- O processamento se integra a `reconciliarAvaliacaoSahmtV2`, antes da publicação do saldo. Não instala um novo timer nem depende de IA habilitada. A execução desse ciclo existente precisa ser conferida no ambiente remoto; até sua execução, a interface mostra validação pendente.
+- Contas revogadas, análise desatualizada e pedidos inválidos não pontuam. Erros técnicos mantêm o pedido pendente para recuperação. Nenhum UID, texto de sugestão ou token é registrado em logs operacionais.
+- Gestão/Desempenho continuam inativos para usuários comuns nesta liberação. A regra de pontuação fica preparada para os participantes que receberem acesso ao módulo futuramente.
+
 Recursos mantidos no Spark: um banco FA existente, nenhum Storage pago, Cloud Function, TTL, banco adicional ou backup gerenciado. O original XLSX fica em arquivo/Drive existente, fora de documento Firestore único. Confirmar os limites totais atuais antes de produção: https://firebase.google.com/docs/firestore/quotas e https://firebase.google.com/docs/firestore/manage-data/transactions .

@@ -64,7 +64,7 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
  const saveActions=()=>`<div class="qm-actions">${record?.status!=='CLOSED'?button('save','Salvar rascunho no FA'):''}${reviewer&&record?.status==='DRAFT'?button('review','Revisar'):''}${reviewer&&record?.status==='REVIEWED'?button('close','Fechar competência'):''}${manager&&record?.status==='CLOSED'?button('reopen','Reabrir com motivo'):''}${manager&&record?.status==='DRAFT'&&defs.version!==context.definitions.version?button('rebase','Aplicar definição vigente'):''}</div>`;
  const quarterly=async(id,selectedQuarter=Math.ceil(month/3),selectedYear=year)=>{
   mode='quarterly';let facts=null,versions=[];
-  const data=selectedYear===year?rows:await repo.year(unitId,selectedYear);
+  const data=await repo.year(unitId,selectedYear);
   const prior=await repo.year(unitId,selectedYear-1);
   if(!current())return;
   try{facts=quarterFacts({rows:[...data,...prior],indicatorId:id,year:selectedYear,quarter:selectedQuarter});}catch(error){if(error.message!=='QMENTUM_QUARTER_NOT_ENDED')throw error;}
@@ -72,8 +72,24 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
   if(!current())return;
   const latest=versions.find(v=>v.status==='GENERATED_PENDING_REVIEW'||v.status==='REVIEWED');
   const stale=latest&&!sameAnalysisFacts(latest.facts,facts);
+  const canParticipate=latest?.reviewed===true&&latest.status==='REVIEWED'&&!stale;
+  const participationRows=canParticipate&&repo.participations?await repo.participations(unitId,latest.id):[];
+  if(!current())return;
   show(`${id} · ANÁLISE CRÍTICA TRIMESTRAL E PLANO DE MELHORIA`,`<div class="qm-form-grid"><label class="qm-field">Ano<input data-quarter-year type="number" min="1900" max="2200" value="${selectedYear}"></label><label class="qm-field">Trimestre<select data-quarter>${[1,2,3,4].map(q=>`<option ${q===selectedQuarter?'selected':''} value="${q}">${q}º trimestre</option>`).join('')}</select></label></div><p>Cobertura: ${facts?.coverage??0}/3 meses · ${!facts?'Trimestre ainda não encerrado':facts.status==='NO_DATA'?'Sem dados':facts.status==='COMPLETE'?'Completa':'Parcial / qualidade dos dados'}.</p><p>${!latest?'Análise aguardando configuração, evidências ou cota gratuita.':stale?'Análise anterior desatualizada; aguardando reprocessamento.':latest.reviewed?'Análise gerada por IA — revisada':'Análise gerada por IA — pendente de revisão'}</p>${latest&&!stale?`<section class="qm-ai-analysis">${latest.paragraphs.slice(0,2).map(p=>`<p>${e(p)}</p>`).join('')}</section>`:''}<details><summary>Histórico de análises (${versions.length})</summary>${versions.map(v=>`<p>${e(v.status)} · ${e(new Date(v.generatedAt).toLocaleString('pt-BR'))}${v.signature===latest?.signature?' · versão exibida':''}</p>`).join('')}</details>${reviewer&&latest&&!stale&&!latest.reviewed?button('review-analysis','CONFIRMAR REVISÃO DA ANÁLISE'):''}${button('back-indicator','VOLTAR AO INDICADOR')}`);
   const update=()=>run(()=>quarterly(id,Number(modal.querySelector('[data-quarter]').value),Number(modal.querySelector('[data-quarter-year]').value)));
+  if(canParticipate&&repo.participate){
+   const own=participationRows.filter(p=>p.actorUid===uid),ack=own.find(p=>p.modality==='ACKNOWLEDGEMENT'),suggestion=own.find(p=>p.modality==='SUGGESTION');
+   const section=document.createElement('section');section.className='qm-participation';section.innerHTML=`<h3>CIÊNCIA E PARTICIPAÇÃO</h3><p>Ciência: 1 ponto. Sugestão aprovada: mais 2 pontos. Total acumulável: 3 pontos por análise. Sem pontuação duplicada.</p>${ack?`<p>Ciência: ${e(ack.status==='CONFIRMED'?'confirmada · 1 ponto':'aguardando validação')}.</p>`:button('ack-analysis','DAR CIÊNCIA — 1 PONTO')}${suggestion?`<p>Sugestão: ${e(({PENDING:'aguardando validação',AWAITING_APPROVAL:'aguardando aprovação',APPROVED:'aprovada · 2 pontos',REJECTED:'não aprovada',BLOCKED:'revisão necessária'})[suggestion.status]||'aguardando validação')}.</p>`:`<label class="qm-field">Sugestão de melhoria<textarea data-qm-suggestion maxlength="2000" rows="3" placeholder="Descreva sua sugestão (mínimo 8 caracteres)"></textarea></label>${button('suggest-analysis','ENVIAR SUGESTÃO — 2 PONTOS SE APROVADA')}`}<div data-qm-suggestion-reviews></div>`;
+   modal.querySelector('[data-qm-action="back-indicator"]').before(section);
+   const send=(modality,suggestion='')=>run(async()=>{await repo.participate({unitId,analysisId:latest.id,signature:latest.signature,modality,suggestion});await quarterly(id,selectedQuarter,selectedYear);status('Participação enviada. A pontuação depende da validação no servidor.');});
+   section.querySelector('[data-qm-action="ack-analysis"]')?.addEventListener('click',()=>send('ACKNOWLEDGEMENT'));
+   section.querySelector('[data-qm-action="suggest-analysis"]')?.addEventListener('click',()=>send('SUGGESTION',section.querySelector('[data-qm-suggestion]').value));
+   if(manager&&repo.reviewSuggestion)for(const p of participationRows.filter(p=>p.modality==='SUGGESTION'&&p.status==='AWAITING_APPROVAL'&&p.actorUid!==uid)){
+    const card=document.createElement('article');card.innerHTML=`<h4>Sugestão para avaliação</h4><p>${e(p.suggestion)}</p><label class="qm-field">Parecer<textarea data-review-reason maxlength="1000" rows="2"></textarea></label>${button('approve','APROVAR SUGESTÃO — 2 PONTOS')}${button('reject','NÃO APROVAR')}`;
+    for(const [action,decision] of [['approve','APPROVE'],['reject','REJECT']])card.querySelector(`[data-qm-action="${action}"]`).onclick=()=>run(async()=>{await repo.reviewSuggestion({unitId,participation:p,decision,reason:card.querySelector('[data-review-reason]').value});await quarterly(id,selectedQuarter,selectedYear);status('Parecer enviado para validação no servidor.');});
+    section.querySelector('[data-qm-suggestion-reviews]').append(card);
+   }
+  }
   modal.querySelector('[data-qm-action="review-analysis"]')?.addEventListener('click',()=>run(async()=>{const reason=window.prompt('Justificativa da revisão (mínimo 8 caracteres):');if(reason===null)return;await repo.requestAnalysisReview({unitId,analysisId:latest.id,signature:latest.signature,reason});status('Revisão enviada para validação no servidor. Ainda não marcada como revisada.');}));
   modal.querySelector('[data-quarter]').onchange=update;modal.querySelector('[data-quarter-year]').onchange=update;
   modal.querySelector('[data-qm-action="back-indicator"]').onclick=()=>renderIndicator(id);

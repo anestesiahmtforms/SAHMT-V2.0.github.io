@@ -38,6 +38,13 @@ try {
   await page.locator('[data-qm-indicator="QM01"]').click();await page.locator('[data-qm-action="quarterly"]').click();
   await page.waitForSelector('[data-quarter]');assert.equal(await page.locator('dialog[open]').count(),1);checks++;
   await page.locator('[data-qm-close]').click();assert.match(await page.locator('#qm-dialog-title').innerText(),/QM01/);checks++;
+  await page.evaluate(()=>window.qmentumPreview.enableParticipation());await page.locator('[data-qm-action="quarterly"]').click();
+  await page.locator('[data-quarter-year]').fill('2026');await page.locator('[data-quarter-year]').dispatchEvent('change');await page.waitForTimeout(80);
+  await page.locator('[data-quarter]').selectOption('1');await page.waitForSelector('[data-qm-action="ack-analysis"]');
+  await page.locator('[data-qm-action="ack-analysis"]').click();await page.waitForFunction(()=>document.querySelector('.qm-participation')?.textContent.includes('confirmada · 1 ponto'));assert.equal(await page.locator('[data-qm-action="ack-analysis"]').count(),0);checks++;
+  await page.locator('[data-qm-suggestion]').fill('Sugestão local sintética de melhoria.');await page.locator('[data-qm-action="suggest-analysis"]').click();await page.waitForFunction(()=>document.querySelector('.qm-participation')?.textContent.includes('aguardando aprovação'));assert.equal(await page.locator('[data-qm-action="suggest-analysis"]').count(),0);checks++;
+  await page.locator('[data-review-reason]').fill('Sugestão sintética aprovada após avaliação.');await page.locator('[data-qm-action="approve"]').click();await page.waitForFunction(()=>!document.querySelector('[data-qm-action="approve"]'));checks++;
+  assert.equal(await page.locator('dialog[open]').count(),1);checks++;
   assert.deepEqual(errors,[]);checks++;await context.close();
  }
  console.log(JSON.stringify({code:'QMENTUM_BROWSER_LOCAL_OK',checks,viewports:4,externalRequests:0}));

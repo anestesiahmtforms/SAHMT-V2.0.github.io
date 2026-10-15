@@ -1,6 +1,7 @@
 import * as sdk from 'firebase/firestore';
 import {calculateMonth,canClose,periodKey,validateDefinitions,validateInputs} from './qmentum-engine.js';
 import {QMENTUM_ENGINE} from './qmentum-catalog.js';
+import {participationId,validateParticipation} from './qmentum-participation.js';
 const unitPattern=/^[A-Za-z0-9_-]{1,80}$/;
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const canonical=value=>value&&typeof value==='object'?Array.isArray(value)?'['+value.map(canonical).join(',')+']':'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}':JSON.stringify(value);
@@ -131,7 +132,22 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
   const id=analysisId+'_'+uid,target=ref('qmentumAnalysisReviewRequests',id);
   await api.runTransaction(db,async tx=>{const old=await tx.get(target);if(old.exists())return;ensure();tx.set(target,{unitId,analysisId,signature,reason:reason.trim(),actorUid:uid,status:'PENDING',createdAt:api.serverTimestamp()});});ensure();return {code:'QMENTUM_REVIEW_PENDING'};
  };
- return {open,access,month,year,history,save,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,definition:async version=>{await access();return read('qmentumDefinitions',String(version));}};
+ const participate=async({unitId,analysisId,signature,modality,suggestion=''})=>{
+  await access(unitId);const text=validateParticipation({analysisId,uid,modality,suggestion}),id=participationId(analysisId,uid,modality);
+  if(!/^[a-f0-9]{64}$/.test(signature))throw Error('QMENTUM_PARTICIPATION_INVALID');
+  await api.runTransaction(db,async tx=>{const target=ref('qmentumParticipations',id),old=await tx.get(target);if(old.exists())return;ensure();tx.set(target,{unitId,analysisId,signature,actorUid:uid,modality,suggestion:text,status:'PENDING',createdAt:api.serverTimestamp()});});ensure();return {code:'QMENTUM_PARTICIPATION_PENDING'};
+ };
+ const participations=async(unitId,analysisId)=>{
+  const a=await access(unitId),filters=[api.where('unitId','==',unitId),api.where('analysisId','==',analysisId)];
+  if(a.role!=='manager')filters.push(api.where('actorUid','==',uid));
+  const snap=await api.getDocsFromServer(api.query(api.collection(db,'qmentumParticipations'),...filters,api.limit(100)));ensure();return snap.docs.map(d=>({...d.data(),id:d.id}));
+ };
+ const reviewSuggestion=async({unitId,participation,decision,reason})=>{
+  const a=await access(unitId);if(a.role!=='manager'||participation.actorUid===uid||participation.unitId!==unitId||participation.modality!=='SUGGESTION'||!['APPROVE','REJECT'].includes(decision)||typeof reason!=='string'||reason.trim().length<8||reason.length>1000)throw Error('QMENTUM_SUGGESTION_REVIEW_DENIED');
+  const id=participationId(participation.analysisId,participation.actorUid,'SUGGESTION'),target=ref('qmentumParticipationReviews',id);
+  await api.runTransaction(db,async tx=>{if((await tx.get(target)).exists())return;ensure();tx.set(target,{participationId:id,unitId,actorUid:uid,decision,reason:reason.trim(),status:'PENDING',createdAt:api.serverTimestamp()});});ensure();
+ };
+ return {open,access,month,year,history,save,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,participate,participations,reviewSuggestion,definition:async version=>{await access();return read('qmentumDefinitions',String(version));}};
 }
 
 export function createDraftStore(storage=globalThis.sessionStorage) {

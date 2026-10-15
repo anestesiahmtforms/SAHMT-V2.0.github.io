@@ -233,6 +233,45 @@ const analysisRules=`
         get(/databases/$(database)/documents/qmentumUnits/$(request.resource.data.unitId)/quarterlyAnalyses/$(request.resource.data.analysisId)).data.signature == request.resource.data.signature;
     }
 `;
-const output=base.slice(0,position)+'\n// BEGIN QMENTUM_FA\n'+scopeQmentumFragment(fragment)+analysisRules+'\n// END QMENTUM_FA\n'+base.slice(position);
+const participationMember=`
+      function participant(unit) {
+        let grant=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
+        return activeUser() && profile().uid == request.auth.uid && grant.active == true && grant.uid == request.auth.uid &&
+          unit in grant.units && grant.role in ['collector','reviewer','manager'] &&
+          get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true &&
+          get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
+      }
+      function manager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
+`;
+const participationRules=`
+    match /qmentumParticipations/{id} {${participationMember}
+      function approvedAnalysis(d) {
+        let a=get(/databases/$(database)/documents/qmentumUnits/$(d.unitId)/quarterlyAnalyses/$(d.analysisId)).data;
+        return a.status == 'REVIEWED' && a.reviewed == true && a.signature == d.signature;
+      }
+      allow get: if activeUser() && (resource == null || participant(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || manager()));
+      allow list: if request.query.limit != null && request.query.limit <= 100 && participant(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || manager());
+      allow update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['unitId','analysisId','signature','actorUid','modality','suggestion','status','createdAt']) &&
+        participant(request.resource.data.unitId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
+        request.resource.data.analysisId.matches('^[a-f0-9]{64}$') && request.resource.data.signature.matches('^[a-f0-9]{64}$') &&
+        request.resource.data.modality in ['ACKNOWLEDGEMENT','SUGGESTION'] &&
+        id == request.resource.data.analysisId+'_'+request.auth.uid+'_'+request.resource.data.modality && approvedAnalysis(request.resource.data) &&
+        request.resource.data.suggestion is string && (request.resource.data.modality == 'ACKNOWLEDGEMENT' ? request.resource.data.suggestion == '' : request.resource.data.suggestion.size() >= 8 && request.resource.data.suggestion.size() <= 2000);
+    }
+    match /qmentumParticipationReviews/{id} {${participationMember}
+      function reviewTarget(d) {
+        let p=get(/databases/$(database)/documents/qmentumParticipations/$(id)).data;
+        return p.unitId == d.unitId && p.modality == 'SUGGESTION' && p.actorUid != request.auth.uid && p.status == 'AWAITING_APPROVAL';
+      }
+      allow get: if activeUser() && (resource == null || participant(resource.data.unitId) && manager());
+      allow list,update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['participationId','unitId','actorUid','decision','reason','status','createdAt']) &&
+        participant(request.resource.data.unitId) && manager() && request.resource.data.actorUid == request.auth.uid && request.resource.data.participationId == id &&
+        request.resource.data.decision in ['APPROVE','REJECT'] && request.resource.data.reason is string && request.resource.data.reason.size() >= 8 && request.resource.data.reason.size() <= 1000 &&
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && reviewTarget(request.resource.data);
+    }
+`;
+const output=base.slice(0,position)+'\n// BEGIN QMENTUM_FA\n'+scopeQmentumFragment(fragment)+analysisRules+participationRules+'\n// END QMENTUM_FA\n'+base.slice(position);
 await writeFile(args.length?args[3]:new URL('../firestore.qmentum.rules',import.meta.url),output);
 console.log('QMENTUM_RULES_PREPARED_LOCAL');

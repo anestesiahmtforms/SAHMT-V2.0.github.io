@@ -2,17 +2,48 @@ import {readFile} from 'node:fs/promises';
 import {before,after,beforeEach,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,writeBatch,serverTimestamp,updateDoc,deleteDoc,collection,query,limit,getDocs} from 'firebase/firestore';
+import {doc,setDoc,getDoc,writeBatch,serverTimestamp,updateDoc,deleteDoc,collection,query,where,limit,getDocs} from 'firebase/firestore';
 import {initialDefinitions,emptyInputs} from '../src/qmentum-catalog.js';
 import {calculateMonth} from '../src/qmentum-engine.js';
 import * as sdk from 'firebase/firestore';
 import {createQmentumRepository} from '../src/qmentum-data.js';
 const claims={firebase:{sign_in_provider:'google.com'},aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16'};
 let env;const defs=initialDefinitions();
-before(async()=>{assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:18493');env=await initializeTestEnvironment({projectId:'demo-sahmt-qmentum',firestore:{host:'127.0.0.1',port:18493,rules:await readFile(new URL('../firestore.qmentum.rules',import.meta.url),'utf8')}});});
+before(async()=>{assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:18493');env=await initializeTestEnvironment({projectId:'demo-sahmt-qmentum',firestore:{host:'127.0.0.1',port:18493,rules:await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE||new URL('../firestore.qmentum.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await Promise.all([setDoc(doc(db,'qmentumConfig/current'),{enabled:true,definitionVersion:1}),setDoc(doc(db,'qmentumDefinitions/1'),defs),setDoc(doc(db,'qmentumUnits/unit-a'),{unitId:'unit-a',name:'Unidade sintética',active:true}),...['collector','reviewer','manager'].map(role=>setDoc(doc(db,'qmentumAccess',role),{uid:role,active:true,role,units:['unit-a']})),...['collector','reviewer','manager'].map(uid=>setDoc(doc(db,'users',uid),{uid,active:true,access:true,role:'usuario',permissions:{}}))]);});});
 const dbFor=role=>env.authenticatedContext(role,claims).firestore();
+const analysisId='a'.repeat(64),signature='b'.repeat(64);
+async function seedAnalysis(){await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'qmentumUnits/unit-a/quarterlyAnalyses',analysisId),{id:analysisId,unitId:'unit-a',signature,reviewed:true,status:'REVIEWED'}));}
+const participation=(uid,modality='ACKNOWLEDGEMENT')=>({unitId:'unit-a',analysisId,signature,actorUid:uid,modality,suggestion:modality==='SUGGESTION'?'Sugestão sintética para melhoria':'',status:'PENDING',createdAt:serverTimestamp()});
+test('ciência e sugestão são pedidos independentes imutáveis; navegador não concede pontos',async()=>{
+ await seedAnalysis();const db=dbFor('collector'),id=analysisId+'_collector_ACKNOWLEDGEMENT',p=participation('collector');
+ await assertSucceeds(setDoc(doc(db,'qmentumParticipations',id),p));await assertFails(updateDoc(doc(db,'qmentumParticipations',id),{status:'CONFIRMED',confirmedPoints:1}));
+ await assertFails(setDoc(doc(db,'qmentumParticipations',analysisId+'_collector_SUGGESTION'),{...participation('collector','SUGGESTION'),points:2}));
+ await assertSucceeds(setDoc(doc(db,'qmentumParticipations',analysisId+'_collector_SUGGESTION'),participation('collector','SUGGESTION')));
+ await assertFails(setDoc(doc(db,'evaluationAwards/forged'),{uid:'collector',points:100}));
+});
+test('bloqueia identidade divergente, análise não revisada e assinatura divergente',async()=>{
+ await seedAnalysis();const db=dbFor('collector'),id=analysisId+'_collector_ACKNOWLEDGEMENT';
+ await assertFails(setDoc(doc(db,'qmentumParticipations',id),participation('manager')));
+ await assertFails(setDoc(doc(db,'qmentumParticipations',id),{...participation('collector'),signature:'c'.repeat(64)}));
+ await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'qmentumUnits/unit-a/quarterlyAnalyses',analysisId),{reviewed:false}));
+ await assertFails(setDoc(doc(db,'qmentumParticipations',id),participation('collector')));
+});
+test('aprovação exige gestor diferente do autor, parecer e estado aguardando aprovação',async()=>{
+ await seedAnalysis();const id=analysisId+'_collector_SUGGESTION';await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'qmentumParticipations',id),{...participation('collector','SUGGESTION'),createdAt:new Date(),status:'AWAITING_APPROVAL'}));
+ const review={participationId:id,unitId:'unit-a',actorUid:'manager',decision:'APPROVE',reason:'Sugestão analisada e aprovada',status:'PENDING',createdAt:serverTimestamp()};
+ await assertFails(setDoc(doc(dbFor('collector'),'qmentumParticipationReviews',id),{...review,actorUid:'collector'}));
+ await assertSucceeds(setDoc(doc(dbFor('manager'),'qmentumParticipationReviews',id),review));
+ await assertFails(updateDoc(doc(dbFor('manager'),'qmentumParticipationReviews',id),{decision:'REJECT'}));
+});
+test('consulta de participações é limitada e não revela solicitações de outras pessoas',async()=>{
+ await seedAnalysis();await setDoc(doc(dbFor('collector'),'qmentumParticipations',analysisId+'_collector_ACKNOWLEDGEMENT'),participation('collector'));
+ const filters=[where('unitId','==','unit-a'),where('analysisId','==',analysisId)];
+ await assertSucceeds(getDocs(query(collection(dbFor('manager'),'qmentumParticipations'),...filters,limit(100))));
+ await assertFails(getDocs(query(collection(dbFor('reviewer'),'qmentumParticipations'),...filters,limit(100))));
+ await assertSucceeds(getDocs(query(collection(dbFor('collector'),'qmentumParticipations'),...filters,where('actorUid','==','collector'),limit(100))));
+});
 const make=(uid,overrides={})=>{const inputs=emptyInputs();inputs.counts.surgical=100;inputs.counts.techniqueChanges=2;return {schemaVersion:1,unitId:'unit-a',year:2025,month:1,period:'2025-01',version:1,status:'DRAFT',inputs,results:calculateMonth(inputs,defs,{inputVersion:1}),definitionVersion:1,referenceVersion:defs.referenceVersion,engineVersion:'qmentum-1',referenceDate:'2025-01-01',importHash:null,createdBy:uid,createdAt:serverTimestamp(),updatedBy:uid,updatedAt:serverTimestamp(),action:'SAVE',reason:'',reviewedBy:null,...overrides};};
 const commit=(db,data)=>{const batch=writeBatch(db);batch.set(doc(db,'qmentumUnits/unit-a/months/2025-01'),data);batch.set(doc(db,`qmentumUnits/unit-a/months/2025-01/history/${data.version}`),data);for(let group=0;group<12;group++)batch.set(doc(db,`qmentumUnits/unit-a/months/2025-01/validation/${data.version}_${group}`),{group,snapshot:data});return batch.commit();};
 test('collector cria competência e auditoria atomicamente e lê consulta limitada',async()=>{const db=dbFor('collector');await assertSucceeds(commit(db,make('collector')));assert.equal((await getDoc(doc(db,'qmentumUnits/unit-a/months/2025-01'))).data().inputs.counts.surgical,100);await assertSucceeds(getDocs(query(collection(db,'qmentumUnits/unit-a/months'),limit(12))));});
