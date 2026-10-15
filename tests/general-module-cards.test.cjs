@@ -249,7 +249,7 @@ for (const route of ['training']) {
     assert.ok(h.queries.length > 0);
     assert.doesNotMatch(h.content.innerHTML, /ainda não tem acesso/);
     assert.deepEqual(h.navigations, []);
-    if (route === 'training') assert.equal(h.ui.actionForm(route), '');
+    if (route === 'training') assert.match(h.ui.actionForm(route), /Gerenciar catálogo de treinamentos/);
   });
 }
 
