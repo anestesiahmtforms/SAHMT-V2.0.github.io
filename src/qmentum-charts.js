@@ -1,0 +1,23 @@
+import {percent,RESULT_LABELS,compareResults} from './qmentum-engine.js';
+export const escapeQ=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+export function monthlyChart(series,{title='Evolução mensal',target=null}={}) {
+ const points=series.map((s,i)=>({x:40+i*45,y:s.result?.ratio==null?null:185-s.result.ratio*150,result:s.result,month:s.month}));
+ const segments=[];let segment=[];
+ for(const p of points){if(p.y===null){if(segment.length)segments.push(segment);segment=[];}else segment.push(p);}if(segment.length)segments.push(segment);
+ return `<figure class="qm-chart"><figcaption>${escapeQ(title)}</figcaption><svg viewBox="0 0 575 225" role="img" aria-label="${escapeQ(title)}; lacunas representam dados ausentes"><path d="M40 30V185H545" fill="none" stroke="#6c8091"/><text x="2" y="35">100%</text><text x="12" y="188">0%</text>${target!==null?`<path d="M40 ${185-target*150}H545" stroke="#946515" stroke-dasharray="6 4"/><text x="45" y="${Math.max(20,180-target*150)}">Meta ${escapeQ(percent(target))}</text>`:''}${segments.map(group=>`<polyline fill="none" stroke="#127a80" stroke-width="3" points="${group.map(p=>`${p.x},${p.y}`).join(' ')}"/>`).join('')}${points.map(p=>`${p.y===null?'':`<circle tabindex="0" cx="${p.x}" cy="${p.y}" r="5" fill="${p.result.status==='VALID'?'#0b7563':'#a36912'}"><title>${MONTHS[p.month-1]}: ${percent(p.result.ratio)}; N=${p.result.N??'não informado'}; D=${p.result.D??'não informado'}; ${p.result.sourceMode}; definição ${p.result.definitionVersion}; meta ${percent(p.result.target)}; ${RESULT_LABELS[p.result.status]}</title></circle>`}<text x="${p.x}" y="210" text-anchor="middle">${MONTHS[p.month-1]}</text>`).join('')}</svg><small>Verde: revisado institucionalmente. Âmbar: informado ou provisório. Sem ponto: sem resultado.</small><details><summary>Valores do gráfico</summary><table><thead><tr><th>Mês</th><th>Resultado</th><th>N / D</th><th>Estado</th></tr></thead><tbody>${series.map(s=>`<tr><td>${MONTHS[s.month-1]}</td><td>${percent(s.result?.ratio)}</td><td>${s.result?.N??'—'} / ${s.result?.D??'—'}</td><td>${escapeQ(RESULT_LABELS[s.result?.status]||'Sem dados')}</td></tr>`).join('')}</tbody></table></details></figure>`;
+}
+export function performanceChart(current,previous) {
+ const comparison=compareResults(current,previous);
+ const target=current?.status==='VALID'&&current.targetValidated&&current.target!==null?current.target:null;
+ if(current?.status!=='VALID'||current.ratio===null||target===null&&!comparison)return '<section class="qm-chart"><h4>Performance</h4><p>Sem comparação válida. São necessários dados revisados e uma meta validada ou período anterior compatível.</p></section>';
+ const other=target??previous.ratio;
+ return `<figure class="qm-chart"><figcaption>Performance — ${target===null?'comparação histórica':'meta vigente'}</figcaption><svg viewBox="0 0 560 115" role="img" aria-label="Resultado ${percent(current.ratio)}; ${target===null?'anterior':'meta'} ${percent(other)}"><text x="0" y="20">Atual</text><rect x="95" y="5" width="${current.ratio*320}" height="25" fill="#127a80"/><text x="420" y="23">${percent(current.ratio)}</text><text x="0" y="65">${target===null?'Anterior':'Meta'}</text><rect x="95" y="47" width="${other*320}" height="25" fill="#956915"/><text x="420" y="65">${percent(other)}</text></svg><p>Atual: ${current.N}/${current.D}. ${target===null?`Anterior: ${previous.N}/${previous.D}. Variação: ${comparison.points.toLocaleString('pt-BR',{maximumFractionDigits:4})} p.p.`:`Meta: ${percent(target)}; origem ${escapeQ(current.targetSource)}.`}</p></figure>`;
+}
+export function resultCard(result){return `<strong>${percent(result?.ratio)}</strong><span>N ${result?.N??'—'} / D ${result?.D??'—'}</span><small>${escapeQ(RESULT_LABELS[result?.status]||'Sem dados')} · Meta ${percent(result?.target)}</small>`;}
+export function exportQmentumCsv(months,unitLabel) {
+ const rows=[['Unidade','Ano','Mês','Indicador','Numerador','Denominador','Razão','Estado','Fonte','Versão da definição','Versão da entrada','Meta','Meta validada','Legado']];
+ for(const month of months)for(const result of Object.values(month.results))rows.push([unitLabel,month.year,month.month,result.indicatorId,result.N,result.D,result.ratio,RESULT_LABELS[result.status],result.sourceMode,result.definitionVersion,month.version,result.target,result.targetValidated,month.inputs.legacyRates[result.indicatorId]?.value??null]);
+ const cell=value=>{const raw=String(value??'');return '"'+(/^[=+@-]/.test(raw)?"'"+raw:raw).replaceAll('"','""')+'"';};
+ return '\uFEFF'+rows.map(row=>row.map(cell).join(';')).join('\r\n');
+}

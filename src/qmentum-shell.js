@@ -1,0 +1,4 @@
+import {escapeQ} from './qmentum-charts.js';
+export function renderQmentumShell({baseUrl,displayName}) {
+ return `<div class="app-shell app-shell--qmentum"><header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${escapeQ(baseUrl)}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeQ(displayName)}</div><div class="sync-pill" id="outbox-status" role="status"></div></div><h2 class="events-header-operational">INDICADORES OBRIGATÓRIOS QMENTUM</h2></div></header><main class="main-content"><section class="module-view panel"><div id="module-content" class="module-content"><p role="status">Carregando acesso ao FA…</p></div><button class="secondary-button qm-home-button" data-route="home">HOME</button></section></main><footer class="app-footer">By Francisco Tadeu da Mota Albuquerque</footer></div>`;
+}

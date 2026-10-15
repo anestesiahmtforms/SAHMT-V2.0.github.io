@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "code": "QMENTUM_FA_LOCAL_VALIDATION",
+  "observedAt": "2026-10-15T20:43:59.764Z",
+  "projectId": "sahmt-17a16",
+  "databaseId": "(default)",
+  "unitName": "SAHMT",
+  "unitId": "sahmt",
+  "historyYear": 2026,
+  "sourceMonths": 6,
+  "sourceDivergences": 17,
+  "quarterlyJobsPreview": 36,
+  "quarterlyNoData": 2,
+  "tests": {
+    "module": 50,
+    "rules": 12,
+    "browserChecks": 96,
+    "viewports": 4,
+    "domainRegression": 957,
+    "serviceWorker": 6,
+    "rulesScope": 4
+  },
+  "buildPassed": true,
+  "externalAiCalls": 0,
+  "productionWrites": 0,
+  "published": false,
+  "backendInstalled": false,
+  "externalDependencies": [
+    "authorize-fa-rules-and-configuration",
+    "authorize-publication",
+    "authorize-historical-import",
+    "configure-verified-free-ai-and-evidence"
+  ]
+}

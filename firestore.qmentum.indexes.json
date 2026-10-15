@@ -1,0 +1,72 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "months",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "year",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "month",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "quarterlyAnalyses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "year",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "quarter",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "indicatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "generatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "months",
+      "fieldPath": "inputs",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "months",
+      "fieldPath": "results",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "history",
+      "fieldPath": "inputs",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "history",
+      "fieldPath": "results",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "cells",
+      "fieldPath": "cells",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "validation",
+      "fieldPath": "snapshot",
+      "indexes": []
+    }
+  ]
+}
