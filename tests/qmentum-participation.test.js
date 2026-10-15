@@ -64,3 +64,10 @@ test('revoked account, obsolete analysis, disabled module and self-approval prod
  }
  const h=harness(),id=h.add('SUGGESTION');h.c.qmProcessParticipation_(id,false);h.seed('qmentumParticipationReviews/'+id,{participationId:id,unitId:'unit-a',actorUid:'person-a',decision:'APPROVE',reason:'Tentativa de aprovação própria',status:'PENDING'});assert.throws(()=>h.c.qmProcessParticipation_(id,true));assert.equal([...h.store.keys()].filter(k=>k.startsWith('evaluationAwards/')).length,0);
 });
+test('regenerating the analysis in the same indicator and quarter does not add points',()=>{
+ const h=harness(),id=h.add('ACKNOWLEDGEMENT');h.c.qmProcessParticipation_(id,false);
+ const next='c'.repeat(64),analysis=h.store.get('qmentumUnits/unit-a/quarterlyAnalyses/'+analysisId),p=h.store.get('qmentumParticipations/'+id);
+ h.seed('qmentumUnits/unit-a/quarterlyAnalyses/'+next,{...analysis,id:next});const requestId=participationId(next,'person-a','ACKNOWLEDGEMENT');h.seed('qmentumParticipations/'+requestId,{...p,analysisId:next,status:'PENDING'});h.c.qmProcessParticipation_(requestId,false);
+ assert.equal([...h.store.entries()].filter(([k])=>k.startsWith('evaluationAwards/')).reduce((n,[,a])=>n+a.points,0),1);
+ assert.equal([...h.store.keys()].filter(k=>k.startsWith('evaluationLedger/')).length,1);
+});

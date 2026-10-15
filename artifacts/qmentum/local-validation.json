@@ -35,7 +35,7 @@
     "acknowledgementPoints": 1,
     "approvedSuggestionPoints": 2,
     "cumulativeTotal": 3,
-    "unitTests": 6,
+    "unitTests": 7,
     "rulesTests": 16,
     "browserChecks": 112,
     "livePointsTested": false
