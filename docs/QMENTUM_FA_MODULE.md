@@ -1,4 +1,4 @@
-# Indicadores obrigatórios QMENTUM — implementação local em FA
+# Indicadores obrigatórios QMENTUM — operação em FA
 
 ## Estado em 15/10/2026
 
@@ -7,7 +7,9 @@ Implementação anterior recuperada da outra worktree, sem modificá-la. O novo 
 
 Entrada: **Gestão → Coordenação Clínica → INDICADORES OBRIGATÓRIOS QMENTUM**. Não foi criado outro botão na Home. A pausa de Gestão/Desempenho para usuários comuns permanece. Inicialmente, a rota administrativa também exige administrador; os papéis específicos do QMENTUM continuam sendo conferidos independentemente pelas Rules. Ser administrador não cria concessão nem autoriza uma unidade automaticamente.
 
-**Instalação autorizada em 15/10/2026, mantida desligada:** quatro documentos de configuração, dois índices novos e três arquivos de backend foram instalados. O manifesto e os 24 demais arquivos Apps Script foram preservados; somente o ciclo existente recebeu um passo opcional de participação QMENTUM. Nenhum novo acionador foi instalado. IA e importação histórica permanecem desligadas. As Rules QMENTUM foram criadas/compiladas pelo serviço, mas sua ativação recebeu HTTP 400. Um controle com conteúdo idêntico às Rules anteriores foi aceito, preservando as permissões existentes. As variantes de reorganização e compactação também foram recusadas; não demonstraram uma correção e não foram incorporadas. A configuração continua `enabled=false`, e a publicação da PWA permanece suspensa. A versão 195 está preparada; não confundir testes em emulador com gravação real autenticada. Evidência sanitizada: `artifacts/qmentum/installation-state.json`. PR #42 contém o módulo e os testes.
+**Correção validada em 15/10/2026:** o serviço criava as regras, mas recusava o release com HTTP 400. A publicação foi aceita com HTTP 200 após transferir a validação completa das gravações mensais e definições para o backend confiável já existente. As leituras continuam diretamente no Firestore FA, sem lease, autenticação FB/FC ou chamada Apps Script para abrir o módulo. O código usa a mesma biblioteca determinística no navegador e no servidor. Não houve chamada de IA nessa investigação nem ativação de billing.
+
+Quatro documentos de configuração, dois índices e uma concessão administrativa foram instalados. O backend usa 29 arquivos e o manifesto foi preservado. O Worker existente ganhou apenas o relay de gravação QMENTUM; seus outros bindings, segredos e rotas foram preservados. As provas HTTP/HMAC reais recusaram uma identidade sintética inexistente e o replay, sem criar documentos. IA, importação histórica e acesso de usuários comuns permanecem desligados. O estado da instalação em cada conferência é registrado em `artifacts/qmentum/installation-state.json`; testes locais e publicação não substituem a conferência do primeiro lançamento real autenticado.
 
 ## Entrega e persistência
 
@@ -21,10 +23,10 @@ Namespace FA:
 | --- | --- |
 | `qmentumConfig/current` | habilitação e definição vigente; criação pelo operador |
 | `qmentumAccess/{uid}` | papel collector/reviewer/manager e unidades; cliente não concede acesso |
-| `qmentumDefinitions/{version}` | versões imutáveis e comprovantes de validação |
+| `qmentumDefinitions/{version}` | versões imutáveis; publicação validada pelo backend |
 | `qmentumUnits/{unit}/months/{AAAA-MM}` | entrada mensal única e resultados |
 | `.../history/{version}` | cópia imutável no mesmo commit |
-| `.../validation/{version}_{grupo}` | 12 comprovantes atômicos de validação |
+| `qmentumWriteRequests/{uid}_{hash}` | comando imutável, confirmação idempotente e auditoria |
 | `qmentumUnits/{unit}/imports/{hash}/cells/{parte}` | lote e proveniência em partes |
 | `qmentumUnits/{unit}/quarterlyAnalyses/{signature}` | análise gerada, versões e revisão |
 | `qmentumQuarterlyJobs/{id}` | fila privada do backend |
@@ -32,11 +34,15 @@ Namespace FA:
 | `qmentumQuarterlyQuota/{dia}` | reserva durável de chamadas gratuitas |
 | `qmentumAnalysisReviewRequests/{id}` | pedido imutável; conclusão exclusivamente pelo backend |
 
-Um salvamento mensal usa 14 documentos: mês, histórico e 12 comprovantes. Essa distribuição respeitou, nos testes, os limites de expressões e acessos das Rules. N/D, razão, estado e versões essenciais são validados nas Rules. Metadados derivados recebidos do cliente **não são certificados**: repositório, UI e backend recalculam a partir das entradas e definições imutáveis antes de utilizá-los. Teste específico comprova descarte de meta/origem/pendência adulteradas. Definições clínicas aprovadas significam validação institucional, não acreditação comprovada.
+Um salvamento usa quatro gravações: um comando do navegador e, no commit confiável, mês, histórico e confirmação do comando. Substitui as 14 gravações anteriores. O servidor revalida perfil, concessão, unidade, configuração, definição vigente, entradas, calendário, aritmética, estado e versão. Todas as contagens e indicadores são validados pelo mesmo motor dos testes. As precondições de perfil/concessão/configuração/definição impedem a gravação caso a autorização ou os dados mudem entre leitura e commit. Clientes não escrevem diretamente nos meses, históricos, definições ou configuração.
 
-`firestore.qmentum.rules` é a composição local do arquivo FA atual com os blocos exclusivos QMENTUM. O gerador localiza funções por coleção, sem ampliar a árvore global ou abrir curingas recursivos. Preserva os blocos de Ocorrências, Gestão, Desempenho e operações atuais. **Antes de publicar**, recompor sobre o release FA realmente instalado, preservando também o gate de consolidação que existe no release remoto. Não publicar cegamente um arquivo que contenha apenas o fragmento QMENTUM.
+A identidade do relay é comprovada pela leitura do comando com o próprio token FA, aplicada pelas Rules, antes de interpretar o UID do token. O Worker encaminha apenas identificadores do comando; o backend relê os dados e calcula os resultados, sem aceitar pontos, autoria ou resultados fornecidos pelo navegador. HMAC de entrada e saída, validade de 60 segundos, nonce de uso único, ScriptLock e ID determinístico impedem alteração/replay/duplicação. Timeout preserva o rascunho e permite conferir a mesma solicitação. Nenhum novo acionador é necessário.
 
-`firestore.qmentum.indexes.json` contém os índices adicionais e isenções de mapas grandes. Mesclar com os índices FA atuais; não remover índices dos outros módulos. As consultas são limitadas por unidade/ano (12 meses), histórico (30 versões) e análises (10 versões); nenhum listener global é criado.
+Definições imutáveis são reutilizadas em memória, mas autorização e configuração continuam sendo consultadas no servidor. Troca de usuário invalida o cache. Falha ao trocar unidade/competência conserva o escopo e rascunho anteriores; não permite gravar os valores no destino que falhou. Definições clínicas aprovadas representam validação institucional, não acreditação comprovada.
+
+`firestore.qmentum.rules` é a composição local do arquivo FA atual com os blocos exclusivos QMENTUM. O gerador localiza funções por coleção e remove quatro validadores legados comprovadamente sem chamadas, sem alterar qualquer condição allow existente. Novas referências a esses validadores interrompem a preparação. Não há curinga permissivo. Preserva os blocos de Ocorrências, Gestão, Desempenho e operações atuais. **Antes de publicar**, recompor sobre o release FA realmente instalado, preservando também o gate de consolidação que existe no release remoto. Não publicar cegamente um arquivo que contenha apenas o fragmento QMENTUM.
+
+`firestore.qmentum.indexes.json` contém somente os dois índices adicionais. Não aplica isenções automáticas a grupos genéricos como months/history. Mesclar com os índices FA atuais; não remover índices dos outros módulos. As consultas são limitadas por unidade/ano (12 meses), histórico (30 versões) e análises (10 versões); nenhum listener global é criado.
 
 Para recompor sobre uma cópia privada do release real, sem substituir o arquivo-base do repositório: `node scripts/build-qmentum-rules.mjs --base "CAMINHO_DA_COPIA_REAL_FA.rules" --out "CAMINHO_DA_COMPOSICAO_PRIVADA.rules"`. O comando apenas gera o arquivo; não publica.
 
@@ -66,7 +72,7 @@ Esse comando é exclusivamente local. O hash conhecido recebe 2026; atribuição
 
 `src/qmentum-quarterly.js` calcula trimestres civis em America/Sao_Paulo. A prévia histórica produziu **36 tarefas**, das quais duas têm estado `NO_DATA`, sem chamada clínica inútil. Dados parciais e taxas informadas sem N/D não são convertidos em uma taxa trimestral falsa. Mudança em outro indicador do mesmo documento não regenera todos os indicadores: a assinatura depende dos dados relevantes, mantendo versões de origem na auditoria.
 
-`server/qmentum-quarterly-worker.js` oferece executor com store transacional injetável e adaptador Gemini. `apps-script-v2/QmentumCore.gs` é gerado do mesmo motor por `build-qmentum-backend.mjs`; `QmentumQuarterly.gs` é o executor concreto para o Apps Script operacional existente. Ambos estão **somente locais**. O manifesto existente não foi alterado.
+`server/qmentum-quarterly-worker.js` oferece executor com store transacional injetável e adaptador Gemini. `apps-script-v2/QmentumCore.gs` é gerado do mesmo motor por `build-qmentum-backend.mjs`; `QmentumQuarterly.gs` é o executor concreto para o Apps Script operacional existente. O backend está instalado, com IA desligada. O manifesto existente não foi alterado.
 
 O processamento tem fila persistente, debounce de dois minutos, lock, reserva diária, no máximo seis chamadas/dia, duas tarefas por ciclo, três tentativas por tarefa, backoff e CAS. Verifica os dados antes e depois da IA e usa precondições dos meses existentes/ausentes ao publicar. Não publica uma resposta antiga como atual. Não há fallback pago ou template rotulado como IA. O resumo mensal é identificado como determinístico.
 
@@ -118,7 +124,7 @@ Ordem após autorização específica:
 5. Se a IA for desejada, confirmar free tier, billing desligado, termos e modelo; cadastrar somente a chave privada, evidências revisadas e prova com validade. Fazer uma chamada real limitada. Só então instalar o acionador horário.
 6. Publicar o build aprovado e verificar a versão servida. A liberação a usuários comuns permanece uma decisão separada.
 
-**Reversão:** desabilitar `qmentumConfig/current.enabled`; executar `desativarAgendadorQmentumV1()` para bloquear IA e remover somente seu acionador; retirar o acesso ao módulo na publicação seguinte. Preservar entradas, históricos, fontes e versões. Restaurar Rules/fonte anteriores somente após conferir o delta; não apagar módulos atuais nem reabrir FB/FC.
+**Reversão:** desabilitar `qmentumConfig/current.enabled` primeiro, interrompendo novos comandos e leituras QMENTUM; desabilitar `QMENTUM_WRITE_ENABLED` no Worker e nas propriedades Apps Script. O operador pode usar o canal de configuração com HMAC separado, que modifica somente esse gate e exige o módulo desligado para reativação; executar `desativarAgendadorQmentumV1()` para bloquear IA e remover somente seu acionador; retirar o acesso ao módulo na publicação seguinte. Preservar entradas, históricos, fontes e versões. Restaurar Rules/fonte anteriores somente após conferir o delta; não apagar módulos atuais nem reabrir FB/FC.
 
 ## Ciência e sugestões da análise crítica
 
@@ -133,3 +139,9 @@ Ordem após autorização específica:
 - Gestão/Desempenho continuam inativos para usuários comuns nesta liberação. A regra de pontuação fica preparada para os participantes que receberem acesso ao módulo futuramente.
 
 Recursos mantidos no Spark: um banco FA existente, nenhum Storage pago, Cloud Function, TTL, banco adicional ou backup gerenciado. O original XLSX fica em arquivo/Drive existente, fora de documento Firestore único. Confirmar os limites totais atuais antes de produção: https://firebase.google.com/docs/firestore/quotas e https://firebase.google.com/docs/firestore/manage-data/transactions .
+
+## Canal de gravação
+
+`src/qmentum-command.js` cria o comando privado e chama `/v1/qmentum/write` no mesmo domínio do relay operacional. `worker-management-auth/qmentum-write-relay.js` aplica origem, autenticação FA e admissão no Durable Object existente. `apps-script-v2/QmentumWrite.gs` relê e valida os documentos FA e grava por CAS. O segredo existente `OPERATIONAL_SHEETS_HMAC_SECRET`/`SAHMT_OPERATIONAL_PUSH_HMAC_SECRET` é reutilizado com domínio criptográfico exclusivo, sem novo segredo no frontend ou repositório. O endpoint da PWA é derivado de `VITE_OPERATIONAL_SHEETS_ENDPOINT`. O manifesto mantém os escopos já autorizados.
+
+A configuração privada do transporte usa outro domínio HMAC (`SAHMT_QMENTUM_CONFIG_V1`); o relay de usuário não consegue assinar essa operação. Esse canal só altera `QMENTUM_WRITE_ENABLED`, nunca usuários, grants, Rules, IAM ou billing. O gate `qmentumConfig/current.enabled` continua independente. Todos os gates locais permanecem desligados por padrão no Wrangler.

@@ -188,68 +188,10 @@ service cloud.firestore {
 
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
-    function validSchedulePositionAt(positions, index) {
-      return positions.size() <= index || (
-        positions[index] is map && positions[index].keys().hasAll(['position', 'sigla']) &&
-        positions[index].keys().hasOnly(['position', 'sigla']) &&
-        positions[index].position == index + 1 &&
-        positions[index].sigla is string && positions[index].sigla.size() <= 30 &&
-        positions[index].sigla.matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')
-      );
-    }
-    function validSchedulePositions(positions) {
-      return positions is list && positions.size() > 0 && positions.size() <= 30 &&
-        validSchedulePositionAt(positions, 0) &&
-        validSchedulePositionAt(positions, 1) &&
-        validSchedulePositionAt(positions, 2) &&
-        validSchedulePositionAt(positions, 3) &&
-        validSchedulePositionAt(positions, 4) &&
-        validSchedulePositionAt(positions, 5) &&
-        validSchedulePositionAt(positions, 6) &&
-        validSchedulePositionAt(positions, 7) &&
-        validSchedulePositionAt(positions, 8) &&
-        validSchedulePositionAt(positions, 9) &&
-        validSchedulePositionAt(positions, 10) &&
-        validSchedulePositionAt(positions, 11) &&
-        validSchedulePositionAt(positions, 12) &&
-        validSchedulePositionAt(positions, 13) &&
-        validSchedulePositionAt(positions, 14) &&
-        validSchedulePositionAt(positions, 15) &&
-        validSchedulePositionAt(positions, 16) &&
-        validSchedulePositionAt(positions, 17) &&
-        validSchedulePositionAt(positions, 18) &&
-        validSchedulePositionAt(positions, 19) &&
-        validSchedulePositionAt(positions, 20) &&
-        validSchedulePositionAt(positions, 21) &&
-        validSchedulePositionAt(positions, 22) &&
-        validSchedulePositionAt(positions, 23) &&
-        validSchedulePositionAt(positions, 24) &&
-        validSchedulePositionAt(positions, 25) &&
-        validSchedulePositionAt(positions, 26) &&
-        validSchedulePositionAt(positions, 27) &&
-        validSchedulePositionAt(positions, 28) &&
-        validSchedulePositionAt(positions, 29);
-    }
-    function validNewScheduleDay(scheduleId) {
-      let data = request.resource.data;
-      return can('scheduleWrite') && validIsoDay(scheduleId) &&
-        data.keys().hasAll(['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
-        data.keys().hasOnly(['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
-        data.id == scheduleId && data.date == scheduleId && validSchedulePositions(data.positions) &&
-        data.highlights is map && data.highlights.keys().hasAll(['siglas', 'events']) &&
-        data.highlights.keys().hasOnly(['siglas', 'events']) &&
-        data.highlights.siglas == [] && data.highlights.events == [] && data.version == 1 &&
-        data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
-        data.createdAt == request.time && data.updatedAt == request.time;
-    }
-    function validSchedulePositionsUpdate(scheduleId) {
-      let data = request.resource.data;
-      return can('scheduleWrite') && updateActorIsSelf() && validIsoDay(scheduleId) &&
-        data.diff(resource.data).affectedKeys().hasOnly(['positions', 'updatedByUid', 'updatedAt', 'version']) &&
-        data.id == scheduleId && data.date == scheduleId &&
-        validSchedulePositions(data.positions) &&
-        data.version == resource.data.version + 1 && data.updatedAt == request.time;
-    }
+
+
+
+
 
     function activeManagementArea(areaId) {
       let path = /databases/$(database)/documents/managementAreas/$(areaId);
@@ -1647,209 +1589,56 @@ service cloud.firestore {
 
 // BEGIN QMENTUM_FA
     match /qmentumAccess/{uid} {
-function qmentumAccess_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
- allow get: if qmentumAccess_qmSigned() && request.auth.uid == uid; allow list,write: if false; }
+function qmentumAccess_0_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+ allow get: if qmentumAccess_0_qmSigned() && request.auth.uid == uid; allow list,write: if false; }
     match /qmentumConfig/current {
-function qmentumConfig_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
-function qmentumConfig_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
-function qmentumConfig_qmManager() { return qmentumConfig_qmMember() && qmentumConfig_qmAccess().role == 'manager'; }
-function qmentumConfig_qmMember() { return qmentumConfig_qmSigned() && qmentumConfig_qmAccess().active == true && qmentumConfig_qmAccess().uid == request.auth.uid && qmentumConfig_qmAccess().role in ['collector','reviewer','manager'] && qmentumConfig_qmEnabled(); }
-function qmentumConfig_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
-
-      allow get: if qmentumConfig_qmSigned() && qmentumConfig_qmAccess().active == true;
-      allow update: if qmentumConfig_qmManager() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['definitionVersion']) &&
-        request.resource.data.definitionVersion == resource.data.definitionVersion+1 &&
-        getAfter(/databases/$(database)/documents/qmentumDefinitions/$(string(request.resource.data.definitionVersion))).data.createdAt == request.time;
-      allow create,delete,list: if false;
-    }
+function qmentumConfig_1_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+function qmentumConfig_1_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
+ allow get: if qmentumConfig_1_qmSigned() && qmentumConfig_1_qmAccess().active == true && qmentumConfig_1_qmAccess().uid == request.auth.uid;allow list,write: if false; }
     match /qmentumDefinitions/{version} {
-function qmentumDefinitions_qmMember() { return qmentumDefinitions_qmSigned() && qmentumDefinitions_qmAccess().active == true && qmentumDefinitions_qmAccess().uid == request.auth.uid && qmentumDefinitions_qmAccess().role in ['collector','reviewer','manager'] && qmentumDefinitions_qmEnabled(); }
-function qmentumDefinitions_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
-function qmentumDefinitions_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
-function qmentumDefinitions_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
-function qmentumDefinitions_qmManager() { return qmentumDefinitions_qmMember() && qmentumDefinitions_qmAccess().role == 'manager'; }
-function qmentumDefinitions_qmDefinition(d,version) {
-      return d.keys().hasOnly(['version','validFrom','reason','referenceVersion','items','createdBy','createdAt']) &&
-        d.version is int && d.version > 0 && string(d.version) == version && d.validFrom.matches('^[0-9]{4}-(0[1-9]|1[0-2])$') &&
-        d.reason is string && d.reason.size() >= 8 && d.reason.size() <= 1000 && d.referenceVersion == 'references-2026-10-14' &&
-        d.items.keys().hasOnly(['QM01','QM02','QM03','QM04','QM05','QM06','QM07','QM08','QM09','QM10','QM11','QM12','QM13','QM14','QM15','QM16','QM17','QM18']) && d.items.keys().hasAll(['QM01','QM02','QM03','QM04','QM05','QM06','QM07','QM08','QM09','QM10','QM11','QM12','QM13','QM14','QM15','QM16','QM17','QM18']) &&
-        d.createdBy == request.auth.uid && d.createdAt == request.time &&
-        getAfter(/databases/$(database)/documents/qmentumDefinitions/$(version)/validation/0).data.snapshot == d && getAfter(/databases/$(database)/documents/qmentumDefinitions/$(version)/validation/1).data.snapshot == d && getAfter(/databases/$(database)/documents/qmentumDefinitions/$(version)/validation/2).data.snapshot == d;
-    }
-function qmentumDefinitions_qmDefinitionGroup0(d) { return qmentumDefinitions_qmDefinitionItem(d.items.QM01,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM02,'general') && qmentumDefinitions_qmDefinitionItem(d.items.QM03,'toxicity') && qmentumDefinitions_qmDefinitionItem(d.items.QM04,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM05,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM06,'surgical'); }
-function qmentumDefinitions_qmDefinitionItem(d,population) {
-      return d.keys().hasOnly(['approved','criterion','target','targetSource','targetValidated','populationKey']) &&
-        d.approved is bool && d.targetValidated is bool && qmentumDefinitions_qmRate(d.target) &&
-        d.criterion is string && d.criterion.size() <= 1500 && (!d.approved || d.criterion.size() >= 8) &&
-        d.targetSource in ['NONE','WORKSHEET','INSTITUTION'] && d.populationKey == population && (!d.targetValidated || d.target != null);
-    }
-function qmentumDefinitions_qmRate(n) { return n == null || n is number && n >= 0 && n <= 1; }
-function qmentumDefinitions_qmDefinitionGroup1(d) { return qmentumDefinitions_qmDefinitionItem(d.items.QM07,'diabetes') && qmentumDefinitions_qmDefinitionItem(d.items.QM08,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM09,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM10,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM11,'spinal') && qmentumDefinitions_qmDefinitionItem(d.items.QM12,'electiveEligible'); }
-function qmentumDefinitions_qmDefinitionGroup2(d) { return qmentumDefinitions_qmDefinitionItem(d.items.QM13,'riskEligible') && qmentumDefinitions_qmDefinitionItem(d.items.QM14,'surgical') && qmentumDefinitions_qmDefinitionItem(d.items.QM15,'eligible48') && qmentumDefinitions_qmDefinitionItem(d.items.QM16,'eligible30') && qmentumDefinitions_qmDefinitionItem(d.items.QM17,'antibioticEligible') && qmentumDefinitions_qmDefinitionItem(d.items.QM18,'safeSurgeryEligible'); }
-
-      allow get: if qmentumDefinitions_qmMember(); allow list,update,delete: if false;
-      allow create: if qmentumDefinitions_qmManager() && qmentumDefinitions_qmDefinition(request.resource.data,version) &&
-        request.resource.data.version == get(/databases/$(database)/documents/qmentumConfig/current).data.definitionVersion+1 &&
-        getAfter(/databases/$(database)/documents/qmentumConfig/current).data.definitionVersion == request.resource.data.version;
-      match /validation/{group} {
-        allow read,update,delete: if false;
-        allow create: if qmentumDefinitions_qmManager() && group in ['0','1','2'] && request.resource.data.keys().hasOnly(['snapshot']) &&
-          !exists(/databases/$(database)/documents/qmentumDefinitions/$(version)) &&
-          request.resource.data.snapshot == getAfter(/databases/$(database)/documents/qmentumDefinitions/$(version)).data &&
-          (group == '0' ? qmentumDefinitions_qmDefinitionGroup0(request.resource.data.snapshot) : group == '1' ? qmentumDefinitions_qmDefinitionGroup1(request.resource.data.snapshot) : qmentumDefinitions_qmDefinitionGroup2(request.resource.data.snapshot));
-      }
-    }
+function qmentumDefinitions_2_qmMember() { let a=qmentumDefinitions_2_qmAccess();return qmentumDefinitions_2_qmSigned() && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] && qmentumDefinitions_2_qmEnabled(); }
+function qmentumDefinitions_2_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+function qmentumDefinitions_2_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
+function qmentumDefinitions_2_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
+ allow get: if qmentumDefinitions_2_qmMember();allow list,write: if false; }
     match /qmentumUnits/{unit} {
-function qmentumUnits_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
-function qmentumUnits_qmMember() { return qmentumUnits_qmSigned() && qmentumUnits_qmAccess().active == true && qmentumUnits_qmAccess().uid == request.auth.uid && qmentumUnits_qmAccess().role in ['collector','reviewer','manager'] && qmentumUnits_qmEnabled(); }
-function qmentumUnits_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
-function qmentumUnits_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
-function qmentumUnits_qmUnit(unit) { return qmentumUnits_qmMember() && unit in qmentumUnits_qmAccess().units && get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true; }
-function qmentumUnits_qmManager() { return qmentumUnits_qmMember() && qmentumUnits_qmAccess().role == 'manager'; }
-function qmentumUnits_qmInputs(d) {
-      return d.keys().hasOnly(['counts','notApplicable','origins','informedRates','legacyRates','attribution48','attribution30','uniqueEventProceduresConfirmed','techniqueUniverseConfirmed','comment']) && d.keys().hasAll(['counts','notApplicable','origins','informedRates','legacyRates','attribution48','attribution30','uniqueEventProceduresConfirmed','techniqueUniverseConfirmed','comment']) &&
-        d.counts.keys().hasOnly(['general','sedation','regional','spinal','epidural','local','support','surgical','diabetes','toxicity','eventEpisodes','eventProcedures','techniqueChanges','difficultAirway','effectiveToxicity','unplannedIcu','ponv','acutePain','effectiveGlucose','hypoglycemia','hypothermia','cardiacArrest','headache','electiveConsults','riskAssessed','deaths48','deaths30','antibioticCompliant','safeSurgeryCompliant','electiveEligible','riskEligible','eligible48','eligible30','antibioticEligible','safeSurgeryEligible','followed48','pending48','followed30','pending30']) && d.counts.keys().hasAll(['general','sedation','regional','spinal','epidural','local','support','surgical','diabetes','toxicity','eventEpisodes','eventProcedures','techniqueChanges','difficultAirway','effectiveToxicity','unplannedIcu','ponv','acutePain','effectiveGlucose','hypoglycemia','hypothermia','cardiacArrest','headache','electiveConsults','riskAssessed','deaths48','deaths30','antibioticCompliant','safeSurgeryCompliant','electiveEligible','riskEligible','eligible48','eligible30','antibioticEligible','safeSurgeryEligible','followed48','pending48','followed30','pending30']) &&
-        d.origins.keys().hasOnly(['general','sedation','regional','spinal','epidural','local','support','surgical','diabetes','toxicity','eventEpisodes','eventProcedures','techniqueChanges','difficultAirway','effectiveToxicity','unplannedIcu','ponv','acutePain','effectiveGlucose','hypoglycemia','hypothermia','cardiacArrest','headache','electiveConsults','riskAssessed','deaths48','deaths30','antibioticCompliant','safeSurgeryCompliant','electiveEligible','riskEligible','eligible48','eligible30','antibioticEligible','safeSurgeryEligible','followed48','pending48','followed30','pending30']) && d.origins.keys().hasAll(['general','sedation','regional','spinal','epidural','local','support','surgical','diabetes','toxicity','eventEpisodes','eventProcedures','techniqueChanges','difficultAirway','effectiveToxicity','unplannedIcu','ponv','acutePain','effectiveGlucose','hypoglycemia','hypothermia','cardiacArrest','headache','electiveConsults','riskAssessed','deaths48','deaths30','antibioticCompliant','safeSurgeryCompliant','electiveEligible','riskEligible','eligible48','eligible30','antibioticEligible','safeSurgeryEligible','followed48','pending48','followed30','pending30']) &&
-        d.origins.values().toSet().hasOnly(['MANUAL','UNINFORMED','IMPORTED']) &&
-        d.notApplicable is list && d.notApplicable.size() <= 39 && d.notApplicable.hasOnly(['general','sedation','regional','spinal','epidural','local','support','surgical','diabetes','toxicity','eventEpisodes','eventProcedures','techniqueChanges','difficultAirway','effectiveToxicity','unplannedIcu','ponv','acutePain','effectiveGlucose','hypoglycemia','hypothermia','cardiacArrest','headache','electiveConsults','riskAssessed','deaths48','deaths30','antibioticCompliant','safeSurgeryCompliant','electiveEligible','riskEligible','eligible48','eligible30','antibioticEligible','safeSurgeryEligible','followed48','pending48','followed30','pending30']) &&
-        d.informedRates.keys().hasOnly(['QM01','QM02','QM03','QM04','QM05','QM06','QM07','QM08','QM09','QM10','QM11','QM12','QM13','QM14','QM15','QM16','QM17','QM18']) && d.informedRates.keys().hasAll(['QM01','QM02','QM03','QM04','QM05','QM06','QM07','QM08','QM09','QM10','QM11','QM12','QM13','QM14','QM15','QM16','QM17','QM18']) &&
-        d.legacyRates is map && d.legacyRates.keys().hasOnly(['QM01','QM02','QM03','QM04','QM05','QM06','QM07','QM08','QM09','QM10','QM11','QM12','QM13','QM14','QM15','QM16','QM17','QM18']) &&
-        d.attribution48 is bool && d.attribution30 is bool && d.uniqueEventProceduresConfirmed is bool && d.techniqueUniverseConfirmed is bool &&
-        d.comment is string && d.comment.size() <= 2000;
-    }
-function qmentumUnits_qmRates(d) { return qmentumUnits_qmRate(d.informedRates.QM01) && qmentumUnits_qmRate(d.informedRates.QM02) && qmentumUnits_qmRate(d.informedRates.QM03) && qmentumUnits_qmRate(d.informedRates.QM04) && qmentumUnits_qmRate(d.informedRates.QM05) && qmentumUnits_qmRate(d.informedRates.QM06) && qmentumUnits_qmRate(d.informedRates.QM07) && qmentumUnits_qmRate(d.informedRates.QM08) && qmentumUnits_qmRate(d.informedRates.QM09) && qmentumUnits_qmRate(d.informedRates.QM10) && qmentumUnits_qmRate(d.informedRates.QM11) && qmentumUnits_qmRate(d.informedRates.QM12) && qmentumUnits_qmRate(d.informedRates.QM13) && qmentumUnits_qmRate(d.informedRates.QM14) && qmentumUnits_qmRate(d.informedRates.QM15) && qmentumUnits_qmRate(d.informedRates.QM16) && qmentumUnits_qmRate(d.informedRates.QM17) && qmentumUnits_qmRate(d.informedRates.QM18); }
-function qmentumUnits_qmRate(n) { return n == null || n is number && n >= 0 && n <= 1; }
-function qmentumUnits_qmInputNumbers(d) { return qmentumUnits_qmCount(d.counts.general) && qmentumUnits_qmCount(d.counts.sedation) && qmentumUnits_qmCount(d.counts.regional) && qmentumUnits_qmCount(d.counts.spinal) && qmentumUnits_qmCount(d.counts.epidural) && qmentumUnits_qmCount(d.counts.local) && qmentumUnits_qmCount(d.counts.support) && qmentumUnits_qmCount(d.counts.surgical) && qmentumUnits_qmCount(d.counts.diabetes) && qmentumUnits_qmCount(d.counts.toxicity) && qmentumUnits_qmCount(d.counts.eventEpisodes) && qmentumUnits_qmCount(d.counts.eventProcedures) && qmentumUnits_qmCount(d.counts.techniqueChanges) && qmentumUnits_qmCount(d.counts.difficultAirway) && qmentumUnits_qmCount(d.counts.effectiveToxicity) && qmentumUnits_qmCount(d.counts.unplannedIcu) && qmentumUnits_qmCount(d.counts.ponv) && qmentumUnits_qmCount(d.counts.acutePain) && qmentumUnits_qmCount(d.counts.effectiveGlucose) && qmentumUnits_qmCount(d.counts.hypoglycemia); }
-function qmentumUnits_qmCount(n) { return n == null || n is int && n >= 0 && n <= 10000000; }
-function qmentumUnits_qmAuditNumbers(d) { return qmentumUnits_qmCount(d.counts.hypothermia) && qmentumUnits_qmCount(d.counts.cardiacArrest) && qmentumUnits_qmCount(d.counts.headache) && qmentumUnits_qmCount(d.counts.electiveConsults) && qmentumUnits_qmCount(d.counts.riskAssessed) && qmentumUnits_qmCount(d.counts.deaths48) && qmentumUnits_qmCount(d.counts.deaths30) && qmentumUnits_qmCount(d.counts.antibioticCompliant) && qmentumUnits_qmCount(d.counts.safeSurgeryCompliant) && qmentumUnits_qmCount(d.counts.electiveEligible) && qmentumUnits_qmCount(d.counts.riskEligible) && qmentumUnits_qmCount(d.counts.eligible48) && qmentumUnits_qmCount(d.counts.eligible30) && qmentumUnits_qmCount(d.counts.antibioticEligible) && qmentumUnits_qmCount(d.counts.safeSurgeryEligible) && qmentumUnits_qmCount(d.counts.followed48) && qmentumUnits_qmCount(d.counts.pending48) && qmentumUnits_qmCount(d.counts.followed30) && qmentumUnits_qmCount(d.counts.pending30); }
-function qmentumUnits_qmResults0(d) { return qmentumUnits_qmResult(d,'QM01','techniqueChanges','surgical',false) && qmentumUnits_qmResult(d,'QM02','difficultAirway','general',false); }
-function qmentumUnits_qmResult(d,id,nKey,dKey,complement) {
-      let r=d.results[id]; let n=d.inputs.counts[nKey]; let den=d.inputs.counts[dKey];
-      let status=qmentumUnits_qmStatus(d,id,nKey,dKey);
-      let ratio=status == 'INFORMED' ? d.inputs.informedRates[id] :
-        status in ['VALID','PROVISIONAL'] && n != null && den != null && den > 0 && (id != 'QM14' || d.inputs.uniqueEventProceduresConfirmed) ?
-          (complement ? 1.0 - n * 1.0 / den : n * 1.0 / den) : null;
-      return r.indicatorId == id && r.definitionVersion == d.definitionVersion && r.inputVersion == d.version &&
-        r.N == n && r.D == den && r.status == status &&
-        (!(nKey in d.inputs.notApplicable) || n == null) && (!(dKey in d.inputs.notApplicable) || den == null) && r.ratio == ratio;
-    }
-function qmentumUnits_qmStatus(d,id,nKey,dKey) {
-      let n=d.inputs.counts[nKey]; let den=d.inputs.counts[dKey];
-      let cfg=get(/databases/$(database)/documents/qmentumDefinitions/$(string(d.definitionVersion))).data.items[id];
-      return n != null && den != null && n > den ? 'INCONSISTENT' :
-        nKey in d.inputs.notApplicable || dKey in d.inputs.notApplicable ? 'NOT_APPLICABLE' :
-        n == null || den == null ? (d.inputs.informedRates[id] == null ? 'PENDING' : 'INFORMED') :
-        den == 0 ? 'NOT_APPLICABLE' : qmentumUnits_qmFollowupInvalid(d.inputs,id) ? 'INCONSISTENT' :
-        !qmentumUnits_qmFollowup(d.inputs,id) ? 'FOLLOWUP_PENDING' :
-        id == 'QM14' && !d.inputs.uniqueEventProceduresConfirmed ? 'PROVISIONAL' :
-        cfg.approved ? 'VALID' : 'PROVISIONAL';
-    }
-function qmentumUnits_qmFollowup(i,id) {
-      return id == 'QM15' ? i.counts.pending48 == 0 && i.counts.followed48 == i.counts.eligible48 && i.attribution48 :
-        id == 'QM16' ? i.counts.pending30 == 0 && i.counts.followed30 == i.counts.eligible30 && i.attribution30 : true;
-    }
-function qmentumUnits_qmFollowupInvalid(i,id) {
-      return id == 'QM15' ? i.counts.followed48 != null && i.counts.pending48 != null && (i.counts.followed48+i.counts.pending48 != i.counts.eligible48 || i.counts.deaths48 > i.counts.followed48) :
-        id == 'QM16' ? i.counts.followed30 != null && i.counts.pending30 != null && (i.counts.followed30+i.counts.pending30 != i.counts.eligible30 || i.counts.deaths30 > i.counts.followed30) : false;
-    }
-function qmentumUnits_qmResults1(d) { return qmentumUnits_qmResult(d,'QM03','effectiveToxicity','toxicity',false) && qmentumUnits_qmResult(d,'QM04','unplannedIcu','surgical',false); }
-function qmentumUnits_qmResults2(d) { return qmentumUnits_qmResult(d,'QM05','ponv','surgical',false) && qmentumUnits_qmResult(d,'QM06','acutePain','surgical',false); }
-function qmentumUnits_qmResults3(d) { return qmentumUnits_qmResult(d,'QM07','effectiveGlucose','diabetes',false) && qmentumUnits_qmResult(d,'QM08','hypoglycemia','surgical',false); }
-function qmentumUnits_qmResults4(d) { return qmentumUnits_qmResult(d,'QM09','hypothermia','surgical',false) && qmentumUnits_qmResult(d,'QM10','cardiacArrest','surgical',false); }
-function qmentumUnits_qmResults5(d) { return qmentumUnits_qmResult(d,'QM11','headache','spinal',true) && qmentumUnits_qmResult(d,'QM12','electiveConsults','electiveEligible',false); }
-function qmentumUnits_qmResults6(d) { return qmentumUnits_qmResult(d,'QM13','riskAssessed','riskEligible',false) && qmentumUnits_qmResult(d,'QM14','eventProcedures','surgical',true); }
-function qmentumUnits_qmResults7(d) { return qmentumUnits_qmResult(d,'QM15','deaths48','eligible48',false) && qmentumUnits_qmResult(d,'QM16','deaths30','eligible30',false); }
-function qmentumUnits_qmResults8(d) { return qmentumUnits_qmResult(d,'QM17','antibioticCompliant','antibioticEligible',false) && qmentumUnits_qmResult(d,'QM18','safeSurgeryCompliant','safeSurgeryEligible',false); }
-function qmentumUnits_qmChildren(d,unit,period,group) {
-      let base=(group-9)*3;
-      return getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/validation/$(string(d.version)+'_'+string(base))).data.snapshot == d &&
-        getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/validation/$(string(d.version)+'_'+string(base+1))).data.snapshot == d &&
-        getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/validation/$(string(d.version)+'_'+string(base+2))).data.snapshot == d;
-    }
-function qmentumUnits_qmMonth(d,unit,period) {
-      return d.keys().hasOnly(['schemaVersion','unitId','year','month','period','version','status','inputs','results','definitionVersion','referenceVersion','engineVersion','referenceDate','importHash','createdBy','createdAt','updatedBy','updatedAt','action','reason','reviewedBy']) && d.keys().hasAll(['schemaVersion','unitId','year','month','period','version','status','inputs','results','definitionVersion','referenceVersion','engineVersion','referenceDate','importHash','createdBy','createdAt','updatedBy','updatedAt','action','reason','reviewedBy']) && d.schemaVersion == 1 &&
-        d.unitId == unit && d.period == period && d.year is int && d.year >= 1900 && d.year <= 2200 &&
-        d.month is int && d.month >= 1 && d.month <= 12 && period == string(d.year)+'-'+(d.month < 10 ? '0' : '')+string(d.month) &&
-        d.referenceDate is string && d.referenceDate.matches('^'+period+'-[0-9]{2}$') &&
-        d.version is int && d.version >= 1 && d.definitionVersion is int && d.definitionVersion >= 1 &&
-        get(/databases/$(database)/documents/qmentumDefinitions/$(string(d.definitionVersion))).data.validFrom <= period &&
-        d.referenceVersion == 'references-2026-10-14' && d.engineVersion == 'qmentum-1' &&
-        d.updatedBy == request.auth.uid && d.updatedAt == request.time &&
-        d.reason is string && d.reason.size() <= 1000 &&
-        (d.importHash == null || d.importHash is string && d.importHash.matches('^[a-f0-9]{64}$')) &&
-        d.results.keys().hasOnly(['QM01','QM02','QM03','QM04','QM05','QM06','QM07','QM08','QM09','QM10','QM11','QM12','QM13','QM14','QM15','QM16','QM17','QM18']) && d.results.size() == 18 &&
-        getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/validation/$(string(d.version)+'_9')).data.snapshot == d && getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/validation/$(string(d.version)+'_10')).data.snapshot == d && getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/validation/$(string(d.version)+'_11')).data.snapshot == d &&
-        getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)/history/$(string(d.version))).data == d;
-    }
-function qmentumUnits_qmNew(d,unit) {
-      return d.version == 1 && d.status == 'DRAFT' && d.createdAt == request.time && d.createdBy == request.auth.uid && d.reviewedBy == null &&
-        (d.action == 'SAVE' && d.importHash == null || d.action == 'IMPORT' && qmentumUnits_qmManager() &&
-        get(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(d.importHash)).data.year == d.year &&
-        get(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(d.importHash)).data.status == 'STAGED');
-    }
-function qmentumUnits_qmChange(d,old,unit) {
-      return d.version == old.version+1 && d.createdAt == old.createdAt && d.createdBy == old.createdBy &&
-        (d.definitionVersion == old.definitionVersion || d.action == 'REBASE' && d.definitionVersion == get(/databases/$(database)/documents/qmentumConfig/current).data.definitionVersion) && d.importHash == old.importHash &&
-        (d.action == 'SAVE' && old.status != 'CLOSED' && d.status == 'DRAFT' && d.reviewedBy == null ||
-         d.inputs == old.inputs && (
-          d.action == 'REVIEW' && old.status == 'DRAFT' && d.status == 'REVIEWED' && qmentumUnits_qmReviewer(unit) && d.reviewedBy == request.auth.uid ||
-          d.action == 'CLOSE' && old.status == 'REVIEWED' && d.status == 'CLOSED' && qmentumUnits_qmReviewer(unit) && d.reviewedBy == old.reviewedBy ||
-          d.action == 'REOPEN' && old.status == 'CLOSED' && d.status == 'DRAFT' && qmentumUnits_qmManager() && d.reason.size() >= 8 && d.reviewedBy == null ||
-          d.action == 'REBASE' && old.status == 'DRAFT' && d.status == 'DRAFT' && qmentumUnits_qmManager() && d.reason.size() >= 8 && d.reviewedBy == null));
-    }
-function qmentumUnits_qmReviewer(unit) { return qmentumUnits_qmUnit(unit) && qmentumUnits_qmAccess().role in ['reviewer','manager']; }
+function qmentumUnits_3_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
+function qmentumUnits_3_qmMember() { let a=qmentumUnits_3_qmAccess();return qmentumUnits_3_qmSigned() && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] && qmentumUnits_3_qmEnabled(); }
+function qmentumUnits_3_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+function qmentumUnits_3_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
+function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units && get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true; }
 
-      allow get: if qmentumUnits_qmMember() && unit in qmentumUnits_qmAccess().units; allow list,write: if false;
+      allow get: if qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units;allow list,write: if false;
       match /months/{period} {
-        allow get: if qmentumUnits_qmUnit(unit); allow list: if qmentumUnits_qmUnit(unit) && request.query.limit != null && request.query.limit <= 12;
-        allow create: if qmentumUnits_qmUnit(unit) && qmentumUnits_qmNew(request.resource.data,unit) && qmentumUnits_qmMonth(request.resource.data,unit,period);
-        allow update: if qmentumUnits_qmUnit(unit) && qmentumUnits_qmChange(request.resource.data,resource.data,unit) && qmentumUnits_qmMonth(request.resource.data,unit,period);
-        allow delete: if false;
+
+
+        allow get: if qmentumUnits_3_qmUnit(unit);allow list: if qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 12;allow write: if false;
         match /history/{version} {
-          allow get: if qmentumUnits_qmUnit(unit); allow list: if qmentumUnits_qmUnit(unit) && request.query.limit != null && request.query.limit <= 30;
-          allow create: if qmentumUnits_qmUnit(unit) && request.resource.data.version == int(version) &&
-            qmentumUnits_qmRates(request.resource.data.inputs) &&
-            (request.resource.data.status != 'CLOSED' || request.resource.data.results.QM01.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM02.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM03.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM04.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM05.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM06.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM07.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM08.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM09.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM10.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM11.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM12.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM13.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM14.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM15.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM16.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM17.status in ['VALID','NOT_APPLICABLE'] && request.resource.data.results.QM18.status in ['VALID','NOT_APPLICABLE']) &&
-            (request.resource.data.action != 'REVIEW' || request.resource.data.results.QM01.status != 'INCONSISTENT' && request.resource.data.results.QM02.status != 'INCONSISTENT' && request.resource.data.results.QM03.status != 'INCONSISTENT' && request.resource.data.results.QM04.status != 'INCONSISTENT' && request.resource.data.results.QM05.status != 'INCONSISTENT' && request.resource.data.results.QM06.status != 'INCONSISTENT' && request.resource.data.results.QM07.status != 'INCONSISTENT' && request.resource.data.results.QM08.status != 'INCONSISTENT' && request.resource.data.results.QM09.status != 'INCONSISTENT' && request.resource.data.results.QM10.status != 'INCONSISTENT' && request.resource.data.results.QM11.status != 'INCONSISTENT' && request.resource.data.results.QM12.status != 'INCONSISTENT' && request.resource.data.results.QM13.status != 'INCONSISTENT' && request.resource.data.results.QM14.status != 'INCONSISTENT' && request.resource.data.results.QM15.status != 'INCONSISTENT' && request.resource.data.results.QM16.status != 'INCONSISTENT' && request.resource.data.results.QM17.status != 'INCONSISTENT' && request.resource.data.results.QM18.status != 'INCONSISTENT') &&
-            request.resource.data == getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)).data &&
-            (!exists(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)) ? int(version)==1 :
-              int(version) == get(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)).data.version+1);
-          allow update,delete: if false;
-        }
-        // Twelve immutable receipts divide validation into bounded rule evaluations.
-        // Every receipt must equal the month in the SAME atomic commit.
-        match /validation/{receipt} {
-          allow get,list,update,delete: if false;
-          allow create: if qmentumUnits_qmUnit(unit) && request.resource.data.keys().hasOnly(['group','snapshot']) &&
-            request.resource.data.group is int && request.resource.data.group >= 0 && request.resource.data.group < 12 &&
-            receipt == string(request.resource.data.snapshot.version)+'_'+string(request.resource.data.group) &&
-            request.resource.data.snapshot == getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)).data &&
-            (!exists(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)) ? request.resource.data.snapshot.version == 1 :
-              request.resource.data.snapshot.version == get(/databases/$(database)/documents/qmentumUnits/$(unit)/months/$(period)).data.version+1) &&
-            (request.resource.data.group == 0 ? qmentumUnits_qmResults0(request.resource.data.snapshot) : request.resource.data.group == 1 ? qmentumUnits_qmResults1(request.resource.data.snapshot) : request.resource.data.group == 2 ? qmentumUnits_qmResults2(request.resource.data.snapshot) : request.resource.data.group == 3 ? qmentumUnits_qmResults3(request.resource.data.snapshot) : request.resource.data.group == 4 ? qmentumUnits_qmResults4(request.resource.data.snapshot) : request.resource.data.group == 5 ? qmentumUnits_qmResults5(request.resource.data.snapshot) : request.resource.data.group == 6 ? qmentumUnits_qmResults6(request.resource.data.snapshot) : request.resource.data.group == 7 ? qmentumUnits_qmResults7(request.resource.data.snapshot) : request.resource.data.group == 8 ? qmentumUnits_qmResults8(request.resource.data.snapshot) :
-              qmentumUnits_qmChildren(request.resource.data.snapshot,unit,period,request.resource.data.group) &&
-              (request.resource.data.group == 9 ? qmentumUnits_qmInputs(request.resource.data.snapshot.inputs) :
-              request.resource.data.group == 10 ? qmentumUnits_qmInputNumbers(request.resource.data.snapshot.inputs) :
-              qmentumUnits_qmAuditNumbers(request.resource.data.snapshot.inputs)));
-        }
+
+ allow get: if qmentumUnits_3_qmUnit(unit);allow list: if qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 30;allow write: if false; }
       }
       match /imports/{hash} {
-        allow get: if qmentumUnits_qmUnit(unit) && qmentumUnits_qmManager(); allow list,update,delete: if false;
-        allow create: if qmentumUnits_qmUnit(unit) && qmentumUnits_qmManager() && request.resource.data.keys().hasOnly(['schemaVersion','hash','unitId','year','status','backupReference','chunkCount','createdBy','createdAt','sheetNames']) &&
+
+
+        allow get: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'; allow list,update,delete: if false;
+        allow create: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' && request.resource.data.keys().hasOnly(['schemaVersion','hash','unitId','year','status','backupReference','chunkCount','createdBy','createdAt','sheetNames']) &&
           hash.matches('^[a-f0-9]{64}$') && request.resource.data.hash == hash && request.resource.data.schemaVersion == 1 &&
           request.resource.data.unitId == unit && request.resource.data.year is int && request.resource.data.year >= 1900 && request.resource.data.year <= 2200 &&
           request.resource.data.status == 'STAGED' && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time &&
           request.resource.data.backupReference is string && request.resource.data.backupReference.size() <= 2000 &&
           request.resource.data.chunkCount is int && request.resource.data.chunkCount > 0 && request.resource.data.chunkCount <= 40;
         match /cells/{index} {
-          allow get: if qmentumUnits_qmUnit(unit) && qmentumUnits_qmManager(); allow list,update,delete: if false;
-          allow create: if qmentumUnits_qmUnit(unit) && qmentumUnits_qmManager() &&
+
+
+          allow get: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'; allow list,update,delete: if false;
+          allow create: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' &&
             getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(hash)).data.createdAt == request.time &&
             request.resource.data.keys().hasOnly(['cells','hash','index']) && request.resource.data.hash == hash &&
             request.resource.data.index == int(index) && int(index) >= 0 && int(index) < getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(hash)).data.chunkCount &&
             request.resource.data.cells is list && request.resource.data.cells.size() <= 2000;
         }
       }
+
     }
     match /qmentumUnits/{unit}/quarterlyAnalyses/{id} {
       allow get,list: if activeUser() && profile().uid == request.auth.uid &&
@@ -1882,49 +1671,65 @@ function qmentumUnits_qmReviewer(unit) { return qmentumUnits_qmUnit(unit) && qme
     }
 
     match /qmentumParticipations/{id} {
-      function participant(unit) {
+      function qmParticipationMember(unit) {
         let grant=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
         return activeUser() && profile().uid == request.auth.uid && grant.active == true && grant.uid == request.auth.uid &&
           unit in grant.units && grant.role in ['collector','reviewer','manager'] &&
           get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true &&
           get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
       }
-      function manager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
+      function qmParticipationManager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
 
       function approvedAnalysis(d) {
         let a=get(/databases/$(database)/documents/qmentumUnits/$(d.unitId)/quarterlyAnalyses/$(d.analysisId)).data;
         return a.status == 'REVIEWED' && a.reviewed == true && a.signature == d.signature;
       }
-      allow get: if activeUser() && (resource == null || participant(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || manager()));
-      allow list: if request.query.limit != null && request.query.limit <= 100 && participant(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || manager());
+      allow get: if activeUser() && (resource == null || qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager()));
+      allow list: if request.query.limit != null && request.query.limit <= 100 && qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager());
       allow update,delete: if false;
       allow create: if request.resource.data.keys().hasOnly(['unitId','analysisId','signature','actorUid','modality','suggestion','status','createdAt']) &&
-        participant(request.resource.data.unitId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
+        qmParticipationMember(request.resource.data.unitId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
         request.resource.data.analysisId.matches('^[a-f0-9]{64}$') && request.resource.data.signature.matches('^[a-f0-9]{64}$') &&
         request.resource.data.modality in ['ACKNOWLEDGEMENT','SUGGESTION'] &&
         id == request.resource.data.analysisId+'_'+request.auth.uid+'_'+request.resource.data.modality && approvedAnalysis(request.resource.data) &&
         request.resource.data.suggestion is string && (request.resource.data.modality == 'ACKNOWLEDGEMENT' ? request.resource.data.suggestion == '' : request.resource.data.suggestion.size() >= 8 && request.resource.data.suggestion.size() <= 2000);
     }
     match /qmentumParticipationReviews/{id} {
-      function participant(unit) {
+      function qmReviewMember(unit) {
         let grant=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
         return activeUser() && profile().uid == request.auth.uid && grant.active == true && grant.uid == request.auth.uid &&
           unit in grant.units && grant.role in ['collector','reviewer','manager'] &&
           get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true &&
           get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
       }
-      function manager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
+      function qmReviewManager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
 
       function reviewTarget(d) {
         let p=get(/databases/$(database)/documents/qmentumParticipations/$(id)).data;
         return p.unitId == d.unitId && p.modality == 'SUGGESTION' && p.actorUid != request.auth.uid && p.status == 'AWAITING_APPROVAL';
       }
-      allow get: if activeUser() && (resource == null || participant(resource.data.unitId) && manager());
+      allow get: if activeUser() && (resource == null || qmReviewMember(resource.data.unitId) && qmReviewManager());
       allow list,update,delete: if false;
       allow create: if request.resource.data.keys().hasOnly(['participationId','unitId','actorUid','decision','reason','status','createdAt']) &&
-        participant(request.resource.data.unitId) && manager() && request.resource.data.actorUid == request.auth.uid && request.resource.data.participationId == id &&
+        qmReviewMember(request.resource.data.unitId) && qmReviewManager() && request.resource.data.actorUid == request.auth.uid && request.resource.data.participationId == id &&
         request.resource.data.decision in ['APPROVE','REJECT'] && request.resource.data.reason is string && request.resource.data.reason.size() >= 8 && request.resource.data.reason.size() <= 1000 &&
         request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && reviewTarget(request.resource.data);
+    }
+
+    match /qmentumWriteRequests/{id} {
+      function allowed(d) {
+        let a=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
+        return database == '(default)' && activeUser() && profile().uid == request.auth.uid && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] &&
+          get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true &&
+          (d.operation == 'PUBLISH_DEFINITION' && a.role == 'manager' || d.operation == 'SAVE_MONTH' && d.payload.unitId in a.units &&
+            get(/databases/$(database)/documents/qmentumUnits/$(d.payload.unitId)).data.active == true);
+      }
+      allow get: if activeUser() && (resource == null || resource.data.actorUid == request.auth.uid);
+      allow list,update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['actorUid','payloadHash','operation','payload','status','createdAt']) &&
+        request.resource.data.actorUid == request.auth.uid && request.resource.data.payloadHash.matches('^[a-f0-9]{64}$') &&
+        id == request.auth.uid+'_'+request.resource.data.payloadHash && request.resource.data.payload is map &&
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && allowed(request.resource.data);
     }
 
 // END QMENTUM_FA

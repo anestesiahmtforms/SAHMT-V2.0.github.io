@@ -1,4 +1,5 @@
 import {buildManagementAuthRuntime,MANAGEMENT_RUNTIME_DEFAULTS} from './runtime.js';
+import {relayQmentumWrite} from './qmentum-write-relay.js';
 import {relayOperationalSheet} from './operational-sheet-relay.js';
 import {relayOccurrenceScore} from './occurrence-score-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
@@ -50,6 +51,11 @@ export function createManagementAuthWorker({buildRuntime,buildOperationalRuntime
 
   return Object.freeze({
     async fetch(request, env, context) {
+      if (new URL(request.url).pathname === '/v1/qmentum/write') {
+        if(env?.QMENTUM_WRITE_ENABLED!=='true'||request.method!=='POST')return relayQmentumWrite(request,env||{});
+        try {const runtime=await operationalFor(env);if(runtime.maxRequestMs<55000)return relayQmentumWrite(request,env);return await relayQmentumWrite(request,env,{admitRequest:runtime.admitRequest});}
+        catch{return relayQmentumWrite(request,env);}
+      }
       if (new URL(request.url).pathname === '/v1/evaluation/occurrence') {
         if (env?.OCCURRENCE_SCORING_ENABLED !== 'true' || request.method !== 'POST') return relayOccurrenceScore(request, env || {});
         try {

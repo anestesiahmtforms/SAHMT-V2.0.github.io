@@ -9,6 +9,7 @@ import {quarterFacts,sameAnalysisFacts} from './qmentum-quarterly.js';
 const clone=x=>structuredClone(x);
 const FULL_MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const message=error=>({
+ QMENTUM_WRITE_BUSY:'O servidor está concluindo outra operação. Seu rascunho foi preservado; tente salvar novamente.',QMENTUM_WRITE_UNAVAILABLE:'Não foi possível confirmar o salvamento. Seu rascunho está preservado; tente novamente para conferir a mesma solicitação, sem duplicá-la.',QMENTUM_WRITE_DISABLED:'O salvamento do QMENTUM ainda não está habilitado.',QMENTUM_WRITE_CONFIG_REQUIRED:'O canal de salvamento do QMENTUM ainda não está configurado.',
  QMENTUM_PERMISSION_DENIED:'Seu acesso ao QMENTUM ou à unidade não está liberado.',QMENTUM_CONFIG_REQUIRED:'A configuração institucional do QMENTUM ainda não está liberada no FA.',
  QMENTUM_SESSION_CHANGED:'A sessão mudou. Entre novamente antes de salvar.',QMENTUM_VERSION_CONFLICT:'Outra pessoa atualizou esta competência. Seu rascunho foi preservado; recarregue e reconcilie os valores antes de salvar.',
  QMENTUM_MONTH_CLOSED:'Competência fechada. Um gestor precisa reabri-la com justificativa.',QMENTUM_CLOSE_PENDING:'Fechamento bloqueado: revise os indicadores, suas definições, contagens e seguimentos.',
@@ -40,18 +41,32 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
  const result=()=>calculateMonth(inputs,defs,{inputVersion:record?.version||0,calculatedAt:record?.updatedAt?.toDate?.().toISOString()||null});
  const paintCards=()=>{const grid=root.querySelector('.qm-grid'),scroll=grid.scrollTop;grid.innerHTML=QMENTUM_INDICATORS.map(d=>`<button class="qm-indicator" data-qm-indicator="${d.id}" type="button"><span class="qm-indicator__code">${d.id}</span><span class="qm-indicator__name">${e(d.name)}</span><span class="qm-indicator__result">${resultCard(record?.results?.[d.id])}</span></button>`).join('');grid.scrollTop=scroll;};
  root.innerHTML=`<section class="qm-module" aria-label="Indicadores QMENTUM"><div class="qm-controls"><label>Unidade<select id="qm-unit">${context.units.map(u=>`<option value="${e(u.unitId)}">${e(u.name)}</option>`).join('')}</select></label><label>DATA / COMPETÊNCIA<input id="qm-date" type="date" min="1900-01-01" max="2200-12-31" value="${date}"></label></div><nav class="qm-tools" aria-label="Ferramentas QMENTUM"><select class="qm-tools-menu" aria-label="Ações do módulo"><option value="">Entrada, painel e ferramentas…</option><option value="entry">Entrada mensal</option><option value="dashboard">Painel / exportar</option><option value="history">Histórico</option>${manager?'<option value="import">Importar XLSX</option><option value="config">Definições / metas</option>':''}</select>${button('entry','Entrada mensal')}${button('dashboard','Painel / exportar')}${button('history','Histórico')}${manager?button('import','Importar XLSX')+button('config','Definições / metas'):''}</nav><p class="qm-module-status" role="status" aria-live="polite"></p><div class="qm-grid" aria-label="18 indicadores"></div></section>`;
- const load=async()=>{
-  const ticket=++sequence;notice('Carregando competência no FA…');const data=await repo.year(unitId,year);if(!current()||ticket!==sequence)return;
-  rows=data;record=rows.find(d=>d.month===month)||null;defs=record?await repo.definition(record.definitionVersion):context.definitions;if(!current()||ticket!==sequence)return;
-  // Recompute from immutable definitions; do not render freely supplied derived fields.
-  const cache=new Map([[defs.version,defs]]);
-  for(const r of rows){if(!cache.has(r.definitionVersion))cache.set(r.definitionVersion,await repo.definition(r.definitionVersion));r.results=calculateMonth(r.inputs,cache.get(r.definitionVersion),{inputVersion:r.version,calculatedAt:r.updatedAt?.toDate?.().toISOString()||null});}
-  if(!current()||ticket!==sequence)return;
-  inputs=clone(record?.inputs||emptyInputs());dirty=false;date=record?.referenceDate||`${periodKey(year,month)}-01`;
-  const draft=drafts.read(scope());
-  if(draft){if(draft.baseVersion===(record?.version||0)&&record?.status!=='CLOSED'){inputs=draft.inputs;date=draft.referenceDate;dirty=true;}else notice('Existe rascunho de outra versão. Consulte Histórico para reconciliá-lo; ele não substituiu os dados atuais.');}
-  root.querySelector('#qm-date').value=date;paintCards();notice(`${unitLabel()} · ${competenceLabel()} · ${record?.status||'Sem registro'} · ${dirty?'Rascunho local recuperado; ainda não salvo no FA.':'Dados do FA carregados.'}`);
+ const knownDefinitions=new Map([[context.definitions.version,context.definitions]]);
+ const load=async(selection={})=>{
+  const nextUnit=selection.unitId??unitId,nextYear=selection.year??year,nextMonth=selection.month??month;
+  const ticket=++sequence;notice('Carregando competência no FA…');
+  try {
+   const data=await repo.year(nextUnit,nextYear);if(!current()||ticket!==sequence)return false;
+   const versions=new Map(knownDefinitions);
+   for(const r of data)if(!versions.has(r.definitionVersion))versions.set(r.definitionVersion,await repo.definition(r.definitionVersion));
+   if(!current()||ticket!==sequence)return false;
+   const nextRows=data.map(r=>({...r,results:calculateMonth(r.inputs,versions.get(r.definitionVersion),{inputVersion:r.version,calculatedAt:r.updatedAt?.toDate?.().toISOString()||null})}));
+   const nextRecord=nextRows.find(d=>d.month===nextMonth)||null,nextDefs=nextRecord?versions.get(nextRecord.definitionVersion):context.definitions;
+   let nextInputs=clone(nextRecord?.inputs||emptyInputs()),nextDirty=false,nextDate=nextRecord?.referenceDate||periodKey(nextYear,nextMonth)+'-01';
+   const draft=drafts.read({uid,unitId:nextUnit,period:periodKey(nextYear,nextMonth)});
+   let conflict=false;
+   if(draft){if(draft.baseVersion===(nextRecord?.version||0)&&nextRecord?.status!=='CLOSED'){nextInputs=draft.inputs;nextDate=draft.referenceDate;nextDirty=true;}else conflict=true;}
+   unitId=nextUnit;year=nextYear;month=nextMonth;rows=nextRows;record=nextRecord;defs=nextDefs;inputs=nextInputs;dirty=nextDirty;date=nextDate;
+   for(const [version,value] of versions)knownDefinitions.set(version,value);
+   root.querySelector('#qm-unit').value=unitId;root.querySelector('#qm-date').value=date;paintCards();
+   notice(conflict?'Existe rascunho de outra versão. Consulte Histórico para reconciliá-lo; ele não substituiu os dados atuais.':unitLabel()+' · '+competenceLabel()+' · '+(record?.status||'Sem registro')+' · '+(dirty?'Rascunho local recuperado; ainda não salvo no FA.':'Dados do FA carregados.'));
+   return true;
+  } catch(error) {
+   if(current()&&ticket===sequence){root.querySelector('#qm-unit').value=unitId;root.querySelector('#qm-date').value=date;const control=modal?.querySelector('[data-date]');if(control)control.value=date;}
+   throw error;
+  }
  };
+
  const close=()=>{if(busy){status('Aguarde a conclusão da operação.');return;}if(!remember())return;modal?.close();modal?.remove();modal=null;mode=null;const target=opener?.isConnected?opener:root.querySelector(`[data-qm-indicator="${opener?.dataset.qmIndicator}"]`);target?.focus({preventScroll:true});root.querySelector('.qm-grid').scrollTop=listScroll;};
  const show=(title,body)=>{
   if(modal)modal.remove();modal=document.createElement('dialog');modal.className='qm-dialog';modal.setAttribute('aria-labelledby','qm-dialog-title');
@@ -114,7 +129,7 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
    else if(node.dataset.confirm)inputs[node.dataset.confirm]=node.checked;else if(node.matches('[data-comment]'))inputs.comment=node.value;else return;
    dirty=true;remember();status('Rascunho local. Salve no FA para atualizar gráficos e histórico.');
   });
-  modal.querySelector('[data-date]').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value)return;if(!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){selectDate(value);return;}year=y;month=m;await load();selectDate(value);refreshModal();});
+  modal.querySelector('[data-date]').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value)return;if(!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){selectDate(value);return;}if(await load({year:y,month:m})){selectDate(value);refreshModal();}});
   modal.querySelectorAll('[data-qm-action]').forEach(node=>node.onclick=()=>run(async()=>{const action=node.dataset.qmAction;if(action==='save')return persist();if(['review','close'].includes(action))return persist(action.toUpperCase());if(['reopen','rebase'].includes(action)){const reason=window.prompt('Justificativa obrigatória (mínimo 8 caracteres):');if(reason!==null)await persist(action.toUpperCase(),reason);}}));
  };
  const history=async()=>{mode='history';const versions=await repo.history(unitId,year,month);if(!current())return;const draft=drafts.read(scope());show('Histórico de versões',`<p>Últimas 30 versões imutáveis. Cada gravação mantém entradas, fontes, resultados e definição utilizada.</p>${draft?'<p class="qm-notice">Há rascunho local. Exporte-o antes de descartar ou reconciliar.</p>'+button('draft','Baixar rascunho')+button('discard','Descartar rascunho local'):''}${versions.map(v=>`<details><summary>Versão ${v.version} · ${e(v.status)} · ${e(v.action)}</summary><p>Definição ${v.definitionVersion}; referência ${e(v.referenceDate)}; ${e(v.reason||'Sem motivo adicional')}. ${e(v.inputs.comment)}</p><p>Autor autenticado registrado na auditoria. Importação: ${v.importHash?'sim':'não'}.</p><table><thead><tr><th>Indicador</th><th>N/D</th><th>Recalculado</th><th>Legado</th></tr></thead><tbody>${QMENTUM_INDICATORS.map(d=>`<tr><td>${d.id}</td><td>${v.results[d.id].N??'—'}/${v.results[d.id].D??'—'}</td><td>${percent(v.results[d.id].ratio)}</td><td>${percent(v.inputs.legacyRates[d.id]?.value)}</td></tr>`).join('')}</tbody></table></details>`).join('')||'<p>Nenhum registro nesta competência.</p>'}`);modal.querySelector('[data-qm-action="draft"]')?.addEventListener('click',()=>download('qmentum-rascunho.json',JSON.stringify(draft,null,2),'application/json'));modal.querySelector('[data-qm-action="discard"]')?.addEventListener('click',()=>run(async()=>{drafts.remove(scope());dirty=false;await load();await history();}));};
@@ -138,8 +153,8 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
   }));
  };
  root.addEventListener('click',ev=>{const target=ev.target.closest('button');if(!target)return;opener=target;listScroll=root.querySelector('.qm-grid').scrollTop;run(async()=>{if(target.dataset.qmIndicator)return renderIndicator(target.dataset.qmIndicator);switch(target.dataset.qmAction){case 'entry':return renderEntry();case 'dashboard':return dashboard();case 'history':return history();case 'config':return config();case 'import':return importer();}});});
- root.querySelector('#qm-date').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value||!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);year=y;month=m;await load();selectDate(value);});
- root.querySelector('#qm-unit').onchange=ev=>run(async()=>{if(!remember())return;unitId=ev.target.value;await load();});
+ root.querySelector('#qm-date').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value||!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){selectDate(value);return;}if(await load({year:y,month:m}))selectDate(value);});
+ root.querySelector('#qm-unit').onchange=ev=>run(async()=>{if(!remember())return;await load({unitId:ev.target.value});});
  root.querySelector('.qm-tools-menu').onchange=ev=>{const action=ev.target.value;ev.target.value='';opener=ev.target;listScroll=root.querySelector('.qm-grid').scrollTop;run(async()=>{switch(action){case 'entry':return renderEntry();case 'dashboard':return dashboard();case 'history':return history();case 'config':return config();case 'import':return importer();}});};
  await load();
  const unload=ev=>{if(dirty&&!remember()){ev.preventDefault();ev.returnValue='';}};window.addEventListener('beforeunload',unload);

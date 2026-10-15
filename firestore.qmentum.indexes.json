@@ -37,36 +37,5 @@
       ]
     }
   ],
-  "fieldOverrides": [
-    {
-      "collectionGroup": "months",
-      "fieldPath": "inputs",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "months",
-      "fieldPath": "results",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "history",
-      "fieldPath": "inputs",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "history",
-      "fieldPath": "results",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "cells",
-      "fieldPath": "cells",
-      "indexes": []
-    },
-    {
-      "collectionGroup": "validation",
-      "fieldPath": "snapshot",
-      "indexes": []
-    }
-  ]
+  "fieldOverrides": []
 }

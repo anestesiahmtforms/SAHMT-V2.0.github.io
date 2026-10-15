@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "code": "QMENTUM_RELEASE_HELD_DISABLED",
-  "observedAt": "2026-10-15T21:22:12.325Z",
+  "code": "QMENTUM_RULES_AND_TRANSPORT_VERIFIED_MODULE_DISABLED",
+  "observedAt": "2026-10-15T23:45:11.015Z",
   "projectId": "sahmt-17a16",
   "configurationDocuments": 4,
   "enabled": false,
@@ -17,13 +17,12 @@
       "error": null
     }
   ],
-  "previousRulesContentPreserved": true,
-  "rulesReleaseErrorHttpStatus": 400,
+  "unrelatedAllowConditionsPreserved": true,
+  "unusedLegacyFunctionsRemoved": 4,
   "rulesCreateHttpStatus": 200,
-  "identicalRulesControlHttpStatus": 200,
-  "backendFiles": 28,
-  "newBackendFiles": 3,
-  "existingBackendFunctionChanges": 1,
+  "rulesReleaseHttpStatus": 200,
+  "backendFiles": 29,
+  "backendVersion": 15,
   "manifestChanged": false,
   "newTriggers": 0,
   "aiEnabled": false,
@@ -35,12 +34,31 @@
   "preparedPwaVersion": 195,
   "publicPwaPublished": false,
   "pullRequest": 42,
-  "localTests": {
-    "qmentum": 57,
-    "qmentumRules": 16,
-    "browserChecks": 112,
-    "viewports": 4
+  "readPath": "DIRECT_FA_FIRESTORE",
+  "writePath": "IMMUTABLE_COMMAND_TRUSTED_CAS",
+  "writesPerMonthlySave": 4,
+  "previousWritesPerMonthlySave": 14,
+  "transport": {
+    "workerEnabled": true,
+    "gatewayEnabled": true,
+    "secondaryAuthRetired": true,
+    "hmacResponseVerified": true,
+    "anonymousWorkerHttpStatus": 401,
+    "regularSignedDeniedCode": "QMENTUM_PERMISSION_DENIED",
+    "regularReplayCode": "QMENTUM_REPLAY_DENIED"
   },
+  "localTests": {
+    "qmentum": 88,
+    "qmentumRules": 12,
+    "allRules": 101,
+    "domain": 957,
+    "managementPassed": 2730,
+    "managementSkipped": 3,
+    "browserChecks": 112,
+    "viewports": 4,
+    "runtimeBrowser": 1
+  },
+  "realBusinessWriteVerified": false,
   "participationPoints": {
     "acknowledgement": 1,
     "approvedSuggestion": 2,
@@ -48,8 +66,8 @@
   },
   "rollback": {
     "immediateGate": "qmentumConfig/current.enabled=false",
-    "activeGate": false,
-    "previousRulesContentPreserved": true,
-    "privateBackupProtected": true
+    "transportGate": "QMENTUM_WRITE_ENABLED=false",
+    "privateBackupProtected": true,
+    "recordsDeleted": 0
   }
 }

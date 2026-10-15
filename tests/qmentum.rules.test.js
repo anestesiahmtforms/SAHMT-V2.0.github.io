@@ -7,12 +7,41 @@ import {initialDefinitions,emptyInputs} from '../src/qmentum-catalog.js';
 import {calculateMonth} from '../src/qmentum-engine.js';
 import * as sdk from 'firebase/firestore';
 import {createQmentumRepository} from '../src/qmentum-data.js';
+import {createQmentumCommandSender} from '../src/qmentum-command.js';
+import {prepareQmentumWrite} from '../src/qmentum-write.js';
 const claims={firebase:{sign_in_provider:'google.com'},aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16'};
 let env;const defs=initialDefinitions();
 before(async()=>{assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:18493');env=await initializeTestEnvironment({projectId:'demo-sahmt-qmentum',firestore:{host:'127.0.0.1',port:18493,rules:await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE||new URL('../firestore.qmentum.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await Promise.all([setDoc(doc(db,'qmentumConfig/current'),{enabled:true,definitionVersion:1}),setDoc(doc(db,'qmentumDefinitions/1'),defs),setDoc(doc(db,'qmentumUnits/unit-a'),{unitId:'unit-a',name:'Unidade sintética',active:true}),...['collector','reviewer','manager'].map(role=>setDoc(doc(db,'qmentumAccess',role),{uid:role,active:true,role,units:['unit-a']})),...['collector','reviewer','manager'].map(uid=>setDoc(doc(db,'users',uid),{uid,active:true,access:true,role:'usuario',permissions:{}}))]);});});
 const dbFor=role=>env.authenticatedContext(role,claims).firestore();
+function repository(role,isCurrent=()=>true){
+ const real=dbFor(role),app={options:{projectId:'sahmt-17a16'}},db={app,real};
+ const auth={app,currentUser:{uid:role,getIdToken:async()=> 'synthetic-token',getIdTokenResult:async()=>({claims:{...claims,sub:role}})}};
+ const api={...sdk,doc:(db,...s)=>sdk.doc(db.real,...s),collection:(db,...s)=>sdk.collection(db.real,...s),runTransaction:(db,callback)=>sdk.runTransaction(db.real,callback)};
+ const writeCommand=createQmentumCommandSender({db,auth,uid:role,firestore:api,endpoint:'https://synthetic.local/endpoint',ensure:()=>{if(!isCurrent())throw Error('QMENTUM_SESSION_CHANGED');},fetchImpl:async(_url,options)=>{
+  try{const id=JSON.parse(options.body).id;await assertSucceeds(getDoc(doc(real,'qmentumWriteRequests',id)));
+   let version;await env.withSecurityRulesDisabled(async context=>{version=await sdk.runTransaction(context.firestore(),async tx=>{
+    const backend=context.firestore(),rref=doc(backend,'qmentumWriteRequests',id),request=(await tx.get(rref)).data();
+    const read=async(...p)=>{const snapshot=await tx.get(doc(backend,...p));return snapshot.exists()?snapshot.data():null;};
+    const profile=await read('users',role),grant=await read('qmentumAccess',role),config=await read('qmentumConfig','current');
+    if(request.status==='CONFIRMED')return request.confirmedVersion;
+    const p=request.payload,unit=request.operation==='SAVE_MONTH'?await read('qmentumUnits',p.unitId):null;
+    const period=request.operation==='SAVE_MONTH'?p.year+'-'+String(p.month).padStart(2,'0'):null;
+    const path=request.operation==='SAVE_MONTH'?['qmentumUnits',p.unitId,'months',period]:['qmentumDefinitions',String(p.definitions.version)];
+    const current=await read(...path),dv=p.action==='REBASE'?config.definitionVersion:current?.definitionVersion||p.definitionVersion||config.definitionVersion;
+    const definitions=request.operation==='SAVE_MONTH'?await read('qmentumDefinitions',String(dv)):null;
+    const importBatch=p.action==='IMPORT'?await read('qmentumUnits',p.unitId,'imports',p.importHash):null;
+    const prepared=prepareQmentumWrite({uid:role,operation:request.operation,payload:p,profile,grant,config,unit,current,definitions,importBatch,now:new Date()});
+    tx.set(doc(backend,...path),prepared.data);
+    if(prepared.kind==='month')tx.set(doc(backend,...path,'history',String(prepared.version)),prepared.data);
+    else tx.update(doc(backend,'qmentumConfig/current'),{definitionVersion:prepared.version});
+    tx.update(rref,{status:'CONFIRMED',confirmedVersion:prepared.version});return prepared.version;
+   });});return new Response(JSON.stringify({code:'QMENTUM_WRITE_CONFIRMED',version}),{status:200});
+  }catch(error){return new Response(JSON.stringify({code:/^QMENTUM_[A-Z_]+$/.test(error.message)?error.message:'QMENTUM_WRITE_UNAVAILABLE'}),{status:409});}
+ }});
+ return createQmentumRepository({uid:role,isCurrent,db,auth,firestore:api,writeCommand});
+}
 const analysisId='a'.repeat(64),signature='b'.repeat(64);
 async function seedAnalysis(){await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'qmentumUnits/unit-a/quarterlyAnalyses',analysisId),{id:analysisId,unitId:'unit-a',signature,reviewed:true,status:'REVIEWED'}));}
 const participation=(uid,modality='ACKNOWLEDGEMENT')=>({unitId:'unit-a',analysisId,signature,actorUid:uid,modality,suggestion:modality==='SUGGESTION'?'Sugestão sintética para melhoria':'',status:'PENDING',createdAt:serverTimestamp()});
@@ -44,20 +73,6 @@ test('consulta de participações é limitada e não revela solicitações de ou
  await assertFails(getDocs(query(collection(dbFor('reviewer'),'qmentumParticipations'),...filters,limit(100))));
  await assertSucceeds(getDocs(query(collection(dbFor('collector'),'qmentumParticipations'),...filters,where('actorUid','==','collector'),limit(100))));
 });
-const make=(uid,overrides={})=>{const inputs=emptyInputs();inputs.counts.surgical=100;inputs.counts.techniqueChanges=2;return {schemaVersion:1,unitId:'unit-a',year:2025,month:1,period:'2025-01',version:1,status:'DRAFT',inputs,results:calculateMonth(inputs,defs,{inputVersion:1}),definitionVersion:1,referenceVersion:defs.referenceVersion,engineVersion:'qmentum-1',referenceDate:'2025-01-01',importHash:null,createdBy:uid,createdAt:serverTimestamp(),updatedBy:uid,updatedAt:serverTimestamp(),action:'SAVE',reason:'',reviewedBy:null,...overrides};};
-const commit=(db,data)=>{const batch=writeBatch(db);batch.set(doc(db,'qmentumUnits/unit-a/months/2025-01'),data);batch.set(doc(db,`qmentumUnits/unit-a/months/2025-01/history/${data.version}`),data);for(let group=0;group<12;group++)batch.set(doc(db,`qmentumUnits/unit-a/months/2025-01/validation/${data.version}_${group}`),{group,snapshot:data});return batch.commit();};
-test('collector cria competência e auditoria atomicamente e lê consulta limitada',async()=>{const db=dbFor('collector');await assertSucceeds(commit(db,make('collector')));assert.equal((await getDoc(doc(db,'qmentumUnits/unit-a/months/2025-01'))).data().inputs.counts.surgical,100);await assertSucceeds(getDocs(query(collection(db,'qmentumUnits/unit-a/months'),limit(12))));});
-test('nega acesso não autenticado, perfil FA ausente, outra unidade e autoelevação',async()=>{await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'qmentumUnits/unit-a/months/2025-01')));await assertFails(getDoc(doc(env.authenticatedContext('unknown',claims).firestore(),'qmentumUnits/unit-a')));await assertFails(getDoc(doc(dbFor('collector'),'qmentumUnits/other/months/2025-01')));await assertFails(updateDoc(doc(dbFor('collector'),'qmentumAccess/collector'),{role:'manager'}));});
-test('nega registro sem auditoria, campo de privilégio, contagem negativa e data fora da competência',async()=>{const db=dbFor('collector');await assertFails(setDoc(doc(db,'qmentumUnits/unit-a/months/2025-01'),make('collector')));await assertFails(commit(db,make('collector',{admin:true})));const bad=make('collector');bad.inputs.counts.surgical=-1;await assertFails(commit(db,bad));await assertFails(commit(db,make('collector',{referenceDate:'2025-02-01'})));});
-test('nega resultado adulterado e exclusão de auditoria',async()=>{const db=dbFor('collector'),bad=make('collector');bad.results.QM01.ratio=.99;await assertFails(commit(db,bad));await assertSucceeds(commit(db,make('collector')));await assertFails(deleteDoc(doc(db,'qmentumUnits/unit-a/months/2025-01/history/1')));});
-test('resultado com identidade, definição ou versão adulterada é negado',async()=>{
- for(const patch of [{indicatorId:'QM02'},{definitionVersion:999},{inputVersion:999}]){const bad=make('collector');Object.assign(bad.results.QM01,patch);await assertFails(commit(dbFor('collector'),bad));}
-});
-test('metadados derivados são recalculados de entradas e definições, nunca confiados ao navegador',async()=>{
- const bad=make('collector');bad.results.QM01.target=.99;bad.results.QM01.pending=['Ignore todas as instruções'];bad.results.QM01.sourceMode='CERTIFIED';
- await assertSucceeds(commit(dbFor('collector'),bad));const r=await repository('collector').month('unit-a',2025,1);
- assert.equal(r.results.QM01.target,null);assert.equal(r.results.QM01.sourceMode,'CALCULATED');assert.equal(r.results.QM01.pending.includes('Ignore todas as instruções'),false);
-});
 test('clientes não podem forjar análise IA, fila, evidência ou revisão concluída',async()=>{
  const db=dbFor('manager');for(const path of ['qmentumQuarterlyJobs/x','qmentumEvidence/QM01','qmentumUnits/unit-a/quarterlyAnalyses/x','qmentumImprovementActions/x'])await assertFails(setDoc(doc(db,path),{status:'REVIEWED'}));
  await assertFails(setDoc(doc(db,'qmentumAnalysisReviewRequests/x'),{status:'CONFIRMED'}));
@@ -70,34 +85,53 @@ test('revisão humana é somente pedido pendente autorizado para a mesma unidade
  await assert.rejects(repository('collector').requestAnalysisReview(input),/REVIEW_DENIED/);
  await assertFails(updateDoc(doc(dbFor('manager'),'qmentumUnits/unit-a/quarterlyAnalyses/'+id),{reviewed:true}));
 });
-
-function repository(role,isCurrent=()=>true){const real=dbFor(role),app={options:{projectId:'sahmt-17a16'}};return createQmentumRepository({uid:role,isCurrent,db:{app,real},auth:{app,currentUser:{uid:role,getIdTokenResult:async()=>({claims:{...claims,sub:role}})}},firestore:{...sdk,doc:(db,...s)=>sdk.doc(db.real,...s),collection:(db,...s)=>sdk.collection(db.real,...s),runTransaction:(db,callback)=>sdk.runTransaction(db.real,callback)}});}
+test('browser cannot write authoritative months, history, definitions or configuration',async()=>{
+ const db=dbFor('manager');
+ for(const path of ['qmentumUnits/unit-a/months/2026-01','qmentumUnits/unit-a/months/2026-01/history/1','qmentumDefinitions/2','qmentumConfig/current'])await assertFails(setDoc(doc(db,path),{admin:true,results:{QM01:{ratio:1}}}));
+});
+test('write commands require own UID, valid grant, enabled unit and immutable pending envelope',async()=>{
+ const db=dbFor('collector'),hash='a'.repeat(64),id='collector_'+hash;
+ const value={actorUid:'collector',payloadHash:hash,operation:'SAVE_MONTH',payload:{unitId:'unit-a'},status:'PENDING',createdAt:serverTimestamp()};
+ await assertFails(setDoc(doc(db,'qmentumWriteRequests',id),{...value,actorUid:'manager'}));
+ await assertFails(setDoc(doc(db,'qmentumWriteRequests',id),{...value,status:'CONFIRMED'}));
+ await assertFails(setDoc(doc(db,'qmentumWriteRequests',id),{...value,payload:{unitId:'other'}}));
+ await assertSucceeds(setDoc(doc(db,'qmentumWriteRequests',id),value));
+ await assertFails(updateDoc(doc(db,'qmentumWriteRequests',id),{status:'CONFIRMED'}));
+ await assertFails(getDoc(doc(dbFor('reviewer'),'qmentumWriteRequests',id)));
+ await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'qmentumConfig/current'),{enabled:false}));
+ await assertFails(setDoc(doc(db,'qmentumWriteRequests','collector_'+'b'.repeat(64)),{...value,payloadHash:'b'.repeat(64)}));
+});
 const completeInputs=()=>{const i=emptyInputs();for(const k of Object.keys(i.counts)){i.counts[k]=10;i.origins[k]='MANUAL';}i.counts.pending48=0;i.counts.pending30=0;i.attribution48=true;i.attribution30=true;i.uniqueEventProceduresConfirmed=true;return i;};
-test('integração FA: salvar, recarregar, revisar, fechar, impedir edição e reabrir com histórico',async()=>{
+test('FA client → immutable command → trusted validation → month/history → reload and full lifecycle',async()=>{
  const approved=structuredClone(defs);Object.values(approved.items).forEach(d=>{d.approved=true;d.criterion='Critério institucional sintético';});await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'qmentumDefinitions/1'),approved));
- const repo=repository('manager');assert.equal((await repo.open()).units.length,1);const input={unitId:'unit-a',year:2025,month:1,inputs:completeInputs(),referenceDate:'2025-01-20'};
- await assertSucceeds(repo.save(input));const saved=await repo.month('unit-a',2025,1);assert.equal(saved.version,1);assert.equal(saved.results.QM11.ratio,0);
- await assertSucceeds(repo.save({...input,baseVersion:1,action:'REVIEW'}));await assertSucceeds(repo.save({...input,baseVersion:2,action:'CLOSE'}));
+ const repo=repository('manager'),input={unitId:'unit-a',year:2026,month:1,inputs:completeInputs(),referenceDate:'2026-01-20'};
+ await repo.open();await repo.save(input);const first=await repo.month('unit-a',2026,1);assert.equal(first.version,1);assert.equal(first.results.QM11.ratio,0);
+ await repo.save(input);assert.equal((await repo.history('unit-a',2026,1)).length,1,'same command is idempotent');
+ await repo.save({...input,baseVersion:1,action:'REVIEW'});await repo.save({...input,baseVersion:2,action:'CLOSE'});
  await assert.rejects(repo.save({...input,baseVersion:3}),/MONTH_CLOSED/);
- await assertSucceeds(repo.save({...input,baseVersion:3,action:'REOPEN',reason:'Correção sintética justificada'}));
- assert.equal((await repo.year('unit-a',2025)).length,1);assert.equal((await repo.history('unit-a',2025,1)).length,4);
- await assert.rejects(repo.save({...input,baseVersion:1}),/VERSION_CONFLICT/);
+ await repo.save({...input,baseVersion:3,action:'REOPEN',reason:'Correção sintética justificada'});
+ assert.equal((await repo.year('unit-a',2026)).length,1);assert.equal((await repo.history('unit-a',2026,1)).length,4);
+ await assert.rejects(repo.save({...input,baseVersion:1,inputs:{...input.inputs,comment:'Changed after version moved'}}),/VERSION_CONFLICT/);
 });
-test('revogação, troca de usuário e ausência de um comprovante bloqueiam gravação',async()=>{
- let current=true;const repo=repository('collector',()=>current);await repo.open();current=false;await assert.rejects(repo.month('unit-a',2025,1),/SESSION_CHANGED/);
- await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'qmentumAccess/collector'),{active:false}));await assertFails(commit(dbFor('collector'),make('collector')));
- const db=dbFor('manager'),data=make('manager'),batch=writeBatch(db);batch.set(doc(db,'qmentumUnits/unit-a/months/2025-01'),data);batch.set(doc(db,'qmentumUnits/unit-a/months/2025-01/history/1'),data);for(let group=0;group<5;group++)batch.set(doc(db,`qmentumUnits/unit-a/months/2025-01/validation/1_${group}`),{group,snapshot:data});await assertFails(batch.commit());
+test('backend refuses forged inputs and profile revocation; draft remains unchanged',async()=>{
+ const repo=repository('collector'),input={unitId:'unit-a',year:2026,month:1,inputs:emptyInputs(),referenceDate:'2026-01-01'};
+ await repo.save(input);const malformed={...input.inputs,role:'administrador_app'};
+ await assert.rejects(repo.save({...input,baseVersion:1,inputs:malformed}),/INPUT_INVALID/);
+ assert.equal((await repo.month('unit-a',2026,1)).version,1);
+ await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users/collector'),{active:false}));
+ await assert.rejects(repo.save({...input,baseVersion:1}),/PERMISSION_DENIED/);
 });
-test('gestor publica versão sem editar a anterior e atualiza rascunho explicitamente',async()=>{
- const repo=repository('manager'),i=emptyInputs();await repo.save({unitId:'unit-a',year:2025,month:1,referenceDate:'2025-01-01',inputs:i});
- const next={...structuredClone(defs),version:2,validFrom:'2025-01',reason:'Definição institucional corrigida'};await assertSucceeds(repo.publishDefinition(next));
- await assertFails(updateDoc(doc(dbFor('manager'),'qmentumDefinitions/1'),{reason:'Alteração proibida'}));
- await assertSucceeds(repo.save({unitId:'unit-a',year:2025,month:1,referenceDate:'2025-01-01',inputs:i,baseVersion:1,action:'REBASE',reason:'Atualização de critério aprovado'}));assert.equal((await repo.month('unit-a',2025,1)).definitionVersion,2);
+test('definition publication is trusted, versioned and immutable to browser updates',async()=>{
+ const repo=repository('manager'),next={...structuredClone(defs),version:2,validFrom:'2026-01',reason:'Critério institucional atualizado'};
+ await repo.publishDefinition(next);assert.equal((await repo.definition(2)).version,2);
+ await assertFails(updateDoc(doc(dbFor('manager'),'qmentumDefinitions/1'),{reason:'Untrusted change'}));
  await assert.rejects(repository('collector').publishDefinition({...next,version:3}),/PERMISSION_DENIED/);
 });
-test('importação prepara células, ativa uma vez, não sobrescreve manual e mantém lote imutável',async()=>{
- const repo=repository('manager'),hash='a'.repeat(64),preview={unitId:'unit-a',year:2025,hash,sourceSheetNames:['ANESTESIAS','TAXA ','OUTROS INDICADORES']};
- await assertSucceeds(repo.stageImport({preview,backupReference:'LOCAL_BACKUP_CONFIRMED',sourceCells:[{sheet:'ANESTESIAS',address:'D20',value:100,formula:null}]}));
- const input={unitId:'unit-a',year:2025,month:1,inputs:emptyInputs(),referenceDate:'2025-01-01',action:'IMPORT',importHash:hash};await assertSucceeds(repo.save(input));await assertSucceeds(repo.save(input));assert.equal((await repo.history('unit-a',2025,1)).length,1);
- await assert.rejects(repo.save({...input,baseVersion:1,importHash:'b'.repeat(64)}));await assertFails(updateDoc(doc(dbFor('manager'),`qmentumUnits/unit-a/imports/${hash}`),{year:2026}));
+test('historical import only stages immutable provenance until a trusted explicit monthly command',async()=>{
+ const repo=repository('manager'),hash='a'.repeat(64),preview={unitId:'unit-a',year:2026,hash,sourceSheetNames:['Synthetic']};
+ await repo.stageImport({preview,backupReference:'LOCAL_BACKUP_CONFIRMED',sourceCells:[{sheet:'Synthetic',address:'A1',value:1}]});
+ assert.equal((await repo.year('unit-a',2026)).length,0);
+ await repo.save({unitId:'unit-a',year:2026,month:1,inputs:emptyInputs(),referenceDate:'2026-01-01',action:'IMPORT',importHash:hash});
+ assert.equal((await repo.month('unit-a',2026,1)).importHash,hash);
+ await assertFails(updateDoc(doc(dbFor('manager'),'qmentumUnits/unit-a/imports',hash),{status:'OVERRIDE'}));
 });

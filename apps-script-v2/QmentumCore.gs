@@ -18,14 +18,17 @@ var QmentumCore = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/qmentum-quarterly.js
-  var qmentum_quarterly_exports = {};
-  __export(qmentum_quarterly_exports, {
+  // src/qmentum-server-core.js
+  var qmentum_server_core_exports = {};
+  __export(qmentum_server_core_exports, {
     QUARTERLY_VERSION: () => QUARTERLY_VERSION,
     aiPayload: () => aiPayload,
     analysisInputSignature: () => analysisInputSignature,
     calculateMonth: () => calculateMonth,
     evidenceUsable: () => evidenceUsable,
+    periodKey: () => periodKey,
+    prepareQmentumWrite: () => prepareQmentumWrite,
+    qmentumCanonical: () => qmentumCanonical,
     quarterFacts: () => quarterFacts,
     quarterlyPlan: () => quarterlyPlan,
     sameAnalysisFacts: () => sameAnalysisFacts,
@@ -121,6 +124,13 @@ var QmentumCore = (() => {
     const N = rows2.reduce((s, r) => s + r.N, 0), D = rows2.reduce((s, r) => s + r.D, 0);
     return { N, D, ratio: D ? first.rule === "complement" ? 1 - N / D : N / D : null, status: D ? "VALID" : "NOT_APPLICABLE" };
   }
+  function periodKey(year, month) {
+    if (!Number.isInteger(year) || year < 1900 || year > 2200 || !Number.isInteger(month) || month < 1 || month > 12) throw Error("QMENTUM_PERIOD_INVALID");
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+  function canClose(results) {
+    return QMENTUM_IDS.every((id) => ["VALID", "NOT_APPLICABLE"].includes(results[id]?.status));
+  }
 
   // src/qmentum-quarterly.js
   var QUARTERLY_VERSION = "quarterly-fa-1";
@@ -211,5 +221,62 @@ var QmentumCore = (() => {
     }
     return jobs;
   }
-  return __toCommonJS(qmentum_quarterly_exports);
+
+  // src/qmentum-workflow.js
+  function transitionMonth(current, action, role, reason, results) {
+    if (!["collector", "reviewer", "manager"].includes(role)) throw Error("QMENTUM_PERMISSION_DENIED");
+    if (!["SAVE", "REVIEW", "CLOSE", "REOPEN", "IMPORT", "REBASE"].includes(action)) throw Error("QMENTUM_ACTION_INVALID");
+    if (current?.status === "CLOSED" && action !== "REOPEN") throw Error("QMENTUM_MONTH_CLOSED");
+    if (action === "REOPEN") {
+      if (role !== "manager" || current?.status !== "CLOSED" || String(reason || "").trim().length < 8) throw Error("QMENTUM_REOPEN_DENIED");
+      return "DRAFT";
+    }
+    if (action === "REVIEW") {
+      if (!["reviewer", "manager"].includes(role) || current?.status !== "DRAFT" || Object.values(results).some((r) => r.status === "INCONSISTENT")) throw Error("QMENTUM_REVIEW_DENIED");
+      return "REVIEWED";
+    }
+    if (action === "CLOSE") {
+      if (!["reviewer", "manager"].includes(role) || current?.status !== "REVIEWED" || !canClose(results)) throw Error("QMENTUM_CLOSE_PENDING");
+      return "CLOSED";
+    }
+    if (action === "IMPORT" && (role !== "manager" || current)) throw Error("QMENTUM_IMPORT_CONFLICT");
+    if (action === "REBASE" && (role !== "manager" || current?.status !== "DRAFT" || String(reason || "").trim().length < 8)) throw Error("QMENTUM_REBASE_DENIED");
+    return "DRAFT";
+  }
+
+  // src/qmentum-write.js
+  var qmentumCanonical = (value) => value && typeof value === "object" ? Array.isArray(value) ? "[" + value.map(qmentumCanonical).join(",") + "]" : "{" + Object.keys(value).sort().map((k) => JSON.stringify(k) + ":" + qmentumCanonical(value[k])).join(",") + "}" : JSON.stringify(value);
+  var exact = (value, keys) => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join() === keys.slice().sort().join();
+  function prepareQmentumWrite({ uid, operation, payload, profile, grant, config, unit, current = null, definitions, importBatch = null, now }) {
+    if (typeof uid !== "string" || !uid || profile?.uid !== uid || profile.active !== true || profile.access !== true || grant?.uid !== uid || grant.active !== true || !["collector", "reviewer", "manager"].includes(grant.role) || !Array.isArray(grant.units) || config?.enabled !== true) throw Error("QMENTUM_PERMISSION_DENIED");
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw Error("QMENTUM_CLOCK_INVALID");
+    if (operation === "PUBLISH_DEFINITION") {
+      if (grant.role !== "manager") throw Error("QMENTUM_PERMISSION_DENIED");
+      if (!exact(payload, ["definitions"])) throw Error("QMENTUM_INPUT_INVALID");
+      const d = validateDefinitions(payload.definitions);
+      if (d.version !== config.definitionVersion + 1 || current) throw Error("QMENTUM_VERSION_CONFLICT");
+      for (const item of Object.values(d.items)) if (!exact(item, ["approved", "criterion", "target", "targetSource", "targetValidated", "populationKey"])) throw Error("QMENTUM_DEFINITION_INVALID");
+      return { kind: "definition", version: d.version, data: { version: d.version, validFrom: d.validFrom, reason: d.reason, referenceVersion: d.referenceVersion, items: JSON.parse(JSON.stringify(d.items)), createdBy: uid, createdAt: now } };
+    }
+    if (operation !== "SAVE_MONTH" || !exact(payload, ["unitId", "year", "month", "inputs", "baseVersion", "definitionVersion", "referenceDate", "action", "reason", "importHash"])) throw Error("QMENTUM_INPUT_INVALID");
+    const p = payload, period = periodKey(p.year, p.month);
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(p.unitId) || !grant.units.includes(p.unitId) || unit?.unitId !== p.unitId || unit.active !== true) throw Error("QMENTUM_PERMISSION_DENIED");
+    if (!Number.isSafeInteger(p.baseVersion) || p.baseVersion < 0 || typeof p.reason !== "string" || p.reason.length > 1e3 || typeof p.referenceDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.referenceDate) || p.referenceDate.slice(0, 7) !== period || p.importHash !== null && !/^[a-f0-9]{64}$/.test(p.importHash)) throw Error("QMENTUM_INPUT_INVALID");
+    const reference = /* @__PURE__ */ new Date(p.referenceDate + "T12:00:00Z");
+    if (!Number.isFinite(reference.getTime()) || reference.toISOString().slice(0, 10) !== p.referenceDate) throw Error("QMENTUM_INPUT_INVALID");
+    if (!exact(p.inputs, ["counts", "notApplicable", "origins", "informedRates", "legacyRates", "attribution48", "attribution30", "uniqueEventProceduresConfirmed", "techniqueUniverseConfirmed", "comment"])) throw Error("QMENTUM_INPUT_INVALID");
+    validateInputs(p.inputs);
+    validateDefinitions(definitions);
+    if ((current?.version || 0) !== p.baseVersion) throw Error("QMENTUM_VERSION_CONFLICT");
+    const version = p.action === "REBASE" ? config.definitionVersion : current?.definitionVersion || p.definitionVersion || config.definitionVersion;
+    if (definitions.version !== version || definitions.validFrom > period) throw Error("QMENTUM_DEFINITION_NOT_EFFECTIVE");
+    if (["REVIEW", "CLOSE", "REOPEN", "REBASE"].includes(p.action) && qmentumCanonical(p.inputs) !== qmentumCanonical(current?.inputs)) throw Error("QMENTUM_SAVE_BEFORE_REVIEW");
+    if (p.action === "IMPORT" && (!importBatch || importBatch.status !== "STAGED" || importBatch.year !== p.year || importBatch.unitId !== p.unitId)) throw Error("QMENTUM_IMPORT_NOT_STAGED");
+    const results = calculateMonth(p.inputs, definitions, { inputVersion: p.baseVersion + 1, calculatedAt: null });
+    const status = transitionMonth(current, p.action, grant.role, p.reason, results);
+    const data = { schemaVersion: 1, unitId: p.unitId, year: p.year, month: p.month, period, version: p.baseVersion + 1, status, inputs: JSON.parse(JSON.stringify(p.inputs)), results, definitionVersion: version, referenceVersion: definitions.referenceVersion, engineVersion: QMENTUM_ENGINE, referenceDate: p.referenceDate, importHash: current?.importHash || p.importHash, createdBy: current?.createdBy || uid, createdAt: current?.createdAt || now, updatedBy: uid, updatedAt: now, action: p.action, reason: p.reason.trim(), reviewedBy: p.action === "REVIEW" ? uid : ["SAVE", "REOPEN", "REBASE"].includes(p.action) ? null : current?.reviewedBy || null };
+    if (JSON.stringify(data).length > 16e4) throw Error("QMENTUM_DOCUMENT_TOO_LARGE");
+    return { kind: "month", version: data.version, data };
+  }
+  return __toCommonJS(qmentum_server_core_exports);
 })();
