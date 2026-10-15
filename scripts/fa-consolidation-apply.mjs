@@ -35,7 +35,7 @@ try{
    &&fb?.fields?.evaluationEnabled?.booleanValue===false&&fb.fields.managementEnabled?.booleanValue===false;
  };
  demand(await assertBarrier(),'CONSOLIDATION_APPLY_BARRIER_MISSING');
- const readTime=new Date(Date.now()-1000).toISOString(),scope=FA_CONSOLIDATION_COLLECTIONS.filter(x=>!['auditLogs','notifications','notificationGroups'].includes(x));
+ const readTime=new Date(Date.now()-30000).toISOString(),scope=FA_CONSOLIDATION_COLLECTIONS.filter(x=>!['auditLogs','notifications','notificationGroups'].includes(x));
  const captures={};for(const projectId of [FB,FA])captures[projectId]=await captureFaConsolidationSnapshot({projectId,scope,readTime,accessToken:tokens.get(projectId),fetchImpl:fetch,includeRootInventory:true});
  const unknown=captures[FB].rootInventory.collections.filter(name=>!scope.includes(name)&&!['managementAuthorizationFences','managementAuthorizationLeases','managementRuntime'].includes(name));
  demand(unknown.length===0,'CONSOLIDATION_APPLY_UNKNOWN_SOURCE_ROOTS');
