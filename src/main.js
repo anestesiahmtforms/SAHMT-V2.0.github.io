@@ -24,14 +24,13 @@ import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
-import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures, secondaryDomainAccess} from './feature-flags.js';
+import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 import {createManagementProjectAuthAutoConnector} from './management-project-auth-auto-connect.js';
 
 const app = document.querySelector('#app');
-const secondaryDomainProjects = Object.freeze({management:'FA', training:'FA'});
 const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
@@ -583,8 +582,7 @@ function moduleCards() {
     && (route === 'notifications' || (commonUserActive && !can('admin') && ['management', 'training'].includes(route)) || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
       ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
       : (() => {
-        const lockedForCommonUser = commonUserActive && !can('admin') && ['management', 'training'].includes(route)
-          && !secondaryDomainAccess(route, session.profile, secondaryDomainProjects);
+        const lockedForCommonUser = commonUserActive && !can('admin') && ['management', 'training'].includes(route);
         const lockedAttributes = lockedForCommonUser ? ' disabled aria-disabled="true" class="module-card module-card--inactive" title="Aguardando liberação do administrador"' : ' class="module-card"';
         return `<button${lockedAttributes} data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
@@ -1025,7 +1023,7 @@ function showScheduleContacts(contacts, context = {}) {
 }
 
 async function loadModule(route) {
-  if (route === 'management' && !can('admin') && !secondaryDomainAccess(route, session.profile, secondaryDomainProjects)) {
+  if (['management', 'training'].includes(route) && !can('admin')) {
     navigate('home');
     return;
   }
@@ -4476,8 +4474,8 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
-  if (requestedRoute === 'management' && !can('admin') && !secondaryDomainAccess(requestedRoute, session.profile, secondaryDomainProjects)) {
-    notice = 'Acesso à Gestão ainda não foi liberado para este perfil.';
+  if (['management', 'training'].includes(requestedRoute) && !can('admin')) {
+    notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
   }

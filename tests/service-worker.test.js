@@ -93,7 +93,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
-  assert.ok(worker.names.has('sahmt-v2-shell-v193'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v194'));
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
@@ -117,7 +117,7 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v186', 'sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v193'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v194'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);

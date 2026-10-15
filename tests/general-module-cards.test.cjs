@@ -273,13 +273,13 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
 });
 
-test('liberação no FA consolidado habilita somente o domínio explicitamente autorizado', () => {
+test('pausa administrativa mantém os dois módulos inativos mesmo com permissões individuais', () => {
  const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.doesNotMatch(cardMarkup(h,'management'), /disabled/);
+ assert.match(cardMarkup(h,'management'), /disabled/);
  assert.match(cardMarkup(h,'training'), /disabled/);
  const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
  assert.match(cardMarkup(p,'management'), /disabled/);
- assert.doesNotMatch(cardMarkup(p,'training'), /disabled/);
+ assert.match(cardMarkup(p,'training'), /disabled/);
 });
 test('liberação de domínio exige perfil ativo e permissão booleana', () => {
  const h=harness();
