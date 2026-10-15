@@ -221,15 +221,14 @@ test('permissões de leitura existentes permitem consultar sem mostrar formulár
 });
 
 for (const route of ['training']) {
-  test(`${route}: sem permissão mostra aviso de acesso e encerra antes de importar ou consultar dados`, async () => {
+  test(`${route}: usuário comum retorna à Home antes de importar ou consultar dados`, async () => {
     for (const permissions of [{}, {trainingsRead: false, trainingsManage: false, notificationsRead: false, notificationsManage: false}]) {
       const h = harness({session: approved(permissions), route});
       await h.ui.loadModule(route);
-      assert.match(h.content.innerHTML, /Seu perfil ainda não tem acesso ao conteúdo desta área/);
-      assert.match(h.content.innerHTML, /role="status"/);
+      assert.equal(h.content.innerHTML, '');
       assert.deepEqual(h.imports, []);
       assert.deepEqual(h.queries, []);
-      assert.deepEqual(h.navigations, []);
+      assert.deepEqual(h.navigations, ['home']);
     }
   });
 
@@ -243,7 +242,7 @@ for (const route of ['training']) {
   });
 
   test(`${route}: leitura previamente autorizada conserva a consulta do fluxo existente`, async () => {
-    const h = harness({session: route === 'training' ? approved({trainingsRead:true}) : approved({}, 'administrador_app'), route});
+    const h = harness({session: approved({trainingsRead:true}, 'administrador_app'), route});
     await h.ui.loadModule(route);
     assert.ok(h.imports.includes(route === 'training' ? './performance-ui.js' : './data.js'));
     if(route === 'training') {assert.equal(h.imports.includes('./training.js'),false); assert.equal(h.queries.some(query=>query.name==='listModuleRecords'),false);}
