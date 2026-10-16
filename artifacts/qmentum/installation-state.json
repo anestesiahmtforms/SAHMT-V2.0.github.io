@@ -22,7 +22,7 @@
   "rulesCreateHttpStatus": 200,
   "rulesReleaseHttpStatus": 200,
   "backendFiles": 29,
-  "backendVersion": 16,
+  "backendVersion": 17,
   "manifestChanged": false,
   "newTriggers": 0,
   "aiEnabled": false,
@@ -48,7 +48,7 @@
     "appsScriptWriteEnabled": true
   },
   "localTests": {
-    "qmentum": 93,
+    "qmentum": 94,
     "qmentumRules": 12,
     "allRules": 101,
     "domain": 957,
@@ -57,7 +57,8 @@
     "browserChecks": 112,
     "viewports": 4,
     "runtimeBrowser": 1,
-    "restEmulator": 3
+    "restEmulator": 3,
+    "qmentumRulesAndRest": 15
   },
   "realBusinessWriteVerified": false,
   "participationPoints": {

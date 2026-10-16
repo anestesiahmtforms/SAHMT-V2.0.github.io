@@ -46,7 +46,7 @@ function qmWriteApply_(id,uid) {
   const checked=[profile,grant,unit,definitions,importBatch];if(prepared.kind==='month')checked.push(config);
   checked.filter(Boolean).forEach(function(d){writes.push({verify:d._name,currentDocument:{updateTime:d._updateTime}});});
   writes.push(qmServerWrite_('qmentumWriteRequests/'+id,Object.assign(clean(request),{status:'CONFIRMED',confirmedVersion:prepared.version,confirmedAt:new Date()}),request));
-  try{qmServerCommit_(writes);}catch(e){if(e.status===409||e.status===412)throw Error('QMENTUM_VERSION_CONFLICT');throw Error('QMENTUM_WRITE_UNAVAILABLE');}
+  try{qmServerCommit_(writes);}catch(e){if(e.status===409||e.status===412||e.message==='QMENTUM_VERSION_CONFLICT')throw Error('QMENTUM_VERSION_CONFLICT');throw Error('QMENTUM_WRITE_UNAVAILABLE');}
   return prepared.version;
 }
 function qmWriteHttp_(event) {
