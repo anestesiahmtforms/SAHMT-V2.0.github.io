@@ -270,3 +270,17 @@ test('erro de leitura ou gravação é propagado sem concessão local nem result
     assert.equal(h.commitCount(), 0);
   }
 });
+
+
+test('salvar a edição administrativa conserva as liberações individuais explícitas e não as concede por padrão', async () => {
+  const h = harness({current: profileInput({permissions: {managementModuleEnabled: true, performanceModuleEnabled: true}, createdAt: 'ORIGINAL'})});
+  const input = profileInput({permissions: {managementModuleEnabled: true, performanceModuleEnabled: true, managementRead: true}});
+  await h.save(input, 'admin-ficticio');
+  assert.equal(h.writes[0].record.permissions.managementModuleEnabled, true);
+  assert.equal(h.writes[0].record.permissions.performanceModuleEnabled, true);
+  assert.equal(h.writes[0].record.permissions.admin, undefined);
+  const ordinary = harness();
+  await ordinary.save(profileInput({permissions: {managementModuleEnabled: 'true', performanceModuleEnabled: false}}), 'admin-ficticio');
+  assert.equal(ordinary.writes[0].record.permissions.managementModuleEnabled, undefined);
+  assert.equal(ordinary.writes[0].record.permissions.performanceModuleEnabled, undefined);
+});

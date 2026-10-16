@@ -52,7 +52,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   vm.runInContext(features.replace(/^export /gm, '') + '\n' + main.slice(labelStart, labelEnd), context);
   const loadModule = extractFunction('loadModule', {async: true}).replace(/import\((['"])([^'"]+)\1\)/g, 'fakeImport("$2")');
   vm.runInContext([
-    extractFunction('can'), extractFunction('hasOccurrencePermission'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
+    extractFunction('can'), extractFunction('canOpenRestrictedModule'), extractFunction('hasOccurrencePermission'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
     extractFunction('actionForm'), loadModule,
     'globalThis.realModuleUi = {can, moduleCards, managementUtilityCards, actionForm, loadModule};'
   ].join('\n'), context);
@@ -101,7 +101,7 @@ function renderHarness(session) {
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
     updateInformationBanner() {}, updateOutboxStatus: async () => {}, navigator: {onLine: false}
   });
-  vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
+  vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
 }
 
@@ -287,4 +287,70 @@ test('liberação de domínio exige perfil ativo e permissão booleana', () => {
  {active:true,access:true,role:'administrador_app',permissions:{}},
  {active:true,access:true,permissions:{managementRead:'true'}}])
  assert.equal(h.context.secondaryDomainAccess('management',profile,{management:'FA'}),false);
+});
+
+
+function individuallyReleased(permissions = {}) {
+  const session = approved({managementRead: true, trainingsRead: true, ...permissions});
+  session.profile.uid = session.user.uid;
+  return session;
+}
+
+test('liberação individual habilita apenas os dois módulos solicitados, sem poderes administrativos', async () => {
+  const session = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
+  const before = structuredClone(session);
+  const h = harness({session, route: 'training'});
+  for (const route of ['management', 'training']) assert.doesNotMatch(cardMarkup(h, route), /disabled/);
+  for (const permission of ['admin', 'usersManage', 'managementManage', 'trainingsManage']) assert.equal(h.ui.can(permission), false);
+  assert.equal(h.ui.managementUtilityCards(), '');
+  await h.ui.loadModule('training');
+  assert.deepEqual(h.navigations, []);
+  assert.deepEqual(h.queries, [{name: 'mountPerformanceModule'}]);
+  assert.deepEqual(session, before);
+  const direct = renderHarness(session);
+  await direct.context.runRender();
+  assert.deepEqual(direct.navigations, []);
+  assert.deepEqual(direct.loads, ['management']);
+});
+
+test('liberações de Gestão e Desempenho são independentes e não liberam QMENTUM', () => {
+  for (const [flag, route, blocked] of [['managementModuleEnabled','management','training'], ['performanceModuleEnabled','training','management']]) {
+    const h = harness({session: individuallyReleased({[flag]: true})});
+    assert.doesNotMatch(cardMarkup(h, route), /disabled/);
+    assert.match(cardMarkup(h, blocked), /disabled/);
+    assert.equal(h.context.canOpenRestrictedModule('qmentum'), false);
+  }
+});
+
+test('flag ausente, inválida, UID divergente, conta inativa ou sem leitura mantém bloqueio individual', async () => {
+  const base = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
+  const variants = [
+    s => { delete s.profile.permissions.managementModuleEnabled; },
+    s => { s.profile.permissions.managementModuleEnabled = 'true'; },
+    s => { s.profile.uid = 'outra-pessoa'; },
+    s => { delete s.profile.uid; },
+    s => { s.profile.active = false; },
+    s => { s.profile.access = false; },
+    s => { s.profile.permissions.managementRead = false; }
+  ];
+  for (const mutate of variants) {
+    const session = structuredClone(base); mutate(session);
+    const h = harness({session, route: 'management'});
+    assert.equal(h.context.canOpenRestrictedModule('management'), false);
+    await h.ui.loadModule('management');
+    assert.deepEqual(h.navigations, ['home']);
+    assert.deepEqual(h.imports, []);
+  }
+});
+
+test('troca de usuário e revogação não transportam a liberação para outra conta', async () => {
+  const session = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
+  const h = harness({session});
+  assert.equal(h.context.canOpenRestrictedModule('management'), true);
+  h.context.session = individuallyReleased();
+  assert.equal(h.context.canOpenRestrictedModule('management'), false);
+  h.context.session = session;
+  session.profile.permissions.managementModuleEnabled = false;
+  await h.ui.loadModule('management');
+  assert.deepEqual(h.navigations, ['home']);
 });

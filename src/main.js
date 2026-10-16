@@ -70,6 +70,7 @@ const userPermissions = [
   ['eventsRead', 'Consultar eventos'], ['eventsWrite', 'Registrar eventos'], ['eventsCatalogManage', 'Gerenciar catálogo de Eventos'],
   ['labelsRead', 'Consultar etiquetas'], ['labelsWrite', 'Registrar etiquetas'], ['labelsManage', 'Gerenciar etiquetas'],
   ['checklistRead', 'Consultar checklist'], ['checklistWrite', 'Registrar checklist'], ['checklistSign', 'Assinar checklist'], ['checklistManage', 'Gerenciar estações'],
+  ['managementModuleEnabled', 'Liberar botão Gestão'], ['performanceModuleEnabled', 'Liberar botão Desempenho'],
   ['managementRead', 'Consultar Gestão'], ['managementActivityWrite', 'Gerenciar atividades'], ['managementIndicatorsRead', 'Consultar indicadores'], ['managementIndicatorsWrite', 'Gerenciar indicadores'], ['managementPlansManage', 'Gerenciar planos de ação'], ['managementManage', 'Administrar áreas'],
   ['trainingsRead', 'Consultar desempenho'], ['trainingsManage', 'Gerenciar materiais legados'],
   ['documentsManage', 'Gerenciar documentos'], ['qualityManage', 'Gerenciar qualidade'], ['equipmentManage', 'Gerenciar equipamentos'], ['peopleManage', 'Gerenciar pessoas'],
@@ -572,7 +573,7 @@ function moduleCards() {
     && (route === 'notifications' || (commonUserActive && !can('admin') && ['management', 'training'].includes(route)) || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
       ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
       : (() => {
-        const lockedForCommonUser = commonUserActive && !can('admin') && ['management', 'training'].includes(route);
+        const lockedForCommonUser = commonUserActive && ['management', 'training'].includes(route) && (!canOpenRestrictedModule(route) || !featureEnabledForRoute(route, appFeatures));
         const lockedAttributes = lockedForCommonUser ? ' disabled aria-disabled="true" class="module-card module-card--inactive" title="Aguardando liberação do administrador"' : ' class="module-card"';
         return `<button${lockedAttributes} data-route="${route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
@@ -600,6 +601,17 @@ function can(permission) {
   const qualityAreaPermissions = ['managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage'];
   return currentRoute() === 'management' && (!selectedManagementAreaId || selectedManagementAreaId === 'area-gestao-da-qualidade') &&
     session.profile?.permissions?.qualityManage === true && qualityAreaPermissions.includes(permission);
+}
+
+// Individual release is read from the authenticated FA profile. Read/write
+// permissions remain independent; this release never grants administrator rights.
+function canOpenRestrictedModule(route) {
+  if (can('admin')) return true;
+  const release = {management: 'managementModuleEnabled', training: 'performanceModuleEnabled'}[route];
+  const readPermission = {management: 'managementRead', training: 'trainingsRead'}[route];
+  return !!release && session.status === 'signed-in' && session.profile?.active === true
+    && session.profile?.access === true && !!session.user?.uid && session.profile?.uid === session.user.uid
+    && session.profile?.permissions?.[release] === true && session.profile?.permissions?.[readPermission] === true;
 }
 
 function vacationRankMarkup(sigla, classes, position) {
@@ -1024,7 +1036,7 @@ async function loadModule(route) {
     }catch(error){if(current())content.innerHTML='<p class="empty-state" role="status">O módulo QMENTUM aguarda configuração de unidade, permissões ou habilitação no FA. Nenhuma alteração foi realizada.</p>';}
     return;
   }
-  if (['management', 'training'].includes(route) && !can('admin')) {
+  if (['management', 'training'].includes(route) && !canOpenRestrictedModule(route)) {
     navigate('home');
     return;
   }
@@ -1048,7 +1060,7 @@ async function loadModule(route) {
     const generation = evaluationModuleGeneration;
     const current = () => generation === evaluationModuleGeneration && content.isConnected && currentRoute() === 'training' &&
       session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true && session.profile?.access === true &&
-      featureEnabledForRoute('training', appFeatures) && (can('trainingsRead') || can('trainingsManage'));
+      featureEnabledForRoute('training', appFeatures) && canOpenRestrictedModule('training') && (can('trainingsRead') || can('trainingsManage'));
     const {mountPerformanceModule} = await import('./performance-ui.js');
     if (!current()) return;
     cleanupCurrentModule = mountPerformanceModule(content, {uid: requestUid, profile: session.profile, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: current,
@@ -4440,7 +4452,7 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
-  if (['management', 'training', 'qmentum'].includes(requestedRoute) && !can('admin')) {
+  if (['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
