@@ -60,7 +60,7 @@
     "restEmulator": 3,
     "qmentumRulesAndRest": 17
   },
-  "realBusinessWriteVerified": false,
+  "realBusinessWriteVerified": true,
   "participationPoints": {
     "acknowledgement": 1,
     "approvedSuggestion": 2,
@@ -98,5 +98,6 @@
     "emptyMonthFormulasExcluded": 6,
     "unverifiedHistoricalRates": 6,
     "sourcePreserved": true
-  }
+  },
+  "realInteractiveMonthlySaveVerified": false
 }
