@@ -1,0 +1,53 @@
+{
+  "code": "QMENTUM_QM14_CONFIRMED_AND_VERIFIED",
+  "observedAt": "2026-10-16T01:30:24.376Z",
+  "unit": "SAHMT",
+  "year": 2026,
+  "confirmation": "DISTINCT_SURGERIES_COUNTED_ONCE",
+  "verifiedMonths": 6,
+  "oldHistoriesPreserved": true,
+  "newVersion": 2,
+  "monthlyResults": [
+    {
+      "month": 1,
+      "status": "CONFIRM",
+      "sourceMode": "CALCULATED",
+      "version": 2
+    },
+    {
+      "month": 2,
+      "status": "CONFIRM",
+      "sourceMode": "CALCULATED",
+      "version": 2
+    },
+    {
+      "month": 3,
+      "status": "CONFIRM",
+      "sourceMode": "CALCULATED",
+      "version": 2
+    },
+    {
+      "month": 4,
+      "status": "CONFIRM",
+      "sourceMode": "CALCULATED",
+      "version": 2
+    },
+    {
+      "month": 5,
+      "status": "CONFIRM",
+      "sourceMode": "CALCULATED",
+      "version": 2
+    },
+    {
+      "month": 6,
+      "status": "CONFIRM",
+      "sourceMode": "CALCULATED",
+      "version": 2
+    }
+  ],
+  "committed": true,
+  "writes": 13,
+  "definitionsChanged": false,
+  "billingEnabled": false,
+  "clinicalMetricsIncluded": false
+}

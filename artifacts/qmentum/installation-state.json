@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "code": "QMENTUM_ADMIN_PUBLISHED_AND_AUTHENTICATED_READ_VERIFIED",
-  "observedAt": "2026-10-16T01:21:32.479Z",
+  "observedAt": "2026-10-16T01:32:28.782Z",
   "projectId": "sahmt-17a16",
   "configurationDocuments": 4,
   "enabled": true,
@@ -48,7 +48,7 @@
     "appsScriptWriteEnabled": true
   },
   "localTests": {
-    "qmentum": 99,
+    "qmentum": 102,
     "qmentumRules": 12,
     "allRules": 101,
     "domain": 957,
@@ -58,7 +58,7 @@
     "viewports": 4,
     "runtimeBrowser": 1,
     "restEmulator": 3,
-    "qmentumRulesAndRest": 17
+    "qmentumRulesAndRest": 19
   },
   "realBusinessWriteVerified": true,
   "participationPoints": {
@@ -92,12 +92,14 @@
       2
     ],
     "months": 6,
-    "histories": 6,
+    "histories": 12,
     "indicatorResults": 108,
     "zeroDenominatorCorrections": 5,
     "emptyMonthFormulasExcluded": 6,
-    "unverifiedHistoricalRates": 6,
-    "sourcePreserved": true
+    "unverifiedHistoricalRates": 0,
+    "sourcePreserved": true,
+    "qm14UniqueProceduresConfirmed": true,
+    "qm14Version": 2
   },
   "realInteractiveMonthlySaveVerified": false
 }
