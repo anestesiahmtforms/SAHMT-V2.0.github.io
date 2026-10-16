@@ -15,3 +15,19 @@ test('FA occurrence admission needs no legacy auth targets, Gateway policy or si
  for(let i=0;i<2;i++)assert.equal((await worker.fetch(request(),env)).status,429);
  assert.equal(brokerCalls,0);assert.equal(admissionBuilds,1);assert.equal(admissions,2);
 });
+
+test('all FA service routes survive explicitly disabled secondary authentication bindings',async()=>{
+ let brokerCalls=0;const worker=createManagementAuthWorker({buildRuntime:()=>{brokerCalls++;throw Error('Forbidden');},
+  buildOperationalRuntime:()=>({maxRequestMs:80000,admitRequest:async()=>false})});
+ const env={MANAGEMENT_SECONDARY_AUTH_RETIRED:'true',MANAGEMENT_AUTH_ENABLED:'false',MANAGEMENT_AUTH_FB_ENABLED:'false',
+  MANAGEMENT_AUTH_FC_ENABLED:'false',MANAGEMENT_DOMAIN_ENABLED:'false',MANAGEMENT_GATEWAY_ENABLED:'false',MANAGEMENT_FIRST_LOGIN_ENABLED:'false',
+  QMENTUM_WRITE_ENABLED:'true',OPERATIONAL_SHEETS_ENABLED:'true',OCCURRENCE_SCORING_ENABLED:'true',
+  OPERATIONAL_SHEETS_HMAC_SECRET:'s'.repeat(43),OPERATIONAL_SHEETS_SCRIPT_URL:'https://script.google.com/macros/s/'+'synthetic'.repeat(4)+'/exec',
+  OCCURRENCE_SCORING_HMAC_SECRET:'s'.repeat(43),OCCURRENCE_SCORING_SCRIPT_URL:'https://script.google.com/macros/s/'+'synthetic'.repeat(4)+'/exec'};
+ for(const path of ['/v1/qmentum/write','/v1/evaluation/occurrence','/v1/operational-sheets/notify']) {
+  const headers={Origin:'https://anestesiahmtforms.github.io'};
+  assert.equal((await worker.fetch(new Request('https://worker.invalid'+path,{method:'OPTIONS',headers}),env)).status,204,path);
+  assert.equal((await worker.fetch(new Request('https://worker.invalid'+path,{method:'POST',headers,body:'{}'}),env)).status,401,path);
+ }
+ assert.equal(brokerCalls,0);
+});

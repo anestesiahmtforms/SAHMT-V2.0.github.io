@@ -4,6 +4,8 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "audit:fa": "node scripts/audit-fa-runtime.mjs --read-once",
+    "check:fa-runtime": "node scripts/check-fa-runtime.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "validate:catalog-preview": "node scripts/validate-catalog-preview.js",

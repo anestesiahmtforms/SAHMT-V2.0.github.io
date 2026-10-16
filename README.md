@@ -2,6 +2,12 @@
 
 Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Authentication como sessão única e Firestore como fonte operacional V2. A V1 permanece intacta.
 
+## Operação consolidada no FA
+
+Gestão, treinamentos, Desempenho, Ocorrências e QMENTUM utilizam `sahmt-17a16`. O cliente principal não inicializa sessões FB/FC. Referências históricas da migração permanecem nos recibos para auditoria e deduplicação. Worker e Apps Script continuam necessários aos processos próprios de FA.
+
+Consulte a [revisão de 16/10/2026](docs/REVISAO_FA_POS_DESINTEGRACAO_20261016.md) para o escopo da limpeza, evidências atuais e limites. Os relatos datados anteriores neste README são históricos.
+
 ## Modelo
 
 - O UID do Firebase Authentication identifica o perfil mínimo em `users/{uid}`; as Firestore Rules conferem perfil e permissão a cada acesso do cliente.

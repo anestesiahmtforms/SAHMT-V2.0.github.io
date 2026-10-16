@@ -28,7 +28,6 @@ import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from
 import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
-import {createManagementProjectAuthAutoConnector} from './management-project-auth-auto-connect.js';
 
 const app = document.querySelector('#app');
 const STARTUP_BANNER_DURATION_MS = 3000;
@@ -76,21 +75,11 @@ const userPermissions = [
   ['documentsManage', 'Gerenciar documentos'], ['qualityManage', 'Gerenciar qualidade'], ['equipmentManage', 'Gerenciar equipamentos'], ['peopleManage', 'Gerenciar pessoas'],
   ['financeRead', 'Consultar financeiro'], ['financeWrite', 'Registrar financeiro'], ['financeManage', 'Administrar financeiro'],
   ['notificationsRead', 'Consultar notificações'], ['notificationsManage', 'Gerenciar notificações'],
-  ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências (FC)'],
+  ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências'],
   ['occurrencesAuditRead', 'Consultar auditoria de ocorrências'],
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
-const managementProjectAuthAutoConnector = createManagementProjectAuthAutoConnector({
-  enabled: import.meta.env.VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED === 'true',
-  loadConnect: async () => {
-    const {getFirebaseProjectAuthOptIn} = await import('./firebase-project-auth-browser.js');
-    const optIn = getFirebaseProjectAuthOptIn();
-    return targetNames => optIn.connect(targetNames);
-  },
-  isCurrent: uid => session.status === 'signed-in' && session.user?.uid === uid && session.profile?.active === true
-    && session.profile?.access === true && navigator.onLine
-});
 let notice = '';
 let outboxRetryTimer = null;
 let outboxRetryAt = 0;
@@ -594,7 +583,7 @@ function moduleCards() {
 
 function hasOccurrencePermission() {
   // Registration is open to every active, accessible FA user. Reading the
-  // general list and audit history remain separately permissioned in FC.
+  // general list and audit history remain separately permissioned in FA.
   return session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true
     && featureEnabledForRoute('occurrences', appFeatures);
 }
@@ -1328,49 +1317,13 @@ async function loadModule(route) {
       return;
     }
     if (route === 'management') {
-      const projectAuthOptinEnabled = document.querySelector('meta[name="firebase-project-auth-optin"]')?.content === 'true' &&
-        (document.querySelector('meta[name="management-firebase-enabled"]')?.content === 'true' ||
-          document.querySelector('meta[name="indicators-firebase-enabled"]')?.content === 'true') &&
-        Boolean(document.querySelector('meta[name="firebase-project-auth-endpoint"]')?.content?.trim()) &&
-        Boolean(document.querySelector('meta[name="firebase-project-auth-allowed-origin"]')?.content?.trim());
-      const enabledProjectTargets = {
-        FB: document.querySelector('meta[name="management-firebase-enabled"]')?.content === 'true',
-        FC: document.querySelector('meta[name="indicators-firebase-enabled"]')?.content === 'true'
-      };
-      const projectAuthButtons = projectAuthOptinEnabled ? [
-        ...(enabledProjectTargets.FB ? ['<button class="secondary-button" type="button" data-project-auth-targets="FB">Conectar Educação (FB)</button>'] : []),
-        ...(enabledProjectTargets.FC ? ['<button class="secondary-button" type="button" data-project-auth-targets="FC">Conectar Resultados (FC)</button>'] : []),
-        ...(enabledProjectTargets.FB && enabledProjectTargets.FC
-          ? ['<button class="secondary-button" type="button" data-project-auth-targets="FB,FC">Conectar FB + FC</button>'] : [])
-      ].join('') : '';
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
       const areas = items.map((item) => `<button class="area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"><span class="module-mark">${escapeHtml(item.shortName || item.icon || 'GE')}</span><span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `<div id="management-evaluation-access"></div>${projectAuthOptinEnabled ? `<section class="project-auth-optin"><p>Conecte somente os projetos necessários. O login principal continua no FA.</p><div class="project-auth-optin__actions">${projectAuthButtons}</div><p id="project-auth-status" class="record-meta" role="status" aria-live="polite"></p></section>` : ''}${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
-      content.querySelectorAll('[data-project-auth-targets]').forEach((button) => button.addEventListener('click', async (event) => {
-        const button = event.currentTarget;
-        const status = content.querySelector('#project-auth-status');
-        const targetNames = button.dataset.projectAuthTargets.split(',');
-        const actionButtons = [...content.querySelectorAll('[data-project-auth-targets]')];
-        actionButtons.forEach(item => { item.disabled = true; });
-        if (status) status.textContent = 'Conectando às sessões selecionadas…';
-        try {
-          // Manual reconnect is available when the optional background attempt failed.
-          const {getFirebaseProjectAuthOptIn} = await import('./firebase-project-auth-browser.js');
-          const result = await getFirebaseProjectAuthOptIn().connect(targetNames);
-          const targetState = result?.targets || {};
-          const label = name => targetState[name]?.status === 'ready' ? 'conectado'
-            : targetState[name]?.code === 'FC_TOKEN_SIGN_FAILED' ? 'indisponível' : 'não conectado';
-          if (status) status.textContent = result?.status === 'ready' || result?.status === 'partial'
-            ? `Sessões: ${targetNames.map(name => `${name} ${label(name)}`).join('; ')}.`
-            : 'Não foi possível conectar as sessões selecionadas. O login principal continua disponível.';
-        } catch {
-          if (status) status.textContent = 'Não foi possível conectar as sessões selecionadas. O login principal continua disponível.';
-        } finally { actionButtons.forEach(item => { if (item.isConnected) item.disabled = false; }); }
-      }));
+      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><form method="dialog"><button class="secondary-button" type="submit" autofocus>Fechar</button></form></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
       const evaluationHost = content.querySelector('#management-evaluation-access');
       const requestUid = session.user?.uid;
       const generation = evaluationModuleGeneration;
@@ -4660,12 +4613,6 @@ function sessionChanged(next) {
   if (next.status === 'signed-in' && userChanged) {
     void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(next.user.uid)).catch(() => {});
   }
-    if (next.status === 'signed-in') {
-      if (!unchangedPresentation && typeof window !== 'undefined'
-        && typeof managementProjectAuthAutoConnector !== 'undefined') {
-        window.setTimeout(() => { void managementProjectAuthAutoConnector.update({uid:next.user?.uid, profile:next.profile}); }, 0);
-      }
-    } else if (typeof managementProjectAuthAutoConnector !== 'undefined') managementProjectAuthAutoConnector.invalidate();
   notice = '';
   if (startupBannerActive && next.status === 'signed-in') {
     if (userChanged) preloadStartupReports(next.user);
@@ -4710,7 +4657,6 @@ async function refreshAppFeatures(uid, force = false) {
 window.addEventListener('hashchange', () => {
   if (session.status === 'signed-in') {
     void render();
-    if (currentRoute() !== 'home') void managementProjectAuthAutoConnector.retry();
   }
 });
 window.addEventListener('online', () => {
@@ -4718,7 +4664,6 @@ window.addEventListener('online', () => {
   liveReports.setOnline(true);
   if (session.status === 'signed-in') {
     void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
-    void managementProjectAuthAutoConnector.retry();
     for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'reconnect');
     void refreshAppFeatures(session.user.uid, true);
     void syncOutbox();
@@ -4734,7 +4679,6 @@ document.addEventListener('visibilitychange', () => {
     invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
   } else {
     cleanupCurrentModule?.resume?.();
-    if (session.status === 'signed-in' && currentRoute() !== 'home') void managementProjectAuthAutoConnector.retry();
     const scopes = suspendedReportScopes; suspendedReportScopes = [];
     for (const scope of scopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, scope, {force: true});
   }
@@ -4762,10 +4706,6 @@ if (startupBannerActive) window.setTimeout(() => {
   void render();
 }, STARTUP_BANNER_DURATION_MS);
 watchSession(sessionChanged);
-
-if (import.meta.env.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true') {
-  void import('./management-pilot-auth-diagnostics.js').then(module => module.mountManagementPilotAuthDiagnostics({signOut: signOutGlobal})).catch(() => {});
-}
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`, {scope: import.meta.env.BASE_URL}).catch((error) => console.error('[SAHMT PWA] Service Worker', error)));
