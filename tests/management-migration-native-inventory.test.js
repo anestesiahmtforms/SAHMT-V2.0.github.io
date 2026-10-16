@@ -80,9 +80,9 @@ test('observes native triggers but keeps changed operational source unapproved',
   assert.equal(result.configuredFirestoreProjectId,'sahmt-17a16');assert.equal(result.databaseId,'(default)');
   assert.equal(result.configurationSha256,null);assert.match(result.sourceBasisSha256,/^[a-f0-9]{64}$/);
   assert.equal(result.sourceVerification.reviewedModuleCount,12);assert.equal(result.sourceVerification.reviewedFunctionCount,228);
-  // QMENTUM adds one optional step to the current reconciliation function.
-  // Its legacy migration fingerprint must remain unapproved, not re-pinned.
-  assert.equal(result.sourceVerification.verifiedFunctionCount,223);assert.equal(result.sourceVerification.changedFunctionCount,5);
+  // QMENTUM and the three-section training contract change operational bodies.
+  // Preserve the legacy review: these changes remain unapproved, not re-pinned.
+  assert.equal(result.sourceVerification.verifiedFunctionCount,215);assert.equal(result.sourceVerification.changedFunctionCount,13);
   assert.deepEqual(result.blockers,['MMI_SOURCE_NOT_PINNED_TO_REVIEW']);
   assert.equal(result.observedAt,new Date(TIME).toISOString());assert.equal(result.native.visibleCurrentUserTriggerCount,3);
   assert.ok(result.native.knownJobs.every(job=>job.potentiallyExecutable===true));
