@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "code": "QMENTUM_HISTORY_IMPORTED_AND_VERIFIED",
+  "observedAt": "2026-10-16T01:17:55.564Z",
+  "projectId": "sahmt-17a16",
+  "unit": "SAHMT",
+  "year": 2026,
+  "quarters": [
+    1,
+    2
+  ],
+  "months": [
+    {
+      "month": 1,
+      "status": "CREATE"
+    },
+    {
+      "month": 2,
+      "status": "CREATE"
+    },
+    {
+      "month": 3,
+      "status": "CREATE"
+    },
+    {
+      "month": 4,
+      "status": "CREATE"
+    },
+    {
+      "month": 5,
+      "status": "CREATE"
+    },
+    {
+      "month": 6,
+      "status": "CREATE"
+    }
+  ],
+  "createdMonths": 6,
+  "plannedWrites": 17,
+  "atomicTransaction": true,
+  "verifiedMonths": 6,
+  "sourceCells": 1017,
+  "sourceChunks": 3,
+  "sourceHash": "d0857e203e2ea566debb7eb8dfea29b52e6d6115d2e0ac214c115f4285bd5fb1",
+  "resolutions": [
+    {
+      "month": 1,
+      "indicatorId": "QM03",
+      "code": "ZERO_DENOMINATOR_NOT_APPLICABLE"
+    },
+    {
+      "month": 1,
+      "indicatorId": "QM14",
+      "code": "HISTORICAL_RATE_PRESERVED_UNVERIFIED"
+    },
+    {
+      "month": 2,
+      "indicatorId": "QM03",
+      "code": "ZERO_DENOMINATOR_NOT_APPLICABLE"
+    },
+    {
+      "month": 2,
+      "indicatorId": "QM14",
+      "code": "HISTORICAL_RATE_PRESERVED_UNVERIFIED"
+    },
+    {
+      "month": 3,
+      "indicatorId": "QM03",
+      "code": "ZERO_DENOMINATOR_NOT_APPLICABLE"
+    },
+    {
+      "month": 3,
+      "indicatorId": "QM14",
+      "code": "HISTORICAL_RATE_PRESERVED_UNVERIFIED"
+    },
+    {
+      "month": 4,
+      "indicatorId": "QM14",
+      "code": "HISTORICAL_RATE_PRESERVED_UNVERIFIED"
+    },
+    {
+      "month": 5,
+      "indicatorId": "QM03",
+      "code": "ZERO_DENOMINATOR_NOT_APPLICABLE"
+    },
+    {
+      "month": 5,
+      "indicatorId": "QM14",
+      "code": "HISTORICAL_RATE_PRESERVED_UNVERIFIED"
+    },
+    {
+      "month": 6,
+      "indicatorId": "QM03",
+      "code": "ZERO_DENOMINATOR_NOT_APPLICABLE"
+    },
+    {
+      "month": 6,
+      "indicatorId": "QM14",
+      "code": "HISTORICAL_RATE_PRESERVED_UNVERIFIED"
+    },
+    {
+      "month": 7,
+      "indicatorId": "QM03",
+      "code": "EMPTY_MONTH_FORMULA_EXCLUDED"
+    },
+    {
+      "month": 8,
+      "indicatorId": "QM03",
+      "code": "EMPTY_MONTH_FORMULA_EXCLUDED"
+    },
+    {
+      "month": 9,
+      "indicatorId": "QM03",
+      "code": "EMPTY_MONTH_FORMULA_EXCLUDED"
+    },
+    {
+      "month": 10,
+      "indicatorId": "QM03",
+      "code": "EMPTY_MONTH_FORMULA_EXCLUDED"
+    },
+    {
+      "month": 11,
+      "indicatorId": "QM03",
+      "code": "EMPTY_MONTH_FORMULA_EXCLUDED"
+    },
+    {
+      "month": 12,
+      "indicatorId": "QM03",
+      "code": "EMPTY_MONTH_FORMULA_EXCLUDED"
+    }
+  ],
+  "billingEnabled": false,
+  "sourceModified": false,
+  "usersModified": 0,
+  "profilesModified": 0,
+  "aiEnabled": false,
+  "historiesVerified": 6,
+  "indicatorResultsVerified": 108,
+  "technicalCorrections": 11,
+  "historicalRatesAwaitingUniqueProcedureConfirmation": 6,
+  "postcheckCode": "QMENTUM_HISTORY_AND_CORRECTIONS_CONFIRMED",
+  "postcheckedAt": "2026-10-16T01:20:06.965Z"
+}
