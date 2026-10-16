@@ -8,5 +8,6 @@ test('QMENTUM entry belongs to Clinical Coordination and is absent from the Home
 test('direct route uses only existing FA services and preserves the common-user administrative pause',()=>{
  const body=main.slice(main.indexOf("if(route === 'qmentum')"),main.indexOf("if (['management', 'training'].includes(route)"));
  assert.match(body,/import\('\.\/firebase\.js'\)/);assert.match(body,/import\('\.\/firebase-auth\.js'\)/);assert.doesNotMatch(body,/indicatorsDb|ensureProject|signIn/);
- assert.match(main,/\['management', 'training', 'qmentum'\]\.includes\(requestedRoute\) && !can\('admin'\)/);
+ assert.match(body,/session\.user\?\.uid===uid&&can\('admin'\)/);
+ assert.match(main,/\['management', 'training', 'qmentum'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
 });
