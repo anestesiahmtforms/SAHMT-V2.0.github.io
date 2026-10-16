@@ -1,4 +1,4 @@
-# SAHMT authentication broker Worker (local preparation)
+# SAHMT Worker — authentication compatibility and operational relays
 
 This is a dedicated FA → FB + FC Worker. It does not import or share the Etiquetas Worker. `wrangler.toml` keeps `workers_dev` false, declares the local SQLite Durable Object binding `BROKER_STATE`, and has no route, endpoint, or secret. No remote namespace has been created.
 
@@ -28,3 +28,7 @@ Run `npm run prepare:management-auth` to validate Gateway syntax/functions and m
 - Confirm runtime quotas and latency with a controlled operational rollout. The local 55-user nonce capacity test does not establish Google Apps Script or Firebase daily quotas.
 
 No production deployment, Firebase data mutation, IAM change, or service activation is performed by this local package.
+
+## QMENTUM writes
+
+The dedicated relay verifies an exact private `qmentumWriteRequests` document using the user FA ID token, then signs only its ID and verified actor for the existing Apps Script endpoint. Source inputs never travel through this relay. The backend independently rechecks the current profile, grant, unit, definition and config, calculates all results, and atomically commits the month/history/confirmation with preconditions. Browser writes to authoritative month/history/definition/config are denied. HMAC request/response domains are separate from Sheets and Occurrence scoring, nonces expire, redirects are restricted, and requests are bounded with no automatic retries. `QMENTUM_WRITE_ENABLED=false` is the Wrangler default. Existing server-only HMAC binding is reused; no key is embedded in code.

@@ -52,6 +52,7 @@ const labels = {
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
   management: ['Gestão', 'Áreas, atividades e indicadores'],
+  qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
   notifications: ['INFORMAÇÕES', 'Comunicados do SAHMT'],
@@ -577,7 +578,7 @@ function moduleCards() {
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
   const commonModules = commonUserActive ? ['management', 'training', 'notifications'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences'].includes(route)
+  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum'].includes(route)
     && (route === 'notifications' ? commonModules.includes(route) : commonModules.includes(route) || permissionFor[route]?.some(can))
     && (route === 'notifications' || (commonUserActive && !can('admin') && ['management', 'training'].includes(route)) || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
       ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
@@ -1023,6 +1024,17 @@ function showScheduleContacts(contacts, context = {}) {
 }
 
 async function loadModule(route) {
+  if(route === 'qmentum'){
+    const content=document.querySelector('#module-content'),uid=session.user?.uid;
+    const current=()=>currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&can('admin');
+    if(!content||!current()){navigate('home');return;}
+    try{
+      const [{db},{auth},{createQmentumRepository},{mountQmentumModule}]=await Promise.all([import('./firebase.js'),import('./firebase-auth.js'),import('./qmentum-data.js'),import('./qmentum-ui.js')]);
+      if(!current())return;
+      cleanupCurrentModule=await mountQmentumModule(content,{uid,isCurrent:current,repository:createQmentumRepository({db,auth,uid,isCurrent:current})});
+    }catch(error){if(current())content.innerHTML='<p class="empty-state" role="status">O módulo QMENTUM aguarda configuração de unidade, permissões ou habilitação no FA. Nenhuma alteração foi realizada.</p>';}
+    return;
+  }
   if (['management', 'training'].includes(route) && !can('admin')) {
     navigate('home');
     return;
@@ -2785,6 +2797,7 @@ async function shareReportPdf(kind) {
 async function loadManagementAreaActivities(area) {
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
+  if(detail)detail.onclick=event=>{if(event.target.closest('#qmentum-open')&&can('admin')){detail.closest('dialog')?.close();navigate('qmentum');}};
   const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
@@ -2844,7 +2857,7 @@ async function loadManagementAreaActivities(area) {
     const equipmentView = area.id === 'area-gestao-de-equipamentos'
       ? can('equipmentManage') ? '<div id="equipment-management-root"></div>' : '<section class="equipment-manager"><h4>Equipamentos</h4><p class="empty-state">Esta área exige a permissão Gerenciar equipamentos.</p></section>'
       : '';
-    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
+    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${area.id === 'area-coordenacao-clinica' && can('admin') ? '<button class="primary-button" type="button" id="qmentum-open">INDICADORES OBRIGATÓRIOS QMENTUM</button>' : ''}${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
       const responsible = item.responsibleUids?.includes(session.user.uid);
       const scoreReview = scoreReviewByActivity.get(item.id);
       const action = responsible && item.status === 'OPEN' ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="IN_PROGRESS">Iniciar</button>` :
@@ -4474,7 +4487,7 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
-  if (['management', 'training'].includes(requestedRoute) && !can('admin')) {
+  if (['management', 'training', 'qmentum'].includes(requestedRoute) && !can('admin')) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
@@ -4489,7 +4502,11 @@ async function render() {
     navigate('home');
     return;
   }
-  app.innerHTML = shellView();
+  if(requestedRoute==='qmentum'){
+    const {renderQmentumShell}=await import('./qmentum-shell.js');
+    if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!can('admin'))return;
+    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
+  }else app.innerHTML = shellView();
   preloadOperationalDataWhenIdle(session.user);
   document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
