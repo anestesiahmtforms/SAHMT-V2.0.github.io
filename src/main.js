@@ -3,6 +3,7 @@ import './performance-ui.css';
 import './catalog-folders.css';
 import {renderCatalogFolders} from './catalog-folders.js';
 import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
+import {installMaterialViewer} from './material-viewer.js';
 import {updateInformationBanner} from './information-banner.js';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {createReportRuntime} from './report-runtime.js';
@@ -31,6 +32,7 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 const app = document.querySelector('#app');
+installMaterialViewer(document);
 const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();

@@ -1,6 +1,7 @@
 import {createLiveReportSession} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {renderCatalogFolders} from './catalog-folders.js';
+import {googleMaterialPreview, renderMaterialViewerTrigger} from './material-viewer.js';
 
 const CATEGORIES = new Set(['PERFORMANCE', 'GOVERNANCE']);
 const MODALITY_LABELS = {ACKNOWLEDGEMENT: 'Ciência', SUGGESTION: 'Sugestão aprovada', TEST: 'Teste', MATERIAL: 'Material', QUESTIONS: 'Questões', CHECKLIST_TRANSFER: 'Transferência do Checklist', CHECKLIST: 'Checklist', OCCURRENCE: 'Registro de ocorrências', TRAINING_ACCESS: 'Acesso ao treinamento', TRAINING_COMPLETION: 'Conclusão do treinamento', MANAGEMENT_TASK: 'Atividade de Gestão'};
@@ -45,7 +46,9 @@ function safeUrl(value) {
 }
 const evidenceLink = (value, label = 'Abrir evidência') => {
   const sources = Array.isArray(value) ? value : [value];
-  return sources.map(source => safeUrl(typeof source === 'object' ? source?.url : source)).filter(Boolean).map(url => `<a class="evaluation-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`).join(' ');
+  return sources.map(source => safeUrl(typeof source === 'object' ? source?.url : source)).filter(Boolean).map(url => googleMaterialPreview(url)
+    ? renderMaterialViewerTrigger(url, {label, title: label, className: 'evaluation-link material-viewer-trigger'})
+    : `<a class="evaluation-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`).join(' ');
 };
 function requestId() { return globalThis.crypto?.randomUUID?.() || `evaluation-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 function ownRecords(snapshot, key, subjectUid, category) { return rows(snapshot?.[key]).filter(record => record?.uid === subjectUid && (!category || record.category === category)); }

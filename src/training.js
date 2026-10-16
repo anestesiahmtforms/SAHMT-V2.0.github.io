@@ -1,5 +1,6 @@
 import {acknowledgeLearningActivity, getMyScoreTotal, listTrainingProgress, saveTrainingProgress} from './data.js';
 import {completeTraining, startTraining} from './training-start.js';
+import {googleMaterialPreview, renderMaterialViewerTrigger} from './material-viewer.js';
 
 let playerApiPromise;
 
@@ -63,8 +64,11 @@ function learningActivityFeed(activities, receipts, errorMessage = '') {
   const cards = activities.map((activity) => {
     const receipt = receipts.find((item) => item.activityId === activity.id &&
       (activity.recurrenceMode === 'ONCE' || item.activityVersion === activity.version));
+    const resourcePreview = activity.resourceUrl ? googleMaterialPreview(activity.resourceUrl) : null;
     const resource = activity.resourceUrl
-      ? `<a class="secondary-button learning-activity-link" href="${escapeHtml(activity.resourceUrl)}" target="_blank" rel="noopener noreferrer">Abrir material</a>`
+      ? resourcePreview
+        ? renderMaterialViewerTrigger(activity.resourceUrl, {label: 'Abrir material', title: activity.title || 'Material de apoio', className: 'secondary-button learning-activity-link'})
+        : `<a class="secondary-button learning-activity-link" href="${escapeHtml(activity.resourceUrl)}" target="_blank" rel="noopener noreferrer">Abrir material</a>`
       : '';
     const acknowledgement = activity.completionKind === 'ACKNOWLEDGEMENT'
       ? `<button class="primary-button" type="button" data-learning-activity-ack="${escapeHtml(activity.id)}" ${receipt ? 'disabled' : ''}>${receipt ? 'Ciência registrada' : 'Confirmar ciência'}</button>`

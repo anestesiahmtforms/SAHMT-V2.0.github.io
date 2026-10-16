@@ -1,4 +1,5 @@
 import {catalogFolderName} from './catalog-folders.js';
+import {googleMaterialPreview} from './material-viewer.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
@@ -46,8 +47,10 @@ export function renderManagementDocumentCard(item, {canEdit = false} = {}) {
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
-  const link = href ? '<a class="management-document-link management-document-premium" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + content + '</a>'
-    : '<button class="management-document-premium" type="button" disabled>' + content + '</button>';
+  const viewerTarget = href ? googleMaterialPreview(href) : null;
+  const viewer = viewerTarget ? '<button class="management-document-link management-document-premium" type="button" data-open-material-viewer data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
+  const link = viewer || (href ? '<a class="management-document-link management-document-premium" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + content + '</a>'
+    : '<button class="management-document-premium" type="button" disabled>' + content + '</button>');
   const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
   return '<li class="management-document-card">' + link + edit + '</li>';
 }

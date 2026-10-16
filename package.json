@@ -8,6 +8,7 @@
     "check:fa-runtime": "node scripts/check-fa-runtime.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "test:material-viewer": "node --test tests/material-viewer.test.js",
     "validate:catalog-preview": "node scripts/validate-catalog-preview.js",
     "prepare:schedule-import": "node scripts/prepare-schedule-import.js",
     "validate:user-contact-preview": "node scripts/validate-user-contact-preview.js",
