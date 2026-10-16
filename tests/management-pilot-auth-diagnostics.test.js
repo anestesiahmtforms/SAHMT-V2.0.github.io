@@ -220,13 +220,12 @@ test('browser composition uses ninety second background budget without changing 
   assert.ok(load('../src/firebase-project-broker-transport.js').includes('timeoutMs = 20000'));
 });
 
-test('ordinary PWA diagnostics registration and mounting remain guarded by explicit opt-in', () => {
+test('retired pilot diagnostics stay disconnected from the ordinary FA PWA', () => {
   const load = path => readFileSync(new URL(path, import.meta.url), 'utf8');
-  assert.match(load('../.env.example'), /^VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS=false$/m);
-  assert.match(load('../src/firebase-auth.js'), /if \(import\.meta\.env\.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true'\) registerManagementPilotAuth\('FA'/);
+  assert.doesNotMatch(load('../src/firebase-auth.js'), /registerManagementPilotAuth|management-pilot-auth-diagnostics/);
   for (const alias of ['FB', 'FC']) assert.ok(load('../src/firebase-project-auth-browser.js').includes(
     "if (env.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true') registerManagementPilotAuth('" + alias + "'"));
-  assert.match(load('../src/main.js'), /if \(import\.meta\.env\.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true'\) \{\s*void import\('\.\/management-pilot-auth-diagnostics\.js'\)/);
+  assert.doesNotMatch(load('../src/main.js'), /management-pilot-auth-diagnostics|mountManagementPilotAuthDiagnostics/);
 });
 
 test('diagnostic source only observes registered Auth and copy emits sanitized snapshot', () => {
@@ -238,5 +237,5 @@ test('diagnostic source only observes registered Auth and copy emits sanitized s
   assert.ok(source.includes("import.meta.env?.VITE_MANAGEMENT_AUTH_PILOT_DIAGNOSTICS === 'true'"));
   assert.ok(source.includes("logout.textContent = 'Sair do piloto (FA, FB e FC)'"));
   assert.ok(source.includes('const complete = await signOut()'));
-  assert.match(load('../src/main.js'), /mountManagementPilotAuthDiagnostics\(\{signOut: signOutGlobal\}\)/);
+  assert.doesNotMatch(load('../src/main.js'), /mountManagementPilotAuthDiagnostics/);
 });

@@ -66,32 +66,21 @@ jobs:
         run: npx firebase emulators:exec --project demo-sahmt-v2 --only auth,firestore,functions "npm --prefix functions test -- --test-concurrency=1"
       - name: Build PWA
         env:
-          VITE_MANAGEMENT_FIREBASE_API_KEY: ${{ vars.VITE_MANAGEMENT_FIREBASE_API_KEY }}
-          VITE_MANAGEMENT_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_MANAGEMENT_FIREBASE_AUTH_DOMAIN }}
-          VITE_MANAGEMENT_FIREBASE_PROJECT_ID: ${{ vars.VITE_MANAGEMENT_FIREBASE_PROJECT_ID }}
-          VITE_MANAGEMENT_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_MANAGEMENT_FIREBASE_STORAGE_BUCKET }}
-          VITE_MANAGEMENT_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_MANAGEMENT_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_MANAGEMENT_FIREBASE_APP_ID: ${{ vars.VITE_MANAGEMENT_FIREBASE_APP_ID }}
           VITE_MANAGEMENT_DATA_PROJECT: 'FA'
           VITE_EVALUATION_DATA_PROJECT: 'FA'
           VITE_OCCURRENCE_SCORING_ENABLED: ${{ vars.VITE_OCCURRENCE_SCORING_ENABLED }}
           VITE_MANAGEMENT_FIREBASE_ENABLED: 'false'
-          VITE_INDICATORS_FIREBASE_API_KEY: ${{ vars.VITE_INDICATORS_FIREBASE_API_KEY }}
-          VITE_INDICATORS_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_INDICATORS_FIREBASE_AUTH_DOMAIN }}
-          VITE_INDICATORS_FIREBASE_PROJECT_ID: ${{ vars.VITE_INDICATORS_FIREBASE_PROJECT_ID }}
-          VITE_INDICATORS_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_INDICATORS_FIREBASE_STORAGE_BUCKET }}
-          VITE_INDICATORS_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_INDICATORS_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_INDICATORS_FIREBASE_APP_ID: ${{ vars.VITE_INDICATORS_FIREBASE_APP_ID }}
           VITE_INDICATORS_FIREBASE_ENABLED: 'false'
           VITE_FIREBASE_PROJECT_AUTH_ENABLED: 'false'
           VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED: 'false'
-          VITE_FIREBASE_PROJECT_AUTH_ENDPOINT: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ENDPOINT }}
           VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN }}
           VITE_APP_CHECK_SITE_KEY: ${{ vars.VITE_APP_CHECK_SITE_KEY }}
           VITE_LABEL_AI_ENDPOINT: ${{ vars.VITE_LABEL_AI_ENDPOINT }}
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
         run: npm run build
+      - name: Verify consolidated FA production dependencies
+        run: node scripts/check-fa-runtime.mjs
       - name: Include local-only review tools
         run: mkdir -p dist/tools && cp tools/catalog-review.html dist/tools/catalog-review.html && cp tools/user-contact-review.html dist/tools/user-contact-review.html
       - name: Upload Pages artifact

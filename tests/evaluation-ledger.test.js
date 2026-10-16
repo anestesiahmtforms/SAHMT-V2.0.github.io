@@ -242,6 +242,28 @@ function checklistFixture({complete=false,own=false,activated=true,ack=false}={}
   return {...h,day,id,signerUid,snapshot};
 }
 
+test('resolve responsável sem sigla no perfil pelo contato confiável e preserva transferência idempotente', () => {
+  const h=checklistFixture({complete:true,ack:true});
+  h.seed('users','person-a',profile('person-a'));
+  assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'VALIDATED');
+  assert.equal(h.get('checklistSignatureRequests',h.id).pointsAwarded,1);
+  assert.equal(h.get('checklistSignatureRequests',h.id).responsibleAdjustment,-1);
+  const count=h.values('evaluationLedger').length;
+  assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'DUPLICATE');
+  assert.equal(h.values('evaluationLedger').length,count);
+});
+
+test('resolução por contato bloqueia perfil duplicado, inativo, UID divergente e sigla conflitante', () => {
+  for(const kind of ['duplicate','inactive','uid','sigla','contact']) {
+    const h=checklistFixture({complete:true,ack:true});
+    h.seed('users','person-a',profile(kind==='uid'?'different':'person-a',kind==='inactive'?{active:false}:kind==='sigla'?{sigla:'CC'}:{}));
+    if(kind==='duplicate')h.seed('users','other',profile('other',{email:'person-a@example.invalid'}));
+    if(kind==='contact')h.seed('contacts','AA-copy',{active:true,sigla:'AA',name:'Duplicado',email:'person-a@example.invalid'});
+    assert.equal(h.ctx.validateChecklistSignatureRequest_({id:h.id}),'NEEDS_REVIEW',kind);
+    assert.equal(h.values('evaluationLedger').length,0,kind);
+  }
+});
+
 test('validador real aceita assinatura própria completa com zero e substituta incompleta com par', () => {
   for(const input of [{complete:true,own:true},{complete:false,own:false}]) {
     const h=checklistFixture(input);

@@ -210,16 +210,30 @@ function readTrustedChecklistSnapshot_(day, transaction, options) {
       : {ok: false, reason: sharedRotation && sharedRotation.reason || 'Rodízio indisponível.'})
     : selectChecklistResponsible_({schedule: schedule, day: day, vacations: vacations, events: events, contacts: contacts});
   if (!selection.ok) throw new Error(selection.reason);
-  const matchedProfiles = queryTrusted('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
+  let matchedProfiles = queryTrusted('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
     ['uid', 'active', 'access', 'displayName', 'email']);
+  const contactMatches = contacts.filter(function (contact) { return normalizeChecklistText_(contact.sigla) === selection.sigla; });
+  const responsibleContact = contactMatches.length === 1
+    ? getTrusted('contacts', contactMatches[0].id, ['active', 'sigla', 'name', 'email'])
+    : null;
+  // Profiles do not require a duplicated sigla. Resolve only through the unique
+  // active, server-owned directory contact; never accept browser identity data.
+  if (!matchedProfiles.length && responsibleContact && responsibleContact.active === true &&
+      normalizeChecklistText_(responsibleContact.sigla) === selection.sigla) {
+    const trustedEmail = String(responsibleContact.email || '').trim().toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trustedEmail)) {
+      matchedProfiles = queryTrusted('users', [firestoreFilter_('email', 'EQUAL', {stringValue: trustedEmail})], [], 2,
+        ['uid', 'sigla', 'active', 'access', 'displayName', 'email']);
+      if (matchedProfiles.some(function (profile) {
+        return String(profile.email || '').trim().toLowerCase() !== trustedEmail ||
+          profile.sigla && normalizeChecklistText_(profile.sigla) !== selection.sigla;
+      })) throw new Error('Vínculo cadastral do responsável inconsistente.');
+    }
+  }
   if (matchedProfiles.length !== 1 || matchedProfiles[0].active !== true || matchedProfiles[0].access !== true || !matchedProfiles[0].uid ||
       transaction && matchedProfiles[0].uid !== matchedProfiles[0].id) {
     throw new Error('Não há perfil ativo e único para a sigla responsável ' + selection.sigla + '.');
   }
-  const contactMatches = contacts.filter(function (contact) { return normalizeChecklistText_(contact.sigla) === selection.sigla; });
-  const responsibleContact = contactMatches.length === 1
-    ? getTrusted('contacts', contactMatches[0].id, ['name', 'email'])
-    : null;
   const responsible = {
     responsibleUid: matchedProfiles[0].uid,
     responsibleName: responsibleContact ? responsibleContact.name : matchedProfiles[0].displayName,

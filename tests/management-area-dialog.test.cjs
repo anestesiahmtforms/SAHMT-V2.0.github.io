@@ -6,7 +6,7 @@ const {join} = require('node:path');
 const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 
 test('a entrada em Gestão não abre uma área; o clique abre o modal antes de consultar', async () => {
-  const start = source.indexOf("    if (route === 'management') {\n      const projectAuthOptinEnabled");
+  const start = source.indexOf("    if (route === 'management') {\n      if (!items.some");
   const end = source.indexOf("    } else {\n      const heading", start);
   assert.ok(start >= 0 && end > start, 'Trecho da abertura da área de Gestão não localizado no fixture VM.');
   const handlers = new Map();
@@ -26,10 +26,7 @@ test('a entrada em Gestão não abre uma área; o clique abre o modal antes de c
   assert.equal(context.managementActivityLoad, 1);
 });
 
-test('the local opt-in exposes independent FB/FC choices and a combined choice only when both targets are enabled', () => {
-  assert.match(source, /management-firebase-enabled[^\n]+=== 'true' \|\|[\s\S]{0,100}indicators-firebase-enabled/);
-  assert.match(source, /data-project-auth-targets="FB"/);
-  assert.match(source, /data-project-auth-targets="FC"/);
-  assert.match(source, /data-project-auth-targets="FB,FC"/);
-  assert.match(source, /getFirebaseProjectAuthOptIn\(\)\.connect\(targetNames\)/);
+test('a Gestão consolidada não oferece conexão a projetos desativados', () => {
+  assert.doesNotMatch(source, /data-project-auth-targets|projectAuthOptinEnabled|getFirebaseProjectAuthOptIn/);
+  assert.doesNotMatch(source, /createManagementProjectAuthAutoConnector|managementProjectAuthAutoConnector/);
 });

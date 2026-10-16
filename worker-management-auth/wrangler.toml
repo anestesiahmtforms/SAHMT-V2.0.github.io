@@ -18,6 +18,7 @@ new_sqlite_classes = ["ManagementBrokerAdmissionState"]
 # Firebase binding, or deployment command is configured here.
 
 [vars]
+MANAGEMENT_SECONDARY_AUTH_RETIRED = "true"
 MANAGEMENT_AUTH_ENABLED = "false"
 MANAGEMENT_AUTH_FB_ENABLED = "false"
 MANAGEMENT_DOMAIN_ENABLED = "false"
