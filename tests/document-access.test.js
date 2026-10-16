@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {randomUUID} from 'node:crypto';
+import {renderManagementDocumentCard, renderManagementDocumentFolders} from '../src/management-document-folders.js';
 import {normalizeDriveDocumentUrl} from '../src/drive-document.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite, mergeManagementDocuments, managementDocumentKey} from '../src/document-access.js';
 
@@ -259,7 +260,13 @@ test('editor e rascunhos usam permissão documental da área sem alterar o can g
   assert.match(main, /const managesDocuments = canManageManagementDocuments\(session\.profile, area, session\.user\.uid\)/);
   assert.match(main, /includeInactive: managesDocuments/);
   assert.match(main, /const documentForm = managesDocuments \?/);
-  assert.match(main, /\$\{managesDocuments \? `<button[^`]+data-document-edit=/);
+  assert.match(main, /const documentOptions = {canEdit: managesDocuments}/);
+  const item = {id: 'synthetic-document', title: 'Protocolo sintético', category: 'Protocolos', driveUrl: 'https://example.invalid/document', documentCollection: 'scopedDocuments'};
+  for (const render of [options => renderManagementDocumentCard(item, options), options => renderManagementDocumentFolders([item], options)]) {
+    assert.match(render({canEdit: true}), /data-document-edit="scopedDocuments\/synthetic-document"/);
+    assert.doesNotMatch(render({canEdit: false}), /data-document-edit=/);
+    assert.doesNotMatch(render(), /data-document-edit=/);
+  }
   assert.match(main, /const assignmentEditor = can\('managementManage'\) \?/);
 });
 
