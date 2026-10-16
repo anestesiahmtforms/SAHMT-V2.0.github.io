@@ -31,7 +31,7 @@ function createWorker({offline = false} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
-  const names = new Set(['sahmt-v2-shell-v186', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
+  const names = new Set(['sahmt-v2-shell-v200', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
   const fetched = [];
@@ -93,7 +93,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
-  assert.ok(worker.names.has('sahmt-v2-shell-v200'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v201'));
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
@@ -116,8 +116,8 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
-  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v186', 'sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v200'));
+  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v200', 'sahmt-v2-shell-v159']);
+  assert.ok(worker.names.has('sahmt-v2-shell-v201'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);

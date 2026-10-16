@@ -2,7 +2,7 @@ import './styles.css';
 import './performance-ui.css';
 import './catalog-folders.css';
 import {renderCatalogFolders} from './catalog-folders.js';
-import {renderManagementDocumentFolders, renderManagementDocumentCard} from './management-document-folders.js';
+import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
 import {updateInformationBanner} from './information-banner.js';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {createReportRuntime} from './report-runtime.js';
@@ -2886,12 +2886,7 @@ async function loadManagementAreaActivities(area) {
         button.disabled = false;
       }
     });
-    detail.querySelectorAll('[data-document-access-open]').forEach(button => button.addEventListener('click', () => {
-      const access = button.dataset.documentAccessOpen;
-      if (!['GENERAL', 'RESTRICTED'].includes(access)) return;
-      const panel = detail.querySelector('[data-document-access-panel="' + access + '"]');
-      if (panel && !panel.open) panel.showModal();
-    }));
+    bindManagementDocumentAccessPanels(detail);
     const documentEditor = detail.querySelector('#management-document-form');
     const resetDocumentEditor = () => {
       documentEditor?.reset();
@@ -2935,7 +2930,11 @@ async function loadManagementAreaActivities(area) {
     detail.querySelectorAll('[data-document-edit]').forEach((button) => button.addEventListener('click', () => {
       const item = documents.find((document) => (document.documentCollection || 'documents') + '/' + document.id === button.dataset.documentEdit);
       if (!item || !documentEditor) return;
-      button.closest('.management-document-dialog')?.close();
+      const accessPanel = button.closest('.management-document-dialog');
+      if (accessPanel) {
+        accessPanel.dataset.closeAction = 'edit';
+        accessPanel.close();
+      }
       documentEditor.elements.documentId.value = item.id;
       documentEditor.elements.documentCollection.value = item.documentCollection || 'documents';
       documentEditor.elements.audienceGroup.value = item.audienceGroup || 'GENERAL';

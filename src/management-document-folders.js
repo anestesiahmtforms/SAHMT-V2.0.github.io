@@ -78,3 +78,35 @@ export function renderManagementDocumentFolders(documents, options = {}) {
   });
   return '<div class="management-document-access-folders">' + panels.map(panel => panel.button).join('') + '</div>' + panels.map(panel => panel.dialog).join('');
 }
+
+export function bindManagementDocumentAccessPanels(root) {
+  if (!root?.querySelectorAll) return;
+  const triggers = [...root.querySelectorAll('[data-document-access-open]')];
+  const panels = [...root.querySelectorAll('[data-document-access-panel]')];
+  const panelByAccess = new Map(panels
+    .filter(panel => ['GENERAL', 'RESTRICTED'].includes(panel.dataset.documentAccessPanel))
+    .map(panel => [panel.dataset.documentAccessPanel, panel]));
+
+  for (const trigger of triggers) {
+    const access = trigger.dataset.documentAccessOpen;
+    const panel = panelByAccess.get(access);
+    if (!panel) continue;
+    trigger.addEventListener('click', () => {
+      if (!panel.open) panel.showModal();
+    });
+  }
+
+  for (const panel of panelByAccess.values()) {
+    panel.addEventListener('close', () => {
+      const closeAction = panel.dataset.closeAction;
+      delete panel.dataset.closeAction;
+      if (closeAction === 'edit') return;
+
+      const access = panel.dataset.documentAccessPanel;
+      const trigger = triggers.find(item => item.dataset.documentAccessOpen === access);
+      if (!trigger?.isConnected) return;
+      trigger.focus?.({preventScroll: true});
+      trigger.scrollIntoView?.({block: 'nearest'});
+    });
+  }
+}

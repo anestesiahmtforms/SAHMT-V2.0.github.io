@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {randomUUID} from 'node:crypto';
-import {renderManagementDocumentCard, renderManagementDocumentFolders} from '../src/management-document-folders.js';
+import {renderManagementDocumentCard, renderManagementDocumentFolders, bindManagementDocumentAccessPanels} from '../src/management-document-folders.js';
 import {normalizeDriveDocumentUrl} from '../src/drive-document.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite, mergeManagementDocuments, managementDocumentKey} from '../src/document-access.js';
 
@@ -279,4 +279,38 @@ test('índices cobrem consultas novas com público e com filtro de estado ativo'
     ['managementAreaId', 'active', 'audienceGroup', 'publishedAt']
   ]);
   assert.ok(scoped.every(index => index.queryScope === 'COLLECTION' && index.fields.at(-1).order === 'DESCENDING'));
+});
+
+test('fechar cada painel retorna o foco e a rolagem para as pastas de Gestão de documentos', () => {
+  for (const access of ['GENERAL', 'RESTRICTED']) {
+    const events = new Map();
+    const panel = {dataset: {documentAccessPanel: access}, open: false, isConnected: true,
+      addEventListener: (name, callback) => events.set(name, callback),
+      showModal() { this.open = true; }, close() { this.open = false; events.get('close')?.(); }};
+    const trigger = {dataset: {documentAccessOpen: access}, isConnected: true, focused: false, scrolled: false,
+      addEventListener: (name, callback) => events.set('trigger-' + access, callback),
+      focus() { this.focused = true; }, scrollIntoView() { this.scrolled = true; }};
+    const root = {querySelectorAll: selector => selector === '[data-document-access-open]' ? [trigger] : [panel]};
+    bindManagementDocumentAccessPanels(root);
+
+    events.get('trigger-' + access)();
+    assert.equal(panel.open, true);
+    panel.close();
+    assert.equal(panel.open, false);
+    assert.equal(trigger.focused, true);
+    assert.equal(trigger.scrolled, true);
+  }
+});
+
+test('fechar um painel para editar documento preserva o foco do editor', () => {
+  let closeHandler;
+  const panel = {dataset: {documentAccessPanel: 'GENERAL'}, open: true, isConnected: true,
+    addEventListener: (name, callback) => { if (name === 'close') closeHandler = callback; }};
+  const trigger = {dataset: {documentAccessOpen: 'GENERAL'}, isConnected: true, focused: false,
+    addEventListener() {}, focus() { this.focused = true; }, scrollIntoView() {}};
+  bindManagementDocumentAccessPanels({querySelectorAll: selector => selector === '[data-document-access-open]' ? [trigger] : [panel]});
+  panel.dataset.closeAction = 'edit';
+  closeHandler();
+  assert.equal(trigger.focused, false);
+  assert.equal('closeAction' in panel.dataset, false);
 });
