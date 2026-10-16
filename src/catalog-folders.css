@@ -8,7 +8,7 @@
 .catalog-folder-count { flex: 0 0 auto; font-size: .77rem; white-space: nowrap; color: #526578; }
 .catalog-folder-chevron { flex: 0 0 auto; font-size: 1.2rem; line-height: 1; transition: transform .15s; }
 .catalog-folder[open] > summary { border-bottom: 1px solid #c7d8df; }
-.catalog-folder[open] .catalog-folder-chevron { transform: rotate(180deg); }
+.catalog-folder[open] > summary > .catalog-folder-chevron { transform: rotate(180deg); }
 .catalog-folder-content { padding: 12px; min-width: 0; }
 .catalog-folder-content > .record-list, .catalog-folder-content > .evaluation-activity-list { margin: 0; padding: 0; list-style: none; }
 @media (max-width: 520px) { .catalog-folder > summary { padding: 12px 10px; gap: 8px; }.catalog-folder-content { padding: 10px; }.catalog-folder-name { font-size: .88rem; } }
