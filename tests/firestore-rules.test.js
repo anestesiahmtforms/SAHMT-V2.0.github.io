@@ -1932,3 +1932,28 @@ test('rodízio: elegível de ciência lê fontes compartilhadas de Eventos sem a
  await assertFails(getDocs(collection(db,'events')));
  await assertFails(updateDoc(doc(db,'scheduleDays',day),{positions:[{position:1,sigla:'BB'}]}));
 });
+
+
+test('liberação individual dos módulos é administrada pelo gestor de usuários e não concede privilégios', async () => {
+  await seedProfiles([
+    accessProfile('release-admin', {admin: true}, {createdAt: new Date(), updatedAt: new Date()}),
+    accessProfile('release-reader', {managementRead: true, trainingsRead: true}, {createdAt: new Date(), updatedAt: new Date()}),
+    accessProfile('unreleased-reader', {managementRead: true, trainingsRead: true}, {createdAt: new Date(), updatedAt: new Date()})
+  ]);
+  const admin = testEnvironment.authenticatedContext('release-admin').firestore();
+  const reader = testEnvironment.authenticatedContext('release-reader').firestore();
+  const other = testEnvironment.authenticatedContext('unreleased-reader').firestore();
+  const patch = {'permissions.managementModuleEnabled': true, 'permissions.performanceModuleEnabled': true, updatedAt: serverTimestamp()};
+  await assertFails(updateDoc(doc(reader, 'users', 'release-reader'), patch));
+  await assertFails(updateDoc(doc(other, 'users', 'release-reader'), patch));
+  await assertSucceeds(updateDoc(doc(admin, 'users', 'release-reader'), patch));
+  const saved = (await assertSucceeds(getDoc(doc(reader, 'users', 'release-reader')))).data();
+  assert.equal(saved.role, 'anestesiologista');
+  assert.equal(saved.permissions.admin, undefined);
+  assert.equal(saved.permissions.managementManage, undefined);
+  assert.equal(saved.permissions.trainingsManage, undefined);
+  assert.equal(saved.permissions.managementModuleEnabled, true);
+  const untouched = (await getDoc(doc(admin, 'users', 'unreleased-reader'))).data();
+  assert.equal(untouched.permissions.managementModuleEnabled, undefined);
+  await assertFails(updateDoc(doc(reader, 'users', 'release-reader'), {'permissions.admin': true}));
+});
