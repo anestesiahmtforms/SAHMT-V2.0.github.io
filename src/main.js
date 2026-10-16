@@ -2886,6 +2886,12 @@ async function loadManagementAreaActivities(area) {
         button.disabled = false;
       }
     });
+    detail.querySelectorAll('[data-document-access-open]').forEach(button => button.addEventListener('click', () => {
+      const access = button.dataset.documentAccessOpen;
+      if (!['GENERAL', 'RESTRICTED'].includes(access)) return;
+      const panel = detail.querySelector('[data-document-access-panel="' + access + '"]');
+      if (panel && !panel.open) panel.showModal();
+    }));
     const documentEditor = detail.querySelector('#management-document-form');
     const resetDocumentEditor = () => {
       documentEditor?.reset();
@@ -2929,6 +2935,7 @@ async function loadManagementAreaActivities(area) {
     detail.querySelectorAll('[data-document-edit]').forEach((button) => button.addEventListener('click', () => {
       const item = documents.find((document) => (document.documentCollection || 'documents') + '/' + document.id === button.dataset.documentEdit);
       if (!item || !documentEditor) return;
+      button.closest('.management-document-dialog')?.close();
       documentEditor.elements.documentId.value = item.id;
       documentEditor.elements.documentCollection.value = item.documentCollection || 'documents';
       documentEditor.elements.audienceGroup.value = item.audienceGroup || 'GENERAL';

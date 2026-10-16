@@ -2134,3 +2134,13 @@ html:has(.app-shell--home),body:has(.app-shell--home){overflow:hidden;overscroll
 #management-document-editor>summary{justify-content:flex-start}
 .management-document-access-folder>.catalog-folder-content .catalog-folder-icon{color:#a77521}
 @media(max-width:520px){.management-document-premium{padding:16px 12px;gap:10px}.management-document-premium>.document-action-icon{width:26px;height:26px;flex-basis:26px}}
+
+/* Cada público abre seu próprio painel modal, sem expandir o outro catálogo. */
+.management-document-access-folders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;min-width:0;padding:5px 2px 12px}
+.management-document-dialog{position:fixed;inset:max(8px,5dvh,env(safe-area-inset-top)) 5vw max(8px,5dvh,env(safe-area-inset-bottom));box-sizing:border-box;width:90vw;max-width:900px;height:auto;max-height:none;margin:0 auto;padding:clamp(8px,2vw,16px);overflow:hidden;overscroll-behavior:none;border:2px solid #fff;border-radius:20px;background:linear-gradient(145deg,#fffaf0,#e6eff2);color:var(--ink);box-shadow:0 22px 70px #001b3577}
+.management-document-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px}
+.management-document-dialog::backdrop{background:#041c30d9;backdrop-filter:blur(3px)}
+.management-document-dialog h2{display:flex;align-items:center;gap:10px}
+.management-document-dialog .catalog-folders{padding:4px 0 10px}
+.management-document-access-button{min-height:100px}
+@media(max-width:520px){.management-document-access-folders{grid-template-columns:minmax(0,1fr);gap:16px}.management-document-access-button{min-height:76px}}
