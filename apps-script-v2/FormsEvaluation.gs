@@ -1176,6 +1176,7 @@ function reconciliarAvaliacaoSahmtV2() {
   step('responders',reconcileEvaluationResponderAccess);
   step('responses',reconcileEvaluationResponses);
   step('checklistResponsibilities',reconcileChecklistResponsibilities);
+  if(typeof validarRevisoesQmentumV1==='function')step('qmentumReviews',validarRevisoesQmentumV1);
   if(typeof processarParticipacoesQmentumV1==='function')step('qmentumParticipations',processarParticipacoesQmentumV1);
   // Categories bootstrap and publish independently. A failure never confirms a partial projection or blocks the other category.
   ['PERFORMANCE','GOVERNANCE'].forEach(function (category) {

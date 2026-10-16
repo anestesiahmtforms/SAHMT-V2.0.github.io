@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "code": "QMENTUM_ADMIN_PUBLISHED_AND_AUTHENTICATED_READ_VERIFIED",
-  "observedAt": "2026-10-16T01:32:28.782Z",
+  "observedAt": "2026-10-16T02:07:10.148Z",
   "projectId": "sahmt-17a16",
   "configurationDocuments": 4,
   "enabled": true,
@@ -22,7 +22,7 @@
   "rulesCreateHttpStatus": 200,
   "rulesReleaseHttpStatus": 200,
   "backendFiles": 29,
-  "backendVersion": 17,
+  "backendVersion": 19,
   "manifestChanged": false,
   "newTriggers": 0,
   "aiEnabled": false,
@@ -48,7 +48,7 @@
     "appsScriptWriteEnabled": true
   },
   "localTests": {
-    "qmentum": 102,
+    "qmentum": 109,
     "qmentumRules": 12,
     "allRules": 101,
     "domain": 957,
@@ -101,5 +101,19 @@
     "qm14UniqueProceduresConfirmed": true,
     "qm14Version": 2
   },
-  "realInteractiveMonthlySaveVerified": false
+  "realInteractiveMonthlySaveVerified": false,
+  "quarterlyAnalyses": {
+    "year": 2026,
+    "quarters": [
+      1,
+      2
+    ],
+    "indicators": 18,
+    "drafts": 36,
+    "verified": 36,
+    "reviewed": 0,
+    "kind": "ASSISTED_DESCRIPTIVE",
+    "externalAiCalls": 0,
+    "humanReviewIndependentOfExternalAi": true
+  }
 }

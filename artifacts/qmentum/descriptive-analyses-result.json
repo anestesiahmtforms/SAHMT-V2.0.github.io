@@ -1,0 +1,26 @@
+{
+  "code": "QMENTUM_36_ANALYSES_PUBLISHED_AND_VERIFIED",
+  "observedAt": "2026-10-16T02:01:43.547Z",
+  "unit": "SAHMT",
+  "year": 2026,
+  "quarters": [
+    1,
+    2
+  ],
+  "indicatorCount": 18,
+  "analyses": 36,
+  "existing": 0,
+  "verified": 36,
+  "writes": 37,
+  "plannedWrites": 37,
+  "pendingHumanReview": true,
+  "clinicalRecommendations": false,
+  "externalAiCalls": 0,
+  "billingEnabled": false,
+  "usersModified": 0,
+  "profilesModified": 0,
+  "clientQueryHttpStatus": 200,
+  "clientQueryCompatible": true,
+  "humanReviewIndependentOfExternalAi": true,
+  "backendVersion": 19
+}

@@ -103,7 +103,9 @@ function processarFilaQmentumV1(){
   }finally{lock.releaseLock();}
 }
 function validarRevisoesQmentumV1(){
-  if(!qmServerConfig_().enabled)return {code:'QMENTUM_QUARTERLY_DISABLED'};
+  // Human review is independent of external AI generation and its scheduler.
+  qmServerConfig_();
+  const gate=qmServerGet_('qmentumConfig/current');if(!gate||gate.enabled!==true)return {code:'QMENTUM_CONFIG_REQUIRED'};
   const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'QMENTUM_BUSY'};
   try{
     const query={structuredQuery:{from:[{collectionId:'qmentumAnalysisReviewRequests'}],where:{fieldFilter:{field:{fieldPath:'status'},op:'EQUAL',value:{stringValue:'PENDING'}}},limit:5}};
@@ -112,15 +114,20 @@ function validarRevisoesQmentumV1(){
     requests.forEach(function(request){
       if(!/^[a-f0-9]{64}$/.test(request.analysisId)||!/^[A-Za-z0-9_-]{1,80}$/.test(request.unitId))return;
       const profile=qmServerGet_('users/'+request.actorUid),grant=qmServerGet_('qmentumAccess/'+request.actorUid);
+      const unit=qmServerGet_('qmentumUnits/'+request.unitId);
       const path='qmentumUnits/'+request.unitId+'/quarterlyAnalyses/'+request.analysisId,analysis=qmServerGet_(path);
       const config=qmServerGet_('qmentumConfig/current');
-      const valid=config&&config.enabled&&profile&&profile.uid===request.actorUid&&profile.active&&profile.access&&grant&&grant.uid===request.actorUid&&grant.active&&['reviewer','manager'].indexOf(grant.role)>=0&&grant.units.indexOf(request.unitId)>=0&&analysis&&analysis.signature===request.signature&&typeof request.reason==='string'&&request.reason.trim().length>=8;
+      if(!config||config.enabled!==true)return;
+      const valid=config&&config.enabled&&unit&&unit.unitId===request.unitId&&unit.active===true&&profile&&profile.uid===request.actorUid&&profile.active&&profile.access&&grant&&grant.uid===request.actorUid&&grant.active&&['reviewer','manager'].indexOf(grant.role)>=0&&grant.units.indexOf(request.unitId)>=0&&analysis&&analysis.signature===request.signature&&typeof request.reason==='string'&&request.reason.trim().length>=8;
       if(!valid){qmServerCommit_([qmServerWrite_('qmentumAnalysisReviewRequests/'+request.id,Object.assign(qmServerClean_(request),{status:'REJECTED'}),request)]);return;}
       const fresh=qmServerFacts_(analysis);
       if(QmentumCore.analysisInputSignature(fresh.facts,sha256Hex_)!==analysis.signature){qmServerCommit_([qmServerWrite_('qmentumAnalysisReviewRequests/'+request.id,Object.assign(qmServerClean_(request),{status:'OBSOLETE'}),request)]);return;}
       const data=Object.assign(qmServerClean_(analysis),{status:'REVIEWED',reviewed:true,reviewedBy:request.actorUid,reviewedAt:Date.now(),reviewReason:request.reason});
       const writes=[qmServerWrite_(path,data,analysis),qmServerWrite_(path+'/reviewHistory/'+request.id,data,null),qmServerWrite_('qmentumAnalysisReviewRequests/'+request.id,Object.assign(qmServerClean_(request),{status:'CONFIRMED'}),request),{verify:profile._name,currentDocument:{updateTime:profile._updateTime}},{verify:grant._name,currentDocument:{updateTime:grant._updateTime}},{verify:config._name,currentDocument:{updateTime:config._updateTime}}];
-      fresh.rows.forEach(function(r){writes.push({verify:r._name,currentDocument:{updateTime:r._updateTime}});});qmServerCommit_(writes);reviewed++;
+      writes.push({verify:unit._name,currentDocument:{updateTime:unit._updateTime}});
+      fresh.rows.forEach(function(r){writes.push({verify:r._name,currentDocument:{updateTime:r._updateTime}});});
+      [{year:analysis.year,quarter:analysis.quarter},{year:analysis.quarter===1?analysis.year-1:analysis.year,quarter:analysis.quarter===1?4:analysis.quarter-1}].forEach(function(period){[0,1,2].forEach(function(i){const m=(period.quarter-1)*3+i+1;if(!fresh.rows.some(function(r){return r.year===period.year&&r.month===m;}))writes.push({verify:'projects/sahmt-17a16/databases/(default)/documents/qmentumUnits/'+request.unitId+'/months/'+period.year+'-'+('0'+m).slice(-2),currentDocument:{exists:false}});});});
+      qmServerCommit_(writes);reviewed++;
     });return {code:'QMENTUM_REVIEWS_VALIDATED',reviewed:reviewed};
   }finally{lock.releaseLock();}
 }
