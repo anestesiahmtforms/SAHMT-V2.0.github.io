@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "code": "QMENTUM_RULES_AND_TRANSPORT_VERIFIED_MODULE_DISABLED",
-  "observedAt": "2026-10-15T23:59:40.582Z",
+  "code": "QMENTUM_ADMIN_PUBLISHED_AND_AUTHENTICATED_READ_VERIFIED",
+  "observedAt": "2026-10-16T00:16:00.711Z",
   "projectId": "sahmt-17a16",
   "configurationDocuments": 4,
-  "enabled": false,
+  "enabled": true,
   "grants": 1,
   "unit": "SAHMT",
   "newCompositeIndexes": [
@@ -30,9 +30,9 @@
   "existingUsersModified": 0,
   "existingProfilesModified": 0,
   "billingEnabled": false,
-  "publicPwaVersion": 194,
+  "publicPwaVersion": 195,
   "preparedPwaVersion": 195,
-  "publicPwaPublished": false,
+  "publicPwaPublished": true,
   "pullRequest": 42,
   "readPath": "DIRECT_FA_FIRESTORE",
   "writePath": "IMMUTABLE_COMMAND_TRUSTED_CAS",
@@ -72,5 +72,16 @@
     "privateBackupProtected": true,
     "recordsDeleted": 0
   },
-  "realRestVerificationTransactionVerified": true
+  "realRestVerificationTransactionVerified": true,
+  "releaseSha": "fa107c2b64a74c83cee9b857fe89aa7a6853ea1f",
+  "ciRun": 38827765563,
+  "ciConclusion": "success",
+  "realAuthenticatedReadVerified": true,
+  "realAuthenticatedObservation": {
+    "unit": "SAHMT",
+    "indicators": 18,
+    "message": "Dados do FA carregados",
+    "currentMonthStatus": "Sem registro"
+  },
+  "publicAssetsHttpStatus": 200
 }
