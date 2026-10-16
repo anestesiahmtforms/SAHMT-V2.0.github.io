@@ -33,7 +33,7 @@ export function managementDocumentFolder(item) {
   const organogram = /ORGANOGRAMA/.test(category + ' ' + normalize(item.title));
   const administrative = /DOCUMENTOS? ADMINISTRATIV/.test(category);
   const restricted = item.audienceGroup === 'RESTRICTED' || organogram || administrative;
-  const folder = organogram ? 'Organograma' : administrative ? 'Documentos administrativos'
+  const folder = organogram || administrative ? 'Documentos administrativos'
     : /PROTOCOLO/.test(category) ? 'Protocolos' : /\bROPS?\b/.test(category) ? 'ROPs'
     : catalogFolderName(item, 'Outros documentos');
   return {access: restricted ? 'RESTRICTED' : 'GENERAL', folder};
@@ -41,7 +41,8 @@ export function managementDocumentFolder(item) {
 
 export function renderManagementDocumentCard(item, {canEdit = false} = {}) {
   const title = escapeHtml(item.title || 'Documento');
-  const kind = folderIconKind(managementDocumentFolder(item).folder);
+  const kind = /ORGANOGRAMA/.test(normalize(item.title) + ' ' + normalize(item.category))
+    ? 'organization' : folderIconKind(managementDocumentFolder(item).folder);
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
@@ -58,7 +59,7 @@ function folderMarkup(name, body, count, extraClass = '') {
 export function renderManagementDocumentFolders(documents, options = {}) {
   const groups = new Map([
     ['GENERAL', new Map([['Protocolos', []], ['ROPs', []]])],
-    ['RESTRICTED', new Map([['Documentos administrativos', []], ['Organograma', []]])]
+    ['RESTRICTED', new Map([['Documentos administrativos', []]])]
   ]);
   for (const item of documents) {
     const {access, folder} = managementDocumentFolder(item);
@@ -66,10 +67,14 @@ export function renderManagementDocumentFolders(documents, options = {}) {
     if (!children.has(folder)) children.set(folder, []);
     children.get(folder).push(item);
   }
-  return '<div class="catalog-folders management-document-access-folders">' + [...groups].map(([access, children]) => {
-    const count = [...children.values()].reduce((sum, rows) => sum + rows.length, 0);
+  const panels = [...groups].map(([access, children]) => {
+    const name = access === 'GENERAL' ? 'Acesso geral' : 'Acesso restrito';
+    const titleId = 'management-document-panel-' + access.toLowerCase();
     const body = '<div class="catalog-folders">' + [...children].map(([name, rows]) => folderMarkup(name,
       rows.length ? '<ul class="record-list management-document-list">' + rows.map(item => renderManagementDocumentCard(item, options)).join('') + '</ul>' : '<p class="empty-state">Nenhum documento disponível nesta pasta.</p>', rows.length)).join('') + '</div>';
-    return folderMarkup(access === 'GENERAL' ? 'Acesso geral' : 'Acesso restrito', body, count, 'management-document-access-folder');
-  }).join('') + '</div>';
+    const button = '<button class="management-document-premium management-document-access-button" type="button" data-document-access-open="' + access + '" aria-haspopup="dialog" aria-controls="' + titleId + '">' + managementDocumentIcon(access === 'GENERAL' ? 'general' : 'restricted') + '<span>' + name + '</span></button>';
+    const dialog = '<dialog class="management-document-dialog" id="' + titleId + '" data-document-access-panel="' + access + '" aria-labelledby="' + titleId + '-title"><header class="management-area-dialog__header"><h2 id="' + titleId + '-title">' + managementDocumentIcon(access === 'GENERAL' ? 'general' : 'restricted') + '<span>' + name + '</span></h2></header><div class="management-area-dialog__body">' + body + '</div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" autofocus>' + managementDocumentIcon('close') + '<span>Fechar</span></button></form></footer></dialog>';
+    return {button, dialog};
+  });
+  return '<div class="management-document-access-folders">' + panels.map(panel => panel.button).join('') + '</div>' + panels.map(panel => panel.dialog).join('');
 }
