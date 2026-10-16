@@ -385,7 +385,11 @@ function formsEvaluationConfiguration_(metadata, payload) {
     mapping.acknowledgement = {itemId: mapped.itemId, questionId: mapped.questionId, affirmativeValue: affirmative};
   }
   if (modalities.suggestion === true) {
-    ['problem', 'proposal', 'benefit'].forEach(function (part) {
+    if (payload.suggestionTextItemId) {
+      const mapped = formsEvaluationFindQuestion_(metadata, payload.suggestionTextItemId, '[SAHMT:SUGGESTION_TEXT]');
+      if (!mapped.question.textQuestion || mapped.question.textQuestion.paragraph !== true) throw new Error('A sugestão unificada exige um campo de parágrafo.');
+      mapping.suggestionText = {itemId:mapped.itemId,questionId:mapped.questionId};
+    } else ['problem', 'proposal', 'benefit'].forEach(function (part) {
       const field = 'suggestion' + part.charAt(0).toUpperCase() + part.slice(1) + 'ItemId';
       const mapped = formsEvaluationFindQuestion_(metadata, payload[field], SAHMT_V2_EVALUATION_FORMS.markers[part]);
       mapping[part] = {itemId: mapped.itemId, questionId: mapped.questionId};
@@ -417,7 +421,8 @@ function formsEvaluationMappingPayload_(cfg) {
     acknowledgementValue: cfg.acknowledgementValue || mapping.acknowledgement && mapping.acknowledgement.affirmativeValue || 'SIM',
     suggestionProblemItemId: cfg.suggestionProblemItemId || mapping.problem && mapping.problem.itemId || '',
     suggestionProposalItemId: cfg.suggestionProposalItemId || mapping.proposal && mapping.proposal.itemId || '',
-    suggestionBenefitItemId: cfg.suggestionBenefitItemId || mapping.benefit && mapping.benefit.itemId || ''};
+    suggestionBenefitItemId: cfg.suggestionBenefitItemId || mapping.benefit && mapping.benefit.itemId || '',
+    suggestionTextItemId: mapping.suggestionText && mapping.suggestionText.itemId || ''};
 }
 function formsEvaluationMappedCriteria_(questions, mapping) {
   const result = [];
@@ -790,6 +795,7 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
       materialFingerprint: baseline.materialFingerprint, materialSnapshot: baseline.materialSnapshot} : previous && previous.previousSnapshot || null,
     validFrom: validFrom, validUntil: validUntil, firstEligibleAt: previous && previous.version === payload.version ? previous.firstEligibleAt : new Date(Math.max(Date.now(), validFrom.getTime())),
     configuredByUid: actorUid, publicationPending: eligibleGroups.length > 0 && !blockedByPriorResponses, updatedAt: new Date()};
+  if (checked.mapping.suggestionText) { cfg.participantTemplateVersion=2;cfg.suggestionTextItemId=checked.mapping.suggestionText.itemId; }
   const visible = {creditScopeId: cfg.creditScopeId, version: cfg.version, configVersion: configVersion, title: metadata.info.title,
     eligibleUids: eligibleUids, eligibleGroups: eligibleGroups, managerUid: cfg.managerUid, assignmentId: cfg.assignmentId, managerAreaId: cfg.managerAreaId,
     modalities: cfg.modalities, maxTestScore: cfg.maxTestScore, validFrom: validFrom, validUntil: validUntil, status: status, reason: reason, responderUrl: cfg.responderUrl,
@@ -824,7 +830,11 @@ function formsEvaluationParticipation_(metadata, cfg, response, profiles) {
   if (currentFingerprint !== formsEvaluationSavedQuestionFingerprint_(cfg)) return {status: 'NEEDS_REVIEW', reason: 'Itens/gabarito/pesos mudaram sem configuração elegível.'};
   const declaration = cfg.modalities.acknowledgement === true && formsEvaluationAnswer_(response, cfg.mapping.acknowledgement) === cfg.mapping.acknowledgement.affirmativeValue;
   const suggestion = {problem: formsEvaluationAnswer_(response, cfg.mapping.problem), proposal: formsEvaluationAnswer_(response, cfg.mapping.proposal), benefit: formsEvaluationAnswer_(response, cfg.mapping.benefit), status: 'NOT_APPLICABLE'};
-  if (cfg.modalities.suggestion === true && [suggestion.problem, suggestion.proposal, suggestion.benefit].some(Boolean)) {
+  if (cfg.modalities.suggestion === true && cfg.mapping.suggestionText) {
+    const text = formsEvaluationAnswer_(response,cfg.mapping.suggestionText).trim();
+    suggestion.format = 'COMBINED'; suggestion.text = text; suggestion.proposal = text;
+    suggestion.status = !text ? 'NOT_APPLICABLE' : text.length >= 24 && text.length <= 10000 ? 'PENDING' : 'INVALID';
+  } else if (cfg.modalities.suggestion === true && [suggestion.problem, suggestion.proposal, suggestion.benefit].some(Boolean)) {
     suggestion.status = [suggestion.problem, suggestion.proposal, suggestion.benefit].every(function (text) { return text.length >= 8; }) && new Set([suggestion.problem, suggestion.proposal, suggestion.benefit].map(function (text) { return text.toLowerCase().replace(/\s+/g, ' '); })).size > 1 ? 'PENDING' : 'INVALID';
   }
   const score = cfg.modalities.test === true && typeof response.totalScore === 'number' && Number.isFinite(response.totalScore) ? response.totalScore : null;
@@ -836,6 +846,7 @@ function formsEvaluationParticipation_(metadata, cfg, response, profiles) {
     sourceFingerprint: formsEvaluationHash_(response)};
 }
 function formsEvaluationFormGovernance_(response, cfg, uid, tx) {
+  if (cfg.participantTemplateVersion === 2) return {writes:[],projection:null};
   if (!cfg.mapping.review) return {writes: [], projection: null};
   const mapping = cfg.mapping.review;
   const components = formsEvaluationAnswer_(response, mapping.components).split('\n').filter(Boolean);
@@ -927,7 +938,10 @@ function formsEvaluationReviewSuggestion_(payload, actorUid, tx) {
   const writes = [];
   let status = suggestion.status;
   if (payload.decision === 'APPROVE') {
-    if (![suggestion.problem, suggestion.proposal, suggestion.benefit].every(function (text) { return typeof text === 'string' && text.trim().length >= 8; })) throw new Error('Não pontuar contribuições vazias ou incompletas.');
+    const validSuggestion = suggestion.format === 'COMBINED'
+      ? typeof suggestion.text === 'string' && suggestion.text.trim().length >= 24 && suggestion.text.length <= 10000 && suggestion.proposal === suggestion.text
+      : [suggestion.problem, suggestion.proposal, suggestion.benefit].every(function (text) { return typeof text === 'string' && text.trim().length >= 8; });
+    if (!validSuggestion) throw new Error('Não pontuar contribuições vazias ou incompletas.');
     const change = {uid: participation.uid, category: 'PERFORMANCE', modality: 'SUGGESTION', creditScopeId: participation.creditScopeId,
       activityId: participation.activityId, areaId: cfg.managerAreaId, version: participation.version, points: 2,
       sourceFingerprint: formsEvaluationHash_([suggestion.problem, suggestion.proposal, suggestion.benefit]), sourceType: 'SUGGESTION_REVIEW', sourceId: participation.id,
