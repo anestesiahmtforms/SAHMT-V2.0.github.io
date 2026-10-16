@@ -84,6 +84,27 @@ function setResponse(h,response){h.google.set(`https://forms.googleapis.com/v1/f
 function govPayload(extra={}){return{activityId:FORM,areaId:AREA,assignmentId:AREA,previousVersion:1,newVersion:2,summary:'Alteração concreta e pertinente dos itens.',components:['QUESTIONS'],materialEvidence:[],questionEvidence:[`https://docs.google.com/forms/d/${FORM}/edit`],...extra};}
 function changedQuestions(h){const meta=h.seedFixture();h.configuration(meta);meta.items.find(q=>q.itemId==='item-test').title='Questão alterada de maneira efetiva';h.google.set(`https://forms.googleapis.com/v1/forms/${FORM}`,meta);h.google.set(`https://www.googleapis.com/drive/v3/files/${FORM}?fields=id,modifiedTime,lastModifyingUser(emailAddress)`,{id:FORM,modifiedTime:new Date().toISOString(),lastModifyingUser:{emailAddress:'manager@example.invalid'}});return meta;}
 
+test('modelo unificado mantém sugestão integral pendente, sem inventar problema ou benefício',()=>{
+  const h=harness(),meta=h.seedFixture();meta.items.push(question('combined','Descreva sua sugestão: problema, proposta e benefício.'));
+  const checked=h.ctx.formsEvaluationConfiguration_(meta,{modalities:{acknowledgement:true,suggestion:true,test:true},suggestionTextItemId:'item-combined'});
+  const cfg=h.configuration(meta,{...checked,participantTemplateVersion:2});
+  assert.equal(cfg.mapping.suggestionText.questionId,'combined');assert.equal(cfg.mapping.problem,undefined);
+  const text='Melhorar a organização do material para reduzir o tempo de procura.';
+  const parsed=h.ctx.formsEvaluationParticipation_(meta,cfg,h.response({answers:{ack:answer('SIM'),combined:answer(text)}}),h.values('users'));
+  assert.equal(parsed.suggestion.status,'PENDING');assert.equal(parsed.suggestion.text,text);assert.equal(parsed.suggestion.problem,'');assert.equal(parsed.suggestion.benefit,'');
+  assert.equal(h.values('evaluationAwards').length,0);
+  assert.deepEqual(plain(h.ctx.formsEvaluationFormGovernance_({},cfg,'manager','tx')),{writes:[],projection:null});
+});
+test('sugestão unificada curta é inválida e resposta antiga sem campo não vira contribuição',()=>{
+  const h=harness(),meta=h.seedFixture();meta.items.push(question('combined','Sugestão completa'));
+  const checked=h.ctx.formsEvaluationConfiguration_(meta,{modalities:{acknowledgement:true,suggestion:true,test:true},suggestionTextItemId:'item-combined'});
+  const cfg=h.configuration(meta,{...checked,participantTemplateVersion:2});
+  const parse=response=>h.ctx.formsEvaluationParticipation_(meta,cfg,response,h.values('users'));
+  assert.equal(parse(h.response({answers:{combined:answer('Teste')}})).suggestion.status,'INVALID');
+  assert.equal(parse(h.response()).suggestion.status,'NOT_APPLICABLE');
+  assert.equal(h.ctx.formsEvaluationMappingPayload_(cfg).suggestionTextItemId,'item-combined');
+});
+
 test('arquivo define adaptador sem chamar APIs, atribuir créditos ou instalar gatilhos',()=>{const h=harness();assert.equal(h.commits.length,0);assert.equal(h.awards.length,0);assert.deepEqual([...h.store.keys()],['managementRuntime/faConsolidation']);});
 test('normalização backend distingue Forms real de alias público/curto',()=>{const h=harness();assert.equal(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/${FORM}/edit`).formId,FORM);assert.equal(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/e/${ALIAS}/viewform`).formId,null);assert.equal(h.ctx.formsEvaluationLink_('https://forms.gle/TestAlias').kind,'SHORT_URL');});
 test('resolução de alias exige responderUri e mantém origem canônica',()=>{const h=harness();h.seedFixture();const r=h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_(`https://docs.google.com/forms/d/e/${ALIAS}/viewform`),{});assert.equal(r.formId,FORM);h.forms.get(FORM).responderUrl='https://docs.google.com/forms/d/e/DifferentAlias123/viewform';assert.throws(()=>h.ctx.formsEvaluationResolve_(h.ctx.formsEvaluationLink_('https://docs.google.com/forms/d/e/DifferentAlias123/viewform'),{}),/não corresponde/);});

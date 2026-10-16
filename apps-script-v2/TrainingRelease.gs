@@ -417,34 +417,38 @@ function trainingReleasePayload_(item, expectedVersion) {
   const today = Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd');
   const validFrom = today > item.validFrom ? today : item.validFrom;
   if (validFrom > item.validUntil) trainingReleaseReject_('RELEASE_VALIDITY_EXPIRED');
-  return {activityId: item.formId, creditScopeId: item.creditScopeId, version: item.version, expectedVersion: expectedVersion,
+  const template = typeof trainingTemplateReceipt_ === 'function' ? trainingTemplateReceipt_(item) : null;
+  return Object.assign({activityId: item.formId, creditScopeId: item.creditScopeId, version: item.version, expectedVersion: expectedVersion,
     eligibleUids: [], eligibleGroups: [item.eligibleGroup], managerAreaId: SAHMT_V2_TRAINING_RELEASE.areaId,
     modalities: {acknowledgement: true, suggestion: true, test: true}, acknowledgementValue: 'SIM',
     acknowledgementItemId: item.acknowledgementItemId, suggestionProblemItemId: item.suggestionProblemItemId,
     suggestionProposalItemId: item.suggestionProposalItemId, suggestionBenefitItemId: item.suggestionBenefitItemId,
-    materialUrls: item.materialUrls, validFrom: validFrom, validUntil: item.validUntil};
+    materialUrls: item.materialUrls, validFrom: validFrom, validUntil: item.validUntil},template ? {
+      participantTemplateVersion:2,acknowledgementItemId:template.mapping.acknowledgement.itemId,
+      acknowledgementValue:template.mapping.acknowledgement.affirmativeValue,suggestionTextItemId:template.mapping.suggestionText.itemId} : {});
 }
 function trainingReleaseLive_(item, requireClosed) {
   trainingReleaseSource_(item);
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (protectedIds.includes(item.formId)) trainingReleaseReject_('PROTECTED_FORM');
   const form = FormApp.openById(item.formId), metadata = formsEvaluationMetadata_(item.formId);
+  const template = typeof trainingTemplateCheckedReceipt_ === 'function' ? trainingTemplateCheckedReceipt_(item,metadata) : null;
   if (form.getId() !== item.formId || metadata.formId !== item.formId || !metadata.info || metadata.info.title !== item.title ||
       !form.hasLimitOneResponsePerUser() || form.canEditResponse() || typeof form.supportsAdvancedResponderPermissions !== 'function' ||
       !form.supportsAdvancedResponderPermissions() || typeof form.isPublished !== 'function') trainingReleaseReject_('FORM_IDENTITY_OPTIONS');
   if (requireClosed && (form.isAcceptingResponses() !== false || form.isPublished() !== false)) trainingReleaseReject_('CLOSED_BASELINE_REQUIRED');
-  if (SAHMT_V2_TRAINING_RELEASE.roots[item.rootId].kind === 'DOCUMENT') {
+  if (!template && SAHMT_V2_TRAINING_RELEASE.roots[item.rootId].kind === 'DOCUMENT') {
     if (typeof trainingDocumentsHash_ !== 'function' || typeof trainingDocumentsVerifyItems_ !== 'function') trainingReleaseReject_('DOCUMENT_VERIFIER_REQUIRED');
     if (trainingDocumentsHash_(item.expectedItems) !== item.expectedItemsHash) trainingReleaseReject_('DOCUMENT_ITEMS_DIGEST');
     if (trainingDocumentsVerifyItems_(metadata, item.expectedItems, item.knownIds) === false) trainingReleaseReject_('DOCUMENT_ITEMS_CHANGED');
-  } else {
+  } else if (!template) {
     if (typeof ropsSecondSemesterComparable_ !== 'function') trainingReleaseReject_('ROP_VERIFIER_REQUIRED');
     if (formsEvaluationHash_(ropsSecondSemesterComparable_(metadata, false)) !== item.preparedOriginalDigest) trainingReleaseReject_('ROP_ORIGINAL_DIGEST');
   }
   const checked = formsEvaluationConfiguration_(metadata, trainingReleasePayload_(item, 0));
-  const specs = formsEvaluationTemplateSpecs_(), matches = formsEvaluationTemplateMatches_(metadata, specs);
-  if (specs.some(function (spec) { return !matches[spec.marker]; }) || !checked.mapping.review || checked.maxTestScore !== item.maxTestScore ||
-      item.preparedQuestionFingerprint && item.preparedQuestionFingerprint !== checked.questionFingerprint) trainingReleaseReject_('FORM_MAPPING_SCORE');
+  const specs = formsEvaluationTemplateSpecs_(), matches = template ? {} : formsEvaluationTemplateMatches_(metadata, specs);
+  if ((!template && (specs.some(function (spec) { return !matches[spec.marker]; }) || !checked.mapping.review ||
+      item.preparedQuestionFingerprint && item.preparedQuestionFingerprint !== checked.questionFingerprint)) || checked.maxTestScore !== item.maxTestScore) trainingReleaseReject_('FORM_MAPPING_SCORE');
   const scored = (metadata.items || []).filter(function (entry) { return Number(entry.questionItem && entry.questionItem.question.grading && entry.questionItem.question.grading.pointValue || 0) > 0; });
   if (SAHMT_V2_TRAINING_RELEASE.roots[item.rootId].kind === 'DOCUMENT' && scored.length !== 10) trainingReleaseReject_('FORM_QUESTION_COUNT');
   const materialSnapshot = formsEvaluationMaterialSnapshot_(item.materialUrls);
