@@ -1,6 +1,16 @@
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const FILE_ID = /^[A-Za-z0-9_-]{10,200}$/;
 
+// Display-only conversion: scoring continues to use the original material URLs.
+export function materialPresentationUrls(activity) {
+  const original = Array.isArray(activity?.materialUrls) ? activity.materialUrls : [];
+  const display = activity?.materialDisplayUrls;
+  const boundSource = activity?.materialDisplaySourceUrls;
+  return Array.isArray(display) && display.length === original.length && display.length > 0 &&
+    Array.isArray(boundSource) && boundSource.length === original.length && boundSource.every((url, index) => url === original[index]) &&
+    display.every(value => Boolean(googleMaterialPreview(value))) ? display : original;
+}
+
 /** Returns safe Google Drive/Docs URLs for an embedded, read-only preview. */
 export function googleMaterialPreview(value) {
   let url;

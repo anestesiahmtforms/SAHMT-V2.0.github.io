@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {googleMaterialPreview, renderMaterialViewerTrigger} from '../src/material-viewer.js';
+import {googleMaterialPreview, renderMaterialViewerTrigger, materialPresentationUrls} from '../src/material-viewer.js';
 import {renderManagementDocumentCard} from '../src/management-document-folders.js';
 
 test('Google Docs, Sheets and Slides use transient PDF previews with canonical Drive fallback links', () => {
@@ -73,4 +73,42 @@ test('Gestão de documentos mantém o card premium e abre um arquivo Drive no pa
   assert.match(markup, /data-open-material-viewer/);
   assert.match(markup, /data-material-title="Protocolo sintético"/);
   assert.doesNotMatch(markup, /target="_blank"/);
+});
+
+test('PDF de apresentação abre no leitor e preserva o acesso ao formulário original', () => {
+  const markup = renderManagementDocumentCard({id: 'doc', title: 'Treinamento sintético', category: 'Protocolos',
+    driveUrl: 'https://docs.google.com/forms/d/e/FormFile_123456789/viewform',
+    driveFileId: 'FormFile_123456789', materialPdfSourceFileId: 'FormFile_123456789',
+    materialPdfUrl: 'https://drive.google.com/file/d/PdfFile_123456789/view'});
+  assert.match(markup, /data-material-url="https:\/\/drive.google.com\/file\/d\/PdfFile_123456789\/preview"/);
+  assert.match(markup, /href="https:\/\/docs.google.com\/forms\/d\/e\/FormFile_123456789\/viewform"/);
+  assert.match(markup, /ABRIR TREINAMENTO/);
+});
+
+test('link de PDF inválido preserva o formulário e não incorpora destino externo', () => {
+  const markup = renderManagementDocumentCard({id: 'doc', title: 'Treinamento', category: 'Protocolos',
+    driveUrl: 'https://docs.google.com/forms/d/e/FormFile_123456789/viewform', materialPdfUrl: 'https://example.invalid/private.pdf'});
+  assert.doesNotMatch(markup, /data-open-material-viewer/);
+  assert.doesNotMatch(markup, /example.invalid/);
+  assert.match(markup, /forms\/d\/e\/FormFile_123456789/);
+});
+
+test('apresentação em PDF não modifica as referências de avaliação', () => {
+  const activity = {materialUrls: ['https://docs.google.com/document/d/Original_123456789/edit'],
+    materialDisplaySourceUrls: ['https://docs.google.com/document/d/Original_123456789/edit'],
+    materialDisplayUrls: ['https://drive.google.com/file/d/Converted_123456789/view']};
+  assert.deepEqual(materialPresentationUrls(activity), activity.materialDisplayUrls);
+  assert.deepEqual(activity.materialUrls, ['https://docs.google.com/document/d/Original_123456789/edit']);
+  assert.deepEqual(materialPresentationUrls({...activity, materialDisplayUrls: ['javascript:alert(1)']}), activity.materialUrls);
+  assert.deepEqual(materialPresentationUrls({materialUrls: activity.materialUrls}), activity.materialUrls);
+  assert.deepEqual(materialPresentationUrls({...activity, materialUrls: ['https://drive.google.com/file/d/Changed_123456789/view']}), ['https://drive.google.com/file/d/Changed_123456789/view']);
+});
+
+test('trocar o documento original invalida a associação antiga de PDF', () => {
+  const markup = renderManagementDocumentCard({id:'doc', title:'Outro treinamento', category:'Protocolos',
+    driveFileId:'NewForm_123456789', materialPdfSourceFileId:'OldForm_123456789',
+    driveUrl:'https://docs.google.com/forms/d/e/NewForm_123456789/viewform',
+    materialPdfUrl:'https://drive.google.com/file/d/OldPdf_123456789/view'});
+  assert.doesNotMatch(markup,/OldPdf_123456789/);
+  assert.match(markup,/NewForm_123456789/);
 });

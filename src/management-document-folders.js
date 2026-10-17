@@ -47,12 +47,16 @@ export function renderManagementDocumentCard(item, {canEdit = false} = {}) {
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
-  const viewerTarget = href ? googleMaterialPreview(href) : null;
+  const pdfTarget = item.materialPdfUrl && item.materialPdfSourceFileId === item.driveFileId
+    ? googleMaterialPreview(item.materialPdfUrl) : null;
+  const viewerTarget = pdfTarget || (href ? googleMaterialPreview(href) : null);
   const viewer = viewerTarget ? '<button class="management-document-link management-document-premium" type="button" data-open-material-viewer data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
   const link = viewer || (href ? '<a class="management-document-link management-document-premium" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + content + '</a>'
     : '<button class="management-document-premium" type="button" disabled>' + content + '</button>');
   const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
-  return '<li class="management-document-card">' + link + edit + '</li>';
+  const training = pdfTarget && href && /^https:\/\/docs\.google\.com\/forms\//.test(href)
+    ? '<a class="secondary-button management-document-training" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">ABRIR TREINAMENTO</a>' : '';
+  return '<li class="management-document-card">' + link + training + edit + '</li>';
 }
 
 function folderMarkup(name, body, count, extraClass = '') {
