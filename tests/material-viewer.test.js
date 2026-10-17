@@ -85,6 +85,27 @@ test('PDF de apresentação abre no leitor e preserva o acesso ao formulário or
   assert.match(markup, /ABRIR TREINAMENTO/);
 });
 
+test('Diretrizes abre o formulário pelo título sem botão de treinamento separado ou leitor PDF', () => {
+  const item = {id: 'doc', title: 'Diretriz sintética', category: 'DIRETRIZES',
+    driveUrl: 'https://docs.google.com/forms/d/FormFile_123456789/viewform',
+    driveFileId: 'FormFile_123456789', materialPdfSourceFileId: 'FormFile_123456789',
+    materialPdfUrl: 'https://drive.google.com/file/d/PdfFile_123456789/view'};
+  for (const record of [item, {...item, category: 'Outra categoria', rootId: '1ZVHg-9fcnBv1q8PJgFoUGQ50b5EwAggR'}]) {
+    const markup = renderManagementDocumentCard(record, {canEdit: true});
+    assert.match(markup, /<a class="management-document-link management-document-premium" href="https:\/\/docs.google.com\/forms\/d\/FormFile_123456789\/viewform"/);
+    assert.match(markup, /Diretriz sintética/);
+    assert.match(markup, /data-document-edit/);
+    assert.doesNotMatch(markup, /ABRIR TREINAMENTO|data-open-material-viewer|PdfFile_123456789/);
+  }
+});
+
+test('Diretriz sem formulário mantém a leitura do documento disponível', () => {
+  const markup = renderManagementDocumentCard({id: 'doc', title: 'Diretriz PDF', category: 'Diretrizes',
+    driveUrl: 'https://drive.google.com/file/d/PdfFile_123456789/view'});
+  assert.match(markup, /data-open-material-viewer/);
+  assert.doesNotMatch(markup, /ABRIR TREINAMENTO/);
+});
+
 test('link de PDF inválido preserva o formulário e não incorpora destino externo', () => {
   const markup = renderManagementDocumentCard({id: 'doc', title: 'Treinamento', category: 'Protocolos',
     driveUrl: 'https://docs.google.com/forms/d/e/FormFile_123456789/viewform', materialPdfUrl: 'https://example.invalid/private.pdf'});

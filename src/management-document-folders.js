@@ -47,7 +47,8 @@ export function renderManagementDocumentCard(item, {canEdit = false} = {}) {
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
-  const pdfTarget = item.materialPdfUrl && item.materialPdfSourceFileId === item.driveFileId
+  const directTraining = managementDocumentFolder(item).folder === 'Diretrizes' && /^https:\/\/docs\.google\.com\/forms\//.test(href);
+  const pdfTarget = !directTraining && item.materialPdfUrl && item.materialPdfSourceFileId === item.driveFileId
     ? googleMaterialPreview(item.materialPdfUrl) : null;
   const viewerTarget = pdfTarget || (href ? googleMaterialPreview(href) : null);
   const viewer = viewerTarget ? '<button class="management-document-link management-document-premium" type="button" data-open-material-viewer data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
