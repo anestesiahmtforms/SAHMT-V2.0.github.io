@@ -40,11 +40,14 @@ export function managementDocumentFolder(item) {
   return {access: restricted ? 'RESTRICTED' : 'GENERAL', folder};
 }
 
-export function renderManagementDocumentCard(item, {canEdit = false} = {}) {
+export function renderManagementDocumentCard(item, {canEdit = false, readingGate = false} = {}) {
   const title = escapeHtml(item.title || 'Documento');
   const kind = /ORGANOGRAMA/.test(normalize(item.title) + ' ' + normalize(item.category))
     ? 'organization' : folderIconKind(managementDocumentFolder(item).folder);
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
+  if (readingGate && managementDocumentFolder(item).folder === 'Diretrizes') {
+    return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium" data-open-diretriz-reader="' + escapeHtml(item.id) + '" data-reading-title="' + title + '">' + content + '</button></li>';
+  }
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
   const directTraining = managementDocumentFolder(item).folder === 'Diretrizes' && /^https:\/\/docs\.google\.com\/forms\//.test(href);

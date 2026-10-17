@@ -9,6 +9,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "test:material-viewer": "node --test tests/material-viewer.test.js",
+    "test:diretrizes-reading": "node --test tests/diretrizes-reading.test.js tests/diretrizes-reading-prepare.test.js tests/diretrizes-reading-relay.test.js tests/diretrizes-reading-backend.test.js tests/diretrizes-reading.browser.test.js",
     "validate:catalog-preview": "node scripts/validate-catalog-preview.js",
     "prepare:schedule-import": "node scripts/prepare-schedule-import.js",
     "validate:user-contact-preview": "node scripts/validate-user-contact-preview.js",
@@ -37,7 +38,8 @@
     "fflate": "0.8.3",
     "firebase": "^12.19.0",
     "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.8"
+    "jspdf-autotable": "^5.0.8",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

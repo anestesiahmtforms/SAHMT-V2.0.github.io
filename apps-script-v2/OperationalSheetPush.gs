@@ -1,5 +1,6 @@
 /** Dedicated signed receiver. No Firestore reads; trusts only the private Worker HMAC. */
 function doPost(event) {
+  if (event && event.parameter && event.parameter.action === 'diretrizes-reading-v1') return diretrizesReadingHttp_(event);
   if (event && event.parameter && event.parameter.action === 'qmentum-write-config-v1') return qmWriteConfigureHttp_(event);
   if (event && event.parameter && event.parameter.action === 'qmentum-write-v1') return qmWriteHttp_(event);
   if (event && event.parameter && event.parameter.action === 'occurrence-score-v1') return evaluationOccurrenceHttp_(event);

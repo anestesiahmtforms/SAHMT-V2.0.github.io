@@ -160,7 +160,7 @@ function continuarPadronizacaoTreinamentosGestaoV2() {
       });
       row.status='CONFIGURATION_CONFIRMED';row.after=after;file.setContent(JSON.stringify(state));
       // Restore availability only where it was already available; no publication or ACL expansion.
-      if (row.wasPublished && row.wasAccepting && result.ready) native.setAcceptingResponses(true);
+      if (row.wasPublished && row.wasAccepting && result.ready && !(typeof dgrManagedForm_ === 'function' && dgrManagedForm_(item.formId))) native.setAcceptingResponses(true);
       row.status='CONFIRMED';state.cursor++;file.setContent(JSON.stringify(state));
     }
     if (state.cursor===76) {state.status='COMPLETED';trainingTemplateStop_(job);}

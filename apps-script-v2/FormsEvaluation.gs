@@ -595,6 +595,8 @@ function formsEvaluationPublishedPermissionsExact_(permissions, expected) {
   return actual.length === expected.length && actual.every(function (email, index) { return email === expected[index]; });
 }
 function formsEvaluationSyncResponders_(form, emails) {
+  // Reading-gated forms are managed only by the individual receipt/grant flow.
+  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(form.getId())) return false;
   try {
     formsEvaluationCloseForm_(form);
     if (!emails.length || typeof form.supportsAdvancedResponderPermissions !== 'function' || !form.supportsAdvancedResponderPermissions() || typeof form.setPublished !== 'function') return false;
@@ -672,6 +674,8 @@ function formsEvaluationPublicationPending_(formId, configVersion, closureConfir
   });
 }
 function formsEvaluationFinalizePublication_(formId, requestId) {
+  // Skip before roster comparison, form closure or READY configuration writes.
+  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(formId)) return {status: 'READING_MANAGED'};
   let form = null, configVersion = null;
   try {
     const cfg = evaluationGet_('evaluationFormConfigs', formId), activity = evaluationGet_('evaluationActivities', formId);
@@ -1136,7 +1140,7 @@ function reconcileEvaluationResponderAccess() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {status: 'PENDING'};
   try {
-    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true); });
+    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true) && !(typeof dgrManagedForm_ === 'function' && dgrManagedForm_(cfg.id)); });
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'SAHMT_V2_EVALUATION_ACCESS_CURSOR', cursor = properties.getProperty(cursorKey) || '';
     const ordered = configs.filter(function (cfg) { return cfg.id > cursor; }).concat(configs.filter(function (cfg) { return cfg.id <= cursor; }));
     const result = {checked: 0, ready: 0, pending: 0};
