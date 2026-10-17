@@ -86,6 +86,31 @@ test('união mantém documentos com mesmo ID em coleções diferentes e limita a
 });
 
 const dataSource = readFileSync(new URL('../src/data.js', import.meta.url), 'utf8');
+test('PDF de apoio é associado ao formulário sem alterar registros persistidos ou duplicar cartões', () => {
+  const original = {id: 'evaluation_form-1', driveFileId: 'form-1', documentCollection: 'scopedDocuments', audienceGroup: 'GENERAL', category: 'PROTOCOLOS', managementAreaId: 'area-docs', active: true};
+  const pdf = {...original, id: 'pdf_evaluation_form-1', driveFileId: 'pdf-1', driveUrl: 'https://drive.google.com/file/d/pdf-1/view'};
+  const result = mergeManagementDocuments([], [original, pdf]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].materialPdfUrl, pdf.driveUrl);
+  assert.equal(result[0].materialPdfSourceFileId, original.driveFileId);
+  assert.equal(original.materialPdfUrl, undefined);
+});
+
+test('PDF divergente, inativo ou de outro público não é associado ao treinamento', () => {
+  const original = {id: 'evaluation_form-1', driveFileId: 'form-1', documentCollection: 'scopedDocuments', audienceGroup: 'GENERAL', category: 'PROTOCOLOS', managementAreaId: 'area-docs', active: true};
+  const pdf = {...original, id: 'pdf_evaluation_form-1', driveFileId: 'pdf-1', driveUrl: 'https://drive.google.com/file/d/pdf-1/view'};
+  for (const patch of [{audienceGroup: 'RESTRICTED'}, {active: false}, {category: 'OTHER'}, {managementAreaId: 'other'}, {driveUrl: 'https://example.invalid/file'}, {driveFileId: 'other-file'}]) {
+    const result = mergeManagementDocuments([], [original, {...pdf, ...patch}]);
+    assert.equal(result.find(item => item.id === original.id).materialPdfUrl, undefined);
+  }
+  assert.equal(mergeManagementDocuments([], [{...original, driveFileId: 'new-form'}, pdf]).find(item => item.id === original.id).materialPdfUrl, undefined);
+});
+
+test('PDF sem formulário presente continua acessível como documento normal', () => {
+  const pdf = {id: 'pdf_evaluation_form-1', documentCollection: 'scopedDocuments', driveFileId: 'pdf-1', driveUrl: 'https://drive.google.com/file/d/pdf-1/view', active: true};
+  assert.deepEqual(mergeManagementDocuments([], [pdf]), [pdf]);
+});
+
 const accessSource = dataSource.slice(dataSource.indexOf('async function scopedDocumentAccess('), dataSource.indexOf('export async function listManagementDocuments('))
   .replace("await import('./firebase-auth.js')", 'authModule');
 function accessHarness({profile = approvedManager, area = assignedDocumentArea, afterAreaRead = () => {}} = {}) {

@@ -47,6 +47,15 @@ export function managementDocumentKey(item) {
 
 export function mergeManagementDocuments(legacy, scoped, pageSize = 50) {
   const unique = new Map([...legacy, ...scoped].map(item => [managementDocumentKey(item), item]));
+  for (const original of scoped) {
+    if (original.active !== true || original.id !== `evaluation_${original.driveFileId}`) continue;
+    const pdfKey = `${SCOPED_DOCUMENT_COLLECTION}/pdf_${original.id}`;
+    const pdf = unique.get(pdfKey);
+    if (!pdf || pdf.active !== true || !['audienceGroup', 'category', 'managementAreaId'].every(key => pdf[key] === original[key])) continue;
+    if (!pdf.driveFileId || pdf.driveUrl !== `https://drive.google.com/file/d/${pdf.driveFileId}/view`) continue;
+    unique.set(managementDocumentKey(original), {...original, materialPdfUrl: pdf.driveUrl, materialPdfSourceFileId: original.driveFileId});
+    unique.delete(pdfKey);
+  }
   const time = item => item.publishedAt?.toMillis?.() ?? (new Date(item.publishedAt).getTime() || 0);
   return [...unique.values()].sort((a, b) => time(b) - time(a) || managementDocumentKey(a).localeCompare(managementDocumentKey(b)))
     .slice(0, Math.min(100, Math.max(1, pageSize)));
