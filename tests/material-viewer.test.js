@@ -48,17 +48,22 @@ test('viewer trigger escapes labels and only carries canonical Google preview de
 });
 
 test('Gestão, Desempenho e Treinamentos route Google Drive materials to the in-app viewer', async () => {
-  const [main, performance, training, css] = await Promise.all([
+  const [main, performance, training, css, viewer] = await Promise.all([
     readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/performance-ui.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/training.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
+    readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
+    readFile(new URL('../src/material-viewer.js', import.meta.url), 'utf8')
   ]);
   assert.match(main, /installMaterialViewer\(document\)/);
   assert.match(performance, /renderMaterialViewerTrigger\(url/);
   assert.match(training, /renderMaterialViewerTrigger\(activity\.resourceUrl/);
-  assert.match(css, /\.material-viewer-dialog\[open\]\{display:grid;grid-template-rows:auto auto minmax\(0,1fr\) auto/);
-  assert.match(css, /\.material-viewer-dialog__body iframe\{display:block;width:100%;height:100%/);
+  assert.match(css, /\.material-viewer-dialog\[open\]\{display:grid;grid-template-rows:minmax\(0,1fr\) auto/);
+  assert.match(css, /\.material-viewer-dialog iframe\{display:block;width:100%;height:100%/);
+  assert.match(viewer, /dialog\.innerHTML = '<iframe title=.*<footer class="material-viewer-dialog__footer"><button[^>]*data-material-viewer-close>FECHAR<\/button><\/footer>'/);
+  assert.doesNotMatch(viewer, /data-material-viewer-open-target|Abrir no Google Drive|material-viewer-dialog__header/);
+  assert.match(viewer, /#toolbar=0&navpanes=0/);
+  assert.match(viewer, /if \(event\.target === dialog\)/);
 });
 
 test('Gestão de documentos mantém o card premium e abre um arquivo Drive no painel interno', () => {

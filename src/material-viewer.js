@@ -40,24 +40,20 @@ export function installMaterialViewer(root = document) {
   const dialog = document.createElement('dialog');
   dialog.id = 'sahmt-material-viewer';
   dialog.className = 'material-viewer-dialog';
-  dialog.setAttribute('aria-labelledby', 'sahmt-material-viewer-title');
-  dialog.innerHTML = '<header class="material-viewer-dialog__header"><h2 id="sahmt-material-viewer-title">Material de apoio</h2><button type="button" class="secondary-button" data-material-viewer-close>VOLTAR</button></header><p class="material-viewer-dialog__status" role="status">Se o material não carregar aqui, use “Abrir no Drive”.</p><div class="material-viewer-dialog__body"><iframe title="Material de apoio" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-forms allow-scripts allow-same-origin allow-popups" allow="fullscreen"></iframe></div><footer class="material-viewer-dialog__footer"><a class="secondary-button" data-material-viewer-open-target target="_blank" rel="noopener noreferrer">Abrir no Google Drive</a></footer>';
+  dialog.setAttribute('aria-label', 'Material de apoio para leitura');
+  dialog.innerHTML = '<iframe title="Material de apoio para leitura" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin" scrolling="auto"></iframe><footer class="material-viewer-dialog__footer"><button type="button" class="secondary-button" data-material-viewer-close>FECHAR</button></footer>';
   document.body.append(dialog);
   const frame = dialog.querySelector('iframe');
-  const title = dialog.querySelector('#sahmt-material-viewer-title');
-  const openTarget = dialog.querySelector('[data-material-viewer-open-target]');
   const close = () => { if (dialog.open) dialog.close(); };
   const onClick = event => {
-    const closeButton = event.target?.closest?.('[data-material-viewer-close]');
-    if (closeButton && dialog.contains(closeButton)) { close(); return; }
+    if (event.target?.closest?.('[data-material-viewer-close]')) { close(); return; }
+    if (event.target === dialog) { close(); return; }
     const trigger = event.target?.closest?.('[data-open-material-viewer]');
     if (!trigger || (root !== document && !root.contains(trigger))) return;
     const target = googleMaterialPreview(trigger.dataset.materialUrl);
     if (!target || !dialog.showModal) return;
-    title.textContent = trigger.dataset.materialTitle || 'Material de apoio';
-    frame.title = title.textContent;
-    frame.src = target.previewUrl;
-    openTarget.href = googleMaterialPreview(trigger.dataset.materialOpenUrl)?.openUrl || target.openUrl;
+    frame.title = trigger.dataset.materialTitle || 'Material de apoio para leitura';
+    frame.src = target.previewUrl + (target.previewUrl.includes('#') ? '' : '#toolbar=0&navpanes=0');
     if (!dialog.open) {
       try { dialog.showModal(); } catch { frame.src = 'about:blank'; }
     }
