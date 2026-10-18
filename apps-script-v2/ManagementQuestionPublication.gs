@@ -49,6 +49,7 @@ function gqpConfig_(cfg) {
   const id=/^[A-Za-z0-9_-]{10,200}$/;
   if(!cfg || cfg.version !== 1 || typeof cfg.enabled !== 'boolean' || typeof cfg.operatorEmail !== 'string' || !cfg.operatorEmail.includes('@') || !Array.isArray(cfg.bindings) || !cfg.bindings.length || cfg.bindings.length > 150)gqpFail_('CONFIG_INVALID');
   const forms=new Set(), docs=new Set();
+  if(cfg.apiQuotaProjectId !== undefined && !/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(cfg.apiQuotaProjectId))gqpFail_('CONFIG_INVALID');
   if(!Array.isArray(cfg.administratorEditorEmails) || cfg.administratorEditorEmails.some(function(e) { return typeof e !== 'string' || !e.includes('@') || e !== e.toLowerCase(); }))gqpFail_('CONFIG_INVALID');
   cfg.bindings.forEach(function(b) {
     if(!b || !id.test(b.formId || '') || !id.test(b.documentId || '') || !id.test(b.reviewFolderId || '') || !id.test(b.readingFolderId || '') || b.reviewFolderId === b.readingFolderId || forms.has(b.formId) || docs.has(b.documentId))gqpFail_('CONFIG_INVALID');
@@ -63,8 +64,12 @@ function gqpPublish_(cfg, approval, ports) {
   if(ports.executor() !== cfg.operatorEmail)gqpFail_('OPERATOR_DENIED');
   const b=approval && cfg.bindings.find(function(x) { return x.formId === approval.formId && x.documentId === approval.documentId; });
   if(!b || !b.assignment)gqpFail_('DESIGNATION_REQUIRED');
-  const now=ports.now(), age=now-Date.parse(approval.approvedAt), expiry=Date.parse(approval.expiresAt);
-  if(approval.version !== 1 || approval.approvedBy !== cfg.operatorEmail || approval.managerUid !== b.assignment.uid || approval.assignmentVersion !== b.assignment.version || !Number.isFinite(age) || age < 0 || age > 86400000 || !Number.isFinite(expiry) || expiry <= now || expiry > Date.parse(approval.approvedAt)+86400000 || !/^[a-f0-9]{64}$/.test(approval.documentSha256 || '') || !approval.baselineForm || approval.baselineForm.formId !== b.formId)gqpFail_('APPROVAL_INVALID');
+  function assertApprovalCurrent() {
+    const now=ports.now(), age=now-Date.parse(approval.approvedAt), expiry=Date.parse(approval.expiresAt);
+    if(approval.version !== 1 || approval.approvedBy !== cfg.operatorEmail || approval.managerUid !== b.assignment.uid || approval.assignmentVersion !== b.assignment.version || !Number.isFinite(age) || age < 0 || age > 86400000 || !Number.isFinite(expiry) || expiry <= now || expiry > Date.parse(approval.approvedAt)+86400000 || !/^[a-f0-9]{64}$/.test(approval.documentSha256 || '') || !approval.baselineForm || approval.baselineForm.formId !== b.formId)gqpFail_('APPROVAL_INVALID');
+    return now;
+  }
+  const now=assertApprovalCurrent();
   const contract=gqpHash_({binding:b,approval:approval}), key=gqpHash_({formId:b.formId,documentId:b.documentId,contract:contract});
   const locked=ports.lock();if(!locked)gqpFail_('BUSY');
   try {
@@ -90,6 +95,7 @@ function gqpPublish_(cfg, approval, ports) {
         baselineForm:approval.baselineForm, targetForm:plan.target, documentSha256:doc.sha256, preparedAt:new Date(now).toISOString()};
       ports.save(key,state); // Private durable recovery before closing or changing a real Form.
     }
+    assertApprovalCurrent(); // Slow dependency reads must not make an expired approval actionable.
     ports.close(b.formId); // Never publishes/reopens; reading/version policy needs revalidation afterwards.
     authorizedDocument(); // Revocation or edit during preparation blocks before the API write.
     current=ports.form(b.formId);currentHash=gqpHash_(gqpContent_(current));
@@ -99,6 +105,7 @@ function gqpPublish_(cfg, approval, ports) {
     let writes=0;
     if(currentHash !== afterHash) {
       // No targetRevisionId merge, native per-item edits or automatic retry on CAS conflict.
+      assertApprovalCurrent(); // Recheck after closure and revalidation, immediately before the API write.
       ports.batch(b.formId,{writeControl:{requiredRevisionId:current.revisionId},requests:plan.requests});writes=1;
     }
     const after=ports.form(b.formId);
@@ -133,7 +140,9 @@ function gqpPorts_(cfg) {
   function native(id) { return forms[id] || (forms[id]=FormApp.openById(id)); }
   function request(id,body) {
     const url='https://forms.googleapis.com/v1/forms/'+encodeURIComponent(id)+(body?':batchUpdate':'');
-    const response=UrlFetchApp.fetch(url,{method:body?'post':'get',headers:{Authorization:'Bearer '+ScriptApp.getOAuthToken()},
+    const headers={Authorization:'Bearer '+ScriptApp.getOAuthToken()};
+    if(cfg.apiQuotaProjectId)headers['x-goog-user-project']=cfg.apiQuotaProjectId;
+    const response=UrlFetchApp.fetch(url,{method:body?'post':'get',headers:headers,
       ...(body?{contentType:'application/json',payload:JSON.stringify(body)}:{}),muteHttpExceptions:true,followRedirects:false});
     const status=response.getResponseCode();if(status < 200 || status >= 300)gqpFail_('FORMS_HTTP_'+status);
     return JSON.parse(response.getContentText());

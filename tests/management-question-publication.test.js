@@ -43,6 +43,24 @@ test('undesignated documents and substituted form identities are blocked',()=>{f
 test('expired, future, extended and differently assigned approvals are blocked',()=>{
  for(const mutate of [a=>{a.expiresAt='2026-10-17T00:00:00Z';},a=>{a.approvedAt='2027-01-01T00:00:00Z';},a=>{a.expiresAt='2028-01-01T00:00:00Z';},a=>{a.assignmentVersion++;},a=>{a.managerUid='AnotherManager';},a=>{a.approvedBy='other@example.test';},a=>{a.documentSha256='wrong';}]){const f=fixture();mutate(f.approval);assert.throws(f.run,/APPROVAL_INVALID/);assert.equal(f.calls.profile,0);}
 });
+test('approval expiring during initial dependency reads cannot close or change the Form',()=>{
+ const f=fixture(),document=f.ports.document;let now=f.ports.now();f.ports.now=()=>now;
+ f.ports.document=(...a)=>{const result=document(...a);now=Date.parse(f.approval.expiresAt);return result;};
+ assert.throws(f.run,/APPROVAL_INVALID/);assert.equal(f.calls.close,0);assert.equal(f.calls.batch,0);assert.equal(f.calls.unlock,1);
+});
+test('approval expiring during closure or final checks cannot start the CAS batch',()=>{
+ for(const step of ['close','document','closed']){
+  const f=fixture();let now=f.ports.now();f.ports.now=()=>now;
+  const original=f.ports[step];f.ports[step]=(...a)=>{const result=original(...a);if(step!=='document'||f.calls.document===2)now=Date.parse(f.approval.expiresAt);return result;};
+  assert.throws(f.run,/APPROVAL_INVALID/);assert.equal(f.calls.close,1);assert.equal(f.calls.batch,0);assert.equal(f.ports.closed(),true);
+  assert.equal([...f.states.values()][0].status,'PREPARED');assert.equal(f.calls.unlock,1);
+ }
+});
+test('clock rollback during preparation also blocks before closure',()=>{
+ const f=fixture(),document=f.ports.document;let now=f.ports.now();f.ports.now=()=>now;
+ f.ports.document=(...a)=>{const result=document(...a);now=Date.parse(f.approval.approvedAt)-1;return result;};
+ assert.throws(f.run,/APPROVAL_INVALID/);assert.equal(f.calls.close,0);assert.equal(f.calls.batch,0);
+});
 test('revoked, inactive or inconsistent manager profile cannot publish',()=>{
  for(const p of [null,{active:false,access:true,email:'m@example.test'},{active:true,access:false,email:'m@example.test'},{active:true,access:true,email:'m@example.test',uid:'wrong'}]){const f=fixture();f.ports.profile=()=>p;assert.throws(f.run,/ACCESS_REVOKED/);assert.equal(f.calls.batch,0);}
 });
@@ -118,3 +136,4 @@ test('native adapter verifies real parent, owner, modifier and source bytes',()=
 test('native current configuration revocation is checked for every assignment read',()=>{const f=nativeFixture();f.cfg.enabled=false;assert.throws(()=>f.native.assignment(f.b),/ACCESS_REVOKED/);});
 test('native Forms transport forbids redirects, uses CAS body and sanitizes HTTP rejection',()=>{const f=nativeFixture();f.native.batch(f.b.formId,{writeControl:{requiredRevisionId:'revision'},requests:[]});const {url,opts}=f.calls[0];assert.match(url,/^https:\/\/forms\.googleapis\.com\/v1\/forms\/[A-Za-z0-9_-]+:batchUpdate$/);assert.equal(opts.followRedirects,false);assert.equal(JSON.parse(opts.payload).writeControl.requiredRevisionId,'revision');f.ctx.UrlFetchApp.fetch=()=>({getResponseCode:()=>403,getContentText:()=>{throw Error('Raw response must not be read');}});assert.throws(()=>f.native.form(f.b.formId),/^Error: QUESTION_PUBLICATION_FORMS_HTTP_403$/);});
 test('native closure never reopens or changes responder permissions',()=>{const f=nativeFixture();assert.equal(f.native.closed(f.b.formId),false);f.native.close(f.b.formId);assert.equal(f.native.closed(f.b.formId),true);});
+test('trusted quota project is optional and forwarded only as a validated project identifier',()=>{const f=nativeFixture();f.cfg.apiQuotaProjectId='demo-forms-fixture';f.ctx.gqpConfig_(f.cfg);f.native.form(f.b.formId);assert.equal(f.calls[0].opts.headers['x-goog-user-project'],'demo-forms-fixture');for(const id of ['https://evil.test','other\r\nheader','x']){f.cfg.apiQuotaProjectId=id;assert.throws(()=>f.ctx.gqpConfig_(f.cfg),/CONFIG_INVALID/);}});

@@ -73,11 +73,26 @@ consumidor da credencial da ferramenta. O download dos DOCX de questões retorno
 HTTP 403 com `appNotAuthorizedToFile`, embora seus metadados e permissões fossem
 legíveis. Isso é diferente de falta de acesso do administrador no Drive.
 
-Esses resultados não demonstram o estado da API no projeto consumidor do Apps
-Script. O runtime instalado ainda requer homologação de API em arquivo isolado
-antes de habilitar uma revisão real. O manifesto foi preservado: a documentação
+Esses resultados da ferramenta, isoladamente, não demonstravam o estado da API
+no projeto consumidor do Apps Script. A prova isolada descrita abaixo confirmou
+o acesso real do runtime. O manifesto foi preservado: a documentação
 da API aceita o escopo Drive já declarado; não foi acrescentado consentimento.
 Não foi ativada API, faturamento ou Blaze para contornar o bloqueio.
+
+A investigação posterior confirmou por leitura autenticada: a Forms API está
+`ENABLED` no FA, com `billingEnabled:false`; está `DISABLED` no projeto Gateway,
+também sem faturamento. O consumidor que recusou a chamada da ferramenta não é
+nenhum desses projetos. Com `x-goog-user-project` apontando para FA, a recusa de
+serviço desativado desaparece e a ferramenta encontra uma barreira de acesso
+por arquivo (404). O mesmo cliente não pode baixar os DOCX criados por outro
+aplicativo OAuth (`appNotAuthorizedToFile`). Não se trata de falta de edição do
+administrador no Drive.
+
+O servidor aceita um `apiQuotaProjectId` opcional, privado e validado como ID de
+projeto, enviado somente no header documentado de
+[projeto de quota](https://docs.cloud.google.com/docs/authentication/rest).
+O teste usa o FA já habilitado. Isso não amplia os escopos ou as permissões dos
+arquivos, não associa uma conta de faturamento e não habilita serviços.
 
 Os snapshots de 17/10/2026 continuam sendo snapshots históricos dos Forms, não
 uma leitura atual. A comparação com os DOCX locais e os checksums atuais do
@@ -97,8 +112,111 @@ do Forms imediatamente antes de uma futura publicação.
 - 38 testes novos cobrem publicação CAS, revogação, permissões dos editores,
   conteúdo aprovado, campos de ciência, perda de resposta, recuperação e replay.
 
-A prova nativa real anterior e estes testes não comprovam a publicação CAS real
-por este novo adaptador. Essa verificação permanece bloqueada e separada.
+A prova nativa anterior foi complementada pela publicação CAS real descrita
+abaixo. A configuração dos formulários de produção permanece desligada, sem
+designação ou aprovação presumidas.
+
+## Prova CAS isolada
+
+`ManagementQuestionCasValidation.gs` confere a publicação REST com arquivos
+descartáveis privados. A configuração expira em até 30 minutos, exige o
+proprietário efetivo, IDs e marcadores exatos e rejeita qualquer colisão com os
+57 bancos de questões e os 40 pares de material/PDF de produção.
+
+Um agendamento temporário, executado uma única vez pela manutenção existente,
+pode criar somente o acionador próprio dessa prova. O ponto temporário de
+agendamento deve ser removido após a execução; não é um observador permanente
+de questões e não altera o intervalo da manutenção PDF.
+
+São reais as operações de Drive, Forms, gravação CAS, recuperação e leitura da
+resposta sintética. Somente o perfil e a designação do gestor de teste são
+sintéticos: a prova não usa perfis, pontuações ou respostas de profissionais.
+O resultado precisa comprovar uma gravação, preservação dos IDs/pontos e da
+resposta anterior, recuperação de resposta HTTP perdida sem segunda gravação,
+replay sem escrita e rejeição HTTP 400 da revisão obsoleta. O formulário deve
+terminar fechado e não publicado. Uma falha não habilita a configuração real.
+
+### Resultado real da prova CAS em 18/10/2026
+
+Às **00:58:13 (America/Sao_Paulo)**, o recibo privado retornou
+`QUESTION_CAS_VALIDATION_PASSED`:
+
+- Leitura e publicação pela API: HTTP 200.
+- Uma questão alterada, com IDs, pontos e obrigatoriedade preservados.
+- Gabarito atualizado e a resposta sintética anterior preservada: uma antes e
+  uma depois, com a mesma evidência armazenada.
+- Perda simulada da resposta após a gravação real: recuperação confirmada sem
+  outro batch; total de uma gravação e repetição com zero escritas.
+- Revisão obsoleta: rejeitada com HTTP 400, sem alterar o conteúdo atualizado.
+- Forms de teste fechado e não publicado; zero leituras do Firestore e zero
+  alterações de conteúdo de produção.
+
+A primeira tentativa parou antes da publicação porque o recibo descartável foi
+criado como `text/plain`, enquanto o teste exigia `application/json`. Os
+metadados reais confirmaram os demais controles (pasta, proprietário e marcas).
+A correção exige o MIME real, sem relaxar esses controles. A repetição usou
+outro conjunto de arquivos e outro estado; a tentativa anterior foi preservada.
+
+A revisão de código acrescentou revalidação da validade da aprovação antes de
+fechar o Form e imediatamente antes do batch. A aprovação que expire durante
+consultas, fechamento ou checagem final bloqueia a gravação. Nenhuma conclusão
+de homologação atribui gestor, aprova conteúdo ou concede pontuação por si só.
+
+## Auditoria somente de leitura dos bancos reais
+
+`ManagementQuestionRuntimeAudit.gs` lê os Forms e os DOCX pela identidade
+autorizada do Apps Script e compara enunciados, alternativas, pontos, IDs e
+gabaritos. Não aplica revisões, não fecha formulários, não lê respostas de
+participantes e não acessa o Firestore. O resultado público contém somente
+contagens e categorias seguras; os vínculos e fingerprints ficam no recibo
+privado do proprietário.
+
+O processamento tem limite de 24 documentos ou 90 segundos por execução,
+salvando cada documento conferido antes de avançar. A privacidade do recibo é
+validada uma vez por lote limitado, sem repetir todas as chamadas de permissão
+em cada checkpoint. Não há varredura permanente: configuração, estado e
+acionadores são específicos desta auditoria temporária.
+
+A janela inicial terminou com 29 documentos conferidos. Uma continuação
+explicitamente configurada no servidor preservou os 29 registros e retomou
+somente o sufixo ainda não lido. A continuação tem outra janela limitada de
+20 minutos, versão única e configuração imutável dos vínculos; a manutenção
+comum não zera o cursor nem reinicia trabalhos concluídos. Os testes cobrem
+recibos inválidos, alteração de vínculos e prevenção de leituras duplicadas.
+
+### Auditoria real concluída
+
+Às **01:20:34 de 18/10/2026 (America/Sao_Paulo)**, o Apps Script retornou
+`QUESTION_BANK_RUNTIME_AUDIT_READY`: 57 Forms, 57 DOCX e 651 questões, sem
+divergências, sem falhas e sem continuação pendente. Os registros foram
+conferidos contra os 57 vínculos exatos, sem duplicação de documentos ou Forms.
+Não houve escrita de conteúdo nos Forms nem leitura ou escrita no Firestore.
+
+Essa conferência substitui a limitação anterior dos snapshots históricos: os
+enunciados, alternativas, pontos e gabaritos foram relidos das fontes reais.
+Uma futura publicação ainda precisa reler a versão atual imediatamente antes
+do batch, pois a auditoria não congela os documentos depois de terminar.
+
+### Encerramento conferido
+
+Às **01:21:48**, a releitura do código remoto confirmou 45 fontes: as 43 fontes
+anteriores não relacionadas à publicação permaneceram idênticas, o publicador
+corresponde ao código local testado e sua configuração privada tem 57 vínculos,
+`enabled:false`, nenhuma designação inventada e o consumidor FA explícito.
+As fontes, configurações e pontos de agendamento temporários da prova e da
+auditoria foram removidos do projeto. Os próprios handlers já haviam removido
+seus acionadores ao terminar. A manutenção PDF voltou ao código anterior exato.
+
+As duas pastas descartáveis foram identificadas como encerradas e mantidas
+privadas, sem exclusão de conteúdo. O formulário sintético terminou fechado.
+Manifesto, implantações, PWA, usuários, Rules, IAM e faturamento foram preservados.
+
+## Verificação local complementar
+
+183 testes focados aprovados: banco DOCX, parser nativo, publicação condicional,
+prova CAS isolada, auditoria de leitura e continuação, validação anterior de
+revisão, proteção de pastas e sincronização PDF. Nenhuma alteração de frontend
+foi feita nesta etapa; não houve publicação ou substituição da PWA.
 
 ## Retorno seguro
 
