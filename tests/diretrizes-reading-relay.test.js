@@ -48,3 +48,14 @@ test('wrong response HMAC and malicious Content Service redirect fail closed',as
  }});assert.equal(r.status,503);assert.equal(calls,2);
  }
 });
+
+for(const readerOnly of [false,true])test('relay preserves trusted reader-only '+(readerOnly?'completion':'start metadata')+' without granting a Form',async()=>{
+ const fetchImpl=async(url,options)=>{
+  if(url.startsWith('https://identitytoolkit.googleapis.com/'))return Response.json({users:[{localId:'reader',email:'reader@example.test',emailVerified:true,validSince:'0',providerUserInfo:[{providerId:'google.com'}]}]});
+  const input=JSON.parse(Buffer.from(JSON.parse(options.body).payload,'base64url').toString());
+  const answer=readerOnly?{code:'READING_COMPLETED'}:{code:'READING_STARTED',hasForm:false,pages:2,sessionId:'f'.repeat(32),pdfBase64:'JVBERi0='};
+  const payload=Buffer.from(JSON.stringify({v:1,nonce:input.nonce,...answer})).toString('base64url');return Response.json({payload,mac:createHmac('sha256',key).update('SAHMT_READING_V1\n'+payload).digest('hex')});
+ };
+ const input=readerOnly?new Request('https://worker.test/v1/diretrizes/reading',{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({action:'complete',documentId:'doc',sessionId:'f'.repeat(32),pages:[1,2]})}):request();
+ const response=await relayDiretrizesReading(input,env,{fetchImpl,admitRequest,now:()=>1500000000000});assert.equal(response.status,200);const answer=await response.json();assert.equal(answer.formUrl,undefined);if(!readerOnly)assert.equal(answer.hasForm,false);
+});

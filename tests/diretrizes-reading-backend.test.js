@@ -161,3 +161,40 @@ test('operator mismatch and absent recovery never change permissions',()=>{
  f.ctx.Session.getActiveUser=()=>({getEmail:()=> 'another@example.test'});
  assert.throws(()=>f.ctx.prepararBloqueioIndividualDiretrizesV1(),/READING_OPERATOR_DENIED/);assert.equal(f.writes(),0);
 });
+
+function bindPolicy(f){f.props.set('SAHMT_READING_POLICY_JSON',JSON.stringify(f.policy));f.props.set('SAHMT_READING_CUTOVER_SHA256',sha(JSON.stringify(f.policy.documents)));}
+for(const category of ['Protocolos','ROPs','Diretrizes','Documentos administrativos','Organograma'])for(const audienceGroup of ['GENERAL','RESTRICTED'])test(category+' respects exact '+audienceGroup+' authorization',()=>{
+ const f=fixture();Object.assign(f.policy.documents.doc,{category,audienceGroup});
+ for(const id of ['doc','pdf_doc'])Object.assign(f.data.get('scopedDocuments/'+id),{category,audienceGroup});bindPolicy(f);
+ f.data.get('documentAccessEmails/reader@example.test').groups=[audienceGroup];assert.equal(f.send('start').code,'READING_STARTED');
+ f.data.get('documentAccessEmails/reader@example.test').groups=[audienceGroup==='GENERAL'?'RESTRICTED':'GENERAL'];
+ f.data.get('users/reader').role='administrador_app';assert.throws(()=>f.send('start'),/READING_ACCESS_DENIED/);assert.equal(f.grants.length,0);
+});
+test('category or audience drift in either catalog record denies reading',()=>{
+ for(const field of ['category','audienceGroup'])for(const id of ['doc','pdf_doc']){
+ const f=fixture();f.data.get('scopedDocuments/'+id)[field]='CHANGED';assert.throws(()=>f.send('start'),/READING_CATALOG_CHANGED/);}
+});
+test('reader-only records complete without requesting Form permission or inventing a URL',()=>{
+ const f=fixture();Object.assign(f.policy.documents.doc,{formId:null,pdfDocumentId:'pdf_doc',sourceFileId:'OriginalFixture12345'});f.data.get('scopedDocuments/doc').driveFileId='OriginalFixture12345';bindPolicy(f);
+ const start=f.send('start');assert.equal(start.hasForm,false);const answer=f.send('complete',{sessionId:start.sessionId,pages:[1,2]});
+ assert.equal(answer.code,'READING_COMPLETED');assert.equal(answer.formUrl,undefined);assert.equal(f.grants.length,0);
+});
+test('growing policy shards round trip and invalid, missing or reordered shards fail closed',async()=>{
+ const {readingPolicyProperties}=await import('../scripts/prepare-diretrizes-reading.mjs');const f=fixture();
+ f.policy.pilotUids=Array.from({length:300},(_,i)=>'reader_'+i+'x'.repeat(50));
+ for(let i=0;i<43;i++)f.policy.documents['doc_'+i]={...f.policy.documents.doc,formId:'UniqueFixtureForm'+i,category:'Documentos administrativos',audienceGroup:'RESTRICTED'};
+ const properties=readingPolicyProperties(f.policy);assert.ok(Object.keys(properties).length>2);
+ for(const [key,value] of Object.entries(properties)){assert.ok(Buffer.byteLength(value)<=8000);f.props.set(key,value);}
+ assert.equal(Object.keys(f.ctx.dgrPolicy_().documents).length,44);
+ const shardKeys=Object.keys(properties).filter(k=>k!=='SAHMT_READING_POLICY_JSON'),key=shardKeys[0];f.props.set(key,properties[shardKeys[1]]);f.props.set(shardKeys[1],properties[key]);assert.throws(()=>f.ctx.dgrPolicy_(),/READING_CONFIG_INVALID/);for(const k of shardKeys)f.props.set(k,properties[k]);f.props.set(key,'x'.repeat(8001));assert.throws(()=>f.ctx.dgrPolicy_(),/READING_CONFIG_INVALID/);f.props.set(key,properties[key]+' ');assert.throws(()=>f.ctx.dgrPolicy_(),/READING_CONFIG_INVALID/);
+ f.props.delete(key);assert.throws(()=>f.ctx.dgrPolicy_(),/READING_CONFIG_INVALID/);assert.equal(f.ctx.dgrManagedForm_('unregistered'),true);
+});
+test('setup and rollback preserve bounded sharded policy for reader-only records',()=>{
+ const f=setupFixture();Object.assign(f.policy.documents.doc,{formId:null,pdfDocumentId:'pdf_doc'});f.data.get('scopedDocuments/doc').driveFileId=f.policy.documents.doc.pdfId;
+ f.policy.pilotUids=Array.from({length:250},(_,i)=>'reader_'+i+'x'.repeat(50));
+ f.ctx.dgrStorePolicy_(f.policy);assert.equal(JSON.parse(f.props.get('SAHMT_READING_POLICY_JSON')).storageVersion,2);
+ assert.equal(f.ctx.prepararBloqueioIndividualDiretrizesV1().forms,0);assert.equal(f.ctx.instalarBloqueioIndividualDiretrizesV1().code,'READING_CUTOVER_VERIFIED');
+ assert.equal(f.ctx.dgrPolicy_().documents.doc.enforced,true);assert.equal(f.ctx.reverterBloqueioIndividualDiretrizesV1().code,'READING_ROLLBACK_VERIFIED');
+ assert.equal(f.ctx.dgrPolicy_().documents.doc.enforced,false);assert.equal(f.writes(),0);
+ for(const value of f.props.values())assert.ok(Buffer.byteLength(value)<=8000);
+});

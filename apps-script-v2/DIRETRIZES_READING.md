@@ -1,4 +1,4 @@
-# Diretrizes: leitor e liberação individual
+# Gestão de Documentos: leitor e liberação individual
 
 ## Estado da entrega
 
@@ -12,17 +12,19 @@ Leitor PDF.js com worker empacotado localmente, páginas sequenciais, texto alte
 
 `node scripts/prepare-diretrizes-reading.mjs <entrada-privada.json> <politica-fora-do-git.json>` deriva MD5 e quantidade de páginas diretamente dos PDFs locais. Não acessa APIs nem gera segredos. Não sobrescreve arquivos nem aceita saída dentro do repositório.
 
-Entrada privada: objeto com `pilotUids` (UIDs reais confirmados) e `entries`. Cada entrada exige `documentId`, `formId`, `pdfId`, `filePath` absoluto e `version` inteira positiva. O documentId precisa ser `evaluation_` seguido do formId. `expectedChecksum` opcional deve coincidir com o arquivo. Não usar UIDs fictícios em configuração remota. O compilador recusa identidades/arquivos ausentes, IDs duplicados, PDFs acima de 6 MiB ou 300 páginas. Os IDs vêm do catálogo aprovado, nunca do título.
+Entrada privada: objeto com `pilotUids` (UIDs reais confirmados) e `entries`. Cada entrada exige `documentId`, `pdfId`, `filePath` absoluto e `version` inteira positiva. Quando houver formulário, informar `formId` e usar `documentId` igual a `evaluation_` seguido do formId. Para leitura sem formulário, usar `formId:null` e o ID real do catálogo. `pdfDocumentId` identifica o registro PDF pareado quando não segue o padrão `pdf_` + ID do formulário; `sourceFileId` identifica o original quando o registro principal aponta para ele. `category` e `audienceGroup` devem coincidir exatamente com ambos os registros do catálogo. As categorias aceitas são Diretrizes, Protocolos, ROPs, Documentos administrativos e Organograma; os grupos são GENERAL e RESTRICTED. Os valores antigos sem esses campos continuam limitados a DIRETRIZES/GENERAL.
+
+`expectedChecksum` opcional deve coincidir com o arquivo. Não usar UIDs fictícios em configuração remota. O compilador recusa identidades/arquivos ausentes, IDs duplicados, PDFs acima de 6 MiB ou 300 páginas. Os IDs vêm do catálogo aprovado, nunca do título. As pastas visuais e as permissões atuais não são reclassificadas automaticamente. Um administrador também precisa pertencer ao grupo exato do documento.
 
 A política gerada tem `version:1`, `pilotUids` e `documents`, indexado pelo ID do catálogo. Cada documento contém `formId`, `pdfId`, `checksum` MD5, `pages`, `version` e `enforced:false`. O servidor compara o checksum com o Drive e, ao entregar bytes, calcula novamente o digest. O checksum identifica a versão; não é uma assinatura de segurança.
 
-O JSON compacto é limitado a 8.000 bytes para caber em uma propriedade do Apps Script. O compilador recusa pacotes maiores em vez de produzir configuração que não possa ser instalada.
+O pacote de saída contém `policy` e `properties`. Pacotes pequenos usam uma única propriedade. Para políticas maiores, `properties` contém partes de até 7.000 bytes em `SAHMT_READING_POLICY_<sha256>_<índice>` e um manifesto em `SAHMT_READING_POLICY_JSON`. Instalar todas as partes antes do manifesto, que é o último valor a ser trocado. O servidor verifica o SHA-256; parte ausente, alterada ou de outra versão bloqueia o serviço. Cada propriedade permanece abaixo de 8.000 bytes; no máximo 64 partes. Versões antigas não são apagadas automaticamente, para preservar recuperação; antes de novas instalações verificar a capacidade total de Script Properties e remover somente partes comprovadamente sem referência, com o serviço desligado e recuperação guardada.
 
 ## Propriedades privadas no Apps Script operacional
 
 - `SAHMT_READING_ENABLED`: `NO` inicialmente.
 - `SAHMT_READING_HMAC_SECRET`: segredo dedicado de 32 bytes em base64url, 43 caracteres. Instalar somente no servidor e no Worker; não reutilizar segredo temporário de homologação.
-- `SAHMT_READING_POLICY_JSON`: JSON validado pelo compilador. Manter somente contas aprovadas no piloto.
+- `SAHMT_READING_POLICY_JSON`: valor gerado em `properties`, após instalar as partes quando existirem. Manter somente contas aprovadas no piloto.
 - `SAHMT_READING_OPERATOR_EMAIL`: conta executora autorizada para as funções manuais; o código exige correspondência entre usuário ativo e efetivo.
 
 As propriedades `SAHMT_READING_RECOVERY_FILE_ID`, `SAHMT_READING_CUTOVER_CURSOR` e `SAHMT_READING_CUTOVER_SHA256` são controladas pelas funções de instalação. Não preenchê-las artificialmente. O marcador de transição depende de todo o catálogo, incluindo suas versões; mudar uma versão invalida a prontidão.
@@ -35,7 +37,7 @@ Worker: `DIRETRIZES_READING_ENABLED=false`, `DIRETRIZES_READING_HMAC_SECRET`, `D
 
 PWA: `VITE_DIRETRIZES_READING_ENABLED=false` e `VITE_DIRETRIZES_READING_ENDPOINT` vazio inicialmente. Somente endpoint público e flag no frontend. Flag solicitada com endpoint inválido falha fechada nos cartões, sem fallback para o Google Form. PDF.js e seu worker carregam sob demanda, fora do caminho de login FA.
 
-O Worker verifica o token Firebase junto ao Google, projeto/issuer FA, validade, provedor Google, e-mail verificado, conta habilitada e revogação. Envia ao Apps Script somente identidade validada e pedido autenticado por HMAC. O Apps Script revalida perfil e autorização no FA e o vínculo catálogo/PDF/Form. Não aceitar e-mail livre do navegador como identidade.
+O Worker verifica o token Firebase junto ao Google, projeto/issuer FA, validade, provedor Google, e-mail verificado, conta habilitada e revogação. Envia ao Apps Script somente identidade validada e pedido autenticado por HMAC. O Apps Script revalida perfil e autorização no FA e o vínculo catálogo/PDF/Form. Não aceitar e-mail livre do navegador como identidade. Documentos sem formulário registram `READING_COMPLETED`, sem criar URL ou solicitar permissões de Forms. Os nomes técnicos de flags, rotas e funções Diretrizes foram preservados por compatibilidade; cobrem somente as categorias configuradas em Gestão de Documentos.
 
 ## Persistência e custos
 

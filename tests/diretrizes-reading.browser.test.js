@@ -21,6 +21,12 @@ test('real PDF rendering, mobile modal, coverage, completion and close cleanup',
   await page.locator('[data-reader-close]').click();assert.equal(await page.locator('dialog[open]').count(),0);
   assert.equal(await page.locator('canvas').evaluate(el=>el.width),0);
   assert.equal(await page.locator('[data-reader-form]').getAttribute('href'),null);
+  await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html?reader-only=1');await page.waitForFunction(()=>window.readingFixtureReady);
+  await page.locator('[data-open-diretriz-reader]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('1 apresentadas'));
+  assert.equal(await page.locator('[data-reader-complete]').innerText(),'CONCLUIR LEITURA');
+  await scrollBottom();await page.locator('[data-reader-next]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('Página 2')&&!document.querySelector('[data-reader-text]').disabled);
+  await scrollBottom();await page.waitForFunction(()=>!document.querySelector('[data-reader-complete]').disabled);await page.locator('[data-reader-complete]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-reading-status]').textContent.includes('não possui formulário'));assert.equal(await page.locator('[data-reader-form]').isVisible(),false);
   await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html?failure=1');await page.waitForFunction(()=>window.readingFixtureReady);
   await page.locator('[data-open-diretriz-reader]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('1 apresentadas'));
   await page.locator('[data-reader-next]').click();await page.waitForFunction(()=>document.querySelector('[data-reading-status]').textContent.includes('Não foi possível'));

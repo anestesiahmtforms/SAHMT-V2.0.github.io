@@ -48,10 +48,11 @@ export async function relayDiretrizesReading(request,env,{fetchImpl=fetch,now=Da
   const answer=JSON.parse(Buffer.from(envelope.payload,'base64url').toString('utf8'));if(answer.v!==1||answer.nonce!==nonce||!/^READING_[A-Z_]+$/.test(answer.code||'')||now()>issuedAt+60000)throw Error('REPLY');
   remoteFinished=true;
   // Project only protocol fields: never relay arbitrary private response keys.
-  const data={};for(const k of ['pages','sessionId','pdfBase64','visited','formUrl'])if(answer[k]!==undefined)data[k]=answer[k];
+  const data={};for(const k of ['pages','sessionId','pdfBase64','visited','formUrl','hasForm'])if(answer[k]!==undefined)data[k]=answer[k];
   if(answer.code==='READING_STARTED'&&(!Number.isSafeInteger(data.pages)||data.pages<1||data.pages>300||!/^[a-f0-9]{32}$/.test(data.sessionId||'')||typeof data.pdfBase64!=='string'||data.pdfBase64.length>8388608||!/^JVBER[A-Za-z0-9+/=]*$/.test(data.pdfBase64)))throw Error('PDF');
+  if(answer.code==='READING_COMPLETED' && data.formUrl!==undefined)throw Error('URL');
   if(answer.code==='READING_RELEASED'&&!/^https:\/\/docs\.google\.com\/forms\/d\/e\/[A-Za-z0-9_-]+\/viewform$/.test(data.formUrl||''))throw Error('URL');
-  return reply(answer.code,['READING_STARTED','READING_PROGRESS_SAVED','READING_RELEASED'].includes(answer.code)?200:409,origin,data);
+  return reply(answer.code,['READING_STARTED','READING_PROGRESS_SAVED','READING_RELEASED','READING_COMPLETED'].includes(answer.code)?200:409,origin,data);
  }catch{return reply('READING_UNAVAILABLE',503,origin);}finally{
   clearTimeout(timer);if(!controller.signal.aborted&&(!remoteStarted||remoteFinished)&&slot?.allowed===true)await slot.release().catch(()=>{});
  }

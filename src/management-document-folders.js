@@ -45,8 +45,9 @@ export function renderManagementDocumentCard(item, {canEdit = false, readingGate
   const kind = /ORGANOGRAMA/.test(normalize(item.title) + ' ' + normalize(item.category))
     ? 'organization' : folderIconKind(managementDocumentFolder(item).folder);
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
-  if (readingGate && managementDocumentFolder(item).folder === 'Diretrizes') {
-    return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium" data-open-diretriz-reader="' + escapeHtml(item.id) + '" data-reading-title="' + title + '">' + content + '</button></li>';
+  const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
+  if (readingGate && ['Diretrizes', 'Protocolos', 'ROPs', 'Documentos administrativos'].includes(managementDocumentFolder(item).folder)) {
+    return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium" data-open-diretriz-reader="' + escapeHtml(String(item.id).startsWith('pdf_evaluation_') ? String(item.id).slice(4) : item.id) + '" data-reading-title="' + title + '">' + content + '</button>' + edit + '</li>';
   }
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
@@ -57,7 +58,6 @@ export function renderManagementDocumentCard(item, {canEdit = false, readingGate
   const viewer = viewerTarget ? '<button class="management-document-link management-document-premium" type="button" data-open-material-viewer data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
   const link = viewer || (href ? '<a class="management-document-link management-document-premium" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + content + '</a>'
     : '<button class="management-document-premium" type="button" disabled>' + content + '</button>');
-  const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
   const training = pdfTarget && href && /^https:\/\/docs\.google\.com\/forms\//.test(href)
     ? '<a class="secondary-button management-document-training" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">ABRIR TREINAMENTO</a>' : '';
   return '<li class="management-document-card">' + link + training + edit + '</li>';

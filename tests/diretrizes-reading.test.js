@@ -17,3 +17,20 @@ test('identity switch while pending rejects delayed response',async()=>{
  await new Promise(resolve=>setTimeout(resolve,0));current={uid:'second'};finish(Response.json({code:'READING_STARTED'}));
  await assert.rejects(pending,/READING_USER_CHANGED/);
 });
+
+for(const category of ['Protocolos','ROPs','DIRETRIZES','Documentos administrativos','Organograma'])test('reading card covers '+category+' without exposing a direct Form',()=>{
+ const html=renderManagementDocumentCard({id:'catalog-id',category,title:category,driveUrl:'https://docs.google.com/forms/d/e/PrivatePublic123/viewform'},{readingGate:true});
+ assert.match(html,/data-open-diretriz-reader="catalog-id"/);assert.doesNotMatch(html,/href=/);
+});
+
+test('paired PDF card resolves the original canonical evaluation document',()=>{
+ const html=renderManagementDocumentCard({id:'pdf_evaluation_FormFixture123456',title:'PDF',category:'Protocolos'},{readingGate:true});assert.match(html,/data-open-diretriz-reader="evaluation_FormFixture123456"/);
+});
+
+test('reading gate preserves the existing manager edit action without a direct Form link',()=>{
+ const item={id:'evaluation_FormFixture123456',documentCollection:'scopedDocuments',title:'Documento',category:'Protocolos',driveUrl:'https://docs.google.com/forms/d/e/PrivatePublic123/viewform'};
+ const manager=renderManagementDocumentCard(item,{readingGate:true,canEdit:true});
+ assert.match(manager,/data-document-edit="scopedDocuments\/evaluation_FormFixture123456"/);
+ assert.match(manager,/data-open-diretriz-reader=/);assert.doesNotMatch(manager,/href=/);
+ assert.doesNotMatch(renderManagementDocumentCard(item,{readingGate:true}),/data-document-edit=/);
+});

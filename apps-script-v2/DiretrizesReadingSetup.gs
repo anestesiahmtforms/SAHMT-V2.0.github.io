@@ -1,3 +1,14 @@
+// Writes bounded shards before atomically selecting their content hash in the manifest.
+function dgrStorePolicy_(policy) {
+  dgrValidatePolicy_(policy);
+  const props=sahmtV2Properties_(),raw=JSON.stringify(policy);
+  if(dgrPolicyBytes_(raw)<=8000){props.setProperty('SAHMT_READING_POLICY_JSON',raw);return;}
+  const hash=sha256Hex_(raw),parts=[];let part='',size=0;
+  for(const char of raw){const bytes=dgrPolicyBytes_(char);if(size+bytes>7000){parts.push(part);part='';size=0;}part+=char;size+=bytes;}if(part)parts.push(part);
+  if(parts.length>64)throw Error('READING_CONFIG_INVALID');
+  parts.forEach(function(value,index){const key='SAHMT_READING_POLICY_'+hash+'_'+index;props.setProperty(key,value);if(props.getProperty(key)!==value)throw Error('READING_CONFIG_INVALID');});
+  props.setProperty('SAHMT_READING_POLICY_JSON',JSON.stringify({storageVersion:2,count:parts.length,sha256:hash}));
+}
 // Manual operator entrypoints only. Never invoked by doPost or a timer.
 function dgrOperator_() {
   const operator = sahmtV2Properties_().getProperty('SAHMT_READING_OPERATOR_EMAIL');
@@ -20,7 +31,8 @@ function prepararBloqueioIndividualDiretrizesV1() {
   if(props.getProperty('SAHMT_READING_ENABLED')==='YES')throw Error('READING_DISABLE_FIRST');
   const previous=props.getProperty('SAHMT_READING_RECOVERY_FILE_ID');
   if(previous && formsEvaluationHash_(dgrBackup_().policy)===formsEvaluationHash_(policy))return {code:'READING_RECOVERY_ALREADY_PREPARED'};
-  const entries=Object.keys(policy.documents).map(function (id) {
+  Object.keys(policy.documents).forEach(function(id){const row=policy.documents[id];if(row.enforced)throw Error('READING_POLICY_ALREADY_ENFORCED');dgrCatalog_(id,row);dgrPdf_(row,false);});
+  const entries=Object.keys(policy.documents).filter(function(id){return Boolean(policy.documents[id].formId);}).map(function (id) {
     const row=policy.documents[id];if(row.enforced)throw Error('READING_POLICY_ALREADY_ENFORCED');
     dgrCatalog_(id,row);dgrPdf_(row,false);
     const form=FormApp.openById(row.formId),permissions=formsEvaluationPublishedPermissions_(row.formId);
@@ -70,7 +82,8 @@ function instalarBloqueioIndividualDiretrizesV1() {
       if(!form.isPublished()||!form.isAcceptingResponses()||permissions.some(function(p){return p.view==='published';})||dgrNormalFingerprint_(permissions)!==entry.normalFingerprint)throw Error('READING_CUTOVER_DENIED');
       policy.documents[entry.documentId].enforced=true;
     });
-    props.setProperty('SAHMT_READING_POLICY_JSON',JSON.stringify(policy));
+    Object.keys(policy.documents).forEach(function(id){dgrCatalog_(id,policy.documents[id]);dgrPdf_(policy.documents[id],false);policy.documents[id].enforced=true;});
+    dgrStorePolicy_(policy);
     props.setProperty('SAHMT_READING_CUTOVER_SHA256',formsEvaluationHash_(policy.documents));
     props.deleteProperty('SAHMT_READING_CUTOVER_CURSOR');
     console.log(JSON.stringify({code:'READING_CUTOVER_VERIFIED',forms:backup.entries.length,enabled:false}));
@@ -82,7 +95,7 @@ function dgrBackup_() {
   const id=sahmtV2Properties_().getProperty('SAHMT_READING_RECOVERY_FILE_ID');
   if(!/^[A-Za-z0-9_-]{10,200}$/.test(id||''))throw Error('READING_RECOVERY_MISSING');
   const backup=JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8'));
-  if(backup.kind!=='SAHMT_READING_RECOVERY_V1'||backup.scriptId!==ScriptApp.getScriptId()||!Array.isArray(backup.entries)||!backup.entries.length||backup.entries.length>100)throw Error('READING_RECOVERY_INVALID');
+  if(backup.kind!=='SAHMT_READING_RECOVERY_V1'||backup.scriptId!==ScriptApp.getScriptId()||!Array.isArray(backup.entries)||backup.entries.length>1000)throw Error('READING_RECOVERY_INVALID');
   return backup;
 }
 function reverterBloqueioIndividualDiretrizesV1() {
@@ -107,7 +120,7 @@ function reverterBloqueioIndividualDiretrizesV1() {
       if(entry.wasPublished)currentForm.setPublished(true);
       currentForm.setAcceptingResponses(entry.wasAccepting===true);currentForm=null;
     });
-    props.setProperty('SAHMT_READING_POLICY_JSON',JSON.stringify(backup.policy));props.deleteProperty('SAHMT_READING_CUTOVER_SHA256');
+    dgrStorePolicy_(backup.policy);props.deleteProperty('SAHMT_READING_CUTOVER_SHA256');
     props.deleteProperty('SAHMT_READING_CUTOVER_CURSOR');
     console.log(JSON.stringify({code:'READING_ROLLBACK_VERIFIED',forms:backup.entries.length,enabled:false}));
     return {code:'READING_ROLLBACK_VERIFIED'};
@@ -120,7 +133,7 @@ function fecharFormulariosLeituraDiretrizesV1() {
   let failures=0;
   try{
     const policy=dgrPolicy_();Object.keys(policy.documents).forEach(function(id){
-      try{formsEvaluationCloseForm_(FormApp.openById(policy.documents[id].formId));}catch(_){failures++;}
+      try{if(policy.documents[id].formId)formsEvaluationCloseForm_(FormApp.openById(policy.documents[id].formId));}catch(_){failures++;}
     });
     if(failures)throw Error('READING_CLOSE_PENDING');
     console.log(JSON.stringify({code:'READING_FORMS_CLOSED',enabled:false}));

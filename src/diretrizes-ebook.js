@@ -8,13 +8,13 @@ async function loadPdf(bytes) {
   return pdfjs.getDocument({data: bytes, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
 }
 const messages = {
-  READING_ACCESS_DENIED: 'Seu acesso a esta Diretriz não está autorizado.',
+  READING_ACCESS_DENIED: 'Seu acesso a este documento não está autorizado.',
   READING_LOGIN_REQUIRED: 'Entre novamente para continuar a leitura.',
-  READING_USER_CHANGED: 'A conta mudou. Abra a Diretriz novamente.',
-  READING_SESSION_INVALID: 'A sessão de leitura expirou. Feche e abra a Diretriz para retomar.',
+  READING_USER_CHANGED: 'A conta mudou. Abra o documento novamente.',
+  READING_SESSION_INVALID: 'A sessão de leitura expirou. Feche e abra o documento para retomar.',
   READING_MATERIAL_CHANGED: 'O material mudou. A nova versão precisa ser conferida antes de continuar.',
   READING_GRANT_PENDING: 'Leitura registrada. A liberação do formulário está pendente; tente concluir novamente.',
-  READING_CUTOVER_REQUIRED: 'A liberação individual desta Diretriz ainda não foi ativada.',
+  READING_CUTOVER_REQUIRED: 'A liberação individual deste documento ainda não foi ativada.',
   READING_CONFIG_MISSING: 'O serviço de leitura ainda não foi configurado.',
   READING_DISABLED: 'O serviço de leitura ainda não foi ativado.',
   READING_INCOMPLETE: 'Apresente todas as páginas antes de concluir.',
@@ -25,7 +25,7 @@ const messages = {
 export function installDiretrizesReader({root = document, getUser, endpoint, client = createReadingClient({endpoint, getUser}), pdfLoader = loadPdf} = {}) {
   const dialog = document.createElement('dialog');
   dialog.className = 'diretrizes-ebook';
-  dialog.setAttribute('aria-label', 'Leitura da Diretriz');
+  dialog.setAttribute('aria-label', 'Leitura do documento');
   dialog.innerHTML = '<header><h2></h2><p data-reading-status role="status" aria-live="polite"></p></header>' +
     '<section class="diretrizes-ebook__pages" tabindex="0" aria-label="Página do documento"><canvas aria-label="Página PDF"></canvas><pre hidden></pre></section>' +
     '<footer><nav aria-label="Páginas"><button type="button" data-reader-prev>ANTERIOR</button><span data-reader-page></span><button type="button" data-reader-next>PRÓXIMA</button><button type="button" data-reader-text>TEXTO</button></nav>' +
@@ -86,13 +86,13 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     dispose();
     const user=getUser();if(!user?.uid)return;
     const state={generation,uid:user.uid,documentId:trigger.dataset.openDiretrizReader,controller:new AbortController(),busy:true,page:1,total:0,visited:new Set(),saved:0};current=state;
-    $('h2').textContent=trigger.dataset.readingTitle||'Diretriz';canvas.hidden=false;text.hidden=true;
+    $('h2').textContent=trigger.dataset.readingTitle||'Documento';canvas.hidden=false;text.hidden=true;
     status.textContent='Carregando o PDF para leitura…';controls(state);
     if(!dialog.open)dialog.showModal();
     try{
       const answer=await client.request({action:'start',documentId:state.documentId},{signal:state.controller.signal});if(!active(state))return;
       if(!Number.isSafeInteger(answer.pages)||answer.pages<1||answer.pages>300||!/^[a-f0-9]{32}$/.test(answer.sessionId||'')||typeof answer.pdfBase64!=='string'||answer.pdfBase64.length>8388608)throw Error('READING_PDF_INVALID');
-      state.total=answer.pages;state.sessionId=answer.sessionId;
+      state.total=answer.pages;state.sessionId=answer.sessionId;state.hasForm=answer.hasForm!==false;complete.textContent=state.hasForm?'CONCLUIR LEITURA E ABRIR FORMULÁRIO':'CONCLUIR LEITURA';
       state.visited=new Set(Array.isArray(answer.visited)?answer.visited.filter(p=>Number.isInteger(p)&&p>=1&&p<=state.total):[]);state.saved=state.visited.size;
       const bytes=Uint8Array.from(atob(answer.pdfBase64),char=>char.charCodeAt(0));
       state.loadingTask=await pdfLoader(bytes);if(!active(state)){void state.loadingTask.destroy().catch(()=>{});return;}
@@ -114,6 +114,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       state.busy=true;controls(state);status.textContent='Registrando leitura e verificando a liberação individual…';
       void client.request({action:'complete',documentId:state.documentId,sessionId:state.sessionId,pages:[...state.visited]},{signal:state.controller.signal}).then(answer=>{
         if(!active(state))return;
+        if(answer.code==='READING_COMPLETED' && state.hasForm===false){status.textContent='Leitura registrada. Este documento não possui formulário associado.';return;}
         if(!/^https:\/\/docs\.google\.com\/forms\/d\/e\/[A-Za-z0-9_-]+\/viewform$/.test(answer.formUrl||''))throw Error('READING_FORM_INVALID');
         formLink.href=answer.formUrl;formLink.hidden=false;status.textContent='Leitura registrada e formulário liberado para sua conta Google.';
         // An explicit link avoids popup blocking after the asynchronous server check.

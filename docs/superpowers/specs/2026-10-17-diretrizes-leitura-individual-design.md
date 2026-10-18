@@ -8,7 +8,7 @@ Ao abrir uma Diretriz, o participante lê o PDF no app e conclui a etapa de leit
 
 Adotar leitor próprio de PDF e concessão individual de acesso no Google Forms pelo servidor. Apenas esconder o link não atende ao bloqueio externo. Substituir todos os Forms por formulários nativos ampliaria o escopo e afetaria integrações existentes; não faz parte desta mudança.
 
-Aplicar inicialmente às Diretrizes. Preservar perguntas, respostas, referências originais dos materiais, regras de pontuação e revisão exclusiva do gestor. A leitura não concede pontos automaticamente. Não reintroduzir autenticação entre FA, FB e FC.
+Aplicar a todas as categorias da Gestão de Documentos: Protocolos, ROPs, Diretrizes e Documentos administrativos, incluindo Organograma. A extensão do mesmo fluxo foi aprovada em 17/10/2026. Preservar perguntas, respostas, referências originais dos materiais, regras de pontuação e revisão exclusiva do gestor. A leitura não concede pontos automaticamente. Não reintroduzir autenticação entre FA, FB e FC.
 
 ## Experiência
 
@@ -71,3 +71,13 @@ A reversão desliga o novo fluxo e restaura somente a audiência restrita previa
 ## Critério de aceite
 
 Leitor utilizável no celular dentro do app, avanço preservado por usuário e versão, liberação verificada no Google Forms, bloqueio externo real para participantes ainda não liberados e ausência de alterações em pontuação ou autenticação principal. Validar limites de PDF, cotas e permissões com o ambiente gratuito; não habilitar faturamento como solução automática.
+
+## Extensão aprovada à Gestão de Documentos
+
+Os nomes técnicos diretrizes, a rota /v1/diretrizes/reading e as flags existentes permanecem compatíveis e desligados por padrão. O catálogo FA e a política privada vinculam categoria, audienceGroup, original, PDF, checksum e versão. A autorização exige perfil FA ativo e acesso atual, UID explicitamente incluído na política e documentAccessEmails ativo com o grupo exato do documento. Administrador não dispensa esse grupo. A organização visual administrativa/Organograma em Acesso restrito permanece preservada; sua localização visual não cria permissões.
+
+Registros antigos sem category/audienceGroup conservam DIRETRIZES/GENERAL. Novas categorias exigem os campos exatos do catálogo. Originais com Form mantêm evaluation_formId e pdf_evaluation_formId; o cartão PDF encaminha o identificador original. Registros sem Form usam formId:null, pdfDocumentId e, quando necessário, sourceFileId explícitos. O servidor confere ambos os registros; concluir apenas registra a leitura (READING_COMPLETED), sem URL, concessão ou Form inventado. O botão apresenta CONCLUIR LEITURA.
+
+O compilador local gera um pacote privado {policy,properties}. Até 8.000 bytes, mantém SAHMT_READING_POLICY_JSON no formato antigo. Acima disso, properties contém partes determinísticas de até 7.000 bytes UTF-8 com nome SAHMT_READING_POLICY_<sha256>_<indice> e um manifesto storageVersion:2 no nome original. Instalar partes primeiro e manifesto por último; não copiar o pacote completo para uma única propriedade. Limites locais: 1.000 documentos, 1.000 UIDs, 64 partes, 300 páginas e 6 MiB por PDF. Os limites de quota total do Script Properties continuam aplicáveis.
+
+Leitura e publicação legada falham de modo seguro se faltar parte, hash divergir, manifesto for inválido ou catálogo mudar. Preparação, transição e reversão usam o mesmo armazenamento limitado; documentos sem Form são validados, sem operações de Forms. A recuperação privada conserva a política completa. Partes antigas não são apagadas automaticamente, para não interferir na seleção ativa; o operador deve administrar a quota privada antes de revisões grandes. Nenhuma instalação remota ou alteração de Drive/Forms foi executada nesta extensão local.
