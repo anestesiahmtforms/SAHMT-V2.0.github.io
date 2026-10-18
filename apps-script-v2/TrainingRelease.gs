@@ -271,10 +271,19 @@ function trainingReleaseCloneAccess_(loaded) {
 function trainingReleaseMaterialVerify_(loaded,item) {
   const audience = trainingReleaseMaterialAudience_(loaded), catalog = trainingReleaseMaterialCatalog_(loaded);
   const selected = new Set(item.materialUrls.map(function (url) { return url.match(/\/d\/([A-Za-z0-9_-]+)/)[1]; }));
-  if (item.rootId === SAHMT_V2_TRAINING_RELEASE.cloneRootId) trainingReleaseCloneAccess_(loaded);
+  const pdfConfigured = PropertiesService.getScriptProperties().getProperty('SAHMT_DOCUMENT_PDF_SYNC_CONFIG');
+  if (pdfConfigured && (typeof gpdfConfig_ !== 'function' || typeof gpdfDrive_ !== 'function' || typeof trainingReleaseReadingEntry_ !== 'function' || typeof trainingMaterialFormLinkMatches_ !== 'function' || typeof trainingReleasePdfAccessExact_ !== 'function' || typeof trainingReleaseReviewedCloneAccess_ !== 'function')) trainingReleaseReject_('MATERIAL_PDF_VERIFIER_REQUIRED');
+  if (item.rootId === SAHMT_V2_TRAINING_RELEASE.cloneRootId) {
+    if (pdfConfigured) trainingReleaseReviewedCloneAccess_(loaded,item); else trainingReleaseCloneAccess_(loaded);
+  }
+  const pdfConfig = pdfConfigured ? gpdfConfig_() : null, pdfDrive = pdfConfig ? gpdfDrive_(pdfConfig) : null;
+  const presentation = pdfConfig ? formsEvaluationMetadata_(item.formId) : null;
   catalog.filter(function (entry) { return selected.has(entry.id); }).forEach(function (entry) {
-    const file = trainingReleaseMaterialMetadata_(entry,audience);
-    if (!trainingReleaseMaterialExact_(entry,file,trainingReleaseMaterialPermissions_(entry.id),audience)) trainingReleaseReject_('MATERIAL_ACCESS_PENDING');
+    const reading = pdfConfig ? trainingReleaseReadingEntry_(entry,audience,pdfConfig,pdfDrive) : entry;
+    if (reading.id !== entry.id && !trainingMaterialFormLinkMatches_(presentation,entry.id,reading.id)) trainingReleaseReject_('MATERIAL_PDF_LINK_PENDING');
+    const file = trainingReleaseMaterialMetadata_(reading,audience),permissions = trainingReleaseMaterialPermissions_(reading.id);
+    const exact = pdfConfig && file.mimeType === 'application/pdf' ? trainingReleasePdfAccessExact_(reading,file,permissions,audience) : trainingReleaseMaterialExact_(reading,file,permissions,audience);
+    if (!exact) trainingReleaseReject_('MATERIAL_ACCESS_PENDING');
   });
   return {audienceDigest: audience.digest,verifiedMaterials: selected.size};
 }

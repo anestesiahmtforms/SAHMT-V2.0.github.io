@@ -882,3 +882,12 @@ test('an earlier ungraded response hides the stale later credit until its real g
  setResponse(h,{...earlier,totalScore:2});h.ctx.formsEvaluationProcessResponse_(FORM,earlier.responseId);
  assert.equal(h.values('evaluationParticipations').find(row=>row.recordType==='PARTICIPATION').creditReconciliationPending,false);assert.equal(h.values('evaluationAwards').find(row=>row.modality==='TEST').points,2);
 });
+
+
+test('diagnóstico de publicação usa somente código fixo e preserva fechamento após falha',()=>{
+ const h=harness();stagedGroup(h);h.ctx.formsEvaluationSyncResponders_=()=>{throw Error('sensitive-content-must-not-be-returned');};
+ const result=h.ctx.formsEvaluationFinalizePublication_(FORM);assert.equal(result.code,'FORM_PUBLICATION_RESPONDERS');assert.equal(result.status,'CONFIGURATION_PENDING');assert.equal(h.forms.get(FORM).isAcceptingResponses(),false);assert.equal(JSON.stringify(result).includes('sensitive-content'),false);
+});
+test('diagnóstico distingue metadados sem retornar exceção externa',()=>{
+ const h=harness();stagedGroup(h);h.ctx.formsEvaluationMetadata_=()=>{throw Error('private response');};const result=h.ctx.formsEvaluationFinalizePublication_(FORM);assert.equal(result.code,'FORM_PUBLICATION_METADATA');assert.equal(result.status,'CONFIGURATION_PENDING');assert.equal(JSON.stringify(result).includes('private response'),false);
+});

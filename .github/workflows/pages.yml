@@ -41,7 +41,7 @@ jobs:
       - name: Run QMENTUM FA Rules tests
         run: npm run test:qmentum-rules
       - name: Run training repetition and continuation regression
-        run: node --test tests/training-participation-state.test.js tests/training-repetition.test.js tests/training-repeat-scheduling.test.js tests/training-native-recovery.test.js tests/forms-evaluation.test.js
+        run: node --test tests/training-participation-state.test.js tests/training-repetition.test.js tests/training-repeat-scheduling.test.js tests/training-native-recovery.test.js tests/training-material-publication.test.js tests/forms-evaluation.test.js
       - name: Run management migration local tests
         run: npm run test:management
       - name: Run FA consolidation safety tests
