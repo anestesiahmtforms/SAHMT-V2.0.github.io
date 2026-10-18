@@ -91,4 +91,16 @@ Desabilitar as flags do Worker/PWA; executar `reverterBloqueioIndividualDiretriz
 
 ## Evidências separadas
 
+### Documentos de questões com gabarito
+
+Preparação iniciada em 17/10/2026 para 57 pastas e 58 Forms, incluindo as referências ROPs do catálogo localizadas fora da árvore reorganizada. Uma pasta contém dois Forms e precisa de comparação antes de consolidar seus documentos; não escolher pelo título. O inventário não inclui a pasta de Transporte anteriormente excluída. O documento de questões é separado do DOC de material de apoio e não participa da lista do monitor DOC→PDF.
+
+`ManagementQuestionExport.gs` e o arquivo privado `ManagementQuestionExportTargets.gs` estão instalados no Apps Script operacional, preservando os outros 35 arquivos. Executar `exportarQuestoesGabaritosGestaoV1` uma vez no editor; o ponto de entrada retoma sem duplicação e agenda continuação somente quando necessária. O exportador lê definições/gabaritos, sem ler respostas ou alterar Forms/Firestore. Cria uma fonte JSON privada, somente proprietário, com metadados e conteúdo reais. Prefere Forms API no runtime; oferece alternativa nativa FormApp quando a API não está disponível. As origens ficam explicitamente identificadas para não usar uma versão nativa como revisionId da Forms API. O retorno pronto é `QUESTION_BANK_EXPORT_READY` com `privateReportUrl`.
+
+O acesso direto da ferramenta à Forms API encontrou SERVICE_DISABLED no projeto consumidor da credencial; a alternativa de projeto de quota não entregou a definição. Execution API permanece bloqueada por 403 e o navegador está desabilitado em Work. Portanto a extração real ainda depende da execução manual; documentos com gabaritos reais não foram gerados nem colocados no Drive nesta etapa. Não confundir instalação do exportador com criação dos DOCX ou sincronização ativa.
+
+`scripts/lib/management-question-document.js` prepara o modelo e lê o formato DOCX estruturado. Cada questão traz enunciado, alternativas, pontos existentes e RESPOSTA CORRETA conforme a chave exata do Forms. Gabaritos ausentes ou inconsistentes são explicitamente sinalizados. O preparo de alteração preserva IDs, pontos e obrigatoriedade; detecta banco desatualizado, outro formulário, formato inválido e gabarito incompleto. Não aplica alterações: exige integração posterior com designação atual do gestor e aprovação da versão imutável do documento. Questões com imagens e origem nativa têm bloqueios específicos para não presumir compatibilidade de uma gravação em lote. Não existe publicação ou atualização automática de Forms ativada por este pacote.
+
+Os gabaritos devem ficar em uma subpasta de revisão com acesso limitado, junto à organização de cada documento, mantendo material dos participantes separado. Nenhum gestor adicional foi designado ou recebeu permissão de edição do Forms. Testes locais do exportador e modelo/parser: 16 aprovados, zero falhas.
+
 Testes locais e build não provam instalação remota, entrega de PDFs privados, propagação de ACL no Google nem navegação autenticada no iPhone. Registrar essas evidências na homologação, com códigos e contagens, sem tokens, URLs temporárias, envelopes, e-mails ou UIDs nos logs operacionais.
