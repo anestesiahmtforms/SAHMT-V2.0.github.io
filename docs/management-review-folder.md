@@ -40,9 +40,19 @@ Somente o acionador dedicado `continuarProtecaoEditaveisGestaoV1` é gerenciado.
 
 O trabalho tem orçamento de 120 segundos por lote e continuação após um minuto.
 Esses lotes consultam o Drive; não consultam Firestore nem alteram Forms ou PDFs.
+O parâmetro privado opcional `parallelFiles` aceita de 1 a 8 arquivos. Cada rodada
+envia no máximo uma alteração de permissão por arquivo; nunca são feitas duas
+alterações simultâneas no mesmo arquivo. Esse limite segue a restrição da
+[API de permissões do Drive](https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions/update).
 O registro operacional contém contagens, códigos seguros e o link privado de
 recuperação. O JSON privado contém as informações necessárias para restauração
 administrativa das permissões; não deve ir para Git.
+
+Um `statusFileId` opcional permite gravar somente o resultado e as contagens em
+outro arquivo privado, sem copiar os ACLs ou conteúdos. Isso permite acompanhar
+o trabalho quando a credencial da ferramenta não pode ler o novo arquivo de
+recuperação criado pelo Apps Script. A identidade efetiva e a privacidade dos
+dois arquivos continuam obrigatórias.
 
 ## Vínculo DOC → PDF
 
@@ -74,6 +84,7 @@ uma vez `protegerEditaveisGestaoV1`, em `ManagementReviewAccess.gs`.
 
 - `REVIEW_ACCESS_PROGRESS`: aguardar as continuações automáticas.
 - `REVIEW_ACCESS_PAUSED`: verificar `category`; a continuação foi removida.
+- `REVIEW_ACCESS_PROTECTED_SYNC_SCHEDULED`: proteção concluída; aguardar a etapa PDF automática.
 - `REVIEW_ACCESS_PROTECTED_SYNC_PENDING`: acessos concluídos, configuração PDF pendente.
 - `REVIEW_ACCESS_AND_PDF_SYNC_READY`: proteção e instalação PDF concluídas.
 
@@ -84,6 +95,9 @@ da conversão de uma revisão real deve ser feita depois com alteração autoriz
 
 Não executar novamente enquanto houver continuação automática em andamento.
 Não confundir a instalação do código com a execução efetiva do trabalho.
+Com `deferPdfInstall=true`, a configuração dos PDFs usa uma execução nova após
+concluir a proteção, para não disputar o limite de duração com as remoções de
+permissões. A validação completa dos pares ocorre antes de habilitar o sincronizador.
 
 ## Retorno seguro
 
@@ -103,6 +117,6 @@ limitado e 40 PDFs vinculados com checksum preservado. Código consolidado
 instalado sem publicar Web App ou modificar o manifesto. A execução e a
 confirmação final de proteção dependem do resultado do lote no Apps Script.
 
-Validação local: 39 testes unitários e 8 verificações do instalador privado,
+Validação local: 46 testes unitários e 8 verificações do instalador privado,
 incluindo retomada, falhas, acesso do gestor, preservação dos estados e limite
 da propriedade. Não foi publicada alteração da PWA nesta etapa.

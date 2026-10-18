@@ -115,3 +115,44 @@ test('failure saving the completion receipt never starts PDF installation',()=>{
  assert.equal(f.run().code,'REVIEW_ACCESS_PAUSED');assert.equal(f.installed(),0);
  assert.equal(f.resume().code,'REVIEW_ACCESS_AND_PDF_SYNC_READY');assert.equal(f.events.filter(x=>x.startsWith('delete:')).length,1);
 });
+function enableBatch(f){
+ const rounds=[];f.context.ScriptApp.getOAuthToken=()=> 'private-oauth-token';
+ f.context.UrlFetchApp={fetchAll:requests=>{
+  rounds.push(requests);assert.ok(requests.length<=8);assert.equal(new Set(requests.map(r=>new URL(r.url).pathname.split('/')[4])).size,requests.length);
+  return requests.map(r=>{assert.equal(r.headers.Authorization,'Bearer private-oauth-token');assert.equal(r.muteHttpExceptions,true);assert.equal(r.followRedirects,false);f.context.gpdfHttp_(r.url,r);return {getResponseCode:()=>204};});
+ }};return rounds;
+}
+test('parallel rounds touch distinct files only and preserve backups for all files before DELETE',()=>{
+ const f=fixture(9);f.cfg.parallelFiles=8;const rounds=enableBatch(f);assert.equal(f.run().code,'REVIEW_ACCESS_AND_PDF_SYNC_READY');
+ assert.equal(rounds.length,1);assert.equal(rounds[0].length,8);assert.equal(f.events.filter(x=>x.startsWith('delete:')).length,9);assert.doesNotMatch(f.logs.join(''),/private-oauth-token/);
+});
+test('partial parallel groups resume verified records even when completion is not a contiguous prefix',()=>{
+ const f=fixture(2),s=f.cfg.sources[0];f.cfg.parallelFiles=2;enableBatch(f);f.permissions.get(s.sourceId).push({id:'extra-reader',type:'user',role:'reader',emailAddress:'extra@example.test'});f.setDeleteCost(120001);
+ assert.equal(f.run().completed,1);const data=JSON.parse([...f.ledgers.values()][0].text);assert.equal(data.records[0].verified,false);assert.equal(data.records[1].verified,true);
+ f.resetClock();assert.equal(f.resume().code,'REVIEW_ACCESS_AND_PDF_SYNC_READY');assert.equal(f.events.filter(x=>x.startsWith('delete:')).length,3);
+});
+test('parallel HTTP failure pauses safely and never reads or logs response bodies',()=>{
+ const f=fixture(2);f.cfg.parallelFiles=2;f.context.ScriptApp.getOAuthToken=()=> 'private-token';f.context.UrlFetchApp={fetchAll:()=>[{getResponseCode:()=>204,getContentText:()=>{throw Error('must not read');}},{getResponseCode:()=>403,getContentText:()=>{throw Error('must not read');}}]};
+ assert.equal(f.run().category,'PDF_SYNC_DRIVE_HTTP_403');assert.equal(f.installed(),0);assert.equal(f.triggers.length,0);assert.doesNotMatch(f.logs.join(''),/private-token|must not read/);
+});
+test('batch rejects same-file concurrency, oversized rounds and missing OAuth before dispatch',()=>{
+ const f=fixture();let dispatched=0;f.context.UrlFetchApp={fetchAll:()=>{dispatched++;}};f.context.ScriptApp.getOAuthToken=()=> '';
+ const step={sourceId:f.cfg.sources[0].sourceId,permissionId:'one'};
+ assert.throws(()=>f.context.graDeleteRound_([step,{...step,permissionId:'two'}]),/BATCH_INVALID/);
+ assert.throws(()=>f.context.graDeleteRound_(Array.from({length:9},(_,i)=>({...step,sourceId:'SourceFixture'+i+'123456'}))),/BATCH_INVALID/);
+ assert.throws(()=>f.context.graDeleteRound_([step,{sourceId:'OtherFixture123456',permissionId:'one'}]),/OAUTH_UNAVAILABLE/);assert.equal(dispatched,0);
+});
+test('optional private status receipt contains result counts and excludes all backed-up ACLs',()=>{
+ const f=fixture();assert.equal(f.run().code,'REVIEW_ACCESS_AND_PDF_SYNC_READY');const recovery=[...f.ledgers.values()][0];
+ f.cfg.statusFileId='StatusFixture123456';f.ledgers.set(f.cfg.statusFileId,{...recovery,text:'{}'});
+ f.resume();const receipt=JSON.parse(f.ledgers.get(f.cfg.statusFileId).text);assert.equal(receipt.result.code,'REVIEW_ACCESS_AND_PDF_SYNC_READY');assert.equal(receipt.result.completed,1);assert.equal(receipt.records,undefined);assert.doesNotMatch(JSON.stringify(receipt),/reader@example|manager@example|permissions|removals/);
+});
+test('invalid optional concurrency and status target fail before touching records',()=>{
+ for(const mutate of [f=>{f.cfg.parallelFiles=9;},f=>{f.cfg.parallelFiles=0;},f=>{f.cfg.parallelFiles=1.5;},f=>{f.cfg.statusFileId=f.cfg.sources[0].sourceId;},f=>{f.cfg.deferPdfInstall='yes';}]){
+  const f=fixture();mutate(f);assert.throws(f.run,/CONFIG_INVALID/);assert.equal(f.events.length,0);
+ }
+});
+test('PDF installation can run in a fresh continuation after all ACL work without user intervention',()=>{
+ const f=fixture();f.cfg.deferPdfInstall=true;const r=f.run();assert.equal(r.code,'REVIEW_ACCESS_PROTECTED_SYNC_SCHEDULED');assert.equal(r.completed,1);assert.equal(r.automaticContinuation,true);assert.equal(f.installed(),0);assert.equal(f.triggers.length,1);
+ const resumed=f.resume();assert.equal(resumed.code,'REVIEW_ACCESS_AND_PDF_SYNC_READY');assert.equal(f.installed(),1);assert.equal(f.triggers.length,0);assert.equal(f.events.filter(x=>x.startsWith('delete:')).length,1);
+});
