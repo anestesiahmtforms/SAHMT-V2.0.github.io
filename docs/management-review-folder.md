@@ -143,3 +143,16 @@ teve o texto e a aparência conferidos. A releitura dos 40 PDFs de produção
 confirmou que permaneceram inalterados. Detalhes e limites da validação do Forms
 constam em `management-revision-validation.md`; a aplicação de questões em
 formulários de produção não foi ativada.
+
+## Conferência do administrador em 18/10/2026
+
+A conferência adicional confirmou o administrador funcional como editor nas
+57 pastas de revisão, em 66 arquivos de material e nos 57 DOCX de questões
+(123 editáveis no total). Os acessos já estavam concedidos; não foi necessário
+criar permissões, mover arquivos ou modificar conteúdo. A contagem histórica
+de 66 acima refere-se aos materiais tratados pelo trabalho de proteção, sem
+incluir os 57 DOCX de questões que já estavam nas pastas restritas.
+
+Edição administrativa não implica designação automática como gestor de todos
+os documentos. O publicador condicional de questões e seus bloqueios estão
+descritos em `management-question-publication.md`; permanece desligado.
