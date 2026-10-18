@@ -98,3 +98,28 @@ test('reinstallation preserves baselines and creates only the one dedicated Driv
  assert.equal(f.context.instalarAtualizacaoAutomaticaPdfsGestaoV1().pdfWrites,0);const before=f.state();
  f.context.instalarAtualizacaoAutomaticaPdfsGestaoV1();assert.equal(created,1);assert.deepEqual(f.state(),before);assert.equal(f.context.verificarAtualizacaoAutomaticaPdfsGestaoV1().baselines,1);
 });
+
+test('protected source folder keeps the public PDF ID and supports a complete text replacement',()=>{
+ const f=fixture(),review='ReviewFixture123456';f.pair.sourceFolderId=review;f.source.parents=[review];let guards=0;f.drive.reviewFolder=(id,parent)=>{assert.equal(id,review);assert.equal(parent,f.pair.folderId);guards++;};
+ f.source.md5Checksum='c'.repeat(32);assert.equal(f.run().code,'PDF_SYNC_UPDATED');assert.equal(f.run().code,'PDF_SYNC_UNCHANGED');assert.equal(f.pdf.id,f.pair.pdfId);assert.ok(guards>=2);assert.equal(f.counts().writes,1);
+});
+test('missing protected-folder guard and source in the former folder fail closed',()=>{
+ for(const kind of ['guard','former']){const f=fixture();f.pair.sourceFolderId='ReviewFixture123456';if(kind==='guard')f.source.parents=[f.pair.sourceFolderId];else f.drive.reviewFolder=()=>{};assert.throws(()=>f.run(),/PDF_SYNC_/);assert.equal(f.counts().writes,0);}
+});
+test('bounded transition accepts only the two verified source parents while keeping the PDF parent fixed',()=>{
+ const f=fixture();f.pair.sourceFolderId='ReviewFixture123456';f.pair.allowLegacySourceFolder=true;f.drive.reviewFolder=()=>{};
+ assert.equal(f.run().code,'PDF_SYNC_UNCHANGED');f.source.parents=[f.pair.sourceFolderId];assert.equal(f.run().code,'PDF_SYNC_UNCHANGED');f.source.parents=['UnrelatedFixture123'];assert.throws(()=>f.run(),/BINDING_CHANGED/);
+});
+test('configuration rejects untrusted transition flags and invalid protected folder identities',()=>{
+ for(const mutate of [p=>p.sourceFolderId='bad',p=>p.sourceFolderId=p.folderId,p=>{p.sourceFolderId='ReviewFixture123456';p.allowLegacySourceFolder=true;}]){const f=fixture();mutate(f.cfg.pairs[0]);f.props.set('SAHMT_DOCUMENT_PDF_SYNC_CONFIG',JSON.stringify(f.cfg));assert.throws(()=>f.context.gpdfConfig_(),/CONFIG_INVALID/);}
+});
+test('trusted server layout resolver does not rewrite cursor, queue or baselines',()=>{
+ const f=fixture(),before=f.state();f.props.set('SAHMT_DOCUMENT_PDF_CURSOR','preserved');f.props.set('SAHMT_DOCUMENT_PDF_QUEUE','[]');f.context.gpdfTrustedReviewLayout_=pairs=>pairs.map(p=>({...p,sourceFolderId:'ReviewFixture123456'}));
+ assert.equal(f.context.gpdfConfig_().pairs[0].sourceFolderId,'ReviewFixture123456');assert.equal(f.props.get('SAHMT_DOCUMENT_PDF_CURSOR'),'preserved');assert.deepEqual(f.state(),before);assert.equal(f.props.get('SAHMT_DOCUMENT_PDF_QUEUE'),'[]');
+});
+test('review folder adapter requires limited inheritance and user-only writer access',()=>{
+ for(const mode of ['valid','public','unlimited','wrongParent']){const f=fixture();let calls=0;f.context.ScriptApp={getOAuthToken:()=> 'private-token'};
+  f.context.UrlFetchApp={fetch:url=>{calls++;const permissions=url.includes('/permissions?');const value=permissions?{permissions:[{type:mode==='public'?'anyone':'user',role:'writer'},{type:'user',role:'reader',view:'metadata'}]}:{id:'ReviewFixture123456',mimeType:'application/vnd.google-apps.folder',parents:[mode==='wrongParent'?'DifferentFixture1234':f.pair.folderId],inheritedPermissionsDisabled:mode!=='unlimited'};return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(value)};}};
+  const drive=f.context.gpdfDrive_(f.cfg);if(mode==='valid'){drive.reviewFolder('ReviewFixture123456',f.pair.folderId);drive.reviewFolder('ReviewFixture123456',f.pair.folderId);assert.equal(calls,2);}else assert.throws(()=>drive.reviewFolder('ReviewFixture123456',f.pair.folderId),/PDF_SYNC_REVIEW_/);
+ }
+});

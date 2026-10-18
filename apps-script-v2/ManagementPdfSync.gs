@@ -1,15 +1,21 @@
 // Drive-only incremental publication. No Firestore scan, Auth, IAM or sharing changes.
-// Private config: {version:1,operatorEmail,workspaceFolderId,pairs:[{sourceId,pdfId,folderId}]}.
+// Pairs retain folderId for the reading PDF; optional sourceFolderId is a protected child folder.
 function gpdfProps_() { return PropertiesService.getScriptProperties(); }
 function gpdfError_(code) { throw new Error(code); }
 function gpdfConfig_() {
   let cfg;try{cfg=JSON.parse(gpdfProps_().getProperty('SAHMT_DOCUMENT_PDF_SYNC_CONFIG')||'null');}catch(_){gpdfError_('PDF_SYNC_CONFIG_INVALID');}
   const id=/^[A-Za-z0-9_-]{10,200}$/;
   if(!cfg||cfg.version!==1||!id.test(cfg.workspaceFolderId||'')||typeof cfg.operatorEmail!=='string'||!cfg.operatorEmail.includes('@')||!Array.isArray(cfg.pairs)||!cfg.pairs.length||cfg.pairs.length>100)gpdfError_('PDF_SYNC_CONFIG_INVALID');
-  const sources=new Set(),pdfs=new Set();
-  cfg.pairs.forEach(function(p){if(!p||!id.test(p.sourceId||'')||!id.test(p.pdfId||'')||!id.test(p.folderId||'')||p.sourceId===p.pdfId||p.folderId===cfg.workspaceFolderId||sources.has(p.sourceId)||pdfs.has(p.pdfId))gpdfError_('PDF_SYNC_CONFIG_INVALID');sources.add(p.sourceId);pdfs.add(p.pdfId);});
-  if(cfg.pairs.some(function(p){return pdfs.has(p.sourceId);}))gpdfError_('PDF_SYNC_CONFIG_INVALID');
   if(String(Session.getEffectiveUser().getEmail()||'').toLowerCase()!==cfg.operatorEmail.toLowerCase())gpdfError_('PDF_SYNC_OPERATOR_DENIED');
+  // This optional server-only resolver accepts exact, previously verified bindings, never browser input.
+  if(typeof gpdfTrustedReviewLayout_==='function')cfg=Object.assign({},cfg,{pairs:gpdfTrustedReviewLayout_(cfg.pairs)});
+  if(!Array.isArray(cfg.pairs)||!cfg.pairs.length||cfg.pairs.length>100)gpdfError_('PDF_SYNC_CONFIG_INVALID');
+  const sources=new Set(),pdfs=new Set();
+  cfg.pairs.forEach(function(p){if(!p||!id.test(p.sourceId||'')||!id.test(p.pdfId||'')||!id.test(p.folderId||'')||p.sourceId===p.pdfId||p.folderId===cfg.workspaceFolderId||sources.has(p.sourceId)||pdfs.has(p.pdfId))gpdfError_('PDF_SYNC_CONFIG_INVALID');
+    if(p.sourceFolderId!==undefined&&(!id.test(p.sourceFolderId)||p.sourceFolderId===cfg.workspaceFolderId||p.sourceFolderId===p.folderId))gpdfError_('PDF_SYNC_CONFIG_INVALID');
+    if(p.allowLegacySourceFolder!==undefined&&(p.allowLegacySourceFolder!==true||!p.sourceFolderId||typeof gpdfTrustedReviewLayout_!=='function'))gpdfError_('PDF_SYNC_CONFIG_INVALID');
+    sources.add(p.sourceId);pdfs.add(p.pdfId);});
+  if(cfg.pairs.some(function(p){return pdfs.has(p.sourceId);}))gpdfError_('PDF_SYNC_CONFIG_INVALID');
   return cfg;
 }
 function gpdfStamp_(metadata) {
@@ -22,7 +28,10 @@ function gpdfStamp_(metadata) {
 }
 function gpdfPair_(pair,drive) {
   const source=drive.metadata(pair.sourceId),pdf=drive.metadata(pair.pdfId);
-  if(source.trashed||pdf.trashed||!(source.parents||[]).includes(pair.folderId)||!(pdf.parents||[]).includes(pair.folderId)||pdf.mimeType!=='application/pdf'||!/^[a-f0-9]{32}$/.test(pdf.md5Checksum||''))gpdfError_('PDF_SYNC_BINDING_CHANGED');
+  const sourceFolder=pair.sourceFolderId||pair.folderId;
+  const sourceMatches=(source.parents||[]).includes(sourceFolder)||(pair.allowLegacySourceFolder===true&&(source.parents||[]).includes(pair.folderId));
+  if(source.trashed||pdf.trashed||!sourceMatches||!(pdf.parents||[]).includes(pair.folderId)||pdf.mimeType!=='application/pdf'||!/^[a-f0-9]{32}$/.test(pdf.md5Checksum||''))gpdfError_('PDF_SYNC_BINDING_CHANGED');
+  if(pair.sourceFolderId){if(typeof drive.reviewFolder!=='function')gpdfError_('PDF_SYNC_REVIEW_GUARD_MISSING');drive.reviewFolder(pair.sourceFolderId,pair.folderId);}
   gpdfStamp_(source);return {source:source,pdf:pdf};
 }
 function gpdfStateKey_(pair) { return 'SAHMT_DOCUMENT_PDF_STATE_'+pair.pdfId; }
@@ -78,6 +87,7 @@ function gpdfHttp_(url,options) {
 function gpdfJson_(url,options) { const r=gpdfHttp_(url,options);return JSON.parse(r.getContentText()||'{}'); }
 function gpdfDrive_(cfg) {
   const base='https://www.googleapis.com/drive/v3/',upload='https://www.googleapis.com/upload/drive/v3/';
+  const reviewCache={};
   function metadata(id){
     // v2 still exposes the ETag together with the checksum in a single metadata snapshot.
     const m=gpdfJson_('https://www.googleapis.com/drive/v2/files/'+encodeURIComponent(id)+'?fields=id,etag,mimeType,parents(id),labels(trashed),md5Checksum,version,modifiedDate,fileSize');
@@ -94,6 +104,14 @@ function gpdfDrive_(cfg) {
   function removeTemp(id){gpdfHttp_(base+'files/'+encodeURIComponent(id),{method:'delete'});}
   return {
     metadata:metadata,workspace:workspace,
+    reviewFolder:function(id,parentId){
+      if(reviewCache[id]===parentId)return;
+      const m=gpdfJson_(base+'files/'+encodeURIComponent(id)+'?fields=id,mimeType,parents,trashed,inheritedPermissionsDisabled');
+      if(m.id!==id||m.trashed||m.mimeType!=='application/vnd.google-apps.folder'||m.inheritedPermissionsDisabled!==true||!(m.parents||[]).includes(parentId))gpdfError_('PDF_SYNC_REVIEW_FOLDER_INVALID');
+      let page='';do{const p=gpdfJson_(base+'files/'+encodeURIComponent(id)+'/permissions?pageSize=100&fields=nextPageToken,permissions(type,role,view)'+(page?'&pageToken='+encodeURIComponent(page):''));
+        if(!Array.isArray(p.permissions)||p.permissions.filter(function(x){return x.view!=='metadata';}).some(function(x){return x.type!=='user'||!['owner','writer'].includes(x.role);}))gpdfError_('PDF_SYNC_REVIEW_ACCESS_INVALID');page=p.nextPageToken||'';
+      }while(page);reviewCache[id]=parentId;
+    },
     digest:function(bytes){return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,bytes).map(function(b){return ('0'+((b+256)%256).toString(16)).slice(-2);}).join('');},
     start:function(){return gpdfJson_(base+'changes/startPageToken').startPageToken;},
     changes:function(token){return gpdfJson_(base+'changes?pageSize=1000&includeRemoved=true&fields=nextPageToken,newStartPageToken,changes(fileId,removed)&pageToken='+encodeURIComponent(token));},
@@ -164,5 +182,5 @@ function desativarAtualizacaoAutomaticaPdfsGestaoV1() {
 }
 function verificarAtualizacaoAutomaticaPdfsGestaoV1() {
   const cfg=gpdfConfig_(),props=gpdfProps_();
-  return {code:'PDF_SYNC_STATUS',enabled:props.getProperty('SAHMT_DOCUMENT_PDF_SYNC_ENABLED')==='YES',documents:cfg.pairs.length,baselines:cfg.pairs.filter(function(p){return Boolean(props.getProperty(gpdfStateKey_(p)));}).length,triggers:ScriptApp.getProjectTriggers().filter(function(t){return t.getHandlerFunction()==='atualizarPdfsGestaoAlteradosV1';}).length,firestoreReads:0};
+  return {code:'PDF_SYNC_STATUS',enabled:props.getProperty('SAHMT_DOCUMENT_PDF_SYNC_ENABLED')==='YES',documents:cfg.pairs.length,protectedSources:cfg.pairs.filter(function(p){return Boolean(p.sourceFolderId);}).length,baselines:cfg.pairs.filter(function(p){return Boolean(props.getProperty(gpdfStateKey_(p)));}).length,triggers:ScriptApp.getProjectTriggers().filter(function(t){return t.getHandlerFunction()==='atualizarPdfsGestaoAlteradosV1';}).length,firestoreReads:0};
 }
