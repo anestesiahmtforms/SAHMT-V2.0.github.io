@@ -86,3 +86,14 @@ A conferência também constatou que o backend de leitura não estava instalado 
 A execução real de `ativarRepeticaoTreinamentosV1` foi recusada por `evaluationAssertOperator_(true)` antes de qualquer alteração. A leitura direta de FA confirmou `evaluationRuntime/state.homologationVerified=false`, consolidação FA ACTIVE e origens não bloqueadas. A coleção `evaluationHomologationInputs` respondeu HTTP 200 sem capturas. Nenhuma flag foi marcada como homologada por substituição dos testes locais. É necessária a validação real documentada em EVALUATION_DEPLOYMENT.md, usando uma cópia isolada e participante, gestor e administrador independentes, antes de ativar o processamento e retomar a repetição.
 
 A primeira CI da PR 48 passou domínio e QMENTUM e detectou somente uma expectativa desatualizada da auditoria histórica de fontes: repetição por versão alterou seis corpos adicionais. A referência histórica permanece intacta e não aprovada; a regressão agora espera 209 funções idênticas e 19 alteradas. Os 30 testes da auditoria passaram após o ajuste.
+
+
+## Decisão posterior: produção com validação automatizada
+
+Em 18/10/2026, o administrador dispensou a homologação humana e autorizou a liberação com testes próprios. O runtime registra `AUTOMATED_TESTS_ADMIN_APPROVED`, `humanHomologationPerformed=false` e o estado ACTIVE, preservando a identidade do operador e as validações de conteúdo, público, versão e transações. O campo legado de habilitação não é uma alegação de testes com pessoas reais. A instrução anterior de solicitar três participantes foi substituída por essa decisão.
+
+A regra mínima adicional de leitura de `evaluationTrainingAttempts` foi validada contra o conteúdo real publicado: titular ou administrador ativo, com guarda de desligamento FA e nenhuma escrita cliente. As demais regras instaladas foram preservadas integralmente.
+
+O lote preserva configurações ausentes/inativas como bloqueadas, informa contagens separadas e continua os itens válidos. Erros de autorização ou conteúdo não são ignorados. A continuação temporária sobrevive a bloqueio compartilhado ocupado e é removida em conclusão ou desabilitação; erros internos transitórios do Google têm no máximo três tentativas idempotentes com confirmação do estado. O instalador privado também possui conclusão direta pelo editor quando o serviço de acionadores falha.
+
+O catálogo tem 57 Forms; 20 ainda não possuem configuração de avaliação. A autorização de produção não cria matéria estável, gestor, público ou vigência fictícios nem reativa origens retiradas. A contagem final e a relação privada das pendências ficam no relatório local da execução, sem incluir respostas de participantes no repositório.

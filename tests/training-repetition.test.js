@@ -61,3 +61,12 @@ test('a terminal commit acknowledged as timeout recovers original accepting inte
  assert.equal(h.records.get('evaluationFormConfigs/form').repeatActivation.status,'COMPLETE');
  h.context.trainingRepeatActivateOne_('form');assert.equal(h.form.isAcceptingResponses(),true);
 });
+
+
+test('native failure reports only the stage without logging private native details',()=>{
+ const h=fixture(),logs=[];h.context.Logger={log:value=>logs.push(JSON.parse(value))};
+ h.form.setLimitOneResponsePerUser=()=>{throw Error('private token and response details');};
+ assert.throws(()=>h.context.trainingRepeatActivateOne_('form'),/TRAINING_REPEAT_ACTIVATION_RETRY_REQUIRED/);
+ assert.equal(logs[0]?.code,'TRAINING_REPEAT_SAFE_FAILURE');assert.equal(logs[0]?.stage,'RESPONSE_LIMIT');
+ assert.equal(JSON.stringify(logs).includes('private'),false);assert.equal(h.form.isAcceptingResponses(),false);
+});
