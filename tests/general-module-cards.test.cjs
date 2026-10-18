@@ -92,7 +92,7 @@ function renderHarness(session) {
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
     liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),
     labelReportLoad: 0, labelReportLoadingMore: false, labelReportState: 'idle',
-    cleanupLabelMedia: null, cleanupCurrentModule: null, startupBannerActive: false,
+    cleanupLabelMedia: null, cleanupCurrentModule: null, cleanupDocumentTraining:null, cleanupUserInspection:null, startupBannerActive: false,
     stopChecklistQrScanner() {}, currentRoute: () => 'management',
     app: {innerHTML: ''}, notice: '', labels: {management: ['Gestão']},
     navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
@@ -353,4 +353,10 @@ test('troca de usuário e revogação não transportam a liberação para outra 
   session.profile.permissions.managementModuleEnabled = false;
   await h.ui.loadModule('management');
   assert.deepEqual(h.navigations, ['home']);
+});
+
+test('troca de tela encerra observação de treinamentos e consulta administrativa sem trocar a identidade',async()=>{
+ const session=approved({},'administrador_app'),h=renderHarness(session);let documents=0,inspection=0;
+ h.context.cleanupDocumentTraining=()=>documents++;h.context.cleanupUserInspection=()=>inspection++;
+ await h.context.runRender();assert.equal(documents,1);assert.equal(inspection,1);assert.equal(h.context.cleanupDocumentTraining,null);assert.equal(h.context.cleanupUserInspection,null);assert.equal(session.user.uid,'pessoa-ficticia');
 });

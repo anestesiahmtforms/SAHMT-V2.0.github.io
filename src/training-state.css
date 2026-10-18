@@ -1,0 +1,12 @@
+.training-state-button[data-training-state="blue"] {background:linear-gradient(155deg,#235b82,#103555);color:#fff;border-color:#8bc3df}
+.training-state-button[data-training-state="green"] {background:linear-gradient(155deg,#21896c,#146047);color:#fff;border-color:#93d4ad}
+.training-state-button[data-training-state="yellow"] {background:linear-gradient(155deg,#ffde7a,#dfaf40);color:#26384a;border-color:#fff1af}
+.training-state-legend {font-size:.85rem;line-height:1.5;color:#123552}
+.admin-inspection {width:min(680px,92vw);max-height:85dvh;border:2px solid #eadfc3;border-radius:20px;background:#f5f0e4;color:#123552;padding:0}
+.admin-inspection::backdrop {background:#051b2bcc}
+.admin-inspection header,.admin-inspection footer {padding:16px;background:#ede5d3}
+.admin-inspection footer {position:sticky;bottom:0;text-align:center}
+.admin-inspection section {padding:16px;overflow:auto}
+.admin-inspection li {padding:10px;list-style:none;border-bottom:1px solid #d0d9df}
+.admin-inspection ul {padding:0}
+.admin-inspection .inspection-banner {padding:12px;background:#dcecf4;border-radius:10px}

@@ -1,6 +1,8 @@
 import './styles.css';
 import './performance-ui.css';
 import './catalog-folders.css';
+import './training-state.css';
+import {trainingActivityId, trainingParticipationState, paintTrainingButton} from './training-participation-state.js';
 import {renderCatalogFolders} from './catalog-folders.js';
 import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
 import {installMaterialViewer} from './material-viewer.js';
@@ -137,6 +139,8 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
+let cleanupDocumentTraining = null;
+let cleanupUserInspection = null;
 let evaluationModuleGeneration = 0;
 let cleanupLabelMedia = null;
 let loadedTrainingCatalog = [];
@@ -578,6 +582,7 @@ function loginView() {
       ${profileRetry}
       <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
       <small>Uma única conta para acessar as áreas do SAHMT, conforme suas permissões.</small>
+      <a class="secondary-button" href="${import.meta.env.BASE_URL}demo.html">CONHECER O APP · DEMONSTRAÇÃO</a>
     </section>
   </main>`;
 }
@@ -1613,7 +1618,7 @@ async function loadAdminModule(content) {
       const protectedCohort = PROTECTED_FIRST_LOGIN_COHORTS.includes(profile.firstLoginCohort);
       const cohortControl = firstLoginCohortAdminUiEnabled && can('admin') ? `<div class="first-login-cohort-controls"><label>Primeiro login<select data-first-login-cohort="${escapeHtml(profile.uid)}" ${protectedCohort ? 'disabled' : ''}>${FIRST_LOGIN_COHORTS.map((value) => `<option value="${value}" ${cohort === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>${protectedCohort ? '<small>Classificação protegida; não pode ser reclassificada por este painel.</small>' : `<button type="button" class="secondary-button" data-save-first-login-cohort="${escapeHtml(profile.uid)}">Salvar classificação</button>`}<small data-first-login-cohort-status="${escapeHtml(profile.uid)}">A classificação não altera função, permissões, atividade ou acesso.</small></div>` : '';
       const cohortSummary = firstLoginCohortAdminUiEnabled && can('admin') ? `<small>Primeiro login: ${cohort}${profile.firstLoginCohort ? '' : ' · não classificado'}</small>` : '';
-      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${cohortControl}</article>`;
+      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button>` : ''}${cohortControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
     content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
@@ -1648,6 +1653,16 @@ async function loadAdminModule(content) {
         submit.disabled = false;
       }
     });
+    content.querySelectorAll('[data-inspect-user]').forEach(button=>button.addEventListener('click',async()=>{
+      const actorUid=session.user?.uid;if(!can('admin')||!actorUid)return;
+      button.disabled=true;
+      try{
+        cleanupUserInspection?.();
+        const {openAdministrativeUserInspection}=await import('./admin-user-inspection.js');
+        cleanupUserInspection=await openAdministrativeUserInspection({actorUid,subjectUid:button.dataset.inspectUser,permissionLabels:Object.fromEntries(userPermissions),isCurrent:()=>currentRoute()==='admin'&&session.user?.uid===actorUid&&can('admin')});
+      }catch{notice='Não foi possível abrir a consulta administrativa. Confira sua autorização.';await render();}
+      finally{button.disabled=false;}
+    }));
     const form = content.querySelector('#admin-user-form');
     const status = content.querySelector('#admin-user-status');
     const resetForm = () => {
@@ -2779,6 +2794,7 @@ async function shareReportPdf(kind) {
 }
 
 async function loadManagementAreaActivities(area) {
+  cleanupDocumentTraining?.(); cleanupDocumentTraining=null;
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
   if(detail)detail.onclick=event=>{if(event.target.closest('#qmentum-open')&&can('admin')){detail.closest('dialog')?.close();navigate('qmentum');}};
@@ -2906,6 +2922,22 @@ async function loadManagementAreaActivities(area) {
       }
     });
     bindManagementDocumentAccessPanels(detail);
+    const trainingIds = documents.map(trainingActivityId).filter(Boolean);
+    if (trainingIds.length) {
+      const data=await import('./evaluation-data.js');
+      if (loadId !== managementActivityLoad || session.user?.uid !== requestUid || !detail.isConnected) return;
+      cleanupDocumentTraining=data.watchTrainingParticipation({actorUid:requestUid,activityIds:trainingIds,onData(snapshot){
+        if(loadId !== managementActivityLoad || session.user?.uid !== requestUid || !detail.isConnected)return;
+        if(snapshot.confirmed!==true){for(const button of detail.querySelectorAll('[data-training-activity]')){delete button.dataset.trainingState;button.title='Aguardando confirmação do progresso no servidor.';}return;}
+        for(const button of detail.querySelectorAll('[data-training-activity]')){
+          const activity=snapshot.activities.find(row=>row.id===button.dataset.trainingActivity);
+          paintTrainingButton(button,trainingParticipationState(activity,snapshot.participations,{uid:requestUid}));
+        }
+      },onError(){
+        // Never show a stale green confirmation when permission or connectivity fails.
+        for(const button of detail.querySelectorAll('.training-state-button')){delete button.dataset.trainingState;button.title='Progresso não confirmado. Atualize a consulta.';}
+      }});
+    }
     const documentEditor = detail.querySelector('#management-document-form');
     const resetDocumentEditor = () => {
       documentEditor?.reset();
@@ -4453,6 +4485,8 @@ async function render() {
     cleanupLabelMedia = null;
   }
   stopChecklistQrScanner();
+  cleanupDocumentTraining?.(); cleanupDocumentTraining=null;
+  cleanupUserInspection?.(); cleanupUserInspection=null;
   if (cleanupCurrentModule) {
     const cleanup = cleanupCurrentModule;
     cleanupCurrentModule = null;

@@ -198,3 +198,14 @@ test('setup and rollback preserve bounded sharded policy for reader-only records
  assert.equal(f.ctx.dgrPolicy_().documents.doc.enforced,false);assert.equal(f.writes(),0);
  for(const value of f.props.values())assert.ok(Buffer.byteLength(value)<=8000);
 });
+
+test('questions-only revision also requires fresh reading for the new training version',()=>{
+ const f=fixture(),cfg={formId:'FormFixture123456',creditScopeId:'matter',version:1,status:'READY',repeatPolicy:'FIRST_RESPONSE_PER_VERSION',maxTestScore:10};
+ f.data.set('evaluationFormConfigs/'+cfg.formId,cfg);
+ const first=f.send('start');f.send('complete',{sessionId:first.sessionId,pages:[1,2]});
+ const old=f.data.get('evaluationParticipations/reading-'+f.ctx.dgrReceiptId_('reader','doc',{...f.policy.documents.doc,trainingVersion:1}));
+ assert.equal(old.training.readingComplete,true);assert.equal('email' in old,false);assert.equal('sessionId' in old,false);
+ cfg.version=2;f.data.set('evaluationFormConfigs/'+cfg.formId,cfg);
+ const next=f.send('start');assert.deepEqual([...next.visited],[]);assert.notEqual(next.sessionId,first.sessionId);
+ assert.throws(()=>f.send('complete',{sessionId:first.sessionId,pages:[1,2]}),/READING_SESSION_INVALID/);
+});

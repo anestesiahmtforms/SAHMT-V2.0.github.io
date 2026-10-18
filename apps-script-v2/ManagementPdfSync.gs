@@ -42,7 +42,9 @@ function gpdfPauseReading_(pdfId) {
   if(!gpdfProps_().getProperty('SAHMT_READING_POLICY_JSON'))return false;
   if(typeof dgrPolicy_!=='function'||typeof formsEvaluationCloseForm_!=='function')gpdfError_('PDF_SYNC_READING_GUARD_MISSING');
   const policy=dgrPolicy_();let paused=false;
-  Object.keys(policy.documents).forEach(function(id){const row=policy.documents[id];if(row.pdfId===pdfId&&row.formId){formsEvaluationCloseForm_(FormApp.openById(row.formId));paused=true;}});
+  Object.keys(policy.documents).forEach(function(id){const row=policy.documents[id];if(row.pdfId===pdfId&&row.formId){
+    if(typeof trainingRepeatInvalidate_==='function')trainingRepeatInvalidate_(row.formId,'MATERIAL');
+    formsEvaluationCloseForm_(FormApp.openById(row.formId));paused=true;}});
   return paused;
 }
 function gpdfSyncPair_(pair,drive,now) {

@@ -51,6 +51,7 @@ service cloud.firestore {
     match /evaluationGovernanceRevisions/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
     match /evaluationParticipations/{id} { allow read: if evaluationOwn(resource.data) || (activeUser() && (resource.data.managerUid == request.auth.uid || can('managementManage') || (can('qualityManage') && resource.data.areaIds.hasAny(['area-gestao-da-qualidade'])))); allow write: if false; }
     match /evaluationLinks/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /evaluationTrainingAttempts/{id} { allow read: if evaluationOwn(resource.data); allow write: if false; }
     match /evaluationRequests/{id} {
       function evaluationId(value) { return value is string && value.matches('^[A-Za-z0-9_-]{1,200}$'); }
       function evaluationText(value, minimum, maximum) { return value is string && value.size() >= minimum && value.size() <= maximum; }

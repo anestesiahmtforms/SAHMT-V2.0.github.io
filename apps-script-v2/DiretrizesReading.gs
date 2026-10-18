@@ -71,22 +71,31 @@ function dgrPdf_(row, includeBytes) {
   if (digest !== row.checksum) throw Error('READING_MATERIAL_CHANGED');
   return {bytes: Utilities.base64Encode(bytes), checksum: digest};
 }
-function dgrReceiptId_(uid, documentId, row) { return sha256Hex_(JSON.stringify([uid, documentId, row.version, row.checksum])); }
+function dgrReceiptId_(uid, documentId, row) { return sha256Hex_(JSON.stringify([uid, documentId, row.version, row.checksum].concat(row.trainingVersion ? [row.trainingVersion] : []))); }
 function dgrHandle_(request) {
   if (sahmtV2Properties_().getProperty('SAHMT_READING_ENABLED') !== 'YES') throw Error('READING_DISABLED');
-  const policy = dgrPolicy_(), row = policy.documents[request.documentId];
+  const policy = dgrPolicy_(); let row = policy.documents[request.documentId];
   if (!row || row.enforced !== true) throw Error('READING_CUTOVER_REQUIRED');
   if (sahmtV2Properties_().getProperty('SAHMT_READING_CUTOVER_SHA256') !== formsEvaluationHash_(policy.documents)) throw Error('READING_CUTOVER_REQUIRED');
   const email = dgrIdentity_(request.uid, request.email, policy, row);
+  const trainingConfig=row.formId && evaluationGet_('evaluationFormConfigs',row.formId);
+  if(trainingConfig && trainingConfig.repeatPolicy==='FIRST_RESPONSE_PER_VERSION'){
+    if(trainingConfig.status!=='READY' || trainingConfig.trainingRevisionRequired===true)throw Error('READING_CUTOVER_REQUIRED');
+    row=Object.assign({},row,{trainingVersion:trainingConfig.version});
+  }
   dgrCatalog_(request.documentId, row);
   const pdf = dgrPdf_(row, request.action === 'start');
   const id = dgrReceiptId_(request.uid, request.documentId, row), now = Date.now();
   const result = evaluationRunTransaction_(function (tx) {
+    if(row.trainingVersion){
+      const live=evaluationGet_('evaluationFormConfigs',row.formId,tx);
+      if(!live || live.status!=='READY' || live.version!==row.trainingVersion || live.trainingRevisionRequired===true)throw Error('READING_CUTOVER_REQUIRED');
+    }
     const previous = evaluationGet_('documentReadingReceipts', id, tx);
     let state = previous && evaluationClean_(previous);
     if (request.action === 'start') {
       if (!state || state.expiresAt <= now) state = {uid: request.uid, email: email, documentId: request.documentId, formId: row.formId,
-        checksum: row.checksum, materialVersion: row.version, sessionId: Utilities.getUuid().replace(/-/g, ''),
+        checksum: row.checksum, materialVersion: row.version, trainingVersion:row.trainingVersion || null, sessionId: Utilities.getUuid().replace(/-/g, ''),
         startedAt: now, expiresAt: now + 7200000, visited: previous && Array.isArray(previous.visited) ? previous.visited : [],
         completedAt: previous && previous.completedAt || null,
         status: previous && previous.status === 'COMPLETED' ? 'COMPLETED' : 'READING'};
@@ -99,7 +108,17 @@ function dgrHandle_(request) {
         state.status = 'COMPLETED'; state.completedAt = state.completedAt || now;
       }
     }
-    return {writes: [evaluationWrite_('documentReadingReceipts', id, state, previous)], result: state};
+    const writes = [evaluationWrite_('documentReadingReceipts', id, state, previous)];
+    // Sanitized progress for the existing per-user participation query. No email,
+    // reading session ID, PDF bytes or grant capability leaves the reading gate.
+    const cfg = request.action!=='progress' && row.formId && evaluationGet_('evaluationFormConfigs',row.formId,tx);
+    if (cfg && cfg.repeatPolicy === 'FIRST_RESPONSE_PER_VERSION' && cfg.status === 'READY') {
+      const progressId='reading-'+id, old=evaluationGet_('evaluationParticipations',progressId,tx);
+      writes.push(evaluationWrite_('evaluationParticipations',progressId,{id:progressId,recordType:'READING',uid:request.uid,
+        activityId:row.formId,creditScopeId:cfg.creditScopeId,version:cfg.version,materialVersion:row.version,
+        training:{complete:false,readingComplete:state.status==='COMPLETED',score:null,maxScore:cfg.maxTestScore || 0}},old,['updatedAt']));
+    }
+    return {writes: writes, result: state};
   });
   if (request.action === 'start') return {code: 'READING_STARTED', sessionId: result.sessionId, pages: row.pages, visited: result.visited, pdfBase64: pdf.bytes, hasForm: Boolean(row.formId)};
   if (request.action === 'progress') return {code: 'READING_PROGRESS_SAVED', visited: result.visited};
@@ -114,8 +133,9 @@ function dgrGrant_(row, email, documentId, policy, uid) {
   try {
     if (!form.supportsAdvancedResponderPermissions()) throw Error('READING_FORM_UNSUPPORTED');
     // One server-owned registry avoids scanning every participant on each completion.
-    const registryId = sha256Hex_(JSON.stringify([documentId,row.version,row.checksum]));
+    const registryId = sha256Hex_(JSON.stringify([documentId,row.version,row.checksum].concat(row.trainingVersion ? [row.trainingVersion] : [])));
     const expected = evaluationRunTransaction_(function (tx) {
+      if(row.trainingVersion){const live=evaluationGet_('evaluationFormConfigs',row.formId,tx);if(!live || live.status!=='READY' || live.version!==row.trainingVersion)throw Error('READING_GRANT_PENDING');}
       const receipt=evaluationGet_('documentReadingReceipts',dgrReceiptId_(uid,documentId,row),tx);
       if(!receipt || receipt.uid!==uid || receipt.email!==email || receipt.status!=='COMPLETED' || receipt.materialVersion!==row.version || receipt.checksum!==row.checksum)throw Error('READING_GRANT_PENDING');
       const previous=evaluationGet_('documentReadingGrants',registryId,tx);

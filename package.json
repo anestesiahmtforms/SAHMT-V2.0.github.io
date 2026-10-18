@@ -31,7 +31,8 @@
     "test:qmentum-rules": "node scripts/build-qmentum-rules.mjs && firebase emulators:exec --config firebase.qmentum.test.json --project demo-sahmt-qmentum --only firestore --non-interactive \"node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/qmentum-rest-transaction.emulator.test.js tests/qmentum-history-transaction.emulator.test.js tests/qmentum-qm14-confirmation.emulator.test.js tests/qmentum-descriptive-publish.emulator.test.js\"",
     "prepare:qmentum": "node scripts/prepare-qmentum.mjs",
     "test:qmentum-browser": "node scripts/test-qmentum-browser.mjs && node --test tests/qmentum-runtime.browser.test.js",
-    "build:qmentum-backend": "node scripts/build-qmentum-backend.mjs"
+    "build:qmentum-backend": "node scripts/build-qmentum-backend.mjs",
+    "verify:training-experience": "node scripts/verify-training-experience.mjs"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

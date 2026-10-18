@@ -174,7 +174,7 @@ function gqpPorts_(cfg) {
       return {blob:blob,sha256:gqpBytesHash_(blob.getBytes())};
     },
     form:function(id) { return request(id); },batch:function(id,body) { return request(id,body); },
-    close:function(id) { const f=native(id);f.setAcceptingResponses(false);if(f.isPublished())f.setPublished(false); },
+    close:function(id) { if(typeof trainingRepeatInvalidate_==='function')trainingRepeatInvalidate_(id,'QUESTIONS');const f=native(id);f.setAcceptingResponses(false);if(f.isPublished())f.setPublished(false); },
     closed:function(id) { const f=native(id);return !f.isPublished() && !f.isAcceptingResponses(); },
     load:function(key) { const id=props.getProperty('SAHMT_QUESTION_PUBLICATION_'+key);return id?JSON.parse(gqpPrivateFile_(id).getBlob().getDataAsString('UTF-8')):null; },
     save:function(key,value) {

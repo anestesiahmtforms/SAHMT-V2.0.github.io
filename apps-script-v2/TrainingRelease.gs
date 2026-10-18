@@ -432,9 +432,10 @@ function trainingReleaseLive_(item, requireClosed) {
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (protectedIds.includes(item.formId)) trainingReleaseReject_('PROTECTED_FORM');
   const form = FormApp.openById(item.formId), metadata = formsEvaluationMetadata_(item.formId);
+  const repeatConfig = evaluationGet_('evaluationFormConfigs',item.formId);
   const template = typeof trainingTemplateCheckedReceipt_ === 'function' ? trainingTemplateCheckedReceipt_(item,metadata) : null;
   if (form.getId() !== item.formId || metadata.formId !== item.formId || !metadata.info || metadata.info.title !== item.title ||
-      !form.hasLimitOneResponsePerUser() || form.canEditResponse() || typeof form.supportsAdvancedResponderPermissions !== 'function' ||
+      (formsEvaluationRepeatPolicy_(repeatConfig) ? form.hasLimitOneResponsePerUser() : !form.hasLimitOneResponsePerUser()) || form.canEditResponse() || typeof form.supportsAdvancedResponderPermissions !== 'function' ||
       !form.supportsAdvancedResponderPermissions() || typeof form.isPublished !== 'function') trainingReleaseReject_('FORM_IDENTITY_OPTIONS');
   if (requireClosed && (form.isAcceptingResponses() !== false || form.isPublished() !== false)) trainingReleaseReject_('CLOSED_BASELINE_REQUIRED');
   if (!template && SAHMT_V2_TRAINING_RELEASE.roots[item.rootId].kind === 'DOCUMENT') {

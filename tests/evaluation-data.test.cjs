@@ -115,3 +115,29 @@ test('offline conserva rascunho sem criar pedido nem saldo', async () => {
   await assert.rejects(() => h.context.submitEvaluationRequest('RECONCILE_LINKS', {}, 'fixture-user', {requestId: 'fixture-offline'}), /rascunho foi preservado/);
   assert.equal(h.listeners.length, 0);
 });
+
+test('training observation cannot impersonate another user and all listeners are disposed',async()=>{
+ const rejected=setup();rejected.context.watchTrainingParticipation({actorUid:'fixture-user',subjectUid:'other',activityIds:['form'],onData:()=>{},onError:e=>rejected.errors.push(e)});await rejected.tick();assert.equal(rejected.listeners.length,0);assert.equal(rejected.errors.length,1);
+ const allowed=setup({admin:true});const stop=allowed.context.watchTrainingParticipation({actorUid:'fixture-user',subjectUid:'other',activityIds:['form'],onData:()=>{},onError:e=>allowed.errors.push(e)});await allowed.tick();assert.equal(allowed.errors.length,0);assert.equal(allowed.listeners.length,2);
+ assert.equal(allowed.listeners[0].query[1].where[2],'other');stop();assert.ok(allowed.listeners.every(item=>item.stops===1));
+});
+test('administrative inspection rechecks the actor rather than signing in as the subject',async()=>{
+ const denied=setup();await assert.rejects(denied.context.readAdministrativeUser('fixture-user','other'),/não autorizada/);
+ const allowed=setup({admin:true});const person=await allowed.context.readAdministrativeUser('fixture-user','other');assert.equal(person.uid,'other');
+});
+
+test('training watcher does not confirm cached or pending data and waits for all server sources',async()=>{
+ const h=setup(),events=[];h.context.watchTrainingParticipation({actorUid:'fixture-user',activityIds:['form'],onData:data=>events.push(data),onError:error=>h.errors.push(error)});await h.tick();
+ const snap=(docs,fromCache,pending=false)=>({docs:docs.map(row=>({id:row.id,data:()=>row})),metadata:{fromCache,hasPendingWrites:pending}});
+ h.listeners[0].next(snap([],true));h.listeners[1].next(snap([{id:'form',version:1}],true));assert.equal(events.at(-1).confirmed,false);
+ h.listeners[0].next(snap([],false));assert.equal(events.at(-1).confirmed,false);
+ h.listeners[1].next(snap([{id:'form',version:2}],false));assert.equal(events.at(-1).confirmed,true);
+ h.listeners[0].next(snap([],false,true));assert.equal(events.at(-1).confirmed,false);
+});
+
+
+test('metadata-only observation never duplicates private participation queries',async()=>{
+ const h=setup(),events=[];const stop=h.context.watchTrainingParticipation({actorUid:'fixture-user',activityIds:['form'],includeParticipations:false,onData:data=>events.push(data)});await h.tick();
+ assert.equal(h.listeners.length,1);assert.equal(h.listeners[0].query[0].name,'evaluationActivities');
+ h.listeners[0].next({docs:[],metadata:{fromCache:false,hasPendingWrites:false}});assert.equal(events.at(-1).confirmed,true);stop();assert.equal(h.listeners[0].stops,1);
+});
