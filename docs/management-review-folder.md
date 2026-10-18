@@ -110,13 +110,28 @@ decisão administrativa, somente as concessões removidas registradas. As cópia
 privadas de código e propriedades permitem voltar à configuração anterior.
 Nenhuma restauração deve ampliar automaticamente o acesso a gabaritos.
 
-## Evidência desta preparação
+## Evidência da execução em 17/10/2026
 
-Conferência remota: 66 editáveis nas pastas previstas, 57 pastas com acesso
-limitado e 40 PDFs vinculados com checksum preservado. Código consolidado
-instalado sem publicar Web App ou modificar o manifesto. A execução e a
-confirmação final de proteção dependem do resultado do lote no Apps Script.
+O Apps Script retornou `REVIEW_ACCESS_AND_PDF_SYNC_READY` às 23:35:38
+(America/Sao_Paulo). A conferência independente terminou às 23:35:59:
+
+- 66 editáveis nas pastas previstas, todos sem leitores antigos externos à revisão.
+- Todos os acessos dos gestores preservados.
+- 57 pastas de revisão com acesso limitado e nomes conferidos.
+- 40 pares DOC→PDF ativos, com 40 estados de publicação e um acionador.
+- IDs, conteúdo dos editáveis e checksums dos 40 PDFs preservados.
+- Nenhuma escrita de conteúdo em PDF ou formulário; nenhuma leitura do Firestore.
+
+Código consolidado instalado sem publicar Web App ou modificar o manifesto.
+Os lotes terminaram sem agendar outra continuação de proteção. O arquivo de
+recuperação dos acessos e as cópias anteriores de código/configuração permanecem
+privados. Seus IDs não constam deste repositório.
 
 Validação local: 46 testes unitários e 8 verificações do instalador privado,
 incluindo retomada, falhas, acesso do gestor, preservação dos estados e limite
 da propriedade. Não foi publicada alteração da PWA nesta etapa.
+
+A confirmação desta execução cobre organização, proteção e instalação do
+sincronizador. A conversão de uma revisão posterior do material deve ser
+confirmada pelo resultado `PDF_SYNC_UPDATED` e pelo checksum do PDF correspondente;
+nenhum documento de produção foi editado apenas para provocar esse teste.
