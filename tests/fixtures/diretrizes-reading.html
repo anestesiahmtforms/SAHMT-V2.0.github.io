@@ -1,0 +1,21 @@
+<!doctype html><html lang="pt-br"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Leitor — teste local</title><body>
+<button data-open-diretriz-reader="fixture" data-reading-title="Diretriz de teste">LER DIRETRIZ</button>
+<script type="module">
+import {installDiretrizesReader} from '../../src/diretrizes-ebook.js';
+import {jsPDF} from 'jspdf';
+const pdf=new jsPDF();pdf.text('Primeira página de teste.',20,30);pdf.addPage();pdf.text('Segunda página de teste.',20,30);
+const bytes=pdf.output('datauristring').split(',')[1];
+window.readingCalls=[];window.readingUser={uid:'synthetic-user'};
+const options={getUser:()=>window.readingUser,client:{request:async body=>{
+ window.readingCalls.push(body);
+ if(body.action==='start')return {code:'READING_STARTED',pages:2,visited:[],sessionId:'f'.repeat(32),pdfBase64:bytes,hasForm:location.search!=='?reader-only=1'};
+ if(location.search==='?reader-only=1')return {code:'READING_COMPLETED'};
+ return {code:'READING_RELEASED',formUrl:'https://docs.google.com/forms/d/e/SyntheticPublicId12345/viewform'};
+}}};
+if(location.search==='?failure=1')options.pdfLoader=()=>({destroy:async()=>{},promise:Promise.resolve({numPages:2,getPage:async n=>{
+ if(n===2)throw Error('synthetic render failure');
+ return {getViewport:()=>({width:100,height:100}),render:()=>({promise:Promise.resolve()}),getTextContent:async()=>({items:[{str:'Página sintética'}]})};
+}})});
+window.reader=installDiretrizesReader(options);
+window.readingFixtureReady=true;
+</script></body></html>

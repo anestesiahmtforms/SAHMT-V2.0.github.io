@@ -812,3 +812,73 @@ test('erro503 continua retryable e retorno Google bem-sucedido mantém JSON sem 
   const h=harness();assert.throws(googleFailure(h,'PRIVATE_RESPONSE',503),error=>{assert.equal(error.status,503);assert.equal(error.reason,'GOOGLE_API_UNAVAILABLE');assert.ok(!error.message.includes('PRIVATE_RESPONSE'));return true;});
   h.ctx.UrlFetchApp={fetch:()=>({getResponseCode:()=>200,getContentText:()=>JSON.stringify({formId:FORM})})};assert.equal(h.nativeGoogleRequest(`https://forms.googleapis.com/v1/forms/${FORM}`).formId,FORM);
 });
+
+test('repeat policy accepts unlimited responses without changing first credited score',()=>{
+ const h=harness();h.seedFixture();h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});
+ const first=setResponse(h,h.response({totalScore:2}));h.ctx.formsEvaluationProcessResponse_(FORM,first.responseId);
+ const total=()=>h.values('evaluationLedger').reduce((sum,row)=>sum+row.points,0),before=total();
+ for(let i=0;i<4;i++){const next=setResponse(h,h.response({responseId:'retake-'+i,totalScore:5,createTime:new Date(Date.now()+i*1000+1000).toISOString()}));assert.equal(h.ctx.formsEvaluationProcessResponse_(FORM,next.responseId).status,'CONFIRMED');}
+ assert.equal(total(),before);const primary=h.values('evaluationParticipations').find(row=>row.recordType!=='ATTEMPT');
+ assert.equal(primary.test.score,2);assert.equal(primary.latestTraining.score,5);
+ assert.equal(h.values('evaluationTrainingAttempts').length,5);
+});
+test('repeat processing is idempotent and new content version earns separately',()=>{
+ const h=harness();h.seedFixture();h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});const r=setResponse(h,h.response());
+ h.ctx.formsEvaluationProcessResponse_(FORM,r.responseId);const before=h.values('evaluationLedger').length;
+ h.ctx.formsEvaluationProcessResponse_(FORM,r.responseId);assert.equal(h.values('evaluationLedger').length,before);
+ h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION',version:2});const next=setResponse(h,h.response({responseId:'new-version'}));h.ctx.formsEvaluationProcessResponse_(FORM,next.responseId);
+ assert.equal(h.values('evaluationAwards').filter(row=>row.modality==='TEST').length,2);
+});
+test('training completeness requires all answers and declaration; low score is not marked successful',()=>{
+ const h=harness(),meta=h.seedFixture(),cfg=h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});
+ const missing=h.ctx.formsEvaluationTrainingState_(meta,cfg,h.response({answers:{ack:answer('SIM')}}),'person','tx');assert.equal(missing.complete,false);
+ const complete=h.ctx.formsEvaluationTrainingState_(meta,cfg,h.response(),'person','tx');assert.equal(complete.complete,true);assert.equal(complete.score,5);
+});
+
+test('repeating first and later responses is a write-free replay; delayed first grade cannot be stolen by a retake',()=>{
+ const h=harness();h.seedFixture();h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});
+ const pending=setResponse(h,h.response({totalScore:undefined}));h.ctx.formsEvaluationProcessResponse_(FORM,pending.responseId);
+ const retake=setResponse(h,h.response({responseId:'graded-retake',totalScore:5,createTime:new Date(Date.now()+1000).toISOString()}));h.ctx.formsEvaluationProcessResponse_(FORM,retake.responseId);
+ assert.equal(h.values('evaluationAwards').filter(row=>row.modality==='TEST').length,0);
+ h.ctx.formsEvaluationProcessResponse_(FORM,retake.responseId);assert.equal(h.commits.at(-1).length,0);
+ setResponse(h,h.response({totalScore:2}));h.ctx.formsEvaluationProcessResponse_(FORM,pending.responseId);
+ assert.equal(h.values('evaluationAwards').find(row=>row.modality==='TEST').points,2);
+ h.ctx.formsEvaluationProcessResponse_(FORM,pending.responseId);assert.equal(h.commits.at(-1).length,0);
+});
+test('future form preparation adopts repeats only after the trusted activation switch',()=>{
+ const h=harness();assert.equal(h.ctx.formsEvaluationRepeatPolicy_(null),false);
+ h.props.set('SAHMT_TRAINING_REPEAT_ENABLED','YES');assert.equal(h.ctx.formsEvaluationRepeatPolicy_(null),true);
+ assert.equal(h.ctx.formsEvaluationRepeatPolicy_({repeatPolicy:'LEGACY_SINGLE_RESPONSE'}),false);
+});
+
+test('the earliest submitted response determines points even when its callback arrives later',()=>{
+ const h=harness();h.seedFixture();h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});
+ const start=Date.now();const later=setResponse(h,h.response({responseId:'later',createTime:new Date(start+2000).toISOString(),totalScore:5}));h.ctx.formsEvaluationProcessResponse_(FORM,later.responseId);
+ const earlier=setResponse(h,h.response({responseId:'earlier',createTime:new Date(start).toISOString(),totalScore:2}));h.ctx.formsEvaluationProcessResponse_(FORM,earlier.responseId);
+ assert.equal(h.values('evaluationAwards').find(row=>row.modality==='TEST').points,2);assert.equal(h.values('evaluationParticipations').find(row=>row.recordType==='PARTICIPATION').responseId,'earlier');
+ h.ctx.formsEvaluationProcessResponse_(FORM,later.responseId);assert.equal(h.values('evaluationAwards').find(row=>row.modality==='TEST').points,2);
+});
+test('global repeat default cannot reclassify an existing excluded legacy configuration',()=>{
+ const h=harness();h.props.set('SAHMT_TRAINING_REPEAT_ENABLED','YES');assert.equal(h.ctx.formsEvaluationRepeatPolicy_({formId:'excluded'}),false);assert.equal(h.ctx.formsEvaluationRepeatPolicy_(null),true);
+});
+
+test('a validated revised configuration explicitly clears the durable revision flag',()=>{
+ const h=harness(),meta=h.seedFixture();h.configuration(meta,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION',trainingRevisionRequired:true});
+ meta.items.find(item=>item.itemId==='item-test').title='Questão efetivamente revisada';h.google.set(`https://forms.googleapis.com/v1/forms/${FORM}`,meta);h.forms.get(FORM).hasLimitOneResponsePerUser=()=>false;
+ const day=h.ctx.Utilities.formatDate(new Date());run(h,'formsEvaluationConfigured_',{activityId:FORM,creditScopeId:'matter',version:2,expectedVersion:1,eligibleUids:['person'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}});
+ assert.equal(h.get('evaluationFormConfigs',FORM).trainingRevisionRequired,false);assert.equal(h.get('evaluationActivities',FORM).trainingRevisionRequired,false);assert.equal(h.get('evaluationFormConfigs',FORM).version,2);
+});
+test('new trusted configurations can prepare an older one-response Form without opening it',()=>{
+ const h=harness();h.seedFixture();h.props.set('SAHMT_TRAINING_REPEAT_ENABLED','YES');let limited=true;h.forms.get(FORM).hasLimitOneResponsePerUser=()=>limited;h.forms.get(FORM).setLimitOneResponsePerUser=value=>{limited=value;};
+ const day=h.ctx.Utilities.formatDate(new Date());run(h,'formsEvaluationConfigured_',{activityId:FORM,creditScopeId:'matter',version:1,expectedVersion:0,eligibleUids:['person'],managerAreaId:AREA,validFrom:day,validUntil:'2099-12-31',modalities:{acknowledgement:true,suggestion:true,test:true}});
+ assert.equal(limited,false);assert.equal(h.forms.get(FORM).isAcceptingResponses(),false);assert.equal(h.get('evaluationFormConfigs',FORM).repeatPolicy,'FIRST_RESPONSE_PER_VERSION');
+});
+
+test('an earlier ungraded response hides the stale later credit until its real grade arrives',()=>{
+ const h=harness();h.seedFixture();h.configuration(undefined,{repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});const now=Date.now();
+ const later=setResponse(h,h.response({responseId:'later',createTime:new Date(now+2000).toISOString(),totalScore:5}));h.ctx.formsEvaluationProcessResponse_(FORM,later.responseId);
+ const earlier=setResponse(h,h.response({responseId:'earlier',createTime:new Date(now).toISOString(),totalScore:undefined}));h.ctx.formsEvaluationProcessResponse_(FORM,earlier.responseId);
+ assert.equal(h.values('evaluationParticipations').find(row=>row.recordType==='PARTICIPATION').creditReconciliationPending,true);
+ setResponse(h,{...earlier,totalScore:2});h.ctx.formsEvaluationProcessResponse_(FORM,earlier.responseId);
+ assert.equal(h.values('evaluationParticipations').find(row=>row.recordType==='PARTICIPATION').creditReconciliationPending,false);assert.equal(h.values('evaluationAwards').find(row=>row.modality==='TEST').points,2);
+});

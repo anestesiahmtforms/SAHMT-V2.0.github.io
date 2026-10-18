@@ -1,3 +1,4 @@
+import {trainingParticipationState} from './training-participation-state.js';
 import {createLiveReportSession} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {renderCatalogFolders} from './catalog-folders.js';
@@ -51,7 +52,7 @@ const evidenceLink = (value, label = 'Abrir evidência') => {
     : `<a class="evaluation-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`).join(' ');
 };
 function requestId() { return globalThis.crypto?.randomUUID?.() || `evaluation-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
-function ownRecords(snapshot, key, subjectUid, category) { return rows(snapshot?.[key]).filter(record => record?.uid === subjectUid && (!category || record.category === category)); }
+function ownRecords(snapshot, key, subjectUid, category) { return rows(snapshot?.[key]).filter(record => !['ATTEMPT','READING'].includes(record?.recordType) && record?.uid === subjectUid && (!category || record.category === category)); }
 
 export function evaluationFailureState(error, {online = true} = {}) {
   const code = String(error?.code || '').split('/').at(-1).toLowerCase(), message = String(error?.message || '');
@@ -62,13 +63,14 @@ export function evaluationFailureState(error, {online = true} = {}) {
 export function evaluationPresentation(snapshot, {category = 'PERFORMANCE', subjectUid, online = true} = {}) {
   if (!CATEGORIES.has(category)) throw new TypeError('Categoria de avaliação inválida.');
   const summary = snapshot?.summary, reference = snapshot?.reference;
+  const firstGradePending=category==='PERFORMANCE' && rows(snapshot?.participations).some(row=>row.uid===subjectUid && row.creditReconciliationPending===true);
   const key = category === 'PERFORMANCE' ? 'performance' : 'governance';
   const total = summary?.[`${key}Total`], revision = summary?.[`${key}Revision`];
   const awards = Array.isArray(snapshot?.awards) ? snapshot.awards.filter(award => award.uid === subjectUid && award.category === category) : null;
   const awardsConsistent = awards === null || awards.every(award => Number.isFinite(award.points)) && Math.abs(awards.reduce((sum, award) => sum + award.points, 0) - total) < 1e-8;
   const valid = awardsConsistent && summary?.uid === subjectUid && summary.status === 'CONFIRMED' && Number.isFinite(total) && Number.isInteger(revision) && revision >= 0 && reference?.[`${key}Status`] === 'CONFIRMED' && reference?.[`${key}Revision`] === revision;
-  const confirmed = valid && snapshot?.fromCache === false && snapshot?.pendingWrites === false && online;
-  const state = !online ? 'offline' : snapshot?.pendingWrites === true ? 'pending' : confirmed ? 'confirmed' : 'awaiting';
+  const confirmed = valid && !firstGradePending && snapshot?.fromCache === false && snapshot?.pendingWrites === false && online;
+  const state = !online ? 'offline' : snapshot?.pendingWrites === true || firstGradePending ? 'pending' : confirmed ? 'confirmed' : 'awaiting';
   const stateLabel = {offline: 'Sem conexão. Aguarde a atualização do saldo.', pending: 'Há alterações pendentes de confirmação.', confirmed: 'Saldo confirmado', awaiting: 'Aguardando atualização da avaliação.'}[state];
   if (!confirmed) return {state, stateLabel, confirmed: false, total: null, percentage: null, percentageLabel: 'Aguardando atualização'};
   if (category === 'GOVERNANCE') return {state, stateLabel, confirmed: true, total, percentage: null, percentageLabel: ''};
@@ -154,6 +156,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
   if (!uid || !CATEGORIES.has(category)) throw new TypeError('Informe a conta e a categoria da avaliação.');
   let disposed = false, blocked = false, connectionUnavailable = false, onlineOverride, metadataLoadSequence = 0, selectedUid = subjectUid, lifecycle = null, latest = null, mountVersion = 0, loadedLimit = 200;
   let assignments = [], activities = [], people = [], reviewQueue = [];
+  let activityMetadataStop=null, activityMetadataKey=null, activityMetadataConfirmed=false, activityMetadataGeneration=0;
   const eventController = new AbortController();
   const servicePromise = services ? Promise.resolve(services) : import('./evaluation-data.js');
   const current = () => !disposed && !blocked && content.isConnected && isCurrent();
@@ -219,6 +222,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     markup('[data-evaluation-records]', `<h4>${category === 'GOVERNANCE' ? 'Revisões aprovadas' : 'Matérias e atividades pontuadas'}</h4>${snapshot.detailsRestricted ? '<p class="record-meta">Saldo disponível. O detalhamento de outra pessoa exige permissão de auditoria de ocorrências para preservar a autoria dos relatos anônimos.</p>' : awardGroupMarkup(groups.filter(group => !group.checklist), ledger, category)}`);
     if (category === 'PERFORMANCE') markup('[data-evaluation-checklist]', snapshot.detailsRestricted ? '' : `<h4>Ajustes do Checklist</h4>${awardGroupMarkup(groups.filter(group => group.checklist), ledger, category)}`);
     markup('[data-evaluation-pending]', pendingMarkup(snapshot, selectedUid, category));
+    renderActivities();
     if (category === 'GOVERNANCE') {
       const approved = ownRecords(snapshot, 'revisions', selectedUid).filter(item => item.status === 'APPROVED');
       markup('[data-evaluation-audit]', `<h4>Evidências das revisões aprovadas</h4>${approved.length ? `<ol class="evaluation-record-list">${approved.map(item => `<li><strong>${escapeHtml(activityFor(item.activityId)?.title || item.activityTitle || item.activityId)}</strong><small>Versões ${escapeHtml(item.previousVersion)} → ${escapeHtml(item.newVersion)} · ${escapeHtml(dateLabel(item.updatedAt || item.createdAt))}</small><p>${escapeHtml(item.summary)}</p><small>${escapeHtml((item.components || []).map(value => MODALITY_LABELS[value] || value).join(' · '))}</small>${evidenceLink(item.materialEvidence, 'Material')}${evidenceLink(item.questionEvidence, 'Questões')}<small>Aprovação: ${escapeHtml(item.approvedByName || item.approvedByUid || 'Aguardando identificação')}</small></li>`).join('')}</ol>` : '<p class="empty-state">Nenhuma revisão aprovada informada.</p>'}`);
@@ -233,7 +237,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     if (blocked || disposed) return;
     blocked = true; metadataLoadSequence++; mountVersion++; eventController.abort();
     for (const dialog of all('dialog')) if (dialog.open) dialog.close();
-    lifecycle?.dispose(); latest = null; activities = []; assignments = []; people = []; reviewQueue = [];
+    lifecycle?.dispose(); stopActivityMetadata(); latest = null; activities = []; assignments = []; people = []; reviewQueue = [];
     page.innerHTML = '<p class="empty-state" role="alert">Acesso bloqueado. Entre novamente ou procure o administrador para verificar sua autorização.</p>';
     onBlocked?.();
   }
@@ -242,6 +246,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     setText('.evaluation-subject', nameFor(selectedUid)); setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); setText('[data-evaluation-state]', 'Carregando avaliação…');
     if (!retain) { markup('[data-evaluation-records]', '<p class="loading">Carregando registros…</p>'); markup('[data-evaluation-checklist]', ''); markup('[data-evaluation-pending]', ''); markup('[data-evaluation-audit]', ''); }
     renderAssignments();
+    renderActivities();
     const version = ++mountVersion;
     lifecycle = createEvaluationLifecycle({services: servicePromise, actorUid: uid, subjectUid: selectedUid, category, loadedLimit, isCurrent: () => current() && version === mountVersion && (selectedUid === uid || admin()), isOnline: isModuleOnline, onData: snapshot => renderSnapshot(snapshot, {live: true}),
       onState: state => {
@@ -254,6 +259,30 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
         else if (!state.confirmed) setText('[data-evaluation-state]', 'Aguardando confirmação dos dados no servidor.');
       }});
   }
+  function stopActivityMetadata() {
+    activityMetadataGeneration++; activityMetadataStop?.(); activityMetadataStop=null;
+    activityMetadataKey=null; activityMetadataConfirmed=false;
+  }
+  function observeActivityMetadata(data) {
+    const ids=activities.map(item=>item.id).sort(), key=JSON.stringify(ids);
+    if(activityMetadataKey===key)return;
+    stopActivityMetadata(); activityMetadataKey=key;
+    // Older injected service fixtures may expose only the server list operation.
+    if(!data.watchTrainingParticipation){activityMetadataConfirmed=true;return;}
+    if(!ids.length){activityMetadataConfirmed=true;return;}
+    const generation=activityMetadataGeneration;
+    activityMetadataStop=data.watchTrainingParticipation({actorUid:uid,activityIds:ids,includeParticipations:false,
+      onData:snapshot=>{
+        if(!current() || generation!==activityMetadataGeneration)return;
+        activityMetadataConfirmed=snapshot.confirmed===true;
+        if(activityMetadataConfirmed)activities=rows(snapshot.activities);
+        renderActivities(); renderAssignments();
+      },onError:error=>{
+        if(!current() || generation!==activityMetadataGeneration)return;
+        activityMetadataConfirmed=false;activityMetadataKey=null;
+        if(evaluationFailureState(error,{online:isModuleOnline()})==='blocked')blockAccess();else renderActivities();
+      }});
+  }
   async function refreshMetadata() {
     const version = mountVersion, loadSequence = ++metadataLoadSequence;
     if (!isModuleOnline() || connectionUnavailable) { if (current()) markup('[data-evaluation-activities]', '<p class="empty-state">Sem conexão. As atividades serão atualizadas ao reconectar.</p>'); return; }
@@ -261,7 +290,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
       const data = await servicePromise;
       const [activityResult, assignmentResult, peopleResult] = await Promise.all([data.listEvaluationActivities(uid), data.listEvaluationAssignments(uid), admin() ? data.listEvaluationPeople(uid) : Promise.resolve([])]);
       if (!current() || version !== mountVersion || loadSequence !== metadataLoadSequence) return;
-      activities = rows(activityResult); assignments = rows(assignmentResult); people = rows(peopleResult);
+      activities = rows(activityResult); observeActivityMetadata(data); assignments = rows(assignmentResult); people = rows(peopleResult);
       setText('.evaluation-subject', nameFor(selectedUid));
       setOptions(find('[data-evaluation-person]'), people.map(person => ({id: person.uid || person.id, name: person.displayName || person.name || person.uid || person.id})), 'Selecione uma pessoa');
       const personSelect = find('[data-evaluation-person]'); if (personSelect && !personSelect.value) personSelect.value = selectedUid;
@@ -288,9 +317,10 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
   }
   function renderActivities() {
     markup('[data-evaluation-activities]', activities.length ? renderCatalogFolders(activities, activity => {
-      const configured = activity.status === 'READY' && activity.active === true;
+      const configured = activityMetadataConfirmed && isModuleOnline() && !connectionUnavailable && activity.status === 'READY' && activity.active === true;
+      const trainingState=trainingParticipationState(activity,activityMetadataConfirmed && isModuleOnline() && !connectionUnavailable && latest?.fromCache===false && latest?.pendingWrites===false ? latest.participations || [] : [],{uid:selectedUid});
       const url = configured ? safeUrl(activity.responderUrl) : '';
-      return `<li id="evaluation-activity-${escapeHtml(activity.id)}"><strong>${escapeHtml(activity.title || activity.id)}</strong><small>Versão ${escapeHtml(activity.version || 'não definida')} · ${escapeHtml(STATUS_LABELS[activity.status] || activity.status || 'Configuração pendente')}</small>${activity.reason ? `<p>${escapeHtml(activity.reason)}</p>` : ''}<small>${[activity.modalities?.acknowledgement ? 'Ciência: 1 ponto' : '', activity.modalities?.suggestion ? 'Sugestão aprovada: 2 pontos' : '', activity.modalities?.test ? 'Teste: nota corrigida do Forms' : ''].filter(Boolean).map(escapeHtml).join(' · ')}</small>${evidenceLink(materialPresentationUrls(activity), 'Material de apoio')}${url ? `<a class="primary-button evaluation-link-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Abrir formulário</a>` : '<small>Participação aguardando configuração ou vigência válida.</small>'}<small>Abrir o formulário não gera pontos. A ciência registra uma declaração do participante e não comprova leitura integral.</small></li>`;
+      return `<li id="evaluation-activity-${escapeHtml(activity.id)}"><strong>${escapeHtml(activity.title || activity.id)}</strong><small>Versão ${escapeHtml(activity.version || 'não definida')} · ${escapeHtml(STATUS_LABELS[activity.status] || activity.status || 'Configuração pendente')}</small>${activity.reason ? `<p>${escapeHtml(activity.reason)}</p>` : ''}<small>${[activity.modalities?.acknowledgement ? 'Ciência: 1 ponto' : '', activity.modalities?.suggestion ? 'Sugestão aprovada: 2 pontos' : '', activity.modalities?.test ? 'Teste: nota corrigida do Forms' : ''].filter(Boolean).map(escapeHtml).join(' · ')}</small>${evidenceLink(materialPresentationUrls(activity), 'Material de apoio')}${selectedUid !== uid ? '<small>Consulta administrativa: envio no nome do usuário indisponível.</small>' : url ? `<a class="primary-button evaluation-link-button training-state-button" data-training-state="${trainingState.color}" aria-label="${escapeHtml(trainingState.label)}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Abrir formulário</a>` : '<small>Participação aguardando configuração ou vigência válida.</small>'}<small>Abrir o formulário não gera pontos. A ciência registra uma declaração do participante e não comprova leitura integral.</small></li>`;
     }, {scope: 'activities', listClass: 'evaluation-activity-list', ordered: true, fallback: 'Outros treinamentos'}) : '<p class="empty-state">Nenhuma atividade elegível foi vinculada ainda.</p>');
   }
   async function refreshReviewQueue({suggestionsOnly = false} = {}) {
@@ -473,13 +503,13 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
   openScope(); void refreshMetadata();
   const cleanup = () => {
     if (disposed) return;
-    disposed = true; mountVersion++; lifecycle?.dispose(); eventController.abort();
+    disposed = true; mountVersion++; lifecycle?.dispose(); stopActivityMetadata(); eventController.abort();
     for (const dialog of all('dialog')) if (dialog.open) dialog.close();
     latest = null; assignments = []; activities = []; people = []; reviewQueue = [];
   };
-  cleanup.suspend = () => lifecycle?.suspend();
+  cleanup.suspend = () => { lifecycle?.suspend(); stopActivityMetadata(); renderActivities(); };
   cleanup.resume = () => { if (current()) { if (isModuleOnline()) connectionUnavailable = false; lifecycle?.resume(); void refreshMetadata(); } };
-  cleanup.setOnline = value => { if (!current()) return; onlineOverride = Boolean(value); if (value) connectionUnavailable = false; if (!value) { page.dataset.evaluationState = 'offline'; setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); } lifecycle?.setOnline(value); if (value) void refreshMetadata(); };
+  cleanup.setOnline = value => { if (!current()) return; onlineOverride = Boolean(value); if (value) connectionUnavailable = false; if (!value) { page.dataset.evaluationState = 'offline'; setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); stopActivityMetadata(); renderActivities(); } lifecycle?.setOnline(value); if (value) void refreshMetadata(); };
   cleanup.revalidate = () => { if (!current()) cleanup(); };
   cleanup.updateProfile = nextProfile => { if (!current()) return; profile = nextProfile || profile; setText('.evaluation-subject', nameFor(selectedUid)); };
   cleanup.canPreserveSession = (previous, next) => !blocked && evaluationSessionCanPreserve(previous, next);

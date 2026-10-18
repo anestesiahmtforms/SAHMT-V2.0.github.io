@@ -595,6 +595,8 @@ function formsEvaluationPublishedPermissionsExact_(permissions, expected) {
   return actual.length === expected.length && actual.every(function (email, index) { return email === expected[index]; });
 }
 function formsEvaluationSyncResponders_(form, emails) {
+  // Reading-gated forms are managed only by the individual receipt/grant flow.
+  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(form.getId())) return false;
   try {
     formsEvaluationCloseForm_(form);
     if (!emails.length || typeof form.supportsAdvancedResponderPermissions !== 'function' || !form.supportsAdvancedResponderPermissions() || typeof form.setPublished !== 'function') return false;
@@ -672,6 +674,8 @@ function formsEvaluationPublicationPending_(formId, configVersion, closureConfir
   });
 }
 function formsEvaluationFinalizePublication_(formId, requestId) {
+  // Skip before roster comparison, form closure or READY configuration writes.
+  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(formId)) return {status: 'READING_MANAGED'};
   let form = null, configVersion = null;
   try {
     const cfg = evaluationGet_('evaluationFormConfigs', formId), activity = evaluationGet_('evaluationActivities', formId);
@@ -682,7 +686,8 @@ function formsEvaluationFinalizePublication_(formId, requestId) {
     const emails = formsEvaluationPublicationContext_(cfg, null);
     const metadata = formsEvaluationMetadata_(formId);
     formsEvaluationCheckedMapping_(metadata, cfg);
-    if (formsEvaluationQuestionFingerprint_(formsEvaluationQuestionSnapshot_(metadata)) !== formsEvaluationSavedQuestionFingerprint_(cfg) || !form.hasLimitOneResponsePerUser() || form.canEditResponse()) throw new Error('Conteúdo ou opções do Forms mudaram; exige configuração vigente.');
+    if (formsEvaluationQuestionFingerprint_(formsEvaluationQuestionSnapshot_(metadata)) !== formsEvaluationSavedQuestionFingerprint_(cfg) ||
+        (cfg.repeatPolicy === 'FIRST_RESPONSE_PER_VERSION' ? form.hasLimitOneResponsePerUser() : !form.hasLimitOneResponsePerUser()) || form.canEditResponse()) throw new Error('Conteúdo ou opções do Forms mudaram; exige configuração vigente.');
     if (cfg.status === 'READY' && form.isPublished() && form.isAcceptingResponses() && formsEvaluationPublishedPermissionsExact_(formsEvaluationPublishedPermissions_(formId), emails)) return {status: 'READY', activityId: formId, configVersion: configVersion, unchanged: true};
     formsEvaluationCloseForm_(form);
     // Persist a recoverable closed stage before any publication. No transaction callback opens a Google Form.
@@ -718,6 +723,10 @@ function formsEvaluationFinalizePublication_(formId, requestId) {
     return {status: 'CONFIGURATION_PENDING', closureConfirmed: closureConfirmed};
   }
 }
+function formsEvaluationRepeatPolicy_(cfg) {
+  if(cfg)return cfg.repeatPolicy==='FIRST_RESPONSE_PER_VERSION';
+  return PropertiesService.getScriptProperties().getProperty('SAHMT_TRAINING_REPEAT_ENABLED')==='YES';
+}
 function formsEvaluationConfigured_(payload, actorUid, tx) {
   if (!formsEvaluationAdmin_(evaluationGet_('users', actorUid, tx))) throw new Error('Configuração exige administrador autorizado.');
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
@@ -744,7 +753,14 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
   if (!previous && fromDay < today) throw new Error('Importação histórica exige prévia e decisão administrativa; esta configuração não importa períodos passados.');
   const metadata = formsEvaluationMetadata_(payload.activityId);
   const form = FormApp.openById(payload.activityId);
-  if (!form.hasLimitOneResponsePerUser() || form.canEditResponse()) throw new Error('Conferir uma resposta por conta e edição após envio desativada.');
+  const repeat = formsEvaluationRepeatPolicy_(previous);
+  if(!previous && repeat && form.hasLimitOneResponsePerUser()){
+    // Only an authenticated administrative configuration request reaches here.
+    // A newly configured legacy copy can adopt repeats while remaining closed;
+    // responder authorization and publication are validated separately below.
+    form.setAcceptingResponses(false);form.setLimitOneResponsePerUser(false);
+  }
+  if ((repeat ? form.hasLimitOneResponsePerUser() : !form.hasLimitOneResponsePerUser()) || form.canEditResponse()) throw new Error('Conferir limite de respostas conforme a política de tentativas e edição após envio desativada.');
   const checked = formsEvaluationConfiguration_(metadata, payload);
   const materialUrls = payload.materialUrls || formsEvaluationDriveReferences_(metadata).map(function (ref) { return 'https://drive.google.com/file/d/' + ref.id + '/view'; });
   const materialSnapshot = formsEvaluationMaterialSnapshot_(materialUrls);
@@ -766,7 +782,7 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
   let ready = form.isAcceptingResponses() && (!form.supportsAdvancedResponderPermissions || !form.supportsAdvancedResponderPermissions() || form.isPublished());
   let reason = ready ? '' : 'Formulário ainda não publicado ou não recebendo respostas; nenhuma leitura histórica será pontuada.';
   let blockedByPriorResponses = false;
-  if (previous && payload.version > previous.version) {
+  if (previous && payload.version > previous.version && !repeat) {
     const existing = formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/' + encodeURIComponent(payload.activityId) + '/responses?pageSize=1');
     if ((existing.responses || []).length) {
       ready = false;
@@ -781,7 +797,7 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
   }
   const status = ready ? 'READY' : 'CONFIGURATION_PENDING';
   const configVersion = (previous ? previous.configVersion : 0) + 1;
-  const cfg = {id: payload.activityId, formId: payload.activityId, responderUrl: metadata.responderUri || '', creditScopeId: payload.creditScopeId,
+  const cfg = {id: payload.activityId, formId: payload.activityId, responderUrl: metadata.responderUri || '', creditScopeId: payload.creditScopeId, trainingRevisionRequired:false,
     version: payload.version, configVersion: configVersion, status: status, reason: reason, eligibleUids: eligibleUids, eligibleGroups: eligibleGroups, managerAreaId: payload.managerAreaId,
     managerUid: assignment.uid, assignmentId: assignment.id, assignmentVersion: assignment.version, modalities: payload.modalities,
     acknowledgementItemId: checked.mapping.acknowledgement && checked.mapping.acknowledgement.itemId || payload.acknowledgementItemId || '',
@@ -796,12 +812,13 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
     validFrom: validFrom, validUntil: validUntil, firstEligibleAt: previous && previous.version === payload.version ? previous.firstEligibleAt : new Date(Math.max(Date.now(), validFrom.getTime())),
     configuredByUid: actorUid, publicationPending: eligibleGroups.length > 0 && !blockedByPriorResponses, updatedAt: new Date()};
   if (checked.mapping.suggestionText) { cfg.participantTemplateVersion=2;cfg.suggestionTextItemId=checked.mapping.suggestionText.itemId; }
+  if (repeat) cfg.repeatPolicy='FIRST_RESPONSE_PER_VERSION';
   const visible = {creditScopeId: cfg.creditScopeId, version: cfg.version, configVersion: configVersion, title: metadata.info.title,
     eligibleUids: eligibleUids, eligibleGroups: eligibleGroups, managerUid: cfg.managerUid, assignmentId: cfg.assignmentId, managerAreaId: cfg.managerAreaId,
     modalities: cfg.modalities, maxTestScore: cfg.maxTestScore, validFrom: validFrom, validUntil: validUntil, status: status, reason: reason, responderUrl: cfg.responderUrl,
     acknowledgementItemId: cfg.acknowledgementItemId, acknowledgementValue: cfg.acknowledgementValue,
     suggestionProblemItemId: cfg.suggestionProblemItemId, suggestionProposalItemId: cfg.suggestionProposalItemId, suggestionBenefitItemId: cfg.suggestionBenefitItemId,
-    materialUrls: cfg.materialUrls, publicationPending: cfg.publicationPending};
+    materialUrls: cfg.materialUrls, publicationPending: cfg.publicationPending, repeatPolicy:cfg.repeatPolicy || 'LEGACY_SINGLE_RESPONSE',trainingRevisionRequired:false};
   return {writes: [evaluationWrite_('evaluationFormConfigs', cfg.id, cfg, previous, ['updatedAt']),
     evaluationWrite_('evaluationActivities', cfg.id, visible, projection, ['updatedAt'])], result: {status: status, activityId: cfg.id, configVersion: configVersion}};
 }
@@ -891,6 +908,9 @@ function formsEvaluationProcessResponse_(formId, responseId, profilePool) {
     if (currentIdentity.status !== 'CONFIRMED' || currentIdentity.uid !== decoded.uid) return {writes:[],result:{status:'NEEDS_REVIEW',reason:'Identidade duplicada ou alterada entre a leitura e a confirmação.'}};
     const id = 'participation-' + formsEvaluationHash_(decoded.uid + '\u0000' + cfg.creditScopeId + '\u0000' + cfg.version);
     const previous = evaluationGet_('evaluationParticipations', id, tx);
+    if (liveCfg.repeatPolicy === 'FIRST_RESPONSE_PER_VERSION') {
+      return formsEvaluationRepeatResponse_(metadata, liveCfg, response, decoded, previous, activity, id, tx);
+    }
     if (previous && previous.responseId !== responseId && previous.activityId !== formId) return {writes: [], result: {status: 'NEEDS_REVIEW', reason: 'Outra origem já possui participação nesta matéria e versão; não repetir crédito.'}};
     if (previous && previous.responseId !== responseId) return {writes: [], result: {status: 'NEEDS_REVIEW', reason: 'Resposta adicional exige revisão; uma participação por matéria/versão.'}};
     if (previous && ['APPROVED', 'REJECTED'].includes(previous.suggestion && previous.suggestion.status)) {
@@ -915,6 +935,81 @@ function formsEvaluationProcessResponse_(formId, responseId, profilePool) {
     if (governance.projection) decoded.governance = governance.projection;
     return {writes: (plan.writes || []).concat(governance.writes, [evaluationWrite_('evaluationParticipations', id, decoded, previous, ['updatedAt'])]), result: {status: decoded.status, participationId: id}};
   });
+}
+
+// Repeats retain their evidence, but can never replace the credited response.
+// Corrections to the SAME credited response remain reconcilable by the ledger.
+function formsEvaluationTrainingState_(metadata, cfg, response, uid, tx) {
+  const testItems = (metadata.items || []).filter(function(item) {
+    return item.questionItem && Number(item.questionItem.question.grading && item.questionItem.question.grading.pointValue || 0) > 0;
+  });
+  const answered = testItems.every(function(item) {
+    const answer = (response.answers || {})[item.questionItem.question.questionId];
+    return answer && answer.textAnswers && (answer.textAnswers.answers || []).some(function(value) { return String(value.value || '').trim().length > 0; });
+  });
+  const declaration = cfg.modalities.acknowledgement !== true || formsEvaluationAnswer_(response, cfg.mapping.acknowledgement) === cfg.mapping.acknowledgement.affirmativeValue;
+  let readingComplete = true;
+  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(cfg.formId)) {
+    const policy = dgrPolicy_(), documentId = Object.keys(policy.documents).find(function(id) { return policy.documents[id].formId === cfg.formId; });
+    const row = policy.documents[documentId] && Object.assign({},policy.documents[documentId],{trainingVersion:cfg.version});
+    const receipt = row && evaluationGet_('documentReadingReceipts', dgrReceiptId_(uid, documentId, row), tx);
+    readingComplete = Boolean(row && row.enforced === true && receipt && receipt.uid === uid && receipt.status === 'COMPLETED' &&
+      Number.isFinite(receipt.completedAt) && receipt.completedAt<=new Date(response.createTime).getTime() &&
+      receipt.trainingVersion===cfg.version && receipt.materialVersion === row.version && receipt.checksum === row.checksum);
+  }
+  return {complete: readingComplete && declaration && (cfg.modalities.test !== true || answered && testItems.length > 0),
+    readingComplete: readingComplete, declaration: declaration, answersComplete: answered,
+    score: typeof response.totalScore === 'number' && Number.isFinite(response.totalScore) ? response.totalScore : null,
+    maxScore: cfg.maxTestScore || 0, submittedAt: new Date(response.createTime), responseId: response.responseId};
+}
+function formsEvaluationRepeatResponse_(metadata, cfg, response, decoded, previous, activity, id, tx) {
+  if (decoded.status === 'NEEDS_REVIEW') return {writes:[],result:{status:'NEEDS_REVIEW'}};
+  if (previous && previous.activityId !== cfg.formId) return {writes:[],result:{status:'NEEDS_REVIEW',reason:'Origem conflitante na mesma matéria e versão.'}};
+  const training = formsEvaluationTrainingState_(metadata, cfg, response, decoded.uid, tx);
+  const attemptId = 'attempt-' + formsEvaluationHash_([decoded.uid,cfg.formId,cfg.version,response.responseId]);
+  const oldAttempt = evaluationGet_('evaluationTrainingAttempts', attemptId, tx);
+  const writes = [];
+  const attempt = {id:attemptId,recordType:'ATTEMPT',uid:decoded.uid,activityId:cfg.formId,creditScopeId:cfg.creditScopeId,
+    version:cfg.version,responseId:response.responseId,training:training,sourceFingerprint:decoded.sourceFingerprint};
+  if (!oldAttempt || oldAttempt.sourceFingerprint !== decoded.sourceFingerprint) writes.push(evaluationWrite_('evaluationTrainingAttempts',attemptId,attempt,oldAttempt,['updatedAt']));
+  const earlier = previous && Number.isFinite(new Date(previous.submittedAt).getTime()) &&
+    (new Date(decoded.submittedAt).getTime()<new Date(previous.submittedAt).getTime() ||
+     new Date(decoded.submittedAt).getTime()===new Date(previous.submittedAt).getTime() && response.responseId<previous.responseId);
+  const first = !previous || previous.responseId === response.responseId || earlier;
+  let record = first ? decoded : evaluationClean_(previous);
+  if (first && previous && ['APPROVED','REJECTED'].includes(previous.suggestion && previous.suggestion.status)) {
+    if(formsEvaluationHash_([decoded.suggestion.problem,decoded.suggestion.proposal,decoded.suggestion.benefit])!==formsEvaluationHash_([previous.suggestion.problem,previous.suggestion.proposal,previous.suggestion.benefit])){
+      record.status='NEEDS_REVIEW';record.reason='Sugestão mudou após revisão; decisão administrativa preservada.';
+    }
+    record.suggestion=previous.suggestion;record.managerUid=previous.managerUid;
+  }
+  record.id = id; record.recordType = 'PARTICIPATION'; record.areaIds = activity.areaIds || [];
+  record.submittedManagerUid = previous && (previous.submittedManagerUid || previous.managerUid) || decoded.managerUid;
+  if (first) record.training = training;
+  if (first) record.creditReconciliationPending=decoded.test.status==='PENDING_GRADE' && Boolean(previous &&
+    (previous.creditReconciliationPending===true || earlier && previous.test && previous.test.status==='CONFIRMED'));
+  const last = previous && (previous.latestTraining || previous.training);
+  if (!last || new Date(training.submittedAt).getTime() > new Date(last.submittedAt).getTime() || last.responseId === response.responseId) record.latestTraining = training;
+  else record.latestTraining = last;
+  if (first) {
+    const base = {uid:decoded.uid,category:'PERFORMANCE',creditScopeId:cfg.creditScopeId,activityId:cfg.formId,areaId:cfg.managerAreaId,
+      version:cfg.version,sourceType:'GOOGLE_FORM',sourceId:response.responseId,sourceFingerprint:decoded.sourceFingerprint,approvedByUid:'',
+      evidence:{formId:cfg.formId,responseId:response.responseId,identitySource:decoded.identitySource}};
+    const changes = [];
+    if (cfg.modalities.acknowledgement === true) changes.push(Object.assign({},base,{modality:'ACKNOWLEDGEMENT',points:decoded.declaration?1:0,reason:'Primeira resposta validada nesta matéria e versão.'}));
+    if (decoded.test.status === 'CONFIRMED') changes.push(Object.assign({},base,{modality:'TEST',points:decoded.test.score,maxTestScore:decoded.test.maxScore,reason:'Nota da primeira resposta validada nesta matéria e versão.'}));
+    const plan = evaluationApplyAwards_(changes,{transaction:tx});
+    writes.push.apply(writes,plan.writes || []);
+    if (plan.status === 'NEEDS_REVIEW') {record.status='NEEDS_REVIEW';record.reason='Correção administrativa preservada.';}
+    const governance=formsEvaluationFormGovernance_(response,cfg,decoded.uid,tx);
+    writes.push.apply(writes,governance.writes || []);
+    if(governance.projection)record.governance=governance.projection;
+  }
+  // No-op replay avoids both new ledger entries and aggregate rewrites.
+  const oldContent=previous && evaluationClean_(previous),newContent=evaluationClean_(record);
+  if(oldContent)delete oldContent.updatedAt;delete newContent.updatedAt;
+  if (!previous || formsEvaluationHash_(oldContent) !== formsEvaluationHash_(newContent)) writes.push(evaluationWrite_('evaluationParticipations',id,record,previous,['updatedAt']));
+  return {writes:writes,result:{status:record.status,participationId:id,repeat:!first}};
 }
 
 function formsEvaluationReviewerAllowed_(profile, area, assignment, actorUid) {
@@ -1136,7 +1231,7 @@ function reconcileEvaluationResponderAccess() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {status: 'PENDING'};
   try {
-    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true); });
+    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true) && !(typeof dgrManagedForm_ === 'function' && dgrManagedForm_(cfg.id)); });
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'SAHMT_V2_EVALUATION_ACCESS_CURSOR', cursor = properties.getProperty(cursorKey) || '';
     const ordered = configs.filter(function (cfg) { return cfg.id > cursor; }).concat(configs.filter(function (cfg) { return cfg.id <= cursor; }));
     const result = {checked: 0, ready: 0, pending: 0};
@@ -1319,7 +1414,7 @@ function formsEvaluationVerifyTemplate_(before, after, specs, form) {
   if (formsEvaluationStable_(ids) !== formsEvaluationStable_(expectedOrder)) throw new Error('Ordem dos campos não confirmada; modelo permanece fechado.');
   const questionIds = (after.items || []).filter(function (item) { return item.questionItem; }).map(function (item) { return item.questionItem.question.questionId; });
   if (new Set(ids).size !== ids.length || new Set(questionIds).size !== questionIds.length) throw new Error('IDs duplicados no modelo; conferir antes de publicar.');
-  if (!after.settings || after.settings.emailCollectionType !== 'VERIFIED' || !after.settings.quizSettings || after.settings.quizSettings.isQuiz !== true || form.isAcceptingResponses() || form.canEditResponse() || !form.hasLimitOneResponsePerUser() || form.getResponses().length || form.supportsAdvancedResponderPermissions && form.supportsAdvancedResponderPermissions() && form.isPublished()) throw new Error('Fechamento ou configuração do modelo não confirmado; nenhuma publicação foi autorizada.');
+  if (!after.settings || after.settings.emailCollectionType !== 'VERIFIED' || !after.settings.quizSettings || after.settings.quizSettings.isQuiz !== true || form.isAcceptingResponses() || form.canEditResponse() || (formsEvaluationRepeatPolicy_(null) ? form.hasLimitOneResponsePerUser() : !form.hasLimitOneResponsePerUser()) || form.getResponses().length || form.supportsAdvancedResponderPermissions && form.supportsAdvancedResponderPermissions() && form.isPublished()) throw new Error('Fechamento ou configuração do modelo não confirmado; nenhuma publicação foi autorizada.');
 }
 function prepareEvaluationTemplate(templateFormId, originalFormId) {
   evaluationAssertOperator_(false);
@@ -1330,7 +1425,7 @@ function prepareEvaluationTemplate(templateFormId, originalFormId) {
   if (form.getResponses().length) throw new Error('O modelo possui respostas; nenhuma alteração será realizada.');
   const specs = formsEvaluationTemplateSpecs_(), before = formsEvaluationMetadata_(templateFormId);
   formsEvaluationTemplateMatches_(before, specs);
-  form.setAcceptingResponses(false).setAllowResponseEdits(false).setLimitOneResponsePerUser(true).setCollectEmail(true).setPublishingSummary(false).setIsQuiz(true);
+  form.setAcceptingResponses(false).setAllowResponseEdits(false).setLimitOneResponsePerUser(!formsEvaluationRepeatPolicy_(null)).setCollectEmail(true).setPublishingSummary(false).setIsQuiz(true);
   if (form.supportsAdvancedResponderPermissions && form.supportsAdvancedResponderPermissions()) form.setPublished(false);
   // Native flags advance the revision. Read again before making the single conditional content update.
   const fresh = formsEvaluationMetadata_(templateFormId);

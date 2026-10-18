@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v204';
+const CACHE = 'sahmt-v2-shell-v205';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -21,7 +21,7 @@ self.addEventListener('install', (event) => {
     const manifestResponse = await cache.match(`${BASE}assets-manifest.json`);
     if (!manifestResponse) throw new Error('Manifest Vite ausente no cache do shell.');
     const manifest = await manifestResponse.json();
-    const entryKey = Object.keys(manifest).find((key) => manifest[key]?.isEntry && /\.js$/.test(manifest[key].file || ''));
+    const entryKey = manifest['index.html']?.isEntry ? 'index.html' : Object.keys(manifest).find((key) => manifest[key]?.isEntry && manifest[key]?.src === 'index.html') || Object.keys(manifest).find(key => manifest[key]?.isEntry && !/demo/i.test(key) && /\.js$/.test(manifest[key].file || ''));
     if (!entryKey) throw new Error('Entrada JavaScript do shell ausente no manifest Vite.');
     const visited = new Set();
     const assets = new Set();
@@ -65,7 +65,7 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`)) return;
+  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`) || url.pathname === `${BASE}demo.html`) return;
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       try {

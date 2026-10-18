@@ -135,6 +135,57 @@ export async function listEvaluationPeople(actorUid) {
   if (!profile.isAdmin) throw new Error('A seleção de usuários exige acesso administrativo.');
   return (await listAll({...service, db: service.identityDb}, 'users')).map(item => ({id: item.id, uid: item.id, displayName: item.displayName || item.name || item.sigla || item.id, sigla: item.sigla || '', active: item.active === true && item.access === true}));
 }
+
+/** One subject at a time; observing never changes the authenticated actor. */
+export function watchTrainingParticipation({actorUid, subjectUid = actorUid, activityIds, includeParticipations = true, onData, onError}) {
+  let stopped = false; const releases = [], activities = new Map(),metadata=new Map(); let participations = [];
+  const stop = () => { stopped = true; releases.splice(0).forEach(release => release()); };
+  Promise.resolve().then(async () => {
+    const service = await store(), profile = await actor(service, actorUid), {sdk,db} = service;
+    if (!validId(subjectUid) || subjectUid !== actorUid && !profile.isAdmin) throw new Error('Consulta de treinamento de outra pessoa exige administrador.');
+    const ids = [...new Set(activityIds || [])];
+    if (ids.length > 500 || ids.some(id => !validId(id))) throw new Error('Catálogo de treinamento inválido.');
+    if (stopped) return;
+    const expected=(includeParticipations?1:0)+Math.ceil(ids.length/30);
+    const emit = () => { if (!stopped) {
+      service.assertSession?.();const complete=metadata.size===expected,fromCache=globalThis.navigator?.onLine===false || !complete || [...metadata.values()].some(row=>row.fromCache),pendingWrites=[...metadata.values()].some(row=>row.pending);
+      onData({activities:[...activities.values()],participations,complete,fromCache,pendingWrites,confirmed:complete&&!fromCache&&!pendingWrites});
+    } };
+    const observe = (key,query, handle) => {
+      if (stopped) return;
+      const release = sdk.onSnapshot(query, {includeMetadataChanges:true}, snap => { try { if (!stopped) {
+        handle(rows(snap));metadata.set(key,{fromCache:snap.metadata?.fromCache!==false,pending:snap.metadata?.hasPendingWrites===true || snap.docs?.some(doc=>doc.metadata?.hasPendingWrites===true)});emit();
+      } } catch(error) { fail(error); } }, fail);
+      if (stopped) release(); else releases.push(release);
+    };
+    const fail = error => { if (!stopped) { stop(); onError?.(error); } };
+    if(includeParticipations) observe('participations',sdk.query(sdk.collection(db,'evaluationParticipations'),sdk.where('uid','==',subjectUid)), list => { participations=list; });
+    if(expected===0)emit();
+    for (let start=0; start<ids.length; start+=30) {
+      const batch=ids.slice(start,start+30);
+      observe('activities-'+start,sdk.query(sdk.collection(db,'evaluationActivities'),sdk.where(sdk.documentId(),'in',batch)), list => {
+        batch.forEach(id => activities.delete(id)); list.forEach(row => activities.set(row.id,row));
+      });
+    }
+  }).catch(error => { if (!stopped) { stop(); onError?.(error); } });
+  return stop;
+}
+
+export async function readAdministrativeUser(actorUid, subjectUid) {
+  const service=await store(), profile=await actor(service,actorUid);
+  if (!profile.isAdmin || !validId(subjectUid)) throw new Error('Consulta administrativa não autorizada.');
+  const snap=await service.sdk.getDocFromServer(service.sdk.doc(service.identityDb,'users',subjectUid));
+  service.assertSession?.();
+  if (!snap.exists()) throw new Error('Perfil não encontrado.');
+  const user=snap.data();
+  const email=String(user.email || '').trim().toLowerCase();let groups=[];
+  if (/^[^/\s]+@[^/\s]+\.[^/\s]+$/.test(email)) {
+    const access=await service.sdk.getDocFromServer(service.sdk.doc(service.identityDb,'documentAccessEmails',email));
+    service.assertSession?.();const row=access.exists()?access.data():null;
+    if(row?.active===true && row.email===email && Array.isArray(row.groups))groups=row.groups.filter(value=>['GENERAL','RESTRICTED'].includes(value));
+  }
+  return {uid:subjectUid,displayName:user.displayName || user.name || '',role:user.role,active:user.active===true,access:user.access===true,permissions:{...user.permissions},documentGroups:groups};
+}
 export async function listEvaluationAssignments(actorUid) {
   const service = await store(), profile = await actor(service, actorUid);
   return listAll(service, 'evaluationAssignments', profile.isAdmin ? [] : [service.sdk.where('uid', '==', actorUid)]);

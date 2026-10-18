@@ -112,3 +112,11 @@ test('captura de homologação é privada do executor, sem leitura ou escrita pe
     await assertFails(setDoc(doc(db, 'evaluationHomologationInputs', 'fake-capture'), {schemaVersion: 1}));
   }
 });
+
+test('training attempts preserve owner/admin reads and reject every browser mutation',async()=>{
+ await env.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'evaluationTrainingAttempts','first'),{uid:'member',version:1,training:{score:5,maxScore:10,complete:true}});});
+ for(const uid of ['member','admin'])await assertSucceeds(getDoc(doc(dbFor(uid),'evaluationTrainingAttempts','first')));
+ for(const uid of ['other','manager','revoked'])await assertFails(getDoc(doc(dbFor(uid),'evaluationTrainingAttempts','first')));
+ await assertFails(setDoc(doc(dbFor('admin'),'evaluationTrainingAttempts','fabricated'),{uid:'member'}));
+ await assertFails(deleteDoc(doc(dbFor('admin'),'evaluationTrainingAttempts','first')));
+});

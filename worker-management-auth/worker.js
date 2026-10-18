@@ -1,6 +1,7 @@
 import {buildManagementAuthRuntime,MANAGEMENT_RUNTIME_DEFAULTS} from './runtime.js';
 import {relayQmentumWrite} from './qmentum-write-relay.js';
 import {relayOperationalSheet} from './operational-sheet-relay.js';
+import {relayDiretrizesReading} from './diretrizes-reading-relay.js';
 import {relayOccurrenceScore} from './occurrence-score-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
 import {createManagementFaFirstLoginHttp} from '../scripts/lib/management-fa-first-login-http.js';
@@ -51,6 +52,11 @@ export function createManagementAuthWorker({buildRuntime,buildOperationalRuntime
 
   return Object.freeze({
     async fetch(request, env, context) {
+      if (new URL(request.url).pathname === '/v1/diretrizes/reading') {
+        if(env?.DIRETRIZES_READING_ENABLED!=='true'||request.method!=='POST')return relayDiretrizesReading(request,env||{});
+        try {const runtime=await operationalFor(env);if(runtime.maxRequestMs<55000)return relayDiretrizesReading(request,env);return await relayDiretrizesReading(request,env,{admitRequest:runtime.admitRequest});}
+        catch {return relayDiretrizesReading(request,env||{});}
+      }
       if (new URL(request.url).pathname === '/v1/qmentum/write') {
         if(env?.QMENTUM_WRITE_ENABLED!=='true'||request.method!=='POST')return relayQmentumWrite(request,env||{});
         try {const runtime=await operationalFor(env);if(runtime.maxRequestMs<55000)return relayQmentumWrite(request,env);return await relayQmentumWrite(request,env,{admitRequest:runtime.admitRequest});}

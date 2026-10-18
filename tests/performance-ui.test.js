@@ -95,3 +95,9 @@ test('suggestion approval cannot hide a quiz grade that is still unavailable',()
 test('pending grade message follows the adapter PENDING_GRADE status without changing governance pending records',async()=>{
   const source=await readFile(new URL('../src/performance-ui.js',import.meta.url),'utf8');assert.match(source,/\['PENDING_GRADE', 'PENDING'\]\.includes\(item.test\?\.status\)/);assert.match(source,/category === 'PERFORMANCE' \? evaluationPendingParticipations/);
 });
+
+test('a delayed earliest grade cannot leave a later attempts stale balance marked confirmed',()=>{
+ const snapshot={...state(),participations:[{uid:'person-a',creditReconciliationPending:true}]};
+ assert.equal(performance(snapshot).confirmed,false);assert.equal(performance(snapshot).total,null);assert.equal(performance(snapshot).state,'pending');
+ snapshot.participations[0].creditReconciliationPending=false;assert.equal(performance(snapshot).confirmed,true);
+});
