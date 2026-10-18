@@ -83,7 +83,10 @@ test('observes native triggers but keeps changed operational source unapproved',
   // QMENTUM and the three-section training contract change operational bodies.
   // Preserve the legacy review: these changes remain unapproved, not re-pinned.
   // Versioned repetition changes six more reviewed function bodies; never re-pin the legacy review.
-  assert.equal(result.sourceVerification.verifiedFunctionCount,209);assert.equal(result.sourceVerification.changedFunctionCount,19);
+  // Safe publication diagnostics change one additional body; its historical hash stays unapproved.
+  const reviewedFinalizer=h.context.SAHMT_MIGRATION_INVENTORY_REVIEW_.functions.find(row=>row.name==='formsEvaluationFinalizePublication_');
+  assert.notEqual(createHash('sha256').update(h.context.formsEvaluationFinalizePublication_.toString().replace(/\r\n?/g,'\n').trim()).digest('hex'),reviewedFinalizer.sha256);
+  assert.equal(result.sourceVerification.verifiedFunctionCount,208);assert.equal(result.sourceVerification.changedFunctionCount,20);
   assert.deepEqual(result.blockers,['MMI_SOURCE_NOT_PINNED_TO_REVIEW']);
   assert.equal(result.observedAt,new Date(TIME).toISOString());assert.equal(result.native.visibleCurrentUserTriggerCount,3);
   assert.ok(result.native.knownJobs.every(job=>job.potentiallyExecutable===true));

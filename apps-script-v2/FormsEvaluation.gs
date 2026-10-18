@@ -676,7 +676,7 @@ function formsEvaluationPublicationPending_(formId, configVersion, closureConfir
 function formsEvaluationFinalizePublication_(formId, requestId) {
   // Skip before roster comparison, form closure or READY configuration writes.
   if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(formId)) return {status: 'READING_MANAGED'};
-  let form = null, configVersion = null;
+  let form = null, configVersion = null, stage = 'CONTEXT';
   try {
     const cfg = evaluationGet_('evaluationFormConfigs', formId), activity = evaluationGet_('evaluationActivities', formId);
     if (!cfg || !activity || !Array.isArray(cfg.eligibleGroups) || !cfg.eligibleGroups.length || (cfg.status !== 'READY' && cfg.publicationPending !== true)) return {status: 'CONFIGURATION_PENDING'};
@@ -684,13 +684,17 @@ function formsEvaluationFinalizePublication_(formId, requestId) {
     form = FormApp.openById(formId);
     const releaseProof = formsEvaluationReleaseGate_(formId, activity, cfg);
     const emails = formsEvaluationPublicationContext_(cfg, null);
+    stage = 'METADATA';
     const metadata = formsEvaluationMetadata_(formId);
     formsEvaluationCheckedMapping_(metadata, cfg);
+    stage = 'CONTENT_OPTIONS';
     if (formsEvaluationQuestionFingerprint_(formsEvaluationQuestionSnapshot_(metadata)) !== formsEvaluationSavedQuestionFingerprint_(cfg) ||
         (cfg.repeatPolicy === 'FIRST_RESPONSE_PER_VERSION' ? form.hasLimitOneResponsePerUser() : !form.hasLimitOneResponsePerUser()) || form.canEditResponse()) throw new Error('Conteúdo ou opções do Forms mudaram; exige configuração vigente.');
     if (cfg.status === 'READY' && form.isPublished() && form.isAcceptingResponses() && formsEvaluationPublishedPermissionsExact_(formsEvaluationPublishedPermissions_(formId), emails)) return {status: 'READY', activityId: formId, configVersion: configVersion, unchanged: true};
+    stage = 'CLOSE';
     formsEvaluationCloseForm_(form);
     // Persist a recoverable closed stage before any publication. No transaction callback opens a Google Form.
+    stage = 'CLOSED_COMMIT';
     evaluationRunTransaction_(function (tx) {
       const live = evaluationGet_('evaluationFormConfigs', formId, tx), projected = evaluationGet_('evaluationActivities', formId, tx);
       if (!live || !projected || projected.active !== true || live.configVersion !== configVersion || (live.status !== 'READY' && live.publicationPending !== true) ||
@@ -699,12 +703,15 @@ function formsEvaluationFinalizePublication_(formId, requestId) {
       const changes = {status: 'CONFIGURATION_PENDING', reason: 'Respondentes em validação antes da publicação.', publicationPending: true};
       return {writes: [evaluationWrite_('evaluationFormConfigs', formId, changes, live, ['updatedAt']), evaluationWrite_('evaluationActivities', formId, changes, projected, ['updatedAt'])], result: {status: changes.status}};
     });
+    stage = 'RESPONDERS';
     if (!formsEvaluationSyncResponders_(form, emails)) throw new Error('Permissões ou publicação do Forms não confirmadas.');
+    stage = 'POST_PUBLICATION';
     const verifiedActivity = evaluationGet_('evaluationActivities', formId), verifiedCfg = evaluationGet_('evaluationFormConfigs', formId);
     if (!verifiedActivity || !verifiedCfg) throw new Error('Configuração ausente após verificar os respondentes.');
     const verifiedProof = formsEvaluationReleaseGate_(formId, verifiedActivity, verifiedCfg);
     formsEvaluationReleaseGateUnchanged_(releaseProof, verifiedActivity, verifiedCfg);
     if (formsEvaluationStable_(verifiedProof) !== formsEvaluationStable_(releaseProof)) throw new Error('Verificação privada mudou durante a publicação.');
+    stage = 'READY_COMMIT';
     return evaluationRunTransaction_(function (tx) {
       const live = evaluationGet_('evaluationFormConfigs', formId, tx), projected = evaluationGet_('evaluationActivities', formId, tx);
       if (!live || !projected || projected.active !== true || live.configVersion !== configVersion || live.publicationPending !== true ||
@@ -720,7 +727,7 @@ function formsEvaluationFinalizePublication_(formId, requestId) {
     let closureConfirmed = false;
     if (form) { try { closureConfirmed = formsEvaluationCloseForm_(form); } catch (_) {} }
     if (configVersion !== null) { try { formsEvaluationPublicationPending_(formId, configVersion, closureConfirmed, error && error.trainingReleaseBlocked === true); } catch (_) {} }
-    return {status: 'CONFIGURATION_PENDING', closureConfirmed: closureConfirmed};
+    return {status: 'CONFIGURATION_PENDING', closureConfirmed: closureConfirmed, code: 'FORM_PUBLICATION_' + stage};
   }
 }
 function formsEvaluationRepeatPolicy_(cfg) {
@@ -1235,7 +1242,8 @@ function reconcileEvaluationResponderAccess() {
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'SAHMT_V2_EVALUATION_ACCESS_CURSOR', cursor = properties.getProperty(cursorKey) || '';
     const ordered = configs.filter(function (cfg) { return cfg.id > cursor; }).concat(configs.filter(function (cfg) { return cfg.id <= cursor; }));
     const result = {checked: 0, ready: 0, pending: 0};
-    ordered.slice(0, 5).forEach(function (cfg) {
+    // One fresh, fully authorized proof per run; cursor preserves eventual coverage.
+    ordered.slice(0, 1).forEach(function (cfg) {
       const outcome = formsEvaluationFinalizePublication_(cfg.id);
       result.checked++;
       if (outcome.status === 'READY') result.ready++; else result.pending++;
