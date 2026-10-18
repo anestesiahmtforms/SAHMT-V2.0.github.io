@@ -81,9 +81,11 @@ participantes não são registrados.
 
 O resultado privado permite acompanhamento pela ferramenta. Após a conclusão,
 baixar o PDF descartável, confirmar o texto V2 e a ausência do texto V1,
-renderizar as páginas e revisar visualmente. O encerramento move somente a
-raiz descartável para a lixeira, com verificação de proprietário e marca exatos.
-Essa limpeza é reversível e exige o resultado completo aprovado.
+renderizar as páginas e revisar visualmente. O encerramento tenta mover somente
+a raiz descartável para a lixeira, com verificação de proprietário e marca
+exatos. Se o Drive recusar exclusivamente por `appNotAuthorizedToChild`, a raiz
+é identificada como concluída e conservada privada, com confirmação do acesso
+exclusivo do proprietário. Não são ampliadas permissões para realizar a limpeza.
 
 ## Evidência disponível antes da execução
 
@@ -96,6 +98,37 @@ o Poppler empacotado, sem automatizar aplicativos de desktop.
 
 Três fontes novas foram instaladas e relidas, preservando as 40 anteriores e
 o manifesto. Nenhuma versão Web App ou PWA foi publicada. O controle do
-navegador está desabilitado em Work; a execução nativa do Apps Script ainda
-depende do clique do operador. Conversões de QA e testes locais não comprovam
-a aplicação real no Forms nem a atualização pelo sincronizador de produção.
+navegador estava desabilitado em Work; a execução nativa dependeu do clique do
+operador. Essas evidências de preparação foram complementadas pela prova real
+abaixo. Com a regressão de proteção de pastas, o conjunto local soma 78 testes
+aprovados.
+
+## Resultado real em 18/10/2026
+
+Às **00:03:54 (America/Sao_Paulo)**, o resultado privado retornou
+`REVISION_VALIDATION_PASSED`, sem continuação automática pendente:
+
+- Forms descartável: uma questão revisada, IDs e pontos preservados, gabarito
+  atualizado e a resposta sintética anterior preservada (uma antes e uma depois).
+- Aprovação inválida bloqueada; reaplicação com zero gravações; Forms fechado
+  e não publicado após o teste.
+- Material Word integralmente substituído: `PDF_SYNC_UPDATED`, no mesmo ID do
+  PDF, com uma conversão, uma atualização e uma cópia anterior conferida.
+- Repetição: `PDF_SYNC_UNCHANGED`, sem nova gravação.
+- PDF baixado: texto novo presente, texto antigo ausente; uma página renderizada
+  e conferida visualmente, sem cortes.
+- Zero escritas de produção e zero leituras do Firestore pela prova.
+
+A conferência independente às **00:04:34** confirmou os 66 editáveis, as 57
+pastas restritas e os 40 vínculos de produção, com os 40 PDFs inalterados,
+sincronização ativa e um único acionador.
+
+O encerramento retornou `REVISION_VALIDATION_FIXTURES_ARCHIVED_PRIVATE`.
+O Drive recusou a exclusão da pasta por `appNotAuthorizedToChild`, pois alguns
+filhos foram criados pelo Apps Script. A pasta foi identificada como concluída,
+permanece privada e acessível somente ao proprietário; não foi excluída.
+
+**Limite da conclusão:** o ciclo de questões foi validado em Forms descartável.
+A aplicação automática dos DOCX de questões aos Forms de produção continua
+bloqueada; esta prova não ativou esse fluxo nem concedeu acessos de gestores.
+O sincronizador de material DOC→PDF dos 40 pares permanece ativo.

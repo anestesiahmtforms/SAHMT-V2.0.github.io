@@ -135,3 +135,11 @@ A confirmação desta execução cobre organização, proteção e instalação 
 sincronizador. A conversão de uma revisão posterior do material deve ser
 confirmada pelo resultado `PDF_SYNC_UPDATED` e pelo checksum do PDF correspondente;
 nenhum documento de produção foi editado apenas para provocar esse teste.
+
+Em 18/10/2026, a prova isolada concluiu `REVISION_VALIDATION_PASSED`: substituiu
+integralmente um Word descartável e confirmou `PDF_SYNC_UPDATED` no mesmo ID,
+com recuperação da versão anterior e repetição sem gravação. O PDF foi baixado,
+teve o texto e a aparência conferidos. A releitura dos 40 PDFs de produção
+confirmou que permaneceram inalterados. Detalhes e limites da validação do Forms
+constam em `management-revision-validation.md`; a aplicação de questões em
+formulários de produção não foi ativada.
