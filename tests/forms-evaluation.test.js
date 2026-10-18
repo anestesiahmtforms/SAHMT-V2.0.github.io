@@ -891,3 +891,10 @@ test('diagnóstico de publicação usa somente código fixo e preserva fechament
 test('diagnóstico distingue metadados sem retornar exceção externa',()=>{
  const h=harness();stagedGroup(h);h.ctx.formsEvaluationMetadata_=()=>{throw Error('private response');};const result=h.ctx.formsEvaluationFinalizePublication_(FORM);assert.equal(result.code,'FORM_PUBLICATION_METADATA');assert.equal(result.status,'CONFIGURATION_PENDING');assert.equal(JSON.stringify(result).includes('private response'),false);
 });
+
+
+test('revalidação periódica limita a uma prova atual e avança o cursor sem pular formulários',()=>{
+ const h=harness(),ids=['form-a','form-b','form-c'],seen=[];h.ctx.formsEvaluationAll_=()=>ids.map(id=>({id,eligibleGroups:['GENERAL'],status:'READY'}));h.ctx.formsEvaluationFinalizePublication_=id=>{seen.push(id);return {status:'READY'};};
+ for(let i=0;i<4;i++){const r=h.ctx.reconcileEvaluationResponderAccess();assert.equal(r.checked,1);assert.equal(r.ready,1);}
+ assert.deepEqual(seen,['form-a','form-b','form-c','form-a']);assert.equal(h.awards.length,0);
+});

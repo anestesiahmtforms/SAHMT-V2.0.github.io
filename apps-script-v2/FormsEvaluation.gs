@@ -1242,7 +1242,8 @@ function reconcileEvaluationResponderAccess() {
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'SAHMT_V2_EVALUATION_ACCESS_CURSOR', cursor = properties.getProperty(cursorKey) || '';
     const ordered = configs.filter(function (cfg) { return cfg.id > cursor; }).concat(configs.filter(function (cfg) { return cfg.id <= cursor; }));
     const result = {checked: 0, ready: 0, pending: 0};
-    ordered.slice(0, 5).forEach(function (cfg) {
+    // One fresh, fully authorized proof per run; cursor preserves eventual coverage.
+    ordered.slice(0, 1).forEach(function (cfg) {
       const outcome = formsEvaluationFinalizePublication_(cfg.id);
       result.checked++;
       if (outcome.status === 'READY') result.ready++; else result.pending++;

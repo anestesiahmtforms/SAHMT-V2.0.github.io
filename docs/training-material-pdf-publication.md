@@ -18,3 +18,10 @@ Os testes cobrem vínculos ambíguos, origem/PDF alterados, versão pendente, pr
 O estado global de processamento habilitado não comprova que cada formulário esteja publicado. A conclusão exige publicação READY, aceite confirmado, repetição configurada e público conferido por item. Formulários sem configuração ou com conteúdo divergente permanecem pendentes.
 
 Nenhum teste automatizado é registrado como homologação humana. A liberação administrativa usa AUTOMATED_TESTS_ADMIN_APPROVED e humanHomologationPerformed=false.
+
+
+## Custo das revalidações
+
+A rotina periódica verifica um formulário por execução, com cursor persistido para cobrir os demais. Isso reduz em 80% o número máximo dessas provas por ciclo, de cinco para uma; não é uma estimativa de redução de todas as leituras do app. Cada prova continua usando autorização e configuração atuais, sem cache de permissões. A coleta de respostas e a validação de pontuação mantêm seus controles próprios.
+
+Em esgotamento de cota, o lote de restauração deve ser pausado fora do Firestore, sem repetir consultas até a janela de renovação. O estado global ACTIVE não comprova disponibilidade do banco durante a pausa.
