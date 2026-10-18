@@ -80,3 +80,9 @@ Os seis arquivos foram instalados no Apps Script operacional, agora com 47 fonte
 O operador executou `conferirRepeticaoTreinamentosV1`: TRAINING_REPEAT_CONFIGURATION_INCOMPLETE, 57 Forms documentais, 37 configurados, 20 sem configuração e 3 configurações externas preservadas. A tentativa pela Execution API retornou HTTP 403; o controle do Chrome falhou com Debugger unattached. A ativação em lotes depende do ponto de entrada `ativarRepeticaoTreinamentosV1` já instalado, sem necessidade de colar código.
 
 A conferência também constatou que o backend de leitura não estava instalado no projeto operacional. Agora sua fonte foi acrescentada, mas nenhuma política, HMAC ou flag desse fluxo foi instalada ou habilitada. As dependências e a homologação do leitor permanecem separadas da repetição dos Forms.
+
+### Bloqueio operacional confirmado
+
+A execução real de `ativarRepeticaoTreinamentosV1` foi recusada por `evaluationAssertOperator_(true)` antes de qualquer alteração. A leitura direta de FA confirmou `evaluationRuntime/state.homologationVerified=false`, consolidação FA ACTIVE e origens não bloqueadas. A coleção `evaluationHomologationInputs` respondeu HTTP 200 sem capturas. Nenhuma flag foi marcada como homologada por substituição dos testes locais. É necessária a validação real documentada em EVALUATION_DEPLOYMENT.md, usando uma cópia isolada e participante, gestor e administrador independentes, antes de ativar o processamento e retomar a repetição.
+
+A primeira CI da PR 48 passou domínio e QMENTUM e detectou somente uma expectativa desatualizada da auditoria histórica de fontes: repetição por versão alterou seis corpos adicionais. A referência histórica permanece intacta e não aprovada; a regressão agora espera 209 funções idênticas e 19 alteradas. Os 30 testes da auditoria passaram após o ajuste.
