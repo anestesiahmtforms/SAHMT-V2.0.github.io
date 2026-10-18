@@ -149,6 +149,9 @@ let offlineViewMode = 'sync';
 let appFeatures = {...DEFAULT_APP_FEATURES};
 let appFeaturesUid = '';
 let appFeaturesLoadSequence = 0;
+let appFeaturesRefreshPromise = null;
+let appFeaturesRefreshPromiseUid = '';
+let lastForcedAppFeaturesRefresh = {uid: '', at: 0};
 
 // Report state is transient and belongs to a single authenticated scope.
 const reportStates = new Map();
@@ -4714,21 +4717,36 @@ function sessionChanged(next) {
 }
 async function refreshAppFeatures(uid, force = false) {
   if (!uid || (!force && appFeaturesUid === uid)) return;
+  const now = Date.now();
+  if (force && lastForcedAppFeaturesRefresh.uid === uid && now - lastForcedAppFeaturesRefresh.at < 5_000) return;
+  if (force) lastForcedAppFeaturesRefresh = {uid, at: now};
+  if (appFeaturesRefreshPromise && appFeaturesRefreshPromiseUid === uid) return appFeaturesRefreshPromise;
   const sequence = ++appFeaturesLoadSequence;
   appFeaturesUid = uid;
-  try {
-    const {readAppFeatures} = await import('./data-lite.js');
-    const features = normalizeAppFeatures(await readAppFeatures(uid));
-    if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
-    const unchanged = JSON.stringify(appFeatures) === JSON.stringify(features);
-    const preserveEvaluationModule = Boolean(cleanupCurrentModule?.canPreserveSession) && featureEnabledForRoute(currentRoute(), features);
-    appFeatures = features;
-    if (!unchanged && !preserveEvaluationModule) await render();
-    else if (preserveEvaluationModule) cleanupCurrentModule?.revalidate?.();
-  } catch (error) {
-    if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
-    appFeatures = {...DEFAULT_APP_FEATURES};
-    console.warn('[SAHMT] Configuração de módulos indisponível; usando padrões locais:', error.code || error.message);
+  const refresh = (async () => {
+    try {
+      const {readAppFeatures} = await import('./data-lite.js');
+      const features = normalizeAppFeatures(await readAppFeatures(uid));
+      if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+      const unchanged = JSON.stringify(appFeatures) === JSON.stringify(features);
+      const preserveEvaluationModule = Boolean(cleanupCurrentModule?.canPreserveSession) && featureEnabledForRoute(currentRoute(), features);
+      appFeatures = features;
+      if (!unchanged && !preserveEvaluationModule) await render();
+      else if (preserveEvaluationModule) cleanupCurrentModule?.revalidate?.();
+    } catch (error) {
+      if (sequence !== appFeaturesLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+      appFeatures = {...DEFAULT_APP_FEATURES};
+      console.warn('[SAHMT] Configuração de módulos indisponível; usando padrões locais:', error.code || error.message);
+    }
+  })();
+  appFeaturesRefreshPromise = refresh;
+  appFeaturesRefreshPromiseUid = uid;
+  try { await refresh; }
+  finally {
+    if (appFeaturesRefreshPromise === refresh) {
+      appFeaturesRefreshPromise = null;
+      appFeaturesRefreshPromiseUid = '';
+    }
   }
 }
 window.addEventListener('hashchange', () => {
