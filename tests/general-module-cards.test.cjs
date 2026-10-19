@@ -99,7 +99,7 @@ function renderHarness(session) {
     featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {}, renderOfflineOperationalView: async () => {},
     document: {querySelectorAll: () => [], querySelector: () => null},
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
-    updateInformationBanner() {}, updateOutboxStatus: async () => {}, navigator: {onLine: true}
+    updateInformationBanner() {}, updateOutboxStatus: async () => {}, syncOutbox: async () => {}, navigator: {onLine: true}
   });
   vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
