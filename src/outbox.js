@@ -391,7 +391,7 @@ export async function pendingOperationCount(uid) {
 }
 
 export async function operationCounts(uid) {
-  if (!uid) return {queued: 0, failed: 0};
+  if (!uid) return {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0};
   return transactAcross(OUTBOX, 'readonly', (tx) => {
     let queued = 0;
     let failed = 0;
