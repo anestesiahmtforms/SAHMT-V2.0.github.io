@@ -85,8 +85,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal(await outbox.nextQueuedAttemptAt('uid-without-operations'), null);
   const laterAttempt = Date.now() + 30_000;
   const earliestAttempt = Date.now() + 10_000;
-  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
-  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'scheduleReleases', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'scheduleReleases', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
   assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-later', {nextAttemptAt: laterAttempt}), true);
   assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-earlier', {nextAttemptAt: earliestAttempt}), true);
   assert.equal(await outbox.nextQueuedAttemptAt('retry-user'), earliestAttempt);
