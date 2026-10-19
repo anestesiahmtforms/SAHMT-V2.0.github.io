@@ -47,6 +47,7 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
     assert.equal((await outbox.listUnsettledOperations('uid-a')).find(item => item.requestId === requestId)?.status, 'awaiting-confirmation', type);
     assert.equal(await outbox.confirmQueuedOperation('uid-a', requestId), true, type);
     assert.equal((await outbox.listQueuedOperations('uid-a')).some(item => item.requestId === requestId), true, type);
+    assert.equal(await outbox.removeQueuedOperation('uid-a', requestId), true, type);
   }
   await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload});
   await assert.rejects(
