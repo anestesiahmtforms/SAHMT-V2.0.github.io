@@ -40,6 +40,30 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   const outbox = await import('../src/outbox.js');
   assert.deepEqual((await outbox.listQueuedOperations('uid-a')).map((item) => item.requestId), ['a-queued']);
   const stablePayload = {data: {first: 1, second: 2}};
+  for (const type of ['events', 'labels', 'checklists']) {
+    const requestId = `confirm-${type}`;
+    await outbox.enqueueOperation({uid: 'uid-a', type, resourceId: requestId, requestId, payload: {collectionName: type, data: {sample: true}}});
+    assert.equal((await outbox.listQueuedOperations('uid-a')).some(item => item.requestId === requestId), false, type);
+    assert.equal((await outbox.listUnsettledOperations('uid-a')).find(item => item.requestId === requestId)?.status, 'awaiting-confirmation', type);
+    assert.equal(await outbox.claimQueuedOperationForSend('uid-a', requestId), null, type);
+    assert.equal(await outbox.confirmQueuedOperation('uid-b', requestId), false, type);
+    assert.equal(await outbox.confirmQueuedOperation('uid-a', requestId), true, type);
+    const claimed = await outbox.claimQueuedOperationForSend('uid-a', requestId);
+    assert.equal(claimed?.status, 'sending', type);
+    assert.equal(await outbox.claimQueuedOperationForSend('uid-a', requestId), null, type);
+    assert.equal((await outbox.listUnsettledOperations('uid-a')).find(item => item.requestId === requestId)?.status, 'sending', type);
+    assert.equal((await outbox.listQueuedOperations('uid-a')).some(item => item.requestId === requestId), false, type);
+    assert.equal(await outbox.removeQueuedOperation('uid-a', requestId), true, type);
+  }
+  const interruptedId = 'interrupted-event';
+  await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: interruptedId, requestId: interruptedId, payload: {collectionName: 'events', data: {sample: 'interrupted'}}});
+  assert.equal(await outbox.confirmQueuedOperation('uid-a', interruptedId, 1000), true);
+  assert.equal((await outbox.claimQueuedOperationForSend('uid-a', interruptedId, 1000))?.status, 'sending');
+  assert.equal(await outbox.confirmQueuedOperation('uid-a', interruptedId, 120999), false);
+  assert.equal(await outbox.confirmQueuedOperation('uid-a', interruptedId, 121000), true);
+  assert.equal((await outbox.claimQueuedOperationForSend('uid-a', interruptedId, 121000))?.status, 'sending');
+  assert.equal(await outbox.removeQueuedOperation('uid-a', interruptedId), true);
+
   await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload});
   await assert.rejects(
     outbox.enqueueOperation({uid: 'uid-a', type: 'users', resourceId: 'user-profile', requestId: 'user-profile', payload: {email: 'private@example.com'}}),
@@ -55,23 +79,23 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
     outbox.enqueueOperation({uid: 'uid-b', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload}),
     /outra ação ou sessão/
   );
-  assert.deepEqual((await outbox.listQueuedOperations('uid-a')).find((item) => item.requestId === 'stable-event').payload, stablePayload);
+  assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).find((item) => item.requestId === 'stable-event').payload, stablePayload);
   assert.equal(await outbox.removeQueuedOperation('uid-a', 'stable-event'), true);
   assert.equal(await outbox.nextQueuedAttemptAt('uid-a'), 0);
   assert.equal(await outbox.nextQueuedAttemptAt('uid-without-operations'), null);
   const laterAttempt = Date.now() + 30_000;
   const earliestAttempt = Date.now() + 10_000;
-  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
-  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'scheduleReleases', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'scheduleReleases', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
   assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-later', {nextAttemptAt: laterAttempt}), true);
   assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-earlier', {nextAttemptAt: earliestAttempt}), true);
   assert.equal(await outbox.nextQueuedAttemptAt('retry-user'), earliestAttempt);
   await outbox.clearUserLocalData('retry-user', {clearOutbox: true});
   assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).map((item) => item.requestId), ['a-queued', 'a-failed', 'a-expired-checklist', 'a-event-conflict']);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1, awaitingConfirmation: 0, sending: 0});
   assert.equal(await outbox.pendingOperationCount('uid-a'), 4);
   assert.equal(await outbox.retryFailedOperations('uid-a'), 2);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 3, failed: 0, conflict: 1});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 0, conflict: 1, awaitingConfirmation: 2, sending: 0});
   assert.equal((await outbox.listUnsettledOperations('uid-a')).some((item) => item.requestId === 'a-event-conflict'), true);
   assert.deepEqual(await outbox.readCachedSchedule('uid-a', '2026-09-25'), {id: '2026-09-25', positions: [{sigla: 'AB'}], stale: true});
   assert.equal(await outbox.readCachedSchedule('uid-b', '2026-09-25'), null);
@@ -105,8 +129,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal(coalescedRelease.payload.marked, false);
   assert.equal((await outbox.listQueuedOperations('uid-a')).filter((item) => item.type === 'scheduleReleases').length, 1);
   await outbox.clearUserLocalData('uid-a', {clearOutbox: true});
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0, conflict: 0});
-  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0, conflict: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0});
   assert.equal(await outbox.readCachedProfile('uid-a'), null);
   assert.equal((await outbox.readCachedProfile('uid-b')).displayName, 'Pessoa B');
   assert.deepEqual((await outbox.readSafeCache('uid-b', 'events', 'active')).data, []);

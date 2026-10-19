@@ -16,7 +16,7 @@ import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
+import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, removeQueuedOperation, requiresSendConfirmation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -1444,32 +1444,46 @@ async function loadOfflineView(target) {
     ]);
     const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala', occurrences: 'Ocorrência'};
     const today = todayInputValue();
-    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation');
+    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type));
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
       const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
       const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
+      const abandonedSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
+        && Date.now() - item.sendClaimedAt >= 120000;
+      const manualConfirmationRequired = requiresSendConfirmation(item.type) &&
+        !Number.isFinite(item.sendConfirmedAt) && (['queued', 'awaiting-confirmation', 'failed'].includes(item.status) || abandonedSend);
       const operationStatus = item.status === 'conflict'
         ? 'Conflito para comparar'
-        : item.status === 'failed'
-          ? 'Revisar'
-          : !navigator.onLine
-            ? 'Aguardando conexão'
-            : retryScheduled
-              ? 'Nova tentativa agendada'
-              : 'Aguardando envio';
+        : manualConfirmationRequired && abandonedSend
+          ? 'Envio interrompido · reconfirmação necessária'
+          : item.status === 'sending'
+            ? 'Envio em andamento'
+            : manualConfirmationRequired
+              ? 'Aguardando sua confirmação'
+            : item.status === 'failed'
+              ? 'Revisar'
+              : !navigator.onLine
+                ? 'Aguardando conexão'
+                : retryScheduled
+                  ? 'Nova tentativa agendada'
+                  : 'Aguardando envio';
       const retryInfo = retryScheduled
         ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
         : '';
-      const resolution = item.status !== 'queued'
-        ? `${dateDiffers
-          ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
-          : versionConflict
-            ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
-            : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
-        : '';
+      const resolution = manualConfirmationRequired
+        ? dateDiffers
+          ? `<small class="sync-error">Este Checklist é de outro dia. As regras atuais só aceitam envio no dia do servidor. A cópia ficará local para você revisar; o envio está bloqueado para não criar um registro inválido.</small><button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+          : `<small class="record-meta">Esta cópia está somente neste aparelho. Revise a data e o tipo antes de autorizar o envio. Se um envio anterior ficou sem resposta, confirme novamente somente após verificar se o registro já foi gravado.</small><button class="primary-button" type="button" data-confirm-offline-send="${escapeHtml(item.requestId)}" ${navigator.onLine && !session.offline ? '' : 'disabled'}>Revisar e confirmar envio</button>${item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+        : item.status !== 'queued'
+          ? `${dateDiffers
+            ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
+            : versionConflict
+              ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
+              : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+          : '';
       const description = item.type === 'scheduleReleases'
         ? `${item.payload.sigla} · ${formatRecordDate(item.payload.day)}`
         : item.type === 'eventEdits'
@@ -1493,7 +1507,7 @@ async function loadOfflineView(target) {
     }).join('');
     const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
     target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
-      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
+      <p>${counts.awaitingConfirmation ? `${counts.awaitingConfirmation} registro(s) local(is) aguardam sua confirmação antes do envio.` : ''}${counts.queued ? `${counts.queued} ação(ões) aguardando sincronização.` : !counts.awaitingConfirmation ? 'Nenhuma ação operacional aguardando envio.' : ''}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
       ${retryableFailed ? `<button class="primary-button" type="button" id="offline-retry" ${navigator.onLine ? '' : 'disabled'}>Tentar sincronizar novamente</button>` : ''}
       ${unsettled.length ? `<ul class="record-list">${rows}</ul>` : ''}${trainingRows ? `<h4>Progresso de treinamento</h4><ul class="record-list">${trainingRows}</ul>` : ''}${!unsettled.length && !trainingRows ? '<p class="empty-state">As gravações online são confirmadas diretamente pelo Firestore.</p>' : ''}
       <p class="offline-footnote">Ações pendentes só ficam confirmadas depois que o Firestore aceitar a sincronização. O perfil em cache permite abrir o shell temporariamente; as Rules do Firestore continuam sendo a autorização efetiva.</p></section></section>${offlineScheduleGalleryMarkup(import.meta.env.BASE_URL)}`;
@@ -1546,6 +1560,28 @@ async function loadOfflineView(target) {
       if (document.querySelector('#module-content') === target) await loadOfflineView(target);
     });
     target.querySelectorAll('[data-open-current-checklist]').forEach((button) => button.addEventListener('click', () => navigate('checklist')));
+    target.querySelectorAll('[data-confirm-offline-send]').forEach((button) => button.addEventListener('click', async () => {
+      const requestId = button.dataset.confirmOfflineSend;
+      const operation = unsettled.find(item => item.requestId === requestId && item.uid === uid);
+      if (!operation || session.user?.uid !== uid || session.status !== 'signed-in' || session.offline || !navigator.onLine) {
+        window.alert('Conecte-se e valide novamente seu perfil antes de enviar os registros locais.');
+        return;
+      }
+      const typeLabel = labelsByType[operation.type] || 'registro';
+      const dateLabel = formatRecordDate(operation.payload?.data?.date || operation.createdAt);
+      if (!window.confirm(`Enviar agora este ${typeLabel} de ${dateLabel} ao Firestore? A confirmação libera somente este item. Os demais registros continuam aguardando sua revisão.`)) return;
+      button.disabled = true;
+      try {
+        if (!await confirmQueuedOperation(uid, requestId)) throw new Error('Não foi possível confirmar este item local.');
+        const {flushOutbox} = await import('./data.js');
+        await flushOutbox(uid, {requestId});
+      } catch {
+        window.alert('O envio não foi confirmado. O item continua preservado localmente para revisão.');
+      } finally {
+        if (document.querySelector('#module-content') === target) await loadOfflineView(target);
+        await updateOutboxStatus();
+      }
+    }));
     target.querySelectorAll('[data-retry-operation]').forEach((button) => button.addEventListener('click', async () => {
       button.disabled = true;
       try {
@@ -2340,7 +2376,7 @@ async function loadMonthlyChecklist(stations, suppliedResult = null, scope = nul
   }
 }
 
-async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true} = {}) {
+async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true, forceQueue = false} = {}) {
   const actorName = session.profile?.displayName;
   const namedAuthor = typeof actorName === 'string' && actorName.length > 0 && actorName.length <= 120 ? {createdByName: actorName} : {};
   const sessionCurrent = () => Boolean(uid) && session.user?.uid === uid && can('checklistWrite') && isCurrent();
@@ -2352,7 +2388,7 @@ async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = 
     const {createOperationalRecord} = await import('./data.js');
     if (!sessionCurrent() || checklistDayMode(day, todayInputValue()) !== 'today') return {ok: false, message: 'A sessão, a permissão ou a data do Checklist foi alterada.'};
     // A atribuição do responsável só é definida após validação no servidor.
-    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid});
+    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid, forceQueue: forceQueue || session.offline || globalThis.navigator?.onLine === false});
     return {ok: true, pendingFirestore: result.pendingFirestore === true};
   } catch (error) {
     return {ok: false, message: error.code === 'permission-denied' ? 'Seu perfil não tem permissão para registrar checklist.' : `Não foi possível salvar. ${error.message || ''}`};
@@ -3582,7 +3618,7 @@ async function bindModuleForm(route) {
       const result = await createOperationalRecord(collectionName, record, {uid: session.user.uid});
       if (route === 'labels' && !currentLabelSave()) return;
       notice = result.pendingFirestore
-        ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
+        ? 'Registro salvo neste aparelho. Revise e confirme o envio na área Sincronização quando houver conexão.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
       if (manualLabelEntry || cameraLabelEntry) {
         if (manualLabelEntry) updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
@@ -3938,6 +3974,7 @@ async function loadLabelStaffCatalog() {
   try {
     const {listLabelStaffSiglas} = await import('./data.js');
     loadedLabelStaffSiglas = await listLabelStaffSiglas();
+    if (session.user?.uid && navigator.onLine && !session.offline) await writeSafeCache(session.user.uid, 'appConfig', 'labelStaff', {siglas: loadedLabelStaffSiglas}).catch(() => {});
     const options = document.querySelector('#label-staff-options');
     if (options) {
       options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
@@ -4590,26 +4627,99 @@ async function renderOfflineOperationalView() {
   const allowed = {
     schedule: route === 'home' && featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
     checklist: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
+    checklistWrite: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && can('checklistWrite'),
     events: route === 'events' && featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
-    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)
+    eventsWrite: route === 'events' && featureEnabledForRoute('events', appFeatures) && can('eventsWrite'),
+    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can),
+    labelsWrite: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && (can('labelsWrite') || can('labelsManage'))
   };
   const day = todayInputValue();
   const access = {sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage')};
   const snapshot = routeKind && allowed[routeKind]
     ? await readOfflineOperationalSnapshot({uid, kind: routeKind, day, access, readSafeCache}).catch(() => null)
     : null;
-  const stationCache = routeKind === 'checklist' && allowed.checklist ? await readSafeCache(uid, 'stations', 'all').catch(() => null) : null;
+  const [stationCache, eventCatalogCache, eventScheduleCache, labelStaffCache] = await Promise.all([
+    routeKind === 'checklist' && allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null,
+    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'eventCatalogs', 'operational').catch(() => null) : null,
+    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'scheduleDays', day).catch(() => null) : null,
+    route === 'labels' && allowed.labelsWrite ? readSafeCache(uid, 'appConfig', 'labelStaff').catch(() => null) : null
+  ]);
   const host = route === 'home' ? document.querySelector('#schedule-content') : document.querySelector('.module-view.panel');
   if (!host) return;
   const snapshots = routeKind ? {[routeKind]: snapshot} : {};
+  const labelStaffSiglas = labelStaffCache?.uid === uid && Array.isArray(labelStaffCache.data?.siglas) ? labelStaffCache.data.siglas : [];
+  loadedLabelStaffSiglas = labelStaffSiglas;
   const markup = offlineOperationalDashboardMarkup({day, route, snapshots, permissions: allowed,
-    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []});
+    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data.filter(station => stationIsValidOn(station, day)) : [],
+    eventCatalog: eventCatalogCache?.uid === uid ? eventCatalogCache.data || {} : {},
+    eventSchedule: eventScheduleCache?.uid === uid ? eventScheduleCache.data || null : null,
+    labelStaffSiglas});
   document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
   document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
   document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
   host.querySelector?.('.offline-operational-dashboard')?.remove();
   host.insertAdjacentHTML('beforeend', markup);
+  bindOfflineOperationalForms(route, uid, day);
 }
+async function bindOfflineOperationalForms(route, uid, day) {
+  const forms = [...document.querySelectorAll('.offline-write-form[data-offline-write-form]')];
+  for (const form of forms) form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (session.user?.uid !== uid || session.profile?.active !== true || session.profile?.access !== true || !session.profile?.permissions) return;
+    const submit = form.querySelector('[type="submit"]');
+    const status = form.querySelector('[data-offline-write-status]');
+    if (!submit || !status) return;
+    submit.disabled = true;
+    status.textContent = 'Guardando somente neste aparelho…';
+    try {
+      if (route === 'events' && form.dataset.offlineWriteForm === 'events') {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const selected = form.elements.memberSigla.selectedOptions[0];
+        const memberSigla = String(values.memberSigla || '').trim().toUpperCase();
+        const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
+        const eventValues = {...values, memberStatus: values.eventType === 'Suporte' ? 'SUPORTE' : (selected?.textContent?.split(' · ')[0] || memberSigla), delayMultiple: values.delayMultiple || '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
+        validateEventForm(eventValues);
+        const support = values.eventType === 'Suporte';
+        const automaticAmount = eventAmountToPay(values.eventType, values.delayMultiple, values.shift);
+        const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: automaticAmount == null ? Number(values.amountToPay || 0) : automaticAmount, createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
+        const {createOperationalRecord} = await import('./data.js');
+        await createOperationalRecord('events', record, {uid, forceQueue: true});
+      } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const normalizedType = String(values.type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const rawAmount = String(values.amount || '').trim().replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.');
+        const amount = rawAmount ? Number(rawAmount) : null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
+        if (!['particular', 'complementacao', 'convenio', 'consulta pre-anestesica', 'sadt'].includes(normalizedType)) throw new Error('Selecione o tipo de etiqueta.');
+        if (rawAmount && !Number.isFinite(amount)) throw new Error('Informe um valor válido.');
+        const selectedStaffSiglas = [...new Set([...form.elements.staffSiglas.selectedOptions].map(option => option.value.trim().toUpperCase()).filter(Boolean))].sort();
+        const normalizedCreditor = normalizedType === 'consulta pre-anestesica' ? 'Caixa' : values.creditor;
+        if (!['Caixa', 'Plantão', 'Plantão/Caixa'].includes(normalizedCreditor)) throw new Error('Selecione o credor.');
+        if (normalizedCreditor !== 'Caixa' && !selectedStaffSiglas.length) throw new Error('Selecione os plantonistas.');
+        if (selectedStaffSiglas.some(sigla => !loadedLabelStaffSiglas.includes(sigla))) throw new Error('Uma sigla não consta no catálogo local autorizado. Conecte-se para atualizar o catálogo.');
+        if (!['consulta pre-anestesica', 'sadt'].includes(normalizedType) && !(values.procedureCode || '').trim()) throw new Error('Informe o número da cirurgia.');
+        if (normalizedType !== 'consulta pre-anestesica' && !String(values.insurance || '').trim()) throw new Error('Informe o convênio.');
+        const actorName = String(session.profile?.displayName || session.user?.displayName || '').trim().slice(0, 120);
+        const record = {date: values.date, patientName: values.patientName.trim(), procedureCode: String(values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : String(values.insurance || '').trim(), creditor: normalizedCreditor, staffSiglas: normalizedCreditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
+        const {createOperationalRecord} = await import('./data.js');
+        await createOperationalRecord('labels', record, {uid, forceQueue: true});
+      } else if (route === 'checklist' && form.dataset.offlineWriteForm === 'checklists') {
+        const condition = form.elements.condition.value;
+        const outcome = await saveChecklistAnswer(form.dataset.stationId, condition, day, form.elements.occurrence.value, {uid, forceQueue: true});
+        if (!outcome.ok) throw new Error(outcome.message);
+      }
+      status.textContent = 'Salvo localmente. Abra Sincronização e revise e confirme este item antes do envio.';
+      form.reset();
+      submit.disabled = false;
+      if (form.elements.eventDate) form.elements.eventDate.value = day;
+      if (form.elements.date) form.elements.date.value = day;
+    } catch (error) {
+      status.textContent = error.message || 'Não foi possível salvar neste aparelho.';
+      submit.disabled = false;
+    }
+  });
+}
+
 async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status');
   if (!target || session.status !== 'signed-in') return;
@@ -4618,8 +4728,8 @@ async function updateOutboxStatus() {
     pendingTrainingProgressCount(session.user.uid),
     retryableFailedOperationCount(session.user.uid)
   ]);
-  const count = counts.queued + counts.failed + counts.conflict;
-  const details = [count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
+  const count = counts.queued + counts.failed + counts.conflict + counts.awaitingConfirmation + counts.sending;
+  const details = [counts.awaitingConfirmation ? `${counts.awaitingConfirmation} registro(s) aguardam confirmação` : '', count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${session.offline ? '<button type="button" id="retry-profile-access">Verificar acesso</button>' : retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;

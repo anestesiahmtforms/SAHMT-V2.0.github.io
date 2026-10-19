@@ -4,7 +4,7 @@ import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db, db as identityDb} from './firebase.js';
-import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
+import {claimQueuedOperationForSend, enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
@@ -2340,7 +2340,10 @@ async function confirmCommittedMutation({collectionName, data, uid, requestId}) 
     JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
 }
 
-export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID()} = {}) {
+export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID(), forceQueue = false} = {}) {
+  if (forceQueue || !navigator.onLine) {
+    return createOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue: true});
+  }
   await prepareOperationalSheetDelivery(collectionName, requestId, uid);
   const result = await createOperationalRecordInFirestore(collectionName, data, {uid, requestId});
   if (!result.pendingFirestore) {
@@ -2350,13 +2353,13 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
   return result;
 }
 
-async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
+async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue = false}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject,dataGeneration:managementDataGeneration} : {})};
-  if (!navigator.onLine) {
-    if (!mayQueueOffline(collectionName)) throw new Error('Etiquetas precisam de conexão para serem confirmadas; os dados do paciente não ficam salvos neste aparelho.');
+  if (forceQueue || !navigator.onLine) {
+    if (!mayQueueOffline(collectionName)) throw new Error('Esta ação não pode ser armazenada para envio offline.');
     await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-    return {id: requestId, pendingFirestore: true};
+    return {id: requestId, pendingFirestore: true, awaitingConfirmation: true};
   }
   if (collectionName === 'events' && data.scheduleSigla) {
     try {
@@ -2437,7 +2440,7 @@ function assertQueuedOperationShape(operation, uid) {
   const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
   if (!operation || operation.uid !== uid || typeof operation.requestId !== 'string' || !operation.requestId || !payload) throw invalid();
 
-  if (['events', 'checklists', 'activities'].includes(operation.type)) {
+  if (['events', 'labels', 'checklists', 'activities'].includes(operation.type)) {
     if (payload.collectionName !== operation.type || operation.resourceId !== operation.requestId || !isRecord(payload.data)) throw invalid();
     return;
   }
@@ -2461,7 +2464,11 @@ export async function flushOutbox(uid, {requestId} = {}) {
     let synced = 0;
     const queued = await listQueuedOperations(uid);
     const operations = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
-    for (const operation of operations) {
+    for (let operation of operations) {
+      if (['events', 'labels', 'checklists', 'eventEdits'].includes(operation.type)) {
+        operation = await claimQueuedOperationForSend(uid, operation.requestId);
+        if (!operation) continue;
+      }
       if (operation.type === 'occurrences') {
         const [{auth},{createOccurrenceRepository}] = await Promise.all([
           import('./firebase-auth.js'), import('./occurrence-data.js')

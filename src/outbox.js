@@ -7,7 +7,10 @@ const DB_VERSION = 3;
 const PROFILES = 'profiles';
 const CACHE = 'cache';
 const OUTBOX = 'outbox';
-const ALLOWED_OUTBOX_TYPES = new Set(['events', 'checklists', 'activities', 'eventEdits', 'scheduleReleases', 'occurrences']);
+const ALLOWED_OUTBOX_TYPES = new Set(['events', 'labels', 'checklists', 'activities', 'eventEdits', 'scheduleReleases', 'occurrences']);
+const CONFIRM_BEFORE_SEND_TYPES = new Set(['events', 'labels', 'checklists', 'eventEdits']);
+
+export function requiresSendConfirmation(type) { return CONFIRM_BEFORE_SEND_TYPES.has(type); }
 const MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID = 20;
 const MAX_OCCURRENCE_QUEUE_BYTES = 500_000;
 let dbPromise;
@@ -194,7 +197,7 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
   if (type === 'occurrences') validateOccurrenceQueuePayload(payload);
   if (type === 'activities') payload = {...payload, dataProject:payload.dataProject || LOCAL_MANAGEMENT_PROJECT};
-  const item = {requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''};
+  const item = {requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: requiresSendConfirmation(type) ? 'awaiting-confirmation' : 'queued', nextAttemptAt: 0, lastError: ''};
   const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);
     let outcome = 'pending';
@@ -246,8 +249,8 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (result.outcome === 'queue-full') throw new Error('OCCURRENCE_QUEUE_FULL');
   if (result.outcome === 'id-collision') throw new Error('O ID desta operação já pertence a outra ação ou sessão.');
   if (result.outcome === 'payload-conflict') throw new Error('O ID desta operação já foi usado com outro conteúdo; a ação existente foi preservada.');
-  if (result.outcome === 'existing' && result.status !== 'queued') throw new Error('Esta operação já está em revisão e precisa ser tratada na área Offline.');
-  if (result.status === 'queued' && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+  if (result.outcome === 'existing' && !['queued', 'awaiting-confirmation'].includes(result.status)) throw new Error('Esta operação já está em revisão e precisa ser tratada na área Offline.');
+  if (['queued', 'awaiting-confirmation'].includes(result.status) && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
     window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId, type}}));
   }
   return requestId;
@@ -290,21 +293,30 @@ export async function listUnsettledOperations(uid) {
     let queued = [];
     let failed = [];
     let conflict = [];
+    let awaitingConfirmation = [];
+    let sending = [];
     const index = tx.objectStore(OUTBOX).index('uidStatus');
     const queuedRequest = index.getAll(IDBKeyRange.only([uid, 'queued']));
     const failedRequest = index.getAll(IDBKeyRange.only([uid, 'failed']));
     const conflictRequest = index.getAll(IDBKeyRange.only([uid, 'conflict']));
+    const awaitingRequest = index.getAll(IDBKeyRange.only([uid, 'awaiting-confirmation']));
+    const sendingRequest = index.getAll(IDBKeyRange.only([uid, 'sending']));
     queuedRequest.onsuccess = () => { queued = queuedRequest.result || []; };
     failedRequest.onsuccess = () => { failed = failedRequest.result || []; };
     conflictRequest.onsuccess = () => { conflict = conflictRequest.result || []; };
-    return () => [...queued, ...failed, ...conflict].sort((a, b) => a.createdAt - b.createdAt);
+    awaitingRequest.onsuccess = () => { awaitingConfirmation = awaitingRequest.result || []; };
+    sendingRequest.onsuccess = () => { sending = sendingRequest.result || []; };
+    return () => [...queued, ...failed, ...conflict, ...awaitingConfirmation, ...sending].sort((a, b) => a.createdAt - b.createdAt);
   });
 }
 
 export async function updateQueuedOperation(uid, requestId, update) {
   if (!uid || !requestId || !update || typeof update !== 'object') return false;
   const changes = {};
-  if (update.status === 'queued' || update.status === 'failed' || update.status === 'conflict') changes.status = update.status;
+  if (['queued', 'failed', 'conflict', 'awaiting-confirmation', 'sending'].includes(update.status)) changes.status = update.status;
+  if (Number.isFinite(update.sendConfirmedAt) && update.sendConfirmedAt >= 0) changes.sendConfirmedAt = update.sendConfirmedAt;
+  if (update.clearSendConfirmation === true) { changes.sendConfirmedAt = null; changes.sendClaimedAt = null; }
+  if (Number.isFinite(update.sendClaimedAt) && update.sendClaimedAt >= 0) changes.sendClaimedAt = update.sendClaimedAt;
   if (Number.isInteger(update.attempts) && update.attempts >= 0) changes.attempts = update.attempts;
   if (Number.isFinite(update.nextAttemptAt) && update.nextAttemptAt >= 0) changes.nextAttemptAt = update.nextAttemptAt;
   if (typeof update.lastError === 'string') changes.lastError = update.lastError.slice(0, 300);
@@ -319,6 +331,44 @@ export async function updateQueuedOperation(uid, requestId, update) {
       updated = true;
     };
     return () => updated;
+  });
+}
+
+export async function confirmQueuedOperation(uid, requestId, now = Date.now()) {
+  if (!uid || !requestId || !Number.isFinite(now)) return false;
+  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+    let confirmed = false;
+    const store = tx.objectStore(OUTBOX);
+    const request = store.get(requestId);
+    request.onsuccess = () => {
+      const item = request.result;
+      if (!item || item.uid !== uid || !requiresSendConfirmation(item.type)) return;
+      const staleSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
+        && now - item.sendClaimedAt >= 120000;
+      if (!['awaiting-confirmation', 'queued', 'failed'].includes(item.status) && !staleSend) return;
+      store.put({...item, status: 'queued', sendConfirmedAt: now, sendClaimedAt: null,
+        nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+      confirmed = true;
+    };
+    return () => confirmed;
+  });
+}
+
+export async function claimQueuedOperationForSend(uid, requestId, now = Date.now()) {
+  if (!uid || !requestId || !Number.isFinite(now)) return null;
+  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+    let claimed = null;
+    const store = tx.objectStore(OUTBOX);
+    const request = store.get(requestId);
+    request.onsuccess = () => {
+      const item = request.result;
+      if (!item || item.uid !== uid || item.status !== 'queued' ||
+          !requiresSendConfirmation(item.type) || !Number.isFinite(item.sendConfirmedAt)) return;
+      if (Number.isFinite(item.sendClaimedAt) && now - item.sendClaimedAt < 120000) return;
+      claimed = {...item, status: 'sending', sendClaimedAt: now, sendConfirmedAt: null};
+      store.put(claimed);
+    };
+    return () => claimed;
   });
 }
 
@@ -338,24 +388,30 @@ export async function removeQueuedOperation(uid, requestId) {
 }
 
 export async function pendingOperationCount(uid) {
-  const {queued, failed, conflict} = await operationCounts(uid);
-  return queued + failed + conflict;
+  const {queued, failed, conflict, awaitingConfirmation, sending} = await operationCounts(uid);
+  return queued + failed + conflict + awaitingConfirmation + sending;
 }
 
 export async function operationCounts(uid) {
-  if (!uid) return {queued: 0, failed: 0};
+  if (!uid) return {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0};
   return transactAcross(OUTBOX, 'readonly', (tx) => {
     let queued = 0;
     let failed = 0;
     let conflict = 0;
+    let awaitingConfirmation = 0;
+    let sending = 0;
     const index = tx.objectStore(OUTBOX).index('uidStatus');
     const queuedRequest = index.count(IDBKeyRange.only([uid, 'queued']));
     const failedRequest = index.count(IDBKeyRange.only([uid, 'failed']));
     const conflictRequest = index.count(IDBKeyRange.only([uid, 'conflict']));
+    const awaitingRequest = index.count(IDBKeyRange.only([uid, 'awaiting-confirmation']));
+    const sendingRequest = index.count(IDBKeyRange.only([uid, 'sending']));
     queuedRequest.onsuccess = () => { queued = queuedRequest.result; };
     failedRequest.onsuccess = () => { failed = failedRequest.result; };
     conflictRequest.onsuccess = () => { conflict = conflictRequest.result; };
-    return () => ({queued, failed, conflict});
+    awaitingRequest.onsuccess = () => { awaitingConfirmation = awaitingRequest.result; };
+    sendingRequest.onsuccess = () => { sending = sendingRequest.result; };
+    return () => ({queued, failed, conflict, awaitingConfirmation, sending});
   });
 }
 
@@ -368,7 +424,8 @@ export async function retryFailedOperations(uid) {
       const cursor = request.result;
       if (!cursor) return;
       if (cursor.value.lastErrorCode !== 'invalid-outbox-operation') {
-        cursor.update({...cursor.value, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+        const status = requiresSendConfirmation(cursor.value.type) ? 'awaiting-confirmation' : 'queued';
+        cursor.update({...cursor.value, status, sendConfirmedAt: null, sendClaimedAt: null, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
         retried++;
       }
       cursor.continue();
@@ -380,7 +437,7 @@ export async function retryFailedOperations(uid) {
 export async function retryableFailedOperationCount(uid) {
   if (!uid) return 0;
   const failed = await getUserOperations(uid, 'failed');
-  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation').length;
+  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type)).length;
 }
 
 export async function retryFailedOperation(uid, requestId) {
@@ -392,7 +449,8 @@ export async function retryFailedOperation(uid, requestId) {
     request.onsuccess = () => {
       const item = request.result;
       if (!item || item.uid !== uid || item.status !== 'failed' || item.lastErrorCode === 'invalid-outbox-operation') return;
-      store.put({...item, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+      const status = requiresSendConfirmation(item.type) ? 'awaiting-confirmation' : 'queued';
+      store.put({...item, status, sendConfirmedAt: null, sendClaimedAt: null, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
       retried = true;
     };
     return () => retried;

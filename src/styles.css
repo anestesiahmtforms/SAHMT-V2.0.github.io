@@ -2166,3 +2166,5 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .offline-operational-section .record-meta{display:block;margin:0 0 10px;color:#526578;font-size:.7rem}
 .offline-readonly-notice{margin:0}
 .app-shell.is-offline-readonly .quick-form{display:none!important}
+
+.app-shell.is-offline-readonly .offline-write-form{display:grid!important;gap:12px}
