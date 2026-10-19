@@ -107,7 +107,8 @@ function renderHarness(session) {
 
 test('modo offline preserva a tela normal e troca somente o painel salvo ao redesenhar', async () => {
   const {mountOfflineOperationalDashboard} = await import('../src/offline-operational-snapshot.js');
-  assert.match(main, /mountOfflineOperationalDashboard\(host, offlineOperationalDashboardMarkup/);
+  assert.match(main, /const routeKind = \{home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'\}\[route\]/);
+  assert.match(main, /route === 'home' \? document\.querySelector\('#schedule-content'\) : document\.querySelector\('\.module-view\.panel'\)/);
   const host = fakeOfflineHost('<nav data-route="events">Eventos</nav><section id="schedule-content">Escala</section>');
   mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia inicial</section>');
   assert.match(host.innerHTML, /data-route="events"/);
