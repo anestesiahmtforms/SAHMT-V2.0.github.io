@@ -4,7 +4,7 @@ import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db, db as identityDb} from './firebase.js';
-import {claimQueuedOperationForSend, enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, requiresSendConfirmation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
+import {claimQueuedOperationForSend, enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
