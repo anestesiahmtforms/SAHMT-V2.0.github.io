@@ -4578,33 +4578,40 @@ async function render() {
 }
 
 async function renderOfflineOperationalView() {
-  const host = document.querySelector('.main-content');
+  const route = currentRoute();
   const uid = session.user?.uid;
-  if (!host || !uid) return;
+  const routeKind = {home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'}[route];
+  if (!uid) return;
   const cachedFeatures = await readSafeCache(uid, 'appConfig', 'app').catch(() => null);
   if (cachedFeatures?.uid === uid && cachedFeatures.data?.features) {
     appFeatures = normalizeAppFeatures(cachedFeatures.data.features);
     appFeaturesUid = uid;
   }
   const allowed = {
-    schedule: featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
-    checklist: featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
-    events: featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
-    labels: featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)
+    schedule: route === 'home' && featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
+    checklist: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
+    events: route === 'events' && featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
+    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)
   };
   const day = todayInputValue();
   const access = {sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage')};
-  const [schedule, checklist, events, labels, stationCache] = await Promise.all([
-    allowed.schedule ? readOfflineOperationalSnapshot({uid, kind: 'schedule', day, readSafeCache}).catch(() => null) : null,
-    allowed.checklist ? readOfflineOperationalSnapshot({uid, kind: 'checklist', day, readSafeCache}).catch(() => null) : null,
-    allowed.events ? readOfflineOperationalSnapshot({uid, kind: 'events', day, access, readSafeCache}).catch(() => null) : null,
-    allowed.labels ? readOfflineOperationalSnapshot({uid, kind: 'labels', day, access, readSafeCache}).catch(() => null) : null,
-    allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null
-  ]);
-  const snapshots = {schedule, checklist, events, labels};
-  mountOfflineOperationalDashboard(host, offlineOperationalDashboardMarkup({day, snapshots, permissions: allowed, stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []}));
+  const snapshot = routeKind && allowed[routeKind]
+    ? await readOfflineOperationalSnapshot({uid, kind: routeKind, day, access, readSafeCache}).catch(() => null)
+    : null;
+  const stationCache = routeKind === 'checklist' && allowed.checklist ? await readSafeCache(uid, 'stations', 'all').catch(() => null) : null;
+  const host = route === 'home' ? document.querySelector('#schedule-content') : document.querySelector('.module-view.panel');
+  if (!host) return;
+  const snapshots = routeKind ? {[routeKind]: snapshot} : {};
+  const markup = offlineOperationalDashboardMarkup({day, route, snapshots, permissions: allowed,
+    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []});
+  if (route !== 'home') {
+    document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
+    document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
+    document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
+  }
+  host.querySelector?.('.offline-operational-dashboard')?.remove();
+  host.insertAdjacentHTML('beforeend', markup);
 }
-
 async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status');
   if (!target || session.status !== 'signed-in') return;
