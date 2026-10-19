@@ -2465,7 +2465,7 @@ export async function flushOutbox(uid, {requestId} = {}) {
     const queued = await listQueuedOperations(uid);
     const operations = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
     for (let operation of operations) {
-      if (requiresSendConfirmation(operation.type)) {
+      if (['events', 'labels', 'checklists', 'eventEdits'].includes(operation.type)) {
         operation = await claimQueuedOperationForSend(uid, operation.requestId);
         if (!operation) continue;
       }
