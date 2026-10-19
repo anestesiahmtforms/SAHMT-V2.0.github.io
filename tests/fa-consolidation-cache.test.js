@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import 'fak
 import {writeSafeCache,readSafeCache,listPendingTrainingProgress,updateCachedTrainingProgress} from '../src/outbox.js';
 async function legacy(entries){
  await writeSafeCache('member','stations','initialize',[]);
- await new Promise((resolve,reject)=>{const open=indexedDB.open('sahmt-v2-local',3);open.onerror=()=>reject(open.error);open.onsuccess=()=>{
+ await new Promise((resolve,reject)=>{const open=indexedDB.open('sahmt-v2-local');open.onerror=()=>reject(open.error);open.onsuccess=()=>{
   const db=open.result,tx=db.transaction('cache','readwrite');for(const entry of entries)tx.objectStore('cache').put(entry);
   tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);
  };});
