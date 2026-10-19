@@ -2157,3 +2157,12 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 @media(max-width:520px){.material-viewer-dialog{inset:max(4px,env(safe-area-inset-top)) 4px max(4px,env(safe-area-inset-bottom));width:auto;height:auto;max-height:none;border-radius:10px;padding:6px}.material-viewer-dialog[open]{gap:6px}}
 
 .offline-operational-dashboard>section>.record-meta{display:block;margin-top:4px}
+
+/* Offline cache follows the active module layout and remains read-only. */
+.offline-operational-dashboard{display:grid;gap:12px;margin-top:12px}
+.offline-operational-sections{gap:12px}
+.offline-operational-section{min-width:0;padding:14px}
+.offline-operational-section h3{margin:0 0 10px;color:var(--ink);font-size:1rem}
+.offline-operational-section .record-meta{display:block;margin:0 0 10px;color:#526578;font-size:.7rem}
+.offline-readonly-notice{margin:0}
+.app-shell.is-offline-readonly .quick-form{display:none!important}

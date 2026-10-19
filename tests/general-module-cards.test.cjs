@@ -107,7 +107,8 @@ function renderHarness(session) {
 
 test('modo offline preserva a tela normal e troca somente o painel salvo ao redesenhar', async () => {
   const {mountOfflineOperationalDashboard} = await import('../src/offline-operational-snapshot.js');
-  assert.match(main, /mountOfflineOperationalDashboard\(host, offlineOperationalDashboardMarkup/);
+  assert.match(main, /const routeKind = \{home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'\}\[route\]/);
+  assert.match(main, /route === 'home' \? document\.querySelector\('#schedule-content'\) : document\.querySelector\('\.module-view\.panel'\)/);
   const host = fakeOfflineHost('<nav data-route="events">Eventos</nav><section id="schedule-content">Escala</section>');
   mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia inicial</section>');
   assert.match(host.innerHTML, /data-route="events"/);
@@ -116,6 +117,35 @@ test('modo offline preserva a tela normal e troca somente o painel salvo ao rede
   assert.match(host.innerHTML, /data-route="events"/);
   assert.match(host.innerHTML, /Cópia atualizada/);
   assert.doesNotMatch(host.innerHTML, /Cópia inicial/);
+});
+
+
+test('painel offline fica na área do módulo e preserva os contêineres visuais do app', async () => {
+  const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
+  const markup = offlineOperationalDashboardMarkup({
+    route: 'home',
+    day: '2026-10-19',
+    snapshots: {schedule: {schedule: {positions: ['A']}, cachedAt: Date.now()}},
+    permissions: {schedule: true}
+  });
+  assert.match(markup, /class="offline-operational-dashboard"/);
+  assert.match(markup, /class="offline-operational-sections content-grid"/);
+  assert.match(markup, /class="offline-operational-section panel"/);
+  assert.match(markup, /class="offline-readonly-notice sync-state"/);
+  assert.match(markup, /class="siglas-grid"/);
+  assert.doesNotMatch(markup, /Última cópia deste aparelho/);
+});
+
+test('painel offline mostra apenas a rota aberta', async () => {
+  const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
+  const markup = offlineOperationalDashboardMarkup({
+    route: 'events',
+    day: '2026-10-19',
+    snapshots: {events: {records: [{eventType: 'Evento'}]}, labels: {records: [{patientName: 'Outro'}]}},
+    permissions: {events: true, labels: true}
+  });
+  assert.match(markup, /<h3>Eventos<\/h3>/);
+  assert.doesNotMatch(markup, /<h3>Etiquetas<\/h3>/);
 });
 
 function fakeOfflineHost(initial) {

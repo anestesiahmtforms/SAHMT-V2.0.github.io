@@ -41,19 +41,18 @@ export function mountOfflineOperationalDashboard(host, markup) {
   return true;
 }
 
-export function offlineOperationalDashboardMarkup({day, snapshots = {}, permissions = {}, stations = []} = {}) {
+export function offlineOperationalDashboardMarkup({day, route = 'home', snapshots = {}, permissions = {}, stations = []} = {}) {
   const sections = [];
-  if (permissions.schedule) {
+  if (route === 'home' && permissions.schedule) {
     const schedule = snapshots.schedule?.schedule;
     const positions = schedule ? (schedule.assignments || schedule.siglas || schedule.positions || []).map((item, index) => {
       const value = typeof item === 'string' ? {sigla: item} : item || {};
-      return `<li><strong>${index + 1}. ${html(value.sigla || value.name || value.label || 'Posição')}</strong>${value.name && value.name !== value.sigla ? ` · ${html(value.name)}` : ''}</li>`;
+      return `<li class="sigla-card"><strong>${index + 1}. ${html(value.sigla || value.name || value.label || 'Posição')}</strong>${value.name && value.name !== value.sigla ? `<small>${html(value.name)}</small>` : ''}</li>`;
     }).join('') : '';
-    sections.push(`<section><h3>Escala do dia</h3>${cacheStamp(snapshots.schedule)}${schedule ? `<ol class="record-list">${positions}</ol>` : '<p class="empty-state">A escala de hoje ainda não foi salva neste aparelho.</p>'}</section>`);
+    sections.push(`<section class="offline-operational-section panel"><h3>Escala do dia</h3>${cacheStamp(snapshots.schedule)}${schedule ? `<ol class="siglas-grid">${positions}</ol>` : '<p class="empty-state">A escala de hoje ainda não foi salva neste aparelho.</p>'}</section>`);
   }
-  if (permissions.checklist) {
+  if (route === 'checklist' && permissions.checklist) {
     const records = snapshots.checklist?.records || [];
-    const stationById = new Map(stations.map(station => [station.id, station]));
     const latestByStation = new Map();
     for (const record of records) if (record.stationId && !latestByStation.has(record.stationId)) latestByStation.set(record.stationId, record);
     const activeStations = stations.filter(station => station.active === true);
@@ -63,20 +62,19 @@ export function offlineOperationalDashboardMarkup({day, snapshots = {}, permissi
     }) : [];
     const knownStations = new Set(activeStations.map(station => station.id));
     for (const record of records) if (record.stationId && !knownStations.has(record.stationId)) checklistRows.push(`<li><strong>${html(record.stationName || record.stationId)}</strong> · ${html(record.condition || record.status || 'Registrado')}${record.occurrence ? `<small>${html(record.occurrence)}</small>` : ''}</li>`);
-    sections.push(`<section><h3>Checklist</h3>${cacheStamp(snapshots.checklist)}${checklistRows.length ? `<ul class="record-list">${checklistRows.join('')}</ul>` : !snapshots.checklist && activeStations.length ? `<p class="empty-state">O catálogo está salvo, mas o resultado diário do checklist não foi armazenado neste aparelho.</p>` : recordList(records, item => `<strong>${html(item.stationName || item.stationId || 'Arsenal')}</strong> · ${html(item.condition || item.status || 'Sem registro salvo')}${item.occurrence ? `<small>${html(item.occurrence)}</small>` : ''}`, snapshots.checklist ? 'Nenhum registro de checklist para esta data.' : undefined)}</section>`);
+    sections.push(`<section class="offline-operational-section panel"><h3>Checklist</h3>${cacheStamp(snapshots.checklist)}${checklistRows.length ? `<ul class="record-list">${checklistRows.join('')}</ul>` : !snapshots.checklist && activeStations.length ? `<p class="empty-state">O catálogo está salvo, mas o resultado diário do checklist não foi armazenado neste aparelho.</p>` : recordList(records, item => `<strong>${html(item.stationName || item.stationId || 'Arsenal')}</strong> · ${html(item.condition || item.status || 'Sem registro salvo')}${item.occurrence ? `<small>${html(item.occurrence)}</small>` : ''}`, snapshots.checklist ? 'Nenhum registro de checklist para esta data.' : undefined)}</section>`);
   }
-  if (permissions.events) {
+  if (route === 'events' && permissions.events) {
     const records = snapshots.events?.records || [];
-    sections.push(`<section><h3>Eventos</h3>${cacheStamp(snapshots.events)}${recordList(records, item => `<strong>${html(item.memberStatus || item.memberName || item.eventType || 'Evento')}</strong>${item.eventType ? ` · ${html(item.eventType)}` : ''}${item.description ? `<small>${html(item.description)}</small>` : ''}`, snapshots.events ? 'Nenhum evento registrado para esta data.' : undefined)}</section>`);
+    sections.push(`<section class="offline-operational-section panel"><h3>Eventos</h3>${cacheStamp(snapshots.events)}${recordList(records, item => `<strong>${html(item.memberStatus || item.memberName || item.eventType || 'Evento')}</strong>${item.eventType ? ` · ${html(item.eventType)}` : ''}${item.description ? `<small>${html(item.description)}</small>` : ''}`, snapshots.events ? 'Nenhum evento registrado para esta data.' : undefined)}</section>`);
   }
-  if (permissions.labels) {
+  if (route === 'labels' && permissions.labels) {
     const records = snapshots.labels?.records || [];
-    sections.push(`<section><h3>Etiquetas</h3>${cacheStamp(snapshots.labels)}${recordList(records, item => `<strong>${html(item.patientName || 'Etiqueta')}</strong>${item.type ? ` · ${html(item.type)}` : ''}${item.encounterCode ? `<small>Atendimento ${html(item.encounterCode)}</small>` : ''}`, snapshots.labels ? 'Nenhuma etiqueta registrada para esta data.' : undefined)}</section>`);
+    sections.push(`<section class="offline-operational-section panel"><h3>Etiquetas</h3>${cacheStamp(snapshots.labels)}${recordList(records, item => `<strong>${html(item.patientName || 'Etiqueta')}</strong>${item.type ? ` · ${html(item.type)}` : ''}${item.encounterCode ? `<small>Atendimento ${html(item.encounterCode)}</small>` : ''}`, snapshots.labels ? 'Nenhuma etiqueta registrada para esta data.' : undefined)}</section>`);
   }
-  if (!sections.length) return '<p class="empty-state">Seu perfil local não tem acesso de consulta a estes módulos.</p>';
-  return `<section class="offline-operational-dashboard" aria-label="Consulta offline"><header><p class="eyebrow">CONSULTA OFFLINE · ${html(day)}</p><h2>Última cópia deste aparelho</h2></header><p class="sync-state" role="status">Somente leitura. Os dados podem estar desatualizados; alterações e confirmações estão indisponíveis sem validação do servidor.</p>${sections.join('')}</section>`;
+  if (!sections.length) return `<section class="offline-operational-dashboard" aria-label="Consulta offline"><p class="offline-readonly-notice sync-state" role="status">Não há uma cópia offline disponível para esta área neste aparelho.</p></section>`;
+  return `<section class="offline-operational-dashboard" aria-label="Consulta offline"><p class="offline-readonly-notice sync-state" role="status">Somente leitura · cópia salva neste aparelho, possivelmente desatualizada. Gravações e confirmações estão indisponíveis.</p><div class="offline-operational-sections content-grid">${sections.join('')}</div></section>`;
 }
-
 export async function readOfflineOperationalSnapshot({uid, kind, day, access = {}, readSafeCache, now = Date.now(), maxAgeMs = 7 * 24 * 60 * 60 * 1000} = {}) {
   if (typeof uid !== 'string' || !uid.trim() || !isDayKey(day) || typeof readSafeCache !== 'function') return null;
   let cacheKind, cacheId;
