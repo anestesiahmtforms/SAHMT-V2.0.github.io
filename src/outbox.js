@@ -342,8 +342,10 @@ export async function confirmQueuedOperation(uid, requestId, now = Date.now()) {
     const request = store.get(requestId);
     request.onsuccess = () => {
       const item = request.result;
-      if (!item || item.uid !== uid || !requiresSendConfirmation(item.type) ||
-          !['awaiting-confirmation', 'queued', 'failed'].includes(item.status)) return;
+      if (!item || item.uid !== uid || !requiresSendConfirmation(item.type)) return;
+      const staleSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
+        && now - item.sendClaimedAt >= 120000;
+      if (!['awaiting-confirmation', 'queued', 'failed'].includes(item.status) && !staleSend) return;
       store.put({...item, status: 'queued', sendConfirmedAt: now, sendClaimedAt: null,
         nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
       confirmed = true;
