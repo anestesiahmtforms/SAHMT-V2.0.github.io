@@ -34,6 +34,13 @@ function cacheStamp(snapshot) {
   return snapshot?.cachedAt ? `<small class="record-meta">Cópia salva em ${html(new Date(snapshot.cachedAt).toLocaleString('pt-BR'))}</small>` : '';
 }
 
+export function mountOfflineOperationalDashboard(host, markup) {
+  if (!host || typeof host.insertAdjacentHTML !== 'function' || typeof markup !== 'string' || !markup.trim()) return false;
+  host.querySelector?.('.offline-operational-dashboard')?.remove();
+  host.insertAdjacentHTML('beforeend', markup);
+  return true;
+}
+
 export function offlineOperationalDashboardMarkup({day, snapshots = {}, permissions = {}, stations = []} = {}) {
   const sections = [];
   if (permissions.schedule) {

@@ -28,7 +28,7 @@ import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortCheckl
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
-import {offlineOperationalDashboardMarkup, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
+import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -4602,8 +4602,7 @@ async function renderOfflineOperationalView() {
     allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null
   ]);
   const snapshots = {schedule, checklist, events, labels};
-  host.innerHTML = `${offlineOperationalDashboardMarkup({day, snapshots, permissions: allowed, stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []})}<button class="secondary-button" type="button" data-route="home">HOME</button>`;
-  host.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));
+  mountOfflineOperationalDashboard(host, offlineOperationalDashboardMarkup({day, snapshots, permissions: allowed, stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []}));
 }
 
 async function updateOutboxStatus() {

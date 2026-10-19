@@ -105,6 +105,34 @@ function renderHarness(session) {
   return {context, navigations, loads, shells};
 }
 
+test('modo offline preserva a tela normal e troca somente o painel salvo ao redesenhar', async () => {
+  const {mountOfflineOperationalDashboard} = await import('../src/offline-operational-snapshot.js');
+  assert.match(main, /mountOfflineOperationalDashboard\(host, offlineOperationalDashboardMarkup/);
+  const host = fakeOfflineHost('<nav data-route="events">Eventos</nav><section id="schedule-content">Escala</section>');
+  mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia inicial</section>');
+  assert.match(host.innerHTML, /data-route="events"/);
+  assert.match(host.innerHTML, /Escala/);
+  mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia atualizada</section>');
+  assert.match(host.innerHTML, /data-route="events"/);
+  assert.match(host.innerHTML, /Cópia atualizada/);
+  assert.doesNotMatch(host.innerHTML, /Cópia inicial/);
+});
+
+function fakeOfflineHost(initial) {
+  return {
+    innerHTML: initial,
+    querySelector(selector) {
+      if (selector !== '.offline-operational-dashboard') return null;
+      const match = this.innerHTML.match(/<section class="offline-operational-dashboard">[\s\S]*?<\/section>/);
+      return match ? {remove: () => { this.innerHTML = this.innerHTML.replace(match[0], ''); }} : null;
+    },
+    insertAdjacentHTML(position, markup) {
+      assert.equal(position, 'beforeend');
+      this.innerHTML += markup;
+    }
+  };
+}
+
 test('link direto de Gestão bloqueia antes de renderizar e carregar; revogação também bloqueia', async () => {
   for (const session of [approved({managementRead: true}, 'gestor'), approved({admin: 'true'})]) {
     const h = renderHarness(session);
