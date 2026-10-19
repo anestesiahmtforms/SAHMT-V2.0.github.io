@@ -55,6 +55,15 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
     assert.equal((await outbox.listQueuedOperations('uid-a')).some(item => item.requestId === requestId), false, type);
     assert.equal(await outbox.removeQueuedOperation('uid-a', requestId), true, type);
   }
+  const interruptedId = 'interrupted-event';
+  await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: interruptedId, requestId: interruptedId, payload: {collectionName: 'events', data: {sample: 'interrupted'}}});
+  assert.equal(await outbox.confirmQueuedOperation('uid-a', interruptedId, 1000), true);
+  assert.equal((await outbox.claimQueuedOperationForSend('uid-a', interruptedId, 1000))?.status, 'sending');
+  assert.equal(await outbox.confirmQueuedOperation('uid-a', interruptedId, 120999), false);
+  assert.equal(await outbox.confirmQueuedOperation('uid-a', interruptedId, 121000), true);
+  assert.equal((await outbox.claimQueuedOperationForSend('uid-a', interruptedId, 121000))?.status, 'sending');
+  assert.equal(await outbox.removeQueuedOperation('uid-a', interruptedId), true);
+
   await outbox.enqueueOperation({uid: 'uid-a', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload});
   await assert.rejects(
     outbox.enqueueOperation({uid: 'uid-a', type: 'users', resourceId: 'user-profile', requestId: 'user-profile', payload: {email: 'private@example.com'}}),
