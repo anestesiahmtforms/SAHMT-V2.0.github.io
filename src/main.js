@@ -4604,11 +4604,9 @@ async function renderOfflineOperationalView() {
   const snapshots = routeKind ? {[routeKind]: snapshot} : {};
   const markup = offlineOperationalDashboardMarkup({day, route, snapshots, permissions: allowed,
     stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []});
-  if (route !== 'home') {
-    document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
-    document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
-    document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
-  }
+  document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
+  document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
+  document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
   host.querySelector?.('.offline-operational-dashboard')?.remove();
   host.insertAdjacentHTML('beforeend', markup);
 }
