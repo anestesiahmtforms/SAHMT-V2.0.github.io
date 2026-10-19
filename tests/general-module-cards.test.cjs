@@ -118,6 +118,20 @@ test('modo offline preserva a tela normal e troca somente o painel salvo ao rede
   assert.doesNotMatch(host.innerHTML, /Cópia inicial/);
 });
 
+
+test('painel offline usa os contêineres visuais padrão do app', async () => {
+  const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
+  const markup = offlineOperationalDashboardMarkup({
+    day: '2026-10-19',
+    snapshots: {schedule: {schedule: {positions: ['A']}, cachedAt: Date.now()}},
+    permissions: {schedule: true}
+  });
+  assert.match(markup, /class="offline-operational-dashboard module-view panel"/);
+  assert.match(markup, /class="offline-operational-sections content-grid"/);
+  assert.match(markup, /class="offline-operational-section panel"/);
+  assert.match(markup, /class="offline-readonly-notice sync-state"/);
+});
+
 function fakeOfflineHost(initial) {
   return {
     innerHTML: initial,
