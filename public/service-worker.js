@@ -49,7 +49,7 @@ self.addEventListener('install', (event) => {
       'src/checklist-conference-listener.js', 'src/checklist-responsibility-listener.js'
     ]);
     for (const [key, entry] of Object.entries(manifest)) {
-      if (reportEssentials.has(entry.src || key)) visitEntry(key);
+      if (reportEssentials.has(entry.src || key) || /\/(?:@firebase\/app-check|firebase\/app-check)\//.test(entry.src || key)) visitEntry(key);
     }
     await Promise.all([...assets].map(async (assetUrl) => {
       const response = await fetch(assetUrl, {cache: 'reload'});

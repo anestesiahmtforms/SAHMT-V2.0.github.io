@@ -4,11 +4,12 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import 'fake-indexeddb/auto';
 import {persistOperationalMutation} from '../src/offline-mutation.js';
+import {requiresSendConfirmation} from '../src/outbox.js';
 const data=readFileSync(new URL('../src/data.js',import.meta.url),'utf8').replaceAll('\r\n','\n');
 function fn(name){const m=data.match(new RegExp('(?:export )?(?:async )?function '+name+'\\('));assert.ok(m);const start=m.index;return data.slice(start,data.indexOf('\n}',start)+2).replace(/^export /,'');}
 function harness(){
  const fa={project:'FA'},fb={project:'FB'},writes=[],queued=[];
- const ctx={persistOperationalMutation,operationalBackend:{noteFailure(){}},db:fa,identityDb:fa,managementDataProject:'FA',managementDataGeneration:'FA_CONSOLIDATED_V1',navigator:{onLine:true},isOfflineRuntimeForced:()=>false,isFirestoreCacheFallbackError:()=>false,crypto:{randomUUID:()=> 'r'},
+ const ctx={requiresSendConfirmation,persistOperationalMutation,operationalBackend:{noteFailure(){}},db:fa,identityDb:fa,managementDataProject:'FA',managementDataGeneration:'FA_CONSOLIDATED_V1',navigator:{onLine:true},isOfflineRuntimeForced:()=>false,isFirestoreCacheFallbackError:()=>false,crypto:{randomUUID:()=> 'r'},
  managementDatabase:async()=>fa,writeBatch:db=>({db,set(ref,value){writes.push({project:db.project,ref,value});},async commit(){}}),
  buildRecordBatch:(batch,input,db)=>batch.set({project:db.project},input),
  enqueueOperation:async op=>queued.push(op),mayQueueOffline:()=>true,mayUseOfflineCache:()=>false,

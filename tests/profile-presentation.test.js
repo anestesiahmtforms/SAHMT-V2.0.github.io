@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {profileForPresentation} from '../src/profile-presentation.js';
+import {isFirestoreCacheFallbackError} from '../src/offline-cache.js';
 
 const fixture = () => ({
   profile: {uid: 'fictional-uid', email: 'fictional.member@gmail.com', displayName: 'fictional.member@gmail.com', sigla: 'FC', phone: '', active: true, access: true, role: 'temporario', permissions: {managementRead: true, trainingsRead: true, notificationsRead: true}},
@@ -61,28 +62,28 @@ test('um nome de apresentação não reativa perfil revogado', () => {
   assert.equal(display.permissions, profile.permissions);
 });
 
-function harness({active = true, access = true, online = true} = {}) {
+function harness({active = true, access = true, online = true, profileReadError = null, cachedProfile = undefined} = {}) {
   const f = fixture();
   f.profile.active = active;
   f.profile.access = access;
-  const cached = [], states = [];
+  const cached = [], states = []; let cacheReads = 0;
   let snapshotCallback;
-  const api = {doc: (_db, collection, id) => ({collection, id}), getDoc: async () => ({exists: () => true, data: () => f.profile}), onSnapshot: (_ref, callback) => { snapshotCallback = callback; return () => {}; }};
+  const api = {doc: (_db, collection, id) => ({collection, id}), getDoc: async () => { if(profileReadError) throw profileReadError; return {exists: () => true, data: () => f.profile}; }, onSnapshot: (_ref, callback) => { snapshotCallback = callback; return () => {}; }};
   const source = readFileSync(new URL('../src/auth.js', import.meta.url), 'utf8')
     .replace(/^import(?!\s*\()[\s\S]*?;\r?\n/gm, '')
     .replace(/\bexport /g, '')
     .replace(/import\((['"][^'"]+['"])\)/g, 'fakeImport($1)');
   const context = vm.createContext({
-    operationalBackend:{run:(_key,action)=>action(),reset(){},noteFailure(){}},isFirestoreCacheFallbackError:()=>false,
+    operationalBackend:{run:(_key,action)=>action(),reset(){},noteFailure(){}},isFirestoreCacheFallbackError,
     firebaseConfigured: true, profileForPresentation, navigator: {onLine: online},
     window: {requestIdleCallback: (fn) => { context.idle = fn; return 1; }, cancelIdleCallback() {}, addEventListener() {}, removeEventListener() {}},
-    cacheProfile: async (_uid, value) => { cached.push(value); }, readCachedProfile: async () => f.profile,
+    cacheProfile: async (_uid, value) => { cached.push(value); }, readCachedProfile: async () => { cacheReads++; return cachedProfile === undefined ? f.profile : cachedProfile; },
     clearUserLocalData() {}, pendingOperationCount() {}, pendingTrainingProgressCount() {},
     fakeImport: async (name) => name.includes('firebase/firestore') ? api : {db: {}},
     onState: (next) => { states.push(next); }, user: f.user
   });
   vm.runInContext(source, context, {filename: 'src/auth.js'});
-  return {...f, context, cached, states, callback: () => snapshotCallback};
+  return {...f, context, cached, states, get cacheReads(){return cacheReads;}, callback: () => snapshotCallback};
 }
 test('leitura inicial usa nome Google em memória e guarda cache do perfil original', async () => {
   const h = harness();
@@ -124,4 +125,34 @@ test('troca de conta durante persistência do perfil não emite a sessão anteri
   while (!finish) await new Promise(resolve => setImmediate(resolve));
   h.context.currentGeneration = 2; finish(); await loading;
   assert.equal(h.states.length, 0);
+});
+for (const code of ['resource-exhausted','firestore/unavailable']) test(`perfil cacheado abre o app durante falha transitória do Firestore (${code})`, async () => {
+  const h = harness({profileReadError: Object.assign(new Error('private response'), {code})});
+  await vm.runInContext('onAuthChangedProfile(user, onState, 1, () => 1, () => {})', h.context);
+  assert.equal(h.states.at(-1).status, 'signed-in');
+  assert.equal(h.states.at(-1).offline, true);
+  assert.equal(h.states.at(-1).profile.uid, h.user.uid);
+  assert.equal(h.cacheReads, 1);
+});
+for(const online of [true,false])test(`cache não contorna negação explícita do perfil (${online?'online':'offline'})`, async () => {
+  const h = harness({online,profileReadError: Object.assign(new Error('private response'), {code: 'permission-denied'})});
+  await vm.runInContext('onAuthChangedProfile(user, onState, 1, () => 1, () => {})', h.context);
+  assert.equal(h.states.at(-1).status, 'auth-limited');
+  assert.equal(h.cacheReads, 0);
+});
+test('perfil cacheado inativo continua bloqueado durante esgotamento de cota', async () => {
+  const cachedProfile = {...fixture().profile, active: false};
+  const h = harness({profileReadError: Object.assign(new Error('private response'), {code: 'resource-exhausted'}), cachedProfile});
+  await vm.runInContext('onAuthChangedProfile(user, onState, 1, () => 1, () => {})', h.context);
+  assert.equal(h.states.at(-1).status, 'blocked');
+  assert.equal(h.states.at(-1).profile.active, false);
+  assert.equal(h.cacheReads, 1);
+});
+test('cache ausente não libera a sessão quando Firestore está indisponível', async () => {
+  const h = harness({profileReadError: Object.assign(new Error('private response'), {code: 'resource-exhausted'}), cachedProfile: null});
+  await vm.runInContext('onAuthChangedProfile(user, onState, 1, () => 1, () => {})', h.context);
+  assert.equal(h.states.at(-1).status, 'auth-limited');
+  assert.equal(h.states.at(-1).profile.active, false);
+  assert.equal(Object.keys(h.states.at(-1).profile.permissions).length, 0);
+  assert.equal(h.cacheReads, 1);
 });

@@ -4,12 +4,13 @@ import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db, db as identityDb} from './firebase.js';
-import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readFreshSafeCache, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
+import {claimQueuedOperationForSend, requiresSendConfirmation, enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readFreshSafeCache, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
+import {syncOccurrenceOperation} from './occurrence-outbox-sync.js';
 import {updateScheduleReleaseState, updateScheduleReleaseTimes} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
@@ -2409,7 +2410,10 @@ async function confirmCommittedMutation({collectionName, data, uid, requestId}) 
     JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
 }
 
-export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID()} = {}) {
+export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID(), forceQueue = false} = {}) {
+  if (forceQueue || !navigator.onLine || isOfflineRuntimeForced()) {
+    return createOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue: true});
+  }
   await prepareOperationalSheetDelivery(collectionName, requestId, uid);
   const result = await createOperationalRecordInFirestore(collectionName, data, {uid, requestId});
   if (!result.pendingFirestore) {
@@ -2419,10 +2423,10 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
   return result;
 }
 
-async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
-  if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId});
+async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue = false}) {
+  if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue});
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced(),
+  return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced() && !forceQueue,
     saveLocal: () => enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}}),
     sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
     clearLocal: () => removeQueuedOperation(uid, requestId), recoverable: mayUseOfflineCache,
@@ -2433,13 +2437,13 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
   });
 }
 
-async function sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
+async function sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue = false}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject,dataGeneration:managementDataGeneration} : {})};
-  if (!navigator.onLine || isOfflineRuntimeForced()) {
+  if (forceQueue || !navigator.onLine || isOfflineRuntimeForced()) {
     if (!mayQueueOffline(collectionName)) throw new Error('Esta ação precisa de conexão e não pode ser armazenada com segurança neste aparelho.');
     await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-    return {id: requestId, pendingFirestore: true};
+    return {id: requestId, pendingFirestore: true, awaitingConfirmation: true};
   }
   if (collectionName === 'events' && data.scheduleSigla) {
     try {
@@ -2576,7 +2580,21 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
     const queued = await listQueuedOperations(uid);
     const candidates = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
     const operations = typeof authorizeOperation === 'function' ? candidates.filter(operation => authorizeOperation(operation) === true) : candidates;
-    for (const operation of operations) {
+    for (let operation of operations) {
+      if (typeof authorizeOperation === 'function' && authorizeOperation(operation) !== true) break;
+      if (requiresSendConfirmation(operation.type)) {
+        operation = await claimQueuedOperationForSend(uid, operation.requestId);
+        if (!operation) continue;
+      }
+      if (operation.type === 'occurrences') {
+        const [{auth}, {createOccurrenceRepository}] = await Promise.all([import('./firebase-auth.js'), import('./occurrence-data.js')]);
+        const isCurrent = () => auth.currentUser?.uid === uid;
+        const repository = createOccurrenceRepository({db, auth, isCurrent});
+        const result = await syncOccurrenceOperation({operation, uid, repository, isCurrent, outbox: {removeQueuedOperation, updateQueuedOperation}});
+        if (result === 'synced') {synced++; window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: 'occurrences'}})); continue;}
+        if (result === 'needs-review') {window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {type: 'occurrences', message: 'Uma ocorrência local precisa de revisão e não foi confirmada.'}})); continue;}
+        if (result === 'queued' || result === 'deferred') break;
+      }
       try {
         assertQueuedOperationShape(operation, uid);
         if (operation.type === 'activities' && (operation.payload.dataProject !== managementDataProject || operation.payload.dataGeneration !== managementDataGeneration))
@@ -2628,7 +2646,7 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
         const delay = Math.max(error.code === 'resource-exhausted' ? 300000 : 0, Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10))) * (1 + Math.random() * .25);
         operationalBackend.noteFailure(error, operation.type);
         await updateQueuedOperation(uid, operation.requestId, {
-          status: conflict ? 'conflict' : permanent ? 'failed' : 'queued',
+          status: conflict ? 'conflict' : permanent ? 'failed' : requiresSendConfirmation(operation.type) ? 'awaiting-confirmation' : 'queued',
           attempts,
           nextAttemptAt: Date.now() + delay,
           lastError: String(error.message || error).slice(0, 300),

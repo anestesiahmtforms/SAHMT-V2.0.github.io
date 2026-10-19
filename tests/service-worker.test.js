@@ -15,6 +15,7 @@ const manifest = {
   },
   'src/checklist-report-listener.js': {src: 'src/checklist-report-listener.js', file: 'assets/checklist-listener.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
   'src/firebase.js': {src: 'src/firebase.js', file: 'assets/firebase-full.js', imports: ['assets/shared.js']},
+  'node_modules/firebase/app-check/dist/esm/index.esm.js': {src: 'node_modules/firebase/app-check/dist/esm/index.esm.js', file: 'assets/app-check.js', imports: ['assets/shared.js']},
   'src/performance-ui.js': {src: 'src/performance-ui.js', file: 'assets/performance-ui.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
   'src/evaluation-data.js': {src: 'src/evaluation-data.js', file: 'assets/evaluation-data.js', imports: ['assets/shared.js']},
   'src/label-camera.js': {src: 'src/label-camera.js', file: 'assets/label-camera.js', imports: ['assets/shared.js']},
@@ -173,6 +174,7 @@ test('precache report adapters from the build graph without PDF or all dynamic i
   await install;
   assert.ok(worker.entries.has('https://sahmt.example' + BASE + 'assets/checklist-listener.js'));
   assert.ok(worker.entries.has('https://sahmt.example' + BASE + 'assets/firebase-full.js'));
+  assert.ok(worker.entries.has('https://sahmt.example' + BASE + 'assets/app-check.js'));
   assert.ok(!worker.entries.has('https://sahmt.example' + BASE + 'assets/report-pdf.js'));
   let response;
   worker.handlers.get('fetch')({request: {method: 'GET', mode: 'cors', url: 'https://sahmt.example' + BASE + 'assets/checklist-listener.js'}, respondWith(promise) {response = promise;}});

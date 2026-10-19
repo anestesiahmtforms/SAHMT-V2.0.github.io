@@ -15,5 +15,7 @@ test('perfil local de outra identidade nunca abre a sessão', async () => {
   const states = [];
   const ctx = vm.createContext({readCachedProfile: async () => ({uid: 'other', active: true, access: true}), profileForPresentation: value => value}); vm.runInContext(fn, ctx);
   await ctx.showCachedSession({uid: 'a'}, state => states.push(state));
-  assert.equal(states[0].status, 'profile-error');
+  assert.equal(states[0].status, 'auth-limited');
+  assert.equal(states[0].profile.access, false);
+  assert.equal(Object.keys(states[0].profile.permissions).length, 0);
 });

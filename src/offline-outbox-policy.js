@@ -1,6 +1,6 @@
 const PERMISSION_BY_TYPE = Object.freeze({
   events: 'eventsWrite', eventEdits: 'eventsWrite', labels: 'labelsWrite', labelEdits: 'labelsManage',
-  checklists: 'checklistWrite', activities: 'managementActivityWrite', scheduleReleases: 'scheduleWrite'
+  checklists: 'checklistWrite', activities: 'managementActivityWrite', scheduleReleases: 'scheduleWrite', occurrences: 'occurrencesWrite'
 });
 
 export function offlineOperationPermission(type) {

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 
 Object.defineProperty(globalThis, 'location', {configurable: true, value: {hash: ''}});
-const {currentRoute, navigate} = await import('../src/router.js');
+const {currentRoute, navigate, shouldRenderHashChange} = await import('../src/router.js');
 
 test('rota de sincronização pertence ao roteador do mesmo PWA', () => {
   navigate('offline');
@@ -22,4 +22,10 @@ test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Es
   assert.equal(currentRoute(),'occurrences');
   navigate('events');
   assert.equal(currentRoute(),'events');
+});
+
+test('sessão autenticada offline redesenha a rota ao navegar', () => {
+  assert.equal(shouldRenderHashChange({status: 'signed-in', offline: true}), true);
+  assert.equal(shouldRenderHashChange({status: 'signed-in', offline: false}), true);
+  assert.equal(shouldRenderHashChange({status: 'auth-limited', offline: true}), false);
 });

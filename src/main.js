@@ -15,8 +15,8 @@ import {confirmedLiveReportRecords} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
-import {currentRoute, navigate} from './router.js';
-import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readFreshSafeCache, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
+import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
+import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, readFreshSafeCache, removeQueuedOperation, requiresSendConfirmation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -28,6 +28,8 @@ import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortCheckl
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
+import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, offlineOperationalCacheId, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
+import {bindOfflineOperationalReports} from './offline-report-ui.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {checklistCacheId, checklistCachedCatalogMatches, operationalReportCacheId} from './offline-report-cache.js';
 import {setOfflineRuntimeMode, isOfflineRuntimeForced} from './offline-runtime-mode.js';
@@ -372,7 +374,11 @@ async function emitCachedOfflineReport(kind, scope, callbacks) {
   if (!current()) return false;
   if (kind === 'events' || kind === 'labels') {
     const cacheId = operationalReportCacheId(kind, scope);
-    const cached = cacheId ? await readFreshSafeCache(scope.uid, kind, cacheId) : null;
+    let cached = cacheId ? await readFreshSafeCache(scope.uid, kind, cacheId) : null;
+    if (!cached && scope.mode === 'daily') {
+      const legacyId = offlineOperationalCacheId(kind, scope.day, scope);
+      cached = legacyId ? await readFreshSafeCache(scope.uid, 'offlineOperational', legacyId, kind === 'labels' ? {maxAgeMs: 86400000} : {}) : null;
+    }
     if (!Array.isArray(cached?.data?.records) || !current()) return false;
     callbacks.next('report', {data: {...cached.data, records: cached.data.records.map(record => ({...record, stale: true})), stale: true, fromCache: true, hasPendingWrites: false, serverConfirmed: false}, complete: true, fromCache: true, hasPendingWrites: false});
     return true;
@@ -978,7 +984,7 @@ function shellView() {
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : route === 'management' || route === 'training' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
-    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+   <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline ? '<p class="notice" role="status">Login Firebase ativo. Perfil local em uso porque o Firestore está temporariamente indisponível. Dados e ações do servidor aguardam nova validação.</p>' : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -1570,17 +1576,23 @@ async function loadOfflineView(target) {
       listUnsettledOperations(uid),
       listPendingTrainingProgress(uid), listOperationalDrafts(uid)
     ]);
-    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labelEdits: 'Edição de etiqueta', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
+    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labelEdits: 'Edição de etiqueta', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala', occurrences: 'Ocorrência'};
     const today = todayInputValue();
-    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation');
+    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type));
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
       const versionConflict = item.status === 'conflict' && ['eventEdits', 'labelEdits'].includes(item.type);
       const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
+      const abandonedSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
+        && Date.now() - item.sendClaimedAt >= 120000;
+      const manualConfirmationRequired = requiresSendConfirmation(item.type) &&
+        !Number.isFinite(item.sendConfirmedAt) && (['queued', 'awaiting-confirmation', 'failed'].includes(item.status) || abandonedSend);
       const operationStatus = item.status === 'conflict'
         ? 'Conflito para comparar'
+        : item.status === 'sending' && !abandonedSend ? 'Enviando'
+        : abandonedSend ? 'Envio interrompido: confirme novamente'
         : item.status === 'failed'
           ? 'Revisar'
           : item.status === 'awaiting-confirmation'
@@ -1593,7 +1605,7 @@ async function loadOfflineView(target) {
       const retryInfo = retryScheduled
         ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
         : '';
-      const resolution = item.status === 'awaiting-confirmation'
+      const resolution = manualConfirmationRequired
         ? `<small>Este registro permanece somente neste aparelho e ainda não foi enviado.${canConfirmOfflineOperation(item) ? '' : ' O envio será liberado após conexão e validação online do perfil e da permissão.'}</small>${canConfirmOfflineOperation(item) ? `<button class="primary-button" type="button" data-confirm-operation="${escapeHtml(item.requestId)}">Confirmar envio</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : item.status !== 'queued'
         ? `${dateDiffers
@@ -1709,19 +1721,6 @@ async function loadOfflineView(target) {
       if (document.querySelector('#module-content') === target) await loadOfflineView(target);
     });
     target.querySelectorAll('[data-open-current-checklist]').forEach((button) => button.addEventListener('click', () => navigate('checklist')));
-    target.querySelectorAll('[data-retry-operation]').forEach((button) => button.addEventListener('click', async () => {
-      button.disabled = true;
-      try {
-        if (await retryFailedOperation(uid, button.dataset.retryOperation)) {
-          const {flushOutbox} = await import('./data.js');
-          await flushOutbox(uid, {requestId: button.dataset.retryOperation, authorizeOperation: canConfirmOfflineOperation});
-        }
-      } finally {
-        await scheduleNextOutboxRetry(uid);
-        if (document.querySelector('#module-content') === target) await loadOfflineView(target);
-        await updateOutboxStatus();
-      }
-    }));
     target.querySelectorAll('[data-confirm-operation]').forEach((button) => button.addEventListener('click', async () => {
       const operation = unsettled.find(item => item.requestId === button.dataset.confirmOperation);
       if (!operation || !canConfirmOfflineOperation(operation)) return;
@@ -2558,7 +2557,7 @@ async function loadMonthlyChecklist(stations, suppliedResult = null, scope = nul
   }
 }
 
-async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true} = {}) {
+async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true, forceQueue = false} = {}) {
   const actorName = session.profile?.displayName;
   const namedAuthor = typeof actorName === 'string' && actorName.length > 0 && actorName.length <= 120 ? {createdByName: actorName} : {};
   const sessionCurrent = () => Boolean(uid) && session.user?.uid === uid && can('checklistWrite') && isCurrent();
@@ -2570,7 +2569,7 @@ async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = 
     const {createOperationalRecord} = await import('./data.js');
     if (!sessionCurrent() || checklistDayMode(day, todayInputValue()) !== 'today') return {ok: false, message: 'A sessão, a permissão ou a data do Checklist foi alterada.'};
     // A atribuição do responsável só é definida após validação no servidor.
-    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid});
+    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid, forceQueue: forceQueue || session.offline || globalThis.navigator?.onLine === false});
     return {ok: true, pendingFirestore: result.pendingFirestore === true};
   } catch (error) {
     return {ok: false, message: error.code === 'permission-denied' ? 'Seu perfil não tem permissão para registrar checklist.' : `Não foi possível salvar. ${error.message || ''}`};
@@ -4754,39 +4753,51 @@ async function render() {
     app.innerHTML = `<main class="login-gate"><section class="login-card" role="status" aria-live="polite"><h1>SAHMT</h1><p>Verificando acesso…</p><i class="boot-spinner" aria-hidden="true"></i></section></main>`;
     return;
   }
-  if (session.status !== 'signed-in') {
+  const authLimited=session.status==='auth-limited';
+  if (session.status !== 'signed-in' && !authLimited) {
     app.innerHTML = loginView();
     bindLogin();
     return;
   }
+  if(authLimited&&currentRoute()!=='home'){navigate('home');return;}
   const requestedRoute = currentRoute();
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
+  if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
   if (['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
   }
-  if (requestedRoute === 'occurrences' && !hasOccurrencePermission()) {
+  if (!authLimited && requestedRoute === 'occurrences' && !hasOccurrencePermission()) {
     notice = 'Registro de Ocorrências exige autorização específica no perfil.';
     navigate('home');
     return;
   }
-  if (!featureEnabledForRoute(requestedRoute, appFeatures)) {
+  if (!authLimited && !featureEnabledForRoute(requestedRoute, appFeatures)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
     navigate('home');
     return;
   }
-  if(requestedRoute==='qmentum'){
+  if(authLimited){}
+  else if(requestedRoute==='qmentum'){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
     if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!can('admin'))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
-  preloadOperationalDataWhenIdle(session.user);
-  document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
+  if(!authLimited)preloadOperationalDataWhenIdle(session.user);
+  if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
+  if (authLimited) {
+    const unavailable=document.querySelector('#schedule-content')||document.querySelector('#module-content');
+    if(unavailable)unavailable.innerHTML='<p class="empty-state">O app abriu pela autenticação Firebase. Os módulos e dados serão liberados somente depois que o Firestore confirmar o perfil.</p>';
+    document.querySelectorAll('.main-content form').forEach(form=>form.addEventListener('submit',event=>event.preventDefault()));
+    document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control=>{control.disabled=true;});
+    const status=document.querySelector('#outbox-status');if(status){status.innerHTML=session.validatingProfile?'<span role="status">Validando perfil…</span>':'<button type="button" id="retry-profile-access">Verificar acesso</button>';bindProfileRetryControl(status.querySelector('#retry-profile-access'));}
+    return;
+  }
   if (currentRoute() === 'home') await loadHome(); else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);
@@ -4797,7 +4808,118 @@ async function render() {
   }
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
-  if (navigator.onLine) void syncOutbox();
+  if (navigator.onLine && !session.offline) void syncOutbox();
+}
+
+async function renderOfflineOperationalView() {
+  const route = currentRoute();
+  const uid = session.user?.uid;
+  const routeKind = {home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'}[route];
+  if (!uid) return;
+  const cachedFeatures = await readSafeCache(uid, 'appConfig', 'app').catch(() => null);
+  if (cachedFeatures?.uid === uid && cachedFeatures.data?.features) {
+    appFeatures = normalizeAppFeatures(cachedFeatures.data.features);
+    appFeaturesUid = uid;
+  }
+  const allowed = {
+    schedule: route === 'home' && featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
+    checklist: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
+    checklistWrite: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && can('checklistWrite'),
+    events: route === 'events' && featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
+    eventsWrite: route === 'events' && featureEnabledForRoute('events', appFeatures) && can('eventsWrite'),
+    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can),
+    labelsWrite: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && (can('labelsWrite') || can('labelsManage'))
+  };
+  const day = todayInputValue();
+  const access = {sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage')};
+  const snapshot = routeKind && allowed[routeKind]
+    ? await readOfflineOperationalSnapshot({uid, kind: routeKind, day, access, readSafeCache}).catch(() => null)
+    : null;
+  const [stationCache, eventCatalogCache, eventScheduleCache, labelStaffCache] = await Promise.all([
+    routeKind === 'checklist' && allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null,
+    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'eventCatalogs', 'operational').catch(() => null) : null,
+    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'scheduleDays', day).catch(() => null) : null,
+    route === 'labels' && allowed.labelsWrite ? readSafeCache(uid, 'appConfig', 'labelStaff').catch(() => null) : null
+  ]);
+  const host = route === 'home' ? document.querySelector('#schedule-content') : document.querySelector('.module-view.panel');
+  if (!host) return;
+  const snapshots = routeKind ? {[routeKind]: snapshot} : {};
+  const labelStaffSiglas = labelStaffCache?.uid === uid && Array.isArray(labelStaffCache.data?.siglas) ? labelStaffCache.data.siglas : [];
+  loadedLabelStaffSiglas = labelStaffSiglas;
+  const markup = offlineOperationalDashboardMarkup({day, route, snapshots, permissions: allowed,
+    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data.filter(station => stationIsValidOn(station, day)) : [],
+    eventCatalog: eventCatalogCache?.uid === uid ? eventCatalogCache.data || {} : {},
+    eventSchedule: eventScheduleCache?.uid === uid ? eventScheduleCache.data || null : null,
+    labelStaffSiglas});
+  document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
+  document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
+  document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
+  host.querySelector?.('.offline-operational-dashboard')?.remove();
+  host.insertAdjacentHTML('beforeend', markup);
+  if (route === 'events' || route === 'labels') {
+    const pendingModuleContent = host.querySelector('#module-content');
+    if (pendingModuleContent) pendingModuleContent.innerHTML = '<p class="empty-state" role="status">Relatórios online indisponíveis neste momento. Use os relatórios offline para consultar somente a cópia salva neste aparelho.</p>';
+  }
+  bindOfflineOperationalForms(route, uid, day);
+  bindOfflineOperationalReports({root: document, kind: route, day, snapshot});
+}
+async function bindOfflineOperationalForms(route, uid, day) {
+  const forms = [...document.querySelectorAll('.offline-write-form[data-offline-write-form]')];
+  for (const form of forms) form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (session.user?.uid !== uid || session.profile?.active !== true || session.profile?.access !== true || !session.profile?.permissions) return;
+    const submit = form.querySelector('[type="submit"]');
+    const status = form.querySelector('[data-offline-write-status]');
+    if (!submit || !status) return;
+    submit.disabled = true;
+    status.textContent = 'Guardando somente neste aparelho…';
+    try {
+      if (route === 'events' && form.dataset.offlineWriteForm === 'events') {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const selected = form.elements.memberSigla.selectedOptions[0];
+        const memberSigla = String(values.memberSigla || '').trim().toUpperCase();
+        const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
+        const eventValues = {...values, memberStatus: values.eventType === 'Suporte' ? 'SUPORTE' : (selected?.textContent?.split(' · ')[0] || memberSigla), delayMultiple: values.delayMultiple || '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
+        validateEventForm(eventValues);
+        const support = values.eventType === 'Suporte';
+        const automaticAmount = eventAmountToPay(values.eventType, values.delayMultiple, values.shift);
+        const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: automaticAmount == null ? Number(values.amountToPay || 0) : automaticAmount, createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
+        const {createOperationalRecord} = await import('./data.js');
+        await createOperationalRecord('events', record, {uid, forceQueue: true});
+      } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const normalizedType = String(values.type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const rawAmount = String(values.amount || '').trim().replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.');
+        const amount = rawAmount ? Number(rawAmount) : null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
+        if (!['particular', 'complementacao', 'convenio', 'consulta pre-anestesica', 'sadt'].includes(normalizedType)) throw new Error('Selecione o tipo de etiqueta.');
+        if (rawAmount && !Number.isFinite(amount)) throw new Error('Informe um valor válido.');
+        const selectedStaffSiglas = [...new Set([...form.elements.staffSiglas.selectedOptions].map(option => option.value.trim().toUpperCase()).filter(Boolean))].sort();
+        const normalizedCreditor = normalizedType === 'consulta pre-anestesica' ? 'Caixa' : values.creditor;
+        if (!['Caixa', 'Plantão', 'Plantão/Caixa'].includes(normalizedCreditor)) throw new Error('Selecione o credor.');
+        if (normalizedCreditor !== 'Caixa' && !selectedStaffSiglas.length) throw new Error('Selecione os plantonistas.');
+        if (selectedStaffSiglas.some(sigla => !loadedLabelStaffSiglas.includes(sigla))) throw new Error('Uma sigla não consta no catálogo local autorizado. Conecte-se para atualizar o catálogo.');
+        if (!['consulta pre-anestesica', 'sadt'].includes(normalizedType) && !(values.procedureCode || '').trim()) throw new Error('Informe o número da cirurgia.');
+        if (normalizedType !== 'consulta pre-anestesica' && !String(values.insurance || '').trim()) throw new Error('Informe o convênio.');
+        const actorName = String(session.profile?.displayName || session.user?.displayName || '').trim().slice(0, 120);
+        const record = {date: values.date, patientName: values.patientName.trim(), procedureCode: String(values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : String(values.insurance || '').trim(), creditor: normalizedCreditor, staffSiglas: normalizedCreditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
+        const {createOperationalRecord} = await import('./data.js');
+        await createOperationalRecord('labels', record, {uid, forceQueue: true});
+      } else if (route === 'checklist' && form.dataset.offlineWriteForm === 'checklists') {
+        const condition = form.elements.condition.value;
+        const outcome = await saveChecklistAnswer(form.dataset.stationId, condition, day, form.elements.occurrence.value, {uid, forceQueue: true});
+        if (!outcome.ok) throw new Error(outcome.message);
+      }
+      status.textContent = 'Salvo localmente. Abra Sincronização e revise e confirme este item antes do envio.';
+      form.reset();
+      submit.disabled = false;
+      if (form.elements.eventDate) form.elements.eventDate.value = day;
+      if (form.elements.date) form.elements.date.value = day;
+    } catch (error) {
+      status.textContent = error.message || 'Não foi possível salvar neste aparelho.';
+      submit.disabled = false;
+    }
+  });
 }
 
 async function updateOutboxStatus() {
@@ -4808,7 +4930,7 @@ async function updateOutboxStatus() {
     pendingTrainingProgressCount(session.user.uid),
     retryableFailedOperationCount(session.user.uid), listOperationalDrafts(session.user.uid)
   ]);
-  const count = counts.queued + counts.awaitingConfirmation + counts.failed + counts.conflict;
+  const count = counts.queued + counts.awaitingConfirmation + counts.failed + counts.conflict + (counts.sending || 0);
   const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:')).length;
   const details = [count ? `${count} ação(ões) ${counts.awaitingConfirmation ? 'aguardando confirmação' : counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   const backendUnavailable = Boolean(operationalBackend.snapshot().code);
@@ -4817,9 +4939,18 @@ async function updateOutboxStatus() {
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
   updateLabelReportSync();
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
+  bindProfileRetryControl(target.querySelector('#retry-profile-access'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
     await retryFailedOperations(session.user.uid);
     await syncOutbox();
+  });
+}
+
+function bindProfileRetryControl(button){
+  button?.addEventListener('click',async()=>{
+    button.disabled=true;button.textContent='Verificando…';
+    await retryAuthenticatedProfile();
+    if((session.offline||session.status==='auth-limited')&&button.isConnected){button.disabled=false;button.textContent='Verificar acesso';}
   });
 }
 
@@ -4841,7 +4972,7 @@ function scheduleOutboxRetry(uid, attemptAt) {
     outboxRetryTimer = null;
     outboxRetryAt = 0;
     outboxRetryUid = '';
-    if (session.status === 'signed-in' && session.user.uid === uid && navigator.onLine) void syncOutbox();
+    if (session.status === 'signed-in' && session.user.uid === uid && navigator.onLine && !session.offline) void syncOutbox();
   }, Math.max(0, attemptAt - Date.now()));
 }
 
@@ -4929,6 +5060,8 @@ function sessionChanged(next) {
   if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-session-status', {detail: {status: next.status, code: next.error?.code || '', transportFailure: isFirestoreCacheFallbackError(next.error)}}));
   const wasOffline = session.offline === true;
   const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
+  const profileBecameLocal = !session.offline && next.offline === true;
+  const profileRevalidated = session.offline === true && next.offline !== true;
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const generalReadPermissions = ['trainingsRead', 'notificationsRead'];
@@ -4962,6 +5095,8 @@ function sessionChanged(next) {
   }
   session = next;
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired);
+  if (profileBecameLocal) {cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false);}
+  if (profileRevalidated && navigator.onLine) {cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);}
   if (next.status === 'signed-in' && !next.offline && (wasOffline || userChanged)) {
     preloadOperationalDataWhenIdle(next.user); preloadStartupReports(next.user);
     for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get?.(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'profile-online');
@@ -4973,7 +5108,7 @@ function sessionChanged(next) {
   if (startupBannerActive && next.status === 'signed-in') {
     if (userChanged) preloadStartupReports(next.user);
     preloadOperationalDataWhenIdle(next.user);
-    if (navigator.onLine) {
+    if (navigator.onLine && !next.offline) {
       void syncOutbox();
       if (userChanged && can('scheduleRead')) {
         const uid = next.user.uid;
@@ -4989,10 +5124,10 @@ function sessionChanged(next) {
     const identity = document.querySelector?.('.identity-card__user'); if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
   }
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
-  if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
+  if (next.status === 'signed-in' && !next.offline && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
 async function refreshAppFeatures(uid, force = false) {
-  if (!uid || (!force && appFeaturesUid === uid)) return;
+  if (!uid || session.offline || (!force && appFeaturesUid === uid)) return;
   const now = Date.now();
   if (force && lastForcedAppFeaturesRefresh.uid === uid && now - lastForcedAppFeaturesRefresh.at < 5_000) return;
   if (force) lastForcedAppFeaturesRefresh = {uid, at: now};
@@ -5026,9 +5161,7 @@ async function refreshAppFeatures(uid, force = false) {
   }
 }
 window.addEventListener('hashchange', () => {
-  if (session.status === 'signed-in') {
-    void render();
-  }
+  if (shouldRenderHashChange(session)) void render();
 });
 window.addEventListener('online', () => {
   onlineValidationRequired = session.status === 'signed-in';
@@ -5055,7 +5188,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 function refreshLivePending() {
-  if (session.status === 'signed-in') void liveReports.invalidatePending(session.user.uid);
+  if (session.status === 'signed-in' && !session.offline) void liveReports.invalidatePending(session.user.uid);
   void updateOutboxStatus();
 }
 window.addEventListener('sahmt-write-synced', (event) => {
@@ -5064,7 +5197,7 @@ window.addEventListener('sahmt-write-synced', (event) => {
 });
 window.addEventListener('sahmt-write-queued', event => {
   refreshLivePending();
-  if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
+  if (navigator.onLine && session.status === 'signed-in' && !session.offline) void syncOutbox();
 });
 window.addEventListener('sahmt-write-local-pending', refreshLivePending);
 let backendFailureDisplayed = false;

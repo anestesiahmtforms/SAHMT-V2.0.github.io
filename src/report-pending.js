@@ -53,7 +53,7 @@ export function mergeReportPendingRecords(kind, remote = [], operations = [], sc
     for (const operation of ordered) {
       const {requestId, payload, status} = operation || {};
       if (!requestId || seen.has(requestId) || accepted.has(requestId) || operation.uid !== scope.uid ||
-        !['queued', 'awaiting-confirmation', 'failed', 'conflict'].includes(status) || payload?.collectionName !== kind || !payload.data || !inPeriod(payload.data)) continue;
+        !['queued', 'awaiting-confirmation', 'sending', 'failed', 'conflict'].includes(status) || payload?.collectionName !== kind || !payload.data || !inPeriod(payload.data)) continue;
       seen.add(requestId);
       const isEdit = kind === 'events' && operation.type === 'eventEdits' || kind === 'labels' && operation.type === 'labelEdits';
       const editedId = kind === 'labels' ? payload.labelId : payload.eventId;
@@ -72,7 +72,7 @@ export function mergeReportPendingRecords(kind, remote = [], operations = [], sc
         createdByUid: isEdit ? existing?.createdByUid || payload.data.createdByUid : scope.uid,
         ...(isEdit && existing?.createdByName ? {createdByName: existing.createdByName} : {}),
         createdAt: isEdit && existing?.createdAt ? existing.createdAt : new Date(operation.createdAt),
-        pendingFirestore: kind !== 'checklists' && ['queued', 'awaiting-confirmation'].includes(status), pendingSync: kind === 'checklists' && ['queued', 'awaiting-confirmation'].includes(status),
+        pendingFirestore: kind !== 'checklists' && ['queued', 'awaiting-confirmation', 'sending'].includes(status), pendingSync: kind === 'checklists' && ['queued', 'awaiting-confirmation', 'sending'].includes(status),
         awaitingConfirmation: status === 'awaiting-confirmation',
         syncFailed: status === 'failed', syncConflict: status === 'conflict', syncError: operation.lastError || ''};
       if (candidate.active === false || (kind === 'events' && !eventVisible(candidate, scope))) continue;

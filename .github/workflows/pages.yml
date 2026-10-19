@@ -36,6 +36,8 @@ jobs:
         run: npm ci --prefix functions
       - name: Run domain tests
         run: npm run test:domain
+      - name: Run offline operational regression
+        run: npm run test:offline-operational
       - name: Validate QMENTUM FA local package
         run: node scripts/build-qmentum-backend.mjs && npm run test:qmentum
       - name: Run QMENTUM FA Rules tests

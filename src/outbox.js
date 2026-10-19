@@ -1,5 +1,4 @@
 import {isSafeCacheEntryFresh} from './offline-cache.js';
-
 const LOCAL_MANAGEMENT_PROJECT = 'FA';
 const DOMAIN_CACHE_GENERATION = 'FA_CONSOLIDATED_V1';
 const DOMAIN_CACHE_KINDS = new Set(['managementAreas','trainings','trainingProgress','scores']);
@@ -10,8 +9,12 @@ const PROFILES = 'profiles';
 const CACHE = 'cache';
 const OUTBOX = 'outbox';
 const DRAFTS = 'operationalDrafts';
-const ALLOWED_OUTBOX_TYPES = new Set(['events', 'labels', 'checklists', 'activities', 'eventEdits', 'labelEdits', 'scheduleReleases']);
-const CONFIRMATION_REQUIRED_OUTBOX_TYPES = new Set(['events', 'labels', 'checklists', 'eventEdits', 'labelEdits']);
+const ALLOWED_OUTBOX_TYPES = new Set(['events', 'labels', 'checklists', 'activities', 'eventEdits', 'labelEdits', 'scheduleReleases', 'occurrences']);
+const CONFIRM_BEFORE_SEND_TYPES = new Set(['events', 'labels', 'checklists', 'eventEdits', 'labelEdits']);
+
+export function requiresSendConfirmation(type) { return CONFIRM_BEFORE_SEND_TYPES.has(type); }
+const MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID = 20;
+const MAX_OCCURRENCE_QUEUE_BYTES = 500_000;
 let dbPromise;
 
 function openDb() {
@@ -102,8 +105,7 @@ export async function cacheProfile(uid, profile) {
 
 export async function readCachedProfile(uid, maxAgeMs = 24 * 60 * 60 * 1000) {
   const value = await transact(PROFILES, 'readonly', (store) => store.get(uid));
-  const now = Date.now();
-  if (!value || value.uid !== uid || !Number.isFinite(value.cachedAt) || value.cachedAt > now || now - value.cachedAt > maxAgeMs) return null;
+  if (!value || Date.now() - value.cachedAt > maxAgeMs) return null;
   return value;
 }
 
@@ -131,59 +133,6 @@ export async function writeSafeCache(uid, kind, id, data) {
 
 export async function readSafeCache(uid, kind, id) {
   return transact(CACHE, 'readonly', (store) => store.get(cacheKey(uid, kind, id)));
-}
-
-function draftKey(uid, module, id) {
-  if (!uid || !['events', 'labels', 'checklists'].includes(module) || typeof id !== 'string' || !id || id.length > 200) throw new Error('Rascunho operacional inválido.');
-  return `${uid}::${module}::${id}`;
-}
-export async function saveOperationalDraft(uid, module, id, input) {
-  const key = draftKey(uid, module, id), fields = {};
-  for (const [name, value] of Object.entries(input || {})) {
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/.test(name) || /token|secret|password|credential|file/i.test(name)) continue;
-    if (typeof value === 'string' && value.length <= 10000 || typeof value === 'boolean') fields[name] = value;
-  }
-  if (JSON.stringify(fields).length > 64000) throw new Error('O rascunho excedeu o espaço reservado para um formulário.');
-  await transact(DRAFTS, 'readwrite', store => store.put({key, uid, module, id, schemaVersion: 1, fields, updatedAt: Date.now()}));
-}
-export async function readOperationalDraft(uid, module, id) {
-  const draft = await transact(DRAFTS, 'readonly', store => store.get(draftKey(uid, module, id)));
-  return draft?.uid === uid && draft.schemaVersion === 1 ? draft : null;
-}
-export async function removeOperationalDraft(uid, module, id) {
-  await transact(DRAFTS, 'readwrite', store => store.delete(draftKey(uid, module, id)));
-}
-export async function listOperationalDrafts(uid) {
-  if (!uid) return [];
-  return transact(DRAFTS, 'readonly', store => store.index('uid').getAll(uid));
-}
-export async function pruneLocalReadCache(uid, {maxEntries = 240, maxBytes = 8 * 1024 * 1024, now = Date.now()} = {}) {
-  if (!uid) return {removed: 0, remainingEntries: 0, estimatedBytes: 0};
-  return transactAcross(CACHE, 'readwrite', tx => {
-    let removed = 0, remainingEntries = 0, estimatedBytes = 0;
-    const store = tx.objectStore(CACHE), request = store.index('uid').getAll(uid);
-    request.onsuccess = () => {
-      const protectedEntry = item => item.kind === 'trainingProgress' && item.data?.records?.some(record => record.syncPending);
-      const priority = kind => ['stations', 'appConfig', 'labelStaff', 'eventMembers', 'eventCatalogs'].includes(kind) ? 1 : 0;
-      const entries = request.result.sort((a, b) => priority(b.kind) - priority(a.kind) || b.cachedAt - a.cachedAt);
-      for (const entry of entries) {
-        if (protectedEntry(entry)) continue;
-        const bytes = JSON.stringify(entry).length * 2;
-        if (!isSafeCacheEntryFresh(entry, {uid, kind: entry.kind, now}) || remainingEntries >= maxEntries || estimatedBytes + bytes > maxBytes) {
-          store.delete(entry.key); removed++;
-        } else {remainingEntries++; estimatedBytes += bytes;}
-      }
-    };
-    return () => ({removed, remainingEntries, estimatedBytes});
-  });
-}
-
-export async function readFreshSafeCache(uid, kind, id, {now = Date.now(), maxAgeMs} = {}) {
-  if (!uid) return null;
-  const entry = await readSafeCache(uid, kind, id);
-  if (isSafeCacheEntryFresh(entry, {uid, kind, now, ...(maxAgeMs === undefined ? {} : {maxAgeMs})})) return entry;
-  if (entry?.uid === uid && entry.kind === kind) await transact(CACHE, 'readwrite', (store) => store.delete(cacheKey(uid, kind, id)));
-  return null;
 }
 
 export async function pendingTrainingProgressCount(uid) {
@@ -254,9 +203,9 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (!uid || !type || !resourceId) throw new Error('A operação offline precisa de usuário, tipo e ID estável.');
   if (!ALLOWED_OUTBOX_TYPES.has(type)) throw new Error('Esta ação não está habilitada para sincronização offline.');
   if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
+  if (type === 'occurrences') validateOccurrenceQueuePayload(payload);
   if (type === 'activities') payload = {...payload, dataProject:payload.dataProject || LOCAL_MANAGEMENT_PROJECT};
-  const initialStatus = CONFIRMATION_REQUIRED_OUTBOX_TYPES.has(type) ? 'awaiting-confirmation' : 'queued';
-  const item = {schemaVersion: 1, requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: initialStatus, nextAttemptAt: 0, lastError: ''};
+  const item = {schemaVersion: 1, requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: requiresSendConfirmation(type) ? 'awaiting-confirmation' : 'queued', nextAttemptAt: 0, lastError: ''};
   const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);
     let outcome = 'pending';
@@ -265,8 +214,23 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
     request.onsuccess = () => {
       const existing = request.result;
       if (!existing) {
-        store.add(item);
-        outcome = 'created';
+        if (type !== 'occurrences') {
+          store.add(item);
+          outcome = 'created';
+          return;
+        }
+        const userOperations = store.index('uid').getAll(uid);
+        userOperations.onsuccess = () => {
+          const unresolved = (userOperations.result || []).filter(operation => operation.type === 'occurrences'
+            && ['queued', 'failed', 'conflict'].includes(operation.status));
+          if (unresolved.length >= MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID) {
+            outcome = 'queue-full';
+            status = 'failed';
+            return;
+          }
+          store.add(item);
+          outcome = 'created';
+        };
         return;
       }
       if (existing.uid !== uid || existing.type !== type || existing.resourceId !== resourceId) {
@@ -290,61 +254,39 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
     };
     return () => ({outcome, status});
   });
+  if (result.outcome === 'queue-full') throw new Error('OCCURRENCE_QUEUE_FULL');
   if (result.outcome === 'id-collision') throw new Error('O ID desta operação já pertence a outra ação ou sessão.');
   if (result.outcome === 'payload-conflict') throw new Error('O ID desta operação já foi usado com outro conteúdo; a ação existente foi preservada.');
   if (result.outcome === 'existing' && !['queued', 'awaiting-confirmation'].includes(result.status)) throw new Error('Esta operação já está em revisão e precisa ser tratada na área Offline.');
-  if (result.status === 'queued' && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+  if (['queued', 'awaiting-confirmation'].includes(result.status) && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
     window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId, type}}));
-  } else if (result.status === 'awaiting-confirmation' && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('sahmt-write-local-pending', {detail: {requestId, type}}));
   }
   return requestId;
+}
+
+function validateOccurrenceQueuePayload(payload) {
+  const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+  if (!plain(payload) || !/^F(?:0[1-9]|10)$/.test(payload.formId || '') || !plain(payload.values)
+    || typeof payload.displayName !== 'string' || payload.displayName.length > 120
+    || typeof payload.anonymous !== 'boolean' || !Number.isFinite(payload.createdAtClient)
+    || Object.values(payload.values).some(value => typeof value !== 'string')) {
+    throw new Error('OCCURRENCE_QUEUE_INVALID');
+  }
+  if (new TextEncoder().encode(JSON.stringify(payload)).length > MAX_OCCURRENCE_QUEUE_BYTES) {
+    throw new Error('OCCURRENCE_QUEUE_TOO_LARGE');
+  }
+}
+
+export async function enqueueOccurrenceSubmission({uid, recordId, payload} = {}) {
+  if (!uid || !/^[A-Fa-f0-9-]{36}$/.test(recordId || '')) throw new Error('OCCURRENCE_QUEUE_INVALID');
+  return enqueueOperation({uid, type: 'occurrences', resourceId: recordId, requestId: recordId, payload});
 }
 
 export async function listQueuedOperations(uid) {
   if (!uid) return [];
   const values = await migrateUnconfirmedQueuedOperations(uid);
-  return values.filter((item) => item.status === 'queued' && item.nextAttemptAt <= Date.now()).sort((a, b) => a.createdAt - b.createdAt);
-}
-
-async function migrateUnconfirmedQueuedOperations(uid) {
-  return transactAcross(OUTBOX, 'readwrite', (tx) => {
-    const values = [];
-    const request = tx.objectStore(OUTBOX).index('uidStatus').openCursor(IDBKeyRange.only([uid, 'queued']));
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) return;
-      const item = cursor.value;
-      if (CONFIRMATION_REQUIRED_OUTBOX_TYPES.has(item.type) && !Number.isFinite(item.confirmedAt)) {
-        cursor.update({...item, status: 'awaiting-confirmation', nextAttemptAt: 0});
-        values.push({...item, status: 'awaiting-confirmation', nextAttemptAt: 0});
-      } else values.push(item);
-      cursor.continue();
-    };
-    return () => values;
-  });
-}
-
-export async function listAwaitingConfirmationOperations(uid) {
-  if (!uid) return [];
-  const values = await getUserOperations(uid, 'awaiting-confirmation');
-  return (values || []).sort((a, b) => a.createdAt - b.createdAt);
-}
-
-export async function confirmQueuedOperation(uid, requestId) {
-  if (!uid || !requestId) return false;
-  return transactAcross(OUTBOX, 'readwrite', (tx) => {
-    let confirmed = false;
-    const store = tx.objectStore(OUTBOX);
-    const request = store.get(requestId);
-    request.onsuccess = () => {
-      const item = request.result;
-      if (!item || item.uid !== uid || item.status !== 'awaiting-confirmation' || !CONFIRMATION_REQUIRED_OUTBOX_TYPES.has(item.type)) return;
-      store.put({...item, status: 'queued', confirmedAt: Date.now(), nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
-      confirmed = true;
-    };
-    return () => confirmed;
-  });
+  return (values || []).filter((item) => item.status === 'queued' && item.nextAttemptAt <= Date.now()).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function nextQueuedAttemptAt(uid) {
@@ -359,26 +301,32 @@ export async function listUnsettledOperations(uid) {
   await migrateUnconfirmedQueuedOperations(uid);
   return transactAcross(OUTBOX, 'readonly', (tx) => {
     let queued = [];
-    let awaitingConfirmation = [];
     let failed = [];
     let conflict = [];
+    let awaitingConfirmation = [];
+    let sending = [];
     const index = tx.objectStore(OUTBOX).index('uidStatus');
     const queuedRequest = index.getAll(IDBKeyRange.only([uid, 'queued']));
-    const confirmationRequest = index.getAll(IDBKeyRange.only([uid, 'awaiting-confirmation']));
     const failedRequest = index.getAll(IDBKeyRange.only([uid, 'failed']));
     const conflictRequest = index.getAll(IDBKeyRange.only([uid, 'conflict']));
+    const awaitingRequest = index.getAll(IDBKeyRange.only([uid, 'awaiting-confirmation']));
+    const sendingRequest = index.getAll(IDBKeyRange.only([uid, 'sending']));
     queuedRequest.onsuccess = () => { queued = queuedRequest.result || []; };
-    confirmationRequest.onsuccess = () => { awaitingConfirmation = confirmationRequest.result || []; };
     failedRequest.onsuccess = () => { failed = failedRequest.result || []; };
     conflictRequest.onsuccess = () => { conflict = conflictRequest.result || []; };
-    return () => [...queued, ...awaitingConfirmation, ...failed, ...conflict].sort((a, b) => a.createdAt - b.createdAt);
+    awaitingRequest.onsuccess = () => { awaitingConfirmation = awaitingRequest.result || []; };
+    sendingRequest.onsuccess = () => { sending = sendingRequest.result || []; };
+    return () => [...queued, ...failed, ...conflict, ...awaitingConfirmation, ...sending].sort((a, b) => a.createdAt - b.createdAt);
   });
 }
 
 export async function updateQueuedOperation(uid, requestId, update) {
   if (!uid || !requestId || !update || typeof update !== 'object') return false;
   const changes = {};
-  if (update.status === 'queued' || update.status === 'awaiting-confirmation' || update.status === 'failed' || update.status === 'conflict') changes.status = update.status;
+  if (['queued', 'failed', 'conflict', 'awaiting-confirmation', 'sending'].includes(update.status)) changes.status = update.status;
+  if (Number.isFinite(update.sendConfirmedAt) && update.sendConfirmedAt >= 0) changes.sendConfirmedAt = update.sendConfirmedAt;
+  if (update.clearSendConfirmation === true) { changes.sendConfirmedAt = null; changes.sendClaimedAt = null; }
+  if (Number.isFinite(update.sendClaimedAt) && update.sendClaimedAt >= 0) changes.sendClaimedAt = update.sendClaimedAt;
   if (Number.isInteger(update.attempts) && update.attempts >= 0) changes.attempts = update.attempts;
   if (Number.isFinite(update.nextAttemptAt) && update.nextAttemptAt >= 0) changes.nextAttemptAt = update.nextAttemptAt;
   if (typeof update.lastError === 'string') changes.lastError = update.lastError.slice(0, 300);
@@ -393,6 +341,44 @@ export async function updateQueuedOperation(uid, requestId, update) {
       updated = true;
     };
     return () => updated;
+  });
+}
+
+export async function confirmQueuedOperation(uid, requestId, now = Date.now()) {
+  if (!uid || !requestId || !Number.isFinite(now)) return false;
+  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+    let confirmed = false;
+    const store = tx.objectStore(OUTBOX);
+    const request = store.get(requestId);
+    request.onsuccess = () => {
+      const item = request.result;
+      if (!item || item.uid !== uid || !requiresSendConfirmation(item.type)) return;
+      const staleSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
+        && now - item.sendClaimedAt >= 120000;
+      if (!['awaiting-confirmation', 'queued', 'failed'].includes(item.status) && !staleSend) return;
+      store.put({...item, status: 'queued', sendConfirmedAt: now, confirmedAt: now, sendClaimedAt: null,
+        nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+      confirmed = true;
+    };
+    return () => confirmed;
+  });
+}
+
+export async function claimQueuedOperationForSend(uid, requestId, now = Date.now()) {
+  if (!uid || !requestId || !Number.isFinite(now)) return null;
+  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+    let claimed = null;
+    const store = tx.objectStore(OUTBOX);
+    const request = store.get(requestId);
+    request.onsuccess = () => {
+      const item = request.result;
+      if (!item || item.uid !== uid || item.status !== 'queued' ||
+          !requiresSendConfirmation(item.type) || !Number.isFinite(item.sendConfirmedAt)) return;
+      if (Number.isFinite(item.sendClaimedAt) && now - item.sendClaimedAt < 120000) return;
+      claimed = {...item, status: 'sending', sendClaimedAt: now, sendConfirmedAt: null, confirmedAt: null};
+      store.put(claimed);
+    };
+    return () => claimed;
   });
 }
 
@@ -412,28 +398,31 @@ export async function removeQueuedOperation(uid, requestId) {
 }
 
 export async function pendingOperationCount(uid) {
-  const {queued, awaitingConfirmation, failed, conflict} = await operationCounts(uid);
-  return queued + awaitingConfirmation + failed + conflict;
+  const {queued, failed, conflict, awaitingConfirmation, sending} = await operationCounts(uid);
+  return queued + failed + conflict + awaitingConfirmation + sending;
 }
 
 export async function operationCounts(uid) {
-  if (!uid) return {queued: 0, awaitingConfirmation: 0, failed: 0, conflict: 0};
+  if (!uid) return {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0};
   await migrateUnconfirmedQueuedOperations(uid);
   return transactAcross(OUTBOX, 'readonly', (tx) => {
     let queued = 0;
-    let awaitingConfirmation = 0;
     let failed = 0;
     let conflict = 0;
+    let awaitingConfirmation = 0;
+    let sending = 0;
     const index = tx.objectStore(OUTBOX).index('uidStatus');
     const queuedRequest = index.count(IDBKeyRange.only([uid, 'queued']));
-    const confirmationRequest = index.count(IDBKeyRange.only([uid, 'awaiting-confirmation']));
     const failedRequest = index.count(IDBKeyRange.only([uid, 'failed']));
     const conflictRequest = index.count(IDBKeyRange.only([uid, 'conflict']));
+    const awaitingRequest = index.count(IDBKeyRange.only([uid, 'awaiting-confirmation']));
+    const sendingRequest = index.count(IDBKeyRange.only([uid, 'sending']));
     queuedRequest.onsuccess = () => { queued = queuedRequest.result; };
-    confirmationRequest.onsuccess = () => { awaitingConfirmation = confirmationRequest.result; };
     failedRequest.onsuccess = () => { failed = failedRequest.result; };
     conflictRequest.onsuccess = () => { conflict = conflictRequest.result; };
-    return () => ({queued, awaitingConfirmation, failed, conflict});
+    awaitingRequest.onsuccess = () => { awaitingConfirmation = awaitingRequest.result; };
+    sendingRequest.onsuccess = () => { sending = sendingRequest.result; };
+    return () => ({queued, failed, conflict, awaitingConfirmation, sending});
   });
 }
 
@@ -446,7 +435,8 @@ export async function retryFailedOperations(uid) {
       const cursor = request.result;
       if (!cursor) return;
       if (cursor.value.lastErrorCode !== 'invalid-outbox-operation') {
-        cursor.update({...cursor.value, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+        const status = requiresSendConfirmation(cursor.value.type) ? 'awaiting-confirmation' : 'queued';
+        cursor.update({...cursor.value, status, sendConfirmedAt: null, sendClaimedAt: null, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
         retried++;
       }
       cursor.continue();
@@ -458,7 +448,7 @@ export async function retryFailedOperations(uid) {
 export async function retryableFailedOperationCount(uid) {
   if (!uid) return 0;
   const failed = await getUserOperations(uid, 'failed');
-  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation').length;
+  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type)).length;
 }
 
 export async function retryFailedOperation(uid, requestId) {
@@ -470,7 +460,8 @@ export async function retryFailedOperation(uid, requestId) {
     request.onsuccess = () => {
       const item = request.result;
       if (!item || item.uid !== uid || item.status !== 'failed' || item.lastErrorCode === 'invalid-outbox-operation') return;
-      store.put({...item, status: 'queued', nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+      const status = requiresSendConfirmation(item.type) ? 'awaiting-confirmation' : 'queued';
+      store.put({...item, status, sendConfirmedAt: null, sendClaimedAt: null, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
       retried = true;
     };
     return () => retried;
@@ -493,5 +484,95 @@ export async function clearUserLocalData(uid, {clearOutbox = false} = {}) {
     };
     deleteUidRows(CACHE, 'uid');
     if (clearOutbox) deleteUidRows(OUTBOX, 'uid');
+  });
+}
+
+
+function draftKey(uid, module, id) {
+  if (!uid || !['events', 'labels', 'checklists'].includes(module) || typeof id !== 'string' || !id || id.length > 200) throw new Error('Rascunho operacional inválido.');
+  return `${uid}::${module}::${id}`;
+}
+
+
+export async function saveOperationalDraft(uid, module, id, input) {
+  const key = draftKey(uid, module, id), fields = {};
+  for (const [name, value] of Object.entries(input || {})) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/.test(name) || /token|secret|password|credential|file/i.test(name)) continue;
+    if (typeof value === 'string' && value.length <= 10000 || typeof value === 'boolean') fields[name] = value;
+  }
+  if (JSON.stringify(fields).length > 64000) throw new Error('O rascunho excedeu o espaço reservado para um formulário.');
+  await transact(DRAFTS, 'readwrite', store => store.put({key, uid, module, id, schemaVersion: 1, fields, updatedAt: Date.now()}));
+}
+
+
+export async function readOperationalDraft(uid, module, id) {
+  const draft = await transact(DRAFTS, 'readonly', store => store.get(draftKey(uid, module, id)));
+  return draft?.uid === uid && draft.schemaVersion === 1 ? draft : null;
+}
+
+
+export async function removeOperationalDraft(uid, module, id) {
+  await transact(DRAFTS, 'readwrite', store => store.delete(draftKey(uid, module, id)));
+}
+
+
+export async function listOperationalDrafts(uid) {
+  if (!uid) return [];
+  return transact(DRAFTS, 'readonly', store => store.index('uid').getAll(uid));
+}
+
+
+export async function pruneLocalReadCache(uid, {maxEntries = 240, maxBytes = 8 * 1024 * 1024, now = Date.now()} = {}) {
+  if (!uid) return {removed: 0, remainingEntries: 0, estimatedBytes: 0};
+  return transactAcross(CACHE, 'readwrite', tx => {
+    let removed = 0, remainingEntries = 0, estimatedBytes = 0;
+    const store = tx.objectStore(CACHE), request = store.index('uid').getAll(uid);
+    request.onsuccess = () => {
+      const protectedEntry = item => item.kind === 'trainingProgress' && item.data?.records?.some(record => record.syncPending);
+      const priority = kind => ['stations', 'appConfig', 'labelStaff', 'eventMembers', 'eventCatalogs'].includes(kind) ? 1 : 0;
+      const entries = request.result.sort((a, b) => priority(b.kind) - priority(a.kind) || b.cachedAt - a.cachedAt);
+      for (const entry of entries) {
+        if (protectedEntry(entry)) continue;
+        const bytes = JSON.stringify(entry).length * 2;
+        if (!isSafeCacheEntryFresh(entry, {uid, kind: entry.kind, now}) || remainingEntries >= maxEntries || estimatedBytes + bytes > maxBytes) {
+          store.delete(entry.key); removed++;
+        } else {remainingEntries++; estimatedBytes += bytes;}
+      }
+    };
+    return () => ({removed, remainingEntries, estimatedBytes});
+  });
+}
+
+
+export async function readFreshSafeCache(uid, kind, id, {now = Date.now(), maxAgeMs} = {}) {
+  if (!uid) return null;
+  const entry = await readSafeCache(uid, kind, id);
+  if (isSafeCacheEntryFresh(entry, {uid, kind, now, ...(maxAgeMs === undefined ? {} : {maxAgeMs})})) return entry;
+  if (entry?.uid === uid && entry.kind === kind) await transact(CACHE, 'readwrite', (store) => store.delete(cacheKey(uid, kind, id)));
+  return null;
+}
+
+
+export async function listAwaitingConfirmationOperations(uid) {
+  if (!uid) return [];
+  const values = await getUserOperations(uid, 'awaiting-confirmation');
+  return (values || []).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+async function migrateUnconfirmedQueuedOperations(uid) {
+  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+    const values = [];
+    const request = tx.objectStore(OUTBOX).index('uidStatus').openCursor(IDBKeyRange.only([uid, 'queued']));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const item = cursor.value;
+      if (requiresSendConfirmation(item.type) && !Number.isFinite(item.sendConfirmedAt)) {
+        cursor.update({...item, status: 'awaiting-confirmation', nextAttemptAt: 0});
+        values.push({...item, status: 'awaiting-confirmation', nextAttemptAt: 0});
+      } else values.push(item);
+      cursor.continue();
+    };
+    return () => values;
   });
 }

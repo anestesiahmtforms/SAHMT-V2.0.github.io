@@ -43,11 +43,16 @@ try {
     const url = new URL(route.request().url());
     if (url.origin === origin) return route.continue();
     if (offline) return route.abort('internetdisconnected');
+    if (url.hostname === 'firebaseappcheck.googleapis.com') return route.fulfill({json: {token: 'synthetic-app-check-token', ttl: '3600s'}});
     if (url.hostname === 'identitytoolkit.googleapis.com') return route.fulfill({json: {users: [{localId: 'offline-browser-fixture', email: 'offline.fixture@example.invalid', emailVerified: true, displayName: 'Pessoa de teste offline', providerUserInfo: [{providerId: 'google.com', rawId: 'offline-browser-fixture', email: 'offline.fixture@example.invalid', displayName: 'Pessoa de teste offline'}], createdAt: '1', lastLoginAt: '1'}]}});
     if (url.hostname === 'firestore.googleapis.com') {firestoreRequests++; return route.fulfill({status: 429, json: {error: {code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Synthetic quota test'}}});}
     outsideRequests++; return route.abort('blockedbyclient');
   });
   await context.addInitScript(({apiKey}) => {
+    // Only external attestation is mocked. The Firebase SDK, application and
+    // persistence still run from the actual production-configured build.
+    const captcha = {ready: callback => callback(), render: () => 1, execute: async () => 'synthetic-recaptcha-token'};
+    globalThis.grecaptcha = {...captcha, enterprise: captcha};
     globalThis.__fixtureSessionStates = []; addEventListener('sahmt-session-status', event => globalThis.__fixtureSessionStates.push(event.detail));
     if (localStorage.getItem('offline-fixture-seeded')) return;
     const uid = 'offline-browser-fixture', now = Date.now(), day = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());

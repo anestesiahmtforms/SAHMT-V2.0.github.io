@@ -97,13 +97,71 @@ function renderHarness(session) {
     stopChecklistQrScanner() {}, currentRoute: () => 'management',
     app: {innerHTML: ''}, notice: '', labels: {management: ['Gestão']},
     navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
-    featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {},
+    featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {}, renderOfflineOperationalView: async () => {},
     document: {querySelectorAll: () => [], querySelector: () => null},
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
-    updateInformationBanner() {}, updateOutboxStatus: async () => {}, navigator: {onLine: false}
+    updateInformationBanner() {}, updateOutboxStatus: async () => {}, syncOutbox: async () => {}, navigator: {onLine: true}
   });
   vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
+}
+
+test('modo offline preserva a tela normal e troca somente o painel salvo ao redesenhar', async () => {
+  const {mountOfflineOperationalDashboard} = await import('../src/offline-operational-snapshot.js');
+  assert.match(main, /const routeKind = \{home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'\}\[route\]/);
+  assert.match(main, /route === 'home' \? document\.querySelector\('#schedule-content'\) : document\.querySelector\('\.module-view\.panel'\)/);
+  const host = fakeOfflineHost('<nav data-route="events">Eventos</nav><section id="schedule-content">Escala</section>');
+  mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia inicial</section>');
+  assert.match(host.innerHTML, /data-route="events"/);
+  assert.match(host.innerHTML, /Escala/);
+  mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia atualizada</section>');
+  assert.match(host.innerHTML, /data-route="events"/);
+  assert.match(host.innerHTML, /Cópia atualizada/);
+  assert.doesNotMatch(host.innerHTML, /Cópia inicial/);
+});
+
+
+test('painel offline fica na área do módulo e preserva os contêineres visuais do app', async () => {
+  const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
+  const markup = offlineOperationalDashboardMarkup({
+    route: 'home',
+    day: '2026-10-19',
+    snapshots: {schedule: {schedule: {positions: ['A']}, cachedAt: Date.now()}},
+    permissions: {schedule: true}
+  });
+  assert.match(markup, /class="offline-operational-dashboard"/);
+  assert.match(markup, /class="offline-operational-sections content-grid"/);
+  assert.match(markup, /class="offline-operational-section panel"/);
+  assert.match(markup, /class="offline-readonly-notice sync-state"/);
+  assert.match(markup, /class="siglas-grid"/);
+  assert.doesNotMatch(markup, /Última cópia deste aparelho/);
+});
+
+test('painel offline mostra apenas a rota aberta', async () => {
+  const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
+  const markup = offlineOperationalDashboardMarkup({
+    route: 'events',
+    day: '2026-10-19',
+    snapshots: {events: {records: [{eventType: 'Evento'}]}, labels: {records: [{patientName: 'Outro'}]}},
+    permissions: {events: true, labels: true}
+  });
+  assert.match(markup, /<h3>Eventos<\/h3>/);
+  assert.doesNotMatch(markup, /<h3>Etiquetas<\/h3>/);
+});
+
+function fakeOfflineHost(initial) {
+  return {
+    innerHTML: initial,
+    querySelector(selector) {
+      if (selector !== '.offline-operational-dashboard') return null;
+      const match = this.innerHTML.match(/<section class="offline-operational-dashboard">[\s\S]*?<\/section>/);
+      return match ? {remove: () => { this.innerHTML = this.innerHTML.replace(match[0], ''); }} : null;
+    },
+    insertAdjacentHTML(position, markup) {
+      assert.equal(position, 'beforeend');
+      this.innerHTML += markup;
+    }
+  };
 }
 
 test('link direto de Gestão bloqueia antes de renderizar e carregar; revogação também bloqueia', async () => {

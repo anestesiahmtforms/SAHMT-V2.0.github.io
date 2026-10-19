@@ -19,8 +19,11 @@ test('ação offline permanece na fila isolada após recarregar o módulo e cons
   assert.equal(restored[0].requestId, requestId);
   assert.equal(restored[0].status, 'awaiting-confirmation');
   assert.deepEqual(restored[0].payload, payload);
-  assert.deepEqual(await reopenedPage.operationCounts(uid), {queued: 0, awaitingConfirmation: 1, failed: 0, conflict: 0});
+  assert.deepEqual(await reopenedPage.operationCounts(uid), {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 1, sending: 0});
 
+  assert.equal(await reopenedPage.confirmQueuedOperation(uid, requestId), true);
+  const claimed = await reopenedPage.claimQueuedOperationForSend(uid, requestId);
+  assert.equal(claimed?.status, 'sending');
   await reopenedPage.clearUserLocalData(uid, {clearOutbox: true});
-  assert.deepEqual(await firstPage.operationCounts(uid), {queued: 0, awaitingConfirmation: 0, failed: 0, conflict: 0});
+  assert.deepEqual(await firstPage.operationCounts(uid), {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0});
 });

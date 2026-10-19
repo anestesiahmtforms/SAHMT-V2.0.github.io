@@ -52,3 +52,22 @@ test('cache expirado não é apresentado como dado offline válido', async () =>
     writeCache: async () => {}, mayFallback: (error) => error.code === 'resource-exhausted'
   }), {code: 'resource-exhausted'});
 });
+import {offlineOperationalDashboardMarkup} from '../src/offline-operational-snapshot.js';
+
+test('offline operational modules expose local write forms only for granted write permissions', () => {
+  const events = offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'events', permissions: {events: true, eventsWrite: true},
+    eventCatalog: {payers: ['Caixa'], creditors: ['Equipe']}, eventSchedule: {positions: [{sigla: 'AB', name: 'Pessoa A'}]}});
+  assert.match(events, /data-offline-write-form="events"/);
+  assert.match(events, /revisar e confirmar o envio/);
+  assert.doesNotMatch(offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'events', permissions: {events: true, eventsWrite: false}}), /data-offline-write-form="events"/);
+
+  const labels = offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'labels', permissions: {labels: true, labelsWrite: true}, labelStaffSiglas: ['AB']});
+  assert.match(labels, /data-offline-write-form="labels"/);
+  assert.match(labels, /Nome do paciente/);
+  assert.doesNotMatch(offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'labels', permissions: {labels: true, labelsWrite: false}}), /data-offline-write-form="labels"/);
+
+  const checklist = offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'checklist', permissions: {checklist: true, checklistWrite: true}, stations: [{id: 'station-1', name: 'Arsenal 1', active: true}]});
+  assert.match(checklist, /data-offline-write-form="checklists"/);
+  assert.match(checklist, /Salvar Checklist offline/);
+  assert.doesNotMatch(offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'checklist', permissions: {checklist: true, checklistWrite: false}, stations: [{id: 'station-1', active: true}]}), /data-offline-write-form="checklists"/);
+});

@@ -10,6 +10,17 @@ import {isFirestoreCacheFallbackError} from './offline-cache.js';
 import {operationalBackend} from './operational-backend.js';
 
 let retryCurrentProfile = null;
+const TEMPORARY_PROFILE_READ_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
+
+function isTemporaryProfileReadFailure(error) {
+  const code=String(error?.code||'').toLowerCase().split('/').pop();
+  return TEMPORARY_PROFILE_READ_CODES.has(code);
+}
+
+function isExplicitProfileAccessDenial(error) {
+  const code=String(error?.code||'').toLowerCase().split('/').pop();
+  return code==='permission-denied'||code==='unauthenticated';
+}
 let authApiPromise = null;
 let firstLoginRuntimePromise = null;
 
@@ -53,10 +64,14 @@ async function showCachedSession(user, onState, isCurrent = () => true) {
   const profile = await readCachedProfile(user.uid);
   if (!isCurrent()) return;
   if (!profile || profile.uid !== user.uid) {
-    onState({status: 'profile-error', user, error: new Error('Perfil offline ausente ou expirado.')});
+    showAuthLimitedSession(user, onState);
     return;
   }
   onState({status: profile.active && profile.access ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: true});
+}
+
+function showAuthLimitedSession(user, onState, validatingProfile=false) {
+  onState({status:'auth-limited',user,offline:true,validatingProfile,profile:{uid:user.uid,email:user.email||'',displayName:user.displayName||'Usuário',sigla:'',phone:'',active:false,access:false,role:'',permissions:{}}});
 }
 
 export function watchSession(onState) {
@@ -90,7 +105,9 @@ export function watchSession(onState) {
     clearOnlineHandler();
     profileUnsubscribe?.();
     profileUnsubscribe = null;
-    onState({status: 'loading-profile', user});
+    // Let Firebase Authentication open the restricted shell immediately.
+    // Firestore profile data upgrades this to a normal authorized session.
+    showAuthLimitedSession(user,onState,true);
     try {
       if (!navigator.onLine) {
         await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
@@ -106,7 +123,7 @@ export function watchSession(onState) {
     } catch (error) {
       if (currentGeneration !== generation) return;
       if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
-      else onState({status: 'profile-error', user, error});
+      else showAuthLimitedSession(user, onState);
     }
     scheduleReconnect(user, currentGeneration);
   };
@@ -200,7 +217,7 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
     if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === getGeneration());
-    else onState({status: 'profile-error', user, error});
+    else showAuthLimitedSession(user, onState);
   }
 }
 
@@ -247,11 +264,14 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
             if (currentGeneration === getGeneration() && !cancelled) onState({status: 'profile-error', user, error: cacheError});
           });
         } else {
-          onState({status: 'profile-error', user, error});
+          showAuthLimitedSession(user,onState);
         }
       });
     } catch (error) {
-      if (!cancelled && currentGeneration === getGeneration()) onState({status: 'profile-error', user, error});
+      if (!cancelled && currentGeneration === getGeneration()) {
+        if (isTemporaryProfileReadFailure(error)) showCachedSession(user, onState).catch(() => showAuthLimitedSession(user,onState));
+        else showAuthLimitedSession(user,onState);
+      }
     }
   };
 
