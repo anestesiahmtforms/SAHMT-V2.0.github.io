@@ -9,3 +9,7 @@ export function navigate(route) {
   if (!routes.has(route)) return;
   location.hash = `#/${route}`;
 }
+
+export function shouldRenderHashChange(session) {
+  return session?.status === 'signed-in';
+}
