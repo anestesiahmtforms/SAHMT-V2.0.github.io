@@ -15,7 +15,7 @@ import {confirmedLiveReportRecords} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
-import {currentRoute, navigate} from './router.js';
+import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
 import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
@@ -4819,9 +4819,7 @@ async function refreshAppFeatures(uid, force = false) {
   }
 }
 window.addEventListener('hashchange', () => {
-  if (session.status === 'signed-in' && !session.offline) {
-    void render();
-  }
+  if (shouldRenderHashChange(session)) void render();
 });
 window.addEventListener('online', () => {
   if(session.offline)return; // auth.js performs one profile revalidation on reconnect; wait for its result before app reads.
