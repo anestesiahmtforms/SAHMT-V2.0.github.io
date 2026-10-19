@@ -1,5 +1,5 @@
 const OPERATIONAL_COLLECTIONS = new Set(['events', 'labels', 'checklists', 'activities']);
-const OFFLINE_QUEUED_COLLECTIONS = new Set(['events', 'checklists', 'activities']);
+const OFFLINE_QUEUED_COLLECTIONS = new Set(['events', 'labels', 'checklists', 'activities']);
 
 export function mayQueueOffline(collectionName) {
   return OFFLINE_QUEUED_COLLECTIONS.has(collectionName);
