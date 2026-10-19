@@ -50,7 +50,7 @@ test('offline operational modules expose local write forms only for granted writ
   const events = offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'events', permissions: {events: true, eventsWrite: true},
     eventCatalog: {payers: ['Caixa'], creditors: ['Equipe']}, eventSchedule: {positions: [{sigla: 'AB', name: 'Pessoa A'}]}});
   assert.match(events, /data-offline-write-form="events"/);
-  assert.match(events, /Aguardando confirmação/);
+  assert.match(events, /revisar e confirmar o envio/);
   assert.doesNotMatch(offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'events', permissions: {events: true, eventsWrite: false}}), /data-offline-write-form="events"/);
 
   const labels = offlineOperationalDashboardMarkup({day: '2026-10-19', route: 'labels', permissions: {labels: true, labelsWrite: true}, labelStaffSiglas: ['AB']});
