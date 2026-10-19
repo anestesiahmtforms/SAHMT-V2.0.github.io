@@ -8,6 +8,17 @@ import {createManagementGoogleLogin} from './management-google-login.js';
 import {managementFaFirstLoginConfig} from './management-fa-first-login-config.js';
 
 let retryCurrentProfile = null;
+const TEMPORARY_PROFILE_READ_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
+
+function isTemporaryProfileReadFailure(error) {
+  const code=String(error?.code||'').toLowerCase().split('/').pop();
+  return TEMPORARY_PROFILE_READ_CODES.has(code);
+}
+
+function isExplicitProfileAccessDenial(error) {
+  const code=String(error?.code||'').toLowerCase().split('/').pop();
+  return code==='permission-denied'||code==='unauthenticated';
+}
 let authApiPromise = null;
 let firstLoginRuntimePromise = null;
 
@@ -49,11 +60,15 @@ function loadAuthApi() {
 
 async function showCachedSession(user, onState) {
   const profile = await readCachedProfile(user.uid);
-  if (!profile) {
-    onState({status: 'profile-error', user, error: new Error('Perfil offline ausente ou expirado.')});
+  if (!profile || profile.uid !== user.uid) {
+    showAuthLimitedSession(user, onState);
     return;
   }
   onState({status: profile.active && profile.access ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: true});
+}
+
+function showAuthLimitedSession(user, onState, validatingProfile=false) {
+  onState({status:'auth-limited',user,offline:true,validatingProfile,profile:{uid:user.uid,email:user.email||'',displayName:user.displayName||'Usuário',sigla:'',phone:'',active:false,access:false,role:'',permissions:{}}});
 }
 
 export function watchSession(onState) {
@@ -87,7 +102,9 @@ export function watchSession(onState) {
     clearOnlineHandler();
     profileUnsubscribe?.();
     profileUnsubscribe = null;
-    onState({status: 'loading-profile', user});
+    // Let Firebase Authentication open the restricted shell immediately.
+    // Firestore profile data upgrades this to a normal authorized session.
+    showAuthLimitedSession(user,onState,true);
     try {
       if (!navigator.onLine) {
         await showCachedSession(user, onState);
@@ -97,8 +114,9 @@ export function watchSession(onState) {
       await onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
     } catch (error) {
       if (currentGeneration !== generation) return;
-      if (!navigator.onLine) await showCachedSession(user, onState);
-      else onState({status: 'profile-error', user, error});
+      if (isExplicitProfileAccessDenial(error)) showAuthLimitedSession(user,onState);
+      else if (!navigator.onLine || isTemporaryProfileReadFailure(error)) await showCachedSession(user, onState);
+      else showAuthLimitedSession(user,onState);
     }
     scheduleReconnect(user, currentGeneration);
   };
@@ -188,8 +206,9 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
-    if (!navigator.onLine) await showCachedSession(user, onState);
-    else onState({status: 'profile-error', user, error});
+    if (isExplicitProfileAccessDenial(error)) showAuthLimitedSession(user,onState);
+    else if (!navigator.onLine || isTemporaryProfileReadFailure(error)) await showCachedSession(user, onState);
+    else showAuthLimitedSession(user,onState);
   }
 }
 
@@ -228,14 +247,18 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
         onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(updatedProfile, user), offline: !navigator.onLine});
       }, (error) => {
         if (currentGeneration !== getGeneration()) return;
-        if (!navigator.onLine) {
-          showCachedSession(user, onState).catch((cacheError) => onState({status: 'profile-error', user, error: cacheError}));
+        if (isExplicitProfileAccessDenial(error)) showAuthLimitedSession(user,onState);
+        else if (!navigator.onLine || isTemporaryProfileReadFailure(error)) {
+          showCachedSession(user, onState).catch(() => showAuthLimitedSession(user,onState));
         } else {
-          onState({status: 'profile-error', user, error});
+          showAuthLimitedSession(user,onState);
         }
       });
     } catch (error) {
-      if (!cancelled && currentGeneration === getGeneration()) onState({status: 'profile-error', user, error});
+      if (!cancelled && currentGeneration === getGeneration()) {
+        if (isTemporaryProfileReadFailure(error)) showCachedSession(user, onState).catch(() => showAuthLimitedSession(user,onState));
+        else showAuthLimitedSession(user,onState);
+      }
     }
   };
 

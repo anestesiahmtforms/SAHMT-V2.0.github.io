@@ -7,7 +7,9 @@ const DB_VERSION = 3;
 const PROFILES = 'profiles';
 const CACHE = 'cache';
 const OUTBOX = 'outbox';
-const ALLOWED_OUTBOX_TYPES = new Set(['events', 'checklists', 'activities', 'eventEdits', 'scheduleReleases']);
+const ALLOWED_OUTBOX_TYPES = new Set(['events', 'checklists', 'activities', 'eventEdits', 'scheduleReleases', 'occurrences']);
+const MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID = 20;
+const MAX_OCCURRENCE_QUEUE_BYTES = 500_000;
 let dbPromise;
 
 function openDb() {
@@ -190,6 +192,7 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (!uid || !type || !resourceId) throw new Error('A operação offline precisa de usuário, tipo e ID estável.');
   if (!ALLOWED_OUTBOX_TYPES.has(type)) throw new Error('Esta ação não está habilitada para sincronização offline.');
   if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
+  if (type === 'occurrences') validateOccurrenceQueuePayload(payload);
   if (type === 'activities') payload = {...payload, dataProject:payload.dataProject || LOCAL_MANAGEMENT_PROJECT};
   const item = {requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''};
   const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
@@ -200,8 +203,23 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
     request.onsuccess = () => {
       const existing = request.result;
       if (!existing) {
-        store.add(item);
-        outcome = 'created';
+        if (type !== 'occurrences') {
+          store.add(item);
+          outcome = 'created';
+          return;
+        }
+        const userOperations = store.index('uid').getAll(uid);
+        userOperations.onsuccess = () => {
+          const unresolved = (userOperations.result || []).filter(operation => operation.type === 'occurrences'
+            && ['queued', 'failed', 'conflict'].includes(operation.status));
+          if (unresolved.length >= MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID) {
+            outcome = 'queue-full';
+            status = 'failed';
+            return;
+          }
+          store.add(item);
+          outcome = 'created';
+        };
         return;
       }
       if (existing.uid !== uid || existing.type !== type || existing.resourceId !== resourceId) {
@@ -225,6 +243,7 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
     };
     return () => ({outcome, status});
   });
+  if (result.outcome === 'queue-full') throw new Error('OCCURRENCE_QUEUE_FULL');
   if (result.outcome === 'id-collision') throw new Error('O ID desta operação já pertence a outra ação ou sessão.');
   if (result.outcome === 'payload-conflict') throw new Error('O ID desta operação já foi usado com outro conteúdo; a ação existente foi preservada.');
   if (result.outcome === 'existing' && result.status !== 'queued') throw new Error('Esta operação já está em revisão e precisa ser tratada na área Offline.');
@@ -232,6 +251,25 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
     window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId, type}}));
   }
   return requestId;
+}
+
+function validateOccurrenceQueuePayload(payload) {
+  const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+  if (!plain(payload) || !/^F(?:0[1-9]|10)$/.test(payload.formId || '') || !plain(payload.values)
+    || typeof payload.displayName !== 'string' || payload.displayName.length > 120
+    || typeof payload.anonymous !== 'boolean' || !Number.isFinite(payload.createdAtClient)
+    || Object.values(payload.values).some(value => typeof value !== 'string')) {
+    throw new Error('OCCURRENCE_QUEUE_INVALID');
+  }
+  if (new TextEncoder().encode(JSON.stringify(payload)).length > MAX_OCCURRENCE_QUEUE_BYTES) {
+    throw new Error('OCCURRENCE_QUEUE_TOO_LARGE');
+  }
+}
+
+export async function enqueueOccurrenceSubmission({uid, recordId, payload} = {}) {
+  if (!uid || !/^[A-Fa-f0-9-]{36}$/.test(recordId || '')) throw new Error('OCCURRENCE_QUEUE_INVALID');
+  return enqueueOperation({uid, type: 'occurrences', resourceId: recordId, requestId: recordId, payload});
 }
 
 export async function listQueuedOperations(uid) {

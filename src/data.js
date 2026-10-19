@@ -10,6 +10,7 @@ import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
+import {syncOccurrenceOperation} from './occurrence-outbox-sync.js';
 import {updateScheduleReleaseState, updateScheduleReleaseTimes} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
@@ -2461,6 +2462,25 @@ export async function flushOutbox(uid, {requestId} = {}) {
     const queued = await listQueuedOperations(uid);
     const operations = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
     for (const operation of operations) {
+      if (operation.type === 'occurrences') {
+        const [{auth},{createOccurrenceRepository}] = await Promise.all([
+          import('./firebase-auth.js'), import('./occurrence-data.js')
+        ]);
+        const isCurrent=()=>auth.currentUser?.uid===uid;
+        const repository=createOccurrenceRepository({db,auth,isCurrent});
+        const result=await syncOccurrenceOperation({operation,uid,repository,isCurrent,
+          outbox:{removeQueuedOperation,updateQueuedOperation}});
+        if(result==='synced') {
+          synced++;
+          window.dispatchEvent(new CustomEvent('sahmt-write-synced',{detail:{requestId:operation.requestId,type:'occurrences'}}));
+          continue;
+        }
+        if(result==='needs-review') {
+          window.dispatchEvent(new CustomEvent('sahmt-write-rejected',{detail:{type:'occurrences',message:'Uma ocorrência local precisa de revisão e não foi confirmada.'}}));
+          continue;
+        }
+        if(result==='queued'||result==='deferred') break;
+      }
       try {
         assertQueuedOperationShape(operation, uid);
         if (operation.type === 'activities' && (operation.payload.dataProject !== managementDataProject || operation.payload.dataGeneration !== managementDataGeneration))

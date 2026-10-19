@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createOccurrenceRepository} from '../src/occurrence-data.js';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 
-function harness({claims={}, active=true, failTransaction=false, failCatalogRead=false, current=true}={}) {
+function harness({claims={}, active=true, failTransaction=false, failTransactionCode='permission-denied', failProfileReadCode='', failCatalogRead=false, failCatalogReadCode='permission-denied', current=true}={}) {
   const store = new Map(), calls=[];
   const db={app:{options:{projectId:'sahmt-17a16'}}};
   const user={uid:'uid-synthetic',async getIdTokenResult(force){calls.push(['token',force]);return {claims:{firebase:{sign_in_provider:'custom'},sahmtFaSourceProjectId:'sahmt-17a16',...claims}};}};
@@ -15,13 +15,13 @@ function harness({claims={}, active=true, failTransaction=false, failCatalogRead
     query:(collection,...args)=>({collection,...Object.assign({},...args)}),
     serverTimestamp:()=>({syntheticServerTimestamp:true}),
     getDocFromServer:async ref=>{
-      if(ref.collection==='users'){calls.push(['profile']);return {exists:()=>true,data:()=>({uid:'uid-synthetic',active,access:true,permissions:{occurrencesRead:claims.sahmtOccurrencesRead===true,occurrencesAuditRead:claims.sahmtOccurrencesAuditRead===true}})};}
-      if(failCatalogRead)throw Object.assign(new Error('private Firestore response'),{code:'permission-denied'});
+      if(ref.collection==='users'){calls.push(['profile']);if(failProfileReadCode)throw Object.assign(new Error('synthetic profile access failure'),{code:failProfileReadCode});return {exists:()=>true,data:()=>({uid:'uid-synthetic',active,access:true,permissions:{occurrencesRead:claims.sahmtOccurrencesRead===true,occurrencesAuditRead:claims.sahmtOccurrencesAuditRead===true}})};}
+      if(failCatalogRead)throw Object.assign(new Error('private Firestore response'),{code:failCatalogReadCode});
       return {exists:()=>store.has(ref.path),data:()=>store.get(ref.path)};
     },
     getDocsFromServer:async()=>({docs:[]}),
     runTransaction:async(_db,work)=>{
-      if(failTransaction) throw Object.assign(new Error('private document content'),{code:'permission-denied'});
+      if(failTransaction) throw Object.assign(new Error('private document content'),{code:failTransactionCode});
       const writes=[];
       const tx={get:async ref=>({exists:()=>store.has(ref.path),data:()=>store.get(ref.path)}),set:(ref,value)=>writes.push([ref.path,value])};
       const result=await work(tx); for(const [path,value] of writes) store.set(path,value); return result;
@@ -59,6 +59,29 @@ test('falha de permissão no Firestore FC recebe código distinto de catálogo a
   await assert.rejects(repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_CATALOG_PERMISSION_DENIED'});
 });
 
+test('distinguishes temporary catalog read outage from missing or denied catalog',async()=>{
+  const exhausted=harness({claims:allClaims,failCatalogRead:true,failCatalogReadCode:'resource-exhausted'});
+  await assert.rejects(exhausted.repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_CATALOG_READ_UNAVAILABLE'});
+  const denied=harness({claims:allClaims,failCatalogRead:true,failCatalogReadCode:'permission-denied'});
+  await assert.rejects(denied.repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_CATALOG_PERMISSION_DENIED'});
+});
+
+test('distinguishes authorization denial from transient profile-read exhaustion',async()=>{
+  const denied=harness({claims:allClaims,failProfileReadCode:'permission-denied'});
+  await assert.rejects(denied.repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});
+  const exhausted=harness({claims:allClaims,failProfileReadCode:'resource-exhausted'});
+  await assert.rejects(exhausted.repository.save(input),{message:'OCCURRENCE_AUTHORIZATION_UNAVAILABLE'});
+});
+
+test('distinguishes permanent transaction denial from transient Firestore failures',async()=>{
+  const denied=harness({claims:allClaims,failTransaction:true,failTransactionCode:'permission-denied'});
+  await assert.rejects(denied.repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});
+  for(const code of ['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']){
+    const transient=harness({claims:allClaims,failTransaction:true,failTransactionCode:code});
+    await assert.rejects(transient.repository.save(input),{message:'OCCURRENCE_TRANSIENT_WRITE_FAILED'});
+  }
+});
+
 test('grava relatório anonimizado, auditoria restrita e claim pendente em um commit idempotente', async()=>{
   const {repository,store}=harness({claims:allClaims});
   const first=await repository.save({...input,anonymous:true,displayName:''});
@@ -87,6 +110,6 @@ test('não sobrescreve identidade divergente, não grava formulário inválido e
   await assert.rejects(repository.save({...input,values:{...input.values,causingSector:'fora do catálogo'}}),{message:'OCCURRENCE_FORM_INVALID'});
   assert.equal(store.size,0);
   const failing=harness({claims:allClaims,failTransaction:true});
-  await assert.rejects(failing.repository.save(input),{message:'OCCURRENCE_SAVE_FAILED'});
+  await assert.rejects(failing.repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});
   assert.equal(failing.store.size,0);
 });
