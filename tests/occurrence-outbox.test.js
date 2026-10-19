@@ -16,7 +16,7 @@ test('fila de Ocorrências valida tamanho, mantém ID idempotente, isola UID e l
   const recordId = '10000000-0000-4000-8000-000000000001';
   assert.equal(await enqueueOccurrenceSubmission({uid, recordId, payload: makePayload()}), recordId);
   assert.equal(await enqueueOccurrenceSubmission({uid, recordId, payload: makePayload()}), recordId);
-  assert.deepEqual(await operationCounts(uid), {queued: 1, failed: 0, conflict: 0});
+  assert.deepEqual(await operationCounts(uid), {queued: 1, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0});
   assert.equal((await listQueuedOperations(uid))[0].type, 'occurrences');
 
   await assert.rejects(
