@@ -2155,3 +2155,5 @@ html:has(.app-shell--home),body:has(.app-shell--home){overflow:hidden;overscroll
 .material-viewer-trigger{cursor:pointer}
 button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:transparent;font:inherit;text-decoration:underline;text-underline-offset:2px}
 @media(max-width:520px){.material-viewer-dialog{inset:max(4px,env(safe-area-inset-top)) 4px max(4px,env(safe-area-inset-bottom));width:auto;height:auto;max-height:none;border-radius:10px;padding:6px}.material-viewer-dialog[open]{gap:6px}}
+
+.offline-operational-dashboard>section>.record-meta{display:block;margin-top:4px}

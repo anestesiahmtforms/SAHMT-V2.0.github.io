@@ -96,10 +96,10 @@ function renderHarness(session) {
     stopChecklistQrScanner() {}, currentRoute: () => 'management',
     app: {innerHTML: ''}, notice: '', labels: {management: ['Gestão']},
     navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
-    featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {},
+    featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {}, renderOfflineOperationalView: async () => {},
     document: {querySelectorAll: () => [], querySelector: () => null},
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
-    updateInformationBanner() {}, updateOutboxStatus: async () => {}, navigator: {onLine: false}
+    updateInformationBanner() {}, updateOutboxStatus: async () => {}, syncOutbox: async () => {}, navigator: {onLine: true}
   });
   vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
