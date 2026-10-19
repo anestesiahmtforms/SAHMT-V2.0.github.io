@@ -3969,6 +3969,7 @@ async function loadLabelStaffCatalog() {
     const {listLabelStaffSiglas} = await import('./data.js');
     loadedLabelStaffSiglas = await listLabelStaffSiglas();
     if (session.user?.uid && navigator.onLine && !session.offline) await writeSafeCache(session.user.uid, 'appConfig', 'labelStaff', {siglas: loadedLabelStaffSiglas}).catch(() => {});
+    if (session.user?.uid && navigator.onLine && !session.offline) await writeSafeCache(session.user.uid, 'appConfig', 'labelStaff', {siglas: loadedLabelStaffSiglas}).catch(() => {});
     const options = document.querySelector('#label-staff-options');
     if (options) {
       options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
@@ -4674,15 +4675,16 @@ async function bindOfflineOperationalForms(route, uid, day) {
         const eventValues = {...values, memberStatus: values.eventType === 'Suporte' ? 'SUPORTE' : (selected?.textContent?.split(' · ')[0] || memberSigla), delayMultiple: values.delayMultiple || '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
         validateEventForm(eventValues);
         const support = values.eventType === 'Suporte';
-        const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
+        const automaticAmount = eventAmountToPay(values.eventType, values.delayMultiple, values.shift);
+        const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: automaticAmount == null ? Number(values.amountToPay || 0) : automaticAmount, createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         const {createOperationalRecord} = await import('./data.js');
         await createOperationalRecord('events', record, {uid, forceQueue: true});
       } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
         const values = Object.fromEntries(new FormData(form).entries());
-        const normalizedType = String(values.type || '').normalize('NFD').replace(/\\p{Diacritic}/gu, '').toLowerCase();
-        const rawAmount = String(values.amount || '').trim().replace(/[^\\d,.-]/g, '').replace(/\\.(?=\\d{3}(?:\\D|$))/g, '').replace(',', '.');
+        const normalizedType = String(values.type || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+        const rawAmount = String(values.amount || '').trim().replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.');
         const amount = rawAmount ? Number(rawAmount) : null;
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
         if (!['particular', 'complementacao', 'convenio', 'consulta pre-anestesica', 'sadt'].includes(normalizedType)) throw new Error('Selecione o tipo de etiqueta.');
         if (rawAmount && !Number.isFinite(amount)) throw new Error('Informe um valor válido.');
         const selectedStaffSiglas = [...new Set([...form.elements.staffSiglas.selectedOptions].map(option => option.value.trim().toUpperCase()).filter(Boolean))].sort();
@@ -4703,6 +4705,7 @@ async function bindOfflineOperationalForms(route, uid, day) {
       }
       status.textContent = 'Salvo localmente. Abra Sincronização e revise e confirme este item antes do envio.';
       form.reset();
+      submit.disabled = false;
       if (form.elements.eventDate) form.elements.eventDate.value = day;
       if (form.elements.date) form.elements.date.value = day;
     } catch (error) {
