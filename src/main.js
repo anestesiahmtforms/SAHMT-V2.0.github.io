@@ -16,7 +16,7 @@ import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
+import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, removeQueuedOperation, requiresSendConfirmation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -2340,7 +2340,7 @@ async function loadMonthlyChecklist(stations, suppliedResult = null, scope = nul
   }
 }
 
-async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true} = {}) {
+async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true, forceQueue = false} = {}) {
   const actorName = session.profile?.displayName;
   const namedAuthor = typeof actorName === 'string' && actorName.length > 0 && actorName.length <= 120 ? {createdByName: actorName} : {};
   const sessionCurrent = () => Boolean(uid) && session.user?.uid === uid && can('checklistWrite') && isCurrent();
@@ -2352,7 +2352,7 @@ async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = 
     const {createOperationalRecord} = await import('./data.js');
     if (!sessionCurrent() || checklistDayMode(day, todayInputValue()) !== 'today') return {ok: false, message: 'A sessão, a permissão ou a data do Checklist foi alterada.'};
     // A atribuição do responsável só é definida após validação no servidor.
-    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid});
+    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid, forceQueue: forceQueue || session.offline || !navigator.onLine});
     return {ok: true, pendingFirestore: result.pendingFirestore === true};
   } catch (error) {
     return {ok: false, message: error.code === 'permission-denied' ? 'Seu perfil não tem permissão para registrar checklist.' : `Não foi possível salvar. ${error.message || ''}`};
@@ -3582,7 +3582,7 @@ async function bindModuleForm(route) {
       const result = await createOperationalRecord(collectionName, record, {uid: session.user.uid});
       if (route === 'labels' && !currentLabelSave()) return;
       notice = result.pendingFirestore
-        ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
+        ? 'Registro salvo neste aparelho. Revise e confirme o envio na área Sincronização quando houver conexão.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
       if (manualLabelEntry || cameraLabelEntry) {
         if (manualLabelEntry) updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
@@ -3938,6 +3938,7 @@ async function loadLabelStaffCatalog() {
   try {
     const {listLabelStaffSiglas} = await import('./data.js');
     loadedLabelStaffSiglas = await listLabelStaffSiglas();
+    if (session.user?.uid && navigator.onLine && !session.offline) await writeSafeCache(session.user.uid, 'appConfig', 'labelStaff', {siglas: loadedLabelStaffSiglas}).catch(() => {});
     const options = document.querySelector('#label-staff-options');
     if (options) {
       options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
@@ -4590,26 +4591,96 @@ async function renderOfflineOperationalView() {
   const allowed = {
     schedule: route === 'home' && featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
     checklist: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
+    checklistWrite: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && can('checklistWrite'),
     events: route === 'events' && featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
-    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)
+    eventsWrite: route === 'events' && featureEnabledForRoute('events', appFeatures) && can('eventsWrite'),
+    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can),
+    labelsWrite: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && (can('labelsWrite') || can('labelsManage'))
   };
   const day = todayInputValue();
   const access = {sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage')};
   const snapshot = routeKind && allowed[routeKind]
     ? await readOfflineOperationalSnapshot({uid, kind: routeKind, day, access, readSafeCache}).catch(() => null)
     : null;
-  const stationCache = routeKind === 'checklist' && allowed.checklist ? await readSafeCache(uid, 'stations', 'all').catch(() => null) : null;
+  const [stationCache, eventCatalogCache, eventScheduleCache, labelStaffCache] = await Promise.all([
+    routeKind === 'checklist' && allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null,
+    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'eventCatalogs', 'operational').catch(() => null) : null,
+    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'scheduleDays', day).catch(() => null) : null,
+    route === 'labels' && allowed.labelsWrite ? readSafeCache(uid, 'appConfig', 'labelStaff').catch(() => null) : null
+  ]);
   const host = route === 'home' ? document.querySelector('#schedule-content') : document.querySelector('.module-view.panel');
   if (!host) return;
   const snapshots = routeKind ? {[routeKind]: snapshot} : {};
+  const labelStaffSiglas = labelStaffCache?.uid === uid && Array.isArray(labelStaffCache.data?.siglas) ? labelStaffCache.data.siglas : [];
+  loadedLabelStaffSiglas = labelStaffSiglas;
   const markup = offlineOperationalDashboardMarkup({day, route, snapshots, permissions: allowed,
-    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []});
+    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data.filter(station => stationIsValidOn(station, day)) : [],
+    eventCatalog: eventCatalogCache?.uid === uid ? eventCatalogCache.data || {} : {},
+    eventSchedule: eventScheduleCache?.uid === uid ? eventScheduleCache.data || null : null,
+    labelStaffSiglas});
   document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
-  document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
-  document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
+  document.querySelectorAll('.main-content form:not(.offline-write-form)').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
+  document.querySelectorAll('.main-content input:not(.offline-write-form input),.main-content select:not(.offline-write-form select),.main-content textarea:not(.offline-write-form textarea),.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
   host.querySelector?.('.offline-operational-dashboard')?.remove();
   host.insertAdjacentHTML('beforeend', markup);
+  bindOfflineOperationalForms(route, uid, day);
 }
+async function bindOfflineOperationalForms(route, uid, day) {
+  const forms = [...document.querySelectorAll('.offline-write-form[data-offline-write-form]')];
+  for (const form of forms) form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (session.user?.uid !== uid || !session.profile?.permissions) return;
+    const submit = form.querySelector('[type="submit"]');
+    const status = form.querySelector('[data-offline-write-status]');
+    if (!submit || !status) return;
+    submit.disabled = true;
+    status.textContent = 'Guardando somente neste aparelho…';
+    try {
+      if (route === 'events' && form.dataset.offlineWriteForm === 'events') {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const selected = form.elements.memberSigla.selectedOptions[0];
+        const memberSigla = String(values.memberSigla || '').trim().toUpperCase();
+        const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
+        const eventValues = {...values, memberStatus: selected?.textContent?.split(' · ')[0] || memberSigla, delayMultiple: '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
+        validateEventForm(eventValues);
+        const record = {date: values.eventDate || day, memberSigla, scheduleSigla: memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: null, substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
+        const {createOperationalRecord} = await import('./data.js');
+        await createOperationalRecord('events', record, {uid, forceQueue: true});
+      } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
+        const values = Object.fromEntries(new FormData(form).entries());
+        const normalizedType = String(values.type || '').normalize('NFD').replace(/\\p{Diacritic}/gu, '').toLowerCase();
+        const rawAmount = String(values.amount || '').trim().replace(/[^\\d,.-]/g, '').replace(/\\.(?=\\d{3}(?:\\D|$))/g, '').replace(',', '.');
+        const amount = rawAmount ? Number(rawAmount) : null;
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
+        if (!['particular', 'complementacao', 'convenio', 'consulta pre-anestesica', 'sadt'].includes(normalizedType)) throw new Error('Selecione o tipo de etiqueta.');
+        if (rawAmount && !Number.isFinite(amount)) throw new Error('Informe um valor válido.');
+        const selectedStaffSiglas = [...new Set([...form.elements.staffSiglas.selectedOptions].map(option => option.value.trim().toUpperCase()).filter(Boolean))].sort();
+        const normalizedCreditor = normalizedType === 'consulta pre-anestesica' ? 'Caixa' : values.creditor;
+        if (!['Caixa', 'Plantão', 'Plantão/Caixa'].includes(normalizedCreditor)) throw new Error('Selecione o credor.');
+        if (normalizedCreditor !== 'Caixa' && !selectedStaffSiglas.length) throw new Error('Selecione os plantonistas.');
+        if (selectedStaffSiglas.some(sigla => !loadedLabelStaffSiglas.includes(sigla))) throw new Error('Uma sigla não consta no catálogo local autorizado. Conecte-se para atualizar o catálogo.');
+        if (!['consulta pre-anestesica', 'sadt'].includes(normalizedType) && !(values.procedureCode || '').trim()) throw new Error('Informe o número da cirurgia.');
+        if (normalizedType !== 'consulta pre-anestesica' && !String(values.insurance || '').trim()) throw new Error('Informe o convênio.');
+        const actorName = String(session.profile?.displayName || session.user?.displayName || '').trim().slice(0, 120);
+        const record = {date: values.date, patientName: values.patientName.trim(), procedureCode: String(values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : String(values.insurance || '').trim(), creditor: normalizedCreditor, staffSiglas: normalizedCreditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
+        const {createOperationalRecord} = await import('./data.js');
+        await createOperationalRecord('labels', record, {uid, forceQueue: true});
+      } else if (route === 'checklist' && form.dataset.offlineWriteForm === 'checklists') {
+        const condition = form.elements.condition.value;
+        const outcome = await saveChecklistAnswer(form.dataset.stationId, condition, day, form.elements.occurrence.value, {uid, forceQueue: true});
+        if (!outcome.ok) throw new Error(outcome.message);
+      }
+      status.textContent = 'Salvo localmente. Abra Sincronização e revise e confirme este item antes do envio.';
+      form.reset();
+      if (form.elements.eventDate) form.elements.eventDate.value = day;
+      if (form.elements.date) form.elements.date.value = day;
+    } catch (error) {
+      status.textContent = error.message || 'Não foi possível salvar neste aparelho.';
+      submit.disabled = false;
+    }
+  });
+}
+
 async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status');
   if (!target || session.status !== 'signed-in') return;
