@@ -1444,32 +1444,40 @@ async function loadOfflineView(target) {
     ]);
     const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala', occurrences: 'Ocorrência'};
     const today = todayInputValue();
-    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation');
+    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type));
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
       const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
       const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
+      const manualConfirmationRequired = requiresSendConfirmation(item.type) &&
+        !Number.isFinite(item.sendConfirmedAt) && ['queued', 'awaiting-confirmation', 'failed'].includes(item.status);
       const operationStatus = item.status === 'conflict'
         ? 'Conflito para comparar'
-        : item.status === 'failed'
-          ? 'Revisar'
-          : !navigator.onLine
-            ? 'Aguardando conexão'
-            : retryScheduled
-              ? 'Nova tentativa agendada'
-              : 'Aguardando envio';
+        : item.status === 'sending'
+          ? 'Envio em andamento'
+          : manualConfirmationRequired
+            ? 'Aguardando sua confirmação'
+            : item.status === 'failed'
+              ? 'Revisar'
+              : !navigator.onLine
+                ? 'Aguardando conexão'
+                : retryScheduled
+                  ? 'Nova tentativa agendada'
+                  : 'Aguardando envio';
       const retryInfo = retryScheduled
         ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
         : '';
-      const resolution = item.status !== 'queued'
-        ? `${dateDiffers
-          ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
-          : versionConflict
-            ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
-            : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
-        : '';
+      const resolution = manualConfirmationRequired
+        ? `<small class="record-meta">Esta cópia está somente neste aparelho. Revise a data e o tipo antes de autorizar o envio.</small><button class="primary-button" type="button" data-confirm-offline-send="${escapeHtml(item.requestId)}" ${navigator.onLine && !session.offline ? '' : 'disabled'}>Revisar e confirmar envio</button>${item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+        : item.status !== 'queued'
+          ? `${dateDiffers
+            ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
+            : versionConflict
+              ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
+              : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+          : '';
       const description = item.type === 'scheduleReleases'
         ? `${item.payload.sigla} · ${formatRecordDate(item.payload.day)}`
         : item.type === 'eventEdits'
@@ -1493,7 +1501,7 @@ async function loadOfflineView(target) {
     }).join('');
     const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
     target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
-      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
+      <p>${counts.awaitingConfirmation ? `${counts.awaitingConfirmation} registro(s) local(is) aguardam sua confirmação antes do envio.` : ''}${counts.queued ? `${counts.queued} ação(ões) aguardando sincronização.` : !counts.awaitingConfirmation ? 'Nenhuma ação operacional aguardando envio.' : ''}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
       ${retryableFailed ? `<button class="primary-button" type="button" id="offline-retry" ${navigator.onLine ? '' : 'disabled'}>Tentar sincronizar novamente</button>` : ''}
       ${unsettled.length ? `<ul class="record-list">${rows}</ul>` : ''}${trainingRows ? `<h4>Progresso de treinamento</h4><ul class="record-list">${trainingRows}</ul>` : ''}${!unsettled.length && !trainingRows ? '<p class="empty-state">As gravações online são confirmadas diretamente pelo Firestore.</p>' : ''}
       <p class="offline-footnote">Ações pendentes só ficam confirmadas depois que o Firestore aceitar a sincronização. O perfil em cache permite abrir o shell temporariamente; as Rules do Firestore continuam sendo a autorização efetiva.</p></section></section>${offlineScheduleGalleryMarkup(import.meta.env.BASE_URL)}`;
@@ -1546,6 +1554,28 @@ async function loadOfflineView(target) {
       if (document.querySelector('#module-content') === target) await loadOfflineView(target);
     });
     target.querySelectorAll('[data-open-current-checklist]').forEach((button) => button.addEventListener('click', () => navigate('checklist')));
+    target.querySelectorAll('[data-confirm-offline-send]').forEach((button) => button.addEventListener('click', async () => {
+      const requestId = button.dataset.confirmOfflineSend;
+      const operation = unsettled.find(item => item.requestId === requestId && item.uid === uid);
+      if (!operation || session.user?.uid !== uid || session.status !== 'signed-in' || session.offline || !navigator.onLine) {
+        window.alert('Conecte-se e valide novamente seu perfil antes de enviar os registros locais.');
+        return;
+      }
+      const typeLabel = labelsByType[operation.type] || 'registro';
+      const dateLabel = formatRecordDate(operation.payload?.data?.date || operation.createdAt);
+      if (!window.confirm(`Enviar agora este ${typeLabel} de ${dateLabel} ao Firestore? A confirmação libera somente este item. Os demais registros continuam aguardando sua revisão.`)) return;
+      button.disabled = true;
+      try {
+        if (!await confirmQueuedOperation(uid, requestId)) throw new Error('Não foi possível confirmar este item local.');
+        const {flushOutbox} = await import('./data.js');
+        await flushOutbox(uid, {requestId});
+      } catch {
+        window.alert('O envio não foi confirmado. O item continua preservado localmente para revisão.');
+      } finally {
+        if (document.querySelector('#module-content') === target) await loadOfflineView(target);
+        await updateOutboxStatus();
+      }
+    }));
     target.querySelectorAll('[data-retry-operation]').forEach((button) => button.addEventListener('click', async () => {
       button.disabled = true;
       try {
@@ -4690,8 +4720,8 @@ async function updateOutboxStatus() {
     pendingTrainingProgressCount(session.user.uid),
     retryableFailedOperationCount(session.user.uid)
   ]);
-  const count = counts.queued + counts.failed + counts.conflict;
-  const details = [count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
+  const count = counts.queued + counts.failed + counts.conflict + counts.awaitingConfirmation + counts.sending;
+  const details = [counts.awaitingConfirmation ? `${counts.awaitingConfirmation} registro(s) aguardam confirmação` : '', count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${session.offline ? '<button type="button" id="retry-profile-access">Verificar acesso</button>' : retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
