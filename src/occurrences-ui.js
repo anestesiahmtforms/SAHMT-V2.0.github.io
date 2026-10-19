@@ -1,5 +1,6 @@
 import {OCCURRENCE_GROUPS, getOccurrenceForm, validateOccurrenceValues} from './occurrence-schema.js';
 import {createOccurrenceRepository} from './occurrence-data.js';
+import {enqueueOccurrenceSubmission, listUnsettledOperations} from './outbox.js';
 
 const FORM_ORDER = Object.freeze({A:['F01','F02','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
 const ICONS = Object.freeze({
@@ -72,6 +73,36 @@ export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent}
   return result;
 }
 
+const queueableOccurrenceFailures = new Set(['OCCURRENCE_AUTHORIZATION_UNAVAILABLE','OCCURRENCE_TRANSIENT_WRITE_FAILED']);
+
+export async function submitOccurrenceWithFallback({repository,input,enqueue=enqueueOccurrenceSubmission,isCurrent=()=>true,createdAtClient=Date.now()}={}) {
+  try {
+    return await repository.save(input);
+  } catch (error) {
+    if (!queueableOccurrenceFailures.has(error?.message)) throw error;
+    if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    await enqueue({uid:input.uid,recordId:input.recordId,payload:{formId:input.formId,values:input.values,
+      displayName:input.displayName,anonymous:input.anonymous,createdAtClient}});
+    return Object.freeze({status:'queued',id:input.recordId,pointsStatus:'PENDING_VALIDATION'});
+  }
+}
+
+export function summarizeOccurrenceOutbox(items=[]) {
+  const occurrences=items.filter(item=>item?.type==='occurrences');
+  const queued=occurrences.filter(item=>item.status==='queued').length;
+  const needsReview=occurrences.filter(item=>item.status==='failed'||item.status==='conflict').length;
+  return Object.freeze({queued,needsReview,message:[queued?`${queued} ocorrência(s) salva(s) neste dispositivo, aguardando sincronização.`:'',
+    needsReview?`${needsReview} ocorrência(s) precisam de revisão e não foram confirmadas.`:''].filter(Boolean).join(' ')});
+}
+
+export function occurrenceQueueFailureMessage(error) {
+  if(error?.message==='OCCURRENCE_QUEUE_FULL')return 'A fila local está cheia. Sincronize envios pendentes; mantenha o formulário aberto enquanto isso.';
+  if(error?.message==='OCCURRENCE_QUEUE_TOO_LARGE')return 'Este registro excede o limite local de armazenamento. Mantenha o formulário aberto e envie quando o Firestore voltar.';
+  if(error?.message==='OCCURRENCE_PERMISSION_DENIED')return 'A permissão não foi confirmada pelo servidor. O registro não foi salvo nem enfileirado.';
+  if(error?.message==='OCCURRENCE_RECONCILIATION_REQUIRED')return 'O envio precisa de revisão administrativa. Não tente reenviar este registro.';
+  return 'Não foi possível salvar neste dispositivo. Nenhum envio foi confirmado; mantenha o formulário aberto.';
+}
+
 export function occurrenceCatalogErrorMessage(error) {
   if (error?.message==='OCCURRENCE_PERMISSION_DENIED'||error?.message==='OCCURRENCE_CATALOG_PERMISSION_DENIED')
     return 'Seu perfil não tem permissão para ler o catálogo. Entre novamente no app.';
@@ -95,8 +126,29 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   const repository=createOccurrenceRepository({db,auth,idGenerator,isCurrent});
   const ensureSession=createOccurrenceSessionGate({auth,uid,isCurrent});
   let catalogs={},saving=false,loading=false,pendingRecordId=null;
-  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Rascunhos não são armazenados localmente.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
+  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Formulários já abertos após validação podem ser salvos neste dispositivo e enviados quando o serviço voltar.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
+  const moduleStatus=root.querySelector('.occurrence-module-status');
+  let pendingStatusGeneration=0;
+  const refreshPendingStatus=async()=>{
+    const generation=++pendingStatusGeneration;
+    try {
+      const summary=summarizeOccurrenceOutbox(await listUnsettledOperations(uid));
+      if(!isCurrent()||generation!==pendingStatusGeneration||!summary.message)return;
+      moduleStatus.textContent=summary.message;
+    } catch {}
+  };
+  const onOutboxChange=event=>{
+    if(event.detail?.type&&event.detail.type!=='occurrences')return;
+    void refreshPendingStatus().then(()=>{
+      if(event.type==='sahmt-write-synced'&&event.detail?.type==='occurrences'&&isCurrent())
+        moduleStatus.textContent='Ocorrência confirmada pelo servidor. Pontuação aguardando validação.';
+    });
+  };
+  window.addEventListener('sahmt-write-queued',onOutboxChange);
+  window.addEventListener('sahmt-write-synced',onOutboxChange);
+  window.addEventListener('sahmt-write-rejected',onOutboxChange);
+  void refreshPendingStatus();
   const loadRecords=async()=>{
     if(!access.read||!records)return;
     try {await ensureSession();const items=await repository.list({uid,pageSize:30}); if(!isCurrent())return;
@@ -149,12 +201,15 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
       const check=validateOccurrenceValues(formId,values,catalogs);
       if(!check.valid){status.textContent='Confira os campos obrigatórios e as opções selecionadas.';return;}
       saving=true;saveButton.disabled=true;if(cancelButton)cancelButton.disabled=true;saveButton.textContent='SALVANDO…';status.textContent='';
-      try {pendingRecordId ||= idGenerator();const result=await repository.save({uid,displayName,anonymous:formElement.elements.anonymous.checked,formId,values,recordId:pendingRecordId,catalogs});
-        if(!isCurrent())return;pendingRecordId=null;root.querySelector('.occurrence-module-status').textContent=result.status==='already-saved'?'Este envio já havia sido confirmado.':'Registro confirmado no Firestore FC. Pontuação aguardando validação.';
-        dialog.close('saved');formElement.reset();formElement.dataset.dirty='false';await loadRecords();
-      } catch(error) {if(isCurrent())status.textContent=error?.message==='OCCURRENCE_RECONCILIATION_REQUIRED'
-        ?'O envio precisa de reconciliação administrativa. Não tente reenviar.'
-        :'Não foi possível confirmar a gravação. Se tentar novamente nesta tela, o mesmo identificador será reutilizado para evitar duplicação.';}
+      try {pendingRecordId ||= idGenerator();const input={uid,displayName,anonymous:formElement.elements.anonymous.checked,formId,values,recordId:pendingRecordId,catalogs};
+        const result=await submitOccurrenceWithFallback({repository,input,isCurrent});
+        if(!isCurrent())return;pendingRecordId=null;
+        const queued=result.status==='queued';
+        moduleStatus.textContent=queued?'Ocorrência salva neste dispositivo, aguardando sincronização. Ainda não foi confirmada pelo Firestore.':result.status==='already-saved'?'Este envio já havia sido confirmado.':'Registro confirmado no Firestore. Pontuação aguardando validação.';
+        status.textContent=queued?'O envio continua pendente até ser aceito pelo servidor.':'';
+        dialog.close(queued?'queued':'saved');formElement.reset();formElement.dataset.dirty='false';
+        if(!queued)await loadRecords();
+      } catch(error) {if(isCurrent())status.textContent=occurrenceQueueFailureMessage(error);}
       finally {saving=false;if(saveButton.isConnected){saveButton.disabled=false;saveButton.textContent='SALVAR';}if(cancelButton?.isConnected)cancelButton.disabled=false;}
     });
     dialog.showModal();
@@ -171,5 +226,5 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     dialog.showModal();
   }));
   void loadRecords();void loadAudit();
-  return ()=>{repository.clear();root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
+  return ()=>{repository.clear();window.removeEventListener('sahmt-write-queued',onOutboxChange);window.removeEventListener('sahmt-write-synced',onOutboxChange);window.removeEventListener('sahmt-write-rejected',onOutboxChange);root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
 }

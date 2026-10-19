@@ -1,7 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
-import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage,createOccurrenceSessionGate} from '../src/occurrences-ui.js';
+import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage,createOccurrenceSessionGate,submitOccurrenceWithFallback,summarizeOccurrenceOutbox,occurrenceQueueFailureMessage} from '../src/occurrences-ui.js';
+
+test('pending summary is UID-local, contains no report values, and never claims server confirmation',()=>{
+ const summary=summarizeOccurrenceOutbox([
+  {type:'occurrences',status:'queued',payload:{values:{description:'PRIVATE synthetic report'}}},
+  {type:'occurrences',status:'failed',payload:{values:{description:'PRIVATE denied report'}}},
+  {type:'events',status:'queued',payload:{}}
+ ]);
+ assert.deepEqual(summary,{queued:1,needsReview:1,message:'1 ocorrência(s) salva(s) neste dispositivo, aguardando sincronização. 1 ocorrência(s) precisam de revisão e não foram confirmadas.'});
+ assert.doesNotMatch(summary.message,/PRIVATE|confirmada pelo Firestore|pontuação/);
+});
+
+test('local queue failure tells the user to keep the form open and never claims it was saved',()=>{
+ assert.match(occurrenceQueueFailureMessage(Error('OCCURRENCE_QUEUE_FULL')),/mantenha o formulário aberto/);
+ assert.match(occurrenceQueueFailureMessage(Error('OCCURRENCE_QUEUE_TOO_LARGE')),/limite local/);
+ assert.doesNotMatch(occurrenceQueueFailureMessage(Error('IDB_FAILURE')),/Registro confirmado|Pontuação aguardando/);
+});
+
+test('transient save failure stores the same validated occurrence ID under the active UID',async()=>{
+ const calls=[], input={uid:'uid-a',recordId:'10000000-0000-4000-8000-000000000001',formId:'F01',values:{occurrence:'sintética'},displayName:'Pessoa sintética',anonymous:false,catalogs:{F01:['opção']}};
+ const result=await submitOccurrenceWithFallback({repository:{save:async()=>{throw Error('OCCURRENCE_TRANSIENT_WRITE_FAILED');}},input,isCurrent:()=>true,createdAtClient:123,
+  enqueue:async item=>{calls.push(item);return item.recordId;}});
+ assert.equal(result.status,'queued');assert.equal(result.id,input.recordId);assert.equal(calls.length,1);
+ assert.deepEqual(calls[0],{uid:'uid-a',recordId:input.recordId,payload:{formId:'F01',values:input.values,displayName:input.displayName,anonymous:false,createdAtClient:123}});
+});
+
+test('permission denial and changed session never enter the offline queue',async()=>{
+ const input={uid:'uid-a',recordId:'10000000-0000-4000-8000-000000000001',formId:'F01',values:{occurrence:'sintética'},displayName:'Pessoa',anonymous:false};let enqueues=0;
+ const enqueue=async()=>{enqueues++;};
+ await assert.rejects(submitOccurrenceWithFallback({repository:{save:async()=>{throw Error('OCCURRENCE_PERMISSION_DENIED');}},input,enqueue,isCurrent:()=>true}),/OCCURRENCE_PERMISSION_DENIED/);
+ await assert.rejects(submitOccurrenceWithFallback({repository:{save:async()=>{throw Error('OCCURRENCE_TRANSIENT_WRITE_FAILED');}},input,enqueue,isCurrent:()=>false}),/OCCURRENCE_SESSION_CHANGED/);
+ assert.equal(enqueues,0);
+});
+
+test('online confirmation bypasses the queue and a local storage failure is not reported as pending',async()=>{
+ const input={uid:'uid-a',recordId:'10000000-0000-4000-8000-000000000001',formId:'F01',values:{occurrence:'sintética'},displayName:'Pessoa',anonymous:false};let enqueues=0;
+ const saved=await submitOccurrenceWithFallback({repository:{save:async()=>({status:'saved',id:input.recordId})},input,enqueue:async()=>{enqueues++;},isCurrent:()=>true});
+ assert.equal(saved.status,'saved');assert.equal(enqueues,0);
+ await assert.rejects(submitOccurrenceWithFallback({repository:{save:async()=>{throw Error('OCCURRENCE_TRANSIENT_WRITE_FAILED');}},input,enqueue:async()=>{throw Error('OCCURRENCE_QUEUE_FULL');},isCurrent:()=>true}),/OCCURRENCE_QUEUE_FULL/);
+});
 
 test('FA session is reused immediately without any broker call',async()=>{
  const auth={currentUser:{uid:'synthetic'}};let calls=0;

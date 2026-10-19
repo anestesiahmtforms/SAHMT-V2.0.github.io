@@ -857,7 +857,7 @@ function shellView() {
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : route === 'management' || route === 'training' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
-    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${view}</main>
+   <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline ? '<p class="notice" role="status">Login Firebase ativo. Perfil local em uso porque o Firestore está temporariamente indisponível. Dados e ações do servidor aguardam nova validação.</p>' : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -1435,7 +1435,7 @@ async function loadOfflineView(target) {
       listUnsettledOperations(uid),
       listPendingTrainingProgress(uid)
     ]);
-    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
+    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala', occurrences: 'Ocorrência'};
     const today = todayInputValue();
     const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation');
     const rows = unsettled.map((item) => {
@@ -4514,35 +4514,48 @@ async function render() {
     app.innerHTML = `<main class="login-gate"><section class="login-card" role="status" aria-live="polite"><h1>SAHMT</h1><p>Verificando acesso…</p><i class="boot-spinner" aria-hidden="true"></i></section></main>`;
     return;
   }
-  if (session.status !== 'signed-in') {
+  const authLimited=session.status==='auth-limited';
+  if (session.status !== 'signed-in' && !authLimited) {
     app.innerHTML = loginView();
     bindLogin();
     return;
   }
+  if(authLimited&&currentRoute()!=='home'){navigate('home');return;}
   const requestedRoute = currentRoute();
-  if (['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if(authLimited){app.innerHTML=shellView();document.querySelectorAll('[data-route]').forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.route)));}
+  else if (['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
   }
-  if (requestedRoute === 'occurrences' && !hasOccurrencePermission()) {
+  if (!authLimited && requestedRoute === 'occurrences' && !hasOccurrencePermission()) {
     notice = 'Registro de Ocorrências exige autorização específica no perfil.';
     navigate('home');
     return;
   }
-  if (!featureEnabledForRoute(requestedRoute, appFeatures)) {
+  if (!authLimited && !featureEnabledForRoute(requestedRoute, appFeatures)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
     navigate('home');
     return;
   }
-  if(requestedRoute==='qmentum'){
+  if(authLimited){}
+  else if(requestedRoute==='qmentum'){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
     if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!can('admin'))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
-  preloadOperationalDataWhenIdle(session.user);
-  document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
+  if(!authLimited)preloadOperationalDataWhenIdle(session.user);
+  if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
+  if(session.offline||authLimited){
+    const unavailable=document.querySelector('#schedule-content')||document.querySelector('#module-content');
+    if(unavailable)unavailable.innerHTML=authLimited?'<p class="empty-state">O app abriu pela autenticação Firebase. Os módulos e dados serão liberados somente depois que o Firestore confirmar o perfil.</p>':'<p class="empty-state">Os dados do servidor ficam indisponíveis até o Firestore confirmar novamente seu perfil. O app abriu com a sessão e o perfil local.</p>';
+    document.querySelectorAll('.main-content form').forEach(form=>form.addEventListener('submit',event=>event.preventDefault()));
+    document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control=>{control.disabled=true;});
+    if(authLimited){const status=document.querySelector('#outbox-status');if(status){status.innerHTML=session.validatingProfile?'<span role="status">Validando perfil…</span>':'<button type="button" id="retry-profile-access">Verificar acesso</button>';bindProfileRetryControl(status.querySelector('#retry-profile-access'));}}
+    else void updateOutboxStatus();
+    return;
+  }
   if (currentRoute() === 'home') await loadHome(); else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);
@@ -4551,7 +4564,7 @@ async function render() {
   }
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
-  if (navigator.onLine) void syncOutbox();
+  if (navigator.onLine && !session.offline) void syncOutbox();
 }
 
 async function updateOutboxStatus() {
@@ -4566,12 +4579,21 @@ async function updateOutboxStatus() {
   const details = [count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
   const isSynced = syncLabel === 'Sincronizado';
-  target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
+  target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${session.offline ? '<button type="button" id="retry-profile-access">Verificar acesso</button>' : retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
   updateLabelReportSync();
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
+  bindProfileRetryControl(target.querySelector('#retry-profile-access'));
   target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
     await retryFailedOperations(session.user.uid);
     await syncOutbox();
+  });
+}
+
+function bindProfileRetryControl(button){
+  button?.addEventListener('click',async()=>{
+    button.disabled=true;button.textContent='Verificando…';
+    await retryAuthenticatedProfile();
+    if((session.offline||session.status==='auth-limited')&&button.isConnected){button.disabled=false;button.textContent='Verificar acesso';}
   });
 }
 
@@ -4593,7 +4615,7 @@ function scheduleOutboxRetry(uid, attemptAt) {
     outboxRetryTimer = null;
     outboxRetryAt = 0;
     outboxRetryUid = '';
-    if (session.status === 'signed-in' && session.user.uid === uid && navigator.onLine) void syncOutbox();
+    if (session.status === 'signed-in' && session.user.uid === uid && navigator.onLine && !session.offline) void syncOutbox();
   }, Math.max(0, attemptAt - Date.now()));
 }
 
@@ -4606,7 +4628,7 @@ async function scheduleNextOutboxRetry(uid) {
 }
 
 async function syncOutbox() {
-  if (!navigator.onLine || session.status !== 'signed-in') return;
+  if (!navigator.onLine || session.status !== 'signed-in' || session.offline) return;
   const uid = session.user.uid;
   try {
     const [counts, pendingProgress] = await Promise.all([
@@ -4660,10 +4682,12 @@ function bindLogin() {
 
 function sessionChanged(next) {
   const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
-  const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
-  const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
+  const profileBecameLocal = !session.offline && next.offline === true;
+  const profileRevalidated = session.offline === true && next.offline !== true;
+  const previousPresentation = JSON.stringify([session.status, session.offline, session.validatingProfile, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
+  const nextPresentation = JSON.stringify([next.status, next.offline, next.validatingProfile, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const generalReadPermissions = ['trainingsRead', 'notificationsRead'];
-  const presentationWithoutGeneralReads = (value) => JSON.stringify([value.status, value.user?.uid, value.profile?.displayName, value.profile?.sigla, value.profile?.role, value.profile?.active, value.profile?.access, Object.entries(value.profile?.permissions || {}).filter(([key]) => !generalReadPermissions.includes(key)).sort(([left], [right]) => left.localeCompare(right))]);
+  const presentationWithoutGeneralReads = (value) => JSON.stringify([value.status, value.offline, value.validatingProfile, value.user?.uid, value.profile?.displayName, value.profile?.sigla, value.profile?.role, value.profile?.active, value.profile?.access, Object.entries(value.profile?.permissions || {}).filter(([key]) => !generalReadPermissions.includes(key)).sort(([left], [right]) => left.localeCompare(right))]);
   const onlyGeneralReadGrant = session.status === 'signed-in' && next.status === 'signed-in' &&
     Boolean(session.user?.uid) && session.profile?.active === true && session.profile?.access === true &&
     presentationWithoutGeneralReads(session) === presentationWithoutGeneralReads(next) &&
@@ -4690,14 +4714,16 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
-  if (next.status === 'signed-in' && userChanged) {
+  if(profileBecameLocal){cleanupCurrentModule?.setOnline?.(false);liveReports.setOnline(false);}
+  if(profileRevalidated&&navigator.onLine){cleanupCurrentModule?.setOnline?.(true);liveReports.setOnline(true);}
+  if (next.status === 'signed-in' && userChanged && !next.offline) {
     void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(next.user.uid)).catch(() => {});
   }
   notice = '';
   if (startupBannerActive && next.status === 'signed-in') {
     if (userChanged) preloadStartupReports(next.user);
     preloadOperationalDataWhenIdle(next.user);
-    if (navigator.onLine) {
+    if (navigator.onLine && !next.offline) {
       void syncOutbox();
       if (userChanged && can('scheduleRead')) {
         const uid = next.user.uid;
@@ -4713,10 +4739,10 @@ function sessionChanged(next) {
     const identity = document.querySelector?.('.identity-card__user'); if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
   }
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
-  if (next.status === 'signed-in' && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
+  if (next.status === 'signed-in' && !next.offline && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
 }
 async function refreshAppFeatures(uid, force = false) {
-  if (!uid || (!force && appFeaturesUid === uid)) return;
+  if (!uid || session.offline || (!force && appFeaturesUid === uid)) return;
   const now = Date.now();
   if (force && lastForcedAppFeaturesRefresh.uid === uid && now - lastForcedAppFeaturesRefresh.at < 5_000) return;
   if (force) lastForcedAppFeaturesRefresh = {uid, at: now};
@@ -4750,11 +4776,12 @@ async function refreshAppFeatures(uid, force = false) {
   }
 }
 window.addEventListener('hashchange', () => {
-  if (session.status === 'signed-in') {
+  if (session.status === 'signed-in' && !session.offline) {
     void render();
   }
 });
 window.addEventListener('online', () => {
+  if(session.offline)return; // auth.js performs one profile revalidation on reconnect; wait for its result before app reads.
   cleanupCurrentModule?.setOnline?.(true);
   liveReports.setOnline(true);
   if (session.status === 'signed-in') {
@@ -4779,7 +4806,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 function refreshLivePending() {
-  if (session.status === 'signed-in') void liveReports.invalidatePending(session.user.uid);
+  if (session.status === 'signed-in' && !session.offline) void liveReports.invalidatePending(session.user.uid);
   void updateOutboxStatus();
 }
 window.addEventListener('sahmt-write-synced', (event) => {
@@ -4788,7 +4815,7 @@ window.addEventListener('sahmt-write-synced', (event) => {
 });
 window.addEventListener('sahmt-write-queued', () => {
   refreshLivePending();
-  if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
+  if (navigator.onLine && session.status === 'signed-in' && !session.offline) void syncOutbox();
 });
 window.addEventListener('sahmt-write-rejected', (event) => {
   notice = 'O Firestore recusou a gravação; ela não foi confirmada. ' + (event.detail?.message || '');

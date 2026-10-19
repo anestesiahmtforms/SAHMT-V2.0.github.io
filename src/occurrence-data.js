@@ -8,6 +8,7 @@ const SCORE_CLAIMS = 'occurrenceScoreClaims';
 const CATALOGS = 'occurrenceCatalogs';
 const SOURCE_PROJECT = FIREBASE_PROJECTS.FA.projectId;
 const MAX_RECORD_BYTES = 500000;
+const TRANSIENT_FIRESTORE_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const boundedText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
@@ -48,7 +49,10 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!user || user.uid !== uid) throw new Error('OCCURRENCE_SESSION_INVALID');
     let snapshot;
     try { snapshot = await api.getDocFromServer(api.doc(db, 'users', uid)); }
-    catch { throw new Error('OCCURRENCE_AUTHORIZATION_UNAVAILABLE'); }
+    catch (error) {
+      if (error?.code === 'permission-denied') throw new Error('OCCURRENCE_PERMISSION_DENIED');
+      throw new Error('OCCURRENCE_AUTHORIZATION_UNAVAILABLE');
+    }
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     const profile=snapshot?.exists?.()?snapshot.data():null;
     const permission={sahmtOccurrencesRead:'occurrencesRead',sahmtOccurrencesAuditRead:'occurrencesAuditRead'}[claimName];
@@ -64,8 +68,11 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (catalogCache?.uid === uid) return catalogCache.value;
     let snapshot;
     try { snapshot = await api.getDocFromServer(api.doc(db, CATALOGS, 'current')); }
-    catch (error) { throw new Error(error?.code === 'permission-denied'
-      ? 'OCCURRENCE_CATALOG_PERMISSION_DENIED' : 'OCCURRENCE_CATALOG_UNAVAILABLE'); }
+    catch (error) {
+      if(error?.code==='permission-denied')throw new Error('OCCURRENCE_CATALOG_PERMISSION_DENIED');
+      if(TRANSIENT_FIRESTORE_CODES.has(error?.code))throw new Error('OCCURRENCE_CATALOG_READ_UNAVAILABLE');
+      throw new Error('OCCURRENCE_CATALOG_UNAVAILABLE');
+    }
     if (!snapshot?.exists?.()) throw new Error('OCCURRENCE_CATALOG_UNAVAILABLE');
     const value = validateOccurrenceCatalogDocument(snapshot.data());
     if (!isCurrent()) throw new Error('OCCURRENCE_SESSION_CHANGED');
@@ -127,6 +134,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       return Object.freeze({status:result,id:recordId,pointsStatus:'PENDING_VALIDATION'});
     } catch (error) {
       if (['OCCURRENCE_SESSION_CHANGED','OCCURRENCE_RECONCILIATION_REQUIRED'].includes(error?.message)) throw error;
+      if (error?.code === 'permission-denied') throw new Error('OCCURRENCE_PERMISSION_DENIED');
+      if (TRANSIENT_FIRESTORE_CODES.has(error?.code)) throw new Error('OCCURRENCE_TRANSIENT_WRITE_FAILED');
       throw new Error('OCCURRENCE_SAVE_FAILED');
     }
   };
