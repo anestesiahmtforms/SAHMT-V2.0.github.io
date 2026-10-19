@@ -4619,8 +4619,8 @@ async function renderOfflineOperationalView() {
     eventSchedule: eventScheduleCache?.uid === uid ? eventScheduleCache.data || null : null,
     labelStaffSiglas});
   document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
-  document.querySelectorAll('.main-content form:not(.offline-write-form)').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
-  document.querySelectorAll('.main-content input:not(.offline-write-form input),.main-content select:not(.offline-write-form select),.main-content textarea:not(.offline-write-form textarea),.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
+  document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
+  document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
   host.querySelector?.('.offline-operational-dashboard')?.remove();
   host.insertAdjacentHTML('beforeend', markup);
   bindOfflineOperationalForms(route, uid, day);
@@ -4629,7 +4629,7 @@ async function bindOfflineOperationalForms(route, uid, day) {
   const forms = [...document.querySelectorAll('.offline-write-form[data-offline-write-form]')];
   for (const form of forms) form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (session.user?.uid !== uid || !session.profile?.permissions) return;
+    if (session.user?.uid !== uid || session.profile?.active !== true || session.profile?.access !== true || !session.profile?.permissions) return;
     const submit = form.querySelector('[type="submit"]');
     const status = form.querySelector('[data-offline-write-status]');
     if (!submit || !status) return;
@@ -4641,9 +4641,10 @@ async function bindOfflineOperationalForms(route, uid, day) {
         const selected = form.elements.memberSigla.selectedOptions[0];
         const memberSigla = String(values.memberSigla || '').trim().toUpperCase();
         const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
-        const eventValues = {...values, memberStatus: selected?.textContent?.split(' · ')[0] || memberSigla, delayMultiple: '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
+        const eventValues = {...values, memberStatus: values.eventType === 'Suporte' ? 'SUPORTE' : (selected?.textContent?.split(' · ')[0] || memberSigla), delayMultiple: values.delayMultiple || '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
         validateEventForm(eventValues);
-        const record = {date: values.eventDate || day, memberSigla, scheduleSigla: memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: null, substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
+        const support = values.eventType === 'Suporte';
+        const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         const {createOperationalRecord} = await import('./data.js');
         await createOperationalRecord('events', record, {uid, forceQueue: true});
       } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
