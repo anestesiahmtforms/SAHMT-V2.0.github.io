@@ -83,10 +83,10 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal(await outbox.nextQueuedAttemptAt('retry-user'), earliestAttempt);
   await outbox.clearUserLocalData('retry-user', {clearOutbox: true});
   assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).map((item) => item.requestId), ['a-queued', 'a-failed', 'a-expired-checklist', 'a-event-conflict']);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1, awaitingConfirmation: 0, sending: 0});
   assert.equal(await outbox.pendingOperationCount('uid-a'), 4);
   assert.equal(await outbox.retryFailedOperations('uid-a'), 2);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 3, failed: 0, conflict: 1});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 0, conflict: 1, awaitingConfirmation: 2, sending: 0});
   assert.equal((await outbox.listUnsettledOperations('uid-a')).some((item) => item.requestId === 'a-event-conflict'), true);
   assert.deepEqual(await outbox.readCachedSchedule('uid-a', '2026-09-25'), {id: '2026-09-25', positions: [{sigla: 'AB'}], stale: true});
   assert.equal(await outbox.readCachedSchedule('uid-b', '2026-09-25'), null);
@@ -120,8 +120,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal(coalescedRelease.payload.marked, false);
   assert.equal((await outbox.listQueuedOperations('uid-a')).filter((item) => item.type === 'scheduleReleases').length, 1);
   await outbox.clearUserLocalData('uid-a', {clearOutbox: true});
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0, conflict: 0});
-  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0, conflict: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0, conflict: 0, awaitingConfirmation: 0, sending: 0});
   assert.equal(await outbox.readCachedProfile('uid-a'), null);
   assert.equal((await outbox.readCachedProfile('uid-b')).displayName, 'Pessoa B');
   assert.deepEqual((await outbox.readSafeCache('uid-b', 'events', 'active')).data, []);
