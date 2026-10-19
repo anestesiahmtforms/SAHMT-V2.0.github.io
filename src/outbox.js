@@ -435,7 +435,7 @@ export async function retryFailedOperations(uid) {
 export async function retryableFailedOperationCount(uid) {
   if (!uid) return 0;
   const failed = await getUserOperations(uid, 'failed');
-  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation').length;
+  return (failed || []).filter((item) => item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type)).length;
 }
 
 export async function retryFailedOperation(uid, requestId) {
