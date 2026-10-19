@@ -984,7 +984,7 @@ function shellView() {
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="home">${route === 'events' || route === 'checklist' ? 'HOME' : route === 'labels' ? 'HOME' : route === 'management' || route === 'training' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
-   <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline ? '<p class="notice" role="status">Login Firebase ativo. Perfil local em uso porque o Firestore está temporariamente indisponível. Dados e ações do servidor aguardam nova validação.</p>' : ''}${view}</main>
+   <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline && route !== 'home' && route !== 'events' ? '<p class="notice" role="status">Login Firebase ativo. Perfil local em uso porque o Firestore está temporariamente indisponível. Dados e ações do servidor aguardam nova validação.</p>' : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
@@ -1002,14 +1002,14 @@ async function loadHome() {
   let contactsCacheAt = 0;
   let contactsRequest = null;
   const vacationsCache = new Map();
-  const renderSchedule = (schedule, selectedDate, selectedVacations, selectedContacts, syncState = '') => {
+  const renderSchedule = (schedule, selectedDate, selectedVacations, selectedContacts) => {
     if (!schedule) {
       content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
       return;
     }
     const scheduleView = buildScheduleView(schedule, selectedDate, selectedVacations, selectedContacts);
     const grid = scheduleView.positions.length ? renderSchedulePositionGrid(scheduleView, {mode: 'home', schedule, eventsWritable: can('eventsWrite')}) : '';
-    content.innerHTML = `${syncState}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${grid || '<p class="empty-state">A escala está publicada sem itens.</p>'}`;
+    content.innerHTML = grid || '<p class="empty-state">A escala está publicada sem itens.</p>';
     content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
       const position = scheduleView.positions[Number(button.dataset.schedulePositionIndex)];
       if (position) showScheduleContacts(position.contacts || [], {
@@ -1051,7 +1051,7 @@ async function loadHome() {
         content.innerHTML = `${messages.join('')}<p class="empty-state">Não foi possível carregar a escala.</p>`;
         return;
       }
-      renderSchedule(schedule, selectedDate, selectedVacations, selectedContacts, messages.join(''));
+      renderSchedule(schedule, selectedDate, selectedVacations, selectedContacts);
     };
     try {
       try {
@@ -4463,7 +4463,6 @@ function bindEventSchedule() {
         return;
       }
       let vacations = [];
-      let vacationsError = false;
       const draw = () => {
         if (requestId !== requestSequence || !content.isConnected) return;
         const view = buildScheduleView(schedule, day, vacations, []);
@@ -4472,9 +4471,8 @@ function bindEventSchedule() {
           bindEventSupportButton(content, day);
           return;
         }
-        const vacationStatus = vacationsError ? '<p class="sync-state">Não foi possível consultar as férias deste dia.</p>' : vacations.some((vacation) => vacation.stale) ? '<p class="sync-state">Férias carregadas do cache deste aparelho.</p>' : '';
         const grid = renderSchedulePositionGrid(view, {mode: 'events', schedule, eventsWritable: canLaunchSupport});
-        content.innerHTML = `${grid}${schedule.stale ? '<p class="sync-state">Mostrando a última escala salva neste aparelho.</p>' : ''}${vacationStatus}`;
+        content.innerHTML = grid;
         content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
           const position = view.positions[Number(button.dataset.schedulePositionIndex)];
           if (position) void launchEventFromSchedule(day, position);
@@ -4485,7 +4483,6 @@ function bindEventSchedule() {
       const vacationResult = await vacationsPromise;
       if (requestId !== requestSequence || !content.isConnected) return;
       vacations = vacationResult.items || [];
-      vacationsError = Boolean(vacationResult.error);
       draw();
     } catch (error) {
       if (requestId !== requestSequence || !content.isConnected) return;
