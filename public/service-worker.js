@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v205';
+const CACHE = 'sahmt-v2-shell-v207';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -43,7 +43,10 @@ self.addEventListener('install', (event) => {
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
       'src/checklist-rotation-listener.js',
       'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
-      'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js'
+      'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
+      'src/offline-cache.js', 'src/offline-runtime-mode.js', 'src/offline-report-cache.js', 'src/outbox.js',
+      'src/offline-outbox-policy.js',
+      'src/checklist-conference-listener.js', 'src/checklist-responsibility-listener.js'
     ]);
     for (const [key, entry] of Object.entries(manifest)) {
       if (reportEssentials.has(entry.src || key)) visitEntry(key);
@@ -68,8 +71,14 @@ self.addEventListener('fetch', (event) => {
   if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`) || url.pathname === `${BASE}demo.html`) return;
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
+      // The installed worker owns a consistent HTML/asset set. New releases install
+      // in a separate versioned cache; opening the app never waits for hosting.
+      const installed = await caches.open(CACHE);
+      const shell = (await installed.match(`${BASE}index.html`)) || (await installed.match(BASE));
+      if (shell) return shell;
       try {
         const response = await fetch(request);
+        if (!response.ok) throw new Error('SHELL_HTTP_UNAVAILABLE');
         if (response.ok) {
           const cache = await caches.open(CACHE);
           await cache.put(`${BASE}index.html`, response.clone());

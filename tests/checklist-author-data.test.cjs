@@ -55,7 +55,8 @@ function recordsHarness({pending = [], stored = [], offline = false} = {}) {
   const uidReads = [];
   const pendingBefore = structuredClone(pending);
   const context = {
-    db: {}, Date,
+    db: {}, Date, navigator: {onLine: !offline},
+    isOfflineRuntimeForced: () => false,
     collection: () => ({}), query: () => ({}), where: () => ({}), orderBy: () => ({}), limit: () => ({}),
     getDocsFromServer: async () => {
       if (offline) throw Object.assign(new Error('Offline'), {code: 'unavailable'});
@@ -63,6 +64,7 @@ function recordsHarness({pending = [], stored = [], offline = false} = {}) {
     },
     writeSafeCache: async () => undefined,
     readSafeCache: async () => ({data: {records: structuredClone(stored), priorRecords: [], stationIds: []}}),
+    readFreshSafeCache: async () => offline ? ({data: {records: structuredClone(stored), priorRecords: [], stationIds: []}}) : null,
     mayUseOfflineCache: (error) => error.code === 'unavailable',
     listUnsettledOperations: async (uid) => {uidReads.push(uid); return pending;},
     dateSortValue: (value) => new Date(value).getTime()

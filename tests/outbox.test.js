@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
+import {listAwaitingConfirmationOperations} from '../src/outbox.js';
 import {localDateKey, shiftDateKey} from '../src/schedule-date.js';
 
 function requestResult(request) {
@@ -24,8 +25,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   seed.objectStore('profiles').put({uid: 'uid-b', displayName: 'Pessoa B', cachedAt: Date.now()});
   seed.objectStore('cache').put({key: 'uid-a::events::active', uid: 'uid-a', kind: 'events', id: 'active', data: []});
   seed.objectStore('cache').put({key: 'uid-b::events::active', uid: 'uid-b', kind: 'events', id: 'active', data: []});
-  seed.objectStore('cache').put({key: 'uid-a::scheduleDays::2026-09-25', uid: 'uid-a', kind: 'scheduleDays', id: '2026-09-25', data: {id: '2026-09-25', positions: [{sigla: 'AB'}]}});
-  seed.objectStore('outbox').put({requestId: 'a-queued', uid: 'uid-a', type: 'events', resourceId: 'a-queued', payload: {}, createdAt: 1, attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''});
+  seed.objectStore('cache').put({key: 'uid-a::scheduleDays::2026-09-25', uid: 'uid-a', kind: 'scheduleDays', id: '2026-09-25', data: {id: '2026-09-25', positions: [{sigla: 'AB'}]}, cachedAt: Date.now()});
+  seed.objectStore('outbox').put({requestId: 'a-queued', uid: 'uid-a', type: 'activities', resourceId: 'a-queued', payload: {}, createdAt: 1, attempts: 0, status: 'queued', nextAttemptAt: 0, lastError: ''});
   seed.objectStore('outbox').put({requestId: 'a-failed', uid: 'uid-a', type: 'events', resourceId: 'a-failed', payload: {}, createdAt: 2, attempts: 1, status: 'failed', nextAttemptAt: 0, lastError: 'permission-denied'});
   seed.objectStore('outbox').put({requestId: 'a-expired-checklist', uid: 'uid-a', type: 'checklists', resourceId: 'station-a', payload: {data: {date: shiftDateKey(localDateKey(), -1)}}, createdAt: 3, attempts: 1, status: 'failed', nextAttemptAt: 0, lastError: 'permission-denied'});
   seed.objectStore('outbox').put({requestId: 'a-event-conflict', uid: 'uid-a', type: 'eventEdits', resourceId: 'event-a', payload: {eventId: 'event-a', expectedVersion: 2}, createdAt: 4, attempts: 1, status: 'conflict', nextAttemptAt: 0, lastErrorCode: 'stale-version'});
@@ -55,23 +56,23 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
     outbox.enqueueOperation({uid: 'uid-b', type: 'events', resourceId: 'stable-event', requestId: 'stable-event', payload: stablePayload}),
     /outra ação ou sessão/
   );
-  assert.deepEqual((await outbox.listQueuedOperations('uid-a')).find((item) => item.requestId === 'stable-event').payload, stablePayload);
+  assert.deepEqual((await listAwaitingConfirmationOperations('uid-a')).find((item) => item.requestId === 'stable-event').payload, stablePayload);
   assert.equal(await outbox.removeQueuedOperation('uid-a', 'stable-event'), true);
   assert.equal(await outbox.nextQueuedAttemptAt('uid-a'), 0);
   assert.equal(await outbox.nextQueuedAttemptAt('uid-without-operations'), null);
   const laterAttempt = Date.now() + 30_000;
   const earliestAttempt = Date.now() + 10_000;
-  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
-  await outbox.enqueueOperation({uid: 'retry-user', type: 'events', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'activities', resourceId: 'retry-later', requestId: 'retry-later', payload: {}});
+  await outbox.enqueueOperation({uid: 'retry-user', type: 'activities', resourceId: 'retry-earlier', requestId: 'retry-earlier', payload: {}});
   assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-later', {nextAttemptAt: laterAttempt}), true);
   assert.equal(await outbox.updateQueuedOperation('retry-user', 'retry-earlier', {nextAttemptAt: earliestAttempt}), true);
   assert.equal(await outbox.nextQueuedAttemptAt('retry-user'), earliestAttempt);
   await outbox.clearUserLocalData('retry-user', {clearOutbox: true});
   assert.deepEqual((await outbox.listUnsettledOperations('uid-a')).map((item) => item.requestId), ['a-queued', 'a-failed', 'a-expired-checklist', 'a-event-conflict']);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, failed: 2, conflict: 1});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, awaitingConfirmation: 0, failed: 2, conflict: 1});
   assert.equal(await outbox.pendingOperationCount('uid-a'), 4);
   assert.equal(await outbox.retryFailedOperations('uid-a'), 2);
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 3, failed: 0, conflict: 1});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 1, awaitingConfirmation: 2, failed: 0, conflict: 1});
   assert.equal((await outbox.listUnsettledOperations('uid-a')).some((item) => item.requestId === 'a-event-conflict'), true);
   assert.deepEqual(await outbox.readCachedSchedule('uid-a', '2026-09-25'), {id: '2026-09-25', positions: [{sigla: 'AB'}], stale: true});
   assert.equal(await outbox.readCachedSchedule('uid-b', '2026-09-25'), null);
@@ -105,8 +106,8 @@ test('migração IndexedDB preserva dados e isola outbox e cache por UID', async
   assert.equal(coalescedRelease.payload.marked, false);
   assert.equal((await outbox.listQueuedOperations('uid-a')).filter((item) => item.type === 'scheduleReleases').length, 1);
   await outbox.clearUserLocalData('uid-a', {clearOutbox: true});
-  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, failed: 0, conflict: 0});
-  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 1, failed: 0, conflict: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-a'), {queued: 0, awaitingConfirmation: 0, failed: 0, conflict: 0});
+  assert.deepEqual(await outbox.operationCounts('uid-b'), {queued: 0, awaitingConfirmation: 1, failed: 0, conflict: 0});
   assert.equal(await outbox.readCachedProfile('uid-a'), null);
   assert.equal((await outbox.readCachedProfile('uid-b')).displayName, 'Pessoa B');
   assert.deepEqual((await outbox.readSafeCache('uid-b', 'events', 'active')).data, []);

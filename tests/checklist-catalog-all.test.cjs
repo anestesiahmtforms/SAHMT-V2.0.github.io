@@ -5,11 +5,12 @@ const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
 const data = readFileSync(join(__dirname, '../src/data.js'), 'utf8');
 test('Checklist consulta os 28 arsenais ativos e inativos e usa cache próprio', async () => {
+  const {readThroughSafeCache} = await import('../src/offline-cache.js');
   let constraints, cacheKey;
   const stations = Array.from({length: 28}, (_, i) => ({id: String(i), active: i < 23}));
   const ctx = vm.createContext({
     moduleCollections: {checklist: {name: 'checklistStations', order: 'order', direction: 'asc'}, events: {name: 'events', order: 'date', direction: 'desc'}},
-    MAX_PAGE_SIZE: 50, SAFE_CACHE_MODULES: new Set(['checklist']), db: {},
+    MAX_PAGE_SIZE: 50, SAFE_CACHE_MODULES: new Set(['checklist']), db: {}, isOfflineRuntimeForced: () => false, readThroughSafeCache, readSafeCache: async()=>null,
     where: (...args) => ({where: args}), orderBy: (...args) => ({order: args}), limit: value => ({limit: value}),
     collection: () => ({}), query: (_collection, ...args) => {constraints = args; return {};},
     getDocsFromServer: async () => ({docs: stations.map(item => ({id: item.id, data: () => item}))}),

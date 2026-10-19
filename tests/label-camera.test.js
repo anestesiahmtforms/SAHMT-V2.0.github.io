@@ -209,7 +209,7 @@ function createAiHarness({enabled = true, cameraElements = null, extract = async
   const form = {isConnected: true, dataset: {}, querySelector: selector => controls.get(selector), elements: Object.fromEntries(fields.map(name => [name, Object.assign(new FakeElement(), {value: '', focus() {}})]))};
   form.reset = () => {for (const field of Object.values(form.elements)) field.value = '';};
   const context = vm.createContext({
-    labelAiEnabled: enabled, labelEntryGeneration: 0, labelReportMode: 'daily', session: {user: {uid: 'user-1'}},
+    labelAiEnabled: enabled, labelEntryGeneration: 0, labelReportMode: 'daily', session: {user: {uid: 'user-1'}}, navigator:{onLine:true}, isOfflineRuntimeForced:()=>false,
     document: {querySelector(selector) {return selector === '#label-entry-dialog' ? dialog : selector === '#label-form-status' ? formStatus : selector === '[data-module-form="labels"]' ? form : null;}},
     mockAi: {extractLabelWithAi: extract},
     updateLabelEntryFields() {}, setLabelStaffSiglas() {},

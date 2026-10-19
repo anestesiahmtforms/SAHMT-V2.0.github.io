@@ -29,7 +29,7 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     offline: false
   };
   const ctx = vm.createContext({
-    session, cleanupCurrentModule: null, currentRoute: () => route, document, navigator: {onLine: false},
+    session, deniedOperationalModules: new Set(), cleanupCurrentModule: null, currentRoute: () => route, document, navigator: {onLine: false},
     appFeatures: {labels: true, trainings: true, notifications: true}, appFeaturesUid: session.user.uid,
     appFeaturesLoadSequence: 0, DEFAULT_APP_FEATURES: {labels: true, trainings: true, notifications: true},
     startupReports: {clear() {}}, liveReports: {clear: (reason) => liveClears.push(reason)},
@@ -38,7 +38,8 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     loadedLabelRecords: [], loadedEventReportRecords: [], eventReportSourceRecords: [], checklistReportContext: {},
     startupBannerActive: false, labelManualConfirmation: {uid: session.user.uid, status: 'Rascunho'}, notice: '',
     scheduleOutboxRetry() {}, preloadStartupReports() {}, preloadOperationalDataWhenIdle() {}, syncOutbox() {},
-    settleReportWaiter() {},
+    settleReportWaiter() {}, onlineValidationRequired: false,
+    setOfflineRuntimeMode() {},
     render: async () => {
       renders.push(route);
       draft.value = '';
@@ -61,6 +62,13 @@ function grantReads(next, keys = ['trainingsRead', 'notificationsRead']) {
   for (const key of keys) next.profile.permissions[key] = true;
   return next;
 }
+
+test('sessionChanged: recusa de módulo de outra conta não bloqueia a conta seguinte', () => {
+  const h = harness(); h.ctx.deniedOperationalModules.add('events');
+  const next = h.next(); next.user.uid = 'fictional-user-b'; next.profile.uid = next.user.uid;
+  h.ctx.sessionChanged(next);
+  assert.equal(h.ctx.deniedOperationalModules.size, 0);
+});
 
 function assertPreserved(h) {
   assert.equal(h.renders.length, 0);

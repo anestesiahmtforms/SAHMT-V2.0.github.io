@@ -27,7 +27,7 @@ const manifest = {
   }
 };
 
-function createWorker({offline = false} = {}) {
+function createWorker({offline = false, navigationOk = true} = {}) {
   const origin = 'https://sahmt.example';
   const normalizeUrl = (request) => new URL(typeof request === 'string' ? request : request.url, origin).href;
   const handlers = new Map();
@@ -82,7 +82,7 @@ function createWorker({offline = false} = {}) {
   const fetch = async (request) => {
     if (offline && typeof request !== 'string') throw new Error('offline');
     fetched.push(request instanceof URL ? request.href : request);
-    return {ok: true, type: 'basic', clone() { return this; }};
+    return {ok: request?.mode === 'navigate' ? navigationOk : true, type: 'basic', clone() { return this; }};
   };
   vm.runInNewContext(workerSource, {self, caches, URL, fetch, Promise, Set, Math});
   return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
@@ -93,7 +93,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
-  assert.ok(worker.names.has('sahmt-v2-shell-v205'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v207'));
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
@@ -117,7 +117,7 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v200', 'sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v205'));
+  assert.ok(worker.names.has('sahmt-v2-shell-v207'));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);
@@ -148,6 +148,22 @@ test('deixa páginas auxiliares fora do cache do shell para não substituir o HT
 
   assert.equal(intercepted, false);
   assert.equal(worker.fetched.length, 0);
+});
+
+test('erro HTTP da hospedagem também recupera o shell local já instalado', async () => {
+  const worker = createWorker({navigationOk: false});
+  const saved = {local: true}; worker.entries.set('https://sahmt.example' + BASE + 'index.html', saved);
+  let response;
+  worker.handlers.get('fetch')({request: {method: 'GET', mode: 'navigate', url: 'https://sahmt.example' + BASE}, respondWith(value) {response = value;}});
+  assert.equal(await response, saved);
+});
+
+test('abertura usa primeiro o shell instalado mesmo com internet, sem aguardar a hospedagem', async () => {
+  const worker = createWorker(), saved = {local: true};
+  worker.entries.set('https://sahmt.example' + BASE, saved);
+  let response;
+  worker.handlers.get('fetch')({request: {method: 'GET', mode: 'navigate', url: 'https://sahmt.example' + BASE}, respondWith(value) {response = value;}});
+  assert.equal(await response, saved); assert.equal(worker.fetched.length, 0);
 });
 
 

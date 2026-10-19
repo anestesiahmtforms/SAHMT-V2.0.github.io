@@ -4,7 +4,7 @@ import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db, db as identityDb} from './firebase.js';
-import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
+import {enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readFreshSafeCache, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
 import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
@@ -16,6 +16,10 @@ import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {withGeneralReadPermissions} from './general-access.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS} from './management-first-login-cohort.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, documentCollectionForWrite, documentGroupsFromAccess, mergeManagementDocuments, normalizeDocumentAccessEmail} from './document-access.js';
+import {isFirestoreCacheFallbackError, readThroughSafeCache} from './offline-cache.js';
+import {isOfflineRuntimeForced} from './offline-runtime-mode.js';
+import {persistOperationalMutation, withOperationalDeadline} from './offline-mutation.js';
+import {operationalBackend} from './operational-backend.js';
 
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
@@ -30,10 +34,15 @@ const moduleCollections = Object.freeze({
 });
 
 function mayUseOfflineCache(error) {
-  return ['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error?.code) || (navigator.onLine === false && !error?.code);
+  return isFirestoreCacheFallbackError(error);
 }
 
 export async function readSchedule(day, uid) {
+  if (isOfflineRuntimeForced()) {
+    const cached = uid ? await readFreshSafeCache(uid, 'scheduleDays', day) : null;
+    if (cached?.data) return {...cached.data, stale: true};
+    throw Object.assign(new Error('Não há uma cópia recente desta escala neste aparelho.'), {code: 'unavailable'});
+  }
   try {
     const snapshot = await getDocFromServer(doc(db, 'scheduleDays', day));
     if (!snapshot.exists()) return null;
@@ -42,7 +51,7 @@ export async function readSchedule(day, uid) {
     return value;
   } catch (error) {
     if (!mayUseOfflineCache(error)) throw error;
-    const cached = uid ? await readSafeCache(uid, 'scheduleDays', day) : null;
+    const cached = uid ? await readFreshSafeCache(uid, 'scheduleDays', day) : null;
     if (cached?.data) return {...cached.data, stale: true};
     throw error;
   }
@@ -130,8 +139,19 @@ export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} 
   const moduleDb = ['management','training'].includes(module) ? await managementDatabase(uid) : db;
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
+  if (module === 'checklist') return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
+    readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
+      const result = await getDocsFromServer(query(collection(moduleDb, config.name), orderBy(config.order, config.direction), limit(Math.min(200, Math.max(1, pageSize)))));
+      return result.docs.map(item => ({id: item.id, ...item.data()}));
+    }});
   const maxPageSize = module === 'checklist' ? 200 : MAX_PAGE_SIZE;
   const cacheKey = module === 'checklist' ? 'all' : 'active';
+  if (isOfflineRuntimeForced()) {
+    if (!uid || !SAFE_CACHE_MODULES.has(module)) throw Object.assign(new Error('Este módulo não possui uma cópia local autorizada.'), {code: 'unavailable'});
+    const cached = await readFreshSafeCache(uid, config.name, cacheKey);
+    if (!Array.isArray(cached?.data)) throw Object.assign(new Error('Não há uma cópia recente deste módulo neste aparelho.'), {code: 'unavailable'});
+    return cached.data.map((item) => ({...item, stale: true}));
+  }
   const constraints = [...(module === 'checklist' ? [] : [where('active', '==', true)]), orderBy(config.order, config.direction), limit(Math.min(maxPageSize, Math.max(1, pageSize)))];
   try {
     const result = await getDocsFromServer(query(collection(moduleDb, config.name), ...constraints));
@@ -341,10 +361,12 @@ export async function syncEventMemberDirectory(uid) {
   return contacts.length;
 }
 
-export async function listLabelStaffSiglas() {
+export async function listLabelStaffSiglas({uid} = {}) {
+  return readThroughSafeCache({uid, kind: 'labelStaff', id: 'all', localFirst: true, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
   const snapshot = await getDocFromServer(doc(db, 'appConfig', 'labelStaff'));
   if (!snapshot.exists() || snapshot.data().active !== true || !Array.isArray(snapshot.data().siglas)) return [];
   return [...new Set(snapshot.data().siglas.map((value) => String(value || '').trim().toUpperCase()).filter((value) => /^(?:[A-Z]{2}|L2)$/.test(value)))].sort();
+  }});
 }
 
 export async function saveLabelStaffSiglas(values, uid) {
@@ -445,11 +467,12 @@ export async function updateContactRegistrationFields(records, actorUid) {
   return {updated: records.length, siglas: [...siglas]};
 }
 
-export async function listEventMembers() {
+export async function listEventMembers({uid} = {}) {
+  return readThroughSafeCache({uid, kind: 'eventMembers', id: 'all', localFirst: true, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
   const [directoryResult, contactsResult, siglasResult] = await Promise.allSettled([
     getDocsFromServer(query(collection(db, 'eventMembers'), limit(200))),
     getDocsFromServer(query(collection(db, 'contacts'), where('active', '==', true), orderBy('sigla', 'asc'), limit(200))),
-    listLabelStaffSiglas()
+    listLabelStaffSiglas({uid})
   ]);
   if (directoryResult.status === 'rejected' && contactsResult.status === 'rejected' && siglasResult.status === 'rejected') {
     throw directoryResult.reason;
@@ -474,6 +497,7 @@ export async function listEventMembers() {
   }
   return [...members.values()].filter(Boolean)
     .sort((left, right) => String(left.sigla || '').localeCompare(String(right.sigla || '')));
+  }});
 }
 
 export async function listUserProfiles({pageSize = 200} = {}) {
@@ -1331,8 +1355,11 @@ export async function transitionManagementActionPlan(planId, nextStatus, uid) {
 
 export async function listEventRecords({from, to, uid, sigla = '', isAdmin = false, pageSize = 100, cursor = null, includePending = true} = {}) {
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar os eventos.');
+  if (!uid) throw new Error('A sessão expirou. Entre novamente para consultar eventos.');
+  const visibilityKey = isAdmin ? 'admin' : String(sigla || '').trim().toUpperCase() || `uid:${uid}`;
+  const cacheId = `report:${from}:${to}:${visibilityKey}:${Math.min(100, Math.max(1, pageSize))}`;
   let records = [];
-  let stale = navigator.onLine === false;
+  let stale = isOfflineRuntimeForced() || navigator.onLine === false;
   let nextCursor = null;
   if (!stale) {
     try {
@@ -1357,10 +1384,15 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
       ));
       records = result.docs.map((item) => ({id: item.id, ...item.data()}));
       nextCursor = result.docs.length === Math.min(100, Math.max(1, pageSize)) ? result.docs[result.docs.length - 1] : null;
+      if (!cursor) await writeSafeCache(uid, 'events', cacheId, {records, hasMore: Boolean(nextCursor)}).catch(() => {});
     } catch (error) {
       if (!mayUseOfflineCache(error)) throw error;
       stale = true;
     }
+  }
+  if (stale && !cursor) {
+    const cached = await readFreshSafeCache(uid, 'events', cacheId);
+    if (Array.isArray(cached?.data?.records)) records = cached.data.records.map((item) => ({...item, stale: true}));
   }
   if (uid && includePending) {
     const unsettled = await listUnsettledOperations(uid);
@@ -1371,7 +1403,8 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
         id: item.requestId,
         ...item.payload.data,
         createdAt: new Date(item.createdAt),
-        pendingFirestore: item.status === 'queued',
+        pendingFirestore: ['queued', 'awaiting-confirmation'].includes(item.status),
+        awaitingConfirmation: item.status === 'awaiting-confirmation',
         syncFailed: item.status === 'failed',
         syncError: item.lastError || ''
       }));
@@ -1385,7 +1418,8 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
         ...item.payload.data,
         version: item.payload.expectedVersion + 1,
         createdAt: new Date(item.createdAt),
-        pendingFirestore: item.status === 'queued',
+        pendingFirestore: ['queued', 'awaiting-confirmation'].includes(item.status),
+        awaitingConfirmation: item.status === 'awaiting-confirmation',
         syncFailed: item.status === 'failed',
         syncError: item.lastError || '',
         pendingEdit: true
@@ -1404,20 +1438,14 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
 }
 
 export async function getEventCatalog(uid) {
-  try {
+  return readThroughSafeCache({uid, kind: 'eventCatalogs', id: 'operational', localFirst: true,
+    readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
     const snapshot = await getDocFromServer(doc(db, 'eventCatalogs', 'operational'));
     const catalog = snapshot.exists()
       ? {id: snapshot.id, ...snapshot.data()}
       : {id: 'operational', payers: [], creditors: [], version: 0};
-    if (uid) await writeSafeCache(uid, 'eventCatalogs', 'operational', catalog).catch(() => {});
     return catalog;
-  } catch (error) {
-    if (uid && mayUseOfflineCache(error)) {
-      const cached = await readSafeCache(uid, 'eventCatalogs', 'operational');
-      if (cached?.data) return {...cached.data, stale: true};
-    }
-    throw error;
-  }
+  }});
 }
 
 export async function saveEventCatalog(input, uid) {
@@ -1479,7 +1507,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
     await enqueueOperation({uid, type: 'eventEdits', resourceId: eventId, requestId, payload: {collectionName: 'events', eventId, expectedVersion, data: {...updates, updatedByName}}});
     return {id: eventId, pendingFirestore: true};
   };
-  if (!navigator.onLine) {
+  if (isOfflineRuntimeForced() || !navigator.onLine) {
     if (queueOffline) return queueOfflineEdit();
     throw Object.assign(new Error('A conexão caiu durante a sincronização desta edição.'), {code: 'unavailable'});
   }
@@ -1525,6 +1553,13 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar as etiquetas.');
   if (!uid) throw new Error('A sessão expirou. Entre novamente para consultar etiquetas.');
   const currentLimit = Math.min(100, Math.max(1, pageSize));
+  const visibilityKey = canManage ? 'admin' : String(sigla || '').trim().toUpperCase() || `uid:${uid}`;
+  const cacheId = `report:${from}:${to}:${visibilityKey}:${currentLimit}`;
+  if (isOfflineRuntimeForced()) {
+    const cached = !cursor ? await readFreshSafeCache(uid, 'labels', cacheId) : null;
+    if (!Array.isArray(cached?.data?.records)) throw Object.assign(new Error('Não há uma cópia recente deste período de Etiquetas.'), {code: 'unavailable'});
+    return {records: cached.data.records.map((item) => ({...item, stale: true})), nextCursor: null, stale: true};
+  }
   const base = [where('active', '==', true), where('date', '>=', from), where('date', '<=', to)];
   const cursorMode = canManage ? 'admin' : 'staff';
   if (cursor && cursor.mode !== cursorMode) cursor = null;
@@ -1563,29 +1598,41 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
   for (const snapshot of snapshots) {
     for (const item of snapshot.docs) records.set(item.id, {id: item.id, ...item.data()});
   }
-  return {
+  const result = {
     records: [...records.values()].sort((left, right) => String(right.date).localeCompare(String(left.date)) || dateSortValue(right.createdAt) - dateSortValue(left.createdAt)),
     nextCursor
   };
+  if (!cursor) await writeSafeCache(uid, 'labels', cacheId, {records: result.records, hasMore: Boolean(nextCursor)}).catch(() => {});
+  return result;
 }
 
-export async function updateLabelRecord(labelId, input, uid, actorName = '', expectedVersion) {
+export async function updateLabelRecord(labelId, input, uid, actorName = '', expectedVersion, {queueOffline = true, requestId = crypto.randomUUID()} = {}) {
   if (!labelId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão desta etiqueta não está disponível. Atualize o relatório antes de editar.');
+  if (queueOffline) return persistOperationalMutation({id: labelId, online: navigator.onLine && !isOfflineRuntimeForced(),
+    saveLocal: () => enqueueOperation({uid, type: 'labelEdits', resourceId: labelId, requestId, payload: {collectionName: 'labels', labelId, data: input, actorName, expectedVersion}}),
+    sendRemote: () => updateLabelRecord(labelId, input, uid, actorName, expectedVersion, {queueOffline: false, requestId}),
+    clearLocal: () => removeQueuedOperation(uid, requestId), recoverable: mayUseOfflineCache,
+    onFailure: async error => {
+      operationalBackend.noteFailure(error, 'labels');
+      if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'A edição não foi confirmada. Compare com a versão atual antes de reenviar.'});
+    }});
   const ref = doc(db, 'labels', labelId);
   const fields = ['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
+  const historyRef = doc(db, 'labels', labelId, 'history', String(expectedVersion + 1));
   await runTransaction(db, async (transaction) => {
-    const current = await transaction.get(ref);
+    const [current, previousHistory] = await Promise.all([transaction.get(ref), transaction.get(historyRef)]);
     if (!current.exists()) throw new Error('Esta etiqueta não está mais disponível. Atualize o relatório.');
     const label = current.data();
+    if (label.version === expectedVersion + 1 && label.updatedByUid === uid && previousHistory.exists() && previousHistory.data().actorUid === uid &&
+        fields.every(field => JSON.stringify(canonicalValue(label[field] ?? null)) === JSON.stringify(canonicalValue(updates[field] ?? null)))) return;
     if (label.active !== true || label.status !== 'CONFIRMED' || Math.max(1, Number(label.version) || 1) !== expectedVersion) {
       throw Object.assign(new Error('Esta etiqueta foi alterada desde que o relatório foi aberto. Atualize e compare antes de editar.'), {code: 'stale-version'});
     }
     const version = expectedVersion + 1;
     const changedFields = fields.filter((field) => JSON.stringify(canonicalValue(label[field] ?? null)) !== JSON.stringify(canonicalValue(updates[field] ?? null)));
     if (!changedFields.length) throw new Error('Nenhuma alteração foi feita nesta etiqueta.');
-    const historyRef = doc(db, 'labels', labelId, 'history', String(version));
     const historyEntry = {
       id: String(version), labelId, version, actorUid: uid, actorName: String(actorName || '').trim().slice(0, 120),
       changedFields,
@@ -1596,6 +1643,7 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
     transaction.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
     transaction.set(historyRef, historyEntry);
   });
+  return {id: labelId, pendingFirestore: false};
 }
 
 export async function listLabelHistory(labelId, {pageSize = 20} = {}) {
@@ -1608,13 +1656,17 @@ export async function listLabelHistory(labelId, {pageSize = 20} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()}));
 }
 
-export async function listChecklistStations({pageSize = 200} = {}) {
-  const result = await getDocsFromServer(query(
-    collection(db, 'stations'),
-    orderBy('order', 'asc'),
-    limit(Math.min(200, Math.max(1, pageSize)))
-  ));
-  return result.docs.map((item) => ({id: item.id, ...item.data()}));
+export async function listChecklistStations({pageSize = 200, uid} = {}) {
+  return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
+    readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
+    const result = await getDocsFromServer(query(
+      collection(db, 'stations'),
+      orderBy('order', 'asc'),
+      limit(Math.min(200, Math.max(1, pageSize)))
+    ));
+    const stations = result.docs.map((item) => ({id: item.id, ...item.data()}));
+    return stations;
+  }});
 }
 
 export async function listTrainingCatalogForAdmin({pageSize = 100} = {}) {
@@ -1873,7 +1925,15 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
   const currentLimit = Math.min(1000, Math.max(1, pageSize));
   const requestedStationIds = [...new Set(stationIds.map((id) => String(id || '').trim()).filter(Boolean))].sort();
   let records; let priorRecords = []; let historyIncomplete = false; let stale = false;
-  try {
+  if (isOfflineRuntimeForced() || !navigator.onLine) {
+    const cached = uid ? await readFreshSafeCache(uid, 'checklists', day) : null;
+    if (!Array.isArray(cached?.data?.records)) throw Object.assign(new Error('Não há uma cópia recente deste dia do Checklist.'), {code: 'unavailable'});
+    const sameCatalog = JSON.stringify(cached.data.stationIds || []) === JSON.stringify(requestedStationIds);
+    records = cached.data.records.map((item) => ({...item, stale: true}));
+    priorRecords = sameCatalog ? (cached.data.priorRecords || []).map((item) => ({...item, stale: true})) : [];
+    historyIncomplete = !sameCatalog;
+    stale = true;
+  } else try {
     const base = collection(db, 'checklists');
     const [currentResult, ...priorResults] = await Promise.all([
       getDocsFromServer(query(base, where('date', '==', day), orderBy('createdAt', 'desc'), limit(currentLimit))),
@@ -1891,7 +1951,7 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
     if (uid) await writeSafeCache(uid, 'checklists', day, {records, priorRecords, stationIds: requestedStationIds});
   } catch (error) {
     if (!mayUseOfflineCache(error)) throw error;
-    const cached = uid ? await readSafeCache(uid, 'checklists', day) : null;
+    const cached = uid ? await readFreshSafeCache(uid, 'checklists', day) : null;
     if (Array.isArray(cached?.data)) {
       records = cached.data.map((item) => ({...item, stale: true}));
       historyIncomplete = requestedStationIds.length > 0;
@@ -1908,7 +1968,7 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
     const unsettled = await listUnsettledOperations(uid);
     const pending = unsettled
       .filter((item) => item.payload?.collectionName === 'checklists' && item.payload.data?.date === day)
-      .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: item.status === 'queued', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
+      .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: ['queued', 'awaiting-confirmation'].includes(item.status), awaitingConfirmation: item.status === 'awaiting-confirmation', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
     const seen = new Set(records.map((item) => item.id));
     records.push(...pending.filter((item) => !seen.has(item.id)));
   }
@@ -1928,7 +1988,17 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
   const from = `${month}-01`;
   const to = `${month}-${String(new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()).padStart(2, '0')}`;
   let records; let priorRecords = []; let stale = false; let truncated = false; let historyIncomplete = false;
-  try {
+  if (isOfflineRuntimeForced() || !navigator.onLine) {
+    const cached = uid ? await readFreshSafeCache(uid, 'checklists', `month:${month}`) : null;
+    const cachedRecords = cached?.data?.records;
+    if (!Array.isArray(cachedRecords)) throw Object.assign(new Error('Não há uma cópia recente deste mês do Checklist.'), {code: 'unavailable'});
+    records = cachedRecords.map((item) => ({...item, stale: true}));
+    truncated = Boolean(cached.data.truncated);
+    const sameCatalog = JSON.stringify(cached.data.stationIds || []) === JSON.stringify(requestedStationIds);
+    priorRecords = sameCatalog ? (cached.data.priorRecords || []).map((item) => ({...item, stale: true})) : [];
+    historyIncomplete = !sameCatalog || truncated;
+    stale = true;
+  } else try {
     const base = collection(db, 'checklists');
     const [result, ...priorResults] = await Promise.all([
       getDocsFromServer(query(base, where('date', '>=', from), where('date', '<=', to), orderBy('date', 'asc'), orderBy('createdAt', 'desc'), limit(maxRecords + 1))),
@@ -1947,7 +2017,7 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
     if (uid) await writeSafeCache(uid, 'checklists', `month:${month}`, {records, priorRecords, stationIds: requestedStationIds, truncated});
   } catch (error) {
     if (!mayUseOfflineCache(error)) throw error;
-    const cached = uid ? await readSafeCache(uid, 'checklists', `month:${month}`) : null;
+    const cached = uid ? await readFreshSafeCache(uid, 'checklists', `month:${month}`) : null;
     const cachedRecords = Array.isArray(cached?.data) ? cached.data : cached?.data?.records;
     if (!Array.isArray(cachedRecords)) throw error;
     records = cachedRecords.map((item) => ({...item, stale: true}));
@@ -1963,7 +2033,7 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
     const unsettled = await listUnsettledOperations(uid);
     const pending = unsettled
       .filter((item) => item.payload?.collectionName === 'checklists' && item.payload.data?.date >= from && item.payload.data?.date <= to)
-      .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: item.status === 'queued', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
+      .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: ['queued', 'awaiting-confirmation'].includes(item.status), awaitingConfirmation: item.status === 'awaiting-confirmation', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
     const seen = new Set(records.map((item) => item.id));
     records.push(...pending.filter((item) => !seen.has(item.id)));
   }
@@ -2350,10 +2420,24 @@ export async function createOperationalRecord(collectionName, data, {uid, reques
 }
 
 async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
+  if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId});
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced(),
+    saveLocal: () => enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}}),
+    sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
+    clearLocal: () => removeQueuedOperation(uid, requestId), recoverable: mayUseOfflineCache,
+    onFailure: async error => {
+      operationalBackend.noteFailure(error, collectionName);
+      if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'O servidor recusou este registro. Revise a operação antes de reenviar.'});
+    }
+  });
+}
+
+async function sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject,dataGeneration:managementDataGeneration} : {})};
-  if (!navigator.onLine) {
-    if (!mayQueueOffline(collectionName)) throw new Error('Etiquetas precisam de conexão para serem confirmadas; os dados do paciente não ficam salvos neste aparelho.');
+  if (!navigator.onLine || isOfflineRuntimeForced()) {
+    if (!mayQueueOffline(collectionName)) throw new Error('Esta ação precisa de conexão e não pode ser armazenada com segurança neste aparelho.');
     await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
     return {id: requestId, pendingFirestore: true};
   }
@@ -2367,7 +2451,8 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
         }
       } catch {}
       if (mayUseOfflineCache(error)) {
-        await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
+        operationalBackend.noteFailure(error, collectionName);
+        if (collectionName === 'activities') await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
         return {id: requestId, pendingFirestore: true};
       }
       throw error;
@@ -2385,11 +2470,28 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
         return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
       }
     } catch {}
-    if (error.code !== 'unavailable' && error.code !== 'deadline-exceeded' && error.code !== 'network-request-failed' && navigator.onLine) throw error;
+    if (!mayUseOfflineCache(error)) throw error;
+    operationalBackend.noteFailure(error, collectionName);
     if (!mayQueueOffline(collectionName)) throw new Error('O Firestore não confirmou a etiqueta. Os dados continuam apenas no formulário e não foram armazenados neste aparelho.');
-    await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
+    if (collectionName === 'activities') await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
     return {id: requestId, pendingFirestore: true};
   }
+}
+
+async function commitOperationalMutationOnce(collectionName, data, uid, requestId) {
+  const reference = doc(db, collectionName, requestId);
+  return runTransaction(db, async transaction => {
+    const existing = await transaction.get(reference);
+    if (existing.exists()) {
+      const saved = existing.data();
+      const same = saved.id === requestId && saved.clientMutationId === requestId && saved.createdByUid === uid &&
+        Object.entries(data).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
+      if (!same) throw Object.assign(new Error('O registro remoto mudou; a cópia local foi preservada.'), {code: 'stale-version'});
+      return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
+    }
+    buildRecordBatch(transaction, {collectionName, data, uid, requestId});
+    return {id: requestId, pendingFirestore: false};
+  });
 }
 
 async function createScheduledEvent(data, {uid, requestId}) {
@@ -2398,6 +2500,14 @@ async function createScheduledEvent(data, {uid, requestId}) {
   const scheduleRef = doc(db, 'scheduleDays', day);
   const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${String(data.memberSigla || '-').trim().toUpperCase()}:${requestId}`;
   const result = await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(doc(db, 'events', requestId));
+    if (existing.exists()) {
+      const saved = existing.data();
+      if (saved.clientMutationId !== requestId || saved.createdByUid !== uid || !Object.entries(data).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)))) {
+        throw Object.assign(new Error('O evento remoto mudou. Compare a cópia local antes de reenviar.'), {code: 'stale-version'});
+      }
+      return {id: requestId, pendingFirestore: false, alreadyCommitted: true, schedule: null};
+    }
     const snapshot = await transaction.get(scheduleRef);
     if (!snapshot.exists()) {
       buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
@@ -2436,12 +2546,17 @@ function assertQueuedOperationShape(operation, uid) {
   const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
   if (!operation || operation.uid !== uid || typeof operation.requestId !== 'string' || !operation.requestId || !payload) throw invalid();
 
-  if (['events', 'checklists', 'activities'].includes(operation.type)) {
+  if (['events', 'labels', 'checklists', 'activities'].includes(operation.type)) {
     if (payload.collectionName !== operation.type || operation.resourceId !== operation.requestId || !isRecord(payload.data)) throw invalid();
     return;
   }
   if (operation.type === 'eventEdits') {
     if (payload.collectionName !== 'events' || !payload.eventId || payload.eventId !== operation.resourceId ||
+        !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 1 || !isRecord(payload.data)) throw invalid();
+    return;
+  }
+  if (operation.type === 'labelEdits') {
+    if (payload.collectionName !== 'labels' || !payload.labelId || payload.labelId !== operation.resourceId ||
         !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 1 || !isRecord(payload.data)) throw invalid();
     return;
   }
@@ -2454,12 +2569,13 @@ function assertQueuedOperationShape(operation, uid) {
   throw invalid();
 }
 
-export async function flushOutbox(uid, {requestId} = {}) {
-  if (!uid || !navigator.onLine) return {synced: 0, pending: 0};
+export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
+  if (!uid || !navigator.onLine || isOfflineRuntimeForced()) return {synced: 0, pending: await pendingOperationCount(uid)};
   return runKeyedTask(flushPromises, uid, async () => {
     let synced = 0;
     const queued = await listQueuedOperations(uid);
-    const operations = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
+    const candidates = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
+    const operations = typeof authorizeOperation === 'function' ? candidates.filter(operation => authorizeOperation(operation) === true) : candidates;
     for (const operation of operations) {
       try {
         assertQueuedOperationShape(operation, uid);
@@ -2467,8 +2583,12 @@ export async function flushOutbox(uid, {requestId} = {}) {
           throw Object.assign(new Error('Atividade da base anterior preservada para conciliação. Nenhum envio foi feito.'), {code:'domain-cutover-review'});
         if (operation.type === 'scheduleReleases') {
           await applyScheduleSiglaRelease(operation.payload, uid);
+        } else if (operation.type === 'labelEdits') {
+          await withOperationalDeadline(() => updateLabelRecord(operation.payload.labelId, operation.payload.data, uid, operation.payload.actorName, operation.payload.expectedVersion, {queueOffline: false, requestId: operation.requestId}));
         } else if (operation.type === 'eventEdits') {
           await updateEventRecord(operation.payload.eventId, operation.payload.data, uid, operation.payload.expectedVersion, operation.requestId, {queueOffline: false});
+        } else if (['events', 'labels', 'checklists'].includes(operation.type) && !(operation.type === 'events' && operation.payload.data.scheduleSigla)) {
+          await withOperationalDeadline(() => commitOperationalMutationOnce(operation.type, operation.payload.data, uid, operation.requestId));
         } else {
           const {collectionName, data} = operation.payload;
           if (collectionName === 'events' && data.scheduleSigla) {
@@ -2503,9 +2623,10 @@ export async function flushOutbox(uid, {requestId} = {}) {
           } catch {}
         }
         const attempts = operation.attempts + 1;
-        const conflict = error.code === 'stale-version' && operation.type === 'eventEdits';
-        const permanent = ['permission-denied', 'invalid-argument', 'failed-precondition', 'invalid-outbox-operation', 'domain-cutover-review'].includes(error.code);
-        const delay = Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10));
+        const conflict = error.code === 'stale-version';
+        const permanent = attempts >= 8 || ['permission-denied', 'unauthenticated', 'invalid-argument', 'failed-precondition', 'invalid-outbox-operation', 'domain-cutover-review'].includes(error.code);
+        const delay = Math.max(error.code === 'resource-exhausted' ? 300000 : 0, Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10))) * (1 + Math.random() * .25);
+        operationalBackend.noteFailure(error, operation.type);
         await updateQueuedOperation(uid, operation.requestId, {
           status: conflict ? 'conflict' : permanent ? 'failed' : 'queued',
           attempts,

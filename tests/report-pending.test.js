@@ -72,8 +72,23 @@ test('checklist aceito por requestId prevalece e mantém autoria e estado do ser
   assert.equal(result.length, 1); assert.equal(result[0].condition, 'SIM'); assert.equal(result[0].createdByUid, 'other'); assert.equal(result[0].pendingSync, undefined);
 });
 
-test('Etiquetas não recebem nenhuma fila local nem dados de outra coleção', () => {
-  const result = merge('labels', [record('A')], [operation('local', 'labels'), operation('events')], scope); assert.deepEqual(ids(result), ['A']);
+test('Etiquetas offline são visíveis ao autor como pendentes, sem misturar eventos', () => {
+  const local = operation('local', 'labels', {patientName: 'Pessoa fictícia'});
+  const result = merge('labels', [record('A')], [local, operation('events')], scope);
+  assert.deepEqual(ids(result), ['local', 'A']);
+  assert.equal(result.find(item => item.id === 'local').pendingFirestore, true);
+  assert.deepEqual(ids(confirmedLiveReportRecords(result)), ['A']);
+});
+
+test('ações aguardando confirmação aparecem pendentes e nunca como ciência confirmada', () => {
+  for (const [kind, flag] of [['events', 'pendingFirestore'], ['labels', 'pendingFirestore'], ['checklists', 'pendingSync']]) {
+    const pending = operation(`awaiting-${kind}`, kind, {stationId: 'arsenal-1'}, {status: 'awaiting-confirmation'});
+    const result = merge(kind, [], [pending], scope);
+    assert.equal(result.length, 1);
+    assert.equal(result[0][flag], true);
+    assert.equal(result[0].awaitingConfirmation, true);
+    assert.deepEqual(confirmedLiveReportRecords(result), []);
+  }
 });
 
 test('edição é restrita ao administrador e nunca é exposta para usuário comum', () => {

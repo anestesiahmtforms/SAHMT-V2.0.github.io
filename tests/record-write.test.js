@@ -20,7 +20,7 @@ test('batch grava somente o recurso Firestore', () => {
 });
 
 test('outbox local preserva políticas próprias e rejeita coleções desconhecidas', () => {
-  assert.equal(mayQueueOffline('labels'), false);
+  assert.equal(mayQueueOffline('labels'), true);
   assert.equal(mayQueueOffline('events'), true);
   assert.equal(mayQueueOffline('checklists'), true);
   assert.equal(mayQueueOffline('activities'), true);

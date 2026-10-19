@@ -81,6 +81,7 @@ function harness({importGate, manage = true, write = false, admin = true, realAn
     createOperationalRecord: (module, value, options) => {answerCalls.push({module, value: structuredClone(value), uid: options.uid}); answerStarted.resolve(); return answerResponse.promise;}
   };
   const context = {
+    saveOperationalDraft: async()=>{}, readOperationalDraft: async()=>null, removeOperationalDraft: async()=>{},
     document: {querySelector: selector => nodes[selector] || null}, window: {confirm: () => true},
     session: {user: {uid: 'manager-A'}, profile: {role: admin ? 'administrador_app' : 'anestesiologista', displayName: 'Carlos Pereira Santos', permissions: {checklistManage: manage, checklistWrite: write}}},
     currentRoute: () => 'checklist', selectedManagementAreaId: '',

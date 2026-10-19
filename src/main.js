@@ -16,7 +16,7 @@ import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount} from './outbox.js';
+import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readFreshSafeCache, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -29,6 +29,19 @@ import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
+import {checklistCacheId, checklistCachedCatalogMatches, operationalReportCacheId} from './offline-report-cache.js';
+import {setOfflineRuntimeMode, isOfflineRuntimeForced} from './offline-runtime-mode.js';
+import {isFirestoreCacheFallbackError} from './offline-cache.js';
+import {isOfflineOperationAuthorized} from './offline-outbox-policy.js';
+import {operationalBackend} from './operational-backend.js';
+import {installOperationalDrafts} from './offline-form-drafts.js';
+import {prepareOperationalData} from './offline-preparation.js';
+import {inspectOfflineReadiness, operationalAssetsReady, inspectDeviceStorage} from './offline-readiness.js';
+import {localChecklistConferenceReady} from './offline-checklist-conference.js';
+import {projectPendingSchedule} from './offline-schedule-overlay.js';
+import {resolveChecklistRotation} from './checklist-rotation.js';
+import {subscribeReportWithDeadline} from './report-deadline.js';
+import {saveOperationalDraft, readOperationalDraft, removeOperationalDraft, listOperationalDrafts} from './outbox.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
@@ -103,9 +116,15 @@ const userPermissions = [
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
 let notice = '';
+const deniedOperationalModules = new Set();
+const operationalDrafts = installOperationalDrafts({getSession: () => session, onError: () => {
+  const status = document.querySelector('#label-form-status') || document.querySelector('#event-form-status');
+  if (status) status.textContent = 'O armazenamento local não está disponível. Mantenha esta tela aberta para preservar seu preenchimento.';
+}});
 let outboxRetryTimer = null;
 let outboxRetryAt = 0;
 let outboxRetryUid = '';
+let onlineValidationRequired = false;
 let selectedManagementAreaId = '';
 let managementActivityLoad = 0;
 let eventReportMode = 'daily';
@@ -163,6 +182,7 @@ let checklistModuleStations = [];
 let checklistResponsibilityLive = null;
 let checklistRotationLive = null;
 let checklistConferenceLive = null;
+let checklistLocalIntent = null;
 let suspendedReportScopes = [];
 const reportPermissions = {
   events: ['eventsRead', 'eventsWrite'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'],
@@ -255,9 +275,9 @@ function updateReportSync(kind) {
   if (!state?.scope || state.scope.warm || !reportScopeCurrent(state.scope)) return;
   const payload = state.data || reportPayloads.get(kind);
   const report = kind === 'checklist' ? payload?.report : payload;
-  const incomplete = report?.historyIncomplete || report?.truncated || payload?.catalog?.truncated;
+  const incomplete = report?.historyIncomplete || report?.truncated || report?.hasMore || payload?.catalog?.truncated;
   const confirmed = state.confirmed && !report?.localPending && !incomplete;
-  const text = state.state === 'offline' ? 'Sem conexão' : state.state === 'error' ? 'Falha de atualização' : report?.localPending || state.state === 'pending' ? 'Alterações pendentes de envio'
+  const text = isOfflineRuntimeForced() || state.state === 'offline' ? (report?.stale ? 'Cópia local desatualizada' : 'Sem conexão') : state.state === 'error' ? 'Falha de atualização' : report?.localPending || state.state === 'pending' ? 'Alterações pendentes de envio'
     : confirmed ? 'Confirmado pelo servidor' : incomplete && state.ready ? 'Relatório incompleto · carregar mais' : 'Atualizando';
   const prefix = kind === 'events' ? 'event' : kind === 'labels' ? 'label' : 'checklist';
   const indicator = document.querySelector('#' + prefix + '-report-sync');
@@ -298,6 +318,13 @@ function checklistSignatureCurrent(scope, fingerprint) {
     Boolean(checklistConferenceRotation(scope)) &&
     can('checklistSign') && scope.day === todayInputValue() && navigator.onLine;
 }
+function checklistLocalConferenceCurrent(scope, fingerprint) {
+  if (!isOfflineRuntimeForced() && navigator.onLine) return false;
+  return reportScopeCurrent(scope) && can('checklistSign') && scope.day === todayInputValue() &&
+    checklistReportContext?.fingerprint === fingerprint && checklistReportContext?.localConferenceComplete === true &&
+    !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
+    !(checklistLocalIntent?.uid === scope.uid && checklistLocalIntent?.day === scope.day);
+}
 function checklistConferenceRotation(scope) {
   const state = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
   const rotation = state?.rotation;
@@ -325,13 +352,14 @@ function updateChecklistResponsibilityUI() {
   const prepare = document.querySelector('#checklist-signature-prepare');
   const conference = checklistConferenceLive?.key === scope.key ? checklistConferenceLive : null;
   const confirmation = conference?.confirmation;
+  const localPending = checklistLocalIntent?.uid === scope.uid && checklistLocalIntent?.day === scope.day;
   const signer = document.querySelector('#checklist-conference-signer');
-  if (signer) { signer.textContent = confirmation?.signerName || ''; signer.hidden = !confirmation; }
+  if (signer) { signer.textContent = confirmation?.signerName || (localPending ? checklistLocalIntent.signerName + ' · aguarda revalidação online' : ''); signer.hidden = !confirmation && !localPending; }
   if (prepare) {
     prepare.classList?.toggle('checklist-confirmation-button--scheduled', confirmation?.kind === 'scheduled');
     prepare.classList?.toggle('checklist-confirmation-button--alternate', confirmation?.kind === 'alternate');
     prepare.classList?.toggle('checklist-confirmation-button--recorded', confirmation?.kind === 'recorded');
-    prepare.disabled = !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint);
+    prepare.disabled = !checklistLocalConferenceCurrent(scope, checklistReportContext?.fingerprint) && (!checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint));
     if (confirmation) prepare.title = 'Conferência registrada por ' + confirmation.signerName;
   }
   if (confirmation) {
@@ -339,12 +367,73 @@ function updateChecklistResponsibilityUI() {
     if (dialog?.open) dialog.close();
   }
 }
+async function emitCachedOfflineReport(kind, scope, callbacks) {
+  const current = () => callbacks.isCurrent?.() !== false && session.status === 'signed-in' && session.user?.uid === scope.uid;
+  if (!current()) return false;
+  if (kind === 'events' || kind === 'labels') {
+    const cacheId = operationalReportCacheId(kind, scope);
+    const cached = cacheId ? await readFreshSafeCache(scope.uid, kind, cacheId) : null;
+    if (!Array.isArray(cached?.data?.records) || !current()) return false;
+    callbacks.next('report', {data: {...cached.data, records: cached.data.records.map(record => ({...record, stale: true})), stale: true, fromCache: true, hasPendingWrites: false, serverConfirmed: false}, complete: true, fromCache: true, hasPendingWrites: false});
+    return true;
+  }
+  if (kind !== 'checklist') return false;
+  const catalogEntry = await readFreshSafeCache(scope.uid, 'stations', 'all');
+  if (!Array.isArray(catalogEntry?.data)) return false;
+  const stations = catalogEntry.data.filter(station => scope.mode === 'monthly' || stationIsInDateRange(station, scope.day));
+  const stationIds = stations.map(station => station.id).sort();
+  const cacheId = checklistCacheId(scope);
+  const reportEntry = cacheId ? await readFreshSafeCache(scope.uid, 'checklists', cacheId) : null;
+  if (!Array.isArray(reportEntry?.data?.records) || !current()) return false;
+  const sameCatalog = checklistCachedCatalogMatches(reportEntry.data.stationIds, stationIds);
+  const [schedule, vacations, directory, conference, intent] = await Promise.all([
+    readFreshSafeCache(scope.uid, 'scheduleDays', scope.day), readFreshSafeCache(scope.uid, 'vacations', scope.day), readFreshSafeCache(scope.uid, 'eventMembers', 'all'),
+    readFreshSafeCache(scope.uid, 'checklistConference', scope.day), readOperationalDraft(scope.uid, 'checklists', 'conference:' + scope.day)
+  ]);
+  if (!current()) return false;
+  if (schedule?.data && Array.isArray(vacations?.data) && Array.isArray(directory?.data)) {
+    const localSchedule = projectPendingSchedule(schedule.data, await listUnsettledOperations(scope.uid), {uid: scope.uid, day: scope.day});
+    if (!current()) return false;
+    const rotation = resolveChecklistRotation({schedule: localSchedule, day: scope.day, vacations: vacations.data, directory: directory.data});
+    checklistRotationLive = {key: scope.key, rotation, ready: true, current: false, fromCache: true, stale: true};
+  }
+  if (conference?.data) checklistConferenceLive = {...conference.data, key: scope.key, fromCache: true};
+  checklistLocalIntent = intent ? {uid: scope.uid, day: scope.day, signerName: intent.fields.signerName} : null;
+  const catalog = {records: catalogEntry.data.map(station => ({...station, stale: true})), truncated: false, fromCache: true, hasPendingWrites: false, serverConfirmed: false, stale: true};
+  const report = {
+    records: reportEntry.data.records.map(record => ({...record, stale: true})),
+    priorRecords: sameCatalog ? (reportEntry.data.priorRecords || []).map(record => ({...record, stale: true})) : [],
+    stationIds, ready: true, confirmed: false, fromCache: true, hasPendingWrites: false,
+    historyIncomplete: !sameCatalog || Boolean(reportEntry.data.truncated), truncated: Boolean(reportEntry.data.truncated), stale: true
+  };
+  callbacks.next('catalog', {data: catalog, complete: true, fromCache: true, hasPendingWrites: false});
+  callbacks.next('report', {data: report, complete: true, fromCache: true, hasPendingWrites: false});
+  return true;
+}
+
 async function subscribeLiveReport(kind, scope, callbacks) {
+  if (isOfflineRuntimeForced() || !navigator.onLine) return subscribeLiveReportUnbounded(kind, scope, callbacks);
+  return subscribeReportWithDeadline({scope, callbacks, subscribe: hooks => subscribeLiveReportUnbounded(kind, scope, hooks), onTimeout: error => operationalBackend.noteFailure(error, kind)});
+}
+
+async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
+  if (isOfflineRuntimeForced() || !navigator.onLine) {
+    if (await emitCachedOfflineReport(kind, scope, callbacks)) return () => {};
+    throw Object.assign(new Error('Não há uma cópia local recente deste período. Conecte-se para atualizar os dados.'), {code: 'unavailable'});
+  }
+  await emitCachedOfflineReport(kind, scope, callbacks).catch(() => false);
+  if (callbacks.isCurrent?.() === false) return () => {};
   if (kind === 'events' || kind === 'labels') {
     const module = kind === 'events' ? await import('./report-live-data.js') : await import('./label-report-reader.js');
     if (!callbacks.isCurrent()) return () => {};
     const watcher = kind === 'events' ? module.watchEventRecords : module.watchLabelRecords;
-    return watcher(scope, payload => callbacks.next('report', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites}), callbacks.error);
+    return watcher(scope, payload => callbacks.next('report', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites}), failure => {
+      if (!isFirestoreCacheFallbackError(failure, {online: navigator.onLine})) { callbacks.error(failure); return; }
+      operationalBackend.noteFailure(failure, kind);
+      void emitCachedOfflineReport(kind, scope, callbacks).then(used => {
+        if (!used && callbacks.isCurrent()) callbacks.error(failure);
+      }).catch(() => callbacks.isCurrent() && callbacks.error(failure));
+    });
   }
   const [{watchChecklistStations}, {watchChecklistReport}, {readSafeCache, writeSafeCache}] = await Promise.all([
     import('./report-live-data.js'), import('./checklist-report-listener.js'), import('./outbox.js')
@@ -356,12 +445,21 @@ async function subscribeLiveReport(kind, scope, callbacks) {
   let catalogServerSeen = false, writtenCatalog = '', catalogWriteSequence = 0;
   const current = () => !stopped && callbacks.isCurrent();
   const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); conferenceStop?.(); };
-  const error = failure => { if (current()) { stop(); callbacks.error(failure); } };
+  const error = failure => {
+    if (!current()) return;
+    stop();
+    if (!isFirestoreCacheFallbackError(failure, {online: navigator.onLine})) { callbacks.error(failure); return; }
+    operationalBackend.noteFailure(failure, kind);
+    void emitCachedOfflineReport(kind, scope, callbacks).then(used => {
+      if (!used && callbacks.isCurrent()) callbacks.error(failure);
+    }).catch(() => callbacks.isCurrent() && callbacks.error(failure));
+  };
   if (scope.mode === 'daily') {
     void import('./checklist-conference-listener.js').then(module => current()
       ? module.watchChecklistConference({...scope, ownSigla: session.profile?.sigla, readSignatures: can('checklistRead')}, payload => {
         if (!current()) return;
         checklistConferenceLive = {...payload, key: scope.key};
+        if (payload.ready && !payload.fromCache && !payload.hasPendingWrites && !payload.error) void writeSafeCache(scope.uid, 'checklistConference', scope.day, payload).catch(() => {});
         updateChecklistResponsibilityUI();
       }) : null).then(unsubscribe => {
         if (!current()) unsubscribe?.(); else conferenceStop = unsubscribe;
@@ -430,6 +528,14 @@ async function subscribeLiveReport(kind, scope, callbacks) {
 function receiveLiveReport(kind, payload, scope) {
   if (!reportScopeCurrent(scope)) return;
   reportPayloads.set(kind, payload);
+  if (['events', 'labels'].includes(kind)) {
+    const state = liveReports.get(kind)?.snapshot();
+    const report = payload?.report || payload;
+    const cacheId = operationalReportCacheId(kind, scope);
+    if (state?.confirmed && cacheId && Array.isArray(report?.records) && !report.localPending) {
+      void writeSafeCache(scope.uid, kind, cacheId, {records: report.records, hasMore: Boolean(report.hasMore), loadedLimit: scope.loadedLimit}).catch(() => {});
+    }
+  }
   if (kind === 'checklist' && payload?.catalog) {
     checklistCatalogLive = {...payload.catalog, uid: scope.uid};
     if (checklistModuleStations.length || currentRoute() === 'checklist') checklistModuleStations.splice(0, checklistModuleStations.length, ...payload.catalog.records);
@@ -494,7 +600,7 @@ function preloadOperationalDataWhenIdle(user) {
   if (allows(['equipmentManage'])) modules.push('equipment');
   if (allows(['labelsWrite', 'labelsManage'])) modules.push('label-camera');
   if (!modules.length) return;
-  const preloadKey = `${uid}:${modules.join(',')}`;
+  const preloadKey = `${uid}:${todayInputValue()}:${modules.join(',')}`;
   if (preloadedDataUsers.has(preloadKey) || scheduledDataPreloads.has(preloadKey)) return;
   scheduledDataPreloads.add(preloadKey);
   const preload = async () => {
@@ -513,7 +619,7 @@ function preloadOperationalDataWhenIdle(user) {
       if (modules.includes('training')) imports.push(import('./performance-ui.js'));
       if (modules.includes('equipment')) imports.push(import('./equipment.js'));
       if (modules.includes('label-camera')) imports.push(import('./label-camera.js'));
-      void Promise.all(imports).catch((error) => {
+      void Promise.all(imports).then(() => allows(['scheduleRead', 'eventsRead', 'eventsWrite', 'labelsWrite', 'labelsManage', 'checklistRead', 'checklistWrite', 'checklistSign']) ? prepareOfflineEssentials(user) : null).catch((error) => {
         preloadedDataUsers.delete(preloadKey);
         console.warn('[SAHMT] Pré-carregamento de ações adiado:', error.code || error.message);
       });
@@ -524,6 +630,21 @@ function preloadOperationalDataWhenIdle(user) {
   if (startupBannerActive) void preload();
   else if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
   else window.setTimeout(preload, 700);
+}
+
+async function prepareOfflineEssentials(user) {
+  const uid = user?.uid, day = todayInputValue();
+  const current = () => session.status === 'signed-in' && session.user?.uid === uid && !session.offline && !isOfflineRuntimeForced() && navigator.onLine;
+  if (!uid || !current()) return [];
+  const [data, lite, {pruneLocalReadCache}] = await Promise.all([import('./data.js'), import('./data-lite.js'), import('./outbox.js')]);
+  const result = await prepareOperationalData({uid, day, allows: names => names.some(can), readCache: readFreshSafeCache, isCurrent: current, loaders: {
+    appFeatures: () => lite.readAppFeatures(uid), schedule: () => lite.readSchedule(day, uid),
+    contacts: () => lite.listActiveContacts({uid}), vacations: () => lite.listVacationsForDate(day, {uid}),
+    eventCatalog: () => data.getEventCatalog(uid), eventMembers: () => data.listEventMembers({uid}),
+    labelStaff: () => data.listLabelStaffSiglas({uid}), stations: () => data.listChecklistStations({uid})
+  }});
+  await pruneLocalReadCache(uid).catch(() => {});
+  return result;
 }
 
 function escapeHtml(value = '') {
@@ -937,7 +1058,10 @@ async function loadHome() {
       const {readSchedule, listActiveContacts, listVacationsForDate} = await import('./data-lite.js');
       const readContacts = () => {
         if (contactsCacheAt && Date.now() - contactsCacheAt < 30_000) return Promise.resolve(contacts);
-        if (!contactsRequest) contactsRequest = listActiveContacts({uid: session.user.uid, pageSize: 200})
+        if (!contactsRequest) contactsRequest = listActiveContacts({uid: session.user.uid, pageSize: 200, onRefresh: items => {
+          if (requestId !== requestSequence || !content.isConnected) return;
+          contacts = items; selectedContacts = items; contactsCacheAt = Date.now(); draw();
+        }})
           .then((items) => { contacts = items; contactsCacheAt = Date.now(); return items; })
           .finally(() => { contactsRequest = null; });
         return contactsRequest;
@@ -945,13 +1069,19 @@ async function loadHome() {
       const readVacations = () => {
         const cached = vacationsCache.get(selectedDate);
         if (cached && Date.now() - cached.at < 30_000) return Promise.resolve(cached.items);
-        return listVacationsForDate(selectedDate, {uid: session.user.uid}).then((items) => {
+        return listVacationsForDate(selectedDate, {uid: session.user.uid, onRefresh: items => {
+          if (requestId !== requestSequence || !content.isConnected) return;
+          selectedVacations = items; vacationsCache.set(selectedDate, {items, at: Date.now()}); draw();
+        }}).then((items) => {
           vacationsCache.set(selectedDate, {items, at: Date.now()});
           if (vacationsCache.size > 40) vacationsCache.delete(vacationsCache.keys().next().value);
           return items;
         });
       };
-      void readSchedule(selectedDate, session.user.uid).then((value) => {
+      void readSchedule(selectedDate, session.user.uid, {onRefresh: value => {
+        if (requestId !== requestSequence || !content.isConnected) return;
+        schedule = value; schedulePending = false; draw();
+      }}).then((value) => {
         if (requestId !== requestSequence || !content.isConnected) return;
         schedule = value;
         schedulePending = false;
@@ -1211,6 +1341,7 @@ async function loadModule(route) {
       button?.querySelector('[data-label-manual-confirmation]')?.remove();
       const dialog = document.querySelector('#label-entry-dialog');
       if (dialog?.showModal) dialog.showModal();
+      if (form) void operationalDrafts.restore(form, {force: true});
     });
     await loadLabelStaffCatalog();
     return;
@@ -1427,20 +1558,24 @@ async function loadChecklistView(stations) {
   return loadDailyChecklist(stations);
 }
 
+function canConfirmOfflineOperation(item) {
+  return session.status === 'signed-in' && !session.offline && !onlineValidationRequired && isOfflineOperationAuthorized(item, session.profile, {online: navigator.onLine});
+}
+
 async function loadOfflineView(target) {
   const uid = session.user.uid;
   try {
-    const [counts, unsettled, pendingProgress] = await Promise.all([
+    const [counts, unsettled, pendingProgress, drafts] = await Promise.all([
       operationCounts(uid),
       listUnsettledOperations(uid),
-      listPendingTrainingProgress(uid)
+      listPendingTrainingProgress(uid), listOperationalDrafts(uid)
     ]);
-    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
+    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labelEdits: 'Edição de etiqueta', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala'};
     const today = todayInputValue();
     const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation');
     const rows = unsettled.map((item) => {
       const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
-      const versionConflict = item.status === 'conflict' && item.type === 'eventEdits';
+      const versionConflict = item.status === 'conflict' && ['eventEdits', 'labelEdits'].includes(item.type);
       const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
@@ -1448,6 +1583,8 @@ async function loadOfflineView(target) {
         ? 'Conflito para comparar'
         : item.status === 'failed'
           ? 'Revisar'
+          : item.status === 'awaiting-confirmation'
+            ? 'Aguardando confirmação do envio'
           : !navigator.onLine
             ? 'Aguardando conexão'
             : retryScheduled
@@ -1456,11 +1593,13 @@ async function loadOfflineView(target) {
       const retryInfo = retryScheduled
         ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
         : '';
-      const resolution = item.status !== 'queued'
+      const resolution = item.status === 'awaiting-confirmation'
+        ? `<small>Este registro permanece somente neste aparelho e ainda não foi enviado.${canConfirmOfflineOperation(item) ? '' : ' O envio será liberado após conexão e validação online do perfil e da permissão.'}</small>${canConfirmOfflineOperation(item) ? `<button class="primary-button" type="button" data-confirm-operation="${escapeHtml(item.requestId)}">Confirmar envio</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+        : item.status !== 'queued'
         ? `${dateDiffers
           ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
           : versionConflict
-            ? `<small class="sync-error">O evento mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra Eventos, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
+            ? `<small class="sync-error">O registro mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra ${item.type === 'labelEdits' ? 'Etiquetas' : 'Eventos'}, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
             : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : '';
       const description = item.type === 'scheduleReleases'
@@ -1486,10 +1625,36 @@ async function loadOfflineView(target) {
     }).join('');
     const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
     target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
-      <p>${counts.queued ? `${counts.queued} ação(ões) aguardando envio ao Firestore.` : 'Nenhuma ação operacional aguardando envio.'}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
+      <p>${counts.awaitingConfirmation ? `${counts.awaitingConfirmation} registro(s) locais aguardam sua confirmação.` : ''}${counts.queued ? `${counts.awaitingConfirmation ? ' ' : ''}${counts.queued} ação(ões) confirmadas aguardando envio ao Firestore.` : !counts.awaitingConfirmation ? 'Nenhuma ação operacional aguardando envio.' : ''}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
       ${retryableFailed ? `<button class="primary-button" type="button" id="offline-retry" ${navigator.onLine ? '' : 'disabled'}>Tentar sincronizar novamente</button>` : ''}
       ${unsettled.length ? `<ul class="record-list">${rows}</ul>` : ''}${trainingRows ? `<h4>Progresso de treinamento</h4><ul class="record-list">${trainingRows}</ul>` : ''}${!unsettled.length && !trainingRows ? '<p class="empty-state">As gravações online são confirmadas diretamente pelo Firestore.</p>' : ''}
       <p class="offline-footnote">Ações pendentes só ficam confirmadas depois que o Firestore aceitar a sincronização. O perfil em cache permite abrir o shell temporariamente; as Rules do Firestore continuam sendo a autorização efetiva.</p></section></section>${offlineScheduleGalleryMarkup(import.meta.env.BASE_URL)}`;
+    const readySection = document.createElement('section'); readySection.className = 'offline-panel';
+    readySection.innerHTML = '<h3>Preparação deste aparelho</h3><p data-offline-readiness role="status">Conferindo somente os dados locais…</p><p data-offline-storage class="record-meta"></p><button class="secondary-button" type="button" data-prepare-offline>Preparar uso offline</button><p class="record-meta">Use o cache em aparelho pessoal ou autorizado. Registros pendentes ficam neste navegador até sua confirmação de envio. Não limpe os dados do site enquanto houver registros pendentes.</p>';
+    target.querySelector('#offline-sync-panel').prepend(readySection);
+    const showReadiness = async () => {
+      const state = await inspectOfflineReadiness({uid, day: todayInputValue(), sigla: session.profile?.sigla, isAdmin: can('admin'), canManageLabels: can('labelsManage'), readCache: readFreshSafeCache, assetsReady: await operationalAssetsReady(import.meta.env.BASE_URL)});
+      const storage = await inspectDeviceStorage();
+      if (session.user?.uid !== uid || !readySection.isConnected) return;
+      readySection.querySelector('[data-offline-readiness]').textContent = Object.entries(state.modules).map(([name, value]) => `${{events: 'Eventos', labels: 'Etiquetas', checklist: 'Checklist'}[name]}: ${value.formsReady ? 'formulários preparados' : 'preparação incompleta'}; relatório de hoje ${value.dailyReportReady ? 'disponível' : 'ainda não armazenado'}`).join(' · ');
+      readySection.querySelector('[data-offline-storage]').textContent = `${storage.persistent === true ? 'Armazenamento persistente concedido.' : storage.persistent === false ? 'Armazenamento sujeito à limpeza automática do navegador.' : 'Este navegador não informa a persistência do armazenamento.'}${storage.usageBytes !== null ? ` Uso local estimado: ${(storage.usageBytes / 1048576).toFixed(1)} MB.` : ''}${storage.appleMobile && !storage.standalone ? ' No iPhone/iPad, abra pelo Safari, toque em Compartilhar → Adicionar à Tela de Início e prepare os dados dentro do app instalado.' : ''} O sistema pode remover dados locais; envie as pendências assim que possível.`;
+    };
+    void showReadiness();
+    readySection.querySelector('[data-prepare-offline]').onclick = async event => {
+      const button = event.currentTarget; button.disabled = true;
+      try {
+        await inspectDeviceStorage({requestPersistence: true});
+        if (navigator.onLine && (session.offline || onlineValidationRequired || isOfflineRuntimeForced())) await revalidateOnlineSession();
+        await prepareOfflineEssentials(session.user); preloadStartupReports(session.user); await showReadiness();
+      } finally {if (button.isConnected) button.disabled = false;}
+    };
+    const conferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:'));
+    if (conferences.length) {
+      const pending = document.createElement('section'); pending.className = 'offline-panel';
+      pending.innerHTML = '<h3>Conferências locais a revalidar</h3>' + conferences.map(item => `<p>${escapeHtml(formatRecordDate(item.fields.day))} · ${escapeHtml(item.fields.signerName)} — aguardando conferência online${item.fields.day !== todayInputValue() ? ' e revisão administrativa da data anterior' : ''}.</p>`).join('') + '<button class="secondary-button" type="button" data-reopen-checklist>Reabrir Checklist</button>';
+      target.querySelector('#offline-sync-panel').append(pending);
+      pending.querySelector('[data-reopen-checklist]').onclick = () => {checklistReportOpen = true; checklistReportMode = 'daily'; navigate('checklist');};
+    }
     target.querySelector('#offline-sync-panel').hidden = offlineViewMode !== 'sync';
     target.querySelector('.offline-schedule-gallery').hidden = offlineViewMode !== 'gallery';
     target.querySelector('#offline-tab-sync')?.addEventListener('click', () => setOfflineViewMode(target, 'sync'));
@@ -1531,7 +1696,12 @@ async function loadOfflineView(target) {
         if (button.isConnected) button.disabled = false;
       }
     });
-    target.querySelector('#offline-refresh')?.addEventListener('click', () => loadOfflineView(target));
+    const offlineRefresh = target.querySelector('#offline-refresh');
+    if (offlineRefresh && navigator.onLine && (session.offline || onlineValidationRequired)) offlineRefresh.textContent = 'Revalidar acesso e atualizar';
+    offlineRefresh?.addEventListener('click', async () => {
+      if (navigator.onLine && (session.offline || onlineValidationRequired)) await revalidateOnlineSession();
+      if (document.querySelector('#module-content') === target) await loadOfflineView(target);
+    });
     target.querySelector('#offline-retry')?.addEventListener('click', async (event) => {
       event.currentTarget.disabled = true;
       await retryFailedOperations(uid);
@@ -1544,10 +1714,25 @@ async function loadOfflineView(target) {
       try {
         if (await retryFailedOperation(uid, button.dataset.retryOperation)) {
           const {flushOutbox} = await import('./data.js');
-          await flushOutbox(uid, {requestId: button.dataset.retryOperation});
+          await flushOutbox(uid, {requestId: button.dataset.retryOperation, authorizeOperation: canConfirmOfflineOperation});
         }
       } finally {
         await scheduleNextOutboxRetry(uid);
+        if (document.querySelector('#module-content') === target) await loadOfflineView(target);
+        await updateOutboxStatus();
+      }
+    }));
+    target.querySelectorAll('[data-confirm-operation]').forEach((button) => button.addEventListener('click', async () => {
+      const operation = unsettled.find(item => item.requestId === button.dataset.confirmOperation);
+      if (!operation || !canConfirmOfflineOperation(operation)) return;
+      button.disabled = true;
+      try {
+        const confirmed = await confirmQueuedOperation(uid, operation.requestId);
+        if (confirmed) {
+          window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId: operation.requestId, type: operation.type}}));
+          await syncOutbox();
+        }
+      } finally {
         if (document.querySelector('#module-content') === target) await loadOfflineView(target);
         await updateOutboxStatus();
       }
@@ -1803,6 +1988,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     const conferenceReadiness = checklistConferenceReadiness(day, applicableStations, records);
     checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation, fingerprint, scopeKey: scope.key,
       conferenceComplete: conferenceReadiness.ready};
+    checklistReportContext.localConferenceComplete = (isOfflineRuntimeForced() || !navigator.onLine) && localChecklistConferenceReady({day, today: todayInputValue(), stations: applicableStations, records, profile: session.profile, rotation: checklistRotationLive?.key === scope.key ? checklistRotationLive.rotation : null, incomplete: result.historyIncomplete || result.truncated});
     const summary = summarizeChecklistDay(day, todayInputValue(), applicableStations, records);
     const resolvedRecordFor = (station) => resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
     const displayStations = sortChecklistStationsForDisplay(stations, resolvedRecordFor)
@@ -1845,6 +2031,27 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
     const prepareChecklistConfirmation = async () => {
+      if (checklistLocalConferenceCurrent(scope, fingerprint)) {
+        const signerName = session.profile?.displayName || '';
+        if (!signerName) return;
+        content.querySelector('#checklist-preceptor-name').textContent = signerName;
+        const status = content.querySelector('#checklist-signature-status'), preview = content.querySelector('#checklist-signature-preview');
+        status.textContent = 'Esta conferência será preservada neste aparelho. Após reconectar, reabra o relatório e confirme os dados atuais. A pontuação aguarda validação.';
+        preview.innerHTML = '<button class="primary-button" type="button" data-local-conference-confirm>Arsenais ativos conferidos, e situações não conformes encaminhadas</button>';
+        confirmationDialog.showModal();
+        preview.querySelector('[data-local-conference-confirm]').onclick = async event => {
+          if (!checklistLocalConferenceCurrent(scope, fingerprint) || session.profile?.displayName !== signerName) return;
+          event.currentTarget.disabled = true;
+          try {
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
+            if (!checklistLocalConferenceCurrent(scope, fingerprint)) return;
+            await saveOperationalDraft(uid, 'checklists', 'conference:' + day, {day, signerName, reportDigest: [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''), confirmedLocallyAt: new Date().toISOString()});
+            if (!reportScopeCurrent(scope)) return;
+            checklistLocalIntent = {uid, day, signerName}; confirmationDialog.close(); updateChecklistResponsibilityUI(); void updateOutboxStatus();
+          } catch {status.textContent = 'Não foi possível preservar a conferência local. Mantenha o relatório aberto e tente novamente.';}
+        };
+        return;
+      }
       if (!canPrepareSignature || !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, fingerprint)) return;
       const signerName = session.profile?.displayName || '';
       content.querySelector('#checklist-preceptor-name').textContent = signerName || 'Nome de perfil indisponível';
@@ -1910,6 +2117,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             // The explicit confirmation keeps the existing acknowledgement contract and server-side scoring.
             await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
               signerName, rotationSigla: rotation.sigla, rotationPosition: rotation.position});
+            await removeOperationalDraft(uid, 'checklists', 'conference:' + day); checklistLocalIntent = null;
             if (!previewCurrent()) return;
             const sigla = String(session.profile?.sigla || '').trim().toUpperCase();
             checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,
@@ -2002,6 +2210,22 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const maintenanceBannerCurrent = () => dialog.open && currentRoute() === 'checklist' && document.querySelector('#checklist-station-dialog') === dialog && dialog.checklistStationBannerToken === maintenanceBannerToken && session.user?.uid === maintenanceUid;
   const maintenanceBannerWritable = () => maintenanceBannerCurrent() && can('admin') && can('checklistManage');
   const checklistBannerWritable = () => canWriteToday && checklistDayMode(day, todayInputValue()) === 'today' && maintenanceBannerCurrent() && can('checklistWrite') && (fromQr || (maintenanceBannerWritable() && dialog.dataset.manualChecklist === 'true'));
+  const draftId = day + ':' + station.id;
+  const localTextarea = actions.querySelector('#checklist-station-occurrence');
+  if (localTextarea && canWriteToday) {
+    let typed = false;
+    localTextarea.addEventListener('input', () => {
+      typed = true;
+      if (checklistBannerWritable()) void saveOperationalDraft(maintenanceUid, 'checklists', draftId, {occurrence: localTextarea.value, day, stationId: station.id}).catch(() => {status.textContent = 'Não foi possível preservar o rascunho neste aparelho.';});
+    });
+    void readOperationalDraft(maintenanceUid, 'checklists', draftId).then(draft => {
+      if (!draft?.fields?.occurrence || typed || !checklistBannerWritable()) return;
+      localTextarea.value = draft.fields.occurrence;
+      actions.querySelector('[data-checklist-justification]').hidden = false;
+      actions.querySelector('[data-checklist-banner-save]').hidden = false;
+      status.textContent = 'Rascunho de não conformidade recuperado deste aparelho. Confira antes de salvar.';
+    }).catch(() => {});
+  }
   const maintenanceInputs = maintenanceFields.map(([key]) => actions.querySelector(`[data-checklist-maintenance-date="${key}"]`));
   const maintenanceSave = actions.querySelector('[data-checklist-maintenance-save]');
   const updateMaintenanceDisplay = (value) => {
@@ -2065,6 +2289,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
       return;
     }
     status.textContent = 'Checklist salvo.';
+    await removeOperationalDraft(maintenanceUid, 'checklists', draftId);
     dialog.close();
     ensureChecklistDailyReportOpen(day);
     await loadDailyChecklist(stations, day);
@@ -3451,6 +3676,7 @@ async function bindModuleForm(route) {
     submit.disabled = true;
     const values = Object.fromEntries(new FormData(form).entries());
     const actorUid = session.user.uid;
+    const draftCheckpoint = operationalDrafts.checkpoint?.(form);
     const entryGeneration = labelEntryGeneration;
     const currentLabelSave = () => session.user?.uid === actorUid && entryGeneration === labelEntryGeneration && form.isConnected;
     const manualLabelEntry = route === 'labels' && (form.dataset.labelEntrySource === 'manual' || Boolean(values.editLabelId));
@@ -3486,7 +3712,10 @@ async function bindModuleForm(route) {
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
           const {updateEventRecord} = await import('./data.js');
-          const result = await updateEventRecord(values.editEventId, eventRecord, session.user.uid, Number(values.editEventVersion));
+          if (session.user?.uid !== actorUid) return;
+          const result = await updateEventRecord(values.editEventId, eventRecord, actorUid, Number(values.editEventVersion));
+          await operationalDrafts.clearSubmitted?.(draftCheckpoint);
+          if (session.user?.uid !== actorUid) return;
           notice = result.pendingFirestore
             ? 'Edição salva neste aparelho com a versão base. Será enviada quando a conexão voltar; se o registro mudar, o rascunho ficará para comparação.'
             : 'Evento atualizado no Firestore.';
@@ -3522,9 +3751,11 @@ async function bindModuleForm(route) {
         record = {date: values.date, patientName: values.patientName.trim(), procedureCode: (values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : (values.insurance || '').trim(), creditor, staffSiglas: creditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
         if (values.editLabelId) {
           const {updateLabelRecord} = await import('./data.js');
-          await updateLabelRecord(values.editLabelId, record, session.user.uid, actorName, Number(values.editLabelVersion));
+          if (session.user?.uid !== actorUid) return;
+          const editResult = await updateLabelRecord(values.editLabelId, record, actorUid, actorName, Number(values.editLabelVersion));
+          await operationalDrafts.clearSubmitted?.(draftCheckpoint);
           if (!currentLabelSave()) return;
-          updateLabelManualConfirmation('confirmed', actorUid);
+          updateLabelManualConfirmation(editResult.pendingFirestore ? 'pending' : 'confirmed', actorUid);
           notice = '';
           const entryDialog = document.querySelector('#label-entry-dialog');
           if (entryDialog?.open) entryDialog.close();
@@ -3572,10 +3803,13 @@ async function bindModuleForm(route) {
       }
       delete record.sign;
       const {createOperationalRecord} = await import('./data.js');
-      const result = await createOperationalRecord(collectionName, record, {uid: session.user.uid});
+      if (session.user?.uid !== actorUid) return;
+      const result = await createOperationalRecord(collectionName, record, {uid: actorUid});
+      await operationalDrafts.clearSubmitted?.(draftCheckpoint);
+      if (session.user?.uid !== actorUid) return;
       if (route === 'labels' && !currentLabelSave()) return;
       notice = result.pendingFirestore
-        ? 'Registro salvo neste aparelho; será enviado ao Firestore quando a conexão voltar.'
+        ? 'Registro salvo neste aparelho. Confirme o envio na área Sincronização quando o serviço voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
       if (manualLabelEntry || cameraLabelEntry) {
         if (manualLabelEntry) updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
@@ -3891,7 +4125,7 @@ async function loadEventEntryCatalog() {
   const membersTask = form ? (async () => {
     const membersMissing = form.querySelector('#event-members-missing');
     try {
-      const members = await listEventMembers();
+      const members = await listEventMembers({uid});
       if (!currentView()) return;
       loadedEventMembers = members;
       if (membersMissing) {
@@ -3930,7 +4164,7 @@ async function loadLabelStaffCatalog() {
   const note = document.querySelector('#label-staff-catalog-note');
   try {
     const {listLabelStaffSiglas} = await import('./data.js');
-    loadedLabelStaffSiglas = await listLabelStaffSiglas();
+    loadedLabelStaffSiglas = await listLabelStaffSiglas({uid: session.user.uid});
     const options = document.querySelector('#label-staff-options');
     if (options) {
       options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
@@ -4055,6 +4289,11 @@ function bindLabelAi(workspace, form) {
     const file = fileInput.files?.[0];
     const uid = session.user?.uid;
     if (!file || !uid || reading) return;
+    if (!navigator.onLine || isOfflineRuntimeForced()) {
+      setStatus('Sem conexão com o leitor. Continue pelo Registro Manual; os dados serão salvos neste aparelho.', true);
+      manualButton?.click();
+      return;
+    }
     if (!labelAiEnabled) {
       setStatus('Leitura por IA desativada. Use Registro Manual; a imagem não será enviada para a IA.', true);
       return;
@@ -4477,6 +4716,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  await operationalDrafts.flush();
   if (session.status !== 'signed-in') updateInformationBanner(null);
   evaluationModuleGeneration++;
   for (const kind of ['events', 'labels', 'checklist']) { const scope = liveReports.get(kind)?.snapshot().scope; if (scope?.warm !== true && (scope || reportStates.has(kind) || reportPayloads.has(kind))) closeReportLive(kind, 'render'); }
@@ -4520,6 +4760,10 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if (deniedOperationalModules.has(requestedRoute)) {
+    notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
+    navigate('home'); return;
+  }
   if (['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
@@ -4548,6 +4792,8 @@ async function render() {
     if (route === 'events') await bindModuleForm(route);
     await loadModule(route);
     if (route !== 'events') await bindModuleForm(route);
+    const draftForm = document.querySelector('form[data-module-form="' + route + '"]');
+    if (draftForm) await operationalDrafts.restore(draftForm);
   }
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
@@ -4557,15 +4803,17 @@ async function render() {
 async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status');
   if (!target || session.status !== 'signed-in') return;
-  const [counts, pendingProgress, retryableFailures] = await Promise.all([
+  const [counts, pendingProgress, retryableFailures, drafts] = await Promise.all([
     operationCounts(session.user.uid),
     pendingTrainingProgressCount(session.user.uid),
-    retryableFailedOperationCount(session.user.uid)
+    retryableFailedOperationCount(session.user.uid), listOperationalDrafts(session.user.uid)
   ]);
-  const count = counts.queued + counts.failed + counts.conflict;
-  const details = [count ? `${count} ação(ões) ${counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
-  const syncLabel = !navigator.onLine ? `Offline${details ? ` · ${details}` : ''}` : details || (session.offline ? 'Perfil local' : 'Sincronizado');
-  const isSynced = syncLabel === 'Sincronizado';
+  const count = counts.queued + counts.awaitingConfirmation + counts.failed + counts.conflict;
+  const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:')).length;
+  const details = [count ? `${count} ação(ões) ${counts.awaitingConfirmation ? 'aguardando confirmação' : counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
+  const backendUnavailable = Boolean(operationalBackend.snapshot().code);
+  const syncLabel = count || pendingProgress || pendingConferences ? `PENDENTE DE SINCRONIZAÇÃO · ${details}${pendingConferences ? ' · conferência local a revalidar' : ''}` : backendUnavailable ? 'SINCRONIZAÇÃO INDISPONÍVEL' : !navigator.onLine || isOfflineRuntimeForced() || session.offline ? 'OFFLINE — OPERANDO LOCALMENTE' : 'ONLINE — SINCRONIZADO';
+  const isSynced = syncLabel === 'ONLINE — SINCRONIZADO';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
   updateLabelReportSync();
   target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
@@ -4598,6 +4846,7 @@ function scheduleOutboxRetry(uid, attemptAt) {
 }
 
 async function scheduleNextOutboxRetry(uid) {
+  if (!navigator.onLine || isOfflineRuntimeForced() || session.offline) {scheduleOutboxRetry(uid, NaN); return;}
   try {
     scheduleOutboxRetry(uid, await nextQueuedAttemptAt(uid));
   } catch (error) {
@@ -4606,7 +4855,7 @@ async function scheduleNextOutboxRetry(uid) {
 }
 
 async function syncOutbox() {
-  if (!navigator.onLine || session.status !== 'signed-in') return;
+  if (!navigator.onLine || isOfflineRuntimeForced() || onlineValidationRequired || session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true) return;
   const uid = session.user.uid;
   try {
     const [counts, pendingProgress] = await Promise.all([
@@ -4615,7 +4864,7 @@ async function syncOutbox() {
     ]);
     if (!counts.queued && !pendingProgress) return;
     const {flushOutbox, syncPendingTrainingProgress} = await import('./data.js');
-    await flushOutbox(uid);
+    await flushOutbox(uid, {authorizeOperation: canConfirmOfflineOperation});
     await syncPendingTrainingProgress(uid);
     await updateOutboxStatus();
     if (currentRoute() === 'offline') {
@@ -4627,6 +4876,24 @@ async function syncOutbox() {
   } finally {
     if (session.status === 'signed-in' && session.user.uid === uid) await scheduleNextOutboxRetry(uid);
   }
+}
+
+async function revalidateOnlineSession() {
+  if (!navigator.onLine || session.status !== 'signed-in') return false;
+  onlineValidationRequired = true;
+  operationalBackend.reset(); deniedOperationalModules.clear();
+  setOfflineRuntimeMode(true);
+  try { await retryAuthenticatedProfile(); }
+  catch (error) { console.warn('[SAHMT sync] Perfil não foi revalidado:', error.code || error.message); }
+  if (session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true) return false;
+  onlineValidationRequired = false;
+  backendFailureDisplayed = false;
+  setOfflineRuntimeMode(false);
+  for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'profile-revalidated');
+  void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
+  void refreshAppFeatures(session.user.uid, true);
+  await syncOutbox();
+  return true;
 }
 
 function bindLogin() {
@@ -4659,6 +4926,8 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
+  if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-session-status', {detail: {status: next.status, code: next.error?.code || '', transportFailure: isFirestoreCacheFallbackError(next.error)}}));
+  const wasOffline = session.offline === true;
   const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
@@ -4672,6 +4941,8 @@ function sessionChanged(next) {
   const preserveCurrentModule = onlyGeneralReadGrant && !['home', 'training', 'notifications'].includes(currentRoute());
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
+  if (userChanged) deniedOperationalModules.clear();
+  if (userChanged || next.status === 'signed-out') onlineValidationRequired = false;
   if (userChanged || next.status !== 'signed-in') {
     startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistRotationLive = null; checklistConferenceLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
     for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
@@ -4690,6 +4961,11 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+  setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired);
+  if (next.status === 'signed-in' && !next.offline && (wasOffline || userChanged)) {
+    preloadOperationalDataWhenIdle(next.user); preloadStartupReports(next.user);
+    for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get?.(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'profile-online');
+  }
   if (next.status === 'signed-in' && userChanged) {
     void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(next.user.uid)).catch(() => {});
   }
@@ -4755,16 +5031,15 @@ window.addEventListener('hashchange', () => {
   }
 });
 window.addEventListener('online', () => {
+  onlineValidationRequired = session.status === 'signed-in';
   cleanupCurrentModule?.setOnline?.(true);
   liveReports.setOnline(true);
   if (session.status === 'signed-in') {
-    void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
-    for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'reconnect');
-    void refreshAppFeatures(session.user.uid, true);
-    void syncOutbox();
+    setOfflineRuntimeMode(true);
+    void revalidateOnlineSession();
   }
 });
-window.addEventListener('offline', () => { cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.'); void updateOutboxStatus(); });
+window.addEventListener('offline', () => { onlineValidationRequired = session.status === 'signed-in'; setOfflineRuntimeMode(true); cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.'); void updateOutboxStatus(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     cleanupCurrentModule?.suspend?.();
@@ -4774,6 +5049,7 @@ document.addEventListener('visibilitychange', () => {
     invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
   } else {
     cleanupCurrentModule?.resume?.();
+    if (session.status === 'signed-in' && navigator.onLine && (session.offline || isOfflineRuntimeForced()) && Date.now() >= operationalBackend.snapshot().nextRetryAt) void revalidateOnlineSession();
     const scopes = suspendedReportScopes; suspendedReportScopes = [];
     for (const scope of scopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, scope, {force: true});
   }
@@ -4786,9 +5062,25 @@ window.addEventListener('sahmt-write-synced', (event) => {
   refreshLivePending();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
-window.addEventListener('sahmt-write-queued', () => {
+window.addEventListener('sahmt-write-queued', event => {
   refreshLivePending();
   if (navigator.onLine && session.status === 'signed-in') void syncOutbox();
+});
+window.addEventListener('sahmt-write-local-pending', refreshLivePending);
+let backendFailureDisplayed = false;
+window.addEventListener('sahmt-backend-status', event => {
+  if (!event.detail?.code || session.status !== 'signed-in' || backendFailureDisplayed) return;
+  backendFailureDisplayed = true; setOfflineRuntimeMode(true);
+  const scopes = ['events', 'labels', 'checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(Boolean);
+  for (const scope of scopes) liveReports.refresh(scope.kind, 'backend-unavailable');
+  invalidateChecklistSignature('A validação remota está indisponível; os registros locais foram preservados.');
+  void updateOutboxStatus();
+});
+window.addEventListener('sahmt-operational-access-denied', event => {
+  if (session.user?.uid !== event.detail?.uid) return;
+  const affected = {labelStaff: ['labels'], eventMembers: ['events'], eventCatalogs: ['events'], stations: ['checklist'], scheduleDays: ['events', 'checklist'], contacts: ['events', 'checklist']}[event.detail.kind] || [];
+  for (const module of affected) deniedOperationalModules.add(module);
+  if (affected.includes(currentRoute())) void render();
 });
 window.addEventListener('sahmt-write-rejected', (event) => {
   notice = 'O Firestore recusou a gravação; ela não foi confirmada. ' + (event.detail?.message || '');

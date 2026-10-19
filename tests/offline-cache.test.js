@@ -22,7 +22,7 @@ test('offline read uses only the same UID cache and marks array items stale', as
   const value = await readThroughSafeCache({
     uid: 'uid-a', kind: 'vacations', id: '2026-09-25',
     fetchOnline: async () => { throw Object.assign(new Error('offline'), {code: 'unavailable'}); },
-    readCache: async (uid, kind, id) => { reads.push([uid, kind, id]); return {uid, data: [{id: 'v1'}]}; },
+    readCache: async (uid, kind, id) => { reads.push([uid, kind, id]); return {uid, kind, cachedAt: Date.now(), data: [{id: 'v1'}]}; },
     writeCache: async () => assert.fail('offline read must not write cache'),
     mayFallback: (error) => error.code === 'unavailable'
   });
@@ -42,4 +42,13 @@ test('offline cache is not used without a UID or for non-connectivity errors', a
   await assert.rejects(readThroughSafeCache({...base, uid: 'uid-a'}), {code: 'permission-denied'});
   await assert.rejects(readThroughSafeCache({...base, uid: undefined}), {code: 'permission-denied'});
   assert.equal(cacheReads, 0);
+});
+
+test('cache expirado não é apresentado como dado offline válido', async () => {
+  await assert.rejects(readThroughSafeCache({
+    uid: 'uid-a', kind: 'labels', id: '2026-10-19',
+    fetchOnline: async () => { throw Object.assign(new Error('quota'), {code: 'resource-exhausted'}); },
+    readCache: async () => ({uid: 'uid-a', kind: 'labels', cachedAt: Date.now() - 25 * 60 * 60 * 1000, data: []}),
+    writeCache: async () => {}, mayFallback: (error) => error.code === 'resource-exhausted'
+  }), {code: 'resource-exhausted'});
 });

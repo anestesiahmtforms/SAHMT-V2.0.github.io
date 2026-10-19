@@ -57,12 +57,13 @@ function setup({pending = false, fail = false, origin = 'manual', editing = fals
   const form = {isConnected: true, dataset: {labelEntrySource: editing ? 'edit' : origin}, elements: {staffSiglas: {value: ''}, creditor: {value: 'Caixa'}}, querySelector: () => ({disabled: false})};
   const values = {date: '2026-09-30', type: 'Consulta Pré-anestésica', patientName: 'Paciente teste', encounterCode: '123', creditor: 'Caixa', insurance: '', editLabelId: editing ? 'label-1' : '', editLabelVersion: editing ? '1' : ''};
   const context = vm.createContext({
+    operationalDrafts: {},
     session: {user: {uid: 'user-1', displayName: 'Teste'}, profile: {displayName: 'Teste'}},
     labelManualConfirmation: {uid: '', status: ''}, labelCameraConfirmation: {uid: '', status: ''}, labelEntryGeneration: 0, notice: '', route: 'labels', renderCount: 0,
     loadedLabelStaffSiglas: [], loadedLabelRecords: [],
     document: {querySelector: (selector) => selector === '#label-form-status' ? status : selector === '#label-manual-open' ? button : selector === '#label-camera-open' ? cameraButton : selector === '#label-entry-dialog' ? dialog : null},
     FormData: class {entries() {return Object.entries(values);}},
-    mockData: {updateLabelRecord: async () => {if (commitGate) await commitGate; if (fail) throw new Error('Edição não confirmada');}, createOperationalRecord: async () => {if (commitGate) await commitGate; if (fail) throw new Error('Não confirmado'); return {id: 'record-1', pendingFirestore: pending};}},
+    mockData: {updateLabelRecord: async () => {if (commitGate) await commitGate; if (fail) throw new Error('Edição não confirmada'); return {id: 'label-1', pendingFirestore: pending};}, createOperationalRecord: async () => {if (commitGate) await commitGate; if (fail) throw new Error('Não confirmado'); return {id: 'record-1', pendingFirestore: pending};}},
     render: async () => {context.renderCount++;}, Intl, Date: ClockDate, Set, Object, Number, String, JSON, Error,
     setTimeout(callback, delay) {const id = ++timerId; timers.set(id, {callback, at: now + delay}); return id;},
     clearTimeout(id) {timers.delete(id);}

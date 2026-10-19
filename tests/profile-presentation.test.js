@@ -73,6 +73,7 @@ function harness({active = true, access = true, online = true} = {}) {
     .replace(/\bexport /g, '')
     .replace(/import\((['"][^'"]+['"])\)/g, 'fakeImport($1)');
   const context = vm.createContext({
+    operationalBackend:{run:(_key,action)=>action(),reset(){},noteFailure(){}},isFirestoreCacheFallbackError:()=>false,
     firebaseConfigured: true, profileForPresentation, navigator: {onLine: online},
     window: {requestIdleCallback: (fn) => { context.idle = fn; return 1; }, cancelIdleCallback() {}, addEventListener() {}, removeEventListener() {}},
     cacheProfile: async (_uid, value) => { cached.push(value); }, readCachedProfile: async () => f.profile,
@@ -114,4 +115,13 @@ test('cache offline usa a mesma apresentação sem conceder acesso novo', async 
   assert.equal(h.states[0].profile.displayName, h.user.displayName);
   assert.equal(h.states[0].status, 'blocked');
   assert.equal(h.states[0].offline, true);
+});
+
+test('troca de conta durante persistência do perfil não emite a sessão anterior', async () => {
+  const h = harness(); let finish;
+  h.context.cacheProfile = () => new Promise(resolve => {finish = resolve;}); h.context.currentGeneration = 1;
+  const loading = vm.runInContext('onAuthChangedProfile(user, onState, 1, () => currentGeneration, () => {})', h.context);
+  while (!finish) await new Promise(resolve => setImmediate(resolve));
+  h.context.currentGeneration = 2; finish(); await loading;
+  assert.equal(h.states.length, 0);
 });

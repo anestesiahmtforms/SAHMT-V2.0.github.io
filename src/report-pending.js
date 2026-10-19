@@ -21,6 +21,12 @@ function eventVisible(record, scope) {
     Boolean(sigla && (record.memberSigla === sigla || record.scheduleSigla === sigla));
 }
 
+function labelVisible(record, scope) {
+  const sigla = String(scope.sigla || '').trim().toUpperCase();
+  return scope.canManage === true || record.createdByUid === scope.uid ||
+    Boolean(sigla && record.staffSiglas?.includes?.(sigla));
+}
+
 /** Reconciles only the current user's in-memory outbox with the selected report period. */
 export function mergeReportPendingRecords(kind, remote = [], operations = [], scope = {}) {
   if (!['events', 'checklists', 'labels'].includes(kind)) throw new Error('Relatório não permitido.');
@@ -41,39 +47,44 @@ export function mergeReportPendingRecords(kind, remote = [], operations = [], sc
     if (sdkPending(record)) record[kind === 'checklists' ? 'pendingSync' : 'pendingFirestore'] = true;
     records.set(record.id, latestRecord(records.get(record.id), record));
   }
-  if (kind !== 'labels' && scope.uid) {
+  if (scope.uid) {
     const seen = new Set();
     const ordered = [...(operations || [])].sort((left, right) => reportTime(left.createdAt) - reportTime(right.createdAt));
     for (const operation of ordered) {
       const {requestId, payload, status} = operation || {};
       if (!requestId || seen.has(requestId) || accepted.has(requestId) || operation.uid !== scope.uid ||
-        !['queued', 'failed', 'conflict'].includes(status) || payload?.collectionName !== kind || !payload.data || !inPeriod(payload.data)) continue;
+        !['queued', 'awaiting-confirmation', 'failed', 'conflict'].includes(status) || payload?.collectionName !== kind || !payload.data || !inPeriod(payload.data)) continue;
       seen.add(requestId);
-      const isEdit = kind === 'events' && operation.type === 'eventEdits';
+      const isEdit = kind === 'events' && operation.type === 'eventEdits' || kind === 'labels' && operation.type === 'labelEdits';
+      const editedId = kind === 'labels' ? payload.labelId : payload.eventId;
       if (!isEdit && operation.type !== kind) continue;
-      if (isEdit && (scope.isAdmin !== true || !payload.eventId || !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 1)) continue;
+      if (isEdit && ((kind === 'labels' ? scope.canManage !== true && scope.canWrite !== true : scope.isAdmin !== true) || !editedId || !Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 1)) continue;
       if (!isEdit && represented.has(requestId)) continue;
       if (kind === 'events' && !isEdit && !eventVisible({...payload.data, createdByUid: payload.data.createdByUid || operation.uid}, scope)) continue;
-      if (isEdit && originals.get(payload.eventId)?.active === false) continue;
-      const existing = records.get(isEdit ? payload.eventId : requestId);
+      if (kind === 'labels' && !labelVisible({...payload.data, createdByUid: payload.data.createdByUid || operation.uid}, scope)) continue;
+      if (isEdit && originals.get(editedId)?.active === false) continue;
+      const existing = records.get(isEdit ? editedId : requestId);
+      if (isEdit && kind === 'labels' && scope.canManage !== true && (!existing || !labelVisible(existing, scope))) continue;
       if (!isEdit && existing) continue;
       if (isEdit && existing?.lastRequestId === requestId) continue;
       const candidate = {...(isEdit ? existing || {} : {}), ...payload.data,
-        id: isEdit ? payload.eventId : requestId, clientMutationId: isEdit ? existing?.clientMutationId : requestId,
+        id: isEdit ? editedId : requestId, clientMutationId: isEdit ? existing?.clientMutationId : requestId,
         createdByUid: isEdit ? existing?.createdByUid || payload.data.createdByUid : scope.uid,
+        ...(isEdit && existing?.createdByName ? {createdByName: existing.createdByName} : {}),
         createdAt: isEdit && existing?.createdAt ? existing.createdAt : new Date(operation.createdAt),
-        pendingFirestore: kind !== 'checklists' && status === 'queued', pendingSync: kind === 'checklists' && status === 'queued',
+        pendingFirestore: kind !== 'checklists' && ['queued', 'awaiting-confirmation'].includes(status), pendingSync: kind === 'checklists' && ['queued', 'awaiting-confirmation'].includes(status),
+        awaitingConfirmation: status === 'awaiting-confirmation',
         syncFailed: status === 'failed', syncConflict: status === 'conflict', syncError: operation.lastError || ''};
       if (candidate.active === false || (kind === 'events' && !eventVisible(candidate, scope))) continue;
       if (isEdit) {
-        candidate.sourceEventId = payload.eventId;
+        if (kind === 'labels') candidate.sourceLabelId = editedId; else candidate.sourceEventId = editedId;
         candidate.pendingEdit = true;
         candidate.version = payload.expectedVersion + 1;
         candidate.localRequestId = requestId;
         // A queued edit cannot demote a later accepted version while its outbox acknowledgment is arriving.
         const conflicting = status === 'conflict' || status === 'failed' || (existing && Number(existing.version || 1) !== payload.expectedVersion);
         if (conflicting) {
-          candidate.id = `${payload.eventId}::draft::${requestId}`;
+          candidate.id = `${editedId}::draft::${requestId}`;
           candidate.syncConflict = status === 'conflict' || (status !== 'failed' && Boolean(existing && Number(existing.version || 1) !== payload.expectedVersion));
         }
       }

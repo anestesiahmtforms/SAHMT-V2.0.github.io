@@ -73,7 +73,7 @@ test('rodapé separa rodízio da escala do botão de confirmação, e revisão f
  assert.doesNotMatch(source,/CHECAGEM SEM PENDÊNCIAS|CHECAGEM COM PENDÊNCIAS|checklist-pending-prepare|checklist-signature-declaration/);
  assert.match(source,/checklist-preceptor-name'\)\.textContent = signerName/);
  assert.match(source,/Arsenais ativos conferidos, e situações não conformes encaminhadas/);
- assert.match(source,/prepare\.disabled = !checklistConferenceCanOpen\(scope\) \|\| !checklistSignatureCurrent\(scope, checklistReportContext\?\.fingerprint\)/);
+ assert.ok(source.includes('prepare.disabled = !checklistLocalConferenceCurrent(scope, checklistReportContext?.fingerprint) && (!checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint))'));
  assert.doesNotMatch(source,/selected\.position !== 1|posição efetiva 1 do dia/);
  assert.doesNotMatch(source,/pendingJustification|checklistOutcome/);
  assert.doesNotMatch(source,/A ciência registra a leitura destas informações|Não declara execução das verificações/);

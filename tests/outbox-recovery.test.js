@@ -9,16 +9,18 @@ test('ação offline permanece na fila isolada após recarregar o módulo e cons
   const payload = {collectionName: 'events', data: {date: '2026-09-25', memberStatus: 'CR'}};
 
   await firstPage.enqueueOperation({uid, type: 'events', resourceId: requestId, requestId, payload});
-  assert.deepEqual((await firstPage.listQueuedOperations(uid)).map((item) => item.requestId), [requestId]);
+  assert.deepEqual(await firstPage.listQueuedOperations(uid), []);
+  assert.deepEqual((await firstPage.listAwaitingConfirmationOperations(uid)).map((item) => item.requestId), [requestId]);
 
   // Uma nova instância do módulo representa o estado do cliente após fechar e reabrir o PWA.
   const reopenedPage = await import('../src/outbox.js?offline-page-reopened');
   const restored = await reopenedPage.listUnsettledOperations(uid);
   assert.equal(restored.length, 1);
   assert.equal(restored[0].requestId, requestId);
+  assert.equal(restored[0].status, 'awaiting-confirmation');
   assert.deepEqual(restored[0].payload, payload);
-  assert.deepEqual(await reopenedPage.operationCounts(uid), {queued: 1, failed: 0, conflict: 0});
+  assert.deepEqual(await reopenedPage.operationCounts(uid), {queued: 0, awaitingConfirmation: 1, failed: 0, conflict: 0});
 
   await reopenedPage.clearUserLocalData(uid, {clearOutbox: true});
-  assert.deepEqual(await firstPage.operationCounts(uid), {queued: 0, failed: 0, conflict: 0});
+  assert.deepEqual(await firstPage.operationCounts(uid), {queued: 0, awaitingConfirmation: 0, failed: 0, conflict: 0});
 });

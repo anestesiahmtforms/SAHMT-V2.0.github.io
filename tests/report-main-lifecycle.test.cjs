@@ -22,11 +22,14 @@ async function harness({kind='events',pendingRead}={}) {
   nodes.set('#module-content',element()); nodes.set('#checklist-month',element({value:'2026-09'}));
   const ctx=vm.createContext({
     session:{status:'signed-in',user:{uid:'user-a'},profile:{displayName:'Pessoa fictícia A',sigla:'AA',role:'administrador_app',active:true,access:true,permissions:{admin:true,eventsRead:true,eventsWrite:true,labelsRead:true,labelsWrite:true,labelsManage:true,checklistRead:true,checklistWrite:true,checklistSign:true,checklistManage:true}}},
-    cleanupCurrentModule:null,evaluationModuleGeneration:0,
+    cleanupCurrentModule:null,evaluationModuleGeneration:0,operationalDrafts:{flush:async()=>{}},
     appFeatures:{events:true,labels:true,checklist:true}, appFeaturesUid:'user-a', appFeaturesLoadSequence:0,
     appFeaturesRefreshPromise:null, appFeaturesRefreshPromiseUid:'', lastForcedAppFeaturesRefresh:{uid:'',at:0},
     DEFAULT_APP_FEATURES:{events:true,labels:true,checklist:true},
     currentRoute:()=>route, featureEnabledForRoute:(value,features)=>features[value]!==false,
+    isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, setOfflineRuntimeMode() {}, onlineValidationRequired:false,
+    operationalReportCacheId:()=>'', checklistCacheId:()=>'', checklistCachedCatalogMatches:()=>false,
+    readFreshSafeCache:async()=>null, writeSafeCache:async()=>{}, confirmQueuedOperation:async()=>false,
     eventReportMode:'daily',labelReportMode:'daily',checklistReportMode:'daily',eventReportCursor:null,labelReportCursor:null,
     eventReportSourceRecords:[],eventReportStale:false,loadedEventReportRecords:[],loadedLabelRecords:[],checklistReportContext:null,
     navigator:{onLine:true}, document:{querySelector:selector=>nodes.get(selector)||null,createElement:()=>element({dataset:{}})},
@@ -250,6 +253,7 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
   const catalogs=[],reports=[],events=[],writes=[],reads=[],stops=[];let owned=scopeOwned;
   const ctx=vm.createContext({
     checklistCatalogLive:null,checklistResponsibilityLive:null,stationIsInDateRange:()=>true,can:()=>false,
+    isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, navigator:{onLine:true}, emitCachedOfflineReport:async()=>false,subscribeReportWithDeadline:({subscribe,callbacks})=>subscribe(callbacks),
     mockCatalog:{watchChecklistStations:async(next,error)=>{catalogs.push({next,error});return()=>stops.push('catalog');}},
     mockChecklist:{watchChecklistReport:async(options,next,error)=>{const index=reports.length;reports.push({options,next,error});return()=>stops.push('report:'+index);}},
     mockCache:{readSafeCache:async(uid,type,key)=>{reads.push({uid,type,key});return type==='stations'?(catalogGate?catalogGate.promise:{data:stations}):{data:initial};},writeSafeCache:async(uid,type,key,data)=>{writes.push({uid,type,key,data});}},

@@ -6,6 +6,8 @@ import {isManagementFaFirstLoginPending, observeManagementFaFirstLoginAuthUid,
   subscribeManagementFaFirstLoginPending} from './management-fa-first-login-state.js';
 import {createManagementGoogleLogin} from './management-google-login.js';
 import {managementFaFirstLoginConfig} from './management-fa-first-login-config.js';
+import {isFirestoreCacheFallbackError} from './offline-cache.js';
+import {operationalBackend} from './operational-backend.js';
 
 let retryCurrentProfile = null;
 let authApiPromise = null;
@@ -47,9 +49,10 @@ function loadAuthApi() {
   return authApiPromise;
 }
 
-async function showCachedSession(user, onState) {
+async function showCachedSession(user, onState, isCurrent = () => true) {
   const profile = await readCachedProfile(user.uid);
-  if (!profile) {
+  if (!isCurrent()) return;
+  if (!profile || profile.uid !== user.uid) {
     onState({status: 'profile-error', user, error: new Error('Perfil offline ausente ou expirado.')});
     return;
   }
@@ -90,14 +93,19 @@ export function watchSession(onState) {
     onState({status: 'loading-profile', user});
     try {
       if (!navigator.onLine) {
-        await showCachedSession(user, onState);
+        await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
         scheduleReconnect(user, currentGeneration);
         return;
+      }
+      const cached = await readCachedProfile(user.uid).catch(() => null);
+      if (currentGeneration !== generation || disposed) return;
+      if (cached?.uid === user.uid && cached.active === true && cached.access === true) {
+        onState({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true});
       }
       await onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
     } catch (error) {
       if (currentGeneration !== generation) return;
-      if (!navigator.onLine) await showCachedSession(user, onState);
+      if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
       else onState({status: 'profile-error', user, error});
     }
     scheduleReconnect(user, currentGeneration);
@@ -105,6 +113,7 @@ export function watchSession(onState) {
   retryCurrentProfile = () => {
     const user = auth?.currentUser;
     if (!user) return Promise.resolve(false);
+    operationalBackend.reset();
     return loadProfile(user);
   };
   firstLoginPendingUnsubscribe = subscribeManagementFaFirstLoginPending((pending) => {
@@ -156,6 +165,7 @@ export function watchSession(onState) {
   }).catch((error) => { if (!disposed) onState({status: 'auth-error', error}); });
   return () => {
     disposed = true;
+    generation++;
     clearOnlineHandler();
     authUnsubscribe?.();
     profileUnsubscribe?.();
@@ -173,7 +183,7 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
   if (currentGeneration !== getGeneration()) return;
   const profileRef = doc(db, 'users', user.uid);
   try {
-    const snapshot = await getDoc(profileRef);
+    const snapshot = await operationalBackend.run(`profile:${user.uid}`, () => getDoc(profileRef));
     if (currentGeneration !== getGeneration()) return;
     if (!snapshot.exists()) {
       const requestSnapshot = await getDoc(doc(db, 'accessRequests', user.uid));
@@ -184,11 +194,12 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     const profile = snapshot.data();
     if (profile.uid !== user.uid) throw new Error('O UID do perfil não corresponde à identidade autenticada.');
     await cacheProfile(user.uid, profile);
+    if (currentGeneration !== getGeneration()) return;
     onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: false});
     deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
-    if (!navigator.onLine) await showCachedSession(user, onState);
+    if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === getGeneration());
     else onState({status: 'profile-error', user, error});
   }
 }
@@ -215,6 +226,7 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
       if (cancelled || currentGeneration !== getGeneration()) return;
       listenerUnsubscribe = onSnapshot(doc(db, 'users', user.uid), async (latest) => {
         if (currentGeneration !== getGeneration()) return;
+        if (latest.metadata?.fromCache === true || latest.metadata?.hasPendingWrites === true) return;
         if (!latest.exists()) {
           onState({status: 'profile-missing', user});
           return;
@@ -225,11 +237,15 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
           return;
         }
         await cacheProfile(user.uid, updatedProfile);
+        if (cancelled || currentGeneration !== getGeneration()) return;
         onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(updatedProfile, user), offline: !navigator.onLine});
       }, (error) => {
         if (currentGeneration !== getGeneration()) return;
-        if (!navigator.onLine) {
-          showCachedSession(user, onState).catch((cacheError) => onState({status: 'profile-error', user, error: cacheError}));
+        if (isFirestoreCacheFallbackError(error)) {
+          operationalBackend.noteFailure(error, `profile:${user.uid}`);
+          showCachedSession(user, onState, () => currentGeneration === getGeneration() && !cancelled).catch((cacheError) => {
+            if (currentGeneration === getGeneration() && !cancelled) onState({status: 'profile-error', user, error: cacheError});
+          });
         } else {
           onState({status: 'profile-error', user, error});
         }
@@ -272,9 +288,8 @@ export async function signOutGlobal() {
       pendingTrainingProgress ? `progresso de ${pendingTrainingProgress} ${pendingTrainingProgress === 1 ? 'treinamento' : 'treinamentos'}` : ''
     ].filter(Boolean);
     const pendingCount = pendingOperations + pendingTrainingProgress;
-    const discard = pendingCount > 0 && window.confirm(`Há ${pendingDescriptions.join(' e ')} sem confirmação do Firestore. Sair e apagar esses dados deste aparelho?`);
-    if (pendingCount > 0 && !discard) return false;
-    await clearUserLocalData(user.uid, {clearOutbox: discard});
+    if (pendingCount > 0 && !window.confirm(`Há ${pendingDescriptions.join(' e ')} sem confirmação do Firestore. Sair mantendo os registros neste aparelho? Entre novamente com esta mesma conta para revisar e enviar.`)) return false;
+    await clearUserLocalData(user.uid, {clearOutbox: false});
   }
   return signOutAllFirebaseProjects({signOutPrimary: () => signOut(auth)});
 }
