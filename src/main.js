@@ -1451,14 +1451,18 @@ async function loadOfflineView(target) {
       const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
       const retryAt = Number(item.nextAttemptAt);
       const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
+      const abandonedSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
+        && Date.now() - item.sendClaimedAt >= 120000;
       const manualConfirmationRequired = requiresSendConfirmation(item.type) &&
-        !Number.isFinite(item.sendConfirmedAt) && ['queued', 'awaiting-confirmation', 'failed'].includes(item.status);
+        !Number.isFinite(item.sendConfirmedAt) && (['queued', 'awaiting-confirmation', 'failed'].includes(item.status) || abandonedSend);
       const operationStatus = item.status === 'conflict'
         ? 'Conflito para comparar'
-        : item.status === 'sending'
-          ? 'Envio em andamento'
-          : manualConfirmationRequired
-            ? 'Aguardando sua confirmação'
+        : manualConfirmationRequired && abandonedSend
+          ? 'Envio interrompido · reconfirmação necessária'
+          : item.status === 'sending'
+            ? 'Envio em andamento'
+            : manualConfirmationRequired
+              ? 'Aguardando sua confirmação'
             : item.status === 'failed'
               ? 'Revisar'
               : !navigator.onLine
@@ -1472,7 +1476,7 @@ async function loadOfflineView(target) {
       const resolution = manualConfirmationRequired
         ? dateDiffers
           ? `<small class="sync-error">Este Checklist é de outro dia. As regras atuais só aceitam envio no dia do servidor. A cópia ficará local para você revisar; o envio está bloqueado para não criar um registro inválido.</small><button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
-          : `<small class="record-meta">Esta cópia está somente neste aparelho. Revise a data e o tipo antes de autorizar o envio.</small><button class="primary-button" type="button" data-confirm-offline-send="${escapeHtml(item.requestId)}" ${navigator.onLine && !session.offline ? '' : 'disabled'}>Revisar e confirmar envio</button>${item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+          : `<small class="record-meta">Esta cópia está somente neste aparelho. Revise a data e o tipo antes de autorizar o envio. Se um envio anterior ficou sem resposta, confirme novamente somente após verificar se o registro já foi gravado.</small><button class="primary-button" type="button" data-confirm-offline-send="${escapeHtml(item.requestId)}" ${navigator.onLine && !session.offline ? '' : 'disabled'}>Revisar e confirmar envio</button>${item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : item.status !== 'queued'
           ? `${dateDiffers
             ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
