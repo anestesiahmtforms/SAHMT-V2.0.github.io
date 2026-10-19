@@ -2388,7 +2388,7 @@ async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = 
     const {createOperationalRecord} = await import('./data.js');
     if (!sessionCurrent() || checklistDayMode(day, todayInputValue()) !== 'today') return {ok: false, message: 'A sessão, a permissão ou a data do Checklist foi alterada.'};
     // A atribuição do responsável só é definida após validação no servidor.
-    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid, forceQueue: forceQueue || session.offline || !navigator.onLine});
+    const result = await createOperationalRecord('checklists', {...namedAuthor, stationId, date: day, condition, status: condition === 'SIM' ? 'COMPLETED' : 'MAINTENANCE', occurrence, responsibleUid: null, responsibleName: null, responsibleEmail: null}, {uid, forceQueue: forceQueue || session.offline || globalThis.navigator?.onLine === false});
     return {ok: true, pendingFirestore: result.pendingFirestore === true};
   } catch (error) {
     return {ok: false, message: error.code === 'permission-denied' ? 'Seu perfil não tem permissão para registrar checklist.' : `Não foi possível salvar. ${error.message || ''}`};
