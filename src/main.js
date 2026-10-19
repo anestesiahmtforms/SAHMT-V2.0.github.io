@@ -3969,7 +3969,6 @@ async function loadLabelStaffCatalog() {
     const {listLabelStaffSiglas} = await import('./data.js');
     loadedLabelStaffSiglas = await listLabelStaffSiglas();
     if (session.user?.uid && navigator.onLine && !session.offline) await writeSafeCache(session.user.uid, 'appConfig', 'labelStaff', {siglas: loadedLabelStaffSiglas}).catch(() => {});
-    if (session.user?.uid && navigator.onLine && !session.offline) await writeSafeCache(session.user.uid, 'appConfig', 'labelStaff', {siglas: loadedLabelStaffSiglas}).catch(() => {});
     const options = document.querySelector('#label-staff-options');
     if (options) {
       options.replaceChildren(...loadedLabelStaffSiglas.map((sigla) => {
@@ -4681,7 +4680,7 @@ async function bindOfflineOperationalForms(route, uid, day) {
         await createOperationalRecord('events', record, {uid, forceQueue: true});
       } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
         const values = Object.fromEntries(new FormData(form).entries());
-        const normalizedType = String(values.type || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+        const normalizedType = String(values.type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
         const rawAmount = String(values.amount || '').trim().replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.');
         const amount = rawAmount ? Number(rawAmount) : null;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
