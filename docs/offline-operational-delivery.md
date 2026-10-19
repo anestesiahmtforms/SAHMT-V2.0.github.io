@@ -78,6 +78,16 @@ Arquivos principais: `src/auth.js`, `src/data-lite.js`, `src/data.js`, `src/main
 
 ## Publicação e reversão futuras
 
-O pacote ainda precisa ser integrado ao branch de publicação com preservação das alterações paralelas e autorização de publicação. A validação no iPhone ocorre após instalar a versão aprovada, preparar os dados online e testar modo avião e retomada.
+### Integração autorizada para publicação
+
+Em 19/10/2026, o administrador autorizou publicar. O pacote foi integrado ao main `75ee4ce`, preservando o envio individual com estado `sending`, o suporte offline de Ocorrências, o shell limitado para sessões sem perfil e a navegação corrigida. A interface normal dos três módulos passa a usar o armazenamento local; o painel alternativo antigo não substitui mais esses módulos.
+
+A validação integrada passou em 1.032 testes de domínio, 127 testes offline e no build com as variáveis efetivas de produção. Os três testes nativos do Worker que faltavam no ambiente local foram executados separadamente: 22 aprovados. Nenhuma leitura ou gravação no Firebase real.
+
+O teste adicional remove o atestado App Check da base sintética antes de reabrir offline. Ele reproduziu uma espera sem fim no reCAPTCHA e foi corrigido com prazo de 5 segundos para obter o atestado. A falha continua sendo falha: não é gerado token aceito artificialmente e a autorização do servidor permanece obrigatória. O módulo App Check também entra no precache quando está presente no build. A primeira execução de publicação foi cancelada antes do deploy para incluir essa correção na versão do shell **v208**.
+
+Comando de regressão adicional: `npm run test:offline-browser-expired`. Usa as mesmas dependências externas simuladas e os 12 cenários do cliente normal. Os dados de produção não são consultados.
+
+A implantação deve ser confirmada pelo resultado do workflow e pela versão servida no endereço público. A validação no iPhone ocorre após instalar a versão aprovada, preparar os dados online e testar modo avião e retomada.
 
 Reverter para uma versão antiga que só conhece IndexedDB v3 pode impedir esse código antigo de abrir o banco v4. A reversão deve conservar suporte de leitura à versão 4 e os dados pendentes; não apagar IndexedDB, outbox ou rascunhos para forçar uma reversão. Exportar/reconciliar pendências antes de qualquer manutenção de armazenamento.

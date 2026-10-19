@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
 
 const root = fileURLToPath(new URL('../', import.meta.url)), base = '/SAHMT-V2.0.github.io/';
+const expireAttestation = process.argv.includes('--expired-app-check');
 const config = await readFile(path.join(root, 'src/firebase-config.js'), 'utf8');
 const apiKey = config.match(/apiKey:\s*['"]([^'"]+)/)?.[1];
 assert.ok(apiKey, 'Configuração Web necessária para a simulação local.');
@@ -48,11 +49,11 @@ try {
     if (url.hostname === 'firestore.googleapis.com') {firestoreRequests++; return route.fulfill({status: 429, json: {error: {code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Synthetic quota test'}}});}
     outsideRequests++; return route.abort('blockedbyclient');
   });
-  await context.addInitScript(({apiKey}) => {
+  await context.addInitScript(({apiKey, expireAttestation}) => {
     // Only external attestation is mocked. The Firebase SDK, application and
     // persistence still run from the actual production-configured build.
     const captcha = {ready: callback => callback(), render: () => 1, execute: async () => 'synthetic-recaptcha-token'};
-    globalThis.grecaptcha = {...captcha, enterprise: captcha};
+    if (!expireAttestation || !localStorage.getItem('fixture-expired-appcheck')) globalThis.grecaptcha = {...captcha, enterprise: captcha};
     globalThis.__fixtureSessionStates = []; addEventListener('sahmt-session-status', event => globalThis.__fixtureSessionStates.push(event.detail));
     if (localStorage.getItem('offline-fixture-seeded')) return;
     const uid = 'offline-browser-fixture', now = Date.now(), day = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
@@ -93,7 +94,7 @@ try {
         tx.oncomplete = () => {db.close(); localStorage.setItem('offline-fixture-seeded', 'yes'); resolve();}; tx.onerror = () => reject(tx.error);
       };
     });
-  }, {apiKey});
+  }, {apiKey, expireAttestation});
   const page = await context.newPage(), errors = [];
   pageForDebug = page;
   page.on('pageerror', error => {errors.push(error.message); browserErrors.push(error.message);});
@@ -105,7 +106,18 @@ try {
   await page.locator('[name=patientName]').fill('Rascunho fictício');
   await page.waitForTimeout(100);
   report.scenarios.backendUnavailableWithInternet = 'passed';
-  stage = 'offline-reopen'; offline = true; await context.setOffline(true); const reopenStarted = Date.now(); await page.reload();
+  stage = 'offline-reopen';
+  if (expireAttestation) await page.evaluate(async () => {
+    localStorage.setItem('fixture-expired-appcheck', 'yes');
+    for (const {name} of await indexedDB.databases()) if (name?.includes('app-check')) await new Promise(resolve => {
+      const request = indexedDB.open(name); request.onsuccess = () => {
+        const db = request.result, stores = [...db.objectStoreNames]; if (!stores.length) {db.close(); resolve(); return;}
+        const transaction = db.transaction(stores, 'readwrite'); for (const store of stores) transaction.objectStore(store).clear();
+        transaction.oncomplete = () => {db.close(); resolve();};
+      };
+    });
+  });
+  offline = true; await context.setOffline(true); const reopenStarted = Date.now(); await page.reload();
   await page.locator('#label-manual-open').waitFor({timeout: 15000}); report.timingsMs.offlineReopenToLabels = Date.now() - reopenStarted; await page.locator('#label-manual-open').click();
   await page.waitForFunction(() => document.querySelector('[name=patientName]')?.value === 'Rascunho fictício');
   report.scenarios.offlineReopenAndDraft = 'passed';
@@ -164,4 +176,4 @@ try {
   }, origin + base + manifest['src/firebase-auth.js'].file).catch(() => ({code: 'LOCAL_PROFILE_CHECK_UNAVAILABLE'}));
   process.exitCode = 1;
 }
-finally {await browser?.close(); await new Promise(resolve => server.close(resolve)); await mkdir(path.join(root, '.local-preview'), {recursive: true}); await writeFile(path.join(root, '.local-preview/offline-browser-report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report));}
+finally {await browser?.close(); await new Promise(resolve => server.close(resolve)); await mkdir(path.join(root, '.local-preview'), {recursive: true}); await writeFile(path.join(root, '.local-preview/' + (expireAttestation ? 'offline-expired-appcheck-report.json' : 'offline-browser-report.json')), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report));}

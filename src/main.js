@@ -4759,7 +4759,7 @@ async function render() {
     bindLogin();
     return;
   }
-  if(authLimited&&currentRoute()!=='home'){navigate('home');return;}
+  if(authLimited && !session.validatingProfile && currentRoute() !== 'home'){navigate('home');return;}
   const requestedRoute = currentRoute();
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
