@@ -16,7 +16,7 @@ import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
 import {currentRoute, navigate} from './router.js';
-import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount} from './outbox.js';
+import {discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, removeQueuedOperation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
@@ -28,6 +28,7 @@ import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortCheckl
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
+import {offlineOperationalDashboardMarkup, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -430,6 +431,12 @@ async function subscribeLiveReport(kind, scope, callbacks) {
 function receiveLiveReport(kind, payload, scope) {
   if (!reportScopeCurrent(scope)) return;
   reportPayloads.set(kind, payload);
+  if ((kind === 'events' || kind === 'labels') && scope.mode === 'daily' && scope.day === todayInputValue() &&
+      payload?.fromCache === false && payload?.hasPendingWrites === false && payload.localPending !== true && Array.isArray(payload.records)) {
+    void writeOfflineOperationalSnapshot({uid: scope.uid, kind, day: scope.day,
+      access: {sigla: scope.sigla, isAdmin: scope.isAdmin, canManage: scope.canManage},
+      records: payload.records, confirmed: true, writeSafeCache}).catch(() => {});
+  }
   if (kind === 'checklist' && payload?.catalog) {
     checklistCatalogLive = {...payload.catalog, uid: scope.uid};
     if (checklistModuleStations.length || currentRoute() === 'checklist') checklistModuleStations.splice(0, checklistModuleStations.length, ...payload.catalog.records);
@@ -4547,13 +4554,16 @@ async function render() {
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
-  if(session.offline||authLimited){
+  if (authLimited) {
     const unavailable=document.querySelector('#schedule-content')||document.querySelector('#module-content');
-    if(unavailable)unavailable.innerHTML=authLimited?'<p class="empty-state">O app abriu pela autenticação Firebase. Os módulos e dados serão liberados somente depois que o Firestore confirmar o perfil.</p>':'<p class="empty-state">Os dados do servidor ficam indisponíveis até o Firestore confirmar novamente seu perfil. O app abriu com a sessão e o perfil local.</p>';
+    if(unavailable)unavailable.innerHTML='<p class="empty-state">O app abriu pela autenticação Firebase. Os módulos e dados serão liberados somente depois que o Firestore confirmar o perfil.</p>';
     document.querySelectorAll('.main-content form').forEach(form=>form.addEventListener('submit',event=>event.preventDefault()));
     document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control=>{control.disabled=true;});
-    if(authLimited){const status=document.querySelector('#outbox-status');if(status){status.innerHTML=session.validatingProfile?'<span role="status">Validando perfil…</span>':'<button type="button" id="retry-profile-access">Verificar acesso</button>';bindProfileRetryControl(status.querySelector('#retry-profile-access'));}}
-    else void updateOutboxStatus();
+    const status=document.querySelector('#outbox-status');if(status){status.innerHTML=session.validatingProfile?'<span role="status">Validando perfil…</span>':'<button type="button" id="retry-profile-access">Verificar acesso</button>';bindProfileRetryControl(status.querySelector('#retry-profile-access'));}
+    return;
+  }
+  if(session.offline || !navigator.onLine){
+    await renderOfflineOperationalView();
     return;
   }
   if (currentRoute() === 'home') await loadHome(); else {
@@ -4565,6 +4575,35 @@ async function render() {
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
   if (navigator.onLine && !session.offline) void syncOutbox();
+}
+
+async function renderOfflineOperationalView() {
+  const host = document.querySelector('.main-content');
+  const uid = session.user?.uid;
+  if (!host || !uid) return;
+  const cachedFeatures = await readSafeCache(uid, 'appConfig', 'app').catch(() => null);
+  if (cachedFeatures?.uid === uid && cachedFeatures.data?.features) {
+    appFeatures = normalizeAppFeatures(cachedFeatures.data.features);
+    appFeaturesUid = uid;
+  }
+  const allowed = {
+    schedule: featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
+    checklist: featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
+    events: featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
+    labels: featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can)
+  };
+  const day = todayInputValue();
+  const access = {sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage')};
+  const [schedule, checklist, events, labels, stationCache] = await Promise.all([
+    allowed.schedule ? readOfflineOperationalSnapshot({uid, kind: 'schedule', day, readSafeCache}).catch(() => null) : null,
+    allowed.checklist ? readOfflineOperationalSnapshot({uid, kind: 'checklist', day, readSafeCache}).catch(() => null) : null,
+    allowed.events ? readOfflineOperationalSnapshot({uid, kind: 'events', day, access, readSafeCache}).catch(() => null) : null,
+    allowed.labels ? readOfflineOperationalSnapshot({uid, kind: 'labels', day, access, readSafeCache}).catch(() => null) : null,
+    allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null
+  ]);
+  const snapshots = {schedule, checklist, events, labels};
+  host.innerHTML = `${offlineOperationalDashboardMarkup({day, snapshots, permissions: allowed, stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data : []})}<button class="secondary-button" type="button" data-route="home">HOME</button>`;
+  host.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));
 }
 
 async function updateOutboxStatus() {
@@ -4791,7 +4830,7 @@ window.addEventListener('online', () => {
     void syncOutbox();
   }
 });
-window.addEventListener('offline', () => { cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.'); void updateOutboxStatus(); });
+window.addEventListener('offline', () => { cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.'); void updateOutboxStatus();  if (session.status === 'signed-in') void render(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     cleanupCurrentModule?.suspend?.();
