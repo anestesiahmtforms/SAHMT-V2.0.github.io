@@ -29,6 +29,7 @@ import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
+import {bindOfflineOperationalReports} from './offline-report-ui.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {DEFAULT_APP_FEATURES, featureEnabledForRoute, normalizeAppFeatures} from './feature-flags.js';
 import {contactActionLinks} from './contact-actions.js';
@@ -4659,7 +4660,12 @@ async function renderOfflineOperationalView() {
   document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
   host.querySelector?.('.offline-operational-dashboard')?.remove();
   host.insertAdjacentHTML('beforeend', markup);
+  if (route === 'events' || route === 'labels') {
+    const pendingModuleContent = host.querySelector('#module-content');
+    if (pendingModuleContent) pendingModuleContent.innerHTML = '<p class="empty-state" role="status">Relatórios online indisponíveis neste momento. Use os relatórios offline para consultar somente a cópia salva neste aparelho.</p>';
+  }
   bindOfflineOperationalForms(route, uid, day);
+  bindOfflineOperationalReports({root: document, kind: route, day, snapshot});
 }
 async function bindOfflineOperationalForms(route, uid, day) {
   const forms = [...document.querySelectorAll('.offline-write-form[data-offline-write-form]')];
