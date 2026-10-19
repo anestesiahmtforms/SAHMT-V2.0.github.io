@@ -119,17 +119,32 @@ test('modo offline preserva a tela normal e troca somente o painel salvo ao rede
 });
 
 
-test('painel offline usa os contêineres visuais padrão do app', async () => {
+test('painel offline fica na área do módulo e preserva os contêineres visuais do app', async () => {
   const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
   const markup = offlineOperationalDashboardMarkup({
+    route: 'home',
     day: '2026-10-19',
     snapshots: {schedule: {schedule: {positions: ['A']}, cachedAt: Date.now()}},
     permissions: {schedule: true}
   });
-  assert.match(markup, /class="offline-operational-dashboard module-view panel"/);
+  assert.match(markup, /class="offline-operational-dashboard"/);
   assert.match(markup, /class="offline-operational-sections content-grid"/);
   assert.match(markup, /class="offline-operational-section panel"/);
   assert.match(markup, /class="offline-readonly-notice sync-state"/);
+  assert.match(markup, /class="siglas-grid"/);
+  assert.doesNotMatch(markup, /Última cópia deste aparelho/);
+});
+
+test('painel offline mostra apenas a rota aberta', async () => {
+  const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
+  const markup = offlineOperationalDashboardMarkup({
+    route: 'events',
+    day: '2026-10-19',
+    snapshots: {events: {records: [{eventType: 'Evento'}]}, labels: {records: [{patientName: 'Outro'}]}},
+    permissions: {events: true, labels: true}
+  });
+  assert.match(markup, /<h3>Eventos<\/h3>/);
+  assert.doesNotMatch(markup, /<h3>Etiquetas<\/h3>/);
 });
 
 function fakeOfflineHost(initial) {
