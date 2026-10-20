@@ -41,7 +41,7 @@ export function mergeReportPendingRecords(kind, remote = [], operations = [], sc
     originals.set(item.id, latestRecord(originals.get(item.id), item));
     for (const id of [item.id, item.clientMutationId]) if (id) represented.add(id);
     // Accepted IDs also suppress a stale local contribution that moved out of this period.
-    if (!sdkPending(item)) for (const id of [item.id, item.clientMutationId, item.lastRequestId]) if (id) accepted.add(id);
+    if (!sdkPending(item) && !item.provisionalShared && !item.pendingFirestore && !item.pendingSync) for (const id of [item.id, item.clientMutationId, item.lastRequestId]) if (id) accepted.add(id);
     if (!inPeriod(item) || (kind === 'events' && (item.active === false || !eventVisible(item, scope)))) continue;
     const record = {...item};
     if (sdkPending(record)) record[kind === 'checklists' ? 'pendingSync' : 'pendingFirestore'] = true;

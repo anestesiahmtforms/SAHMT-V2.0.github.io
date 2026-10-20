@@ -2,6 +2,7 @@ import './styles.css';
 import './performance-ui.css';
 import './catalog-folders.css';
 import './training-state.css';
+import {createPendingSyncBanner} from './pending-sync-banner.js';
 import {trainingActivityId, trainingParticipationState, paintTrainingButton} from './training-participation-state.js';
 import {renderCatalogFolders} from './catalog-folders.js';
 import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
@@ -50,6 +51,8 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 const app = document.querySelector('#app');
+const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
+let syncNoticeSequence=0;
 installMaterialViewer(document);
 const diretrizesReading = readingGateConfig(import.meta.env);
 const diretrizesReadingRequested = import.meta.env.VITE_DIRETRIZES_READING_ENABLED === 'true';
@@ -882,7 +885,8 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
       : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, releaseTimes)}</strong>`;
     const marked = !eventMode && highlightedSiglas.has(position.sigla);
-    const showConfirmedDot = eventMode ? hasEvent : marked && !schedule.stale && schedule.pendingFirestore !== true;
+    const provisionalRelease = !eventMode && position.siglas.some(sigla=>(schedule.provisionalReleaseSiglas||[]).includes(sigla));
+    const showConfirmedDot = eventMode ? hasEvent : marked && !provisionalRelease && !schedule.stale && schedule.pendingFirestore !== true;
     const confirmationLabel = eventMode ? 'Registro de evento confirmado no Firestore' : 'Liberação confirmada no Firestore';
     const vacationDescription = position.vacationParts.length
       ? `; em férias: ${position.vacationParts.map((sigla) => `${sigla}, posição ${position.vacationPositions[sigla]} na escala de férias`).join('; ')}`
@@ -894,7 +898,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${provisionalRelease ? ' sigla-token--provisional' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(provisionalRelease ? title + ' · Liberação provisória; confirmação pendente' : title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
   }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
 }
 
@@ -1048,6 +1052,7 @@ async function loadHome() {
   let contactsRequest = null;
   const vacationsCache = new Map();
   const renderSchedule = (schedule, selectedDate, selectedVacations, selectedContacts) => {
+    if (globalThis.sahmtProjectSharedSchedule) schedule=globalThis.sahmtProjectSharedSchedule(schedule,{uid:session.user?.uid,day:selectedDate});
     if (!schedule) {
       content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
       return;
@@ -1183,6 +1188,7 @@ async function loadHome() {
     void render();
   });
   dateInput.addEventListener('change', render);
+  dateInput.addEventListener('sahmt-shared-refresh',()=>{const uid=session.user?.uid,day=dateInput.value;void readCachedSchedule(uid,day).then(value=>{if(value&&session.user?.uid===uid&&dateInput.isConnected&&dateInput.value===day)renderSchedule(value,day,vacationsCache.get(day)?.items||[],contacts);});});
   await render();
 }
 
@@ -1652,7 +1658,7 @@ async function loadOfflineView(target) {
         ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
         : '';
       const resolution = manualConfirmationRequired
-        ? `<small>Este registro permanece somente neste aparelho e ainda não foi enviado.${canConfirmOfflineOperation(item) ? '' : ' O envio será liberado após conexão e validação online do perfil e da permissão.'}</small>${canConfirmOfflineOperation(item) ? `<button class="primary-button" type="button" data-confirm-operation="${escapeHtml(item.requestId)}">Confirmar envio</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
+        ? `<small>${globalThis.sahmtProvisionalChannelEnabled ? 'Este registro ainda aguarda confirmação definitiva do Firestore; pode estar compartilhado provisoriamente.' : 'Este registro permanece somente neste aparelho e ainda não foi enviado.'}${canConfirmOfflineOperation(item) ? '' : ' O envio será liberado após conexão e validação online do perfil e da permissão.'}</small>${canConfirmOfflineOperation(item) ? `<button class="primary-button" type="button" data-confirm-operation="${escapeHtml(item.requestId)}">Confirmar envio</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
         : item.status !== 'queued'
         ? `${dateDiffers
           ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
@@ -1690,6 +1696,20 @@ async function loadOfflineView(target) {
     const readySection = document.createElement('section'); readySection.className = 'offline-panel';
     readySection.innerHTML = '<h3>Preparação deste aparelho</h3><p data-offline-readiness role="status">Conferindo somente os dados locais…</p><p data-offline-storage class="record-meta"></p><button class="secondary-button" type="button" data-prepare-offline>Preparar uso offline</button><p class="record-meta">Use o cache em aparelho pessoal ou autorizado. Registros pendentes ficam neste navegador até sua confirmação de envio. Não limpe os dados do site enquanto houver registros pendentes.</p>';
     target.querySelector('#offline-sync-panel').prepend(readySection);
+    if (globalThis.sahmtProvisionalChannelEnabled) {
+      const section=document.createElement('section');section.className='panel shared-channel-recovery';
+      section.innerHTML='<h3>Canal compartilhado provisório</h3><p>Compartilha checagens, registros e liberações com internet. A confirmação definitiva depende do Firestore. A recuperação abaixo restaura somente seus registros, sem enviá-los.</p><label>Data<input type="date" data-channel-recovery-day value="'+todayInputValue()+'"></label><label>Módulo<select data-channel-recovery-kind><option value="checklists">Checklist</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="scheduleReleases">Liberações da escala</option></select></label><button type="button" class="secondary-button" data-channel-recover>Recuperar meus registros provisórios</button><p role="status" data-channel-recovery-status></p>';
+      target.querySelector('#offline-sync-panel').prepend(section);
+      const button=section.querySelector('[data-channel-recover]');
+      button.onclick=async()=>{
+        if(session.user?.uid!==uid||!navigator.onLine)return;button.disabled=true;
+        const status=section.querySelector('[data-channel-recovery-status]');status.textContent='Consultando seus registros provisórios…';
+        try{const result=await globalThis.sahmtRecoverSharedOperations(section.querySelector('[data-channel-recovery-day]').value,section.querySelector('[data-channel-recovery-kind]').value);
+          if(session.user?.uid===uid)status.textContent=result.restored+' registro(s) restaurado(s) na fila local. Revise e confirme o envio em Sincronização.';
+        }catch{if(session.user?.uid===uid)status.textContent='Não foi possível recuperar agora. Os registros do servidor não foram apagados.';}
+        finally{if(button.isConnected&&session.user?.uid===uid)button.disabled=false;}
+      };
+    }
     const showReadiness = async () => {
       const state = await inspectOfflineReadiness({uid, day: todayInputValue(), sigla: session.profile?.sigla, isAdmin: can('admin'), canManageLabels: can('labelsManage'), readCache: readFreshSafeCache, assetsReady: await operationalAssetsReady(import.meta.env.BASE_URL)});
       const storage = await inspectDeviceStorage();
@@ -1783,7 +1803,13 @@ async function loadOfflineView(target) {
       }
     }));
     target.querySelectorAll('[data-discard-operation]').forEach((button) => button.addEventListener('click', async () => {
-      if (!window.confirm('Esta ação não foi confirmada pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
+      if (!window.confirm(globalThis.sahmtProvisionalChannelEnabled ? 'Descartar este registro local e retirar a cópia provisória compartilhada, caso exista? Nenhum registro confirmado do Firestore será apagado.' : 'Esta ação não foi confirmada pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
+      const operation=unsettled.find(item=>item.requestId===button.dataset.discardOperation);
+      if(globalThis.sahmtProvisionalChannelEnabled&&operation){
+        try{const module=await import('./provisional-operational-channel.js');await module.withdrawProvisionalOperation(operation);}
+        catch{window.alert('Não foi possível retirar a cópia compartilhada. Conecte-se e tente novamente; o registro local foi preservado.');return;}
+      }
+      pendingSyncBanner.discarded(uid);
       await removeQueuedOperation(uid, button.dataset.discardOperation);
       await loadOfflineView(target);
       await updateOutboxStatus();
@@ -1797,6 +1823,7 @@ async function loadOfflineView(target) {
     }));
     target.querySelectorAll('[data-discard-training]').forEach((button) => button.addEventListener('click', async () => {
       if (!window.confirm('Este progresso ainda não foi confirmado pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
+      pendingSyncBanner.discarded(uid);
       await discardCachedTrainingProgress(uid, button.dataset.discardTraining);
       await loadOfflineView(target);
       await updateOutboxStatus();
@@ -2044,7 +2071,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       const note = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}: ${escapeHtml(record.occurrence || '')}</small>` : record?.occurrence ? `<small>${escapeHtml(record.occurrence)}</small>` : '';
       const recordedAt = record?.createdAt ? `<small>Último registro: ${escapeHtml(interactionDateTime(record.createdAt))}</small>` : '';
       const action = '';
-      const pending = result.recordsUnavailable && !record ? '<small class="record-meta">Registros do dia ainda indisponíveis</small>' : record?.pendingSync ? '<small class="record-meta">Aguardando sincronização</small>' : record?.syncFailed ? `<small class="sync-error">Falha ao sincronizar: ${escapeHtml(record.syncError || 'revise as permissões e tente novamente')}</small>` : '';
+      const pending = result.recordsUnavailable && !record ? '<small class="record-meta">Registros do dia ainda indisponíveis</small>' : record?.provisionalShared ? '<small class="record-meta channel-provisional-status">Compartilhado · confirmação pendente</small>' : record?.pendingSync ? '<small class="record-meta">Aguardando sincronização</small>' : record?.syncFailed ? `<small class="sync-error">Falha ao sincronizar: ${escapeHtml(record.syncError || 'revise as permissões e tente novamente')}</small>` : '';
       return `<article class="checklist-station checklist-station-${stationStateClass}" data-checklist-station="${escapeHtml(station.id)}" tabindex="-1"><div><button class="checklist-station-select" type="button" data-checklist-select="${escapeHtml(station.id)}" aria-label="Selecionar estação ${escapeHtml(station.name || station.id)}" aria-pressed="false">${checklistArsenalFunction(station) ? `<span class="checklist-arsenal-function">${escapeHtml(checklistArsenalFunction(station))}</span>` : ''}<span>${escapeHtml(checklistArsenalButtonLabel(station))}</span></button>${recordedAt}${note}${pending}</div>${action}</article>`;
     }).join('');
     const summaryCards = '';
@@ -2163,6 +2190,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
               signerName, rotationSigla: rotation.sigla, rotationPosition: rotation.position});
             await removeOperationalDraft(uid, 'checklists', 'conference:' + day); checklistLocalIntent = null;
+            pendingSyncBanner.confirmed(uid);void updateOutboxStatus();
             if (!previewCurrent()) return;
             const sigla = String(session.profile?.sigla || '').trim().toUpperCase();
             checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,
@@ -2229,13 +2257,13 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const active = station.active === true;
   const dayIsToday = checklistDayMode(day, todayInputValue()) === 'today';
   const canWriteToday = can('checklistWrite') && dayIsToday && active && stationIsValidOn(station, day);
-  const canManage = can('admin') && can('checklistManage');
+  const canManage = can('checklistManage');
   const showAnswers = canWriteToday && (fromQr || canManage);
   dialog.dataset.manualChecklist = showAnswers ? 'true' : 'false';
   const resultLabel = !active ? 'Inativo' : record?.condition === 'SIM' ? 'Conforme' : record?.condition === 'NAO' ? 'Não conforme' : 'Pendente de checagem';
   if (title) title.textContent = station.name || station.id || 'Checklist da estação';
   const checkerSummary = checklistCheckerSummary(record, {uid: session.user?.uid, profileName: session.profile?.displayName, authName: session.user?.displayName});
-  const checkerMarkup = checkerSummary ? `<div class="checklist-station-checker-summary"><span>${checkerSummary.pending ? 'Checagem local' : 'Última checagem'}</span><strong data-checklist-checker-name>${escapeHtml(checkerSummary.name || 'Nome não disponível')}</strong><small>${checkerSummary.pending ? 'Horário local: ' : ''}${escapeHtml(checkerSummary.dateTime || 'Data e hora não disponíveis')}</small>${checkerSummary.pending ? `<small>${checkerSummary.failed ? 'Falha na sincronização' : 'Aguardando sincronização'}</small>` : ''}</div>` : '';
+  const checkerMarkup = checkerSummary ? `<div class="checklist-station-checker-summary"><span>${checkerSummary.pending ? 'Checagem local' : 'Última checagem'}</span><strong data-checklist-checker-name>${escapeHtml(checkerSummary.name || 'Nome não disponível')}</strong><small>${checkerSummary.pending ? 'Horário local: ' : ''}${escapeHtml(checkerSummary.dateTime || 'Data e hora não disponíveis')}</small>${checkerSummary.pending ? `<small>${record?.provisionalShared ? 'Compartilhado · confirmação pendente' : checkerSummary.failed ? 'Falha na sincronização' : 'Aguardando sincronização'}</small>` : ''}</div>` : '';
   const inherited = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}.</small>` : '';
   const occurrence = record?.occurrence ? `<div class="checklist-station-justification"><strong>Justificativa</strong><p>${escapeHtml(record.occurrence)}</p></div>` : '';
   const activeLabel = active ? 'Arsenal ativo' : 'Arsenal inativo';
@@ -2253,7 +2281,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const maintenanceBannerToken = {};
   dialog.checklistStationBannerToken = maintenanceBannerToken;
   const maintenanceBannerCurrent = () => dialog.open && currentRoute() === 'checklist' && document.querySelector('#checklist-station-dialog') === dialog && dialog.checklistStationBannerToken === maintenanceBannerToken && session.user?.uid === maintenanceUid;
-  const maintenanceBannerWritable = () => maintenanceBannerCurrent() && can('admin') && can('checklistManage');
+  const maintenanceBannerWritable = () => maintenanceBannerCurrent() && can('checklistManage');
   const checklistBannerWritable = () => canWriteToday && checklistDayMode(day, todayInputValue()) === 'today' && maintenanceBannerCurrent() && can('checklistWrite') && (fromQr || (maintenanceBannerWritable() && dialog.dataset.manualChecklist === 'true'));
   const draftId = day + ':' + station.id;
   const localTextarea = actions.querySelector('#checklist-station-occurrence');
@@ -2654,7 +2682,7 @@ function renderEventReportRecords({append = false} = {}) {
     const showHistory = eventReportMode === 'daily' && confirmed;
     const canEdit = eventReportMode === 'daily' && can('admin') && confirmed;
     const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
-    const status = item.pendingEdit && item.syncFailed ? 'Rascunho de edição não confirmado' : item.pendingEdit ? 'Edição aguardando confirmação' : item.syncFailed ? 'Registro recusado pelo Firestore' : item.pendingFirestore ? 'Aguardando confirmação do Firestore' : '';
+    const status = item.provisionalShared ? 'Compartilhado · confirmação pendente' : item.pendingEdit && item.syncFailed ? 'Rascunho de edição não confirmado' : item.pendingEdit ? 'Edição aguardando confirmação' : item.syncFailed ? 'Registro recusado pelo Firestore' : item.pendingFirestore ? 'Aguardando confirmação do Firestore' : '';
     const amount = item.amountToPay != null && item.amountToPay !== '' ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : '';
     if (eventReportMode === 'daily') {
       const recordId = escapeHtml(item.id);
@@ -2836,7 +2864,7 @@ function renderLiveLabelReport(result, scope) {
   const markup = `${reportHeading}${records.length ? `<ul class="record-list">${records.map((item) => {
     const recordId = escapeHtml(item.id);
     const history = daily && confirmed(item) ? `<button class="secondary-button" type="button" data-label-history="${recordId}" aria-expanded="false" aria-controls="label-history-${recordId}">Histórico</button>` : '';
-    const registration = daily ? `<div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || 'Não informado')}</strong></div>` : '';
+    const registration = daily ? `${item.provisionalShared ? '<small class="channel-provisional-status">Compartilhado · confirmação pendente</small>' : ''}<div class="label-record-responsible"><span>RESPONSÁVEL PELO REGISTRO</span><strong>${escapeHtml(item.createdByName || 'Não informado')}</strong></div>` : '';
     const historyPanel = daily && confirmed(item) ? `<div id="label-history-${recordId}" class="label-history" data-label-history-content="${recordId}" hidden></div>` : '';
     const syncText = item.syncFailed || item.syncConflict ? 'Registro não confirmado · revisar sincronização' : !confirmed(item) ? 'Aguardando confirmação do Firestore' : '';
     const pending = syncText ? `<small class="sync-state">${escapeHtml(syncText)}</small>` : '';
@@ -4484,7 +4512,8 @@ function bindEventSchedule() {
   if (!dateInput || !content) return;
   const canLaunchSupport = can('eventsWrite') && featureEnabledForRoute('events', appFeatures);
   dateInput.value = localDateKey();
-  let requestSequence = 0;
+  let requestSequence = 0, redrawSharedSchedule = null;
+  dateInput.addEventListener('sahmt-shared-refresh',()=>redrawSharedSchedule?.());
   const vacationCache = new Map();
   const render = async () => {
     const requestId = ++requestSequence;
@@ -4517,7 +4546,8 @@ function bindEventSchedule() {
           bindEventSupportButton(content, day);
           return;
         }
-        const grid = renderSchedulePositionGrid(view, {mode: 'events', schedule, eventsWritable: canLaunchSupport});
+        const projected = globalThis.sahmtProjectSharedSchedule?.(schedule,{uid:session.user.uid,day}) || schedule;
+        const grid = renderSchedulePositionGrid(view, {mode: 'events', schedule:projected, eventsWritable: canLaunchSupport});
         content.innerHTML = grid;
         content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
           const position = view.positions[Number(button.dataset.schedulePositionIndex)];
@@ -4525,6 +4555,7 @@ function bindEventSchedule() {
         }));
         bindEventSupportButton(content, day);
       };
+      redrawSharedSchedule = draw;
       draw();
       const vacationResult = await vacationsPromise;
       if (requestId !== requestSequence || !content.isConnected) return;
@@ -4968,15 +4999,19 @@ async function bindOfflineOperationalForms(route, uid, day) {
 }
 
 async function updateOutboxStatus() {
-  const target = document.querySelector('#outbox-status');
-  if (!target || session.status !== 'signed-in') return;
-  const [counts, pendingProgress, retryableFailures, drafts] = await Promise.all([
-    operationCounts(session.user.uid),
-    pendingTrainingProgressCount(session.user.uid),
-    retryableFailedOperationCount(session.user.uid), listOperationalDrafts(session.user.uid)
-  ]);
+  const target = document.querySelector('#outbox-status'),uid=session.user?.uid,sequence=++syncNoticeSequence;
+  if (session.status !== 'signed-in'||!uid){pendingSyncBanner.reset();return;}
+  if (!target) return;
+  let counts,pendingProgress,retryableFailures,drafts;
+  try{[counts,pendingProgress,retryableFailures,drafts]=await Promise.all([
+    operationCounts(uid),
+    pendingTrainingProgressCount(uid),
+    retryableFailedOperationCount(uid), listOperationalDrafts(uid)
+  ]);}catch{if(sequence===syncNoticeSequence&&session.user?.uid===uid)pendingSyncBanner.update({uid,unavailable:true});return;}
+  if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
   const count = counts.queued + counts.awaitingConfirmation + counts.failed + counts.conflict + (counts.sending || 0);
   const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:')).length;
+  pendingSyncBanner.update({uid,pendingCount:count+pendingProgress+pendingConferences});
   const details = [count ? `${count} ação(ões) ${counts.awaitingConfirmation ? 'aguardando confirmação' : counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
   const backendUnavailable = Boolean(operationalBackend.snapshot().code);
   const syncLabel = count || pendingProgress || pendingConferences ? `PENDENTE DE SINCRONIZAÇÃO · ${details}${pendingConferences ? ' · conferência local a revalidar' : ''}` : backendUnavailable ? 'SINCRONIZAÇÃO INDISPONÍVEL' : !navigator.onLine || isOfflineRuntimeForced() || session.offline ? 'OFFLINE — OPERANDO LOCALMENTE' : 'ONLINE — SINCRONIZADO';
@@ -5119,6 +5154,7 @@ function sessionChanged(next) {
   const preserveCurrentModule = onlyGeneralReadGrant && !['home', 'training', 'notifications'].includes(currentRoute());
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
+  if(userChanged||next.status!=='signed-in')pendingSyncBanner.reset(next.status==='signed-in'?next.user?.uid:'');
   if (userChanged) deniedOperationalModules.clear();
   if (userChanged || next.status === 'signed-out') onlineValidationRequired = false;
   if (userChanged || next.status !== 'signed-in') {
@@ -5139,6 +5175,7 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+  if (globalThis.sahmtProvisionalChannelEnabled) window.dispatchEvent(new CustomEvent('sahmt-channel-session'));
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired);
   if (profileBecameLocal) {cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false);}
   if (profileRevalidated && navigator.onLine) {cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);}
@@ -5237,10 +5274,12 @@ function refreshLivePending() {
   void updateOutboxStatus();
 }
 window.addEventListener('sahmt-write-synced', (event) => {
+  if(event.detail?.uid===session.user?.uid)pendingSyncBanner.confirmed(event.detail.uid);
   refreshLivePending();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
 window.addEventListener('sahmt-write-queued', event => {
+  if(session.status==='signed-in'&&(!event.detail?.uid||event.detail.uid===session.user?.uid))pendingSyncBanner.pending(session.user.uid);
   refreshLivePending();
   if (navigator.onLine && session.status === 'signed-in' && !session.offline) void syncOutbox();
 });
@@ -5274,4 +5313,17 @@ watchSession(sessionChanged);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`, {scope: import.meta.env.BASE_URL}).catch((error) => console.error('[SAHMT PWA] Service Worker', error)));
+}
+
+if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
+  void import('./provisional-operational-channel.js').then(module => {
+    globalThis.sahmtProvisionalChannelEnabled = module.provisionalChannelEnabled();
+    globalThis.sahmtProjectSharedSchedule = module.projectSharedSchedule;
+    globalThis.sahmtRecoverSharedOperations = module.recoverOwnSharedOperations;
+    module.initializeProvisionalChannel({getSession:()=>session,reports:liveReports,onStatus:detail=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail})),onSchedule:()=>window.dispatchEvent(new CustomEvent('sahmt-shared-schedule'))});
+    window.addEventListener('sahmt-shared-schedule',()=>{
+      const dateInput=document.querySelector('#schedule-date')||document.querySelector('#event-schedule-date');
+      dateInput?.dispatchEvent(new Event('sahmt-shared-refresh'));
+    });
+  }).catch(()=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail:{code:'CHANNEL_INITIALIZATION_FAILED'}})));
 }

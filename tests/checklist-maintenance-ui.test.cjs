@@ -129,13 +129,13 @@ test('resposta antiga não atualiza manutenção após troca de sessão', async 
 test('revogar gestão durante o salvamento impede resposta de alterar a interface', async () => {
   const h = harness(), a = station('A'); h.show(a); h.edit(); h.input().value = '2028-01-01';
   const pending = h.save().fire('click'); await h.started.promise;
-  h.context.admin = false; h.status.textContent = 'Acesso revogado'; h.response.resolve({maintenance: dates('2029-01-01')}); await pending;
+  h.context.admin = false; h.context.manage = false; h.status.textContent = 'Acesso revogado'; h.response.resolve({maintenance: dates('2029-01-01')}); await pending;
   assert.equal(h.status.textContent, 'Acesso revogado'); assert.equal(h.input().value, '2028-01-01'); assert.deepEqual(a.maintenance, dates());
   await h.save().fire('click'); assert.equal(h.calls.length, 1);
 });
 test('erro de manutenção antiga não substitui o estado de acesso revogado', async () => {
   const h = harness(), a = station('A'); h.show(a); h.edit(); const pending = h.save().fire('click'); await h.started.promise;
-  h.context.admin = false; h.status.textContent = 'Acesso revogado'; h.response.reject(Object.assign(new Error('Resposta antiga recusada'), {code: 'permission-denied'})); await pending;
+  h.context.admin = false; h.context.manage = false; h.status.textContent = 'Acesso revogado'; h.response.reject(Object.assign(new Error('Resposta antiga recusada'), {code: 'permission-denied'})); await pending;
   assert.equal(h.status.textContent, 'Acesso revogado'); assert.deepEqual(a.maintenance, dates());
 });
 test('salvamento normal usa UID e três datas capturados e confirma o banner atual', async () => {
@@ -154,7 +154,7 @@ test('datas enviadas são capturadas antes da importação assíncrona dos dados
 for (const changed of ['session', 'permission', 'banner']) test(`mudança de ${changed} enquanto importa dados bloqueia a escrita`, async () => {
   const gate = deferred(), h = harness({importGate: gate}); h.show(station('A')); h.edit(); const pending = h.save().fire('click');
   if (changed === 'session') h.context.session.user = {uid: 'manager-B'};
-  if (changed === 'permission') h.context.admin = false;
+  if (changed === 'permission') h.context.admin = false; h.context.manage = false;
   if (changed === 'banner') {h.dialog.close(); h.show(station('B'));}
   gate.resolve(h.dataModule); await pending; assert.equal(h.calls.length, 0);
 });
@@ -201,7 +201,7 @@ for (const changed of ['session', 'permission', 'banner']) test(`mudança de ${c
   const gate = deferred(), h = harness({importGate: gate}); h.show(station('A'));
   const pending = h.toggle();
   if (changed === 'session') h.context.session.user = {uid: 'manager-B'};
-  if (changed === 'permission') h.context.admin = false;
+  if (changed === 'permission') h.context.admin = false; h.context.manage = false;
   if (changed === 'banner') {h.dialog.close(); h.show(station('B'));}
   gate.resolve(h.dataModule); await pending;
   assert.deepEqual(h.toggleCalls, []); assert.deepEqual(h.reloadCalls, []);
@@ -210,7 +210,7 @@ for (const changed of ['session', 'permission', 'banner']) test(`mudança de ${c
 test('erro de desativação após revogação não substitui o estado de acesso', async () => {
   const h = harness(), a = station('A'); h.show(a);
   const pending = h.toggle(); await h.toggleStarted.promise;
-  h.context.admin = false; h.status.textContent = 'Acesso revogado';
+  h.context.admin = false; h.context.manage = false; h.status.textContent = 'Acesso revogado';
   h.toggleResponse.reject(Object.assign(new Error('Erro antigo'), {code: 'permission-denied'})); await pending;
   assert.equal(h.status.textContent, 'Acesso revogado'); assert.equal(a.active, true); assert.equal(h.toggleButton().disabled, true);
 });
@@ -218,7 +218,7 @@ test('erro de desativação após revogação não substitui o estado de acesso'
 test('erro da ativação A depois de abrir B e revogar gestão não altera B', async () => {
   const h = harness(), a = station('A'), b = station('B'); a.active = false; h.show(a);
   const pending = h.toggle('true'); await h.toggleStarted.promise;
-  h.dialog.close(); h.show(b); h.context.admin = false; h.status.textContent = 'Estado B';
+  h.dialog.close(); h.show(b); h.context.admin = false; h.context.manage = false; h.status.textContent = 'Estado B';
   h.toggleResponse.reject(new Error('Erro da solicitação A')); await pending;
   assert.equal(h.dialog.open, true); assert.equal(h.status.textContent, 'Estado B'); assert.equal(h.title.textContent, 'Arsenal fictício B');
   assert.equal(b.active, true); assert.deepEqual(h.reportCalls, []);
@@ -241,13 +241,14 @@ for (const active of ['true', 'false']) test(`${active === 'true' ? 'ativação'
   assert.deepEqual(h.reportCalls, ['2026-10-01']); assert.deepEqual(h.reloadCalls, ['2026-10-01']);
 });
 
-test('delegado checklistManage sem admin não vê controles administrativos, mas pode responder via QR', async () => {
+test('delegado checklistManage sem admin acessa manutenção e respostas sem privilégios globais', async () => {
   const h = harness({admin: false, manage: true, write: true}); h.show(station('A'), '2026-10-01', {fromQr: true});
   assert.equal(h.context.manage, true); assert.ok(!h.result.html.includes('data-checklist-station-manual'));
-  assert.ok(!h.controls.html.includes('data-checklist-maintenance-edit')); assert.ok(!h.controls.html.includes('data-checklist-station-active'));
+  assert.ok(h.controls.html.includes('data-checklist-maintenance-edit')); assert.ok(h.controls.html.includes('data-checklist-station-active'));
   assert.ok(fields.every(key => h.input(key).disabled)); assert.equal(h.answers().hidden, false);
   assert.match(h.responses.html, /Conforme/); assert.match(h.responses.html, /Não Conforme/);
-  assert.equal(h.save(), undefined); assert.ok(!h.controls.html.includes('data-checklist-maintenance-save')); assert.deepEqual(h.calls, []);
+  assert.equal(h.save().hidden, true); assert.ok(h.controls.html.includes('data-checklist-maintenance-save')); assert.deepEqual(h.calls, []);
+  assert.equal(h.context.admin,false);h.edit();assert.ok(fields.every(key=>!h.input(key).disabled));
 });
 
 for (const variant of ['role', 'permission']) test(`admin por ${variant} possui os três blocos e ações administrativas`, () => {
@@ -259,9 +260,9 @@ for (const variant of ['role', 'permission']) test(`admin por ${variant} possui 
   h.edit(); assert.ok(fields.every(key => !h.input(key).disabled));
 });
 
-test('revogação somente de admin bloqueia Editar e respostas manuais mesmo mantendo gestão e escrita', async () => {
+test('revogação da gestão bloqueia Editar e respostas manuais sem depender de administração global', async () => {
   const h = harness({manage: true, write: true}); h.show(station('A'));
-  assert.equal(h.answers().hidden, false); h.context.admin = false; assert.equal(h.context.manage, true);
+  assert.equal(h.answers().hidden, false); h.context.admin = false; h.context.manage=false; assert.equal(h.context.manage, false);
   h.edit(); h.answer('SIM'); h.answer('NAO'); await settle(); assert.ok(fields.every(key => h.input(key).disabled)); assert.equal(h.save().hidden, true); assert.deepEqual(h.answerCalls, []); assert.equal(h.justification().hidden, true);
 });
 
@@ -274,9 +275,9 @@ test('respostas manuais imediatas permanecem no primeiro bloco ao pedir justific
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-test('admin revogado após abrir banner não salva resposta manual nem abre justificativa', async () => {
+test('gestão revogada após abrir banner não salva resposta manual nem abre justificativa', async () => {
   const h = harness({write: true}); h.show(station('A')); assert.equal(h.answers().hidden, false);
-  h.context.admin = false; assert.equal(h.context.manage, true); assert.equal(h.context.session.profile.permissions.checklistWrite, true);
+  h.context.admin = false; h.context.manage = false; assert.equal(h.context.manage, false); assert.equal(h.context.session.profile.permissions.checklistWrite, true);
   h.answer('SIM'); h.answer('NAO'); await settle();
   assert.deepEqual(h.answerCalls, []); assert.equal(h.justification().hidden, true); assert.equal(h.status.textContent, '');
 });
@@ -296,10 +297,10 @@ test('QR de usuário comum continua salvando Checklist sem administração', asy
   assert.equal(h.dialog.open, false); assert.deepEqual(h.reportCalls, ['2026-10-01']); assert.deepEqual(h.reloadCalls, ['2026-10-01']);
 });
 
-for (const changed of ['session', 'admin', 'day', 'route', 'removed-dialog']) test(`wrapper real bloqueia escrita se ${changed} mudar durante import interno`, async () => {
+for (const changed of ['session', 'manage', 'day', 'route', 'removed-dialog']) test(`wrapper real bloqueia escrita se ${changed} mudar durante import interno`, async () => {
   const gate = deferred(), h = harness({importGate: gate, realAnswer: true, write: true}); h.show(station('A')); h.answer();
   if (changed === 'session') h.context.session.user = {uid: 'manager-B'};
-  if (changed === 'admin') {h.context.admin = false; assert.equal(h.context.manage, true); assert.equal(h.context.session.profile.permissions.checklistWrite, true);}
+  if (changed === 'manage') {h.context.admin = false; h.context.manage = false; assert.equal(h.context.manage, false); assert.equal(h.context.session.profile.permissions.checklistWrite, true);}
   if (changed === 'day') h.context.todayInputValue = () => '2026-10-02';
   if (changed === 'route') h.context.currentRoute = () => 'home';
   if (changed === 'removed-dialog') {const query = h.context.document.querySelector; h.context.document.querySelector = selector => selector === '#checklist-station-dialog' ? null : query(selector);}
@@ -323,7 +324,7 @@ test('admin manual mostra as duas respostas imediatamente abaixo da situação',
 });
 
 test('comum sem QR não recebe botões para responder ou gravar manualmente', async () => {
-  const h = harness({admin: false, manage: true, write: true}); h.show(station('A'));
+  const h = harness({admin: false, manage: false, write: true}); h.show(station('A'));
   assert.equal(h.answers(), undefined); assert.equal(h.responses.html, ''); assert.equal(h.dialog.dataset.manualChecklist, 'false');
   h.answer(); await settle(); assert.deepEqual(h.answerCalls, []);
 });

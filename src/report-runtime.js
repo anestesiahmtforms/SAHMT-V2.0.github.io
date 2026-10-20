@@ -25,7 +25,7 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
   if (typeof subscribe !== 'function') throw new TypeError('Informe o adaptador dos relatórios.');
   if (typeof readPending !== 'function' || typeof mergePending !== 'function') throw new TypeError('Informe como reconciliar as operações pendentes.');
   const entries = new Map(), pendingByUid = new Map();
-  let onlineOverride;
+  let onlineOverride, sharedAdapter = null;
   const owned = entry => entries.get(entry.kind) === entry;
   const current = (entry, scope = entry.scope) => owned(entry) && Boolean(scope) && isCurrent(scope);
   const detachPending = entry => {
@@ -41,6 +41,7 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
   };
   const forget = entry => {
     if (owned(entry)) entries.delete(entry.kind);
+    entry.stopShared?.(); entry.stopShared = null; entry.sharedRecords = []; entry.sharedSeed = null;
     detachPending(entry);
     entry.scope = null;
     entry.raw = null;
@@ -57,7 +58,8 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
     entry.projectedRevision = pending?.revision;
     entry.mergeError = null;
     try {
-      entry.data = mergePending(entry.kind, raw, pending?.operations || [], scope);
+      const base = sharedAdapter && entry.sharedRecords?.length ? sharedAdapter.merge(entry.kind, raw, entry.sharedRecords, scope) : raw;
+      entry.data = mergePending(entry.kind, base, pending?.operations || [], scope);
       if (entry.data && typeof entry.data.then === 'function') throw new TypeError('A reconciliação das operações deve ser síncrona.');
     }
     catch (error) { entry.mergeError = error; entry.data = null; }
@@ -66,20 +68,23 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
   const pendingFlag = entry => entry.pending?.status !== 'ready' || Boolean(entry.mergeError) || hasLocalPending(entry.data);
   const decorate = (entry, state) => {
     if (state.state === 'closed') return state;
-    if (state.data !== null) project(entry, state.data, state.scope);
+    const visibleData = state.data ?? entry.sharedSeed;
+    if (visibleData !== null) project(entry, visibleData, state.scope);
     const error = state.error || entry.mergeError || entry.pending?.error || null;
     const localPending = pendingFlag(entry);
     const status = state.state === 'offline' ? 'offline' : error ? 'error' : localPending ? 'pending' : state.state;
-    return {...state, state: status, confirmed: status === 'server', localPending,
-      data: state.data === null ? null : entry.data, error};
+    return {...state, state: status, localPending,
+      data: visibleData === null ? null : entry.data, error, confirmed: status === 'server' && !entry.sharedSeed};
   };
   const publishPending = entry => {
     if (!owned(entry)) return;
     const state = entry.rawSnapshot(); // Also disposes externally revoked scopes.
     if (!owned(entry) || state.state === 'closed') return;
-    if (state.data !== null) project(entry, state.data, state.scope);
+    if (['permission-denied','unauthenticated'].includes(state.error?.code)) return;
+    const visibleData = state.data ?? entry.sharedSeed;
+    if (visibleData !== null) project(entry, visibleData, state.scope);
     entry.controller.setLocalPending(pendingFlag(entry), state.key);
-    if (state.data !== null && current(entry, state.scope) && !entry.mergeError) onData(entry.kind, entry.data, state.scope);
+    if (visibleData !== null && current(entry, state.scope) && !entry.mergeError) onData(entry.kind, entry.data, state.scope);
   };
   const publishOwners = pending => {
     for (const entry of [...pending.owners]) publishPending(entry);
@@ -135,8 +140,21 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
   const usable = scope => typeof scope?.key === 'string' && scope.key.length > 0 && typeof scope.uid === 'string' && scope.uid.length > 0 && scope.authorized !== false;
   const normalize = (kind, scope, warm) => ({...scope, module: scope.module || kind, warm,
     sourceKeys: [...new Set(scope.sourceKeys || ['report'])]});
+  const attachShared = entry => {
+    entry.stopShared?.(); entry.stopShared = null;
+    if (!sharedAdapter || entry.scope?.warm || entry.scope?.mode !== 'daily') return;
+    entry.stopShared = sharedAdapter.watch(entry.scope, (records, seed) => {
+      if (!current(entry) || !Array.isArray(records)) return;
+      const state = entry.rawSnapshot();
+      if (['permission-denied','unauthenticated'].includes(state.error?.code)) return;
+      entry.sharedRecords = records;
+      if (state.data === null && seed) entry.sharedSeed = seed;
+      entry.projectedScope = null;
+      publishPending(entry);
+    });
+  };
   const createEntry = (kind, scope) => {
-    const entry = {kind, scope, pending: null, raw: null, data: null, projectedScope: null, projectedRevision: -1, mergeError: null, closing: false};
+    const entry = {kind, scope, sharedRecords: [], sharedSeed: null, stopShared: null, pending: null, raw: null, data: null, projectedScope: null, projectedRevision: -1, mergeError: null, closing: false};
     const controller = createLiveReportSession({
       subscribe: (value, hooks) => {
         // Set this before adapters can synchronously emit a server snapshot.
@@ -147,6 +165,7 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
       isOnline: () => onlineOverride ?? isOnline(),
       onData: (payload, value) => {
         if (!current(entry, value)) return;
+        entry.sharedSeed = null;
         const data = project(entry, payload, value);
         entry.controller.setLocalPending(pendingFlag(entry), value.key);
         if (current(entry, value) && !entry.mergeError) onData(kind, data, value);
@@ -159,6 +178,7 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
           return;
         }
         if (!owned(entry)) return;
+        if (['permission-denied','unauthenticated'].includes(state.error?.code)) {entry.stopShared?.();entry.stopShared=null;entry.sharedRecords=[];entry.sharedSeed=null;entry.projectedScope=null;}
         onState(kind, decorate(entry, state));
       }
     });
@@ -173,6 +193,7 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
     attachPending(entry);
     if (onlineOverride !== undefined) controller.setOnline(onlineOverride);
     controller.start(scope);
+    if (owned(entry)) attachShared(entry);
     return entry;
   };
   const openEntry = (kind, scope, {force = false, warm = false} = {}) => {
@@ -184,8 +205,10 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
     // Background preloads never displace an already opened report.
     if (warm && previous && previous.scope?.warm !== true) return previous;
     if (previous && sameScope(previous.scope, value)) {
+      const needsShared = previous.scope.warm !== value.warm;
       previous.scope = value;
       previous.controller.start(value, {force, reason: warm ? 'warm' : 'open'});
+      if (needsShared && owned(previous)) attachShared(previous);
       return owned(previous) ? previous : null;
     }
     if (previous) closeEntry(previous, 'scope-changed');
@@ -193,6 +216,10 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
     return owned(entry) ? entry : null;
   };
   return {
+    configureSharedAdapter(adapter) {
+      sharedAdapter = adapter;
+      for (const entry of entries.values()) {entry.sharedRecords = []; entry.sharedSeed = null; entry.projectedScope = null; attachShared(entry); publishPending(entry);}
+    },
     open(kind, scope, options = {}) { return openEntry(kind, scope, options)?.controller || null; },
     warm(kind, scope) { return openEntry(kind, scope, {warm: true})?.lease || null; },
     get(kind) {

@@ -2350,3 +2350,10 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   overflow-wrap:normal;
   font-size:var(--sigla-label-font,var(--sigla-font,12px));
 }
+
+/* Os estados provisórios nunca recebem o visto de confirmação do Firestore. */
+:is(.app-shell--home,.app-shell--events) .schedule-siglas-grid .sigla-token.sigla-token--provisional {outline:2px dashed #aa7415;outline-offset:-3px;}
+.channel-provisional-status {color:#80520c;font-weight:800;}
+.shared-channel-recovery {display:grid;gap:8px;}
+.pending-sync-banner{position:fixed;inset:calc(12px + env(safe-area-inset-top)) auto auto 50%;transform:translateX(-50%);z-index:2147483000;box-sizing:border-box;width:min(480px,calc(100vw - 28px));max-height:40dvh;overflow:auto;margin:0;padding:16px 18px;border:2px solid #b47c09;border-radius:18px;background:#fff1bc;color:#513a08;box-shadow:0 6px 24px #102e4a38;font:700 15px/1.45 system-ui,sans-serif;text-align:center;pointer-events:auto}
+.pending-sync-banner p{margin:0}.pending-sync-banner button{display:block;min-height:40px;margin:10px auto 0;padding:6px 16px;border:1px solid currentColor;border-radius:12px;background:#ffffff9c;color:inherit;font:inherit;cursor:pointer}.pending-sync-banner button[hidden]{display:none}.pending-sync-banner--complete{border-color:#23804b;background:#d7f5df;color:#135f32}

@@ -40,3 +40,10 @@ test('ações antigas sem confirmação explícita são retidas em revisão loca
   assert.equal((await listUnsettledOperations('uid-c')).find(item => item.requestId === 'legacy-label').status, 'awaiting-confirmation');
   assert.deepEqual(await listQueuedOperations('uid-c'), []);
 });
+
+test('confirmação antiga de Liberar não apaga alteração mais recente coalescida no mesmo ID',async()=>{
+ const {removeQueuedOperation}=await import('../src/outbox.js');const uid='release-race-fixture',id='coalesced-release-fixture';
+ const older={day:'2026-10-19',sigla:'AA',marked:true,occurredAt:1},newer={...older,marked:false,occurredAt:2};
+ await enqueueOperation({uid,type:'scheduleReleases',resourceId:'2026-10-19:AA',requestId:id,payload:older,coalesce:true});await enqueueOperation({uid,type:'scheduleReleases',resourceId:'2026-10-19:AA',requestId:id,payload:newer,coalesce:true});
+ assert.equal(await removeQueuedOperation(uid,id,{expectedPayload:older}),false);assert.equal((await listUnsettledOperations(uid))[0].payload.occurredAt,2);assert.equal(await removeQueuedOperation(uid,id,{throughOccurredAt:1}),false);assert.equal(await removeQueuedOperation(uid,id,{expectedPayload:newer}),true);
+});

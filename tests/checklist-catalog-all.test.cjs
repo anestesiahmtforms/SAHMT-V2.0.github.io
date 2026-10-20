@@ -65,7 +65,7 @@ test('banner organiza situação, manutenção e administração em blocos com V
   assert.match(banner, /checklist-station-block--status[\s\S]*id="checklist-station-title"[\s\S]*id="checklist-station-result"[\s\S]*id="checklist-station-responses"[\s\S]*id="checklist-station-checker"[\s\S]*id="checklist-station-controls"/);
   assert.match(banner, /id="checklist-station-controls"><\/div><\/div><p id="checklist-station-status"[\s\S]*class="checklist-station-footer"/);
   assert.match(css, /\.checklist-station-block--status>header\s*\{text-align:center\}/);
-  assert.ok(main.includes("const canManage = can('admin') && can('checklistManage');"));
+  assert.ok(main.includes("const canManage = can('checklistManage');"));
 });
 
 test('calendários mantêm ano legível, fonte de toque e item em frente em telas estreitas', () => {

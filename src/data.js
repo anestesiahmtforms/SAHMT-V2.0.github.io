@@ -22,6 +22,17 @@ import {isOfflineRuntimeForced} from './offline-runtime-mode.js';
 import {persistOperationalMutation, withOperationalDeadline} from './offline-mutation.js';
 import {operationalBackend} from './operational-backend.js';
 
+async function prepareProvisionalWrite(uid,type,requestId,payload) {
+  if (!import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) return;
+  try {const module=await import('./provisional-operational-channel.js');await module.prepareProvisionalOperation(uid,{type,requestId,payload,createdAt:Date.now()});}
+  catch { /* Local operational outbox remains the primary durable copy. */ }
+}
+async function markProvisionalWriteCommitted(uid,type,requestId,payload) {
+  if (!import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) return;
+  try {const module=await import('./provisional-operational-channel.js');await module.markProvisionalCommitted(uid,{type,requestId,payload});}
+  catch { /* A failed receipt never invalidates a successful Firestore commit. */ }
+}
+
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
 const moduleCollections = Object.freeze({
@@ -62,12 +73,15 @@ export async function setScheduleSiglaRelease(day, sigla, marked, {groupSiglas =
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '') || typeof marked !== 'boolean' || !uid) {
     throw new Error('Não foi possível identificar a marcação da escala.');
   }
-  const operation = {day, sigla, marked, groupSiglas, tokenSigla, occurredAt: Date.now()};
-  if (!navigator.onLine) return queueScheduleSiglaRelease(operation, {uid, currentSiglas});
+  const cachedRelease = import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT ? await readSafeCache(uid, 'scheduleDays', day) : null;
+  const operation = {day, sigla, marked, groupSiglas, tokenSigla, occurredAt: Date.now(),
+    ...(Number.isInteger(cachedRelease?.data?.version) ? {expectedVersion:cachedRelease.data.version} : {})};
+  if (!navigator.onLine || isOfflineRuntimeForced()) return queueScheduleSiglaRelease(operation, {uid, currentSiglas});
   try {
-    const updated = await applyScheduleSiglaRelease(operation, uid);
-    await removeQueuedOperation(uid, scheduleReleaseRequestId(uid, operation));
-    window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {type: 'scheduleReleaseDirect'}}));
+    const updated = await withOperationalDeadline(() => applyScheduleSiglaRelease(operation, uid));
+    await markProvisionalWriteCommitted(uid,'scheduleReleases',scheduleReleaseRequestId(uid,operation),operation);
+    await removeQueuedOperation(uid, scheduleReleaseRequestId(uid, operation),{throughOccurredAt:operation.occurredAt});
+    window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, type: 'scheduleReleaseDirect'}}));
     return updated;
   } catch (error) {
     if (!mayUseOfflineCache(error)) throw error;
@@ -76,14 +90,21 @@ export async function setScheduleSiglaRelease(day, sigla, marked, {groupSiglas =
 }
 
 async function applyScheduleSiglaRelease(operation, uid) {
+  let expectedVersion = operation.expectedVersion;
+  const protectVersion = Boolean(import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT);
   const reference = doc(db, 'scheduleDays', operation.day);
   const updated = await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(reference);
     if (!snapshot.exists()) throw new Error('A escala deste dia não está publicada.');
     const schedule = snapshot.data();
+    if (protectVersion) {
+      const actualVersion = Number.isInteger(schedule.version) ? schedule.version : 0;
+      if (expectedVersion === undefined) expectedVersion = actualVersion;
+      if (actualVersion !== expectedVersion) throw Object.assign(new Error('A escala mudou. Revise a liberação antes de confirmar.'), {code:'stale-version'});
+    }
     const current = Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : [];
     const result = updateScheduleReleaseState(current, operation);
-    if (!result.changed) return {...schedule, id: snapshot.id};
+    if (!result.changed && !protectVersion) return {...schedule, id: snapshot.id};
     const version = (Number.isInteger(schedule.version) && schedule.version > 0 ? schedule.version : 0) + 1;
     const releaseTimes = updateScheduleReleaseTimes(schedule.highlights?.releaseTimes, current, result.siglas, operation.occurredAt || Date.now());
     transaction.update(reference, {
@@ -103,6 +124,7 @@ async function queueScheduleSiglaRelease(operation, {uid, currentSiglas = []}) {
   const result = updateScheduleReleaseState(currentSiglas, operation);
   const requestId = scheduleReleaseRequestId(uid, operation);
   if (result.changed) {
+    await prepareProvisionalWrite(uid,'scheduleReleases',requestId,operation);
     await enqueueOperation({
       uid, type: 'scheduleReleases', resourceId: `${operation.day}:${operation.sigla}`, requestId,
       payload: operation, coalesce: true
@@ -1613,7 +1635,7 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
   if (queueOffline) return persistOperationalMutation({id: labelId, online: navigator.onLine && !isOfflineRuntimeForced(),
     saveLocal: () => enqueueOperation({uid, type: 'labelEdits', resourceId: labelId, requestId, payload: {collectionName: 'labels', labelId, data: input, actorName, expectedVersion}}),
     sendRemote: () => updateLabelRecord(labelId, input, uid, actorName, expectedVersion, {queueOffline: false, requestId}),
-    clearLocal: () => removeQueuedOperation(uid, requestId), recoverable: mayUseOfflineCache,
+    clearLocal: async () => {await removeQueuedOperation(uid, requestId);if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:'labelEdits'}}));}, recoverable: mayUseOfflineCache,
     onFailure: async error => {
       operationalBackend.noteFailure(error, 'labels');
       if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'A edição não foi confirmada. Compare com a versão atual antes de reenviar.'});
@@ -2337,6 +2359,7 @@ export async function saveTrainingProgress(uid, trainingId, {duration, lastPosit
   const records = (cache?.data?.records || []).filter((item) => item.id !== id);
   records.push(saved);
   await writeSafeCache(uid, 'trainingProgress', 'mine', {records});
+  if(saved.syncPending&&!cache?.data?.records?.some(item=>item.id===id&&item.syncPending)&&typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-local-pending',{detail:{uid,type:'trainingProgress'}}));
   return saved;
 }
 
@@ -2360,6 +2383,7 @@ export async function syncPendingTrainingProgress(uid, {trainingId} = {}) {
           completionPointsAwarded: 0, completionPointsPending: completion.pointsPending
         }, {requirePending: false});
       }
+      if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,type:'trainingProgress'}}));
     } catch (error) {
       await updateCachedTrainingProgress(uid, item.trainingId, {
         ...(item.completionRequested === true ? {completionRequested: true, syncPending: true} : {}),
@@ -2427,9 +2451,9 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
   if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue});
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced() && !forceQueue,
-    saveLocal: () => enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}}),
+    saveLocal: async () => {await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});},
     sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
-    clearLocal: () => removeQueuedOperation(uid, requestId), recoverable: mayUseOfflineCache,
+    clearLocal: async () => {await markProvisionalWriteCommitted(uid,collectionName,requestId,{collectionName,data});await removeQueuedOperation(uid,requestId);if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:collectionName}}));}, recoverable: mayUseOfflineCache,
     onFailure: async error => {
       operationalBackend.noteFailure(error, collectionName);
       if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'O servidor recusou este registro. Revise a operação antes de reenviar.'});
@@ -2591,7 +2615,7 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
         const isCurrent = () => auth.currentUser?.uid === uid;
         const repository = createOccurrenceRepository({db, auth, isCurrent});
         const result = await syncOccurrenceOperation({operation, uid, repository, isCurrent, outbox: {removeQueuedOperation, updateQueuedOperation}});
-        if (result === 'synced') {synced++; window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: 'occurrences'}})); continue;}
+        if (result === 'synced') {synced++; window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, type: 'occurrences'}})); continue;}
         if (result === 'needs-review') {window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {type: 'occurrences', message: 'Uma ocorrência local precisa de revisão e não foi confirmada.'}})); continue;}
         if (result === 'queued' || result === 'deferred') break;
       }
@@ -2600,7 +2624,11 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
         if (operation.type === 'activities' && (operation.payload.dataProject !== managementDataProject || operation.payload.dataGeneration !== managementDataGeneration))
           throw Object.assign(new Error('Atividade da base anterior preservada para conciliação. Nenhum envio foi feito.'), {code:'domain-cutover-review'});
         if (operation.type === 'scheduleReleases') {
-          await applyScheduleSiglaRelease(operation.payload, uid);
+          if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
+            if (!Number.isInteger(operation.payload.expectedVersion)) throw Object.assign(new Error('Revise esta liberação antiga na escala atual antes de confirmar.'), {code:'stale-version'});
+            const module=await import('./provisional-operational-channel.js');await module.assertProvisionalReleaseCurrent(uid,operation);
+          }
+          await withOperationalDeadline(()=>applyScheduleSiglaRelease(operation.payload, uid));
         } else if (operation.type === 'labelEdits') {
           await withOperationalDeadline(() => updateLabelRecord(operation.payload.labelId, operation.payload.data, uid, operation.payload.actorName, operation.payload.expectedVersion, {queueOffline: false, requestId: operation.requestId}));
         } else if (operation.type === 'eventEdits') {
@@ -2618,8 +2646,9 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
             await batch.commit();
           }
         }
+        await markProvisionalWriteCommitted(uid,operation.type,operation.requestId,operation.payload);
         await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
-        await removeQueuedOperation(uid, operation.requestId);
+        await removeQueuedOperation(uid, operation.requestId,operation.type==='scheduleReleases'?{expectedPayload:operation.payload}:undefined);
         synced++;
         void flushOperationalSheetDelivery(uid);
         window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: operation.type}}));
@@ -2631,11 +2660,12 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
               ? await confirmCommittedEventEdit(operation.payload.eventId, operation.payload.data, uid, operation.requestId, operation.payload.expectedVersion + 1)
               : await confirmCommittedMutation({collectionName: operation.payload.collectionName, data: operation.payload.data, uid, requestId: operation.requestId});
             if (committed) {
+              await markProvisionalWriteCommitted(uid,operation.type,operation.requestId,operation.payload);
               await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
               await removeQueuedOperation(uid, operation.requestId);
               synced++;
               void flushOperationalSheetDelivery(uid);
-              window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, replay: true}}));
+              window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, replay: true}}));
               continue;
             }
           } catch {}

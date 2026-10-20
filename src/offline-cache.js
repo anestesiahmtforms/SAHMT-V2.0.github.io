@@ -6,7 +6,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 export function offlineCacheTtlFor(kind) {
-  return kind === 'labels' ? DAY_MS : 7 * DAY_MS;
+  return ['labels','provisionalChannel'].includes(kind) ? DAY_MS : 7 * DAY_MS;
 }
 
 export function isFirestoreCacheFallbackError(error, {online = globalThis.navigator?.onLine !== false} = {}) {

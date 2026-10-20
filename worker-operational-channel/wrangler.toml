@@ -1,0 +1,25 @@
+name = "sahmt-operational-channel"
+main = "worker.js"
+compatibility_date = "2026-10-06"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "OPERATIONAL_CHANNEL_STATE"
+class_name = "OperationalChannelState"
+
+[[durable_objects.bindings]]
+name = "OPERATIONAL_CHANNEL_AUTHORIZATION"
+class_name = "OperationalChannelAuthorization"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OperationalChannelState", "OperationalChannelAuthorization"]
+
+[vars]
+OPERATIONAL_CHANNEL_ENABLED = "false"
+
+# FA_FIREBASE_WEB_API_KEY: the existing public FA Web key, injected at deployment.
+# Optional OPERATIONAL_CHANNEL_AUTHORIZATION_JSON: private trusted bootstrap, max 24h.
+# No Firebase admin credential, cron, or automatic deletion of pending records.
+[observability]
+enabled = false

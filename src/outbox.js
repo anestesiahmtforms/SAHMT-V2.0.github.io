@@ -259,7 +259,7 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (result.outcome === 'payload-conflict') throw new Error('O ID desta operação já foi usado com outro conteúdo; a ação existente foi preservada.');
   if (result.outcome === 'existing' && !['queued', 'awaiting-confirmation'].includes(result.status)) throw new Error('Esta operação já está em revisão e precisa ser tratada na área Offline.');
   if (['queued', 'awaiting-confirmation'].includes(result.status) && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId, type}}));
+    window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {uid, requestId, type}}));
   }
   return requestId;
 }
@@ -382,7 +382,7 @@ export async function claimQueuedOperationForSend(uid, requestId, now = Date.now
   });
 }
 
-export async function removeQueuedOperation(uid, requestId) {
+export async function removeQueuedOperation(uid, requestId, {expectedPayload,throughOccurredAt} = {}) {
   if (!uid || !requestId) return false;
   return transactAcross(OUTBOX, 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);
@@ -390,6 +390,8 @@ export async function removeQueuedOperation(uid, requestId) {
     const request = store.get(requestId);
     request.onsuccess = () => {
       if (request.result?.uid !== uid) return;
+      if(expectedPayload!==undefined&&JSON.stringify(request.result.payload)!==JSON.stringify(expectedPayload))return;
+      if(Number.isFinite(throughOccurredAt)&&request.result.payload?.occurredAt>throughOccurredAt)return;
       store.delete(requestId);
       removed = true;
     };
