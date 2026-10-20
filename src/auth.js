@@ -61,17 +61,29 @@ function loadAuthApi() {
 }
 
 async function showCachedSession(user, onState, isCurrent = () => true) {
-  const profile = await readCachedProfile(user.uid);
-  if (!isCurrent()) return;
-  if (!profile || profile.uid !== user.uid) {
-    showAuthLimitedSession(user, onState);
+  let profile;
+  try {profile = await readCachedProfile(user.uid);}
+  catch {
+    if (isCurrent()) showAuthLimitedSession(user, onState, false, 'LOCAL_STORAGE_UNAVAILABLE');
     return;
   }
-  onState({status: profile.active && profile.access ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: true});
+  if (!isCurrent()) return;
+  if (!profile || profile.uid !== user.uid) {
+    showAuthLimitedSession(user, onState, false, 'LOCAL_PROFILE_UNAVAILABLE');
+    return;
+  }
+  onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: true});
 }
 
-function showAuthLimitedSession(user, onState, validatingProfile=false) {
-  onState({status:'auth-limited',user,offline:true,validatingProfile,profile:{uid:user.uid,email:user.email||'',displayName:user.displayName||'Usuário',sigla:'',phone:'',active:false,access:false,role:'',permissions:{}}});
+function profileReadFailureCode(error) {
+  const code = String(error?.code || '').toLowerCase().split('/').pop();
+  if (code === 'permission-denied') return 'PROFILE_PERMISSION_DENIED';
+  if (code === 'unauthenticated') return 'PROFILE_AUTH_REQUIRED';
+  return 'PROFILE_READ_FAILED';
+}
+
+function showAuthLimitedSession(user, onState, validatingProfile=false, profileFailureCode='') {
+  onState({status:'auth-limited',user,offline:true,validatingProfile,profileFailureCode,profile:{uid:user.uid,email:user.email||'',displayName:user.displayName||'Usuário',sigla:'',phone:'',active:false,access:false,role:'',permissions:{}}});
 }
 
 export function watchSession(onState) {
@@ -123,7 +135,7 @@ export function watchSession(onState) {
     } catch (error) {
       if (currentGeneration !== generation) return;
       if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
-      else showAuthLimitedSession(user, onState);
+      else showAuthLimitedSession(user, onState, false, profileReadFailureCode(error));
     }
     scheduleReconnect(user, currentGeneration);
   };
@@ -217,7 +229,7 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
     if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === getGeneration());
-    else showAuthLimitedSession(user, onState);
+    else showAuthLimitedSession(user, onState, false, profileReadFailureCode(error));
   }
 }
 
@@ -264,13 +276,13 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
             if (currentGeneration === getGeneration() && !cancelled) onState({status: 'profile-error', user, error: cacheError});
           });
         } else {
-          showAuthLimitedSession(user,onState);
+          showAuthLimitedSession(user,onState,false,profileReadFailureCode(error));
         }
       });
     } catch (error) {
       if (!cancelled && currentGeneration === getGeneration()) {
         if (isTemporaryProfileReadFailure(error)) showCachedSession(user, onState).catch(() => showAuthLimitedSession(user,onState));
-        else showAuthLimitedSession(user,onState);
+        else showAuthLimitedSession(user,onState,false,profileReadFailureCode(error));
       }
     }
   };

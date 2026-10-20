@@ -103,9 +103,12 @@ export async function cacheProfile(uid, profile) {
   await transact(PROFILES, 'readwrite', (store) => store.put(safeProfile));
 }
 
-export async function readCachedProfile(uid, maxAgeMs = 24 * 60 * 60 * 1000) {
+// Local continuity only. Every remote send still requires a fresh server profile.
+export async function readCachedProfile(uid, maxAgeMs = 7 * 24 * 60 * 60 * 1000) {
   const value = await transact(PROFILES, 'readonly', (store) => store.get(uid));
-  if (!value || Date.now() - value.cachedAt > maxAgeMs) return null;
+  const now = Date.now();
+  if (!uid || !value || value.uid !== uid || !Number.isFinite(value.cachedAt) || value.cachedAt > now ||
+      !Number.isFinite(maxAgeMs) || maxAgeMs < 0 || now - value.cachedAt > maxAgeMs) return null;
   return value;
 }
 
