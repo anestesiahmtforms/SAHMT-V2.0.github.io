@@ -73,7 +73,8 @@ const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured;
 const startupReports = createStartupReportCache();
 
-function preloadStartupReports(user) {
+function preloadStartupReports(user, {explicit = false} = {}) {
+  if (!explicit) return;
   if (!navigator.onLine || session.offline || session.status !== 'signed-in') return;
   for (const kind of ['events', 'labels', 'checklist']) {
     if (!reportAllowed(kind)) continue;
@@ -636,7 +637,7 @@ function preloadOperationalDataWhenIdle(user) {
       if (modules.includes('training')) imports.push(import('./performance-ui.js'));
       if (modules.includes('equipment')) imports.push(import('./equipment.js'));
       if (modules.includes('label-camera')) imports.push(import('./label-camera.js'));
-      void Promise.all(imports).then(() => allows(['scheduleRead', 'eventsRead', 'eventsWrite', 'labelsWrite', 'labelsManage', 'checklistRead', 'checklistWrite', 'checklistSign']) ? prepareOfflineEssentials(user) : null).catch((error) => {
+      void Promise.all(imports).catch((error) => {
         preloadedDataUsers.delete(preloadKey);
         console.warn('[SAHMT] Pré-carregamento de ações adiado:', error.code || error.message);
       });
@@ -1022,7 +1023,7 @@ function shellView() {
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const checklistCalendar = '';
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
-  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly">RELATÓRIO MENSAL</button></div>` : '';
+  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
   const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
@@ -1520,7 +1521,8 @@ async function loadModule(route) {
           dialog?.showModal();
         }
       };
-      document.querySelectorAll('[data-checklist-report-launch]').forEach((button) => button.addEventListener('click', async () => {
+      document.querySelectorAll('[data-checklist-report-launch]').forEach((button) => {
+        button.addEventListener('click', async () => {
         checklistReportMode = button.dataset.checklistReportLaunch === 'monthly' ? 'monthly' : 'daily';
         checklistReportOpen = true;
         updateDayControls(todayInputValue());
@@ -1532,7 +1534,9 @@ async function loadModule(route) {
         document.querySelector('#checklist-month-control').hidden = checklistReportMode !== 'monthly';
         updateDayControls(todayInputValue());
         await loadChecklistView(items);
-      }));
+        });
+        button.disabled = false;
+      });
       reportDay?.addEventListener('change', () => setReportDay(reportDay.value));
       document.querySelector('#checklist-report-previous')?.addEventListener('click', () => setReportDay(shiftDateKey(reportDay?.value || todayInputValue(), -1)));
       document.querySelector('#checklist-report-next')?.addEventListener('click', () => setReportDay(shiftDateKey(reportDay?.value || todayInputValue(), 1)));
@@ -1723,7 +1727,7 @@ async function loadOfflineView(target) {
       try {
         await inspectDeviceStorage({requestPersistence: true});
         if (navigator.onLine && (session.offline || onlineValidationRequired || isOfflineRuntimeForced())) await revalidateOnlineSession();
-        await prepareOfflineEssentials(session.user); preloadStartupReports(session.user); await showReadiness();
+        await prepareOfflineEssentials(session.user); preloadStartupReports(session.user, {explicit: true}); await showReadiness();
       } finally {if (button.isConnected) button.disabled = false;}
     };
     const conferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:'));

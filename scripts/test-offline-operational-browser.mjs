@@ -162,6 +162,9 @@ try {
   const after = await operations(); assert.deepEqual(after, before); report.scenarios.pendingSurvivesRestart = 'passed';
   stage = 'monthly-checklist'; await page.locator('[data-checklist-report-launch=monthly]').click();
   await page.locator('[data-checklist-open-day]').first().waitFor(); report.scenarios.checklistMonthlyReport = 'passed';
+  stage = 'offline-readiness'; await page.evaluate(() => {location.hash = '#/offline';});
+  await page.waitForFunction(() => document.querySelector('[data-offline-readiness]')?.textContent.includes('Checklist: formulários preparados'));
+  report.scenarios.offlineReadinessChecksRealCachedChunks = 'passed';
   assert.equal(errors.length, 0, errors.join(' | '));
   assert.ok(firestoreRequests <= 2, 'A simulação não deve gerar um loop de consultas.');
   report.firestoreRequestsIntercepted = firestoreRequests; report.otherExternalRequestsBlocked = outsideRequests; report.browser = await browser.version(); report.code = 'OFFLINE_BROWSER_PASSED';

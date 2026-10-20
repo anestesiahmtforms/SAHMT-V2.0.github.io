@@ -1,25 +1,37 @@
 // Um comunicado só sai da fila depois da confirmação persistida do usuário.
-export function createInformationQueue({list, acknowledge, show}) {
+export const INFORMATION_REFRESH_MS = 5 * 60 * 1000;
+export function createInformationQueue({list, acknowledge, show, now = Date.now}) {
   let scope = null;
   let generation = 0;
   let items = [];
   let loading = false;
   let saving = false;
+  let nextRefreshAt = 0;
+  let failures = 0;
   const confirmed = new Set();
   const paint = (error = '') => show(items[0] || null, {saving, error});
   return {
     setSession(profile) {
       if (scope?.uid === profile?.uid) { scope = profile; return; }
-      generation++; scope = profile; items = []; loading = false; saving = false; confirmed.clear(); paint();
+      generation++; scope = profile; items = []; loading = false; saving = false;
+      nextRefreshAt = 0; failures = 0; confirmed.clear(); paint();
     },
     async refresh() {
-      if (!scope || loading || saving) return;
+      if (!scope || loading || saving || now() < nextRefreshAt) return;
       const current = generation; const profile = scope; loading = true;
+      nextRefreshAt = now() + INFORMATION_REFRESH_MS;
       try {
         const loaded = await list(profile);
         if (current !== generation) return;
+        failures = 0;
         items = loaded.filter(item => !item.read && !confirmed.has(item.id)); paint();
-      } catch { /* Uma consulta sem rede não deve dispensar o comunicado já aberto. */ }
+      } catch {
+        // Keep the current notice; navigation/online events cannot bypass backoff.
+        if (current === generation) {
+          failures = Math.min(failures + 1, 5);
+          nextRefreshAt = now() + Math.min(60 * 60 * 1000, INFORMATION_REFRESH_MS * 2 ** failures);
+        }
+      }
       finally { if (current === generation) loading = false; }
     },
     async confirm() {
@@ -39,7 +51,7 @@ let queue;
 let dialog;
 let displayedId = '';
 let readToEnd = false;
-let timer;
+let bannerSessionUid = null;
 let bannerSaving = false;
 function present(item, {saving, error}) {
   bannerSaving = saving;
@@ -86,14 +98,14 @@ export function updateInformationBanner(profile) {
       acknowledge: async (id, uid) => (await import('./data.js')).markNotificationRead(id, uid),
       show: present
     });
-    window.addEventListener('online', () => void queue.refresh());
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void queue.refresh(); });
   }
   queue.setSession(profile);
   // Recoloca o banner acima de outros modais abertos pela página atual.
   if (profile && dialog?.open) { dialog.close(); dialog.showModal(); }
-  if (timer) clearInterval(timer);
-  if (!profile) { timer = null; return; }
-  void queue.refresh();
-  timer = setInterval(() => { if (!document.hidden) void queue.refresh(); }, 30000);
+  const nextUid = profile?.uid || null;
+  const changedSession = bannerSessionUid !== nextUid;
+  bannerSessionUid = nextUid;
+  // Read on opening the session or returning to the app, never on a polling timer.
+  if (nextUid && changedSession) void queue.refresh();
 }
