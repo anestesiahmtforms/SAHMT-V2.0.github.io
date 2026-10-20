@@ -2303,3 +2303,50 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   .app-shell--events .event-schedule {height:400px;min-height:400px;}
   .app-shell--events .event-schedule .schedule-content {min-height:180px;}
 }
+
+/* Todas as siglas permanecem simultaneamente na grade; o tamanho acompanha a área disponível. */
+.app-shell--home .schedule-content>.schedule-siglas-grid,
+.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid {
+  grid-template-columns:repeat(var(--sigla-columns,5),minmax(0,1fr));
+  grid-template-rows:repeat(var(--sigla-rows,6),minmax(0,1fr));
+  grid-auto-rows:minmax(0,1fr);
+  align-content:stretch;
+  gap:5px;
+  padding:4px;
+  overflow:hidden;
+}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-item,
+.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid .sigla-item {
+  grid-template-rows:minmax(0,1fr) 11px;
+  height:100%;
+  min-height:0;
+  gap:3px;
+  align-content:stretch;
+}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token,
+.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid .sigla-token {
+  min-height:0;
+  height:100%;
+  padding:2px 4px;
+  font-size:var(--sigla-font,12px);
+  border-radius:12px;
+}
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-index,
+.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid .sigla-index {
+  min-height:0;
+  font-size:10px;
+  line-height:11px;
+}
+.app-shell--home .schedule-card .sigla-token--dc,
+.app-shell--events .event-schedule .sigla-token--dc {padding:1px 3px!important;gap:0;}
+.app-shell--home .schedule-card .sigla-token--dc .sigla-token__aliases,
+.app-shell--events .event-schedule .sigla-token--dc .sigla-token__aliases {font-size:clamp(6px,calc(var(--sigla-font,12px) * .6),10px);line-height:1;}
+.app-shell--events .event-schedule .sigla-token--support {font-size:clamp(6px,calc(var(--sigla-font,12px) * .65),11px)!important;}
+.checklist-station-unavailable {border-color:#a9b9c4;background:#e6edf2;}
+
+.app-shell--home .schedule-content>.schedule-siglas-grid .sigla-token>strong,
+.app-shell--events .event-schedule .schedule-content>.schedule-siglas-grid .sigla-token>strong {
+  white-space:nowrap;
+  overflow-wrap:normal;
+  font-size:var(--sigla-label-font,var(--sigla-font,12px));
+}

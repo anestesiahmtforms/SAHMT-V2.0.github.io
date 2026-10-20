@@ -253,7 +253,8 @@ const liveReports = createReportRuntime({
     reportStates.set(kind, state);
     updateReportSync(kind);
     if (state.state !== 'server' && kind === 'checklist') invalidateChecklistSignature('Aguarde a conferência atual do relatório.');
-    if (state.state === 'error' && !state.scope?.warm && state.scope && reportScopeCurrent(state.scope)) {
+    if (state.error && !state.scope?.warm && state.scope && reportScopeCurrent(state.scope)) {
+      if (!state.data && !reportPayloads.get(kind)) state.scope.targetNode.innerHTML = '<p class="empty-state">Não foi possível carregar os registros. A cópia local deste período não está disponível. Tente atualizar quando a conexão retornar.</p>';
       if (state.error?.code === 'permission-denied') {
         reportPayloads.delete(kind); reportPaintKeys.delete(kind);
         state.scope.targetNode.replaceChildren();
@@ -390,8 +391,10 @@ async function emitCachedOfflineReport(kind, scope, callbacks) {
   const stationIds = stations.map(station => station.id).sort();
   const cacheId = checklistCacheId(scope);
   const reportEntry = cacheId ? await readFreshSafeCache(scope.uid, 'checklists', cacheId) : null;
-  if (!Array.isArray(reportEntry?.data?.records) || !current()) return false;
-  const sameCatalog = checklistCachedCatalogMatches(reportEntry.data.stationIds, stationIds);
+  const hasDayRecords = Array.isArray(reportEntry?.data?.records);
+  if (!current() || (!hasDayRecords && scope.mode !== 'daily')) return false;
+  const cachedReport = hasDayRecords ? reportEntry.data : {records: [], priorRecords: [], stationIds: [], truncated: false};
+  const sameCatalog = hasDayRecords && checklistCachedCatalogMatches(cachedReport.stationIds, stationIds);
   const [schedule, vacations, directory, conference, intent] = await Promise.all([
     readFreshSafeCache(scope.uid, 'scheduleDays', scope.day), readFreshSafeCache(scope.uid, 'vacations', scope.day), readFreshSafeCache(scope.uid, 'eventMembers', 'all'),
     readFreshSafeCache(scope.uid, 'checklistConference', scope.day), readOperationalDraft(scope.uid, 'checklists', 'conference:' + scope.day)
@@ -407,10 +410,10 @@ async function emitCachedOfflineReport(kind, scope, callbacks) {
   checklistLocalIntent = intent ? {uid: scope.uid, day: scope.day, signerName: intent.fields.signerName} : null;
   const catalog = {records: catalogEntry.data.map(station => ({...station, stale: true})), truncated: false, fromCache: true, hasPendingWrites: false, serverConfirmed: false, stale: true};
   const report = {
-    records: reportEntry.data.records.map(record => ({...record, stale: true})),
-    priorRecords: sameCatalog ? (reportEntry.data.priorRecords || []).map(record => ({...record, stale: true})) : [],
+    records: cachedReport.records.map(record => ({...record, stale: true})),
+    priorRecords: sameCatalog ? (cachedReport.priorRecords || []).map(record => ({...record, stale: true})) : [],
     stationIds, ready: true, confirmed: false, fromCache: true, hasPendingWrites: false,
-    historyIncomplete: !sameCatalog || Boolean(reportEntry.data.truncated), truncated: Boolean(reportEntry.data.truncated), stale: true
+    historyIncomplete: !sameCatalog || Boolean(cachedReport.truncated), truncated: Boolean(cachedReport.truncated), recordsUnavailable: !hasDayRecords, stale: true
   };
   callbacks.next('catalog', {data: catalog, complete: true, fromCache: true, hasPendingWrites: false});
   callbacks.next('report', {data: report, complete: true, fromCache: true, hasPendingWrites: false});
@@ -521,6 +524,11 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
         if (!current() || sequence !== ownSequence) return null;
         const value = cached?.data || cached?.value || cached;
         const initial = value && JSON.stringify(value.stationIds || []) === key ? value : null;
+        if (!initial && scope.mode === 'daily' && !reportPayloads.get('checklist')?.report) {
+          callbacks.next('report', {data: {records: [], priorRecords: [], stationIds, ready: false, confirmed: false,
+            fromCache: true, hasPendingWrites: false, historyIncomplete: true, recordsUnavailable: true, stale: true},
+            complete: true, fromCache: true, hasPendingWrites: false});
+        }
         return watchChecklistReport({...scope, day: scope.mode === 'daily' ? scope.day : null, month: scope.mode === 'monthly' ? scope.month : null, stationIds, initial}, report => {
           if (!current() || sequence !== ownSequence) return;
           callbacks.next('report', {data: report, complete: true, fromCache: report.fromCache || !report.ready, hasPendingWrites: report.hasPendingWrites});
@@ -810,6 +818,43 @@ function scheduleReleaseLabel(label, occurredAt) {
   return time ? `<span class="sigla-token__timed-label">${label}<small class="sigla-token__release-time" aria-label="Liberado às ${time}">${time}</small></span>` : label;
 }
 
+let scheduleGridObserver = null;
+function fitSchedulePositionGrid(container) {
+  scheduleGridObserver?.disconnect();
+  scheduleGridObserver = null;
+  const grid = container?.querySelector('.schedule-siglas-grid');
+  if (!grid?.children.length) return;
+  const fit = () => {
+    if (!grid.isConnected) return;
+    const width = grid.clientWidth - 8, height = grid.clientHeight - 8;
+    if (width <= 0 || height <= 0) return;
+    const count = grid.children.length, gap = 5;
+    let best = null;
+    for (let columns = Math.min(3, count); columns <= Math.min(10, count); columns++) {
+      const rows = Math.ceil(count / columns);
+      const cellWidth = (width - gap * (columns - 1)) / columns;
+      const cellHeight = (height - gap * (rows - 1)) / rows;
+      const score = Math.min(cellWidth / 64, (cellHeight - 14) / 44);
+      if (!best || score > best.score) best = {columns, rows, cellWidth, cellHeight, score};
+    }
+    grid.style.setProperty('--sigla-columns', best.columns);
+    grid.style.setProperty('--sigla-rows', best.rows);
+    const fontSize = Math.max(8, Math.min(16, (best.cellWidth - 12) / 3.1, (best.cellHeight - 16) * .48));
+    grid.style.setProperty('--sigla-font', fontSize + 'px');
+    for (const button of grid.querySelectorAll('.sigla-token')) {
+      const label = button.querySelector('strong')?.cloneNode(true);
+      label?.querySelectorAll('.sigla-token__release-time,.sigla-token__vacation-number').forEach(node => node.remove());
+      const length = label?.textContent.trim().length || 2;
+      button.style.setProperty('--sigla-label-font', Math.min(fontSize, Math.max(7, (best.cellWidth - 12) / (length * .68))) + 'px');
+    }
+  };
+  fit();
+  if (typeof ResizeObserver === 'function') {
+    scheduleGridObserver = new ResizeObserver(fit);
+    scheduleGridObserver.observe(grid);
+  }
+}
+
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
   const highlightedSiglas = new Set(mode === 'events' ? [] : Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
   const releaseTimes = mode === 'home' ? schedule.highlights?.releaseTimes || {} : {};
@@ -1010,6 +1055,7 @@ async function loadHome() {
     const scheduleView = buildScheduleView(schedule, selectedDate, selectedVacations, selectedContacts);
     const grid = scheduleView.positions.length ? renderSchedulePositionGrid(scheduleView, {mode: 'home', schedule, eventsWritable: can('eventsWrite')}) : '';
     content.innerHTML = grid || '<p class="empty-state">A escala está publicada sem itens.</p>';
+    fitSchedulePositionGrid(content);
     content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
       const position = scheduleView.positions[Number(button.dataset.schedulePositionIndex)];
       if (position) showScheduleContacts(position.contacts || [], {
@@ -1994,11 +2040,11 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       .sort((left, right) => Number(right.active === true) - Number(left.active === true));
     const cards = displayStations.map((station) => {
       const record = resolvedRecordFor(station);
-      const stationStateClass = station.active !== true ? 'inactive' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : 'pending';
+      const stationStateClass = station.active !== true ? 'inactive' : result.recordsUnavailable && !record ? 'unavailable' : record?.condition === 'SIM' ? 'complete' : record?.condition === 'NAO' ? 'nonconforming' : 'pending';
       const note = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}: ${escapeHtml(record.occurrence || '')}</small>` : record?.occurrence ? `<small>${escapeHtml(record.occurrence)}</small>` : '';
       const recordedAt = record?.createdAt ? `<small>Último registro: ${escapeHtml(interactionDateTime(record.createdAt))}</small>` : '';
       const action = '';
-      const pending = record?.pendingSync ? '<small class="record-meta">Aguardando sincronização</small>' : record?.syncFailed ? `<small class="sync-error">Falha ao sincronizar: ${escapeHtml(record.syncError || 'revise as permissões e tente novamente')}</small>` : '';
+      const pending = result.recordsUnavailable && !record ? '<small class="record-meta">Registros do dia ainda indisponíveis</small>' : record?.pendingSync ? '<small class="record-meta">Aguardando sincronização</small>' : record?.syncFailed ? `<small class="sync-error">Falha ao sincronizar: ${escapeHtml(record.syncError || 'revise as permissões e tente novamente')}</small>` : '';
       return `<article class="checklist-station checklist-station-${stationStateClass}" data-checklist-station="${escapeHtml(station.id)}" tabindex="-1"><div><button class="checklist-station-select" type="button" data-checklist-select="${escapeHtml(station.id)}" aria-label="Selecionar estação ${escapeHtml(station.name || station.id)}" aria-pressed="false">${checklistArsenalFunction(station) ? `<span class="checklist-arsenal-function">${escapeHtml(checklistArsenalFunction(station))}</span>` : ''}<span>${escapeHtml(checklistArsenalButtonLabel(station))}</span></button>${recordedAt}${note}${pending}</div>${action}</article>`;
     }).join('');
     const summaryCards = '';
@@ -2015,7 +2061,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           : '';
     const canPrepareSignature = dayMode === 'today' && applicableStations.length > 0 && conferenceReadiness.ready && !pendingChecklistWrites && !result.historyIncomplete && !result.truncated;
     const signatureMarkup = `<footer class="checklist-confirmation-footer"><div class="checklist-rotation-summary"><span>ESCALADO</span><strong id="checklist-rotation-name" role="status" aria-live="polite">Consultando escala…</strong></div><div class="checklist-confirmation-actions"><button class="secondary-button checklist-confirmation-button" id="checklist-signature-prepare" type="button" disabled><span>CONFERÊNCIA DO PRECEPTOR</span><strong id="checklist-conference-signer" hidden></strong></button></div></footer><dialog class="checklist-confirmation-dialog" id="checklist-confirmation-dialog" aria-labelledby="checklist-confirmation-title"><header><h3 id="checklist-confirmation-title" tabindex="-1">CONFERÊNCIA DO PRECEPTOR</h3></header><p class="checklist-preceptor-name"><strong id="checklist-preceptor-name"></strong></p><p id="checklist-signature-status" class="record-meta" role="status" aria-live="polite">${signatureUnavailableReason}</p><div id="checklist-signature-preview"></div><footer class="checklist-confirmation-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit">VOLTAR</button></form></footer></dialog>`;
-    reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
+    reconcileReportMarkup(content, `<div class="checklist-daily-layout"><div class="checklist-daily-notices">${result.recordsUnavailable ? '<p class="sync-state">Arsenais salvos neste aparelho. Os registros deste dia ainda não estão disponíveis; a conferência aguarda validação.</p>' : result.stale ? '<p class="sync-state">Sem conexão: exibindo os registros salvos neste aparelho.</p>' : ''}${result.historyIncomplete && !result.recordsUnavailable ? '<p class="sync-state">Sem conexão: o catálogo mudou desde a última consulta; algumas heranças podem estar ausentes.</p>' : ''}${dayMode === 'history' ? '<p class="sync-state">Data histórica: consulta somente; registros são feitos no Checklist de hoje.</p>' : ''}${summaryCards}</div>${stationGrid}${signatureMarkup}</div>`, {preserveSelectors: ['#checklist-confirmation-dialog[open]']});
     content.querySelectorAll('[data-checklist-select]').forEach((button) => button.onclick = () => {
       if (!reportScopeCurrent(scope)) return;
       const station = displayStations.find((item) => item.id === button.dataset.checklistSelect);
@@ -4501,6 +4547,7 @@ function bindEventSchedule() {
 }
 
 function bindEventSupportButton(content, day) {
+  fitSchedulePositionGrid(content);
   content.querySelector('[data-event-support]')?.addEventListener('click', () => launchEventSupport(day));
 }
 
@@ -4712,6 +4759,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  scheduleGridObserver?.disconnect(); scheduleGridObserver = null;
   await operationalDrafts.flush();
   if (session.status !== 'signed-in') updateInformationBanner(null);
   evaluationModuleGeneration++;
