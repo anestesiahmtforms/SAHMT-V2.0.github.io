@@ -430,7 +430,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
     if (await emitCachedOfflineReport(kind, scope, callbacks)) return () => {};
     throw Object.assign(new Error('Não há uma cópia local recente deste período. Conecte-se para atualizar os dados.'), {code: 'unavailable'});
   }
-  await emitCachedOfflineReport(kind, scope, callbacks).catch(() => false);
+  const hasCachedDisplay = await emitCachedOfflineReport(kind, scope, callbacks).catch(() => false);
   if (callbacks.isCurrent?.() === false) return () => {};
   if (kind === 'events' || kind === 'labels') {
     const module = kind === 'events' ? await import('./report-live-data.js') : await import('./label-report-reader.js');
@@ -524,7 +524,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
         if (!current() || sequence !== ownSequence) return null;
         const value = cached?.data || cached?.value || cached;
         const initial = value && JSON.stringify(value.stationIds || []) === key ? value : null;
-        if (!initial && scope.mode === 'daily' && !reportPayloads.get('checklist')?.report) {
+        if (!initial && scope.mode === 'daily' && !hasCachedDisplay) {
           callbacks.next('report', {data: {records: [], priorRecords: [], stationIds, ready: false, confirmed: false,
             fromCache: true, hasPendingWrites: false, historyIncomplete: true, recordsUnavailable: true, stale: true},
             complete: true, fromCache: true, hasPendingWrites: false});

@@ -93,7 +93,7 @@ function renderHarness(session) {
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
     liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),
     labelReportLoad: 0, labelReportLoadingMore: false, labelReportState: 'idle',
-    cleanupLabelMedia: null, cleanupCurrentModule: null, cleanupDocumentTraining:null, cleanupUserInspection:null, startupBannerActive: false,
+    scheduleGridObserver:null, cleanupLabelMedia: null, cleanupCurrentModule: null, cleanupDocumentTraining:null, cleanupUserInspection:null, startupBannerActive: false,
     stopChecklistQrScanner() {}, currentRoute: () => 'management',
     app: {innerHTML: ''}, notice: '', labels: {management: ['Gestão']},
     navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
