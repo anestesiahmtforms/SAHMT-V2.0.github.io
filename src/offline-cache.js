@@ -4,6 +4,7 @@ import {firebaseFailureCode} from './firebase-failure.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const CATALOG_KINDS = new Set(['contacts', 'stations', 'eventMembers', 'eventCatalogs', 'vacations', 'labelStaff']);
 
 export function offlineCacheTtlFor(kind) {
   return ['labels','provisionalChannel'].includes(kind) ? DAY_MS : 7 * DAY_MS;
@@ -32,7 +33,10 @@ export async function readThroughSafeCache({uid, kind, id, fetchOnline, readCach
   if (localFirst && uid) {
     const cached = await readCache(uid, kind, id);
     if (isSafeCacheEntryFresh(cached, {uid, kind})) {
-      if (Date.now() - cached.cachedAt > 30000) {
+      // Stable catalogs do not need a new query at every route change.
+      // This is read reuse, not a polling timer; live reports still receive real changes.
+      const refreshAfterMs = CATALOG_KINDS.has(kind) ? 15 * 60 * 1000 : 30000;
+      if (Date.now() - cached.cachedAt > refreshAfterMs) {
         void backend.run(key, fetchOnline).then(async value => {
           if (value === null || value === undefined) return;
           await writeCache(uid, kind, id, value);

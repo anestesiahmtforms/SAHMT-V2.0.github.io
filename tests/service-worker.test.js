@@ -5,6 +5,8 @@ import vm from 'node:vm';
 
 const BASE = '/SAHMT-V2.0.github.io/';
 const workerSource = readFileSync(new URL('../public/service-worker.js', import.meta.url), 'utf8');
+const currentShellCache = /^const CACHE = '(sahmt-v2-shell-v\d+)';/m.exec(workerSource)?.[1];
+assert.ok(currentShellCache, 'O service worker deve declarar uma versão válida do shell.');
 const manifest = {
   'assets/main.js': {
     isEntry: true,
@@ -94,7 +96,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   let install;
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
-  assert.ok(worker.names.has('sahmt-v2-shell-v211'));
+  assert.ok(worker.names.has(currentShellCache));
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
@@ -118,7 +120,7 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   await activation;
 
   assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v200', 'sahmt-v2-shell-v159']);
-  assert.ok(worker.names.has('sahmt-v2-shell-v211'));
+  assert.ok(worker.names.has(currentShellCache));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
   assert.equal(worker.claim(), 1);

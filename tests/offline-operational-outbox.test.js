@@ -13,7 +13,8 @@ test('Eventos, Etiquetas e Checklist aguardam confirmação antes de entrar na f
     await enqueueOperation({uid: 'uid-a', type, resourceId: id, requestId: id, payload: {collectionName: type, data: {}}});
   }
   assert.deepEqual(await listQueuedOperations('uid-a'), []);
-  assert.deepEqual((await listAwaitingConfirmationOperations('uid-a')).map((item) => item.requestId), operations.map(([, id]) => id));
+  // Actions saved within the same millisecond have no chronological tie-break contract.
+  assert.deepEqual((await listAwaitingConfirmationOperations('uid-a')).map((item) => item.requestId).sort(), operations.map(([, id]) => id).sort());
 });
 
 test('confirmação é vinculada ao UID e somente então libera o envio', async () => {

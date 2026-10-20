@@ -18,8 +18,36 @@ export async function inspectOfflineReadiness({uid, day, sigla = '', isAdmin = f
 
 export async function operationalAssetsReady(baseUrl) {
   if (!globalThis.caches) return false;
-  const entries = await Promise.all(['', 'vendor/zxing.min.js', 'assets-manifest.json'].map(path => caches.match(`${baseUrl}${path}`)));
-  return entries.every(Boolean);
+  try {
+    const entries = await Promise.all(['', 'vendor/zxing.min.js', 'assets-manifest.json'].map(path => caches.match(`${baseUrl}${path}`)));
+    if (!entries.every(Boolean)) return false;
+    const manifest = await entries[2].json();
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return false;
+    const entryKey = manifest['index.html']?.isEntry ? 'index.html' : Object.keys(manifest).find(key => manifest[key]?.isEntry && manifest[key]?.src === 'index.html');
+    if (!entryKey) return false;
+    const requiredSources = ['src/data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js'];
+    const sourceKeys = new Map(Object.entries(manifest).map(([key, entry]) => [entry.src || key, key]));
+    if (requiredSources.some(source => !sourceKeys.has(source))) return false;
+    const essentials = new Set([...requiredSources, 'src/data-lite.js', 'src/firebase.js', 'src/firebase-auth.js',
+      'src/report-live-data.js', 'src/checklist-rotation-listener.js', 'src/checklist-responsibility-listener.js',
+      'src/checklist-conference-listener.js', 'src/label-camera.js']);
+    const visited = new Set(), assets = new Set();
+    const visit = key => {
+      if (visited.has(key)) return;
+      visited.add(key);
+      const entry = manifest[key];
+      if (!entry || typeof entry.file !== 'string') throw Error('OFFLINE_MANIFEST_INCOMPLETE');
+      for (const file of [entry.file, ...(entry.css || []), ...(entry.assets || [])]) {
+        if (typeof file !== 'string' || !file.startsWith('assets/') || file.split('/').includes('..') || /[?#\\]/.test(file)) throw Error('OFFLINE_ASSET_PATH_INVALID');
+        assets.add(file);
+      }
+      for (const dependency of entry.imports || []) visit(dependency);
+    };
+    visit(entryKey);
+    for (const [source, key] of sourceKeys) if (essentials.has(source) || /\/(?:@firebase\/app-check|firebase\/app-check)\//.test(source)) visit(key);
+    const cachedAssets = await Promise.all([...assets].map(file => caches.match(`${baseUrl}${file}`)));
+    return cachedAssets.every(Boolean);
+  } catch { return false; }
 }
 
 export async function inspectDeviceStorage({navigator: device = globalThis.navigator, requestPersistence = false, matchMedia = globalThis.matchMedia} = {}) {
