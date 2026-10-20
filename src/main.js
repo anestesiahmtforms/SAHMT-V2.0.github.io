@@ -23,7 +23,7 @@ import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {formatScheduleReleaseTime} from './schedule-release.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
-import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay} from './checklist-display.js';
+import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay, canEditChecklistStationTitle} from './checklist-display.js';
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMaintenanceInputType} from './checklist-maintenance.js';
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
@@ -2258,10 +2258,15 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const dayIsToday = checklistDayMode(day, todayInputValue()) === 'today';
   const canWriteToday = can('checklistWrite') && dayIsToday && active && stationIsValidOn(station, day);
   const canManage = can('checklistManage');
+  const canEditTitle = canEditChecklistStationTitle(session.user, session.profile);
   const showAnswers = canWriteToday && (fromQr || canManage);
   dialog.dataset.manualChecklist = showAnswers ? 'true' : 'false';
   const resultLabel = !active ? 'Inativo' : record?.condition === 'SIM' ? 'Conforme' : record?.condition === 'NAO' ? 'Não conforme' : 'Pendente de checagem';
-  if (title) title.textContent = station.name || station.id || 'Checklist da estação';
+  const updateTitleDisplay = () => {
+    const label = checklistArsenalFunction(station);
+    if (title) title.textContent = `${label ? `${label} · ` : ''}${station.name || station.id || 'Checklist da estação'}`;
+  };
+  updateTitleDisplay();
   const checkerSummary = checklistCheckerSummary(record, {uid: session.user?.uid, profileName: session.profile?.displayName, authName: session.user?.displayName});
   const checkerMarkup = checkerSummary ? `<div class="checklist-station-checker-summary"><span>${checkerSummary.pending ? 'Checagem local' : 'Última checagem'}</span><strong data-checklist-checker-name>${escapeHtml(checkerSummary.name || 'Nome não disponível')}</strong><small>${checkerSummary.pending ? 'Horário local: ' : ''}${escapeHtml(checkerSummary.dateTime || 'Data e hora não disponíveis')}</small>${checkerSummary.pending ? `<small>${record?.provisionalShared ? 'Compartilhado · confirmação pendente' : checkerSummary.failed ? 'Falha na sincronização' : 'Aguardando sincronização'}</small>` : ''}</div>` : '';
   const inherited = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}.</small>` : '';
@@ -2276,12 +2281,47 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const managementMarkup = canManage ? `<section class="checklist-station-block checklist-admin-actions" aria-label="Administração do arsenal"><button class="secondary-button" type="button" data-checklist-station-active="true" ${active ? 'disabled' : ''}>Ativar Arsenal</button><button class="secondary-button" type="button" data-checklist-station-active="false" ${!active ? 'disabled' : ''}>Desativar Arsenal</button></section>` : '';
   responses.innerHTML = answerMarkup;
   checker.innerHTML = `${inherited}${occurrence}${!record?.occurrence && record?.condition === 'NAO' ? '<p>Justificativa não informada neste registro.</p>' : ''}<p class="checklist-station-commitment" ${record?.condition === 'NAO' ? '' : 'hidden'}>${escapeHtml(CHECKLIST_NONCONFORMING_COMMITMENT)}</p>${checkerMarkup}`;
-  controls.innerHTML = `${maintenanceMarkup}${managementMarkup}`;
+  const titleMarkup = canEditTitle ? `<section class="checklist-station-block checklist-title-editor" aria-label="Título do arsenal"><label>Título do arsenal<input type="text" data-checklist-title-input value="${escapeHtml(checklistArsenalFunction(station))}" maxlength="120" disabled></label><button class="secondary-button" type="button" data-checklist-title-edit>Editar título</button><button class="primary-button" type="button" data-checklist-title-save hidden>Salvar título</button></section>` : '';
+  controls.innerHTML = `${titleMarkup}${maintenanceMarkup}${managementMarkup}`;
   const maintenanceUid = session.user?.uid;
   const maintenanceBannerToken = {};
   dialog.checklistStationBannerToken = maintenanceBannerToken;
   const maintenanceBannerCurrent = () => dialog.open && currentRoute() === 'checklist' && document.querySelector('#checklist-station-dialog') === dialog && dialog.checklistStationBannerToken === maintenanceBannerToken && session.user?.uid === maintenanceUid;
   const maintenanceBannerWritable = () => maintenanceBannerCurrent() && can('checklistManage');
+  const titleBannerWritable = () => maintenanceBannerCurrent() && canEditChecklistStationTitle(session.user, session.profile);
+  const titleInput = actions.querySelector('[data-checklist-title-input]');
+  const titleSave = actions.querySelector('[data-checklist-title-save]');
+  actions.querySelector('[data-checklist-title-edit]')?.addEventListener('click', () => {
+    if (!titleBannerWritable()) return;
+    titleInput.disabled = false;
+    titleSave.hidden = false;
+    titleInput.focus();
+  });
+  titleSave?.addEventListener('click', async () => {
+    if (!titleBannerWritable()) return;
+    const value = titleInput.value;
+    titleSave.disabled = true;
+    status.textContent = 'Salvando título…';
+    try {
+      const {saveChecklistStationTitle} = await import('./data.js');
+      if (!titleBannerWritable()) return;
+      const saved = await saveChecklistStationTitle(station.id, value, maintenanceUid);
+      if (!titleBannerWritable()) return;
+      station.functionLabel = saved.functionLabel;
+      const listedStation = stations.find(item => item.id === station.id);
+      if (listedStation) listedStation.functionLabel = saved.functionLabel;
+      titleInput.value = saved.functionLabel;
+      titleInput.disabled = true;
+      titleSave.hidden = true;
+      updateTitleDisplay();
+      status.textContent = 'Título salvo.';
+      await loadDailyChecklist(stations, day);
+    } catch (error) {
+      if (titleBannerWritable()) status.textContent = error.code === 'permission-denied' ? 'Seu e-mail não tem permissão ou as regras de edição de títulos ainda não foram publicadas.' : error.message || 'Não foi possível salvar o título.';
+    } finally {
+      if (titleBannerWritable()) titleSave.disabled = false;
+    }
+  });
   const checklistBannerWritable = () => canWriteToday && checklistDayMode(day, todayInputValue()) === 'today' && maintenanceBannerCurrent() && can('checklistWrite') && (fromQr || (maintenanceBannerWritable() && dialog.dataset.manualChecklist === 'true'));
   const draftId = day + ':' + station.id;
   const localTextarea = actions.querySelector('#checklist-station-occurrence');
@@ -5327,3 +5367,4 @@ if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
     });
   }).catch(()=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail:{code:'CHANNEL_INITIALIZATION_FAILED'}})));
 }
+

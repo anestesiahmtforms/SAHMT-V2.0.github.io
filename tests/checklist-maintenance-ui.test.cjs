@@ -4,7 +4,7 @@ const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
 const vm = require('node:vm');
 const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
-const helpers = readFileSync(join(__dirname, '../src/checklist-maintenance.js'), 'utf8').replaceAll('export ', '') + '\n' + readFileSync(join(__dirname, '../src/checklist-checker.js'), 'utf8').replaceAll('export ', '');
+const helpers = readFileSync(join(__dirname, '../src/checklist-maintenance.js'), 'utf8').replaceAll('export ', '') + '\n' + readFileSync(join(__dirname, '../src/checklist-checker.js'), 'utf8').replaceAll('export ', '') + '\n' + readFileSync(join(__dirname, '../src/checklist-display.js'), 'utf8').replaceAll('export ', '');
 const start = source.indexOf('function showChecklistStationBanner('), end = source.indexOf('async function openChecklistQrScanner(', start);
 assert.ok(start >= 0 && end > start);
 const banner = source.slice(start, end).replaceAll("await import('./data.js')", 'await loadDataModule()');
@@ -24,7 +24,7 @@ class Element {
   fire(name) {return this.listeners.get(name)?.();}
   focus() {}
 }
-function harness({importGate, manage = true, write = false, admin = true, realAnswer = false} = {}) {
+function harness({importGate, manage = true, write = false, admin = true, realAnswer = false, email = 'other@example.invalid', emailVerified = true} = {}) {
   const dialog = new Element(); dialog.open = false; dialog.showModal = () => {dialog.open = true;}; dialog.close = () => {dialog.open = false;};
   const title = new Element(), result = new Element(), actions = new Element(), responses = new Element(), controls = new Element(), checker = new Element(), status = new Element(), close = new Element();
   let children = {}, resultChildren = {};
@@ -54,6 +54,13 @@ function harness({importGate, manage = true, write = false, admin = true, realAn
     }
     if (markup.includes('data-checklist-maintenance-save')) {const save = new Element(); save.hidden = true; children['[data-checklist-maintenance-save]'] = save;}
     if (markup.includes('data-checklist-maintenance-edit')) children['[data-checklist-maintenance-edit]'] = new Element();
+    if (markup.includes('data-checklist-title-input')) {
+      const input = new Element(); input.disabled = true;
+      input.value = markup.match(/data-checklist-title-input value="([^"]*)"/)[1];
+      children['[data-checklist-title-input]'] = input;
+      children['[data-checklist-title-edit]'] = new Element();
+      const save = new Element(); save.hidden = true; children['[data-checklist-title-save]'] = save;
+    }
     if (responses.html.includes('checklist-station-response')) {
       const response = new Element(); response.hidden = /class="checklist-station-response" hidden/.test(responses.html);
       children['.checklist-station-response'] = response;
@@ -74,7 +81,9 @@ function harness({importGate, manage = true, write = false, admin = true, realAn
   const toggleResponse = deferred(), toggleStarted = deferred(), toggleCalls = [], reportCalls = [], reloadCalls = [];
   const answerResponse = deferred(), answerStarted = deferred(), answerCalls = [];
   const creatorResponse = deferred(), creatorStarted = deferred(), creatorCalls = [];
+  const titleResponse = deferred(), titleStarted = deferred(), titleCalls = [];
   const dataModule = {
+    saveChecklistStationTitle: (id, value, uid) => {titleCalls.push({id,value,uid}); titleStarted.resolve(); return titleResponse.promise;},
     getChecklistCreatorName: (uid) => {creatorCalls.push(uid); creatorStarted.resolve(); return creatorResponse.promise;},
     saveChecklistStationMaintenance: (id, value, uid) => {calls.push({id, value: structuredClone(value), uid}); started.resolve(); return response.promise;},
     saveChecklistStation: (value, uid) => {toggleCalls.push({value: structuredClone(value), uid}); toggleStarted.resolve(); return toggleResponse.promise;},
@@ -83,7 +92,7 @@ function harness({importGate, manage = true, write = false, admin = true, realAn
   const context = {
     saveOperationalDraft: async()=>{}, readOperationalDraft: async()=>null, removeOperationalDraft: async()=>{},
     document: {querySelector: selector => nodes[selector] || null}, window: {confirm: () => true},
-    session: {user: {uid: 'manager-A'}, profile: {role: admin ? 'administrador_app' : 'anestesiologista', displayName: 'Carlos Pereira Santos', permissions: {checklistManage: manage, checklistWrite: write}}},
+    session: {user: {uid: 'manager-A', email, emailVerified}, profile: {active:true,access:true,role: admin ? 'administrador_app' : 'anestesiologista', displayName: 'Carlos Pereira Santos', permissions: {checklistManage: manage, checklistWrite: write}}},
     currentRoute: () => 'checklist', selectedManagementAreaId: '',
     todayInputValue: () => '2026-10-01', checklistDayMode: (day, today) => day === today ? 'today' : 'history', stationIsValidOn: () => true,
     escapeHtml: value => String(value || ''), formatRecordDate: value => value, interactionDateTime: value => value,
@@ -99,6 +108,10 @@ function harness({importGate, manage = true, write = false, admin = true, realAn
   const show = (item, day = '2026-10-01', options = {}, record = {condition: 'SIM'}) => context.showChecklistStationBanner(item, record, day, [item], options);
   const input = (key = fields[0]) => children[`[data-checklist-maintenance-date="${key}"]`];
   return {context, dialog, title, result, actions, responses, controls, checker, status, calls, response, started, dataModule, show, input,
+    titleResponse, titleStarted, titleCalls,
+    titleInput: () => children['[data-checklist-title-input]'],
+    titleEdit: () => children['[data-checklist-title-edit]']?.fire('click'),
+    titleSave: () => children['[data-checklist-title-save]'],
     answerResponse, answerStarted, answerCalls, creatorResponse, creatorStarted, creatorCalls,
     answer: (condition = 'SIM') => children[`[data-checklist-banner-answer="${condition}"]`]?.fire('click'),
     justification: () => children['[data-checklist-justification]'],
@@ -110,6 +123,36 @@ function harness({importGate, manage = true, write = false, admin = true, realAn
     overdue: key => children[`[data-checklist-maintenance-row="${key}"]`].classList.contains('is-overdue'),
     save: () => children['[data-checklist-maintenance-save]'], edit: () => children['[data-checklist-maintenance-edit]']?.fire('click')};
 }
+
+test('título é editável somente pelas duas contas autorizadas e verificadas', async () => {
+  for (const email of ['wx2064@gmail.com','marcio.henrique82@gmail.com']) {
+    const h = harness({email,admin:false}), item = {...station('100170017'),name:'Arsenal 100170017'};
+    h.show(item); assert.equal(h.titleInput().value,'Sala 14');
+    assert.equal(h.titleInput().disabled,true); h.titleEdit();
+    assert.equal(h.titleInput().disabled,false); h.titleInput().value='Sala nova';
+    const pending = h.titleSave().fire('click'); await h.titleStarted.promise;
+    assert.deepEqual(h.titleCalls,[{id:item.id,value:'Sala nova',uid:'manager-A'}]);
+    h.titleResponse.resolve({...item,functionLabel:'Sala nova'}); await pending;
+    assert.equal(item.functionLabel,'Sala nova'); assert.equal(h.titleInput().disabled,true);
+    assert.match(h.title.textContent,/Sala nova/); assert.match(h.status.textContent,/Título salvo/);
+  }
+  for (const options of [{},{email:'wx2064@gmail.com',emailVerified:false},{email:'wx2064@gmail.com',manage:false,admin:false}]) {
+    const h = harness(options); h.show(station('A')); assert.equal(h.titleInput(),undefined);
+  }
+});
+
+test('título rejeita callback atrasado e revogação de acesso durante a edição', async () => {
+  const h = harness({email:'wx2064@gmail.com'}), a=station('A'), b=station('B');
+  h.show(a); h.titleEdit(); h.titleInput().value='Título A';
+  const pending=h.titleSave().fire('click'); await h.titleStarted.promise;
+  h.show(b); h.status.textContent='Banner B';
+  h.titleResponse.resolve({...a,functionLabel:'Título A'}); await pending;
+  assert.equal(h.title.textContent,b.name); assert.equal(h.status.textContent,'Banner B');
+  assert.equal(b.functionLabel,undefined);
+  const revoked=harness({email:'wx2064@gmail.com'}); revoked.show(station('A')); revoked.titleEdit();
+  revoked.context.session.profile.access=false;
+  await revoked.titleSave().fire('click'); assert.equal(revoked.titleCalls.length,0);
+});
 
 test('resposta da manutenção A não substitui datas ou status do banner B', async () => {
   const h = harness(), a = station('A'), b = station('B'); h.show(a); h.edit(); h.input().value = '2028-01-01';
@@ -365,3 +408,4 @@ test('leitor comum não consulta perfil de outro checker nem confunde responsáv
   const h = harness({admin: false, manage: false, write: true}); h.show(station('A'), '2026-10-01', {fromQr: true}, {condition: 'SIM', createdByUid: 'legacy-A', responsibleName: 'Nome de assinatura'}); await settle();
   assert.equal(h.checkerName().textContent, 'Nome não disponível'); assert.deepEqual(h.creatorCalls, []);
 });
+

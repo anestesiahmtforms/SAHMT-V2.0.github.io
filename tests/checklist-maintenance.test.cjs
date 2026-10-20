@@ -28,7 +28,7 @@ function harness(initial = {}, options = {}) {
   return {context, record: () => structuredClone(stored), writes: () => writes};
 }
 const station = {id: 'station-fixture', name: 'Arsenal fictício', qrCode: 'QR-FIXTURE', order: 1, active: true,
-  maintenance: 'Revisão fictícia', createdByUid: 'creator', createdAt: 'CREATED', updatedByUid: 'creator', updatedAt: 'CREATED', version: 5};
+  functionLabel: 'Sala Robótica', maintenance: 'Revisão fictícia', createdByUid: 'creator', createdAt: 'CREATED', updatedByUid: 'creator', updatedAt: 'CREATED', version: 5};
 
 test('salvar e apagar manutenção preserva os outros campos e incrementa a versão', async () => {
   const h = harness(station);
@@ -48,6 +48,7 @@ test('ativar, desativar e editar arsenal conserva a manutenção armazenada', as
     assert.equal(h.record().maintenance, station.maintenance);
     assert.equal(h.record().active, active);
     assert.equal(h.record().name, 'Nome atualizado');
+    assert.equal(h.record().functionLabel, station.functionLabel);
     assert.equal(h.record().createdByUid, 'creator');
   }
   assert.equal(h.record().version, 7);
