@@ -1,6 +1,7 @@
 import {notificationReference, mergeNotificationDomains} from './notification-domain.js';
 import {managementDataProject, managementDataGeneration, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
+import {normalizeChecklistStationTitle} from './checklist-display.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db, db as identityDb} from './firebase.js';
@@ -1922,6 +1923,7 @@ export async function saveChecklistStation(input, uid) {
       ...(end ? {end} : {}),
       order,
       active: input.active === true,
+      ...(current.exists() && Object.hasOwn(current.data(), 'functionLabel') ? {functionLabel: current.data().functionLabel} : {}),
       ...(current.exists() && Object.hasOwn(current.data(), 'maintenance') ? {maintenance: current.data().maintenance} : {}),
       ...(current.exists() && Object.hasOwn(current.data(), 'maintenanceCalibrationPeriod') ? {maintenanceCalibrationPeriod: current.data().maintenanceCalibrationPeriod} : {}),
       createdByUid: current.exists() ? current.data().createdByUid : uid,
@@ -2704,3 +2706,19 @@ export async function saveChecklistStationMaintenance(stationId, value, uid) {
     return {...current.data(), ...update};
   });
 }
+
+export async function saveChecklistStationTitle(stationId, value, uid) {
+  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
+  if (!navigator.onLine) throw new Error('Conecte-se para salvar o título.');
+  const functionLabel = normalizeChecklistStationTitle(value);
+  if (!/^[^/]{1,128}$/.test(stationId || '')) throw new Error('Confira o arsenal informado para editar o título.');
+  const ref = doc(db, 'stations', stationId);
+  return runTransaction(db, async (transaction) => {
+    const current = await transaction.get(ref);
+    if (!current.exists()) throw new Error('Arsenal não encontrado.');
+    const update = {functionLabel, updatedByUid: uid, updatedAt: serverTimestamp(), version: Math.max(1, Number(current.data().version) || 1) + 1};
+    transaction.update(ref, update);
+    return {...current.data(), ...update};
+  });
+}
+

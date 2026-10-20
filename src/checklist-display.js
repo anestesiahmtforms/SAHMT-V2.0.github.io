@@ -6,7 +6,24 @@ const ARSENAL_FUNCTION_LABELS = new Map([
   ['10', 'Endoscopia'],
   ['30', 'Hemod sl.1'],
   ['05', 'Hemod sl.2'],
-  ['15', 'Ressonância']
+  ['15', 'Ressonância'],
+  ['17', 'Sala 14'],
+  ['24', 'Sala 13'],
+  ['12', 'Sala 12'],
+  ['31', 'Sala 11'],
+  ['21', 'Sala Híbrida'],
+  ['33', 'Sala 10'],
+  ['29', 'Sala 09'],
+  ['28', 'Sala 08'],
+  ['32', 'Sala 17'],
+  ['23', 'Sala 16'],
+  ['22', 'Sala 07'],
+  ['27', 'Sala 06'],
+  ['19', 'Sala Robótica'],
+  ['16', 'Sala 02'],
+  ['13', 'Sala 03'],
+  ['20', 'Sala 04'],
+  ['25', 'Sala 05']
 ]);
 
 function stationSuffix(station) {
@@ -15,7 +32,23 @@ function stationSuffix(station) {
 }
 
 export function checklistArsenalFunction(station) {
+  if (typeof station?.functionLabel === 'string') return station.functionLabel;
   return ARSENAL_FUNCTION_LABELS.get(stationSuffix(station)) || '';
+}
+
+export function canEditChecklistStationTitle(user, profile) {
+  const email = String(user?.email || '').toLowerCase();
+  return !!user?.uid && user.emailVerified === true &&
+    ['wx2064@gmail.com', 'marcio.henrique82@gmail.com'].includes(email) &&
+    profile?.active === true && profile.access === true &&
+    (profile.role === 'administrador_app' || profile.permissions?.admin === true || profile.permissions?.checklistManage === true);
+}
+
+export function normalizeChecklistStationTitle(value) {
+  if (typeof value !== 'string' || /[\u0000-\u001f\u007f]/u.test(value)) throw new Error('Confira o título do arsenal: use de 1 a 120 caracteres.');
+  const title = value.trim().replace(/\s+/g, ' ');
+  if (!title || title.length > 120) throw new Error('Confira o título do arsenal: use de 1 a 120 caracteres.');
+  return title;
 }
 
 function numericStationId(station) {
@@ -44,3 +77,4 @@ export function sortChecklistStationsForDisplay(stations, recordForStation) {
 export function checklistArsenalButtonLabel(station) {
   return String(station?.name || station?.id || '').replace(/\barsenal\b\s*[:–—-]?\s*/gi, '').trim() || String(station?.id || '');
 }
+

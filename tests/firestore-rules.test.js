@@ -3,7 +3,7 @@ import {after, before, beforeEach, test} from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {randomUUID} from 'node:crypto';
-import {and, doc, getAggregateFromServer, getDoc, getDocFromServer, getDocs, collection, deleteDoc, limit, orderBy, or, query, runTransaction, sum, where, setDoc, updateDoc, writeBatch, serverTimestamp, setLogLevel} from 'firebase/firestore';
+import {and, doc, getAggregateFromServer, getDoc, getDocFromServer, getDocs, collection, deleteDoc, deleteField, limit, orderBy, or, query, runTransaction, sum, where, setDoc, updateDoc, writeBatch, serverTimestamp, setLogLevel} from 'firebase/firestore';
 import {assertFails, assertSucceeds, initializeTestEnvironment} from '@firebase/rules-unit-testing';
 import {stageOperationalWrite} from '../src/record-write.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite} from '../src/document-access.js';
@@ -1690,6 +1690,42 @@ test('station maintenance is shared with checklist readers and editable only by 
   await assertSucceeds(updateDoc(ref, {maintenance: '', updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 3}));
 });
 
+test('only the two verified arsenal managers can create, change or remove a station title', async () => {
+  const accounts = [
+    {uid:'title-wx',email:'wx2064@gmail.com',verified:true,allowed:true},
+    {uid:'title-marcio',email:'marcio.henrique82@gmail.com',verified:true,allowed:true},
+    {uid:'title-other-admin',email:'other@example.invalid',verified:true,allowed:false,role:'administrador_app'},
+    {uid:'title-forged-profile',email:'other@example.invalid',profileEmail:'wx2064@gmail.com',verified:true,allowed:false},
+    {uid:'title-unverified',email:'wx2064@gmail.com',verified:false,allowed:false},
+    {uid:'title-reader',email:'marcio.henrique82@gmail.com',verified:true,manage:false,allowed:false},
+    {uid:'title-disabled',email:'wx2064@gmail.com',verified:true,active:false,allowed:false}
+  ];
+  await seedProfiles(accounts.map(a=>accessProfile(a.uid,{checklistRead:true,checklistManage:a.manage!==false},{email:a.profileEmail||a.email,role:a.role||'anestesiologista',active:a.active!==false})));
+  for (const a of accounts) {
+    const db=testEnvironment.authenticatedContext(a.uid,{email:a.email,email_verified:a.verified}).firestore();
+    const check=a.allowed?assertSucceeds:assertFails;
+    await check(setDoc(doc(db,'stations',a.uid),stationRecord(a.uid,a.uid,{functionLabel:'Sala 14'})));
+    await testEnvironment.withSecurityRulesDisabled(async context=>{
+      await setDoc(doc(context.firestore(),'stations',`${a.uid}-existing`),{...stationRecord(`${a.uid}-existing`,a.uid),createdAt:new Date(),updatedAt:new Date(),functionLabel:'Endoscopia'});
+    });
+    const ref=doc(db,'stations',`${a.uid}-existing`);
+    await check(updateDoc(ref,{functionLabel:'Sala nova',updatedByUid:a.uid,updatedAt:serverTimestamp(),version:2}));
+    await check(updateDoc(ref,{functionLabel:deleteField(),updatedByUid:a.uid,updatedAt:serverTimestamp(),version:a.allowed?3:2}));
+  }
+});
+
+test('station title validation rejects invalid values and leaves ordinary catalog management available', async () => {
+  const uid='title-owner',other='title-ordinary-manager';
+  await seedProfiles([accessProfile(uid,{checklistManage:true}),accessProfile(other,{checklistManage:true})]);
+  const db=testEnvironment.authenticatedContext(uid,{email:'wx2064@gmail.com',email_verified:true}).firestore();
+  const ref=doc(db,'stations','title-validation');
+  await assertSucceeds(setDoc(ref,stationRecord('title-validation',uid,{functionLabel:'x'.repeat(120)})));
+  for (const functionLabel of ['', 'x'.repeat(121), null, 5, {}, []]) await assertFails(updateDoc(ref,{functionLabel,updatedByUid:uid,updatedAt:serverTimestamp(),version:2}));
+  const manager=testEnvironment.authenticatedContext(other,{email:'other@example.invalid',email_verified:true}).firestore();
+  await assertSucceeds(updateDoc(doc(manager,'stations','title-validation'),{active:false,updatedByUid:other,updatedAt:serverTimestamp(),version:2}));
+  assert.equal((await getDoc(ref)).data().functionLabel,'x'.repeat(120));
+});
+
 function stationRecord(id, uid, overrides = {}) {
   return {
     id, name: 'Arsenal fictício', qrCode: `QR-${id}`, order: 1, active: true,
@@ -1957,3 +1993,4 @@ test('liberação individual dos módulos é administrada pelo gestor de usuári
   assert.equal(untouched.permissions.managementModuleEnabled, undefined);
   await assertFails(updateDoc(doc(reader, 'users', 'release-reader'), {'permissions.admin': true}));
 });
+

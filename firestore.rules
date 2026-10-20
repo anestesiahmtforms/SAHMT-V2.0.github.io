@@ -799,10 +799,16 @@ service cloud.firestore {
            validStationMaintenanceDate(value.electricalAnnual) &&
            validStationMaintenanceDate(value.calibrationSemiannual));
       }
+      function stationTitleEditor() {
+        return request.auth.token.keys().hasAll(['email', 'email_verified']) &&
+          request.auth.token.email is string && request.auth.token.email_verified == true &&
+          request.auth.token.email.lower() in ['wx2064@gmail.com', 'marcio.henrique82@gmail.com'];
+      }
       function validStation(data, stationId) {
         return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
-          data.keys().hasOnly(['id', 'name', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'maintenanceCalibrationPeriod', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['id', 'name', 'functionLabel', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'maintenanceCalibrationPeriod', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
           data.id == stationId && data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+          (!data.keys().hasAny(['functionLabel']) || (data.functionLabel is string && data.functionLabel.size() > 0 && data.functionLabel.size() <= 120)) &&
           data.qrCode is string && data.qrCode.size() > 0 && data.qrCode.size() <= 300 &&
           (!data.keys().hasAny(['start']) || validIsoDay(data.start)) &&
           (!data.keys().hasAny(['end']) || validIsoDay(data.end)) &&
@@ -817,13 +823,15 @@ service cloud.firestore {
 
       allow read: if checklistAccess();
       allow create: if can('checklistManage') && validStation(request.resource.data, stationId) &&
+        (!request.resource.data.keys().hasAny(['functionLabel']) || stationTitleEditor()) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1;
       allow update: if can('checklistManage') && validStation(request.resource.data, stationId) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['functionLabel']) || stationTitleEditor()) &&
         request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
         request.resource.data.version == resource.data.version + 1 &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'maintenanceCalibrationPeriod', 'updatedByUid', 'updatedAt', 'version']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'functionLabel', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'maintenanceCalibrationPeriod', 'updatedByUid', 'updatedAt', 'version']);
       allow delete: if false;
     }
     match /checklists/{checklistId} {
@@ -1648,3 +1656,4 @@ service cloud.firestore {
 
   }
 }
+
