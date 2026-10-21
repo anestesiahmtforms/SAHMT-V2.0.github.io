@@ -63,5 +63,5 @@ test('leitura QR entrega o registro ao banner completo com origem validada', asy
   assert.equal(calls.length, 1); assert.equal(calls[0][0], station); assert.equal(calls[0][1], record);
   assert.equal(calls[0][4].fromQr, true);
   const scanner = main.slice(main.indexOf('async function openChecklistQrScanner('), main.indexOf('async function loadMonthlyChecklist('));
-  assert.match(scanner, /if \(dialog\.open\) dialog\.close\(\);[\s\S]*revealChecklistStation\(station, day, stations\)/);
+  assert.match(scanner, /if \(dialog\.open\) dialog\.close\(\);[\s\S]*revealChecklistStation\(station, day, stations, latestRecord\)/);
 });

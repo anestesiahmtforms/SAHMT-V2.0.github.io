@@ -299,6 +299,17 @@ test('adapter real Checklist: fechamento enquanto cache seguro aguarda não inst
   assert.equal(h.catalogs.length,0);assert.equal(h.reports.length,0);assert.equal(h.events.length,0);assert.equal(h.writes.length,0);close();
 });
 
+test('adapter real Checklist: relatório interrompe os listeners depois do snapshot completo',async()=>{
+  const h=catalogAdapterHarness();h.scope.mode='monthly';h.scope.day=null;h.scope.month='2026-10';
+  const close=await h.subscribe();
+  h.emit(h.stations,{fromCache:false,serverConfirmed:true});await settle();
+  assert.equal(h.reports.length,1);
+  h.reports[0].next({records:[],priorRecords:[],stationIds:h.ids,ready:true,confirmed:true,fromCache:false,hasPendingWrites:false,historyIncomplete:false,truncated:false});
+  assert.ok(h.stops.includes('catalog'));
+  assert.ok(h.stops.includes('report:0'));
+  close();
+});
+
 test('integração main: render ao sair de Etiquetas elimina dados transitórios mesmo se runtime já encerrou o listener',async()=>{
   const h=await harness({kind:'labels'}),opening=h.ctx.startReportLive('labels');await settle();
   h.next(h.payload('etiqueta-fictícia',{patientName:'Pessoa fictícia sem dados reais'}));await opening;

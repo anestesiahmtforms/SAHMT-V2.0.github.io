@@ -82,6 +82,15 @@ function harness({decoder = true, nativeDetect, capabilities} = {}) {
     session: {status: 'signed-in', user: {uid: 'checker-A'}, profile: {permissions: {checklistWrite: true, checklistManage: false}}},
     route: 'checklist', today: day, currentRoute: () => context.route, todayInputValue: () => context.today,
     can: permission => context.session.profile.permissions[permission] === true,
+    resolveChecklistQrStation: async ({stations, qrValue, day, includeInactive, readByQr}) => {
+      const cached = stations.find(item => (item.qrCode === qrValue || item.id === qrValue) &&
+        (includeInactive ? (!item.start || item.start <= day) && (!item.end || item.end >= day)
+          : item.active === true && (!item.start || item.start <= day) && (!item.end || item.end >= day)));
+      if (cached) return cached;
+      const matches = await readByQr(qrValue);
+      return matches.length === 1 ? matches[0] : null;
+    },
+    readChecklistStationLatestRecord: async () => null,
     revealChecklistStation: (...args) => reveals.push(args)};
   vm.createContext(context);
   vm.runInContext(`let stopChecklistQrScan = null; let qrDecoderPromise = null;\n${qrHelpers}\n${loaderSource}\n${scannerSource}`, context);
@@ -182,7 +191,7 @@ test('duas leituras válidas entregam a estação ao banner e encerram a câmera
   const h = harness(); h.decodeValues.push(station.qrCode, station.qrCode); await h.open();
   await h.nextFrame(); assert.equal(h.reveals.length, 0);
   await h.nextScan();
-  assert.equal(h.reveals.length, 1); assert.equal(h.reveals[0][0], station); assert.equal(h.reveals[0][1], day);
+  assert.equal(h.reveals.length, 1, h.status.textContent); assert.equal(h.reveals[0][0], station); assert.equal(h.reveals[0][1], day);
   assert.equal(h.reveals[0][2][0], station); assert.equal(h.dialog.open, false); assert.equal(h.streams[0].track.stopped, true);
 });
 

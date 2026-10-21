@@ -10,7 +10,7 @@ test('abrir a sessão não inicia listeners dos três módulos sem ação do usu
   reportAllowed:()=>true,makeReportScope:kind=>({key:kind}),liveReports:{warm:()=>{reads++;return()=>{};}},
   startupReports:{holdLive:()=>{},clear:()=>{}},window:{setTimeout:()=>{}}});
  vm.runInContext(source.slice(start,end),ctx);ctx.preloadStartupReports({uid:'synthetic'});assert.equal(reads,0);
- ctx.preloadStartupReports({uid:'synthetic'},{explicit:true});assert.equal(reads,3);
+ ctx.preloadStartupReports({uid:'synthetic'},{explicit:true});assert.equal(reads,2);
 });
 test('pré-carga de código não dispara preparação de dados Firestore',()=>{
  const start=source.indexOf('function preloadOperationalDataWhenIdle('),end=source.indexOf('\nasync function prepareOfflineEssentials',start);

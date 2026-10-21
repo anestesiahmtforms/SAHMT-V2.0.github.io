@@ -28,7 +28,7 @@ export function checklistReportScope({uid, day, month, stationIds = [], pageSize
   return {uid, day: day || null, month: month || null, from, to, stationIds: ids, pageSize: page, loadedLimit: count, cacheKey: day || `month:${month}`};
 }
 
-/** Uses the existing Checklist indexes; each historical query returns at most one record. */
+/** Daily status is based on today's records. Prior history is read only for the single QR-scanned station. */
 export function buildChecklistReportQueries(options, sdk, db) {
   const scope = checklistReportScope(options);
   const {collection, query, where, orderBy, limit} = sdk;
@@ -37,7 +37,7 @@ export function buildChecklistReportQueries(options, sdk, db) {
     ? [where('date', '==', scope.day), orderBy('createdAt', 'desc')]
     : [where('date', '>=', scope.from), where('date', '<=', scope.to), orderBy('date', 'asc'), orderBy('createdAt', 'desc')];
   const current = query(base, ...period, limit(scope.loadedLimit + 1));
-  const prior = scope.stationIds.map((stationId) => ({stationId, query: query(base,
+  const prior = scope.day && options.includePriorHistory !== true ? [] : scope.stationIds.map((stationId) => ({stationId, query: query(base,
     where('stationId', '==', stationId), where('date', '<', scope.from),
     orderBy('date', 'desc'), orderBy('createdAt', 'desc'), limit(1))}));
   return {scope, current, prior};
@@ -87,7 +87,7 @@ export function createChecklistReportListener(options, onNext, onError, {sdk, db
   const confirmedSources = new Set();
   const stops = [];
   for (const {stationId} of prior) states.set(stationId, {ready: false, fromCache: true, pending: false});
-  const initial = options.initial;
+  const initial = options.initial ? {...options.initial, priorRecords: scope.day ? [] : options.initial.priorRecords || []} : null;
   if (initial) {
     currentRecords = (initial.records || []).map((record) => ({...record}));
     for (const record of currentRecords) recordsById.set(record.id, record);

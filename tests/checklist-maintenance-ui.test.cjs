@@ -333,11 +333,11 @@ test('resposta antiga do Checklist A não fecha nem altera banner B', async () =
   assert.deepEqual(h.reloadCalls, []); assert.deepEqual(h.reportCalls, []);
 });
 
-test('QR de usuário comum continua salvando Checklist sem administração', async () => {
+test('QR de usuário comum salva Checklist sem leitura redundante do relatório', async () => {
   const h = harness({admin: false, manage: false, write: true}); h.show(station('A'), '2026-10-01', {fromQr: true}); h.answer(); await h.answerStarted.promise;
   assert.equal(h.answerCalls[0].uid, 'manager-A'); assert.equal(h.answerCalls[0].condition, 'SIM');
   h.answerResponse.resolve({ok: true}); await settle();
-  assert.equal(h.dialog.open, false); assert.deepEqual(h.reportCalls, ['2026-10-01']); assert.deepEqual(h.reloadCalls, ['2026-10-01']);
+  assert.equal(h.dialog.open, false); assert.deepEqual(h.reportCalls, []); assert.deepEqual(h.reloadCalls, []);
 });
 
 for (const changed of ['session', 'manage', 'day', 'route', 'removed-dialog']) test(`wrapper real bloqueia escrita se ${changed} mudar durante import interno`, async () => {
@@ -355,7 +355,7 @@ test('wrapper real usa UID capturado e mantém payload, condição e fila do Che
   h.show(station('A'), '2026-10-01', {fromQr: true}); h.answer(); gate.resolve(h.dataModule); await h.answerStarted.promise;
   assert.deepEqual(h.answerCalls, [{module: 'checklists', value: {createdByName: 'Carlos Pereira Santos', stationId: 'A', date: '2026-10-01', condition: 'SIM', status: 'COMPLETED', occurrence: '', responsibleUid: null, responsibleName: null, responsibleEmail: null}, uid: 'manager-A'}]);
   h.answerResponse.resolve({pendingFirestore: true}); await settle();
-  assert.equal(h.dialog.open, false); assert.deepEqual(h.reloadCalls, ['2026-10-01']);
+  assert.equal(h.dialog.open, false); assert.deepEqual(h.reloadCalls, []);
 });
 
 

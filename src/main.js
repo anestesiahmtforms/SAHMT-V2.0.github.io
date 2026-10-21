@@ -22,7 +22,8 @@ import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {formatScheduleReleaseTime} from './schedule-release.js';
-import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
+import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
+import {resolveChecklistQrStation} from './checklist-static.js';
 import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay, canEditChecklistStationTitle} from './checklist-display.js';
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMaintenanceInputType} from './checklist-maintenance.js';
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
@@ -76,7 +77,7 @@ const startupReports = createStartupReportCache();
 function preloadStartupReports(user, {explicit = false} = {}) {
   if (!explicit) return;
   if (!navigator.onLine || session.offline || session.status !== 'signed-in') return;
-  for (const kind of ['events', 'labels', 'checklist']) {
+  for (const kind of ['events', 'labels']) {
     if (!reportAllowed(kind)) continue;
     const scope = makeReportScope(kind, {warm: true});
     startupReports.holdLive(scope.key, liveReports.warm(kind, scope));
@@ -455,9 +456,14 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, conferenceStop = null, sequence = 0, idsKey = null;
   const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
   const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
-  let catalogServerSeen = false, writtenCatalog = '', catalogWriteSequence = 0;
+  let catalogServerSeen = false, reportServerSeen = false, conferenceServerSeen = scope.mode !== 'daily', rotationServerSeen = scope.mode !== 'daily';
+  let writtenCatalog = '', catalogWriteSequence = 0, snapshotExpiry = 0;
   const current = () => !stopped && callbacks.isCurrent();
-  const stop = () => { stopped = true; sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); conferenceStop?.(); };
+  const stop = () => { stopped = true; if (snapshotExpiry) globalThis.clearTimeout?.(snapshotExpiry); sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); conferenceStop?.(); };
+  const stopAfterInitialSnapshot = () => {
+    if (current() && catalogServerSeen && reportServerSeen && conferenceServerSeen && rotationServerSeen) stop();
+  };
+  snapshotExpiry = globalThis.setTimeout?.(stop, 20000) || 0;
   const error = failure => {
     if (!current()) return;
     stop();
@@ -474,6 +480,8 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
         checklistConferenceLive = {...payload, key: scope.key};
         if (payload.ready && !payload.fromCache && !payload.hasPendingWrites && !payload.error) void writeSafeCache(scope.uid, 'checklistConference', scope.day, payload).catch(() => {});
         updateChecklistResponsibilityUI();
+        conferenceServerSeen = payload.ready === true && payload.fromCache === false && payload.hasPendingWrites !== true && !payload.error;
+        stopAfterInitialSnapshot();
       }) : null).then(unsubscribe => {
         if (!current()) unsubscribe?.(); else conferenceStop = unsubscribe;
       }).catch(error => {
@@ -486,6 +494,8 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       if (!current()) return;
       checklistRotationLive = {...payload, key: scope.key};
       updateChecklistResponsibilityUI();
+      rotationServerSeen = payload.ready === true && payload.current === true && payload.fromCache === false && payload.hasPendingWrites !== true && !payload.error;
+      stopAfterInitialSnapshot();
     }, failure => {
       if (!current()) return;
       checklistRotationLive = {key: scope.key, ready: true, error: failure};
@@ -520,6 +530,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       const stationIds = payload.records.filter(station => scope.mode === 'monthly' || stationIsInDateRange(station, scope.day)).map(station => station.id).sort();
       const key = JSON.stringify(stationIds);
       callbacks.next('catalog', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites});
+      stopAfterInitialSnapshot();
       if (key === idsKey) return;
       idsKey = key;
       const ownSequence = ++sequence; reportStop?.(); reportStop = null;
@@ -527,7 +538,8 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       void readSafeCache(scope.uid, 'checklists', scope.mode === 'daily' ? scope.day : 'month:' + scope.month).catch(() => null).then(cached => {
         if (!current() || sequence !== ownSequence) return null;
         const value = cached?.data || cached?.value || cached;
-        const initial = value && JSON.stringify(value.stationIds || []) === key ? value : null;
+        const initial = value && JSON.stringify(value.stationIds || []) === key
+          ? {...value, ...(scope.mode === 'daily' ? {priorRecords: []} : {})} : null;
         if (!initial && scope.mode === 'daily' && !hasCachedDisplay) {
           callbacks.next('report', {data: {records: [], priorRecords: [], stationIds, ready: false, confirmed: false,
             fromCache: true, hasPendingWrites: false, historyIncomplete: true, recordsUnavailable: true, stale: true},
@@ -536,6 +548,8 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
         return watchChecklistReport({...scope, day: scope.mode === 'daily' ? scope.day : null, month: scope.mode === 'monthly' ? scope.month : null, stationIds, initial}, report => {
           if (!current() || sequence !== ownSequence) return;
           callbacks.next('report', {data: report, complete: true, fromCache: report.fromCache || !report.ready, hasPendingWrites: report.hasPendingWrites});
+          reportServerSeen = report.confirmed === true;
+          stopAfterInitialSnapshot();
         }, error);
       }).then(unsubscribe => { if (!current() || sequence !== ownSequence) unsubscribe?.(); else reportStop = unsubscribe; }).catch(error);
     }, error);
@@ -1486,12 +1500,28 @@ async function loadModule(route) {
       items = [];
     } else {
       loadedTrainingCatalog = [];
-      items = route === 'checklist' && checklistCatalogLive?.uid === session.user.uid ? [...checklistCatalogLive.records] : await data.listModuleRecords(route, session.user.uid, {pageSize: route === 'checklist' ? 200 : 50});
+      if (route === 'checklist') {
+        const cached = checklistCatalogLive?.uid === session.user.uid
+          ? checklistCatalogLive.records
+          : (await readSafeCache(session.user.uid, 'stations', 'all').catch(() => null))?.data;
+        items = Array.isArray(cached) ? [...cached] : [];
+      } else items = await data.listModuleRecords(route, session.user.uid, {pageSize: 50});
       if (route === 'checklist') checklistModuleStations = items;
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
       reportDialog?.addEventListener('close', () => { checklistReportOpen = false; closeReportLive('checklist'); stopChecklistQrScanner(false); });
+      const reportRefresh = document.createElement('button');
+      reportRefresh.type = 'button';
+      reportRefresh.className = 'secondary-button';
+      reportRefresh.textContent = 'Atualizar relatório';
+      reportRefresh.setAttribute('aria-label', 'Consultar novamente o relatório do Checklist');
+      reportRefresh.onclick = () => {
+        if (!checklistReportOpen || currentRoute() !== 'checklist') return;
+        closeReportLive('checklist', 'manual-refresh');
+        void loadChecklistView(checklistModuleStations);
+      };
+      document.querySelector('.checklist-report-periods')?.append(reportRefresh);
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
         const value = day && day <= todayInputValue() ? day : todayInputValue();
@@ -1510,16 +1540,7 @@ async function loadModule(route) {
       if (scanButton) scanButton.onclick = () => {
         const day = todayInputValue();
         const writableStations = items.filter((station) => stationIsInDateRange(station, day) && (can('checklistManage') || stationIsValidOn(station, day)));
-        if (writableStations.length) void openChecklistQrScanner(writableStations, day);
-        else {
-          stopChecklistQrScanner();
-          const status = document.querySelector('#checklist-qr-status');
-          if (status) { status.hidden = false; status.textContent = 'Nenhuma estação disponível para leitura nesta data.'; }
-          const dialog = document.querySelector('#checklist-qr-dialog');
-          const close = document.querySelector('#checklist-qr-close');
-          if (close) close.onclick = () => dialog?.close();
-          dialog?.showModal();
-        }
+        void openChecklistQrScanner(writableStations, day);
       };
       document.querySelectorAll('[data-checklist-report-launch]').forEach((button) => {
         button.addEventListener('click', async () => {
@@ -2228,11 +2249,18 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
   }
 }
 
-function revealChecklistStation(station, day, stations) {
+function revealChecklistStation(station, day, stations, latestRecord = undefined) {
   const record = checklistReportContext?.day === day
-    ? resolveChecklistDayRecord(station, checklistReportContext.latestByStation.get(station.id), checklistReportContext.priorByStation.get(station.id), day, todayInputValue())
-    : null;
+    ? resolveChecklistDayRecord(station, latestRecord === undefined ? checklistReportContext.latestByStation.get(station.id) : latestRecord,
+      latestRecord === undefined ? checklistReportContext.priorByStation.get(station.id) : null, day, todayInputValue())
+    : latestRecord ? resolveChecklistDayRecord(station, latestRecord.date === day ? latestRecord : null,
+      latestRecord.date === day ? null : latestRecord, day, todayInputValue()) : null;
   showChecklistStationBanner(station, record, day, stations, {fromQr: true});
+}
+
+async function readChecklistStationLatestRecord(stationId, day) {
+  const {getLatestChecklistRecordForStation} = await import('./data.js');
+  return getLatestChecklistRecordForStation(stationId, day, {uid: session.user?.uid});
 }
 
 function ensureChecklistDailyReportOpen(day) {
@@ -2408,8 +2436,6 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     status.textContent = 'Checklist salvo.';
     await removeOperationalDraft(maintenanceUid, 'checklists', draftId);
     dialog.close();
-    ensureChecklistDailyReportOpen(day);
-    await loadDailyChecklist(stations, day);
   };
   actions.querySelector('[data-checklist-banner-answer="SIM"]')?.addEventListener('click', () => void saveAnswer('SIM'));
   actions.querySelector('[data-checklist-banner-answer="NAO"]')?.addEventListener('click', () => {
@@ -2507,13 +2533,31 @@ async function openChecklistQrScanner(stations, day) {
     cleanup();
     if (dialog.open) dialog.close();
   };
-  const resolveChecklistQr = (raw) => {
+  const resolveChecklistQr = async (raw) => {
     if (!scannerCurrent()) return;
-    const station = findStationForQr(stations, raw, day, {includeInactive: can('checklistManage')});
-    if (!station) { status.textContent = 'QR lido, mas não cadastrado no catálogo desta data.'; return; }
+    let station;
+    let latestRecord;
+    try {
+      station = await resolveChecklistQrStation({stations, qrValue: raw, day, includeInactive: can('checklistManage'),
+        readByQr: async qr => {
+          const {getChecklistStationByQr} = await import('./data.js');
+          const match = await getChecklistStationByQr(qr);
+          return match ? [match] : [];
+        }});
+      if (station) latestRecord = await readChecklistStationLatestRecord(station.id, day);
+    } catch (error) {
+      if (scannerCurrent()) status.textContent = error.code === 'permission-denied'
+        ? 'Seu perfil não pode consultar este arsenal.'
+        : 'Não foi possível validar o QR agora. Verifique a conexão e tente novamente.';
+      cleanup();
+      return null;
+    }
+    if (!scannerCurrent()) return null;
+    if (!station) { status.textContent = 'QR lido, mas não cadastrado no catálogo desta data.'; cleanup(); return null; }
     cleanup();
     if (dialog.open) dialog.close();
-    revealChecklistStation(station, day, stations);
+    revealChecklistStation(station, day, stations, latestRecord);
+    return station;
   };
   const confirmQr = createChecklistQrConfirmation({maxGapMs: 5000});
   const captureGuide = (maxSize = 640) => {
@@ -2603,12 +2647,16 @@ async function openChecklistQrScanner(stations, day) {
         detecting = false;
       }
       if (!scannerCurrent()) { cleanup(); return; }
-      const known = raw && findStationForQr(stations, raw, day, {includeInactive: can('checklistManage')});
-      const confirmed = confirmQr(known ? raw : null, {reset: ambiguous || Boolean(raw && !known)});
-      if (confirmed) { resolveChecklistQr(confirmed); return; }
+      const confirmed = confirmQr(raw, {reset: ambiguous});
+      if (confirmed) {
+        const station = await resolveChecklistQr(confirmed);
+        confirmQr('', {reset: true});
+        if (station || !scannerCurrent()) return;
+        timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 100);
+        return;
+      }
       if (ambiguous) status.textContent = 'Há mais de um QR na moldura. Centralize somente o QR da estação desejada.';
-      else if (raw && !known) status.textContent = 'QR lido, mas não cadastrado no catálogo desta data.';
-      else if (known) status.textContent = 'QR reconhecido. Mantenha a câmera estável para confirmar.';
+      else if (raw) status.textContent = 'QR reconhecido. Mantenha a câmera estável para confirmar.';
       timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 100);
     };
     frame = requestAnimationFrame(scan);
@@ -5315,11 +5363,20 @@ window.addEventListener('online', () => {
     void revalidateOnlineSession();
   }
 });
-window.addEventListener('offline', () => { onlineValidationRequired = session.status === 'signed-in'; setOfflineRuntimeMode(true); cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false); invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.'); void updateOutboxStatus(); });
+window.addEventListener('offline', () => {
+  onlineValidationRequired = session.status === 'signed-in';
+  setOfflineRuntimeMode(true);
+  cleanupCurrentModule?.setOnline?.(false);
+  if (liveReports.get('checklist')?.snapshot().scope) closeReportLive('checklist', 'offline');
+  liveReports.setOnline(false);
+  invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.');
+  void updateOutboxStatus();
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     cleanupCurrentModule?.suspend?.();
-    suspendedReportScopes = ['events', 'labels', 'checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
+    suspendedReportScopes = ['events', 'labels'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
+    if (liveReports.get('checklist')?.snapshot().scope) closeReportLive('checklist', 'suspend');
     for (const scope of suspendedReportScopes) { liveReports.close(scope.kind, 'suspend'); reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false}); updateReportSync(scope.kind); }
     startupReports.clear();
     invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
