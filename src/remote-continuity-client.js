@@ -17,7 +17,7 @@ function operationForLocal(op,uid,now){
  return {uid,type:op.collection,requestId:op.requestId,resourceId:op.requestId,payload:{collectionName:op.collection,data:op.data},createdAt:op.createdAt};
 }
 export function createRemoteContinuityClient({endpoint='',fetchImpl=fetch,now=Date.now,getCurrentUser=()=>null,online=()=>globalThis.navigator?.onLine!==false,
- cacheProfile,writeCache,listOperations,enqueue,updateOperation,saveReceipt,getAppCheckHeaders=async()=>({}),timeoutMs=8000}={}){
+ cacheProfile,writeCache,listOperations,enqueue,updateOperation,saveReceipt,isCommitted=async()=>false,getAppCheckHeaders=async()=>({}),timeoutMs=8000}={}){
  const flights=new Map(),previous=new Map(),retryAt=new Map(),denied=new Set();
  const enabled=validChannelEndpoint(endpoint);
  const isCurrent=(user,check)=>getCurrentUser()?.uid===user.uid&&check();
@@ -55,19 +55,21 @@ export function createRemoteContinuityClient({endpoint='',fetchImpl=fetch,now=Da
   if(!isCurrent(user,check))fail('CONTINUITY_SESSION_CHANGED');
   await cacheProfile(user.uid,profile.profile,{validatedAt:profile.verifiedAt});
   for(const entry of entries){if(!isCurrent(user,check))fail('CONTINUITY_SESSION_CHANGED');await writeCache(user.uid,entry.kind,entry.id,entry.data,{validatedAt:entry.verifiedAt});}
-  const existing=[...await listOperations(user.uid)];let restored=0;
+  const existing=[...await listOperations(user.uid)];let restored=0,confirmed=0;
   for(const {remote:op,local} of operations){
    if(!isCurrent(user,check))fail('CONTINUITY_SESSION_CHANGED');
+   const saveCommittedReceipt=()=>saveReceipt(user.uid,op.requestId,{collection:op.collection,day:op.day,localRequestId:local.requestId,occurredAt:op.data.occurredAt||null,shared:true,attempted:true,state:'pending',committed:true,remoteContinuity:true});
+   if(await isCommitted(user.uid,local.requestId,local.payload)){await saveCommittedReceipt();confirmed++;continue;}
    const prior=existing.find(item=>item.requestId===local.requestId);
    if(prior&&canonical(prior.payload)!==canonical(local.payload)){
     await updateOperation(user.uid,local.requestId,{status:'conflict',lastErrorCode:'CONTINUITY_LOCAL_CONFLICT',lastError:'A cópia local e o recibo remoto divergem; ambos foram preservados.'});continue;
    }
-   if(!prior){await enqueue(local);existing.push(local);restored++;}
+   if(!prior){await enqueue(local);if(await isCommitted(user.uid,local.requestId,local.payload)){await saveCommittedReceipt();confirmed++;continue;}existing.push(local);restored++;}
    if(op.state==='conflict')await updateOperation(user.uid,local.requestId,{status:'conflict',lastErrorCode:'CONTINUITY_SERVER_CONFLICT',lastError:'O registro remoto foi preservado e exige revisão de conflito.'});
    await saveReceipt(user.uid,op.requestId,{collection:op.collection,day:op.day,localRequestId:local.requestId,occurredAt:op.data.occurredAt||null,shared:true,attempted:true,state:op.state==='conflict'?'conflict':'pending',remoteContinuity:true});
   }
   if(!isCurrent(user,check))fail('CONTINUITY_SESSION_CHANGED');
-  return {profile:profile.profile,profileVerifiedAt:profile.verifiedAt,authorizedUntil:first.authorizedUntil,restored,entries:entries.length};
+  return {profile:profile.profile,profileVerifiedAt:profile.verifiedAt,authorizedUntil:first.authorizedUntil,restored,confirmed,entries:entries.length};
  }
  async function bootstrap(user,{day=channelDay(now()),isCurrent:check=()=>true,force=false}={}){
   if(!enabled||!online())return null;if(!validId(user?.uid)||typeof user.getIdToken!=='function'||!validDay(day)||!isCurrent(user,check))fail('CONTINUITY_SESSION_CHANGED');

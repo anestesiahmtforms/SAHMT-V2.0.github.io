@@ -19,9 +19,8 @@ export function createSyncNoticeState(onChange=()=>{},{pendingGraceMs=5000,setTi
    if(Array.isArray(nextPendingIds)){
     const validIds=[...new Set(nextPendingIds.filter(id=>typeof id==='string'&&id))];
     for(const id of validIds)remember(observedPendingIds,id);
-    const staleConfirmedCount=validIds.filter(id=>confirmedIds.has(id)).length;
     pendingIds.clear();for(const id of validIds)if(!confirmedIds.has(id))pendingIds.add(id);
-    unsettledCount=Math.max(0,reportedCount-staleConfirmedCount);
+    unsettledCount=pendingIds.size;
    }else unsettledCount=reportedCount;
    if(unavailable){if(hadPending)paint('pending');return;}
    if(unsettledCount>0||pendingIds.size>0){hadPending=true;showPendingAfterGrace();}
