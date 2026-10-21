@@ -34,7 +34,7 @@ import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, off
 import {bindOfflineOperationalReports} from './offline-report-ui.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {checklistCacheId, checklistCachedCatalogMatches, operationalReportCacheId} from './offline-report-cache.js';
-import {setOfflineRuntimeMode, isOfflineRuntimeForced} from './offline-runtime-mode.js';
+import {setOfflineRuntimeMode, isOfflineRuntimeForced, shouldQueueOfflineOperationalWrite} from './offline-runtime-mode.js';
 import {isFirestoreCacheFallbackError} from './offline-cache.js';
 import {isOfflineOperationAuthorized} from './offline-outbox-policy.js';
 import {operationalBackend} from './operational-backend.js';
@@ -5048,6 +5048,7 @@ async function bindOfflineOperationalForms(route, uid, day) {
     submit.disabled = true;
     status.textContent = 'Guardando somente neste aparelho…';
     try {
+      let pendingFirestore = false;
       if (route === 'events' && form.dataset.offlineWriteForm === 'events') {
         const values = Object.fromEntries(new FormData(form).entries());
         const selected = form.elements.memberSigla.selectedOptions[0];
@@ -5059,7 +5060,8 @@ async function bindOfflineOperationalForms(route, uid, day) {
         const automaticAmount = eventAmountToPay(values.eventType, values.delayMultiple, values.shift);
         const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: automaticAmount == null ? Number(values.amountToPay || 0) : automaticAmount, createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         const {createOperationalRecord} = await import('./data.js');
-        await createOperationalRecord('events', record, {uid, forceQueue: true});
+        const outcome = await createOperationalRecord('events', record, {uid, forceQueue: shouldQueueOfflineOperationalWrite({online: navigator.onLine, sessionOffline: session.offline})});
+        pendingFirestore = outcome.pendingFirestore === true;
       } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
         const values = Object.fromEntries(new FormData(form).entries());
         const normalizedType = String(values.type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -5078,13 +5080,17 @@ async function bindOfflineOperationalForms(route, uid, day) {
         const actorName = String(session.profile?.displayName || session.user?.displayName || '').trim().slice(0, 120);
         const record = {date: values.date, patientName: values.patientName.trim(), procedureCode: String(values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : String(values.insurance || '').trim(), creditor: normalizedCreditor, staffSiglas: normalizedCreditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
         const {createOperationalRecord} = await import('./data.js');
-        await createOperationalRecord('labels', record, {uid, forceQueue: true});
+        const outcome = await createOperationalRecord('labels', record, {uid, forceQueue: shouldQueueOfflineOperationalWrite({online: navigator.onLine, sessionOffline: session.offline})});
+        pendingFirestore = outcome.pendingFirestore === true;
       } else if (route === 'checklist' && form.dataset.offlineWriteForm === 'checklists') {
         const condition = form.elements.condition.value;
-        const outcome = await saveChecklistAnswer(form.dataset.stationId, condition, day, form.elements.occurrence.value, {uid, forceQueue: true});
+        const outcome = await saveChecklistAnswer(form.dataset.stationId, condition, day, form.elements.occurrence.value, {uid, forceQueue: shouldQueueOfflineOperationalWrite({online: navigator.onLine, sessionOffline: session.offline})});
         if (!outcome.ok) throw new Error(outcome.message);
+        pendingFirestore = outcome.pendingFirestore === true;
       }
-      status.textContent = 'Salvo localmente. Abra Sincronização e revise e confirme este item antes do envio.';
+      status.textContent = pendingFirestore
+        ? 'Salvo neste aparelho; aguarda confirmação do envio.'
+        : 'Registro salvo e confirmado pelo Firestore.';
       form.reset();
       submit.disabled = false;
       if (form.elements.eventDate) form.elements.eventDate.value = day;
