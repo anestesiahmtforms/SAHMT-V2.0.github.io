@@ -1834,7 +1834,7 @@ async function loadOfflineView(target) {
         try{const module=await import('./provisional-operational-channel.js');await module.withdrawProvisionalOperation(operation);}
         catch{window.alert('Não foi possível retirar a cópia compartilhada. Conecte-se e tente novamente; o registro local foi preservado.');return;}
       }
-      pendingSyncBanner.discarded(uid);
+      pendingSyncBanner.discarded(uid, button.dataset.discardOperation);
       await removeQueuedOperation(uid, button.dataset.discardOperation);
       await loadOfflineView(target);
       await updateOutboxStatus();
@@ -1848,7 +1848,7 @@ async function loadOfflineView(target) {
     }));
     target.querySelectorAll('[data-discard-training]').forEach((button) => button.addEventListener('click', async () => {
       if (!window.confirm('Este progresso ainda não foi confirmado pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
-      pendingSyncBanner.discarded(uid);
+      pendingSyncBanner.discarded(uid, 'training:' + button.dataset.discardTraining);
       await discardCachedTrainingProgress(uid, button.dataset.discardTraining);
       await loadOfflineView(target);
       await updateOutboxStatus();
@@ -2215,7 +2215,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
               signerName, rotationSigla: rotation.sigla, rotationPosition: rotation.position});
             await removeOperationalDraft(uid, 'checklists', 'conference:' + day); checklistLocalIntent = null;
-            pendingSyncBanner.confirmed(uid);void updateOutboxStatus();
+            pendingSyncBanner.confirmed(uid, 'conference:' + day);void updateOutboxStatus();
             if (!previewCurrent()) return;
             const sigla = String(session.profile?.sigla || '').trim().toUpperCase();
             checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,
@@ -5106,19 +5106,20 @@ async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status'),uid=session.user?.uid,sequence=++syncNoticeSequence;
   if (session.status !== 'signed-in'||!uid){pendingSyncBanner.reset();return;}
   if (!target) return;
-  let counts,pendingProgress,retryableFailures,drafts;
-  try{[counts,pendingProgress,retryableFailures,drafts]=await Promise.all([
+  let counts,pendingProgress,retryableFailures,drafts,unsettled;
+  try{[counts,pendingProgress,retryableFailures,drafts,unsettled]=await Promise.all([
     operationCounts(uid),
-    pendingTrainingProgressCount(uid),
-    retryableFailedOperationCount(uid), listOperationalDrafts(uid)
+    listPendingTrainingProgress(uid),
+    retryableFailedOperationCount(uid), listOperationalDrafts(uid), listUnsettledOperations(uid)
   ]);}catch{if(sequence===syncNoticeSequence&&session.user?.uid===uid)pendingSyncBanner.update({uid,unavailable:true});return;}
   if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
   const count = counts.queued + counts.awaitingConfirmation + counts.failed + counts.conflict + (counts.sending || 0);
-  const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:')).length;
-  pendingSyncBanner.update({uid,pendingCount:count+pendingProgress+pendingConferences});
-  const details = [count ? `${count} ação(ões) ${counts.awaitingConfirmation ? 'aguardando confirmação' : counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress ? `progresso de vídeo pendente (${pendingProgress})` : ''].filter(Boolean).join(' · ');
+  const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:'));
+  const pendingIds = [...unsettled.map(item => item.requestId), ...pendingProgress.map(item => 'training:' + item.trainingId), ...pendingConferences.map(item => item.id)];
+  pendingSyncBanner.update({uid,pendingCount:count+pendingProgress.length+pendingConferences.length,pendingIds});
+  const details = [count ? `${count} ação(ões) ${counts.awaitingConfirmation ? 'aguardando confirmação' : counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress.length ? `progresso de vídeo pendente (${pendingProgress.length})` : ''].filter(Boolean).join(' · ');
   const backendUnavailable = Boolean(operationalBackend.snapshot().code);
-  const syncLabel = count || pendingProgress || pendingConferences ? `PENDENTE DE SINCRONIZAÇÃO · ${details}${pendingConferences ? ' · conferência local a revalidar' : ''}` : backendUnavailable ? 'SINCRONIZAÇÃO INDISPONÍVEL' : !navigator.onLine || isOfflineRuntimeForced() || session.offline ? 'OFFLINE — OPERANDO LOCALMENTE' : 'ONLINE — SINCRONIZADO';
+  const syncLabel = count || pendingProgress.length || pendingConferences.length ? `PENDENTE DE SINCRONIZAÇÃO · ${details}${pendingConferences.length ? ' · conferência local a revalidar' : ''}` : backendUnavailable ? 'SINCRONIZAÇÃO INDISPONÍVEL' : !navigator.onLine || isOfflineRuntimeForced() || session.offline ? 'OFFLINE — OPERANDO LOCALMENTE' : 'ONLINE — SINCRONIZADO';
   const isSynced = syncLabel === 'ONLINE — SINCRONIZADO';
   target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
   updateLabelReportSync();
@@ -5398,12 +5399,12 @@ function refreshLivePending() {
   void updateOutboxStatus();
 }
 window.addEventListener('sahmt-write-synced', (event) => {
-  if(event.detail?.uid===session.user?.uid)pendingSyncBanner.confirmed(event.detail.uid);
+  if(event.detail?.uid===session.user?.uid)pendingSyncBanner.confirmed(event.detail.uid, event.detail.requestId);
   refreshLivePending();
   if (event.detail?.type === 'scheduleReleases' && currentRoute() === 'home') void render();
 });
 window.addEventListener('sahmt-write-queued', event => {
-  if(session.status==='signed-in'&&(!event.detail?.uid||event.detail.uid===session.user?.uid))pendingSyncBanner.pending(session.user.uid);
+  if(session.status==='signed-in'&&(!event.detail?.uid||event.detail.uid===session.user?.uid))pendingSyncBanner.pending(session.user.uid, event.detail?.requestId);
   refreshLivePending();
   if (navigator.onLine && session.status === 'signed-in' && !session.offline) void syncOutbox();
 });

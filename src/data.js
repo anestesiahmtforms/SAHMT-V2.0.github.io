@@ -83,7 +83,7 @@ export async function setScheduleSiglaRelease(day, sigla, marked, {groupSiglas =
     const updated = await withOperationalDeadline(() => applyScheduleSiglaRelease(operation, uid));
     await markProvisionalWriteCommitted(uid,'scheduleReleases',scheduleReleaseRequestId(uid,operation),operation);
     await removeQueuedOperation(uid, scheduleReleaseRequestId(uid, operation),{throughOccurredAt:operation.occurredAt});
-    window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, type: 'scheduleReleaseDirect'}}));
+    window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: scheduleReleaseRequestId(uid, operation), type: 'scheduleReleaseDirect'}}));
     return updated;
   } catch (error) {
     if (!mayUseOfflineCache(error)) throw error;
@@ -2434,7 +2434,7 @@ export async function syncPendingTrainingProgress(uid, {trainingId} = {}) {
           completionPointsAwarded: 0, completionPointsPending: completion.pointsPending
         }, {requirePending: false});
       }
-      if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,type:'trainingProgress'}}));
+      if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId:'training:'+item.trainingId,type:'trainingProgress'}}));
     } catch (error) {
       await updateCachedTrainingProgress(uid, item.trainingId, {
         ...(item.completionRequested === true ? {completionRequested: true, syncPending: true} : {}),
@@ -2702,7 +2702,7 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
         await removeQueuedOperation(uid, operation.requestId,operation.type==='scheduleReleases'?{expectedPayload:operation.payload}:undefined);
         synced++;
         void flushOperationalSheetDelivery(uid);
-        window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {requestId: operation.requestId, type: operation.type}}));
+        window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, type: operation.type}}));
       } catch (error) {
         if (!['invalid-outbox-operation','domain-cutover-review'].includes(error.code)) {
           try {

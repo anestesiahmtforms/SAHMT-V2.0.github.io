@@ -2,22 +2,27 @@ export const PENDING_SYNC_MESSAGE='Atenção! Você tem registros pendentes de e
 export const COMPLETED_SYNC_MESSAGE='Tudo certo! Obrigado pela sua paciência';
 
 /** Local status only. A real commit event is required before a success notice. */
-export function createSyncNoticeState(onChange=()=>{}){
- let uid='',hadPending=false,proof=false,state='hidden';
+export function createSyncNoticeState(onChange=()=>{},{pendingGraceMs=5000,setTimeoutFn=setTimeout,clearTimeoutFn=clearTimeout}={}){
+ let uid='',hadPending=false,state='hidden',pendingTimer=null,unsettledCount=0;
+ const pendingIds=new Set(),confirmedIds=new Set();
  const paint=next=>{if(state!==next){state=next;onChange({state,message:state==='pending'?PENDING_SYNC_MESSAGE:state==='complete'?COMPLETED_SYNC_MESSAGE:''});}};
- const select=next=>{if(uid!==next){uid=next||'';hadPending=false;proof=false;paint('hidden');}};
+ const clearPendingTimer=()=>{if(pendingTimer!==null){clearTimeoutFn(pendingTimer);pendingTimer=null;}};
+ const showPendingAfterGrace=()=>{if(pendingTimer!==null)return;if(pendingGraceMs<=0){paint('pending');return;}pendingTimer=setTimeoutFn(()=>{pendingTimer=null;if(hadPending&&(unsettledCount>0||pendingIds.size>0))paint('pending');},pendingGraceMs);};
+ const select=next=>{if(uid!==next){uid=next||'';hadPending=false;unsettledCount=0;pendingIds.clear();confirmedIds.clear();clearPendingTimer();paint('hidden');}};
  return {
-  pending(next){select(next);if(!uid)return;hadPending=true;proof=false;paint('pending');},
-  confirmed(next){if(next&&next===uid&&hadPending)proof=true;},
-  discarded(next){if(next===uid)proof=false;},
-  update({uid:next,pendingCount,unavailable=false}){select(next);if(!uid)return paint('hidden');if(unavailable){if(hadPending)paint('pending');return;}
-   if(pendingCount>0){hadPending=true;proof=false;paint('pending');}
-   else if(hadPending&&proof){hadPending=false;proof=false;paint('complete');}
-   else if(state==='pending'){hadPending=false;proof=false;paint('hidden');}
+  pending(next,requestId=''){select(next);if(!uid)return;if(state==='complete')paint('hidden');hadPending=true;unsettledCount=Math.max(unsettledCount,1);if(requestId){pendingIds.add(requestId);confirmedIds.clear();}showPendingAfterGrace();},
+  confirmed(next,requestId=''){if(next&&next===uid&&requestId&&pendingIds.has(requestId)){pendingIds.delete(requestId);confirmedIds.add(requestId);}},
+  discarded(next,requestId=''){if(next===uid){if(requestId)pendingIds.delete(requestId);else pendingIds.clear();confirmedIds.clear();if(!pendingIds.size){unsettledCount=0;hadPending=false;clearPendingTimer();paint('hidden');}}},
+  update({uid:next,pendingCount,pendingIds:nextPendingIds,unavailable=false}){select(next);if(!uid)return paint('hidden');if(Array.isArray(nextPendingIds)){pendingIds.clear();for(const id of nextPendingIds)if(typeof id==='string'&&id)pendingIds.add(id);}if(unavailable){if(hadPending)paint('pending');return;}
+   unsettledCount=Math.max(0,Number(pendingCount)||0);
+   if(unsettledCount>0||pendingIds.size>0){hadPending=true;showPendingAfterGrace();}
+   else if(hadPending&&confirmedIds.size>0){clearPendingTimer();hadPending=false;unsettledCount=0;pendingIds.clear();confirmedIds.clear();paint('complete');}
+   else if(hadPending){clearPendingTimer();hadPending=false;unsettledCount=0;pendingIds.clear();confirmedIds.clear();paint('hidden');}
+   else if(state==='pending')paint('hidden');
   },
   reset(next=''){select('');select(next);paint('hidden');},
   dismiss(){if(state==='complete')paint('hidden');},
-  snapshot:()=>({uid,state,hadPending})
+  snapshot:()=>({uid,state,hadPending,pendingIds:[...pendingIds],confirmedIds:[...confirmedIds]})
  };
 }
 
