@@ -34,3 +34,8 @@ test('requisições simultâneas são coalescidas e falhas não expõem conteúd
  assert.equal(values[0].status,'rejected');assert.doesNotMatch(String(values[0].reason),/must not escape/);
  await assert.rejects(()=>h.client.bootstrap(user,{day}),/CONTINUITY_BACKOFF/);assert.equal(h.calls,1);
 });
+test('negação remota permanece durante o intervalo de espera e não reabre pelo cache',async()=>{
+ const h=harness(async()=>Response.json({code:'CONTINUITY_ACCESS_DENIED'},{status:403}));
+ await assert.rejects(()=>h.client.bootstrap(user,{day}),/CONTINUITY_ACCESS_DENIED/);
+ await assert.rejects(()=>h.client.bootstrap(user,{day}),/CONTINUITY_ACCESS_DENIED/);assert.equal(h.calls,1);
+});

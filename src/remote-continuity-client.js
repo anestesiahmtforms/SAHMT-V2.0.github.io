@@ -18,7 +18,7 @@ function operationForLocal(op,uid,now){
 }
 export function createRemoteContinuityClient({endpoint='',fetchImpl=fetch,now=Date.now,getCurrentUser=()=>null,online=()=>globalThis.navigator?.onLine!==false,
  cacheProfile,writeCache,listOperations,enqueue,updateOperation,saveReceipt,getAppCheckHeaders=async()=>({}),timeoutMs=8000}={}){
- const flights=new Map(),previous=new Map(),retryAt=new Map();
+ const flights=new Map(),previous=new Map(),retryAt=new Map(),denied=new Set();
  const enabled=validChannelEndpoint(endpoint);
  const isCurrent=(user,check)=>getCurrentUser()?.uid===user.uid&&check();
  async function request(user,body,check){
@@ -73,11 +73,11 @@ export function createRemoteContinuityClient({endpoint='',fetchImpl=fetch,now=Da
   if(!enabled||!online())return null;if(!validId(user?.uid)||typeof user.getIdToken!=='function'||!validDay(day)||!isCurrent(user,check))fail('CONTINUITY_SESSION_CHANGED');
   const key=user.uid+':'+day;
   if(flights.has(key))return flights.get(key);
-  if(now()<(retryAt.get(user.uid)||0))fail('CONTINUITY_BACKOFF');
+  if(now()<(retryAt.get(user.uid)||0))fail(denied.has(user.uid)?'CONTINUITY_ACCESS_DENIED':'CONTINUITY_BACKOFF');
   const cached=previous.get(key);if(!force&&cached&&now()-cached.at<60000&&cached.result.authorizedUntil>now())return cached.result;
   const task=(async()=>{
-   try{const result=await hydrate(user,await request(user,{action:'bootstrap',day},check),day,check);previous.set(key,{at:now(),result});return result;}
-   catch(error){if(error.code!=='CONTINUITY_SESSION_CHANGED')retryAt.set(user.uid,now()+60000);throw error;}
+   try{const result=await hydrate(user,await request(user,{action:'bootstrap',day},check),day,check);denied.delete(user.uid);previous.set(key,{at:now(),result});return result;}
+   catch(error){if(error.code!=='CONTINUITY_SESSION_CHANGED')retryAt.set(user.uid,now()+60000);if(error.code==='CONTINUITY_ACCESS_DENIED'||[401,403].includes(error.httpStatus))denied.add(user.uid);if(denied.has(user.uid))fail('CONTINUITY_ACCESS_DENIED');throw error;}
    finally{flights.delete(key);}
   })();flights.set(key,task);return task;
  }

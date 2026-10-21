@@ -68,14 +68,14 @@ async function showCachedSession(user, onState, isCurrent = () => true) {
     return;
   }
   if (!isCurrent()) return;
-  if (!profile || profile.uid !== user.uid) {
-    if (globalThis.navigator?.onLine !== false) {
+    if (globalThis.navigator?.onLine !== false && profile?.active !== false) {
       try {
         const {recoverRemoteContinuity} = await import('./remote-continuity.js');
         const recovered = await recoverRemoteContinuity(user, {isCurrent});
         if (!isCurrent()) return;
         if (recovered?.profile?.uid === user.uid) {
-          onState({status: 'signed-in', user, profile: profileForPresentation(recovered.profile, user), offline: true, continuity: true});
+          const chosen=profile?.uid===user.uid&&profile.cachedAt>recovered.profileVerifiedAt?profile:recovered.profile;
+          onState({status: 'signed-in', user, profile: profileForPresentation(chosen, user), offline: true, continuity: true});
           return;
         }
       } catch (error) {
@@ -86,6 +86,7 @@ async function showCachedSession(user, onState, isCurrent = () => true) {
         }
       }
     }
+  if (!profile || profile.uid !== user.uid) {
     showAuthLimitedSession(user, onState, false, 'LOCAL_PROFILE_UNAVAILABLE');
     return;
   }
