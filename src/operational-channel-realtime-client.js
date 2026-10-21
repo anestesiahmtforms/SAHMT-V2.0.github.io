@@ -23,7 +23,8 @@ export function createChannelRealtimeClient({endpoint,getUid,requestTicket,creat
     handshakeTimer=setTimer(()=>{if(!live()||connection.readyState===1)return;socket=null;clear();try{connection.close(4000,'Connection timeout');}catch{}onStatus({code:'CHANNEL_REALTIME_FALLBACK'});retry();},10000);
     connection.addEventListener('open',()=>{
      if(!live())return;clearTimer(handshakeTimer);handshakeTimer=null;retryMs=5000;lastPong=now();try{connection.send('ping');}catch{}onStatus({code:'CHANNEL_REALTIME_CONNECTED'});onConnected();
-     const ping=()=>{if(!live())return;if(now()-lastPong>75000){connection.close(4000,'Connection stale');return;}try{connection.send('ping');}catch{}pingTimer=setTimer(ping,30000);};pingTimer=setTimer(ping,30000);
+     // Keep idle sockets cheap on the Workers Free plan. Notifications remain immediate; this heartbeat only detects stale connections and uses the Durable Object's hibernating WebSocket auto-response.
+     const ping=()=>{if(!live())return;if(now()-lastPong>12*60_000){connection.close(4000,'Connection stale');return;}try{connection.send('ping');}catch{}pingTimer=setTimer(ping,5*60_000);};pingTimer=setTimer(ping,5*60_000);
      renewTimer=setTimer(()=>{if(!live())return;socket=null;clear();connection.close(1000,'Renew authorization');void connect();},Math.max(1000,Math.min(15*60000,ticket.authorizedUntil-now()-10000)));
     });
     connection.addEventListener('message',event=>{
