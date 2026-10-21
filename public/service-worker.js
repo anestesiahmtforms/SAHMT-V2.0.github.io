@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v215';
+const CACHE = 'sahmt-v2-shell-v216';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -38,7 +38,7 @@ self.addEventListener('install', (event) => {
     };
     visitEntry(entryKey);
     // Precache adapters required when opening core screens, including the Labels camera binder.
-    // PDF, OCR processing and training materials remain fetched on demand.
+    // PDF and training materials remain fetched on demand.
     const reportEssentials = new Set([
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
       'src/checklist-rotation-listener.js',
@@ -46,7 +46,7 @@ self.addEventListener('install', (event) => {
       'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
       'src/offline-cache.js', 'src/offline-runtime-mode.js', 'src/offline-report-cache.js', 'src/outbox.js',
       'src/offline-outbox-policy.js', 'src/provisional-operational-channel.js',
-      'src/checklist-conference-listener.js', 'src/checklist-responsibility-listener.js'
+      'src/checklist-conference-listener.js', 'src/checklist-responsibility-listener.js', 'src/label-ai.js'
     ]);
     for (const [key, entry] of Object.entries(manifest)) {
       if (reportEssentials.has(entry.src || key) || /\/(?:@firebase\/app-check|firebase\/app-check)\//.test(entry.src || key)) visitEntry(key);
