@@ -259,26 +259,26 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     await more.wait(r => confirmed(r) && !ids(r).includes('another')); elapsed('events:filter-date-exit', eventExit);
   });
 
-  test('Checklist real acompanha dois históricos, exclusão revela antecessor e mês não invade outro período', {timeout: 45000}, async (t) => {
+  test('Checklist diário usa uma única consulta; histórico fica sob demanda e mês não invade outro período', {timeout: 45000}, async (t) => {
     const db = memberDb(), stations = [{id: 'S1', active: true}, {id: 'S2', active: true}];
     const record = (id, stationId, date, condition) => ({id, stationId, date, condition, occurrence: condition === 'NAO' ? 'FALHA FICTÍCIA' : '', createdAt: new Date(`${date}T12:00:00Z`)});
     for (const [id, stationId, date, condition] of [['old-1', 'S1', '2026-09-28', 'SIM'], ['prior-1', 'S1', '2026-09-30', 'NAO'], ['prior-2', 'S2', '2026-09-30', 'NAO']]) await seed('checklists', id, record(id, stationId, date, condition));
-    const h = observer(t, 'checklist-day-two-histories'); const start = performance.now();
+    const h = observer(t, 'checklist-day-single-query'); const start = performance.now();
     h.setStop(checklist.createChecklistReportListener({uid: 'fixture-member', day, stationIds: ['S1', 'S2']}, h.next, h.error, {sdk: h.sdk, db}));
-    await h.wait((r) => r.confirmed); elapsed('checklist:first-all-sources-server', start); assert.equal(h.metrics.subscriptions, 3);
+    await h.wait((r) => r.confirmed); elapsed('checklist:first-daily-query-server', start); assert.equal(h.metrics.subscriptions, 1);
     const resolved = () => checklistDates.resolveChecklistDayRecord(stations[0], h.last().records.find((x) => x.stationId === 'S1'), h.last().priorRecords.find((x) => x.stationId === 'S1'), day, day);
-    assert.equal(resolved().id, 'prior-1'); let time = performance.now(); await seed('checklists', 'current-1', record('current-1', 'S1', day, 'SIM'));
-    await h.wait((r) => r.confirmed && ids(r).includes('current-1')); elapsed('checklist:current-insert', time); assert.equal(resolved().id, 'current-1'); assert.equal(h.metrics.subscriptions, 3);
+    assert.equal(h.last().priorRecords.length, 0); assert.equal(resolved(), null);
+    let time = performance.now(); await seed('checklists', 'current-1', record('current-1', 'S1', day, 'SIM'));
+    await h.wait((r) => r.confirmed && ids(r).includes('current-1')); elapsed('checklist:current-insert', time); assert.equal(resolved().id, 'current-1'); assert.equal(h.metrics.subscriptions, 1);
     await assertFails(sdk.deleteDoc(sdk.doc(db, 'checklists', 'current-1'))); time = performance.now(); await removeFixture('checklists', 'current-1');
-    await h.wait((r) => r.confirmed && ids(r).length === 0); elapsed('checklist:current-delete-fallback', time); assert.equal(resolved().id, 'prior-1');
-    await removeFixture('checklists', 'prior-1'); await h.wait((r) => r.confirmed && r.priorRecords.some((x) => x.id === 'old-1')); assert.equal(resolved(), null);
+    await h.wait((r) => r.confirmed && ids(r).length === 0); elapsed('checklist:current-delete', time); assert.equal(resolved(), null);
     await seed('checklists', 'october', record('october', 'S1', '2026-10-02', 'SIM')); await seed('checklists', 'november', record('november', 'S2', '2026-11-01', 'SIM'));
     const monthly = observer(t, 'checklist-month-isolated'); monthly.setStop(checklist.createChecklistReportListener({uid: 'fixture-member', month, stationIds: ['S1', 'S2']}, monthly.next, monthly.error, {sdk: monthly.sdk, db}));
     await monthly.wait((r) => r.confirmed); assert.deepEqual(ids(monthly.last()), ['october']); assert.equal(h.last().records.length, 0);
     const arsenalIds = ['S1', 'S2', ...Array.from({length: 26}, (_, index) => `empty-${index}`)];
-    const full = observer(t, 'checklist-day-28-histories');
+    const full = observer(t, 'checklist-day-28-stations-single-query');
     full.setStop(checklist.createChecklistReportListener({uid: 'fixture-member', day, stationIds: arsenalIds}, full.next, full.error, {sdk: full.sdk, db}));
-    await full.wait(r => r.confirmed); assert.equal(full.metrics.subscriptions, 29);
+    await full.wait(r => r.confirmed); assert.equal(full.metrics.subscriptions, 1);
     const beforeQueries = performance.now();
     await Promise.all([sdk.getDocs(sdk.query(sdk.collection(db, 'checklists'), sdk.where('date', '==', day), sdk.orderBy('createdAt', 'desc'), sdk.limit(1000))),
       ...arsenalIds.map(stationId => sdk.getDocs(sdk.query(sdk.collection(db, 'checklists'), sdk.where('stationId', '==', stationId), sdk.where('date', '<', day),
@@ -288,7 +288,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     const liveChange = performance.now(); await seed('checklists', 'benchmark-response', record('benchmark-response', 'S2', day, 'SIM'));
     await full.wait(r => r.confirmed && ids(r).includes('benchmark-response')); elapsed('checklist:live-28-histories-single-response', liveChange);
     assert.equal(full.metrics.subscriptions, subscriptionsBeforeUpdate);
-    measures.checklistReloadComparison = {stationCount: 28, legacyQueriesPerRefresh: 29, liveEstablishedSubscriptions: 29,
+    measures.checklistReloadComparison = {stationCount: 28, legacyQueriesPerRefresh: 29, optimizedQueriesPerDailyRefresh: 1, liveEstablishedSubscriptions: 1,
       liveNewSubscriptionsOnResponse: full.metrics.subscriptions - subscriptionsBeforeUpdate, historicalQueriesRepeatedOnResponse: 0,
       liveCallbacksOnResponse: full.metrics.callbacks - callbacksBeforeUpdate, fixtureOnly: true,
       note: 'Contagem de consultas/subscriptions no emulador; não é medição da cobrança em produção.'};
