@@ -18,9 +18,10 @@ function snapshot(values = [], {fromCache = false, pending = false, changes, pen
   return {docs, metadata: {fromCache, hasPendingWrites: pending},
     docChanges: () => changes ?? docs.map((doc) => ({type: 'added', doc}))};
 }
-function harness(input = options) {
+function harness(input = options, {reconcileConfirmedOutbox} = {}) {
   input = {includePriorHistory: true, ...input};
   const subscriptions = [], updates = [], failures = [], cacheWrites = [];
+  const reconciliations = [];
   let unsubscribed = 0;
   const sdk = {
     collection: (_db, name) => ({name}), query: (base, ...constraints) => ({base, constraints}),
@@ -33,9 +34,9 @@ function harness(input = options) {
     }
   };
   const stop = createChecklistReportListener(input, (value) => updates.push(value), (error) => failures.push(error),
-    {sdk, db: {}, writeSafeCache: async (...args) => cacheWrites.push(args)});
+    {sdk, db: {}, writeSafeCache: async (...args) => cacheWrites.push(args), reconcileConfirmedOutbox: reconcileConfirmedOutbox || (async records => reconciliations.push(records))});
   const prior = (id) => subscriptions.find((subscription) => subscription.query.constraints.some((constraint) => constraint.field === 'stationId' && constraint.value === id));
-  return {sdk, subscriptions, updates, failures, cacheWrites, stop, prior, current: subscriptions[0], last: () => updates.at(-1), unsubscribed: () => unsubscribed};
+  return {sdk, subscriptions, updates, failures, cacheWrites, reconciliations, stop, prior, current: subscriptions[0], last: () => updates.at(-1), unsubscribed: () => unsubscribed};
 }
 function confirmEmptyHistory(h) {h.prior('A')?.next(snapshot()); h.prior('B')?.next(snapshot());}
 
@@ -136,6 +137,24 @@ test('reconcilia pendência SDK e confirmação posterior sem duplicar registros
   h.current.next(snapshot([pending], {changes: [{type: 'modified', doc: document(pending)}]}));
   assert.equal(h.last().records.length, 1); assert.equal(h.last().records[0].pendingSync, undefined);
   assert.equal(h.last().confirmed, true); assert.equal(h.last().hasPendingWrites, false);
+  h.stop();
+});
+
+test('listener reconcilia a fila local somente depois de um snapshot completo confirmado pelo servidor', async () => {
+  const h = harness({...options, stationIds: ['A']}); h.prior('A').next(snapshot());
+  const confirmed = {...record('request-fixture'), clientMutationId: 'request-fixture', createdByUid: options.uid};
+  h.current.next(snapshot([confirmed], {fromCache: true}));
+  await flush();
+  assert.equal(h.last().confirmed, false);
+  assert.equal(h.reconciliations.length, 0);
+  h.current.next(snapshot([confirmed]));
+  await flush();
+  assert.equal(h.last().confirmed, true);
+  assert.equal(h.reconciliations.length, 1);
+  assert.equal(h.reconciliations[0][0].clientMutationId, 'request-fixture');
+  h.current.next(snapshot([confirmed], {changes: []}));
+  await flush();
+  assert.equal(h.reconciliations.length, 1);
   h.stop();
 });
 

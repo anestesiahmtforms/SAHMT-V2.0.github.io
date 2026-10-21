@@ -1,3 +1,5 @@
+import {reconcileConfirmedChecklistOutbox} from './checklist-outbox-reconcile.js';
+
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -73,11 +75,12 @@ function changedStations(before, after) {
 }
 
 /** Injectable constructor for contract tests; watchChecklistReport supplies the real SDK. */
-export function createChecklistReportListener(options, onNext, onError, {sdk, db, writeSafeCache} = {}) {
+export function createChecklistReportListener(options, onNext, onError, {sdk, db, writeSafeCache, reconcileConfirmedOutbox} = {}) {
   if (typeof onNext !== 'function') throw new Error('Informe como atualizar o relatório do Checklist.');
   const {scope, current, prior} = buildChecklistReportQueries(options, sdk, db);
   let stopped = false, currentReady = false, currentRecords = [], truncated = false;
   let cacheSequence = 0, writtenCache = '';
+  let reconciliationKey = '', reconciliationInFlight = null;
   const currentKey = Symbol('current');
   const recordsById = new Map();
   const history = new Map();
@@ -110,6 +113,16 @@ export function createChecklistReportListener(options, onNext, onError, {sdk, db
       nextCursor: scope.month && truncated ? {live: true, loadedLimit: scope.loadedLimit, nextLimit: scope.loadedLimit + scope.pageSize} : null,
       error: errors.values().next().value || null};
     onNext(result);
+    if (confirmed && typeof reconcileConfirmedOutbox === 'function') {
+      const key = JSON.stringify(currentRecords.map(record => [record.id, record.clientMutationId, record.createdByUid]).sort((left, right) => String(left[0]).localeCompare(String(right[0]))));
+      if (key !== reconciliationKey && !reconciliationInFlight) {
+        const recordsSnapshot = [...currentRecords];
+        reconciliationInFlight = Promise.resolve().then(() => reconcileConfirmedOutbox(recordsSnapshot))
+          .then(() => { reconciliationKey = key; })
+          .catch(() => { /* A local reconciliation failure keeps the outbox item visible. */ })
+          .finally(() => { reconciliationInFlight = null; });
+      }
+    }
     if (confirmed && writeSafeCache) {
       const cache = {records: currentRecords, priorRecords, stationIds: scope.stationIds, ...(scope.month ? {truncated: false} : {})};
       const fingerprint = JSON.stringify(cache);
@@ -210,8 +223,14 @@ export function createChecklistReportListener(options, onNext, onError, {sdk, db
 
 export async function watchChecklistReport(options, onNext, onError) {
   checklistReportScope(options);
-  const [sdk, {db}, {writeSafeCache}] = await Promise.all([
+  const [sdk, {db}, outbox] = await Promise.all([
     import('firebase/firestore'), import('./firebase.js'), import('./outbox.js')
   ]);
-  return createChecklistReportListener(options, onNext, onError, {sdk, db, writeSafeCache});
+  const reconcileConfirmedOutbox = async records => {
+    const unsettled = await outbox.listUnsettledOperations(options.uid);
+    return reconcileConfirmedChecklistOutbox(records, unsettled, options.uid, outbox.removeQueuedOperation, requestId => {
+      if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced', {detail: {uid: options.uid, requestId, type: 'checklists', reconciled: true}}));
+    });
+  };
+  return createChecklistReportListener(options, onNext, onError, {sdk, db, writeSafeCache: outbox.writeSafeCache, reconcileConfirmedOutbox});
 }
