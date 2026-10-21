@@ -125,11 +125,11 @@ async function queueScheduleSiglaRelease(operation, {uid, currentSiglas = []}) {
   const result = updateScheduleReleaseState(currentSiglas, operation);
   const requestId = scheduleReleaseRequestId(uid, operation);
   if (result.changed) {
-    await prepareProvisionalWrite(uid,'scheduleReleases',requestId,operation);
     await enqueueOperation({
       uid, type: 'scheduleReleases', resourceId: `${operation.day}:${operation.sigla}`, requestId,
       payload: operation, coalesce: true
     });
+    await prepareProvisionalWrite(uid,'scheduleReleases',requestId,operation);
     const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
     const schedule = cached?.data || {id: operation.day, date: operation.day, positions: [], highlights: {siglas: [], events: []}, version: 0};
     const releaseTimes = updateScheduleReleaseTimes(schedule.highlights?.releaseTimes, currentSiglas, result.siglas, operation.occurredAt);
@@ -2453,7 +2453,7 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
   if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue});
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced() && !forceQueue,
-    saveLocal: async () => {await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});},
+    saveLocal: async () => {const result=await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return result;},
     sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
     clearLocal: async () => {await markProvisionalWriteCommitted(uid,collectionName,requestId,{collectionName,data});await removeQueuedOperation(uid,requestId);if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:collectionName}}));}, recoverable: mayUseOfflineCache,
     onFailure: async error => {

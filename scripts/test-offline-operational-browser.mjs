@@ -9,6 +9,7 @@ import {chromium} from 'playwright';
 const root = fileURLToPath(new URL('../', import.meta.url)), base = '/SAHMT-V2.0.github.io/';
 const expireAttestation = process.argv.includes('--expired-app-check');
 const expireProfile = process.argv.includes('--expired-profile');
+const remoteContinuity = process.argv.includes('--remote-continuity');
 const config = await readFile(path.join(root, 'src/firebase-config.js'), 'utf8');
 const apiKey = config.match(/apiKey:\s*['"]([^'"]+)/)?.[1];
 assert.ok(apiKey, 'Configuração Web necessária para a simulação local.');
@@ -35,7 +36,7 @@ if (!existsSync(executablePath)) {
     if (entry.startsWith('chromium-') && existsSync(candidate)) {executablePath = candidate; break;}
   }
 }
-let browser, pageForDebug, stage = 'launch', offline = false;
+let browser, pageForDebug, stage = 'launch', offline = false, remoteSnapshot=null;
 const browserErrors = [];
 try {
   browser = await chromium.launch({executablePath, headless: true});
@@ -45,6 +46,12 @@ try {
     const url = new URL(route.request().url());
     if (url.origin === origin) return route.continue();
     if (offline) return route.abort('internetdisconnected');
+    if (url.hostname === 'continuity.fixture.invalid') {
+      const body=route.request().postDataJSON();
+      if(body.action==='bootstrap') return route.fulfill({json:{code:'CONTINUITY_READY',...remoteSnapshot,operations:[],nextCursor:null}});
+      if(body.action==='list')return route.fulfill({json:{code:'CHANNEL_RECORDS',records:[],own:[],nextCursor:null,authorizedUntil:Date.now()+3600000}});
+      return route.fulfill({status:503,json:{code:'CHANNEL_DISABLED'}});
+    }
     if (url.hostname === 'firebaseappcheck.googleapis.com') return route.fulfill({json: {token: 'synthetic-app-check-token', ttl: '3600s'}});
     if (url.hostname === 'identitytoolkit.googleapis.com') return route.fulfill({json: {users: [{localId: 'offline-browser-fixture', email: 'offline.fixture@example.invalid', emailVerified: true, displayName: 'Pessoa de teste offline', providerUserInfo: [{providerId: 'google.com', rawId: 'offline-browser-fixture', email: 'offline.fixture@example.invalid', displayName: 'Pessoa de teste offline'}], createdAt: '1', lastLoginAt: '1'}]}});
     if (url.hostname === 'firestore.googleapis.com') {firestoreRequests++; return route.fulfill({status: 429, json: {error: {code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Synthetic quota test'}}});}
@@ -100,6 +107,18 @@ try {
   pageForDebug = page;
   page.on('pageerror', error => {errors.push(error.message); browserErrors.push(error.message);});
   stage = 'seed'; await page.goto(origin + base + '__fixture_seed'); await page.evaluate(() => globalThis.__fixtureSeedReady);
+  if(remoteContinuity){
+    remoteSnapshot=await page.evaluate(async()=>{
+      const read=request=>new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+      const db=await read(indexedDB.open('sahmt-v2-local'));
+      const profile=(await read(db.transaction('profiles').objectStore('profiles').getAll()))[0];
+      const entries=(await read(db.transaction('cache').objectStore('cache').getAll())).map(({kind,id,data,cachedAt})=>({kind,id,data,verifiedAt:cachedAt,revision:'synthetic'}));
+      db.close();await read(indexedDB.deleteDatabase('sahmt-v2-local'));
+      for(const name of await caches.keys())await caches.delete(name);
+      return {profile,profileVerifiedAt:profile.cachedAt,authorizedUntil:Date.now()+3600000,entries};
+    });
+    report.scenarios.applicationCacheErasedAuthPreserved='passed';
+  }
   stage = 'online-backend-quota'; await page.goto(origin + base + '#/labels');
   await page.locator('#label-manual-open').waitFor({timeout: 20000});
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), {timeout: 20000});

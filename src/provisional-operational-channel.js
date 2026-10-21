@@ -38,6 +38,9 @@ export async function prepareProvisionalOperation(uid,operation){
   const wire=await provisionalWireOperation(operation);if(!wire)return;
   const existing=(await listChannelReceipts(uid)).find(row=>row.requestId===wire.requestId);
   if(!existing)await updateChannelReceipt(uid,wire.requestId,{collection:wire.collection,day:wire.day,localRequestId:wire.localRequestId,occurredAt:wire.data.occurredAt||null,shared:false,committed:false});
+  // Staged first: an ordinary fast Firestore commit must not remove the queue
+  // before the channel has had its bounded opportunity to preserve it.
+  if(import.meta.env?.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true')await liveClient?.share();
 }
 
 export async function withdrawProvisionalOperation(operation){if(!provisionalChannelEnabled())return;if(!liveClient)throw Error('CHANNEL_NOT_READY');return liveClient.withdraw(operation);}

@@ -87,7 +87,8 @@ async function transactAcross(storeNames, mode, action) {
   });
 }
 
-export async function cacheProfile(uid, profile) {
+export async function cacheProfile(uid, profile, {validatedAt = Date.now()} = {}) {
+  if (!Number.isSafeInteger(validatedAt) || validatedAt <= 0 || validatedAt > Date.now()) throw new Error('Invalid profile timestamp');
   const safeProfile = {
     uid,
     email: profile.email || '',
@@ -98,7 +99,7 @@ export async function cacheProfile(uid, profile) {
     access: profile.access === true,
     role: profile.role || '',
     permissions: profile.permissions && typeof profile.permissions === 'object' ? profile.permissions : {},
-    cachedAt: Date.now()
+    cachedAt: validatedAt
   };
   await transact(PROFILES, 'readwrite', (store) => store.put(safeProfile));
 }
@@ -130,12 +131,23 @@ function stableSerialize(value) {
   return JSON.stringify(value);
 }
 
-export async function writeSafeCache(uid, kind, id, data) {
-  await transact(CACHE, 'readwrite', (store) => store.put({key: cacheKey(uid, kind, id), uid, kind, id, data: structuredClone(data), cachedAt: Date.now()}));
+export async function writeSafeCache(uid, kind, id, data, {validatedAt} = {}) {
+  const cachedAt=validatedAt??Date.now();
+  if(!Number.isSafeInteger(cachedAt)||cachedAt<=0||cachedAt>Date.now())throw new Error('Invalid cache timestamp');
+  const item={key:cacheKey(uid,kind,id),uid,kind,id,data:structuredClone(data),cachedAt};
+  await transactAcross(CACHE,'readwrite',tx=>{
+    const store=tx.objectStore(CACHE);
+    if(validatedAt===undefined){store.put(item);return;}
+    const request=store.get(item.key);
+    request.onsuccess=()=>{if(!request.result||request.result.cachedAt<=cachedAt)store.put(item);};
+  });
 }
 
-export async function readSafeCache(uid, kind, id) {
-  return transact(CACHE, 'readonly', (store) => store.get(cacheKey(uid, kind, id)));
+export async function readSafeCache(uid, kind, id, {localOnly=false} = {}) {
+  const local=await transact(CACHE, 'readonly', (store) => store.get(cacheKey(uid, kind, id)));
+  if(local||localOnly||globalThis.sahmtRemoteContinuityEnabled!==true)return local;
+  try{const {recoverContinuityCache}=await import('./remote-continuity.js');return await recoverContinuityCache(uid,kind,id);}
+  catch{return local;}
 }
 
 export async function pendingTrainingProgressCount(uid) {
@@ -202,13 +214,14 @@ export async function readCachedSchedule(uid, day) {
   return cached?.data ? {...cached.data, stale: true} : null;
 }
 
-export async function enqueueOperation({uid, type, resourceId, payload, requestId = crypto.randomUUID(), coalesce = false}) {
+export async function enqueueOperation({uid, type, resourceId, payload, requestId = crypto.randomUUID(), coalesce = false, createdAt = Date.now()}) {
+  if (!Number.isSafeInteger(createdAt) || createdAt <= 0 || createdAt > Date.now()+60000) throw new Error('Invalid operation timestamp');
   if (!uid || !type || !resourceId) throw new Error('A operação offline precisa de usuário, tipo e ID estável.');
   if (!ALLOWED_OUTBOX_TYPES.has(type)) throw new Error('Esta ação não está habilitada para sincronização offline.');
   if (coalesce && type !== 'scheduleReleases') throw new Error('Somente liberações de escala podem coalescer operações offline.');
   if (type === 'occurrences') validateOccurrenceQueuePayload(payload);
   if (type === 'activities') payload = {...payload, dataProject:payload.dataProject || LOCAL_MANAGEMENT_PROJECT};
-  const item = {schemaVersion: 1, requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt: Date.now(), attempts: 0, status: requiresSendConfirmation(type) ? 'awaiting-confirmation' : 'queued', nextAttemptAt: 0, lastError: ''};
+  const item = {schemaVersion: 1, requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt, attempts: 0, status: requiresSendConfirmation(type) ? 'awaiting-confirmation' : 'queued', nextAttemptAt: 0, lastError: ''};
   const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);
     let outcome = 'pending';

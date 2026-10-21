@@ -2,7 +2,7 @@ import {CHANNEL_COLLECTIONS, CHANNEL_GRANT_MS, parseChannelPolicy, channelActorF
   canReadChannelRecord,canWriteChannel,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {createChannelIdentityVerifier,readChannelJson} from './identity.js';
 import {updateScheduleReleaseState} from '../src/schedule-release.js';
-import {importContinuitySnapshot,bootstrapContinuity,setupContinuityAuthority,continuityAuthorityAction,setupContinuityState,continuityStateAction,recordContinuitySubmission,setContinuityOperationState} from './continuity.js';
+import {importContinuitySnapshot,bootstrapContinuity,setupContinuityAuthority,continuityAuthorityAction,setupContinuityState,continuityStateAction,recordContinuitySubmission,setContinuityOperationState,recordContinuityCommit} from './continuity.js';
 const PREFIX='https://firestore.googleapis.com/v1/projects/sahmt-17a16/databases/(default)/documents/';
 const json=(body,status=200,origin)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
   ...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
@@ -83,7 +83,13 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       if(body.action==='submit') {
         const submission=normalizeChannelSubmission({collection,requestId:body.requestId,data:body.data,createdAt:body.createdAt},actor,now());
         if(submission.record.date!==day)throw channelError('CHANNEL_DATE_INVALID');
-        const response=await internal(stub,'submit',{submission,actor,now:now()});if(response.ok)await recordContinuitySubmission(env,actor,submission);return json(await response.json(),response.status,origin);
+        const response=await internal(stub,'submit',{submission,actor,now:now()}),value=await response.json();
+        if(response.ok){
+          await recordContinuitySubmission(env,actor,submission);
+          for(const prior of value._superseded||[])await setContinuityOperationState(env,prior.uid,prior.requestId,'superseded');
+        }
+        delete value._superseded;
+        return json(value,response.status,origin);
       }
       if(body.action==='list') {
         if(!canReadChannelCollection(collection,actor))throw channelError('CHANNEL_READ_DENIED',403);
@@ -103,6 +109,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
         fields.id===body.requestId&&fields.clientMutationId===body.requestId&&fields.createdByUid===actor.uid&&
         Object.entries(pending.data).filter(([key])=>!['createdByName','updatedByName'].includes(key)).every(([key,value])=>canonical(fields[key])===canonical(value));
       if(!matches)return json({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
+      await recordContinuityCommit(env,collection,day,fields,now());
       const response=await internal(stub,'ack',{actor,requestId:body.requestId,now:now()});if(response.ok)await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');return json(await response.json(),response.status,origin);
     }catch(error){return json({code:/^(?:CHANNEL|CONTINUITY)_[A-Z_]+$/.test(error.code||'')?error.code:'CHANNEL_UNAVAILABLE'},error.status||503,origin);}
   }};
@@ -136,6 +143,10 @@ export class OperationalChannelState {
     if(request.method!=='POST'||new URL(request.url).origin!=='https://channel.internal')return json({code:'CHANNEL_INTERNAL_DENIED'},403);
     try{
       const path=new URL(request.url).pathname,body=await readChannelJson(request,path.startsWith('/continuity-')?524288:49152),actor=body.actor;
+      if(path==='/continuity-record-state'){
+        if(!validId(body.uid)||!validId(body.requestId)||!['confirmed','conflict'].includes(body.state))throw channelError('CONTINUITY_OPERATION_INVALID');
+        this.sql.exec('UPDATE channel_records SET state=? WHERE id=? AND owner=?',body.state,body.requestId,body.uid);return json({code:'CONTINUITY_RECORD_UPDATED'});
+      }
       const continuity=continuityStateAction(this.sql,path,body);if(continuity)return continuity;
       if(!validId(actor?.uid)||!Number.isSafeInteger(body.now)||!actor.active||!actor.access||actor.expiresAt<=body.now)throw channelError('CHANNEL_INTERNAL_INVALID');
       return this.storage.transactionSync(()=>{
@@ -148,16 +159,18 @@ export class OperationalChannelState {
           if(!s||!validId(s.requestId)||s.record.createdByUid!==actor.uid||!canWriteChannel(s.collection,actor))throw channelError('CHANNEL_WRITE_DENIED',403);
           const existing=this.sql.exec('SELECT content,state FROM channel_records WHERE id=?',s.requestId).toArray()[0];
           if(existing){const row=JSON.parse(existing.content),same=canonical(row.data)===canonical(s.data)&&row.record.createdByUid===actor.uid;
-            return json({code:same?'CHANNEL_ALREADY_SHARED':'CHANNEL_ID_CONFLICT',state:existing.state,requestId:s.requestId},same?200:409);}
+            return json({code:same?'CHANNEL_ALREADY_SHARED':'CHANNEL_ID_CONFLICT',state:existing.state,requestId:s.requestId,_superseded:row.superseded||[]},same?200:409);}
           const {count}=this.sql.exec('SELECT COUNT(*) AS count FROM channel_records').one();if(count>=2000)return json({code:'CHANNEL_CAPACITY_REACHED'},507);
           const releaseKey=s.collection==='scheduleReleases'?s.data.sigla:null;
+          let superseded=[];
           if(releaseKey){
             const latest=this.sql.exec("SELECT content FROM channel_records WHERE release_key=? ORDER BY seq DESC LIMIT 1",releaseKey).toArray()[0];
             if(latest){const prior=JSON.parse(latest.content);if(prior.record.createdByUid===actor.uid&&prior.data.occurredAt>s.data.occurredAt)return json({code:'CHANNEL_STALE_RELEASE'},409);}
+            superseded=this.sql.exec("SELECT id,owner FROM channel_records WHERE release_key=? AND state='pending'",releaseKey).toArray().map(row=>({uid:row.owner,requestId:row.id}));
             this.sql.exec("UPDATE channel_records SET state='superseded' WHERE release_key=? AND state='pending'",releaseKey);
           }
-          this.sql.exec('INSERT INTO channel_records(id,owner,collection,receipt_at,content,state,release_key) VALUES(?,?,?,?,?,?,?)',s.requestId,actor.uid,s.collection,body.now,JSON.stringify(s),'pending',releaseKey);
-          return json({code:'CHANNEL_SHARED',requestId:s.requestId,state:'pending',provisional:true});
+          this.sql.exec('INSERT INTO channel_records(id,owner,collection,receipt_at,content,state,release_key) VALUES(?,?,?,?,?,?,?)',s.requestId,actor.uid,s.collection,body.now,JSON.stringify({...s,superseded}),'pending',releaseKey);
+          return json({code:'CHANNEL_SHARED',requestId:s.requestId,state:'pending',provisional:true,_superseded:superseded});
         }
         if(path==='/list'){
           const cursor=body.cursor;if(cursor&&(!Number.isSafeInteger(cursor.before)||!Number.isSafeInteger(cursor.ceiling)||cursor.before<1||cursor.ceiling<1))throw channelError('CHANNEL_CURSOR_INVALID');

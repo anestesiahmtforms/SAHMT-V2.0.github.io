@@ -89,6 +89,7 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
           if(!['CHANNEL_SHARED','CHANNEL_ALREADY_SHARED'].includes(result.code))throw Error('CHANNEL_RESPONSE_INVALID');
           if(!current(uid,generation))return;
           receipt=await store.update(uid,wire.requestId,{shared:true,state:result.state||'pending'});
+          eventTarget.dispatchEvent(new CustomEvent('sahmt-continuity-stored',{detail:{uid,requestId:operation.requestId}}));
           if(receipt.committed)void acknowledge();
           status('CHANNEL_SHARED');emit(wire.collection,wire.day);
         });

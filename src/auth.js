@@ -69,6 +69,23 @@ async function showCachedSession(user, onState, isCurrent = () => true) {
   }
   if (!isCurrent()) return;
   if (!profile || profile.uid !== user.uid) {
+    if (globalThis.navigator?.onLine !== false) {
+      try {
+        const {recoverRemoteContinuity} = await import('./remote-continuity.js');
+        const recovered = await recoverRemoteContinuity(user, {isCurrent});
+        if (!isCurrent()) return;
+        if (recovered?.profile?.uid === user.uid) {
+          onState({status: 'signed-in', user, profile: profileForPresentation(recovered.profile, user), offline: true, continuity: true});
+          return;
+        }
+      } catch (error) {
+        if (!isCurrent()) return;
+        if (error?.code === 'CONTINUITY_ACCESS_DENIED') {
+          showAuthLimitedSession(user, onState, false, 'CONTINUITY_ACCESS_DENIED');
+          return;
+        }
+      }
+    }
     showAuthLimitedSession(user, onState, false, 'LOCAL_PROFILE_UNAVAILABLE');
     return;
   }
@@ -130,6 +147,9 @@ export function watchSession(onState) {
       if (currentGeneration !== generation || disposed) return;
       if (cached?.uid === user.uid && cached.active === true && cached.access === true) {
         onState({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true});
+      } else if (!cached) {
+        await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
+        if (currentGeneration !== generation || disposed) return;
       }
       await onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
     } catch (error) {
