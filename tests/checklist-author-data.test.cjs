@@ -51,11 +51,35 @@ test('autoria legada conserva a recusa do servidor em vez de usar leitura privil
   assert.equal(h.reads.length, 1);
 });
 
-function recordsHarness({pending = [], stored = [], offline = false} = {}) {
+function recordsHarness({pending = [], stored = [], offline = false, confirmedIds = []} = {}) {
   const uidReads = [];
+  const removed = [];
   const pendingBefore = structuredClone(pending);
   const context = {
     db: {}, Date, navigator: {onLine: !offline},
+    confirmedChecklistOutboxRequestIds: (records, operations, uid) => {
+      assert.equal(uid, 'partition-fixture');
+      assert.ok(Array.isArray(records));
+      assert.equal(operations, pending);
+      return confirmedIds;
+    },
+    reconcileChecklistOutboxSnapshot: async (records, operations, uid, remove, onCommitted) => {
+      const reconciled = new Set();
+      for (const requestId of confirmedIds) {
+        if (await remove(uid, requestId)) { reconciled.add(requestId); onCommitted(requestId); }
+      }
+      return reconciled;
+    },
+    reconcileConfirmedChecklistOutbox: (uid, records, operations) => context.reconcileChecklistOutboxSnapshot(records, operations, uid, context.removeQueuedOperation, () => {}),
+    removeQueuedOperation: async (uid, requestId) => {
+      removed.push({uid, requestId});
+      const index = pending.findIndex(item => item.uid === uid && item.requestId === requestId);
+      if (index < 0) return false;
+      pending.splice(index, 1);
+      return true;
+    },
+    CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
+    dispatchEvent: () => true,
     isOfflineRuntimeForced: () => false,
     collection: () => ({}), query: () => ({}), where: () => ({}), orderBy: () => ({}), limit: () => ({}),
     getDocsFromServer: async () => {
@@ -71,7 +95,7 @@ function recordsHarness({pending = [], stored = [], offline = false} = {}) {
   };
   vm.runInNewContext(extract('listChecklistRecords'), context);
   vm.runInNewContext(extract('listMonthlyChecklistRecords'), context);
-  return {context, uidReads, pendingBefore};
+  return {context, uidReads, pendingBefore, removed, pending};
 }
 
 const pendingOperations = () => [
@@ -115,4 +139,31 @@ test('registro confirmado prevalece sobre pendente com o mesmo ID e conserva o a
   assert.equal(confirmed[0].createdByName, 'Autor no Servidor');
   assert.equal(Object.hasOwn(confirmed[0], 'pendingSync'), false);
   assert.deepEqual(pending, h.pendingBefore);
+});
+
+test('snapshot remoto confirmado remove a operação local e não deixa banner/duplicata pendente', async () => {
+  const requestId = 'confirmed-checklist-fixture';
+  const data = {date: '2026-10-01', stationId: 'station-fixture', condition: 'SIM', createdByUid: 'partition-fixture'};
+  const pending = [{uid: 'partition-fixture', type: 'checklists', requestId, status: 'awaiting-confirmation', createdAt: 1000, payload: {collectionName: 'checklists', data}}];
+  const stored = [{id: requestId, ...data, clientMutationId: requestId, createdByUid: 'partition-fixture', createdAt: new Date(1000)}];
+  const h = recordsHarness({pending, stored, confirmedIds: [requestId]});
+  const result = await h.context.listChecklistRecords('2026-10-01', 'partition-fixture');
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].id, requestId);
+  assert.equal(result.records[0].pendingSync, undefined);
+  assert.deepEqual(h.removed, [{uid: 'partition-fixture', requestId}]);
+  assert.deepEqual(h.pending, []);
+});
+
+test('snapshot em cache/offline não remove a operação local pendente', async () => {
+  const requestId = 'confirmed-checklist-fixture';
+  const data = {date: '2026-10-01', stationId: 'station-fixture', condition: 'SIM'};
+  const pending = [{uid: 'partition-fixture', type: 'checklists', requestId, status: 'awaiting-confirmation', createdAt: 1000, payload: {collectionName: 'checklists', data}}];
+  const stored = [{id: requestId, ...data, clientMutationId: requestId, createdByUid: 'partition-fixture', createdAt: new Date(1000)}];
+  const h = recordsHarness({pending, stored, offline: true, confirmedIds: [requestId]});
+  const result = await h.context.listChecklistRecords('2026-10-01', 'partition-fixture');
+  assert.equal(result.records.length, 1);
+  assert.equal(result.stale, true);
+  assert.deepEqual(h.removed, []);
+  assert.equal(h.pending.length, 1);
 });

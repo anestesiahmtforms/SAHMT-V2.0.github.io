@@ -23,6 +23,7 @@ import {isFirestoreCacheFallbackError, readThroughSafeCache} from './offline-cac
 import {isOfflineRuntimeForced} from './offline-runtime-mode.js';
 import {persistOperationalMutation, withOperationalDeadline} from './offline-mutation.js';
 import {operationalBackend} from './operational-backend.js';
+import {reconcileConfirmedChecklistOutbox as reconcileChecklistOutboxSnapshot} from './checklist-outbox-reconcile.js';
 
 async function prepareProvisionalWrite(uid,type,requestId,payload) {
   if (!import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) return;
@@ -2040,7 +2041,8 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
   }
   if (uid) {
     const unsettled = await listUnsettledOperations(uid);
-    const pending = unsettled
+    const reconciled = stale ? new Set() : await reconcileConfirmedChecklistOutbox(uid, records, unsettled);
+    const pending = unsettled.filter(item => !reconciled.has(item.requestId))
       .filter((item) => item.payload?.collectionName === 'checklists' && item.payload.data?.date === day)
       .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: ['queued', 'awaiting-confirmation'].includes(item.status), awaitingConfirmation: item.status === 'awaiting-confirmation', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
     const seen = new Set(records.map((item) => item.id));
@@ -2105,7 +2107,8 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
   }
   if (uid) {
     const unsettled = await listUnsettledOperations(uid);
-    const pending = unsettled
+    const reconciled = stale ? new Set() : await reconcileConfirmedChecklistOutbox(uid, records, unsettled);
+    const pending = unsettled.filter(item => !reconciled.has(item.requestId))
       .filter((item) => item.payload?.collectionName === 'checklists' && item.payload.data?.date >= from && item.payload.data?.date <= to)
       .map((item) => ({id: item.requestId, ...item.payload.data, createdByUid: uid, createdAt: new Date(item.createdAt), pendingSync: ['queued', 'awaiting-confirmation'].includes(item.status), awaitingConfirmation: item.status === 'awaiting-confirmation', syncFailed: item.status === 'failed', syncError: item.lastError || ''}));
     const seen = new Set(records.map((item) => item.id));
@@ -2115,6 +2118,12 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
     records: records.sort((a, b) => a.date.localeCompare(b.date) || dateSortValue(b.createdAt) - dateSortValue(a.createdAt)),
     priorRecords, stale, truncated, historyIncomplete
   };
+}
+
+async function reconcileConfirmedChecklistOutbox(uid, serverRecords, unsettled) {
+  return reconcileChecklistOutboxSnapshot(serverRecords, unsettled, uid, removeQueuedOperation, requestId => {
+    if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId, type: 'checklists', reconciled: true}}));
+  });
 }
 
 function checklistSignatureRequestId(day, revision, uid) {
