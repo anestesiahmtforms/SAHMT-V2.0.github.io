@@ -19,6 +19,7 @@ function snapshot(values = [], {fromCache = false, pending = false, changes, pen
     docChanges: () => changes ?? docs.map((doc) => ({type: 'added', doc}))};
 }
 function harness(input = options) {
+  input = {includePriorHistory: true, ...input};
   const subscriptions = [], updates = [], failures = [], cacheWrites = [];
   let unsubscribed = 0;
   const sdk = {
@@ -38,8 +39,11 @@ function harness(input = options) {
 }
 function confirmEmptyHistory(h) {h.prior('A')?.next(snapshot()); h.prior('B')?.next(snapshot());}
 
-test('queries limitadas usam os índices atuais, N+1 no período e um antecessor por arsenal', () => {
-  const h = harness({...options, stationIds: ['A', 'B', 'A'], pageSize: 10});
+test('relatório diário não consulta histórico de cada arsenal; histórico pode ser optado em testes e mensal', () => {
+  const daily = harness({...options, stationIds: ['A', 'B', 'A'], pageSize: 10, includePriorHistory: false});
+  assert.equal(daily.subscriptions.length, 1);
+  daily.stop();
+  const h = harness({...options, stationIds: ['A', 'B', 'A'], pageSize: 10, includePriorHistory: true});
   assert.equal(h.subscriptions.length, 3);
   assert.deepEqual(h.current.query.constraints, [
     {type: 'where', field: 'date', operator: '==', value: day},
@@ -273,7 +277,7 @@ test('limites de janela inválidos não criam queries, diário permanece até mi
 
 test('cache vazio inicial do SDK preserva dia e antecessores offline até a primeira confirmação real', () => {
   const current = record('cached-day'), previous = record('cached-prior', 'A', 'NAO', '2026-09-30');
-  const h = harness({...options, stationIds: ['A'], initial: {records: [current], priorRecords: [previous]}});
+  const h = harness({uid: options.uid, month: '2026-10', stationIds: ['A'], initial: {records: [current], priorRecords: [previous]}});
   h.current.next(snapshot([], {fromCache: true})); h.prior('A').next(snapshot([], {fromCache: true}));
   assert.deepEqual(h.last().records.map(item => item.id), ['cached-day']);
   assert.deepEqual(h.last().priorRecords.map(item => item.id), ['cached-prior']);
@@ -285,7 +289,7 @@ test('cache vazio inicial do SDK preserva dia e antecessores offline até a prim
 });
 
 test('snapshot vazio com escrita pendente não apaga a base segura antes de confirmação', () => {
-  const h = harness({...options, stationIds: ['A'], initial: {records: [record('cached')], priorRecords: [record('prior', 'A', 'NAO', '2026-09-30')]}});
+  const h = harness({uid: options.uid, month: '2026-10', stationIds: ['A'], initial: {records: [record('cached')], priorRecords: [record('prior', 'A', 'NAO', '2026-09-30')]}});
   h.current.next(snapshot([], {pending: true})); h.prior('A').next(snapshot([], {pending: true}));
   assert.equal(h.last().records[0].id, 'cached'); assert.equal(h.last().priorRecords[0].id, 'prior'); assert.equal(h.last().hasPendingWrites, true);
   h.current.next(snapshot()); h.prior('A').next(snapshot());
@@ -305,7 +309,7 @@ test('cache SDK parcial mantém todos os IDs da base segura até confirmação a
 
 test('cache SDK histórico mais antigo não perde NÃO recente; servidor pode revelar antecessor após exclusão', () => {
   const safeFailure = record('safe-NAO', 'A', 'NAO', '2026-09-30', 30), oldOkay = record('older-SIM', 'A', 'SIM', '2026-09-28', 28);
-  const h = harness({...options, stationIds: ['A'], initial: {records: [], priorRecords: [safeFailure]}});
+  const h = harness({uid: options.uid, month: '2026-10', stationIds: ['A'], initial: {records: [], priorRecords: [safeFailure]}});
   h.current.next(snapshot([], {fromCache: true})); h.prior('A').next(snapshot([oldOkay], {fromCache: true}));
   assert.equal(h.last().priorRecords[0].id, 'safe-NAO');
   assert.equal(resolveChecklistDayRecord({id:'A',active:true}, null, h.last().priorRecords[0], day, day).condition, 'NAO');

@@ -1,9 +1,10 @@
 import {notificationReference, mergeNotificationDomains} from './notification-domain.js';
 import {managementDataProject, managementDataGeneration, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
+import {buildChecklistQrLookup, buildChecklistStationDayLookup} from './checklist-static.js';
 import {normalizeChecklistStationTitle} from './checklist-display.js';
 import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
-import {and, collection, doc, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
+import {and, collection, doc, documentId, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {db, db as identityDb} from './firebase.js';
 import {claimQueuedOperationForSend, requiresSendConfirmation, enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readFreshSafeCache, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
@@ -1700,6 +1701,43 @@ export async function listChecklistStations({pageSize = 200, uid} = {}) {
     const stations = result.docs.map((item) => ({id: item.id, ...item.data()}));
     return stations;
   }});
+}
+
+export async function getChecklistStationByQr(qrValue) {
+  const lookup = buildChecklistQrLookup(qrValue, {collection, query, where, limit, or, documentId}, db);
+  const result = await getDocsFromServer(lookup);
+  if (result.docs.length !== 1) return null;
+  const document = result.docs[0];
+  return {...document.data(), id: document.id};
+}
+
+export async function getLatestChecklistRecordForStation(stationId, day, {uid} = {}) {
+  const lookup = buildChecklistStationDayLookup(stationId, day, {collection, query, where, orderBy, limit}, db);
+  try {
+    const result = await getDocsFromServer(lookup);
+    if (!result.docs.length) return null;
+    const document = result.docs[0];
+    return {...document.data(), id: document.id};
+  } catch (error) {
+    if (!mayUseOfflineCache(error) || !uid) throw error;
+    const [cached, unsettled] = await Promise.all([
+      readSafeCache(uid, 'checklists', day).catch(() => null),
+      listUnsettledOperations(uid).catch(() => [])
+    ]);
+    const cacheValue = cached?.data || cached?.value || cached;
+    const cachedRecords = Array.isArray(cacheValue) ? cacheValue : [
+      ...(cacheValue?.records || []), ...(cacheValue?.priorRecords || [])
+    ];
+    const queuedRecords = unsettled.filter(item => item.payload?.collectionName === 'checklists' &&
+      item.payload.data?.stationId === stationId && item.payload.data?.date <= day)
+      .map(item => ({...item.payload.data, id: item.requestId, pendingSync: true, pendingFirestore: true,
+        createdAt: new Date(item.createdAt)}));
+    const latest = [...cachedRecords.filter(item => item?.stationId === stationId && item.date <= day), ...queuedRecords]
+      .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')) ||
+        (right.createdAt?.toMillis?.() || new Date(right.createdAt || 0).getTime()) -
+        (left.createdAt?.toMillis?.() || new Date(left.createdAt || 0).getTime()))[0];
+    return latest ? {...latest, stale: true} : null;
+  }
 }
 
 export async function listTrainingCatalogForAdmin({pageSize = 100} = {}) {
