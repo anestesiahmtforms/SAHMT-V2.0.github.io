@@ -2513,7 +2513,7 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
   return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced() && !forceQueue,
     saveLocal: async () => {const result=await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return result;},
     sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
-    clearLocal: async () => {await markProvisionalWriteCommitted(uid,collectionName,requestId,{collectionName,data});await removeQueuedOperation(uid,requestId);if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:collectionName}}));}, recoverable: mayUseOfflineCache,
+    clearLocal: async () => {await markProvisionalWriteCommitted(uid,collectionName,requestId,{collectionName,data});await removeQueuedOperation(uid,requestId,{committed:true});if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:collectionName}}));}, recoverable: mayUseOfflineCache,
     onFailure: async error => {
       operationalBackend.noteFailure(error, collectionName);
       if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'O servidor recusou este registro. Revise a operação antes de reenviar.'});
@@ -2708,7 +2708,7 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
         }
         await markProvisionalWriteCommitted(uid,operation.type,operation.requestId,operation.payload);
         await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
-        await removeQueuedOperation(uid, operation.requestId,operation.type==='scheduleReleases'?{expectedPayload:operation.payload}:undefined);
+        await removeQueuedOperation(uid, operation.requestId,operation.type==='scheduleReleases'?{expectedPayload:operation.payload}:{committed:true});
         synced++;
         void flushOperationalSheetDelivery(uid);
         window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, type: operation.type}}));
@@ -2722,7 +2722,7 @@ export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
             if (committed) {
               await markProvisionalWriteCommitted(uid,operation.type,operation.requestId,operation.payload);
               await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
-              await removeQueuedOperation(uid, operation.requestId);
+              await removeQueuedOperation(uid, operation.requestId,{committed:true});
               synced++;
               void flushOperationalSheetDelivery(uid);
               window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, replay: true}}));

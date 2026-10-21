@@ -131,6 +131,18 @@ function stableSerialize(value) {
   return JSON.stringify(value);
 }
 
+const COMMIT_PROOF_TYPES = new Set(['events', 'labels', 'checklists']);
+const COMMIT_PROOF_MAX_AGE_MS = 30 * 86400000;
+async function payloadHash(payload) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stableSerialize(payload)));
+  return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+export async function hasCommittedOperation(uid, requestId, payload) {
+  if (!uid || !requestId) return false;
+  const proof = await transact(CACHE, 'readonly', store => store.get(cacheKey(uid, 'operationCommits', requestId)));
+  return Boolean(proof && proof.uid === uid && Date.now() - proof.cachedAt <= COMMIT_PROOF_MAX_AGE_MS && proof.data.payloadHash === await payloadHash(payload));
+}
+
 export async function writeSafeCache(uid, kind, id, data, {validatedAt} = {}) {
   const cachedAt=validatedAt??Date.now();
   if(!Number.isSafeInteger(cachedAt)||cachedAt<=0||cachedAt>Date.now())throw new Error('Invalid cache timestamp');
@@ -222,51 +234,61 @@ export async function enqueueOperation({uid, type, resourceId, payload, requestI
   if (type === 'occurrences') validateOccurrenceQueuePayload(payload);
   if (type === 'activities') payload = {...payload, dataProject:payload.dataProject || LOCAL_MANAGEMENT_PROJECT};
   const item = {schemaVersion: 1, requestId, uid, type, resourceId, payload: structuredClone(payload), createdAt, attempts: 0, status: requiresSendConfirmation(type) ? 'awaiting-confirmation' : 'queued', nextAttemptAt: 0, lastError: ''};
-  const result = await transactAcross(OUTBOX, 'readwrite', (tx) => {
+  const hash = COMMIT_PROOF_TYPES.has(type) ? await payloadHash(item.payload) : null;
+  const result = await transactAcross([OUTBOX, CACHE], 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);
     let outcome = 'pending';
     let status = 'queued';
-    const request = store.get(requestId);
-    request.onsuccess = () => {
-      const existing = request.result;
-      if (!existing) {
-        if (type !== 'occurrences') {
-          store.add(item);
-          outcome = 'created';
-          return;
-        }
-        const userOperations = store.index('uid').getAll(uid);
-        userOperations.onsuccess = () => {
-          const unresolved = (userOperations.result || []).filter(operation => operation.type === 'occurrences'
-            && ['queued', 'failed', 'conflict'].includes(operation.status));
-          if (unresolved.length >= MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID) {
-            outcome = 'queue-full';
-            status = 'failed';
+    const proofRequest = tx.objectStore(CACHE).get(cacheKey(uid, 'operationCommits', requestId));
+    proofRequest.onsuccess = () => {
+      const proof = proofRequest.result;
+      if (hash && proof && Date.now() - proof.cachedAt <= COMMIT_PROOF_MAX_AGE_MS) {
+        outcome = proof.data.payloadHash === hash && proof.data.type === type && proof.data.resourceId === resourceId ? 'committed' : 'payload-conflict';
+        status = 'committed';
+        return;
+      }
+      const request = store.get(requestId);
+      request.onsuccess = () => {
+        const existing = request.result;
+        if (!existing) {
+          if (type !== 'occurrences') {
+            store.add(item);
+            outcome = 'created';
             return;
           }
-          store.add(item);
-          outcome = 'created';
-        };
-        return;
-      }
-      if (existing.uid !== uid || existing.type !== type || existing.resourceId !== resourceId) {
-        outcome = 'id-collision';
+          const userOperations = store.index('uid').getAll(uid);
+          userOperations.onsuccess = () => {
+            const unresolved = (userOperations.result || []).filter(operation => operation.type === 'occurrences'
+              && ['queued', 'failed', 'conflict'].includes(operation.status));
+            if (unresolved.length >= MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID) {
+              outcome = 'queue-full';
+              status = 'failed';
+              return;
+            }
+            store.add(item);
+            outcome = 'created';
+          };
+          return;
+        }
+        if (existing.uid !== uid || existing.type !== type || existing.resourceId !== resourceId) {
+          outcome = 'id-collision';
+          status = existing.status;
+          return;
+        }
+        if (coalesce) {
+          store.put({...existing, payload: item.payload, status: 'queued', attempts: 0, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
+          outcome = 'coalesced';
+          status = 'queued';
+          return;
+        }
+        if (stableSerialize(existing.payload) !== stableSerialize(item.payload)) {
+          outcome = 'payload-conflict';
+          status = existing.status;
+          return;
+        }
+        outcome = 'existing';
         status = existing.status;
-        return;
-      }
-      if (coalesce) {
-        store.put({...existing, payload: item.payload, status: 'queued', attempts: 0, nextAttemptAt: 0, lastError: '', lastErrorCode: ''});
-        outcome = 'coalesced';
-        status = 'queued';
-        return;
-      }
-      if (stableSerialize(existing.payload) !== stableSerialize(item.payload)) {
-        outcome = 'payload-conflict';
-        status = existing.status;
-        return;
-      }
-      outcome = 'existing';
-      status = existing.status;
+      };
     };
     return () => ({outcome, status});
   });
@@ -398,9 +420,12 @@ export async function claimQueuedOperationForSend(uid, requestId, now = Date.now
   });
 }
 
-export async function removeQueuedOperation(uid, requestId, {expectedPayload,throughOccurredAt} = {}) {
+export async function removeQueuedOperation(uid, requestId, {expectedPayload,throughOccurredAt,committed = false} = {}) {
   if (!uid || !requestId) return false;
-  return transactAcross(OUTBOX, 'readwrite', (tx) => {
+  const snapshot = committed ? await transact(OUTBOX, 'readonly', store => store.get(requestId)) : null;
+  if (committed && snapshot?.uid !== uid) return false;
+  const hash = snapshot?.uid === uid && COMMIT_PROOF_TYPES.has(snapshot.type) ? await payloadHash(snapshot.payload) : null;
+  return transactAcross([OUTBOX, CACHE], 'readwrite', (tx) => {
     const store = tx.objectStore(OUTBOX);
     let removed = false;
     const request = store.get(requestId);
@@ -408,6 +433,11 @@ export async function removeQueuedOperation(uid, requestId, {expectedPayload,thr
       if (request.result?.uid !== uid) return;
       if(expectedPayload!==undefined&&JSON.stringify(request.result.payload)!==JSON.stringify(expectedPayload))return;
       if(Number.isFinite(throughOccurredAt)&&request.result.payload?.occurredAt>throughOccurredAt)return;
+      if (hash) {
+        if (stableSerialize(snapshot.payload) !== stableSerialize(request.result.payload)) return;
+        tx.objectStore(CACHE).put({key: cacheKey(uid, 'operationCommits', requestId), uid, kind: 'operationCommits', id: requestId,
+          data: {type: snapshot.type, resourceId: snapshot.resourceId, payloadHash: hash}, cachedAt: Date.now()});
+      }
       store.delete(requestId);
       removed = true;
     };
@@ -496,7 +526,8 @@ export async function clearUserLocalData(uid, {clearOutbox = false} = {}) {
         const cursor = request.result;
         if (!cursor) return;
         const pendingProgress = !clearOutbox && storeName === CACHE && cursor.value.kind === 'trainingProgress' && cursor.value.data?.records?.some(record => record.syncPending);
-        if (!pendingProgress) cursor.delete();
+        const commitProof = !clearOutbox && storeName === CACHE && cursor.value.kind === 'operationCommits' && Date.now() - cursor.value.cachedAt <= COMMIT_PROOF_MAX_AGE_MS;
+        if (!pendingProgress && !commitProof) cursor.delete();
         cursor.continue();
       };
     };
@@ -546,7 +577,7 @@ export async function pruneLocalReadCache(uid, {maxEntries = 240, maxBytes = 8 *
     let removed = 0, remainingEntries = 0, estimatedBytes = 0;
     const store = tx.objectStore(CACHE), request = store.index('uid').getAll(uid);
     request.onsuccess = () => {
-      const protectedEntry = item => item.kind === 'trainingProgress' && item.data?.records?.some(record => record.syncPending);
+      const protectedEntry = item => (item.kind === 'operationCommits' && now - item.cachedAt <= COMMIT_PROOF_MAX_AGE_MS) || (item.kind === 'trainingProgress' && item.data?.records?.some(record => record.syncPending));
       const priority = kind => ['stations', 'appConfig', 'labelStaff', 'eventMembers', 'eventCatalogs'].includes(kind) ? 1 : 0;
       const entries = request.result.sort((a, b) => priority(b.kind) - priority(a.kind) || b.cachedAt - a.cachedAt);
       for (const entry of entries) {

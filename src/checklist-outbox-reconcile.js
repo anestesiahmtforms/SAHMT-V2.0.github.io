@@ -36,7 +36,7 @@ export async function reconcileConfirmedChecklistOutbox(serverRecords, unsettled
   const reconciled = new Set();
   for (const requestId of confirmedChecklistOutboxRequestIds(serverRecords, unsettledOperations, uid)) {
     try {
-      if (!await removeQueuedOperation(uid, requestId)) continue;
+      if (!await removeQueuedOperation(uid, requestId, {committed: true})) continue;
       reconciled.add(requestId);
       onCommitted(requestId);
     } catch { /* Keep the operation visible when local storage cannot remove it. */ }

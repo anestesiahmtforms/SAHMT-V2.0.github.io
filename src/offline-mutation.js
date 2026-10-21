@@ -11,8 +11,12 @@ export async function persistOperationalMutation({id, online, saveLocal, sendRem
   await saveLocal();
   if (!online) return {id, pendingFirestore: true};
   try {
-    const result = await withOperationalDeadline(sendRemote, timeoutMs);
-    if (!result.pendingFirestore) await clearLocal();
+    const result = await withOperationalDeadline(async () => {
+      const committed = await sendRemote();
+      // The SDK commit can finish after the UI deadline. Settle its local copy too.
+      if (!committed.pendingFirestore) await clearLocal();
+      return committed;
+    }, timeoutMs);
     return result;
   } catch (error) {
     await onFailure(error);

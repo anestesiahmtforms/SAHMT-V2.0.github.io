@@ -5,13 +5,21 @@ const now=Date.parse('2026-10-20T15:00:00Z'),day='2026-10-20';
 const user={uid:'member-a',getIdToken:async()=> 'synthetic-token'};
 const profile={uid:user.uid,displayName:'Pessoa sintética',email:'fixture@example.invalid',sigla:'AA',active:true,access:true,role:'temporario',permissions:{checklistRead:true,checklistWrite:true}};
 const result=()=>({code:'CONTINUITY_READY',profile:structuredClone(profile),profileVerifiedAt:now-25*3600000,authorizedUntil:now+3600000,entries:[{kind:'stations',id:'all',data:[{id:'s1',name:'Arsenal',active:true}],verifiedAt:now-3600000,revision:'r1'}],operations:[{uid:user.uid,collection:'checklists',day,requestId:'stable-id',createdAt:now-3600000,data:{date:day,stationId:'s1',condition:'SIM',status:'COMPLETED',occurrence:'',responsibleUid:null,responsibleName:null,responsibleEmail:null}}],nextCursor:null});
-function harness(fetcher=async()=>Response.json(result())){
+function harness(fetcher=async()=>Response.json(result()),options={}){
  const cache=[],profiles=[],operations=[],receipts=[];let current=user,calls=0;
  const client=createRemoteContinuityClient({endpoint:'https://channel.example/v1/operational-channel',now:()=>now,getCurrentUser:()=>current,online:()=>true,fetchImpl:async(...args)=>{calls++;return fetcher(...args);},
   cacheProfile:async(...args)=>profiles.push(args),writeCache:async(...args)=>cache.push(args),listOperations:async()=>operations,
-  enqueue:async operation=>{operations.push(operation);return operation.requestId;},updateOperation:async()=>{},saveReceipt:async(...args)=>receipts.push(args)});
+  enqueue:async operation=>{operations.push(operation);return operation.requestId;},updateOperation:async()=>{},saveReceipt:async(...args)=>receipts.push(args),...options});
  return {client,cache,profiles,operations,receipts,get calls(){return calls;},setUser:value=>{current=value;}};
 }
+
+test('recuperação preserva confirmação local e não reabre checklist pendente',async()=>{
+ const h=harness(undefined,{isCommitted:async()=>true});
+ const value=await h.client.bootstrap(user,{day});
+ assert.equal(value.restored,0);assert.equal(h.operations.length,0);
+ assert.equal(value.confirmed,1);
+ assert.equal(h.receipts[0][2].committed,true);
+});
 test('cache vazio é reconstruído do servidor com a data original e IDs estáveis',async()=>{
  const h=harness();const value=await h.client.bootstrap(user,{day});
  assert.equal(value.profile.uid,user.uid);assert.equal(h.cache[0][1],'stations');

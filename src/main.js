@@ -5106,14 +5106,16 @@ async function updateOutboxStatus() {
   const target = document.querySelector('#outbox-status'),uid=session.user?.uid,sequence=++syncNoticeSequence;
   if (session.status !== 'signed-in'||!uid){pendingSyncBanner.reset();return;}
   if (!target) return;
-  let counts,pendingProgress,retryableFailures,drafts,unsettled;
-  try{[counts,pendingProgress,retryableFailures,drafts,unsettled]=await Promise.all([
-    operationCounts(uid),
+  let pendingProgress,retryableFailures,drafts,unsettled;
+  try{[pendingProgress,retryableFailures,drafts,unsettled]=await Promise.all([
     listPendingTrainingProgress(uid),
     retryableFailedOperationCount(uid), listOperationalDrafts(uid), listUnsettledOperations(uid)
   ]);}catch{if(sequence===syncNoticeSequence&&session.user?.uid===uid)pendingSyncBanner.update({uid,unavailable:true});return;}
   if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
-  const count = counts.queued + counts.awaitingConfirmation + counts.failed + counts.conflict + (counts.sending || 0);
+  // IDs and counts must come from one snapshot; separate reads race a commit.
+  const counts = Object.fromEntries(['queued','failed','conflict','sending'].map(status => [status, unsettled.filter(item => item.status === status).length]));
+  counts.awaitingConfirmation = unsettled.filter(item => item.status === 'awaiting-confirmation').length;
+  const count = unsettled.length;
   const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:'));
   const pendingIds = [...unsettled.map(item => item.requestId), ...pendingProgress.map(item => 'training:' + item.trainingId), ...pendingConferences.map(item => item.id)];
   pendingSyncBanner.update({uid,pendingCount:count+pendingProgress.length+pendingConferences.length,pendingIds});
