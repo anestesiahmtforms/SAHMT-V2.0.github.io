@@ -27,3 +27,8 @@ test('mensagem inválida fecha conexão e não publica dados recebidos',async()=
 test('conexão sem resposta expira e tenta novamente com espera progressiva',async()=>{
  const h=harness();h.client.start();await settle();h.tick(10000);assert.equal(h.sockets[0].readyState,3);h.tick(5000);await settle();assert.equal(h.sockets.length,2);h.client.stop();
 });
+test('mantém heartbeat espaçado para o plano Free sem atrasar avisos',async()=>{
+ const h=harness();h.client.start();await settle();const socket=h.sockets[0];socket.open();
+ assert.equal(socket.sent[0],'ping');assert.ok([...h.timers.values()].some(timer=>timer.ms===300000));
+ socket.message(JSON.stringify({type:'changed',collection:'events',day:'2026-10-20'}));h.tick(250);assert.equal(h.signals.length,1);h.client.stop();
+});
