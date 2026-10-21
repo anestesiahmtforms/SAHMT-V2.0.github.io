@@ -21,6 +21,8 @@ const manifest = {
   'src/performance-ui.js': {src: 'src/performance-ui.js', file: 'assets/performance-ui.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
   'src/evaluation-data.js': {src: 'src/evaluation-data.js', file: 'assets/evaluation-data.js', imports: ['assets/shared.js']},
   'src/label-camera.js': {src: 'src/label-camera.js', file: 'assets/label-camera.js', imports: ['assets/shared.js']},
+  'src/label-ai.js': {src: 'src/label-ai.js', file: 'assets/label-ai.js', imports: ['src/firebase-auth.js']},
+  'src/firebase-auth.js': {src: 'src/firebase-auth.js', file: 'assets/firebase-auth.js', imports: ['assets/shared.js']},
   'optional-pdf': {file: 'assets/report-pdf.js', imports: []},
   'assets/shared.js': {
     file: 'assets/shared.js',
@@ -91,6 +93,10 @@ function createWorker({offline = false, navigationOk = true} = {}) {
   return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
+test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v216');
+});
+
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {
   const worker = createWorker();
   let install;
@@ -105,6 +111,8 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/selo-qga-accredited-qmentum-diamond.png`));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/main.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/label-camera.js'));
+  assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/label-ai.js'));
+  assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/firebase-auth.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/shared.css'));
   assert.equal(worker.skipWaiting(), 1);
 });
