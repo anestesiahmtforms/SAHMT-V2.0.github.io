@@ -5376,6 +5376,7 @@ if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
     globalThis.sahmtProvisionalChannelEnabled = module.provisionalChannelEnabled();
     globalThis.sahmtProjectSharedSchedule = module.projectSharedSchedule;
     globalThis.sahmtRecoverSharedOperations = module.recoverOwnSharedOperations;
+    if(globalThis.sahmtRemoteContinuityEnabled)globalThis.sahmtMirrorConfirmedSource=path=>module.mirrorProvisionalSource(path).catch(()=>false);
     module.initializeProvisionalChannel({getSession:()=>session,reports:liveReports,onStatus:detail=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail})),onSchedule:()=>window.dispatchEvent(new CustomEvent('sahmt-shared-schedule'))});
     window.addEventListener('sahmt-shared-schedule',()=>{
       const dateInput=document.querySelector('#schedule-date')||document.querySelector('#event-schedule-date');

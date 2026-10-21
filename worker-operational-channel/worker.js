@@ -2,7 +2,7 @@ import {CHANNEL_COLLECTIONS, CHANNEL_GRANT_MS, parseChannelPolicy, channelActorF
   canReadChannelRecord,canWriteChannel,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {createChannelIdentityVerifier,readChannelJson} from './identity.js';
 import {updateScheduleReleaseState} from '../src/schedule-release.js';
-import {importContinuitySnapshot,bootstrapContinuity,setupContinuityAuthority,continuityAuthorityAction,setupContinuityState,continuityStateAction,recordContinuitySubmission,setContinuityOperationState,recordContinuityCommit} from './continuity.js';
+import {importContinuitySnapshot,bootstrapContinuity,setupContinuityAuthority,continuityAuthorityAction,setupContinuityState,continuityStateAction,recordContinuitySubmission,setContinuityOperationState,recordContinuityCommit,recordContinuitySourceChange} from './continuity.js';
 const PREFIX='https://firestore.googleapis.com/v1/projects/sahmt-17a16/databases/(default)/documents/';
 const json=(body,status=200,origin)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
   ...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
@@ -42,12 +42,18 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       if(!env.OPERATIONAL_CHANNEL_STATE?.idFromName||!env.OPERATIONAL_CHANNEL_AUTHORIZATION?.idFromName)throw channelError('CHANNEL_BINDING_MISSING',503);
       if(url.pathname==='/v1/operational-continuity/import'){const result=await importContinuitySnapshot(request,env,now());return json(await result.json(),result.status,origin);}
       const body=await readChannelJson(request);
-      if(!body||!['authorize','submit','list','ack','withdraw','status','bootstrap','recover'].includes(body.action))throw channelError('CHANNEL_REQUEST_INVALID');
+      if(!body||!['authorize','submit','list','ack','withdraw','status','bootstrap','recover','source'].includes(body.action))throw channelError('CHANNEL_REQUEST_INVALID');
       const bearer=request.headers.get('Authorization')||'';
       if(!/^Bearer [A-Za-z0-9_.-]{100,16000}$/.test(bearer))throw channelError('CHANNEL_AUTH_INVALID',401);
       const appCheckToken=request.headers.get('X-Firebase-AppCheck');
       if(appCheckToken&&!/^[A-Za-z0-9_.-]{100,16000}$/.test(appCheckToken))throw channelError('CHANNEL_APP_CHECK_INVALID',401);
       const identity=await verifyIdentity(bearer.slice(7),env.FA_FIREBASE_WEB_API_KEY,appCheckToken);
+      if(body.action==='source'){
+        if(env.OPERATIONAL_CONTINUITY_ENABLED!=='true')throw channelError('CONTINUITY_DISABLED',503);
+        if(Object.keys(body).some(key=>!['action','path'].includes(key))||! /^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(body.path||''))throw channelError('CHANNEL_REQUEST_INVALID');
+        const data=await firestore(body.path,bearer,appCheckToken),result=await recordContinuitySourceChange(env,body.path,data,now());
+        return json({code:'CHANNEL_SOURCE_UPDATED'},result.status,origin);
+      }
       if(['bootstrap','recover'].includes(body.action)){
         if(Object.keys(body).some(key=>!['action','day','after'].includes(key)))throw channelError('CHANNEL_REQUEST_INVALID');
         const result=await bootstrapContinuity(env,identity.uid,body.day,now(),{recoverOnly:body.action==='recover',after:body.after});return json(await result.json(),result.status,origin);
@@ -143,6 +149,13 @@ export class OperationalChannelState {
     if(request.method!=='POST'||new URL(request.url).origin!=='https://channel.internal')return json({code:'CHANNEL_INTERNAL_DENIED'},403);
     try{
       const path=new URL(request.url).pathname,body=await readChannelJson(request,path.startsWith('/continuity-')?524288:49152),actor=body.actor;
+      if(path==='/continuity-record-status'||path==='/continuity-claim'){
+        const row=this.sql.exec('SELECT owner,state FROM channel_records WHERE id=?',body.requestId).toArray()[0];
+        if(!row||row.owner!==body.uid)return json({code:'CONTINUITY_OPERATION_MISSING',state:null});
+        if(path==='/continuity-record-status')return json({code:'CONTINUITY_OPERATION_STATUS',state:row.state});
+        if(!['pending','processing'].includes(row.state))return json({code:'CONTINUITY_CLAIM_REFUSED',state:row.state});
+        this.sql.exec("UPDATE channel_records SET state='processing' WHERE id=?",body.requestId);return json({code:'CONTINUITY_CLAIMED',state:'processing'});
+      }
       if(path==='/continuity-record-state'){
         if(!validId(body.uid)||!validId(body.requestId)||!['confirmed','conflict'].includes(body.state))throw channelError('CONTINUITY_OPERATION_INVALID');
         this.sql.exec('UPDATE channel_records SET state=? WHERE id=? AND owner=?',body.state,body.requestId,body.uid);return json({code:'CONTINUITY_RECORD_UPDATED'});
@@ -164,6 +177,7 @@ export class OperationalChannelState {
           const releaseKey=s.collection==='scheduleReleases'?s.data.sigla:null;
           let superseded=[];
           if(releaseKey){
+            if(this.sql.exec("SELECT id FROM channel_records WHERE release_key=? AND state='processing' LIMIT 1",releaseKey).toArray().length)return json({code:'CHANNEL_RECONCILIATION_IN_PROGRESS'},409);
             const latest=this.sql.exec("SELECT content FROM channel_records WHERE release_key=? ORDER BY seq DESC LIMIT 1",releaseKey).toArray()[0];
             if(latest){const prior=JSON.parse(latest.content);if(prior.record.createdByUid===actor.uid&&prior.data.occurredAt>s.data.occurredAt)return json({code:'CHANNEL_STALE_RELEASE'},409);}
             superseded=this.sql.exec("SELECT id,owner FROM channel_records WHERE release_key=? AND state='pending'",releaseKey).toArray().map(row=>({uid:row.owner,requestId:row.id}));
@@ -178,11 +192,12 @@ export class OperationalChannelState {
           const rows=this.sql.exec('SELECT seq,id,content,state FROM channel_records WHERE seq<=? AND seq<? ORDER BY seq DESC LIMIT 41',ceiling,cursor?.before ?? ceiling+1).toArray();
           const page=rows.slice(0,40),last=page.at(-1);
           const decoded=page.map(row=>({...JSON.parse(row.content),state:row.state}));
-          return json({code:'CHANNEL_RECORDS',records:decoded.filter(s=>s.state==='pending'&&canReadChannelRecord(s.collection,s.record,actor)).map(s=>s.record),
+          return json({code:'CHANNEL_RECORDS',records:decoded.filter(s=>['pending','processing'].includes(s.state)&&canReadChannelRecord(s.collection,s.record,actor)).map(s=>s.record),
             own:decoded.filter(s=>s.record.createdByUid===actor.uid).map(s=>({requestId:s.requestId,collection:s.collection,data:s.state==='pending'?s.data:null,state:s.state,receivedAt:s.record.receivedAt})),
             nextCursor:rows.length>40?{before:last.seq,ceiling}:null,provisional:true});
         }
         const row=this.sql.exec('SELECT content,state FROM channel_records WHERE id=?',body.requestId).toArray()[0],value=row?JSON.parse(row.content):null;
+        if(path==='/withdraw'&&row?.state==='processing')return json({code:'CHANNEL_RECONCILIATION_IN_PROGRESS'},409);
         if(path==='/withdraw'&&!value){
           // Tombstone fences a delayed submit whose HTTP response was lost. No record body is retained.
           const {count}=this.sql.exec('SELECT COUNT(*) AS count FROM channel_records').one();if(count>=2000)return json({code:'CHANNEL_CAPACITY_REACHED'},507);

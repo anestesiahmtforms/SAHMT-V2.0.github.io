@@ -4,6 +4,8 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "test:remote-continuity": "node --test tests/remote-continuity*.test.js tests/provisional-channel.test.js tests/provisional-channel-workerd.test.js",
+    "prepare:remote-continuity": "node scripts/prepare-remote-continuity.mjs",
     "audit:fa": "node scripts/audit-fa-runtime.mjs --read-once",
     "check:fa-runtime": "node scripts/check-fa-runtime.mjs",
     "dev": "vite --host 0.0.0.0",

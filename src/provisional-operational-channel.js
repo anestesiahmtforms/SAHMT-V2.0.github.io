@@ -19,6 +19,7 @@ let liveClient;
 export function initializeProvisionalChannel(options){liveClient=createProvisionalChannelClient({...options,getSession:options.getSession});return liveClient.start(options.reports);}
 export const projectSharedSchedule=(schedule,scope)=>liveClient?.projectSchedule(schedule,scope)||schedule;
 export const recoverOwnSharedOperations=(day,collection)=>liveClient?.recover(day,collection)||Promise.resolve({restored:0});
+export const mirrorProvisionalSource=path=>liveClient?.mirrorSource(path)||Promise.resolve(false);
 export async function markProvisionalCommitted(uid,operation){
   if(!provisionalChannelEnabled())return;
   const wire=await provisionalWireOperation(operation);if(!wire)return;

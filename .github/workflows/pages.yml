@@ -40,6 +40,8 @@ jobs:
         run: npm run test:offline-operational
       - name: Run provisional operational channel tests
         run: npm run test:provisional-channel
+      - name: Run remote continuity and reconciliation tests
+        run: npm run test:remote-continuity
       - name: Validate QMENTUM FA local package
         run: node scripts/build-qmentum-backend.mjs && npm run test:qmentum
       - name: Run QMENTUM FA Rules tests
@@ -85,6 +87,7 @@ jobs:
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
           VITE_OPERATIONAL_CHANNEL_ENDPOINT: ${{ vars.VITE_OPERATIONAL_CHANNEL_ENDPOINT }}
+          VITE_OPERATIONAL_CONTINUITY_ENABLED: ${{ vars.VITE_OPERATIONAL_CONTINUITY_ENABLED }}
         run: npm run build
       - name: Verify consolidated FA production dependencies
         run: node scripts/check-fa-runtime.mjs

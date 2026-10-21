@@ -6,12 +6,15 @@ function sincronizarCanalOperacionalRemotoV1() {
   try {
     if(Number(p.getProperty('SAHMT_CONTINUITY_PAUSE_UNTIL')||0)>Date.now())return {code:'CONTINUITY_SYNC_PAUSED'};
     if(p.getProperty('SAHMT_CONTINUITY_SEED_PENDING')==='YES')return ocsSeed_();
+    const sourceReads=ocsFlushSources_();
     const remote=ocsRemote_({schemaVersion:1,action:'drain'});
     if(!remote||remote.code!=='CONTINUITY_DRAIN'||!Array.isArray(remote.operations)||remote.operations.length>20)throw Error('CONTINUITY_DRAIN_INVALID');
-    if(!remote.operations.length)return {code:'CONTINUITY_SYNC_IDLE',firestoreReads:0,firestoreWrites:0};
-    const profiles={},reads={count:0},writes={count:0};let confirmed=0,conflicts=0;
+    if(!remote.operations.length)return {code:'CONTINUITY_SYNC_IDLE',firestoreReads:sourceReads,firestoreWrites:0};
+    const profiles={},reads={count:sourceReads},writes={count:0};let confirmed=0,conflicts=0;
     for(const operation of remote.operations){
       if(!/^[A-Za-z0-9_-]{1,128}$/.test(operation.uid||''))throw Error('CONTINUITY_ID_INVALID');
+      const claim=ocsRemote_({schemaVersion:1,action:'claim',uid:operation.uid,requestId:operation.requestId});
+      if(claim.code!=='CONTINUITY_CLAIMED')continue;
       if(!Object.prototype.hasOwnProperty.call(profiles,operation.uid))profiles[operation.uid]=ocsGet_('users/'+operation.uid,reads);
       const profile=profiles[operation.uid],body=profile&&profile.data;
       const result=SahmtContinuity.reconcileContinuityOperation(operation,body||{}, {
@@ -26,7 +29,10 @@ function sincronizarCanalOperacionalRemotoV1() {
     return {code:'CONTINUITY_SYNC_FINISHED',confirmed:confirmed,conflicts:conflicts,firestoreReads:reads.count,firestoreWrites:writes.count};
   } catch(error) {
     const code=String(error.message||'');
-    if(code==='CONTINUITY_FIRESTORE_429')p.setProperty('SAHMT_CONTINUITY_PAUSE_UNTIL',String(Date.now()+3600000));
+    p.setProperty('SAHMT_CONTINUITY_PAUSE_UNTIL',String(Date.now()+3600000));
+    if(p.getProperty('SAHMT_CONTINUITY_SEED_PENDING')==='YES'&&!/^CONTINUITY_(FIRESTORE_429|FIRESTORE_5\d\d|REMOTE_5\d\d)$/.test(code)){
+      p.setProperty('SAHMT_CONTINUITY_SEED_PENDING','BLOCKED');p.setProperty('SAHMT_CONTINUITY_SEED_ERROR',/^CONTINUITY_/.test(code)?code:'CONTINUITY_SEED_VALIDATION_FAILED');
+    }
     console.log(JSON.stringify({code:/^CONTINUITY_[A-Z_0-9]+$/.test(code)?code:'CONTINUITY_SYNC_UNAVAILABLE'}));
     return {code:/^CONTINUITY_[A-Z_0-9]+$/.test(code)?code:'CONTINUITY_SYNC_UNAVAILABLE'};
   } finally {lock.releaseLock();}
@@ -70,9 +76,46 @@ function ocsCommit_(batch){
   return {update:{name:'projects/sahmt-17a16/databases/(default)/documents/'+write.path,fields:ocsEncode_(write.record).mapValue.fields},currentDocument:write.currentDocument};
  })})});
 }
+/** Called only after an existing successful write; never performs a read. */
+function ocsMirrorCommitted_(url,options,decoded){
+ if(PropertiesService.getScriptProperties().getProperty('SAHMT_CONTINUITY_SYNC_ENABLED')!=='YES')return;
+ if(!/^(post|patch|put|delete)$/i.test(String(options&&options.method||'')))return;
+ const prefix='projects/sahmt-17a16/databases/(default)/documents/';
+ const publish=function(document){
+  if(!document||!document.name||document.name.indexOf(prefix)!==0||!document.fields)return;
+  const path=document.name.slice(prefix.length);
+  if(!/^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(path))return;
+  ocsRemote_({schemaVersion:1,action:'source-change',path:path,data:ocsDecode_(document.fields)});
+ };
+ try {
+  if(String(url).endsWith(':commit')){
+   const body=JSON.parse(options&&options.payload||'{}');
+   for(const write of body.writes||[]){
+    const name=write.update&&write.update.name||write.delete||'';if(name.indexOf(prefix)!==0)continue;
+    const path=name.slice(prefix.length);if(!/^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(path))continue;
+    const key=Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,path)).slice(0,32);
+    PropertiesService.getScriptProperties().setProperty('SAHMT_CONTINUITY_DIRTY_'+key,JSON.stringify({path:path,revision:Utilities.getUuid()}));
+   }
+  }else publish(decoded);
+ }catch(_){console.log(JSON.stringify({code:'CONTINUITY_SOURCE_MIRROR_PENDING'}));}
+}
+function ocsFlushSources_(){
+ const p=PropertiesService.getScriptProperties();if(typeof p.getProperties!=='function')return 0;
+ const all=p.getProperties(),keys=Object.keys(all).filter(function(key){return key.indexOf('SAHMT_CONTINUITY_DIRTY_')===0;}).slice(0,10);let reads=0;
+ for(const key of keys){const path=JSON.parse(all[key]).path;if(!/^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(path))continue;
+  const document=ocsFirestore_('/'+path);reads++;
+  ocsRemote_({schemaVersion:1,action:'source-change',path:path,...(document?{data:ocsDecode_(document.fields)}:{deleted:true})});
+  if(p.getProperty(key)===all[key])p.deleteProperty(key);
+ }
+ return reads;
+}
 /** Initial bounded snapshot only. No recurring collection scans after success. */
 function ocsSeed_(){
  const p=PropertiesService.getScriptProperties(),now=Date.now(),day=Utilities.formatDate(new Date(now),'America/Sao_Paulo','yyyy-MM-dd'),resources=[];
+ const resume=p.getProperty('SAHMT_CONTINUITY_SEED_SOURCE_FILE');
+ if(resume){
+  const saved=JSON.parse(DriveApp.getFileById(resume).getBlob().getDataAsString());return ocsPublishSeed_(saved.profiles,saved.resources);
+ }
  const docs=function(name,max,where){
   const query={from:[{collectionId:name}],limit:max+1};if(where)query.where=where;
   const result=ocsFirestore_(':runQuery',{method:'post',contentType:'application/json',payload:JSON.stringify({structuredQuery:query})});
@@ -98,8 +141,19 @@ function ocsSeed_(){
   const rows=docs(kind,500,{compositeFilter:{op:'AND',filters:[{fieldFilter:{field:{fieldPath:'date'},op:'GREATER_THAN_OR_EQUAL',value:{stringValue:day.slice(0,7)+'-01'}}},{fieldFilter:{field:{fieldPath:'date'},op:'LESS_THAN_OR_EQUAL',value:{stringValue:day}}}]}}).map(function(row){return Object.assign({id:row.id},row.data);});
   put(kind,day.slice(0,7),{records:rows,hasMore:false,...(kind==='checklists'?{stationIds:stations.map(function(row){return row.id;}),priorRecords:[]}: {})});
  }
+ profiles.forEach(function(profile){SahmtContinuity.validateContinuityProfile(profile,Date.now());});
+ resources.forEach(function(resource){SahmtContinuity.validateContinuityResource(resource,Date.now());});
+ const source=DriveApp.createFile(Utilities.newBlob(JSON.stringify({profiles:profiles,resources:resources}),'application/json','SAHMT-continuity-private-seed-'+now+'.json'));
+ p.setProperty('SAHMT_CONTINUITY_SEED_SOURCE_FILE',source.getId());
+ return ocsPublishSeed_(profiles,resources);
+}
+function ocsPublishSeed_(profiles,resources){
+ const p=PropertiesService.getScriptProperties(),now=Date.now();
+ // Resume imports from the private snapshot without rereading Firestore.
+ profiles.forEach(function(profile){SahmtContinuity.validateContinuityProfile(profile,now);});
+ resources.forEach(function(resource){SahmtContinuity.validateContinuityResource(resource,now);});
  // Separate bounded requests prevent an aggregate body from exceeding 512 KiB.
- ocsRemote_({schemaVersion:1,profiles:profiles,resources:[]});
+ for(let offset=0;offset<profiles.length;offset+=20)ocsRemote_({schemaVersion:1,profiles:profiles.slice(offset,offset+20),resources:[]});
  for(const resource of resources)ocsRemote_({schemaVersion:1,profiles:[],resources:[resource]});
  p.setProperty('SAHMT_CONTINUITY_SEED_PENDING','NO');p.setProperty('SAHMT_CONTINUITY_SEED_READY',String(now));
  console.log(JSON.stringify({code:'CONTINUITY_SEED_READY',profiles:profiles.length,resources:resources.length,recurringFullScans:false}));

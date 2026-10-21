@@ -1,5 +1,6 @@
 import {channelActorFromProfile,canWriteChannel,normalizeChannelSubmission} from './provisional-channel-contract.js';
 import {updateScheduleReleaseState,updateScheduleReleaseTimes} from './schedule-release.js';
+export {validateContinuityProfile,validateContinuityResource} from './remote-continuity-contract.js';
 const canonical=value=>Array.isArray(value)?'['+value.map(canonical).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+canonical(value[key])).join(',')+'}':JSON.stringify(value);
 export function reconcileContinuityOperation(operation,profile,{now=Date.now(),getDocument,commit}){
  const conflict=code=>({state:'conflict',code});

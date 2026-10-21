@@ -17,7 +17,14 @@ const encode=value=>value===null?{nullValue:null}:typeof value==='boolean'?{bool
 const data={id:'confirmed-operation',clientMutationId:'confirmed-operation',createdByUid:'member-a',date:'${day}',stationId:'station1',condition:'SIM',status:'COMPLETED',occurrence:'',responsibleUid:null,responsibleName:null,responsibleEmail:null};
 return Response.json({name:'projects/sahmt-17a16/databases/(default)/documents/checklists/confirmed-operation',fields:Object.fromEntries(Object.entries(data).map(([key,value])=>[key,encode(value)]))});}
 throw Error('FIRESTORE_FORBIDDEN_IN_THIS_TEST');}});
-export default {fetch(request,env){let fail=request.headers.get('X-Fixture-Journal-Failure')==='yes';const binding=env.OPERATIONAL_CHANNEL_AUTHORIZATION;return worker.fetch(request,{...env,OPERATIONAL_CHANNEL_AUTHORIZATION:{idFromName:name=>binding.idFromName(name),get:id=>{const stub=binding.get(id);return {fetch:incoming=>{if(fail&&new URL(incoming.url).pathname==='/continuity-journal-put'){fail=false;return Response.json({code:'CONTINUITY_JOURNAL_UNAVAILABLE'},{status:503});}return stub.fetch(incoming);}};}}});}};`;
+export default {fetch(request,env){
+ let fail=request.headers.get('X-Fixture-Journal-Failure')==='yes',failIndex=request.headers.get('X-Fixture-Index-Failure')==='yes';
+ const wrap=(binding,kind)=>({idFromName:name=>binding.idFromName(name),get:id=>{const stub=binding.get(id);return {fetch:incoming=>{
+ const path=new URL(incoming.url).pathname;
+ if(kind==='journal'&&fail&&path==='/continuity-journal-put'){fail=false;return Response.json({code:'CONTINUITY_JOURNAL_UNAVAILABLE'},{status:503});}
+ if(kind==='index'&&failIndex&&path==='/continuity-pending-state'){failIndex=false;return Response.json({code:'CONTINUITY_JOURNAL_UNAVAILABLE'},{status:503});}
+ return stub.fetch(incoming);}};}});
+ return worker.fetch(request,{...env,OPERATIONAL_CHANNEL_AUTHORIZATION:wrap(env.OPERATIONAL_CHANNEL_AUTHORIZATION,'journal'),OPERATIONAL_CHANNEL_STATE:wrap(env.OPERATIONAL_CHANNEL_STATE,'index')});}};`;
 test('SQLite recupera perfil/dados/fila sem Firestore e não permite importações ou acessos divergentes',async()=>{
  const bundle=await build({stdin:{contents:entry,resolveDir:resolve('.')},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',tsconfigRaw:{}});
  const mf=new Miniflare(convertV4MiniflareOptions({name:'continuity',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-06',durableObjects:{OPERATIONAL_CHANNEL_STATE:{className:'OperationalChannelState',useSQLite:true},OPERATIONAL_CHANNEL_AUTHORIZATION:{className:'OperationalChannelAuthorization',useSQLite:true}},bindings:{OPERATIONAL_CHANNEL_ENABLED:'true',OPERATIONAL_CONTINUITY_ENABLED:'true',CONTINUITY_IMPORT_SECRET:secret},outboundService:async()=>assert.fail('No external calls')}));
@@ -30,6 +37,9 @@ test('SQLite recupera perfil/dados/fila sem Firestore e não permite importaçõ
   const boot=await send({action:'bootstrap',day});assert.equal(boot.code,'CONTINUITY_READY');assert.equal(boot.profile.uid,'member-a');assert.equal(boot.profileVerifiedAt,snapshot.profiles[0].verifiedAt);
   const eventRows=boot.entries.find(e=>e.kind==='events'&&e.id===`report:${day}:${day}:AA:100`).data.records;
   assert.deepEqual(eventRows.map(row=>row.id),['private-a']);assert.ok(boot.entries.some(e=>e.kind==='stations'));
+  const changedSource=await install({schemaVersion:1,action:'source-change',path:'stations/station1',data:{name:'Arsenal revisado',active:true,version:2}});
+  assert.equal(changedSource.code,'CONTINUITY_SOURCE_UPDATED');
+  assert.equal((await send({action:'bootstrap',day})).entries.find(e=>e.kind==='stations').data[0].name,'Arsenal revisado');
   const submission={action:'submit',collection:'checklists',day,requestId:'stable-operation',data:{date:day,stationId:'station1',condition:'SIM',status:'COMPLETED',occurrence:'',responsibleUid:null,responsibleName:null,responsibleEmail:null}};
   assert.equal((await send(submission,token,{'X-Fixture-Journal-Failure':'yes'})).code,'CONTINUITY_JOURNAL_UNAVAILABLE');
   assert.equal((await send(submission)).code,'CHANNEL_ALREADY_SHARED');assert.equal((await send(submission)).code,'CHANNEL_ALREADY_SHARED');
@@ -42,14 +52,22 @@ test('SQLite recupera perfil/dados/fila sem Firestore e não permite importaçõ
   assert.equal((await send({action:'withdraw',collection:'checklists',day,requestId:submission.requestId})).code,'CHANNEL_WITHDRAWN');
   assert.equal((await send({action:'bootstrap',day})).operations.length,0);
   assert.equal((await install({schemaVersion:1,action:'drain'})).operations.length,0);
+  await send({...submission,requestId:'withdraw-index-failure'});
+  assert.equal((await send({action:'withdraw',collection:'checklists',day,requestId:'withdraw-index-failure'},token,{'X-Fixture-Index-Failure':'yes'})).code,'CONTINUITY_JOURNAL_UNAVAILABLE');
+  assert.equal((await install({schemaVersion:1,action:'drain'})).operations.length,0,'a retirada não pode voltar à fila por falha parcial no índice');
+  assert.equal((await send({...submission,requestId:'claimed-operation'})).code,'CHANNEL_SHARED');
+  assert.equal((await install({schemaVersion:1,action:'claim',uid:'member-a',requestId:'claimed-operation'})).code,'CONTINUITY_CLAIMED');
+  assert.equal((await send({action:'withdraw',collection:'checklists',day,requestId:'claimed-operation'})).code,'CHANNEL_RECONCILIATION_IN_PROGRESS');
+  assert.equal((await install({schemaVersion:1,action:'complete',uid:'member-a',requestId:'claimed-operation',state:'conflict'})).code,'CONTINUITY_COMPLETED');
+  const conflictRecovery=await send({action:'bootstrap',day});assert.equal(conflictRecovery.operations[0].state,'conflict');
   assert.equal((await send({...submission,requestId:'confirmed-operation'})).code,'CHANNEL_SHARED');
   assert.equal((await send({action:'ack',collection:'checklists',day,requestId:'confirmed-operation'})).code,'CHANNEL_CONFIRMED');
-  const afterAck=await send({action:'bootstrap',day});assert.equal(afterAck.operations.length,0);
+  const afterAck=await send({action:'bootstrap',day});assert.equal(afterAck.operations.filter(row=>row.state==='pending').length,0);
   assert.equal(afterAck.entries.find(e=>e.kind==='checklists'&&e.id===day).data.records[0]?.id,'confirmed-operation');
   const release=(id,marked,time)=>({action:'submit',collection:'scheduleReleases',day,requestId:id,data:{day,sigla:'AA',marked,groupSiglas:['AA'],tokenSigla:'AA',occurredAt:time}});
   assert.equal((await send(release('release-old',true,now-1000))).code,'CHANNEL_SHARED');
   assert.equal((await send(release('release-new',false,now))).code,'CHANNEL_SHARED');
-  assert.deepEqual((await send({action:'bootstrap',day})).operations.map(row=>row.requestId),['release-new']);
+  assert.deepEqual((await send({action:'bootstrap',day})).operations.filter(row=>row.state==='pending').map(row=>row.requestId),['release-new']);
   const disabled={...profiles[0],verifiedAt:now,profile:{...profiles[0].profile,active:false}};
   assert.equal((await install({schemaVersion:1,profiles:[disabled],resources:[]})).code,'CONTINUITY_IMPORTED');
   assert.equal((await send({action:'bootstrap',day})).code,'CONTINUITY_ACCESS_DENIED');

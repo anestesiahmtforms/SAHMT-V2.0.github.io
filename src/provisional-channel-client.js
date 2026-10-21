@@ -270,5 +270,6 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
       eventTarget.removeEventListener('sahmt-write-queued',queued);eventTarget.removeEventListener('sahmt-write-synced',synced);eventTarget.removeEventListener('sahmt-channel-confirm',synced);
       eventTarget.removeEventListener('online',sessionEvent);eventTarget.removeEventListener('sahmt-channel-session',sessionEvent);documentSource.removeEventListener('visibilitychange',sessionEvent);};
   }
-  return {start,authorize,share,acknowledge,watch,projectSchedule,recover,withdraw,assertReleaseCurrent,sessionChanged,enabled,adapter};
+  async function mirrorSource(path){const uid=getSession()?.user?.uid;if(!current(uid)||!online()||getSession()?.offline)return false;await request(uid,{action:'source',path});return true;}
+  return {start,authorize,share,acknowledge,watch,projectSchedule,recover,withdraw,assertReleaseCurrent,sessionChanged,mirrorSource,enabled,adapter};
 }

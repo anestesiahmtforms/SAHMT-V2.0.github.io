@@ -1,6 +1,7 @@
 import {validateContinuityProfile,validateContinuityResource,continuityEntriesForActor,CONTINUITY_MAX_AGE_MS,CONTINUITY_MAX_BODY_BYTES} from '../src/remote-continuity-contract.js';
 import {channelActorFromProfile,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {readChannelJson} from './identity.js';
+import {continuitySourceChanges} from '../src/remote-continuity-source-change.js';
 const response=(body,status=200)=>Response.json(body,{status});
 const internal=(stub,path,body)=>stub.fetch(new Request('https://channel.internal/'+path,{method:'POST',body:JSON.stringify(body)}));
 const authority=(env,uid)=>env.OPERATIONAL_CHANNEL_AUTHORIZATION.get(env.OPERATIONAL_CHANNEL_AUTHORIZATION.idFromName(uid));
@@ -59,6 +60,17 @@ export function setupContinuityState(sql){
 }
 export function continuityStateAction(sql,path,body){
  if(!path.startsWith('/continuity-'))return null;
+ if(path==='/continuity-source-change'){
+  sql.exec('DELETE FROM continuity_resources WHERE verified_at<?',body.now-CONTINUITY_MAX_AGE_MS);
+  const resources=sql.exec('SELECT content FROM continuity_resources').toArray().map(row=>JSON.parse(row.content));
+  const changes=continuitySourceChanges(resources,body.change).map(resource=>validateContinuityResource(resource,body.now));
+  for(const value of changes){
+   const existing=sql.exec('SELECT id FROM continuity_resources WHERE kind=? AND id=?',value.kind,value.id).toArray().length;
+   if(!existing&&sql.exec('SELECT COUNT(*) AS count FROM continuity_resources').one().count>=160)failure('CONTINUITY_SNAPSHOT_FULL',507);
+   sql.exec('INSERT OR REPLACE INTO continuity_resources VALUES(?,?,?,?)',value.kind,value.id,value.verifiedAt,JSON.stringify(value));
+  }
+  return response({code:'CONTINUITY_SOURCE_UPDATED',resources:changes.length});
+ }
  if(path==='/continuity-pending-put'){
   const operation=body.operation,key=operation.uid+':'+operation.requestId;
   const prior=sql.exec('SELECT state FROM continuity_pending WHERE id=?',key).toArray()[0];
@@ -66,11 +78,20 @@ export function continuityStateAction(sql,path,body){
    sql.exec("INSERT INTO continuity_pending VALUES(?,?,?,'pending')",key,operation.uid,JSON.stringify(operation));}
   return response({code:'CONTINUITY_PENDING_STORED'});
  }
+ if(path==='/continuity-pending-get'){
+  const row=sql.exec('SELECT content,state FROM continuity_pending WHERE id=?',body.uid+':'+body.requestId).toArray()[0];
+  return response({operation:row?JSON.parse(row.content):null,state:row?.state||null});
+ }
+ if(path==='/continuity-pending-batch'){
+  if(!Array.isArray(body.operations)||body.operations.length>40)failure('CONTINUITY_OPERATION_INVALID');
+  for(const operation of body.operations){const result=continuityStateAction(sql,'/continuity-pending-put',{operation});if(!result.ok)return result;}
+  return response({code:'CONTINUITY_PENDING_STORED'});
+ }
  if(path==='/continuity-pending-state'){
   sql.exec('UPDATE continuity_pending SET state=? WHERE id=?',body.state,body.uid+':'+body.requestId);return response({code:'CONTINUITY_PENDING_UPDATED'});
  }
  if(path==='/continuity-drain'){
-  const rows=sql.exec("SELECT content FROM continuity_pending WHERE state='pending' ORDER BY id LIMIT 20").toArray();
+  const rows=sql.exec("SELECT content FROM continuity_pending WHERE state='pending' ORDER BY id LIMIT 10").toArray();
   return response({code:'CONTINUITY_DRAIN',operations:rows.map(row=>JSON.parse(row.content))});
  }
  if(path==='/continuity-commit'){
@@ -101,6 +122,7 @@ export function continuityStateAction(sql,path,body){
   sql.exec('INSERT INTO continuity_imports VALUES(?,?)',body.nonce,body.now);return response({code:'CONTINUITY_IMPORT_ACCEPTED'});
  }
  if(path==='/continuity-resource-put'){
+  sql.exec('DELETE FROM continuity_resources WHERE verified_at<?',body.now-CONTINUITY_MAX_AGE_MS);
   const value=validateContinuityResource(body.resource,body.now),prior=sql.exec('SELECT verified_at,content FROM continuity_resources WHERE kind=? AND id=?',value.kind,value.id).toArray()[0];
   if(prior&&prior.verified_at>value.verifiedAt)return response({code:'CONTINUITY_OLDER_RESOURCE_PRESERVED',changed:false});
   if(prior&&prior.verified_at===value.verifiedAt&&canonical(JSON.parse(prior.content))!==canonical(value))return response({code:'CONTINUITY_RESOURCE_CONFLICT'},409);
@@ -122,18 +144,30 @@ export async function importContinuitySnapshot(request,env,now){
  const body=await readChannelJson(request,CONTINUITY_MAX_BODY_BYTES),expected=await continuityRequestSignature(secret,JSON.stringify(body),time,nonce);
  let difference=0;for(let i=0;i<64;i++)difference|=expected.charCodeAt(i)^signature.charCodeAt(i);if(difference)failure('CONTINUITY_IMPORT_DENIED',401);
  if(body?.schemaVersion!==1)failure('CONTINUITY_IMPORT_INVALID');
- if(['drain','complete'].includes(body.action)){
+ if(['drain','complete','source-change','claim'].includes(body.action)){
   const nonceResponse=await internal(state(env),'continuity-import-nonce',{nonce,now});if(!nonceResponse.ok)return nonceResponse;
-  if(body.action==='drain')return internal(state(env),'continuity-drain',{});
-  if(!validId(body.uid)||!validId(body.requestId)||!['confirmed','conflict'].includes(body.state))failure('CONTINUITY_OPERATION_INVALID');
-  const pending=await (await internal(state(env),'continuity-drain',{})).json();
-  const operation=pending.operations.find(row=>row.uid===body.uid&&row.requestId===body.requestId);
-  if(!operation)return response({code:'CONTINUITY_COMPLETION_ALREADY_PROCESSED'});
+  if(body.action==='drain'){
+   const candidates=await (await internal(state(env),'continuity-drain',{})).json(),operations=[];
+   for(const operation of candidates.operations){
+    const stub=env.OPERATIONAL_CHANNEL_STATE.get(env.OPERATIONAL_CHANNEL_STATE.idFromName(operation.collection+':'+operation.day));
+    const actual=await (await internal(stub,'continuity-record-status',{uid:operation.uid,requestId:operation.requestId})).json();
+    if(['pending','processing'].includes(actual.state))operations.push(operation);
+    else await setContinuityOperationState(env,operation.uid,operation.requestId,['withdrawn','superseded','confirmed','conflict'].includes(actual.state)?actual.state:'conflict');
+   }
+   return response({code:'CONTINUITY_DRAIN',operations});
+  }
+  if(body.action==='source-change')return recordContinuitySourceChange(env,body.path,body.data,now,body.deleted===true);
+  if(!validId(body.uid)||!validId(body.requestId)||body.action==='complete'&&!['confirmed','conflict'].includes(body.state))failure('CONTINUITY_OPERATION_INVALID');
+  const pending=await (await internal(state(env),'continuity-pending-get',{uid:body.uid,requestId:body.requestId})).json(),operation=pending.operation;
+  if(!operation||pending.state!=='pending')return response({code:'CONTINUITY_COMPLETION_ALREADY_PROCESSED'});
+  const stub=env.OPERATIONAL_CHANNEL_STATE.get(env.OPERATIONAL_CHANNEL_STATE.idFromName(operation.collection+':'+operation.day));
+  if(body.action==='claim')return internal(stub,'continuity-claim',{uid:body.uid,requestId:body.requestId});
+  const current=await (await internal(stub,'continuity-record-status',{uid:body.uid,requestId:body.requestId})).json();
+  if(!['processing','confirmed'].includes(current.state))failure('CONTINUITY_CLAIM_REQUIRED',409);
   if(body.state==='confirmed'){
    if(!body.record||typeof body.record!=='object')failure('CONTINUITY_OPERATION_INVALID');
    await recordContinuityCommit(env,operation.collection,operation.day,body.record,now);
   }
-  const stub=env.OPERATIONAL_CHANNEL_STATE.get(env.OPERATIONAL_CHANNEL_STATE.idFromName(operation.collection+':'+operation.day));
   const result=await internal(stub,'continuity-record-state',{uid:body.uid,requestId:body.requestId,state:body.state});if(!result.ok)return result;
   await setContinuityOperationState(env,body.uid,body.requestId,body.state);
   return response({code:'CONTINUITY_COMPLETED',state:body.state});
@@ -156,6 +190,8 @@ export async function bootstrapContinuity(env,uid,day,now,{recoverOnly=false,aft
  const actor={...channelActorFromProfile(uid,profile.profile,now),fromContinuity:true};actor.expiresAt=Math.min(actor.expiresAt,profile.verifiedAt+CONTINUITY_MAX_AGE_MS);
  const granted=await internal(auth,'put',{actor,now});if(!granted.ok)return granted;
  const recovery=await (await internal(auth,'continuity-recover',{now,after})).json();
+ const repaired=await internal(state(env),'continuity-pending-batch',{operations:recovery.operations.filter(row=>row.state==='pending').map(({state,...operation})=>operation)});
+ if(!repaired.ok)failure('CONTINUITY_JOURNAL_UNAVAILABLE',503);
  if(recoverOnly)return response({code:'CONTINUITY_RECOVERY',...recovery});
  const {resources}=await (await internal(state(env),'continuity-resource-get',{day,now})).json();
  const entries=continuityEntriesForActor(profile,resources,{day,now});
@@ -178,4 +214,14 @@ export async function recordContinuityCommit(env,collection,day,fields,now){
  if(env.OPERATIONAL_CONTINUITY_ENABLED!=='true')return;
  const result=await internal(state(env),'continuity-commit',{collection,day,fields,now});
  if(!result.ok)failure('CONTINUITY_SNAPSHOT_UNAVAILABLE',503);
+}
+export async function recordContinuitySourceChange(env,path,data,now,deleted=false){
+ if(!/^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(path))failure('CONTINUITY_PATH_INVALID');
+ if(path.startsWith('users/')){
+  const uid=path.split('/')[1];
+  if(deleted){await internal(authority(env,uid),'revoke',{now});return response({code:'CONTINUITY_PROFILE_REVOKED'});}
+  const profile=validateContinuityProfile({schemaVersion:1,uid,verifiedAt:now,profile:{...data,uid:data.uid||uid}},now);
+  return internal(authority(env,uid),'continuity-profile-put',{profile,now});
+ }
+ const result=await internal(state(env),'continuity-source-change',{change:{path,data,deleted,verifiedAt:now},now});if(!result.ok)failure('CONTINUITY_SOURCE_UNAVAILABLE',503);return result;
 }

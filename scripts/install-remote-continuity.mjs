@@ -39,17 +39,24 @@ async function scriptInstall(){
  const source=structuredClone(content),receiver=source.files.find(f=>f.name==='OperationalSheetPush'&&f.type==='SERVER_JS');
  if(!receiver?.source.includes('function doPost(event) {'))throw Error('CONTINUITY_RECEIVER_UNEXPECTED');
  if(!receiver.source.includes("action === 'operational-continuity-admin-v1'"))receiver.source=receiver.source.replace('function doPost(event) {',"function doPost(event) {\n  if (event && event.parameter && event.parameter.action === 'operational-continuity-admin-v1') return ocsAdminHttp_(event);");
+ const adapter=source.files.find(f=>f.name==='Config'&&f.source?.includes('function firestoreRequest_('));
+ if(!adapter)throw Error('CONTINUITY_SCRIPT_ADAPTER_MISSING');
+ if(!adapter.source.includes('ocsMirrorCommitted_(url, options, decoded)')){
+  const start=adapter.source.indexOf('function firestoreRequest_('),end=adapter.source.indexOf('\nfunction ',start+10),section=adapter.source.slice(start,end);
+  if(!section.includes('  return decoded;'))throw Error('CONTINUITY_SCRIPT_ADAPTER_UNEXPECTED');
+  adapter.source=adapter.source.slice(0,start)+section.replace('  return decoded;','  if (typeof ocsMirrorCommitted_ === "function") ocsMirrorCommitted_(url, options, decoded);\n  return decoded;')+adapter.source.slice(end);
+ }
  const add=(name,text)=>{const existing=source.files.find(f=>f.name===name);if(existing)existing.source=text;else source.files.push({name,type:'SERVER_JS',source:text});};
  for(const name of ['OperationalContinuitySync','OperationalContinuityCore'])add(name,await fs.readFile('apps-script-v2/'+name+'.gs','utf8'));
  // Known current quota failure: defer initial snapshot beyond the next reset.
  const notBefore=Date.parse(process.env.CONTINUITY_SEED_NOT_BEFORE||'2026-10-21T07:15:00Z');
  add('OperationalContinuityPrivateInstall',continuityBootstrapSource({secret,endpoint,notBefore:Number.isFinite(notBefore)?Math.max(Date.now(),notBefore):Date.now()}));
  await client.updateContent(source);const installed=await client.readContent();
- for(const file of content.files){if(file.name==='OperationalSheetPush')continue;if(installed.files.find(f=>f.name===file.name)?.source!==file.source)throw Error('CONTINUITY_EXISTING_SCRIPT_CHANGED');}
- const version=await client.createVersion();
+ for(const file of source.files)if(installed.files.find(f=>f.name===file.name)?.source!==file.source)throw Error('CONTINUITY_EXISTING_SCRIPT_CHANGED');
+ const version=await client.createVersion('Remote operational continuity: authenticated bootstrap and bounded reconciliation');
  const candidates=(deployments.deployments||[]).filter(d=>d.deploymentConfig?.versionNumber&&d.entryPoints?.some(e=>e.entryPointType==='WEB_APP')).sort((a,b)=>b.deploymentConfig.versionNumber-a.deploymentConfig.versionNumber);
  if(!candidates.length||candidates[1]?.deploymentConfig.versionNumber===candidates[0].deploymentConfig.versionNumber)throw Error('CONTINUITY_DEPLOYMENT_AMBIGUOUS');
- const target=candidates[0];await client.updateDeployment(target,version.versionNumber);
+ const target=candidates[0];await client.updateDeployment(target,version.versionNumber,'Remote operational continuity; existing integrations preserved');
  const url=target.entryPoints.find(e=>e.entryPointType==='WEB_APP').webApp.url;
  await save('script-installed.private.json',{deploymentId:target.deploymentId,version:version.versionNumber,url,files:installed.files.length});
  console.log(JSON.stringify({code:'CONTINUITY_SCRIPT_INSTALLED',filesPreserved:content.files.length,version:version.versionNumber}));

@@ -20,7 +20,9 @@ var SahmtContinuity = (() => {
   // src/remote-continuity-reconciliation.js
   var remote_continuity_reconciliation_exports = {};
   __export(remote_continuity_reconciliation_exports, {
-    reconcileContinuityOperation: () => reconcileContinuityOperation
+    reconcileContinuityOperation: () => reconcileContinuityOperation,
+    validateContinuityProfile: () => validateContinuityProfile,
+    validateContinuityResource: () => validateContinuityResource
   });
 
   // src/schedule-release.js
@@ -132,6 +134,64 @@ var SahmtContinuity = (() => {
       pendingSync: collection === "checklists"
     };
     return { collection, requestId: input.requestId, data: normalized, record };
+  }
+
+  // src/remote-continuity-contract.js
+  var CONTINUITY_MAX_AGE_MS = 7 * 864e5;
+  var CONTINUITY_KINDS = Object.freeze(["appConfig", "stations", "contacts", "eventMembers", "eventCatalogs", "labelStaff", "vacations", "scheduleDays", "events", "labels", "checklists"]);
+  var roles = /* @__PURE__ */ new Set(["", "coordenador", "conselho_diretor", "gestor", "anestesiologista", "residente", "temporario", "administrador_app"]);
+  var fail = (code) => {
+    throw Object.assign(Error(code), { code, status: 400 });
+  };
+  var requireValue2 = (condition, code = "CONTINUITY_SNAPSHOT_INVALID") => {
+    if (!condition) fail(code);
+  };
+  var object = (value) => value && typeof value === "object" && !Array.isArray(value);
+  var fresh = (at, now) => Number.isSafeInteger(at) && Number.isSafeInteger(now) && at <= now && now - at <= CONTINUITY_MAX_AGE_MS;
+  var text2 = (value, max) => typeof value === "string" && value.length <= max;
+  function safeTree(value, depth = 0) {
+    requireValue2(depth <= 16);
+    if (value === null || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value)) return;
+    if (typeof value === "string") {
+      requireValue2(value.length <= 12e3);
+      return;
+    }
+    if (Array.isArray(value)) {
+      requireValue2(value.length <= 2e3);
+      for (const row of value) safeTree(row, depth + 1);
+      return;
+    }
+    requireValue2(object(value) && Object.keys(value).length <= 150);
+    for (const [key, item] of Object.entries(value)) {
+      requireValue2(!["__proto__", "constructor", "prototype"].includes(key) && (!/token|secret|password|credential|apiKey/i.test(key) || key === "tokenSigla"));
+      safeTree(item, depth + 1);
+    }
+  }
+  function validateContinuityProfile(value, now = Date.now()) {
+    requireValue2(object(value) && value.schemaVersion === 1 && validId(value.uid) && fresh(value.verifiedAt, now), "CONTINUITY_PROFILE_EXPIRED_OR_INVALID");
+    const profile = value.profile;
+    requireValue2(object(profile) && profile.uid === value.uid && typeof profile.active === "boolean" && typeof profile.access === "boolean" && roles.has(profile.role || "") && object(profile.permissions), "CONTINUITY_PROFILE_INVALID");
+    requireValue2(Object.keys(profile.permissions).length <= 100 && Object.entries(profile.permissions).every(([key, permission]) => /^[a-zA-Z][a-zA-Z0-9]{0,69}$/.test(key) && typeof permission === "boolean"), "CONTINUITY_PERMISSIONS_INVALID");
+    for (const [key, max] of [["displayName", 120], ["email", 254], ["sigla", 20], ["phone", 50]]) requireValue2(profile[key] === void 0 || text2(profile[key], max), "CONTINUITY_PROFILE_INVALID");
+    return { schemaVersion: 1, uid: value.uid, verifiedAt: value.verifiedAt, profile: { uid: value.uid, displayName: profile.displayName || "", email: profile.email || "", sigla: String(profile.sigla || "").trim().toUpperCase(), phone: profile.phone || "", role: profile.role || "", active: profile.active, access: profile.access, permissions: { ...profile.permissions } } };
+  }
+  function validateContinuityResource(value, now = Date.now()) {
+    requireValue2(object(value) && value.schemaVersion === 1 && CONTINUITY_KINDS.includes(value.kind) && text2(value.id, 100) && value.id.length > 0 && text2(value.revision, 128) && value.revision.length > 0 && fresh(value.verifiedAt, now) && value.complete !== false);
+    safeTree(value.data);
+    requireValue2(JSON.stringify(value.data).length <= 18e4);
+    const arrays = ["stations", "contacts", "eventMembers", "labelStaff", "vacations"];
+    if (arrays.includes(value.kind)) requireValue2(Array.isArray(value.data));
+    else requireValue2(object(value.data));
+    if (["scheduleDays", "vacations"].includes(value.kind)) requireValue2(validDay(value.id));
+    if (["events", "labels", "checklists"].includes(value.kind)) {
+      requireValue2((validDay(value.id) || /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value.id)) && Array.isArray(value.data.records) && !value.data.hasMore && !value.data.truncated);
+      for (const record of [...value.data.records, ...value.data.priorRecords || []]) requireValue2(object(record) && validId(record.id) && validDay(record.date) && !record.pendingFirestore && !record.pendingSync && !record.hasPendingWrites && !record.provisionalShared);
+    }
+    if (value.kind === "appConfig") requireValue2(value.id === "app" && object(value.data.features));
+    if (["stations", "eventMembers", "labelStaff"].includes(value.kind)) requireValue2(value.id === "all");
+    if (value.kind === "contacts") requireValue2(value.id === "active");
+    if (value.kind === "eventCatalogs") requireValue2(value.id === "operational");
+    return { schemaVersion: 1, kind: value.kind, id: value.id, data: structuredClone(value.data), verifiedAt: value.verifiedAt, revision: value.revision, complete: true };
   }
 
   // src/remote-continuity-reconciliation.js
