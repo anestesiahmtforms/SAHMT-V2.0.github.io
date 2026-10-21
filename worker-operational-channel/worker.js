@@ -2,6 +2,7 @@ import {CHANNEL_COLLECTIONS, CHANNEL_GRANT_MS, parseChannelPolicy, channelActorF
   canReadChannelRecord,canWriteChannel,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {createChannelIdentityVerifier,readChannelJson} from './identity.js';
 import {updateScheduleReleaseState} from '../src/schedule-release.js';
+import {importContinuitySnapshot,bootstrapContinuity,setupContinuityAuthority,continuityAuthorityAction,setupContinuityState,continuityStateAction,recordContinuitySubmission,setContinuityOperationState} from './continuity.js';
 const PREFIX='https://firestore.googleapis.com/v1/projects/sahmt-17a16/databases/(default)/documents/';
 const json=(body,status=200,origin)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
   ...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
@@ -33,30 +34,37 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
     if(env.CHANNEL_PILOT_ORIGIN)try{const u=new URL(env.CHANNEL_PILOT_ORIGIN);if(u.protocol==='https:'&&u.origin===env.CHANNEL_PILOT_ORIGIN)allowed.push(u.origin);}catch{}
     if(!allowed.includes(origin))return json({code:'CHANNEL_ORIGIN_DENIED'},403);
     const url=new URL(request.url);
-    if(url.pathname!=='/v1/operational-channel'||url.search)return json({code:'CHANNEL_ROUTE_INVALID'},404,origin);
+    if(!['/v1/operational-channel','/v1/operational-continuity/import'].includes(url.pathname)||url.search)return json({code:'CHANNEL_ROUTE_INVALID'},404,origin);
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Authorization,Content-Type,X-Firebase-AppCheck','Access-Control-Max-Age':'3600',Vary:'Origin'}});
     if(request.method!=='POST')return json({code:'CHANNEL_METHOD_DENIED'},405,origin);
-    if(env.OPERATIONAL_CHANNEL_ENABLED!=='true')return json({code:'CHANNEL_DISABLED'},503,origin);
+    if(env.OPERATIONAL_CHANNEL_ENABLED!=='true'&&url.pathname!=='/v1/operational-continuity/import')return json({code:'CHANNEL_DISABLED'},503,origin);
     try {
       if(!env.OPERATIONAL_CHANNEL_STATE?.idFromName||!env.OPERATIONAL_CHANNEL_AUTHORIZATION?.idFromName)throw channelError('CHANNEL_BINDING_MISSING',503);
+      if(url.pathname==='/v1/operational-continuity/import'){const result=await importContinuitySnapshot(request,env,now());return json(await result.json(),result.status,origin);}
       const body=await readChannelJson(request);
-      if(!body||!['authorize','submit','list','ack','withdraw','status'].includes(body.action))throw channelError('CHANNEL_REQUEST_INVALID');
+      if(!body||!['authorize','submit','list','ack','withdraw','status','bootstrap','recover'].includes(body.action))throw channelError('CHANNEL_REQUEST_INVALID');
       const bearer=request.headers.get('Authorization')||'';
       if(!/^Bearer [A-Za-z0-9_.-]{100,16000}$/.test(bearer))throw channelError('CHANNEL_AUTH_INVALID',401);
       const appCheckToken=request.headers.get('X-Firebase-AppCheck');
       if(appCheckToken&&!/^[A-Za-z0-9_.-]{100,16000}$/.test(appCheckToken))throw channelError('CHANNEL_APP_CHECK_INVALID',401);
       const identity=await verifyIdentity(bearer.slice(7),env.FA_FIREBASE_WEB_API_KEY,appCheckToken);
+      if(['bootstrap','recover'].includes(body.action)){
+        if(Object.keys(body).some(key=>!['action','day','after'].includes(key)))throw channelError('CHANNEL_REQUEST_INVALID');
+        const result=await bootstrapContinuity(env,identity.uid,body.day,now(),{recoverOnly:body.action==='recover',after:body.after});return json(await result.json(),result.status,origin);
+      }
       const authority=env.OPERATIONAL_CHANNEL_AUTHORIZATION.get(env.OPERATIONAL_CHANNEL_AUTHORIZATION.idFromName(identity.uid));
       let grantResponse=await internal(authority,'get',{now:now()}),grant=await grantResponse.json(),actor=grant.actor;
       if(body.action==='authorize') {
         if(Object.keys(body).some(key=>!['action','refresh'].includes(key))||body.refresh!==undefined&&typeof body.refresh!=='boolean')throw channelError('CHANNEL_REQUEST_INVALID');
-        if(!actor||body.refresh===true||actor.expiresAt<=now()||now()-actor.verifiedAt>=12*3600000) {
+        if(!actor||actor.fromContinuity||body.refresh===true||actor.expiresAt<=now()||now()-actor.verifiedAt>=12*3600000) {
           // One profile read on initial enrollment / real profile refresh. Never
           // invoked by submit/list polling, so quota exhaustion does not create a loop.
           if(actor&&body.refresh===true&&now()-actor.verifiedAt<60000)return json({code:'CHANNEL_AUTHORIZED',expiresAt:actor.expiresAt},200,origin);
-          try {actor=channelActorFromProfile(identity.uid,await firestore('users/'+encodeURIComponent(identity.uid),bearer,appCheckToken),now());}
+          let profile;
+          try {profile=await firestore('users/'+encodeURIComponent(identity.uid),bearer,appCheckToken);actor=channelActorFromProfile(identity.uid,profile,now());}
           catch(error){if(error.status===403)await internal(authority,'revoke',{now:now()});throw error;}
           await internal(authority,'put',{actor,now:now()});
+          if(env.OPERATIONAL_CONTINUITY_ENABLED==='true')await internal(authority,'continuity-profile-put',{profile:{schemaVersion:1,uid:identity.uid,verifiedAt:now(),profile:{...profile,uid:profile.uid||identity.uid}},now:now()});
         }
         if(!actor.active||!actor.access)throw channelError('CHANNEL_USER_DENIED',403);
         return json({code:'CHANNEL_AUTHORIZED',expiresAt:actor.expiresAt},200,origin);
@@ -75,18 +83,18 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       if(body.action==='submit') {
         const submission=normalizeChannelSubmission({collection,requestId:body.requestId,data:body.data,createdAt:body.createdAt},actor,now());
         if(submission.record.date!==day)throw channelError('CHANNEL_DATE_INVALID');
-        const response=await internal(stub,'submit',{submission,actor,now:now()});return json(await response.json(),response.status,origin);
+        const response=await internal(stub,'submit',{submission,actor,now:now()});if(response.ok)await recordContinuitySubmission(env,actor,submission);return json(await response.json(),response.status,origin);
       }
       if(body.action==='list') {
         if(!canReadChannelCollection(collection,actor))throw channelError('CHANNEL_READ_DENIED',403);
         const response=await internal(stub,'list',{actor,now:now(),cursor:body.cursor||null});return json({...await response.json(),authorizedUntil:actor.expiresAt},response.status,origin);
       }
       if(!validId(body.requestId)||!canWriteChannel(collection,actor))throw channelError('CHANNEL_WRITE_DENIED',403);
-      if(body.action==='withdraw'){const response=await internal(stub,'withdraw',{actor,collection,requestId:body.requestId,now:now()});return json(await response.json(),response.status,origin);}
+      if(body.action==='withdraw'){const response=await internal(stub,'withdraw',{actor,collection,requestId:body.requestId,now:now()}),value=await response.json();if(response.ok)await setContinuityOperationState(env,actor.uid,body.requestId,value.code==='CHANNEL_CONFIRMED'?'confirmed':'withdrawn');return json(value,response.status,origin);}
       const pendingResponse=await internal(stub,'get',{actor,requestId:body.requestId,now:now()}),pending=await pendingResponse.json();
       if(pendingResponse.status!==200)return json(pending,pendingResponse.status,origin);
       if(body.action==='status')return json({code:'CHANNEL_RECEIPT',state:pending.state},200,origin);
-      if(pending.state==='confirmed')return json({code:'CHANNEL_CONFIRMED'},200,origin);
+      if(pending.state==='confirmed'){await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');return json({code:'CHANNEL_CONFIRMED'},200,origin);}
       if(pending.state!=='pending')return json({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
       // Only an explicit post-commit acknowledgment reads Firestore; polling never does.
       const path=collection==='scheduleReleases'?'scheduleDays/'+day:collection+'/'+body.requestId;
@@ -95,17 +103,18 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
         fields.id===body.requestId&&fields.clientMutationId===body.requestId&&fields.createdByUid===actor.uid&&
         Object.entries(pending.data).filter(([key])=>!['createdByName','updatedByName'].includes(key)).every(([key,value])=>canonical(fields[key])===canonical(value));
       if(!matches)return json({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
-      const response=await internal(stub,'ack',{actor,requestId:body.requestId,now:now()});return json(await response.json(),response.status,origin);
-    }catch(error){return json({code:/^CHANNEL_[A-Z_]+$/.test(error.code||'')?error.code:'CHANNEL_UNAVAILABLE'},error.status||503,origin);}
+      const response=await internal(stub,'ack',{actor,requestId:body.requestId,now:now()});if(response.ok)await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');return json(await response.json(),response.status,origin);
+    }catch(error){return json({code:/^(?:CHANNEL|CONTINUITY)_[A-Z_]+$/.test(error.code||'')?error.code:'CHANNEL_UNAVAILABLE'},error.status||503,origin);}
   }};
 }
 export class OperationalChannelAuthorization {
-  constructor(ctx){this.sql=ctx.storage.sql;this.sql.exec('CREATE TABLE IF NOT EXISTS channel_grant (id INTEGER PRIMARY KEY CHECK(id=1), content TEXT NOT NULL)');}
+  constructor(ctx){this.sql=ctx.storage.sql;this.sql.exec('CREATE TABLE IF NOT EXISTS channel_grant (id INTEGER PRIMARY KEY CHECK(id=1), content TEXT NOT NULL)');setupContinuityAuthority(this.sql);}
   async fetch(request){
     if(request.method!=='POST'||new URL(request.url).origin!=='https://channel.internal')return json({code:'CHANNEL_INTERNAL_DENIED'},403);
     const body=await readChannelJson(request,8192),path=new URL(request.url).pathname;
+    const continuity=continuityAuthorityAction(this.sql,path,body);if(continuity)return continuity;
     if(path==='/get'){const row=this.sql.exec('SELECT content FROM channel_grant WHERE id=1').toArray()[0];const value=row?JSON.parse(row.content):null;return json({actor:value?.revoked?null:value,revoked:value?.revoked===true});}
-    if(path==='/revoke'){this.sql.exec('INSERT OR REPLACE INTO channel_grant VALUES(1,?)',JSON.stringify({revoked:true}));return json({code:'CHANNEL_AUTHORIZATION_REVOKED'});}
+    if(path==='/revoke'){this.sql.exec('INSERT OR REPLACE INTO channel_grant VALUES(1,?)',JSON.stringify({revoked:true,revokedAt:body.now}));return json({code:'CHANNEL_AUTHORIZATION_REVOKED'});}
     if(path==='/put'){
       const actor=body.actor;
       if(!validId(actor?.uid)||!Number.isSafeInteger(actor.expiresAt)||actor.expiresAt<=body.now||actor.expiresAt-actor.verifiedAt>CHANNEL_GRANT_MS)return json({code:'CHANNEL_POLICY_INVALID'},400);
@@ -117,6 +126,7 @@ export class OperationalChannelAuthorization {
 export class OperationalChannelState {
   constructor(ctx){
     this.storage=ctx.storage;this.sql=ctx.storage.sql;
+    setupContinuityState(this.sql);
     this.sql.exec('CREATE TABLE IF NOT EXISTS channel_records (seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,owner TEXT NOT NULL,collection TEXT NOT NULL,receipt_at INTEGER NOT NULL,content TEXT NOT NULL,state TEXT NOT NULL,release_key TEXT)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS channel_state ON channel_records(state,seq)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS channel_release_key ON channel_records(release_key,state)');
@@ -125,7 +135,8 @@ export class OperationalChannelState {
   async fetch(request){
     if(request.method!=='POST'||new URL(request.url).origin!=='https://channel.internal')return json({code:'CHANNEL_INTERNAL_DENIED'},403);
     try{
-      const body=await readChannelJson(request,49152),path=new URL(request.url).pathname,actor=body.actor;
+      const path=new URL(request.url).pathname,body=await readChannelJson(request,path.startsWith('/continuity-')?524288:49152),actor=body.actor;
+      const continuity=continuityStateAction(this.sql,path,body);if(continuity)return continuity;
       if(!validId(actor?.uid)||!Number.isSafeInteger(body.now)||!actor.active||!actor.access||actor.expiresAt<=body.now)throw channelError('CHANNEL_INTERNAL_INVALID');
       return this.storage.transactionSync(()=>{
         const rate=this.sql.exec('SELECT * FROM channel_rate WHERE actor=?',actor.uid).toArray()[0],fresh=!rate||body.now-rate.window_at>=60000;
