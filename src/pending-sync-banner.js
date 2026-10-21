@@ -4,20 +4,29 @@ export const COMPLETED_SYNC_MESSAGE='Tudo certo! Obrigado pela sua paciência';
 /** Local status only. A real commit event is required before a success notice. */
 export function createSyncNoticeState(onChange=()=>{},{pendingGraceMs=5000,setTimeoutFn=setTimeout,clearTimeoutFn=clearTimeout}={}){
  let uid='',hadPending=false,state='hidden',pendingTimer=null,unsettledCount=0;
- const pendingIds=new Set(),confirmedIds=new Set();
+ const pendingIds=new Set(),observedPendingIds=new Set(),confirmedIds=new Set(),cycleConfirmedIds=new Set();
+ const remember=(set,id)=>{set.delete(id);set.add(id);while(set.size>128)set.delete(set.values().next().value);};
  const paint=next=>{if(state!==next){state=next;onChange({state,message:state==='pending'?PENDING_SYNC_MESSAGE:state==='complete'?COMPLETED_SYNC_MESSAGE:''});}};
  const clearPendingTimer=()=>{if(pendingTimer!==null){clearTimeoutFn(pendingTimer);pendingTimer=null;}};
  const showPendingAfterGrace=()=>{if(pendingTimer!==null)return;if(pendingGraceMs<=0){paint('pending');return;}pendingTimer=setTimeoutFn(()=>{pendingTimer=null;if(hadPending&&(unsettledCount>0||pendingIds.size>0))paint('pending');},pendingGraceMs);};
- const select=next=>{if(uid!==next){uid=next||'';hadPending=false;unsettledCount=0;pendingIds.clear();confirmedIds.clear();clearPendingTimer();paint('hidden');}};
+ const select=next=>{if(uid!==next){uid=next||'';hadPending=false;unsettledCount=0;pendingIds.clear();observedPendingIds.clear();confirmedIds.clear();cycleConfirmedIds.clear();clearPendingTimer();paint('hidden');}};
  return {
-  pending(next,requestId=''){select(next);if(!uid)return;if(state==='complete')paint('hidden');hadPending=true;unsettledCount=Math.max(unsettledCount,1);if(requestId){pendingIds.add(requestId);confirmedIds.clear();}showPendingAfterGrace();},
-  confirmed(next,requestId=''){if(next&&next===uid&&requestId&&pendingIds.has(requestId)){pendingIds.delete(requestId);confirmedIds.add(requestId);}},
-  discarded(next,requestId=''){if(next===uid){if(requestId)pendingIds.delete(requestId);else pendingIds.clear();confirmedIds.clear();if(!pendingIds.size){unsettledCount=0;hadPending=false;clearPendingTimer();paint('hidden');}}},
-  update({uid:next,pendingCount,pendingIds:nextPendingIds,unavailable=false}){select(next);if(!uid)return paint('hidden');if(Array.isArray(nextPendingIds)){pendingIds.clear();for(const id of nextPendingIds)if(typeof id==='string'&&id)pendingIds.add(id);}if(unavailable){if(hadPending)paint('pending');return;}
-   unsettledCount=Math.max(0,Number(pendingCount)||0);
+  pending(next,requestId=''){select(next);if(!uid||(requestId&&confirmedIds.has(requestId)))return;if(!hadPending)cycleConfirmedIds.clear();if(state==='complete')paint('hidden');hadPending=true;unsettledCount=Math.max(unsettledCount,1);if(requestId){pendingIds.add(requestId);remember(observedPendingIds,requestId);}showPendingAfterGrace();},
+  confirmed(next,requestId=''){if(next&&next===uid&&requestId&&observedPendingIds.has(requestId)){pendingIds.delete(requestId);remember(confirmedIds,requestId);remember(cycleConfirmedIds,requestId);}},
+  discarded(next,requestId=''){if(next===uid){if(requestId){pendingIds.delete(requestId);observedPendingIds.delete(requestId);confirmedIds.delete(requestId);cycleConfirmedIds.delete(requestId);}else{pendingIds.clear();observedPendingIds.clear();confirmedIds.clear();cycleConfirmedIds.clear();}if(!pendingIds.size){unsettledCount=0;hadPending=false;clearPendingTimer();paint('hidden');}}},
+  update({uid:next,pendingCount,pendingIds:nextPendingIds,unavailable=false}){select(next);if(!uid)return paint('hidden');
+   const reportedCount=Math.max(0,Number(pendingCount)||0);
+   if(Array.isArray(nextPendingIds)){
+    const validIds=[...new Set(nextPendingIds.filter(id=>typeof id==='string'&&id))];
+    for(const id of validIds)remember(observedPendingIds,id);
+    const staleConfirmedCount=validIds.filter(id=>confirmedIds.has(id)).length;
+    pendingIds.clear();for(const id of validIds)if(!confirmedIds.has(id))pendingIds.add(id);
+    unsettledCount=Math.max(0,reportedCount-staleConfirmedCount);
+   }else unsettledCount=reportedCount;
+   if(unavailable){if(hadPending)paint('pending');return;}
    if(unsettledCount>0||pendingIds.size>0){hadPending=true;showPendingAfterGrace();}
-   else if(hadPending&&confirmedIds.size>0){clearPendingTimer();hadPending=false;unsettledCount=0;pendingIds.clear();confirmedIds.clear();paint('complete');}
-   else if(hadPending){clearPendingTimer();hadPending=false;unsettledCount=0;pendingIds.clear();confirmedIds.clear();paint('hidden');}
+   else if(hadPending&&cycleConfirmedIds.size>0){clearPendingTimer();hadPending=false;unsettledCount=0;pendingIds.clear();cycleConfirmedIds.clear();paint('complete');}
+   else if(hadPending){clearPendingTimer();hadPending=false;unsettledCount=0;pendingIds.clear();cycleConfirmedIds.clear();paint('hidden');}
    else if(state==='pending')paint('hidden');
   },
   reset(next=''){select('');select(next);paint('hidden');},
