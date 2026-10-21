@@ -7,3 +7,7 @@ export function setOfflineRuntimeMode(value) {
 export function isOfflineRuntimeForced() {
   return forcedOffline;
 }
+
+export function shouldQueueOfflineOperationalWrite({online, sessionOffline = false} = {}) {
+  return online === false || sessionOffline === true || isOfflineRuntimeForced();
+}
