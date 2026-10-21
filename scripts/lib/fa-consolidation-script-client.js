@@ -22,11 +22,11 @@ export async function createConsolidationScriptClient({fetchImpl=fetch}={}){
  };
  return Object.freeze({readContent:()=>request('/content'),readDeployments:()=>request('/deployments'),
   updateContent:content=>request('/content','PUT',{files:content.files.map(({name,type,source})=>({name,type,source}))}),
-  createVersion:()=>request('/versions','POST',{description:'FA consolidation: management and performance; source databases preserved'}),
-  updateDeployment:(deployment,versionNumber)=>{
+  createVersion:(description='FA consolidation: management and performance; source databases preserved')=>request('/versions','POST',{description}),
+  updateDeployment:(deployment,versionNumber,description='FA consolidation: management and performance')=>{
    demand(deployment?.deploymentId&&Number.isSafeInteger(versionNumber)&&versionNumber>0,'CONSOLIDATION_SCRIPT_DEPLOYMENT_INVALID');
    return request('/deployments/'+encodeURIComponent(deployment.deploymentId),'PUT',{deploymentConfig:{
-    ...deployment.deploymentConfig,versionNumber,description:'FA consolidation: management and performance'}});
+    ...deployment.deploymentConfig,versionNumber,description}});
   }
  });
 }

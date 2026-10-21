@@ -1,5 +1,6 @@
 import {CHANNEL_COLLECTIONS,mergeSharedChannelRecords,validDay} from './provisional-channel-contract.js';
 import {updateScheduleReleaseState,updateScheduleReleaseTimes} from './schedule-release.js';
+import {createChannelRealtimeClient} from './operational-channel-realtime-client.js';
 export function validChannelEndpoint(value){try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password&&!url.search&&!url.hash&&url.pathname==='/v1/operational-channel';}catch{return false;}}
 export async function provisionalWireOperation(operation){
   if(!CHANNEL_COLLECTIONS.includes(operation?.type))return null;
@@ -15,9 +16,9 @@ export async function provisionalWireOperation(operation){
 }
 export function createProvisionalChannelClient({endpoint='',authSource=null,getSession=()=>null,fetchImpl=fetch,
   now=Date.now,eventTarget=globalThis.window,documentSource=globalThis.document,online=()=>globalThis.navigator?.onLine,onSchedule=()=>{},onStatus=()=>{},
-  store,
+  store,realtimeEnabled=false,createRealtimeSocket,refreshRealtimeSnapshot=async()=>{},
   outbox,readCache=async()=>null,writeCache=async()=>{},getAppCheckHeaders=async()=>({})}={}){
-  const dataByScope=new Map(),flights=new Map(),stops=new Set();let stopped=false,retryAt=0,epoch=0,sessionKey='',grantExpiresAt=0,lastAuthorization='',authorizeRetryAt=0,timer=null;
+  const dataByScope=new Map(),flights=new Map(),stops=new Set(),watchedScopes=new Map(),snapshotRefreshes=new Map();let stopped=false,retryAt=0,epoch=0,sessionKey='',grantExpiresAt=0,lastAuthorization='',authorizeRetryAt=0,timer=null,reportsSource=null;
   const enabled=validChannelEndpoint(endpoint);
   const current=(uid,generation=epoch)=>enabled&&!stopped&&generation===epoch&&authSource?.currentUser?.uid===uid&&getSession()?.status==='signed-in'&&getSession()?.user?.uid===uid&&getSession()?.profile?.active===true&&getSession()?.profile?.access===true;
   const accessKey=()=>{const s=getSession();return JSON.stringify([s?.status,s?.user?.uid,s?.profile?.role,s?.profile?.active,s?.profile?.access,s?.profile?.sigla,s?.profile?.permissions]);};
@@ -26,6 +27,42 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
   const single=(key,action)=>{if(flights.has(key))return flights.get(key);const task=Promise.resolve().then(action).finally(()=>{if(flights.get(key)===task)flights.delete(key);});flights.set(key,task);return task;};
   const serial=(key,action)=>{const before=flights.get(key)||Promise.resolve();const task=before.catch(()=>{}).then(action).finally(()=>{if(flights.get(key)===task)flights.delete(key);});flights.set(key,task);return task;};
   const status=(code)=>onStatus({code,enabled,authorizedUntil:grantExpiresAt||null});
+  const pollDelay=()=>realtime?.connected?600000:60000;
+  function refreshRealtimeDay(uid,day,generation){
+    const key=JSON.stringify([uid,day,generation]),existing=snapshotRefreshes.get(key);
+    if(existing){existing.dirty=true;return existing.task;}
+    const state={dirty:false};
+    state.task=Promise.resolve().then(async()=>{
+      do{state.dirty=false;if(!current(uid,generation))return;
+        await refreshRealtimeSnapshot(uid,{day,isCurrent:()=>current(uid,generation)});
+      }while(state.dirty&&current(uid,generation));
+    }).finally(()=>{if(snapshotRefreshes.get(key)===state)snapshotRefreshes.delete(key);});
+    snapshotRefreshes.set(key,state);return state.task;
+  }
+  async function realtimeChanged(signal=null){
+    const uid=getSession()?.user?.uid,generation=epoch;if(!current(uid,generation))return;
+    const scheduleDays=['#schedule-date','#event-schedule-date'].map(selector=>documentSource.querySelector?.(selector)?.value).filter(validDay);
+    const reportScopes=['events','labels','checklist'].map(kind=>reportsSource?.get?.(kind)?.snapshot()?.scope).filter(scope=>scope?.uid===uid);
+    const days=signal?.day?[signal.day]:[...new Set([...scheduleDays,...watchedScopes.values(),...reportScopes].map(value=>typeof value==='string'?value:value.day||value.month?.concat('-01')).filter(validDay))];
+    // Hydrate the remote copy only: a notification must never restart a Firestore listener.
+    for(const day of days.length?days:[undefined]){
+      if(!current(uid,generation))return;
+      await refreshRealtimeDay(uid,day,generation).catch(()=>{});
+    }
+    if(!current(uid,generation))return;
+    for(const scope of watchedScopes.values())if(scope.uid===uid&&(!signal||!signal.day||signal.day===scope.day)&&(!signal||signal.collection===scope.collection))emit(scope.collection,scope.day);
+    if(!signal||signal.collection==='scheduleReleases')for(const day of scheduleDays.filter(day=>!signal?.day||signal.day===day)){
+      await readShared(uid,'scheduleReleases',day).catch(()=>{});if(current(uid,generation))onSchedule(day);
+    }
+  }
+  const realtime=realtimeEnabled&&enabled?createChannelRealtimeClient({endpoint,eventTarget,documentSource,online,now,
+    getUid:()=>{const uid=getSession()?.user?.uid;return current(uid)?uid:null;},
+    requestTicket:uid=>request(uid,{action:'watch'}),...(createRealtimeSocket?{createSocket:createRealtimeSocket}:{}),
+    onSignal:signal=>{void realtimeChanged(signal).catch(()=>{});},onConnected:()=>{void realtimeChanged().catch(()=>{});},
+    onRevalidate:()=>realtimeChanged(),onStatus:({code})=>{status(code);if(code==='CHANNEL_REALTIME_FALLBACK'){
+      clearTimeout(timer);if(!stopped)timer=setTimeout(pulse,60000);
+      for(const scope of watchedScopes.values())if(current(scope.uid))emit(scope.collection,scope.day);
+    }}}):null;
   async function request(uid,body){
     const generation=epoch;
     if(!current(uid,generation)||!online()||now()<retryAt)throw Object.assign(Error('CHANNEL_NOT_READY'),{code:'CHANNEL_NOT_READY'});
@@ -89,6 +126,7 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
           if(!['CHANNEL_SHARED','CHANNEL_ALREADY_SHARED'].includes(result.code))throw Error('CHANNEL_RESPONSE_INVALID');
           if(!current(uid,generation))return;
           receipt=await store.update(uid,wire.requestId,{shared:true,state:result.state||'pending'});
+          eventTarget.dispatchEvent(new CustomEvent('sahmt-continuity-stored',{detail:{uid,requestId:operation.requestId}}));
           if(receipt.committed)void acknowledge();
           status('CHANNEL_SHARED');emit(wire.collection,wire.day);
         });
@@ -170,7 +208,7 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
   function watch(scope,onRecords){
     const collection=scope.kind==='checklist'?'checklists':scope.kind;
     if(!enabled||scope.mode!=='daily'||!CHANNEL_COLLECTIONS.includes(collection))return ()=>{};
-    let closed=false,tickTimer,inFlight=false,again=false;
+    let closed=false,tickTimer,inFlight=false,again=false;const watchId=Symbol();watchedScopes.set(watchId,{...scope,collection});
     const tick=async()=>{
       if(closed||!current(scope.uid))return;if(inFlight){again=true;return;}inFlight=true;clearTimeout(tickTimer);
       try{
@@ -182,11 +220,11 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
           if(!closed&&current(scope.uid))onRecords(value.records,seed);
         }
       }catch(error){if(!closed){status(error.code||'CHANNEL_UNAVAILABLE');if(error.httpStatus===401||error.httpStatus===403)onRecords([],null);}}
-      finally{inFlight=false;if(!closed){tickTimer=setTimeout(tick,again?100:60000);again=false;}}
+      finally{inFlight=false;if(!closed){tickTimer=setTimeout(tick,again?100:pollDelay());again=false;}}
     };
     const changed=event=>{if(event.detail?.collection===collection&&event.detail?.day===scope.day)void tick();};
     eventTarget.addEventListener('sahmt-channel-data',changed);documentSource.addEventListener('visibilitychange',tick);void tick();
-    const stop=()=>{closed=true;clearTimeout(tickTimer);eventTarget.removeEventListener('sahmt-channel-data',changed);documentSource.removeEventListener('visibilitychange',tick);stops.delete(stop);};stops.add(stop);return stop;
+    const stop=()=>{closed=true;watchedScopes.delete(watchId);clearTimeout(tickTimer);eventTarget.removeEventListener('sahmt-channel-data',changed);documentSource.removeEventListener('visibilitychange',tick);stops.delete(stop);};stops.add(stop);return stop;
   }
   const adapter={watch,merge:(kind,payload,records)=>kind==='checklist'?{...payload,report:{...payload.report,records:mergeSharedChannelRecords('checklists',payload.report.records,records)}}:
     {...payload,records:mergeSharedChannelRecords(kind,payload.records,records)}};
@@ -240,34 +278,35 @@ export function createProvisionalChannelClient({endpoint='',authSource=null,getS
   async function sessionChanged(){
     const s=getSession(),key=accessKey();
     if(key!==sessionKey){epoch++;sessionKey=key;dataByScope.clear();grantExpiresAt=0;retryAt=0;}
-    const uid=s?.user?.uid;if(!current(uid))return;
+    const uid=s?.user?.uid;if(!current(uid)){void realtime?.sessionChanged();return;}
     const fingerprint=key;
     if(!s.offline&&now()>=authorizeRetryAt&&(lastAuthorization!==fingerprint||grantExpiresAt-now()<2*3600000)){
       try{if(await authorize(lastAuthorization!==fingerprint&&Boolean(lastAuthorization)))lastAuthorization=fingerprint;}catch(error){authorizeRetryAt=now()+15*60000;status(error.code||'CHANNEL_AUTHORIZATION_PENDING');}
     }
-    await share();await acknowledge();
+    await share();await acknowledge();void realtime?.sessionChanged();
   }
   async function pulse(){
     clearTimeout(timer);
     try{
       const s=getSession(),uid=s?.user?.uid;
       if(current(uid)&&documentSource.visibilityState!=='hidden'){
-        const day=documentSource.querySelector('#schedule-date')?.value;
+        const day=(documentSource.querySelector('#schedule-date')||documentSource.querySelector('#event-schedule-date'))?.value;
         if(validDay(day)&&await hydrateShared(uid,'scheduleReleases',day))onSchedule(day);
         if(online()){await share();if(validDay(day)){const value=await readShared(uid,'scheduleReleases',day);if(value.changed)onSchedule(day);}}
       }
     }catch(error){status(error.code||'CHANNEL_UNAVAILABLE');}
-    finally{if(!stopped)timer=setTimeout(pulse,60000);}
+    finally{if(!stopped)timer=setTimeout(pulse,pollDelay());}
   }
   const queued=()=>{void share();},synced=()=>{void acknowledge();},sessionEvent=()=>{void sessionChanged();};
   function start(reports){
-    if(!enabled)return ()=>{};reports.configureSharedAdapter(adapter);
+    if(!enabled)return ()=>{};reportsSource=reports;reports.configureSharedAdapter(adapter);
     eventTarget.addEventListener('sahmt-write-queued',queued);eventTarget.addEventListener('sahmt-write-synced',synced);eventTarget.addEventListener('sahmt-channel-confirm',synced);
     eventTarget.addEventListener('online',sessionEvent);eventTarget.addEventListener('sahmt-channel-session',sessionEvent);documentSource.addEventListener('visibilitychange',sessionEvent);
-    void sessionChanged();void pulse();
-    return ()=>{stopped=true;epoch++;clearTimeout(timer);for(const stop of [...stops])stop();reports.configureSharedAdapter(null);dataByScope.clear();
+    void sessionChanged().then(()=>{if(!stopped)realtime?.start();});void pulse();
+    return ()=>{stopped=true;epoch++;realtime?.stop();clearTimeout(timer);for(const stop of [...stops])stop();reports.configureSharedAdapter(null);dataByScope.clear();
       eventTarget.removeEventListener('sahmt-write-queued',queued);eventTarget.removeEventListener('sahmt-write-synced',synced);eventTarget.removeEventListener('sahmt-channel-confirm',synced);
       eventTarget.removeEventListener('online',sessionEvent);eventTarget.removeEventListener('sahmt-channel-session',sessionEvent);documentSource.removeEventListener('visibilitychange',sessionEvent);};
   }
-  return {start,authorize,share,acknowledge,watch,projectSchedule,recover,withdraw,assertReleaseCurrent,sessionChanged,enabled,adapter};
+  async function mirrorSource(path){const uid=getSession()?.user?.uid;if(!current(uid)||!online()||getSession()?.offline)return false;await request(uid,{action:'source',path});return true;}
+  return {start,authorize,share,acknowledge,watch,projectSchedule,recover,withdraw,assertReleaseCurrent,sessionChanged,mirrorSource,enabled,adapter};
 }

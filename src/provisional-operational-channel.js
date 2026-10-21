@@ -12,6 +12,8 @@ export {validChannelEndpoint,provisionalWireOperation};
 export function provisionalChannelEnabled(){return validChannelEndpoint(configuredUrl);}
 export function createProvisionalChannelClient(options={}) {
   return createClient({endpoint:configuredUrl,authSource:auth,store:{list:listChannelReceipts,update:updateChannelReceipt,remove:removeChannelReceipt},
+    realtimeEnabled:import.meta.env?.VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED==='true',
+    refreshRealtimeSnapshot:async(uid,options)=>{const user=auth.currentUser;if(user?.uid!==uid)return;const {recoverRemoteContinuity}=await import('./remote-continuity.js');return recoverRemoteContinuity(user,{...options,force:true,cacheOnly:true});},
     outbox:{list:listUnsettledOperations,enqueue:enqueueOperation,update:updateQueuedOperation},readCache:readFreshSafeCache,writeCache:writeSafeCache,getAppCheckHeaders:channelAppCheckHeaders,...options});
 }
 
@@ -19,6 +21,7 @@ let liveClient;
 export function initializeProvisionalChannel(options){liveClient=createProvisionalChannelClient({...options,getSession:options.getSession});return liveClient.start(options.reports);}
 export const projectSharedSchedule=(schedule,scope)=>liveClient?.projectSchedule(schedule,scope)||schedule;
 export const recoverOwnSharedOperations=(day,collection)=>liveClient?.recover(day,collection)||Promise.resolve({restored:0});
+export const mirrorProvisionalSource=path=>liveClient?.mirrorSource(path)||Promise.resolve(false);
 export async function markProvisionalCommitted(uid,operation){
   if(!provisionalChannelEnabled())return;
   const wire=await provisionalWireOperation(operation);if(!wire)return;
@@ -38,6 +41,9 @@ export async function prepareProvisionalOperation(uid,operation){
   const wire=await provisionalWireOperation(operation);if(!wire)return;
   const existing=(await listChannelReceipts(uid)).find(row=>row.requestId===wire.requestId);
   if(!existing)await updateChannelReceipt(uid,wire.requestId,{collection:wire.collection,day:wire.day,localRequestId:wire.localRequestId,occurredAt:wire.data.occurredAt||null,shared:false,committed:false});
+  // Staged first: an ordinary fast Firestore commit must not remove the queue
+  // before the channel has had its bounded opportunity to preserve it.
+  if(import.meta.env?.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true')await liveClient?.share();
 }
 
 export async function withdrawProvisionalOperation(operation){if(!provisionalChannelEnabled())return;if(!liveClient)throw Error('CHANNEL_NOT_READY');return liveClient.withdraw(operation);}

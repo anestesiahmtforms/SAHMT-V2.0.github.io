@@ -4574,7 +4574,7 @@ function bindEventSchedule() {
           if (vacationCache.size > 40) vacationCache.delete(vacationCache.keys().next().value);
           return {items};
         }, (error) => ({error}));
-      const schedule = await readSchedule(day, session.user.uid);
+      let schedule = await readSchedule(day, session.user.uid);
       if (requestId !== requestSequence || !content.isConnected) return;
       if (!schedule) {
         content.innerHTML = `<p class="empty-state">Nenhuma escala publicada para esta data.</p>${canLaunchSupport ? `<div class="siglas-grid schedule-siglas-grid event-support-only">${renderEventSupportTile(true)}</div>` : ''}`;
@@ -4599,7 +4599,13 @@ function bindEventSchedule() {
         }));
         bindEventSupportButton(content, day);
       };
-      redrawSharedSchedule = draw;
+      redrawSharedSchedule = () => {
+        const uid=session.user?.uid;
+        void Promise.all([readCachedSchedule(uid,day),readFreshSafeCache(uid,'vacations',day)]).then(([latest,leave])=>{
+          if(requestId!==requestSequence||!content.isConnected||session.user?.uid!==uid||dateInput.value!==day)return;
+          if(latest)schedule=latest;if(Array.isArray(leave?.data))vacations=leave.data;draw();
+        }).catch(()=>{});
+      };
       draw();
       const vacationResult = await vacationsPromise;
       if (requestId !== requestSequence || !content.isConnected) return;
@@ -5113,6 +5119,11 @@ async function syncOutbox() {
   if (!navigator.onLine || isOfflineRuntimeForced() || onlineValidationRequired || session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true) return;
   const uid = session.user.uid;
   try {
+    if(globalThis.sahmtRemoteContinuityEnabled===true){
+      const [{confirmRemoteContinuityOperations},{listChannelReceipts}]=await Promise.all([import('./remote-continuity-auto-send.js'),import('./provisional-channel-storage.js')]);
+      await confirmRemoteContinuityOperations({uid,listOperations:listUnsettledOperations,listReceipts:listChannelReceipts,authorize:canConfirmOfflineOperation,
+        isCurrent:()=>session.status==='signed-in'&&session.user.uid===uid&&!session.offline&&!onlineValidationRequired,confirm:confirmQueuedOperation});
+    }
     const [counts, pendingProgress] = await Promise.all([
       operationCounts(uid),
       pendingTrainingProgressCount(uid)
@@ -5219,10 +5230,16 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+  if(next.status==='signed-in'&&userChanged&&globalThis.sahmtRemoteContinuityEnabled===true){
+    const uid=next.user.uid;
+    void import('./remote-continuity.js').then(module=>module.recoverRemoteContinuity(next.user,{isCurrent:()=>session.status==='signed-in'&&session.user.uid===uid})).then(()=>{
+      if(session.status==='signed-in'&&session.user.uid===uid&&!session.offline)void syncOutbox();
+    }).catch(()=>{});
+  }
   if (globalThis.sahmtProvisionalChannelEnabled) window.dispatchEvent(new CustomEvent('sahmt-channel-session'));
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired);
   if (profileBecameLocal) {cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false);}
-  if (profileRevalidated && navigator.onLine) {cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);}
+  if (profileRevalidated && navigator.onLine) {cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);void syncOutbox();}
   if (next.status === 'signed-in' && !next.offline && (wasOffline || userChanged)) {
     preloadOperationalDataWhenIdle(next.user); preloadStartupReports(next.user);
     for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get?.(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'profile-online');
@@ -5353,6 +5370,7 @@ if (startupBannerActive) window.setTimeout(() => {
   startupBannerActive = false;
   void render();
 }, STARTUP_BANNER_DURATION_MS);
+globalThis.sahmtRemoteContinuityEnabled=import.meta.env.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true';
 watchSession(sessionChanged);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -5364,11 +5382,26 @@ if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
     globalThis.sahmtProvisionalChannelEnabled = module.provisionalChannelEnabled();
     globalThis.sahmtProjectSharedSchedule = module.projectSharedSchedule;
     globalThis.sahmtRecoverSharedOperations = module.recoverOwnSharedOperations;
+    if(globalThis.sahmtRemoteContinuityEnabled)globalThis.sahmtMirrorConfirmedSource=path=>module.mirrorProvisionalSource(path).catch(()=>false);
     module.initializeProvisionalChannel({getSession:()=>session,reports:liveReports,onStatus:detail=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail})),onSchedule:()=>window.dispatchEvent(new CustomEvent('sahmt-shared-schedule'))});
     window.addEventListener('sahmt-shared-schedule',()=>{
       const dateInput=document.querySelector('#schedule-date')||document.querySelector('#event-schedule-date');
       dateInput?.dispatchEvent(new Event('sahmt-shared-refresh'));
     });
   }).catch(()=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail:{code:'CHANNEL_INITIALIZATION_FAILED'}})));
+}
+
+if(import.meta.env.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true'){
+  window.addEventListener('sahmt-continuity-stored',event=>{
+    if(event.detail?.uid===session.user?.uid)void updateOutboxStatus();
+  });
+  window.addEventListener('sahmt-continuity-ready',event=>{
+    if(event.detail?.uid!==session.user?.uid)return;
+    for(const kind of ['events','labels','checklist'])if(liveReports.get?.(kind)){
+      if(event.detail?.cacheOnly)void liveReports.hydrateCached(kind,emitCachedOfflineReport).catch(()=>{});
+      else liveReports.refresh(kind,'continuity-ready');
+    }
+    void updateOutboxStatus();
+  });
 }
 

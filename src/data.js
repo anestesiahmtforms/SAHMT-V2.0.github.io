@@ -118,6 +118,7 @@ async function applyScheduleSiglaRelease(operation, uid) {
     return {...schedule, id: snapshot.id, updatedByUid: uid, version, highlights: {...schedule.highlights, siglas: result.siglas, releaseTimes}};
   });
   await writeSafeCache(uid, 'scheduleDays', operation.day, updated).catch(() => {});
+  void globalThis.sahmtMirrorConfirmedSource?.('scheduleDays/'+operation.day);
   return updated;
 }
 
@@ -125,11 +126,11 @@ async function queueScheduleSiglaRelease(operation, {uid, currentSiglas = []}) {
   const result = updateScheduleReleaseState(currentSiglas, operation);
   const requestId = scheduleReleaseRequestId(uid, operation);
   if (result.changed) {
-    await prepareProvisionalWrite(uid,'scheduleReleases',requestId,operation);
     await enqueueOperation({
       uid, type: 'scheduleReleases', resourceId: `${operation.day}:${operation.sigla}`, requestId,
       payload: operation, coalesce: true
     });
+    await prepareProvisionalWrite(uid,'scheduleReleases',requestId,operation);
     const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
     const schedule = cached?.data || {id: operation.day, date: operation.day, positions: [], highlights: {siglas: [], events: []}, version: 0};
     const releaseTimes = updateScheduleReleaseTimes(schedule.highlights?.releaseTimes, currentSiglas, result.siglas, operation.occurredAt);
@@ -231,6 +232,7 @@ export async function saveAppFeatures(input, actorUid) {
     }
   });
   try { await writeSafeCache(actorUid, 'appConfig', 'app', {features}); } catch { /* Server save already succeeded; cache is best-effort. */ }
+  void globalThis.sahmtMirrorConfirmedSource?.('appConfig/app');
   return features;
 }
 
@@ -409,6 +411,7 @@ export async function saveLabelStaffSiglas(values, uid) {
       transaction.set(reference, {id: 'labelStaff', siglas, active: true, createdByUid: uid, createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp(), version: 1});
     }
   });
+  void globalThis.sahmtMirrorConfirmedSource?.('appConfig/labelStaff');
   return siglas;
 }
 
@@ -446,6 +449,8 @@ export async function saveContact(input, actorUid) {
     updatedByUid: actorUid, updatedAt: serverTimestamp()
   });
   await batch.commit();
+  void globalThis.sahmtMirrorConfirmedSource?.('contacts/'+sigla);
+  void globalThis.sahmtMirrorConfirmedSource?.('eventMembers/'+sigla);
   return {id: sigla, ...record};
 }
 
@@ -604,6 +609,7 @@ export async function saveUserProfile(input, actorUid) {
   } else {
     await setDoc(ref, record);
   }
+  void globalThis.sahmtMirrorConfirmedSource?.('users/'+uid);
   return {id: uid, ...record};
 }
 
@@ -1493,6 +1499,7 @@ export async function saveEventCatalog(input, uid) {
     };
     transaction.set(ref, saved);
   });
+  void globalThis.sahmtMirrorConfirmedSource?.('eventCatalogs/operational');
   return saved;
 }
 
@@ -1570,6 +1577,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
     if (!queueOffline) throw error;
     return queueOfflineEdit();
   }
+  if(!unchanged)void globalThis.sahmtMirrorConfirmedSource?.('events/'+eventId);
   return {id: eventId, pendingFirestore: false, unchanged};
 }
 
@@ -1667,6 +1675,7 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
     transaction.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
     transaction.set(historyRef, historyEntry);
   });
+  void globalThis.sahmtMirrorConfirmedSource?.('labels/'+labelId);
   return {id: labelId, pendingFirestore: false};
 }
 
@@ -1913,7 +1922,7 @@ export async function saveChecklistStation(input, uid) {
   const duplicate = await getDocsFromServer(query(collection(db, 'stations'), where('qrCode', '==', qrCode), limit(2)));
   if (duplicate.docs.some((item) => item.id !== stationId)) throw new Error('Este código QR já pertence a outra estação.');
   const ref = doc(db, 'stations', stationId);
-  return runTransaction(db, async (transaction) => {
+  const result = await runTransaction(db, async (transaction) => {
     const current = await transaction.get(ref);
     const record = {
       id: stationId,
@@ -1935,6 +1944,8 @@ export async function saveChecklistStation(input, uid) {
     transaction.set(ref, record);
     return record;
   });
+  void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
+  return result;
 }
 
 export async function getChecklistCreatorName(creatorUid) {
@@ -2453,7 +2464,7 @@ async function createOperationalRecordInFirestore(collectionName, data, {uid, re
   if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue});
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced() && !forceQueue,
-    saveLocal: async () => {await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});},
+    saveLocal: async () => {const result=await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return result;},
     sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
     clearLocal: async () => {await markProvisionalWriteCommitted(uid,collectionName,requestId,{collectionName,data});await removeQueuedOperation(uid,requestId);if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:collectionName}}));}, recoverable: mayUseOfflineCache,
     onFailure: async error => {
@@ -2698,13 +2709,15 @@ export async function saveChecklistStationMaintenance(stationId, value, uid) {
   const maintenance = checklistMaintenanceForWrite(value);
   if (!/^[^/]{1,128}$/.test(stationId || '')) throw new Error('Confira o arsenal informado para manutenção.');
   const ref = doc(db, 'stations', stationId);
-  return runTransaction(db, async (transaction) => {
+  const result = await runTransaction(db, async (transaction) => {
     const current = await transaction.get(ref);
     if (!current.exists()) throw new Error('Arsenal não encontrado.');
     const update = {maintenance, updatedByUid: uid, updatedAt: serverTimestamp(), version: Math.max(1, Number(current.data().version) || 1) + 1};
     transaction.update(ref, update);
     return {...current.data(), ...update};
   });
+  void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
+  return result;
 }
 
 export async function saveChecklistStationTitle(stationId, value, uid) {
@@ -2713,12 +2726,14 @@ export async function saveChecklistStationTitle(stationId, value, uid) {
   const functionLabel = normalizeChecklistStationTitle(value);
   if (!/^[^/]{1,128}$/.test(stationId || '')) throw new Error('Confira o arsenal informado para editar o título.');
   const ref = doc(db, 'stations', stationId);
-  return runTransaction(db, async (transaction) => {
+  const result = await runTransaction(db, async (transaction) => {
     const current = await transaction.get(ref);
     if (!current.exists()) throw new Error('Arsenal não encontrado.');
     const update = {functionLabel, updatedByUid: uid, updatedAt: serverTimestamp(), version: Math.max(1, Number(current.data().version) || 1) + 1};
     transaction.update(ref, update);
     return {...current.data(), ...update};
   });
+  void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
+  return result;
 }
 
