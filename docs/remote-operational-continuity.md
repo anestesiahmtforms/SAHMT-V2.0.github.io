@@ -22,6 +22,16 @@ O Worker é conferido inicialmente com a extensão desligada, preservando as dua
 
 ## Reversão
 
+### Avisos imediatos entre aparelhos
+
+Com `VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED=true` e `OPERATIONAL_CHANNEL_REALTIME_ENABLED=true`, o app visível mantém um WebSocket com hibernação no Durable Object existente. O aviso contém somente módulo e data; o app busca a cópia autorizada no Worker e atualiza a tela sem reabrir consultas Firestore. Recebimento provisório continua identificado até confirmação definitiva.
+
+O ticket dura 60 segundos, é de uso único e a conexão renova sua autorização em até 15 minutos. Troca de conta, revogação e segundo plano encerram a conexão. O retorno à tela recupera alterações perdidas. Sem WebSocket, permanece a consulta do canal a cada 60 segundos; com conexão saudável, a conferência de segurança é espaçada para dez minutos. Isso não inclui varreduras Firestore.
+
+Instalar com `node scripts/install-operational-realtime.mjs install`, após preparar e testar o pacote. O instalador confere primeiro a extensão desligada e preserva namespaces, segredos e as outras flags. Para interromper somente os avisos, usar `node scripts/install-operational-realtime.mjs disable` e desligar a flag do frontend no próximo build. As filas remotas são preservadas.
+
+“Imediato” depende do app aberto e da internet. iOS pode suspender o app em segundo plano. Não existe conexão mantida à força nem garantia de prazo de entrega; a reconexão recupera a cópia atual.
+
 Desligar `VITE_OPERATIONAL_CONTINUITY_ENABLED` no build e `OPERATIONAL_CONTINUITY_ENABLED` no Worker. Executar `desativarSincronizadorCanalRemotoV1` para remover somente seu acionador. Preservar namespaces, filas e arquivo privado até reconciliar todas as pendências. A recuperação privada contém o código/configuração anterior do Worker e os arquivos/implantações anteriores do Apps Script. Não apagar dados remotos para reverter código.
 
 ## Custos e limites

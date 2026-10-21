@@ -95,6 +95,17 @@ export function createLiveReportSession({subscribe, onData = () => {}, onState =
     start,
     close,
     refresh(reason = 'retry') { return active ? start(active.scope, {force: true, reason}) : false; },
+    cachedNext(sourceKey,event,key) {
+      const entry=active;
+      if(!entry||entry.scope.key!==key||!isCurrent(entry.scope)||!entry.scope.sourceKeys.includes(sourceKey)||event?.fromCache!==true)return false;
+      const state=snapshot();
+      if(state.fromCache===false||state.error&&!['unavailable','resource-exhausted','deadline-exceeded'].includes(state.error.code))return false;
+      entry.failed=false;entry.error=null;
+      entry.sources.set(sourceKey,{data:event.data,complete:event.complete!==false,fromCache:true,hasPendingWrites:event.hasPendingWrites===true});
+      const ready=entry.scope.sourceKeys.every(name=>entry.sources.get(name)?.complete===true);
+      if(ready)entry.data=entry.scope.sourceKeys.length===1?entry.sources.get(sourceKey).data:Object.fromEntries(entry.scope.sourceKeys.map(name=>[name,entry.sources.get(name).data]));
+      publish(entry,ready);return true;
+    },
     setOnline(value) {
       onlineOverride = Boolean(value);
       if (active && !active.failed) publish(active);

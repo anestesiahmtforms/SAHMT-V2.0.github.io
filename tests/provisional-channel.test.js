@@ -47,6 +47,37 @@ function clientHarness(server=harness(),sharedStore){
   const queue=(id='record1',date=day)=>operations.set(id,{uid:'userA',requestId:id,resourceId:id,type:'checklists',createdAt:now,payload:{collectionName:'checklists',data:{...checklist(id).data,date}},status:'awaiting-confirmation'});
   return {server,store,outbox,operations,receipts,session,auth,make,queue,fetcher:()=>fetcher,setFetcher:fn=>fetcher=fn};
 }
+
+test('cliente integrado recebe aviso imediato e atualiza relatório pelo Worker sem nova leitura Firestore',async()=>{
+ const h=clientHarness(),fetcher=h.fetcher();let socket,refreshes=0;const paints=[];
+ h.setFetcher(async(url,options)=>JSON.parse(options.body).action==='watch'?Response.json({code:'CHANNEL_REALTIME_TICKET',ticket:'synthetic-ticket',authorizedUntil:now+900000}):fetcher(url,options));
+ class Socket extends EventTarget{readyState=0;send(){}close(){this.readyState=3;}open(){this.readyState=1;this.dispatchEvent(new Event('open'));}message(value){const e=new Event('message');e.data=JSON.stringify(value);this.dispatchEvent(e);}}
+ const client=h.make({realtimeEnabled:true,createRealtimeSocket:()=>socket=new Socket(),refreshRealtimeSnapshot:async()=>{refreshes++;}});
+ const stop=client.start({configureSharedAdapter(){}});
+ try{
+  for(let i=0;i<30&&!socket;i++)await new Promise(r=>setImmediate(r));assert.ok(socket);socket.open();
+  const unwatch=client.watch({kind:'checklist',mode:'daily',day,uid:'userA'},rows=>paints.push(rows));
+  try{
+   h.server.setFailure(true);h.queue();await client.share();
+   socket.message({type:'changed',collection:'checklists',day});await new Promise(r=>setTimeout(r,320));
+   assert.ok(refreshes>=2);assert.equal(paints.at(-1)[0].id,'record1');assert.equal(h.server.reads(),1);
+  }finally{unwatch();}
+ }finally{stop();}
+});
+test('reconexão recupera os períodos visíveis e novo aviso durante hidratação não se perde',async()=>{
+ const h=clientHarness(),fetcher=h.fetcher(),days=[];let socket,release;
+ h.setFetcher(async(url,options)=>JSON.parse(options.body).action==='watch'?Response.json({code:'CHANNEL_REALTIME_TICKET',ticket:'synthetic-ticket',authorizedUntil:now+900000}):fetcher(url,options));
+ class Socket extends EventTarget{readyState=0;send(){}close(){this.readyState=3;}open(){this.readyState=1;this.dispatchEvent(new Event('open'));}message(value){const e=new Event('message');e.data=JSON.stringify(value);this.dispatchEvent(e);}}
+ const doc={visibilityState:'visible',querySelector:selector=>selector==='#event-schedule-date'?{value:'2026-10-18'}:null,addEventListener(){},removeEventListener(){}};
+ const client=h.make({documentSource:doc,realtimeEnabled:true,createRealtimeSocket:()=>socket=new Socket(),refreshRealtimeSnapshot:async(_uid,{day})=>{days.push(day);if(days.length===1)await new Promise(resolve=>release=resolve);}});
+ const stop=client.start({configureSharedAdapter(){},get:kind=>kind==='events'?{snapshot:()=>({scope:{uid:'userA',mode:'monthly',month:'2026-09'}})}:null});
+ try{
+  for(let i=0;i<30&&!socket;i++)await new Promise(r=>setImmediate(r));socket.open();await new Promise(r=>setImmediate(r));
+  socket.message({type:'changed',collection:'scheduleReleases',day:'2026-10-18'});await new Promise(r=>setTimeout(r,300));release();
+  for(let i=0;i<20&&days.length<3;i++)await new Promise(r=>setImmediate(r));
+  assert.equal(days.filter(day=>day==='2026-10-18').length,2);assert.ok(days.includes('2026-09-01'));assert.equal(h.server.reads(),1);
+ }finally{stop();}
+});
 test('contrato Checklist preserva exatamente campos graváveis e limita ocorrência a 500 caracteres',()=>{
   const actor=channelActorFromProfile('userA',profile,now),input=checklist();
   const normalized=normalizeChannelSubmission({collection:input.collection,requestId:input.requestId,data:input.data},actor,now);

@@ -236,6 +236,13 @@ export function createReportRuntime({subscribe, isCurrent = () => true, isOnline
       }
       return entry.controller.refresh(reason);
     },
+    async hydrateCached(kind,loader) {
+      const entry=entries.get(kind);if(!entry||!current(entry))return false;
+      const state=entry.rawSnapshot(),scope=entry.scope;
+      if(state.fromCache===false||['permission-denied','unauthenticated'].includes(state.error?.code))return false;
+      return loader(kind,scope,{isCurrent:()=>current(entry,scope)&&entry.scope===scope,
+        next:(key,event)=>{if(current(entry,scope)&&entry.scope===scope)entry.controller.cachedNext(key,event,scope.key);}});
+    },
     close(kind, reason = 'close') { const entry = entries.get(kind); return entry ? closeEntry(entry, reason) : false; },
     clear(reason = 'clear') {
       for (const entry of [...entries.values()]) closeEntry(entry, reason);

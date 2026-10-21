@@ -4574,7 +4574,7 @@ function bindEventSchedule() {
           if (vacationCache.size > 40) vacationCache.delete(vacationCache.keys().next().value);
           return {items};
         }, (error) => ({error}));
-      const schedule = await readSchedule(day, session.user.uid);
+      let schedule = await readSchedule(day, session.user.uid);
       if (requestId !== requestSequence || !content.isConnected) return;
       if (!schedule) {
         content.innerHTML = `<p class="empty-state">Nenhuma escala publicada para esta data.</p>${canLaunchSupport ? `<div class="siglas-grid schedule-siglas-grid event-support-only">${renderEventSupportTile(true)}</div>` : ''}`;
@@ -4599,7 +4599,13 @@ function bindEventSchedule() {
         }));
         bindEventSupportButton(content, day);
       };
-      redrawSharedSchedule = draw;
+      redrawSharedSchedule = () => {
+        const uid=session.user?.uid;
+        void Promise.all([readCachedSchedule(uid,day),readFreshSafeCache(uid,'vacations',day)]).then(([latest,leave])=>{
+          if(requestId!==requestSequence||!content.isConnected||session.user?.uid!==uid||dateInput.value!==day)return;
+          if(latest)schedule=latest;if(Array.isArray(leave?.data))vacations=leave.data;draw();
+        }).catch(()=>{});
+      };
       draw();
       const vacationResult = await vacationsPromise;
       if (requestId !== requestSequence || !content.isConnected) return;
@@ -5391,7 +5397,10 @@ if(import.meta.env.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true'){
   });
   window.addEventListener('sahmt-continuity-ready',event=>{
     if(event.detail?.uid!==session.user?.uid)return;
-    for(const kind of ['events','labels','checklist'])if(liveReports.get?.(kind))liveReports.refresh(kind,'continuity-ready');
+    for(const kind of ['events','labels','checklist'])if(liveReports.get?.(kind)){
+      if(event.detail?.cacheOnly)void liveReports.hydrateCached(kind,emitCachedOfflineReport).catch(()=>{});
+      else liveReports.refresh(kind,'continuity-ready');
+    }
     void updateOutboxStatus();
   });
 }

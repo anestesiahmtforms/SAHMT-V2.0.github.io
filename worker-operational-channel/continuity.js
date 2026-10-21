@@ -2,6 +2,7 @@ import {validateContinuityProfile,validateContinuityResource,continuityEntriesFo
 import {channelActorFromProfile,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {readChannelJson} from './identity.js';
 import {continuitySourceChanges} from '../src/remote-continuity-source-change.js';
+import {notifyRealtime,notifyRealtimeSourceChange} from './realtime.js';
 const response=(body,status=200)=>Response.json(body,{status});
 const internal=(stub,path,body)=>stub.fetch(new Request('https://channel.internal/'+path,{method:'POST',body:JSON.stringify(body)}));
 const authority=(env,uid)=>env.OPERATIONAL_CHANNEL_AUTHORIZATION.get(env.OPERATIONAL_CHANNEL_AUTHORIZATION.idFromName(uid));
@@ -23,11 +24,11 @@ export function continuityAuthorityAction(sql,path,body){
  if(path==='/continuity-profile-put'){
   const value=validateContinuityProfile(body.profile,body.now),prior=sql.exec('SELECT verified_at,content FROM continuity_profile WHERE id=1').toArray()[0];
   const grant=sql.exec('SELECT content FROM channel_grant WHERE id=1').toArray()[0],current=grant?JSON.parse(grant.content):null;
-  if(prior&&prior.verified_at>value.verifiedAt||current?.revoked&&(!current.revokedAt||value.verifiedAt<=current.revokedAt))return response({code:'CONTINUITY_OLDER_PROFILE_PRESERVED',changed:false});
+  if(prior&&prior.verified_at>value.verifiedAt||current?.verifiedAt>value.verifiedAt||current?.revoked&&(!current.revokedAt||value.verifiedAt<=current.revokedAt))return response({code:'CONTINUITY_OLDER_PROFILE_PRESERVED',changed:false});
   if(prior&&prior.verified_at===value.verifiedAt&&canonical(JSON.parse(prior.content))!==canonical(value))return response({code:'CONTINUITY_PROFILE_CONFLICT'},409);
   sql.exec('INSERT OR REPLACE INTO continuity_profile VALUES(1,?,?)',value.verifiedAt,JSON.stringify(value));
   if(!value.profile.active||!value.profile.access)sql.exec('INSERT OR REPLACE INTO channel_grant VALUES(1,?)',JSON.stringify({revoked:true,revokedAt:value.verifiedAt}));
-  else if(current?.revoked)sql.exec('DELETE FROM channel_grant WHERE id=1');
+  else if(current)sql.exec('INSERT OR REPLACE INTO channel_grant VALUES(1,?)',JSON.stringify({...channelActorFromProfile(value.uid,value.profile,value.verifiedAt),...(current.fromContinuity||current.revoked?{fromContinuity:true}:{})}));
   return response({code:'CONTINUITY_PROFILE_STORED',changed:true});
  }
  if(path==='/continuity-profile-get'){
@@ -170,13 +171,14 @@ export async function importContinuitySnapshot(request,env,now){
   }
   const result=await internal(stub,'continuity-record-state',{uid:body.uid,requestId:body.requestId,state:body.state});if(!result.ok)return result;
   await setContinuityOperationState(env,body.uid,body.requestId,body.state);
+  await notifyRealtime(env,operation.collection,operation.day);
   return response({code:'CONTINUITY_COMPLETED',state:body.state});
  }
  if(!Array.isArray(body.profiles)||body.profiles.length>200||!Array.isArray(body.resources)||body.resources.length>160)failure('CONTINUITY_IMPORT_INVALID');
  const profiles=body.profiles.map(p=>validateContinuityProfile(p,now)),resources=body.resources.map(r=>validateContinuityResource(r,now));
  if(new Set(profiles.map(p=>p.uid)).size!==profiles.length||new Set(resources.map(r=>r.kind+':'+r.id)).size!==resources.length)failure('CONTINUITY_IMPORT_DUPLICATE');
  const nonceResponse=await internal(state(env),'continuity-import-nonce',{nonce,now});if(!nonceResponse.ok)return nonceResponse;
- for(const profile of profiles){const result=await internal(authority(env,profile.uid),'continuity-profile-put',{profile,now});if(!result.ok)return result;}
+ for(const profile of profiles){const result=await internal(authority(env,profile.uid),'continuity-profile-put',{profile,now});if(!result.ok)return result;if((await result.json()).changed)await notifyRealtime(env,undefined,undefined,profile.uid);}
  for(const resource of resources){const result=await internal(state(env),'continuity-resource-put',{resource,now});if(!result.ok)return result;}
  return response({code:'CONTINUITY_IMPORTED',profiles:profiles.length,resources:resources.length});
 }
@@ -219,9 +221,9 @@ export async function recordContinuitySourceChange(env,path,data,now,deleted=fal
  if(!/^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(path))failure('CONTINUITY_PATH_INVALID');
  if(path.startsWith('users/')){
   const uid=path.split('/')[1];
-  if(deleted){await internal(authority(env,uid),'revoke',{now});return response({code:'CONTINUITY_PROFILE_REVOKED'});}
+  if(deleted){const result=await internal(authority(env,uid),'revoke',{now});if(!result.ok)return result;await notifyRealtimeSourceChange(env,path,data,now);return response({code:'CONTINUITY_PROFILE_REVOKED'});}
   const profile=validateContinuityProfile({schemaVersion:1,uid,verifiedAt:now,profile:{...data,uid:data.uid||uid}},now);
-  return internal(authority(env,uid),'continuity-profile-put',{profile,now});
+  const result=await internal(authority(env,uid),'continuity-profile-put',{profile,now});if(result.ok&&(await result.clone().json()).changed)await notifyRealtimeSourceChange(env,path,data,now);return result;
  }
- const result=await internal(state(env),'continuity-source-change',{change:{path,data,deleted,verifiedAt:now},now});if(!result.ok)failure('CONTINUITY_SOURCE_UNAVAILABLE',503);return result;
+ const result=await internal(state(env),'continuity-source-change',{change:{path,data,deleted,verifiedAt:now},now});if(!result.ok)failure('CONTINUITY_SOURCE_UNAVAILABLE',503);await notifyRealtimeSourceChange(env,path,data,now);return result;
 }

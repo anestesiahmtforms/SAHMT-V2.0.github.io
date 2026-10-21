@@ -17,6 +17,7 @@ new_sqlite_classes = ["OperationalChannelState", "OperationalChannelAuthorizatio
 
 [vars]
 OPERATIONAL_CHANNEL_ENABLED = "false"
+OPERATIONAL_CHANNEL_REALTIME_ENABLED = "false"
 OPERATIONAL_CONTINUITY_ENABLED = "false"
 
 # FA_FIREBASE_WEB_API_KEY: the existing public FA Web key, injected at deployment.

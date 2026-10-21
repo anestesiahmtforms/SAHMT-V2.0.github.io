@@ -12,6 +12,8 @@ export {validChannelEndpoint,provisionalWireOperation};
 export function provisionalChannelEnabled(){return validChannelEndpoint(configuredUrl);}
 export function createProvisionalChannelClient(options={}) {
   return createClient({endpoint:configuredUrl,authSource:auth,store:{list:listChannelReceipts,update:updateChannelReceipt,remove:removeChannelReceipt},
+    realtimeEnabled:import.meta.env?.VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED==='true',
+    refreshRealtimeSnapshot:async(uid,options)=>{const user=auth.currentUser;if(user?.uid!==uid)return;const {recoverRemoteContinuity}=await import('./remote-continuity.js');return recoverRemoteContinuity(user,{...options,force:true,cacheOnly:true});},
     outbox:{list:listUnsettledOperations,enqueue:enqueueOperation,update:updateQueuedOperation},readCache:readFreshSafeCache,writeCache:writeSafeCache,getAppCheckHeaders:channelAppCheckHeaders,...options});
 }
 

@@ -22,7 +22,7 @@ const client=createRemoteContinuityClient({
 export async function recoverRemoteContinuity(user,options={}){
  if(!enabled)return null;
  const result=await client.bootstrap(user,options);
- if(result&&auth?.currentUser?.uid===user.uid)globalThis.window?.dispatchEvent(new CustomEvent('sahmt-continuity-ready',{detail:{uid:user.uid,restored:result.restored}}));
+ if(result&&auth?.currentUser?.uid===user.uid)globalThis.window?.dispatchEvent(new CustomEvent('sahmt-continuity-ready',{detail:{uid:user.uid,restored:result.restored,cacheOnly:options.cacheOnly===true}}));
  return result;
 }
 export async function recoverContinuityCache(uid,kind,id){
