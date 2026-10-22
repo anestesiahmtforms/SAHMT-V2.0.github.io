@@ -861,7 +861,8 @@ service cloud.firestore {
       }
       function validScopedManagementDocument(data, documentId) {
         return data.keys().hasAll(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'audienceGroup']) &&
-          data.keys().hasOnly(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'audienceGroup']) &&
+          data.keys().hasOnly(['id', 'managementAreaId', 'title', 'description', 'driveFileId', 'driveUrl', 'version', 'category', 'active', 'publishedAt', 'requiredReading', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'audienceGroup', 'readingGateRequired']) &&
+          (!data.keys().hasAny(['readingGateRequired']) || data.readingGateRequired is bool) &&
           data.id == documentId && documentId.matches('^[A-Za-z0-9_-]{10,200}$') && data.managementAreaId is string && data.managementAreaId.size() > 0 && data.managementAreaId.size() <= 128 &&
           data.title is string && data.title.size() > 0 && data.title.size() <= 160 && data.description is string && data.description.size() <= 1200 &&
           data.driveFileId is string && data.driveFileId.matches('^[A-Za-z0-9_-]{10,200}$') &&

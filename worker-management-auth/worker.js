@@ -54,6 +54,12 @@ export function createManagementAuthWorker({buildRuntime,buildOperationalRuntime
     async fetch(request, env, context) {
       if (new URL(request.url).pathname === '/v1/diretrizes/reading') {
         if(env?.DIRETRIZES_READING_ENABLED!=='true'||request.method!=='POST')return relayDiretrizesReading(request,env||{});
+        if(env?.DIRETRIZES_READING_DURABLE_RELAY_ENABLED==='true'){
+          try{
+            const id=env.BROKER_STATE.idFromName('sahmt-reading-relay-v1');
+            return await env.BROKER_STATE.get(id).fetch(new Request('https://broker-state.internal/reading-relay',{method:'POST',headers:request.headers,body:request.body,signal:request.signal,duplex:'half'}));
+          }catch{return relayDiretrizesReading(request,env||{});}
+        }
         try {const runtime=await operationalFor(env);if(runtime.maxRequestMs<55000)return relayDiretrizesReading(request,env);return await relayDiretrizesReading(request,env,{admitRequest:runtime.admitRequest});}
         catch {return relayDiretrizesReading(request,env||{});}
       }

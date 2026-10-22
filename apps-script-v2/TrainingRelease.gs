@@ -508,6 +508,7 @@ function trainingReleasePrepared_(loaded, item) {
 
 /** Pure publication gate also used by generic Forms reconciliation; no writes or Form mutations. */
 function trainingReleaseVerifyPublication_(formId) {
+  if(typeof ropsTrainingReleaseVerify_==='function'){const proof=ropsTrainingReleaseVerify_(formId);if(proof)return proof;}
   const loaded = trainingReleaseLoad_();
   // The mandatory material gate validates current authorization before returning a publication proof.
   const job = trainingReleaseSaved_(SAHMT_V2_TRAINING_RELEASE.jobProperty);

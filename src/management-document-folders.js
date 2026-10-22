@@ -41,7 +41,7 @@ export function managementDocumentFolder(item) {
   return {access: restricted ? 'RESTRICTED' : 'GENERAL', folder};
 }
 
-export function renderManagementDocumentCard(item, {canEdit = false, readingGate = false} = {}) {
+export function renderManagementDocumentCard(item, {canEdit = false, readingGate = false, registeredReadingOnly = false} = {}) {
   const title = escapeHtml(item.title || 'Documento');
   const trainingId=trainingActivityId(item);
   const trainingAttributes=trainingId ? ' data-training-activity="'+escapeHtml(trainingId)+'" data-training-title="'+title+'" data-training-state="blue"' : '';
@@ -49,7 +49,11 @@ export function renderManagementDocumentCard(item, {canEdit = false, readingGate
     ? 'organization' : folderIconKind(managementDocumentFolder(item).folder);
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
   const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
-  if (readingGate && ['Diretrizes', 'Protocolos', 'ROPs', 'Documentos administrativos'].includes(managementDocumentFolder(item).folder)) {
+  const registeredReading = item.readingGateRequired === true;
+  if (registeredReading && !readingGate) {
+    return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium" disabled aria-label="' + title + ' · Leitura em preparação">' + content + '</button>' + edit + '</li>';
+  }
+  if (readingGate && (!registeredReadingOnly || registeredReading) && ['Diretrizes', 'Protocolos', 'ROPs', 'Documentos administrativos'].includes(managementDocumentFolder(item).folder)) {
     return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' data-open-diretriz-reader="' + escapeHtml(String(item.id).startsWith('pdf_evaluation_') ? String(item.id).slice(4) : item.id) + '" data-reading-title="' + title + '">' + content + '</button>' + edit + '</li>';
   }
   let href = '';

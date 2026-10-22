@@ -83,6 +83,8 @@ jobs:
       - name: Build PWA
         env:
           SAHMT_FB_CUTOVER: 'true'
+          SAHMT_FB_READER_ENABLED: 'true'
+          SAHMT_FB_READER_ENDPOINT: 'https://sahmt-auth-broker.anestesiahmtforms.workers.dev/v1/diretrizes/reading'
           VITE_GOOGLE_PROJECT_AUTH_ENABLED: 'true'
           VITE_MANAGEMENT_FA_FIRST_LOGIN_ENABLED: 'false'
           VITE_MANAGEMENT_DATA_PROJECT: 'FA'

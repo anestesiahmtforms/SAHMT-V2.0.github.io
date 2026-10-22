@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {relayDiretrizesReading} from './diretrizes-reading-relay.js';
 
 const INTERNAL_ORIGIN = 'https://broker-state.internal';
 const MAX_SLOTS = 32;
@@ -11,15 +12,24 @@ const response = (status, body) => new Response(JSON.stringify(body), {status, h
 
 /** SQLite-backed, singleton admission state. No FA token, UID, IP, or payload is stored. */
 export class ManagementBrokerAdmissionState {
-  constructor(ctx) {
+  constructor(ctx, env) {
     if (!ctx?.storage?.sql || typeof ctx.storage.sql.exec !== 'function') throw new Error('BROKER_STATE_STORAGE_REQUIRED');
     this.sql = ctx.storage.sql;
+    this.env = env;
     this.sql.exec('CREATE TABLE IF NOT EXISTS active_requests (slot_id TEXT PRIMARY KEY, expires_at_ms INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS gateway_response_nonces (nonce_hash TEXT PRIMARY KEY, retain_until_ms INTEGER NOT NULL)');
   }
 
   async fetch(request) {
     if (request.method !== 'POST') return response(405, {ok:false, code:'BROKER_STATE_METHOD_DENIED'});
+    // Only the bound Worker can address this internal route. PDF envelopes stay
+    // in memory; neither Firebase credentials nor PDF bytes enter SQLite.
+    if(request.url===INTERNAL_ORIGIN+'/reading-relay'&&this.env?.DIRETRIZES_READING_DURABLE_RELAY_ENABLED==='true'){
+      try{
+        const runtime=createManagementAuthWorkerRuntime({broker:{exchange:async()=>({ok:false,code:'SECONDARY_AUTH_RETIRED'})},stateBinding:this.env.BROKER_STATE,maxConcurrent:2,maxRequestMs:80000,cleanupDrainMs:10000});
+        return await relayDiretrizesReading(request,this.env,{admitRequest:runtime.admitRequest});
+      }catch{return relayDiretrizesReading(request,this.env);}
+    }
     let url, body;
     try { url = new URL(request.url); body = await request.json(); }
     catch { return response(400, {ok:false, code:'BROKER_STATE_REQUEST_INVALID'}); }
