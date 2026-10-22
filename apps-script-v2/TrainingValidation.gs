@@ -5,6 +5,7 @@ const SAHMT_V2_TRAINING_VALIDATION = Object.freeze({
 });
 
 function validatePendingTrainingCompletions() {
+  return faBackgroundReadRunV1_('validatePendingTrainingCompletions', function () {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {skipped: 'another run holds the lock'};
   try {
@@ -32,7 +33,7 @@ function validatePendingTrainingCompletions() {
     } else {
       properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));
     }
-    if (evaluationProject_() === SAHMT_V2_CONFIG.projectId) {
+    if ([SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FB].includes(evaluationProject_())) {
       try { result.performanceDelivery=recuperarPontuacoesValidadasFbV1(); }
       catch (_) { result.performanceDelivery={code:'LEGACY_SCORE_DELIVERY_PENDING'}; }
     }
@@ -40,6 +41,8 @@ function validatePendingTrainingCompletions() {
   } finally {
     lock.releaseLock();
   }
+
+  });
 }
 
 function installTrainingValidationTrigger() {
@@ -245,7 +248,7 @@ function trainingSameScore_(existing, expected) {
 }
 
 function trainingScoreCreateWrite_(score) {
-  return {update: {name: evaluationDocumentName_('scores', score.id), fields: firestoreFieldsFromJs_(Object.assign({},score,{originProjectId:SAHMT_V2_CONFIG.projectId}))}, currentDocument: {exists: false}};
+  return {update: {name: evaluationDocumentName_('scores', score.id), fields: firestoreFieldsFromJs_(Object.assign({},score,{originProjectId:evaluationProject_()}))}, currentDocument: {exists: false}};
 }
 
 function trainingUpdateWrite_(name, updateTime, changes) {

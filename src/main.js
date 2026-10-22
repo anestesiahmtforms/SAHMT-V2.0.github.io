@@ -743,10 +743,10 @@ function loginView() {
     <section class="login-card" aria-labelledby="login-title">
       <img class="brand-logo" src="${import.meta.env.BASE_URL}assets/icon-192.png" alt="SAHMT">
       <h1 id="login-title">SAHMT</h1>
-      <p class="login-message">Entre com sua conta Google autorizada.${deployment.target === 'FB' ? ' Gestão e Desempenho possuem sessão própria.' : ''}</p>
+      <p class="login-message">${deployment.target === 'FB' ? 'Entre no SAHMT e confirme sua conta em ATUALIZAR O APP para acessar Gestão e Desempenho.' : 'Entre com sua conta Google autorizada.'}</p>
       ${configMessage}${resultMessage}${accessRequest}
       ${profileRetry}
-      <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
+      <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>${deployment.target === 'FB' ? 'Voltar à entrada do SAHMT' : 'Entrar com Google'}</button>
       <small>Uma única conta para acessar as áreas do SAHMT, conforme suas permissões.</small>
     </section>
   </main>`;

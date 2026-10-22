@@ -7,7 +7,7 @@ const directRuntime = () => import('./google-project-auth-runtime.js');
 const reconcileFirebaseSecondarySessions = uid => googleProjectAuthEnabled
   ? directRuntime().then(module => loadAuthApi().then(api => module.reconcileGoogleProjectSessions(api.auth.currentUser)))
   : deployment.target === 'FB' ? Promise.resolve({status:'disabled'}) : import('./firebase-secondary-session-lifecycle.js').then(module => module.reconcileFirebaseSecondarySessions(uid));
-const signOutAllFirebaseProjects = options => googleProjectAuthEnabled
+const signOutAllFirebaseProjects = options => googleProjectAuthEnabled || deployment.target === 'FB'
   ? directRuntime().then(module => module.googleProjectAuth.signOutAll()).then(result => result.status === 'complete')
   : deployment.target === 'FB' ? options.signOutPrimary() : import('./firebase-secondary-session-lifecycle.js').then(module => module.signOutAllFirebaseProjects(options));
 import {isManagementFaFirstLoginPending, observeManagementFaFirstLoginAuthUid,
@@ -321,6 +321,12 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
 }
 
 export async function signInGoogle() {
+  // The FB app restores the session established by FA. New Google entry stays
+  // at the verified FA origin/client; no second signup or identity linking.
+  if (deployment.target === 'FB') {
+    location.assign(deployment.faBase + '#/home');
+    return;
+  }
   const api = await loadAuthApi();
   if (googleProjectAuthEnabled) (await directRuntime()).assertCanStartPrimarySignIn();
   const popupSignIn = () => {

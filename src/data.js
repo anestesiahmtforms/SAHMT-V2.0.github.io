@@ -1,4 +1,4 @@
-import {notificationReference, mergeNotificationDomains} from './notification-domain.js';
+import {notificationReference} from './notification-domain.js';
 import {managementDataProject, managementDataGeneration, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {buildChecklistQrLookup, buildChecklistStationDayLookup} from './checklist-static.js';
@@ -239,33 +239,16 @@ export async function saveAppFeatures(input, actorUid) {
 }
 
 export async function listNotifications(profile, options = {}) {
-  return mergeNotificationDomains({enabled:managementDataProject==='FB',pageSize:options.pageSize,
-    fa:()=>listIdentityNotifications(profile,options),fb:()=>listManagementNotifications(profile,options)});
-}
-async function listManagementNotifications(profile,{pageSize=100}={}) {
-  if(!profile?.uid)return [];
-  const db=await managementDatabase(profile.uid), lease=await getDocFromServer(doc(db,'managementAuthorizationLeases',profile.uid));
-  const access=lease.exists()?lease.data():null;
-  if(!access||access.permissions?.notificationsRead!==true&&access.permissions?.notificationsManage!==true)return [];
-  const manage=access.permissions.notificationsManage===true;
-  const relations=manage?[]:await Promise.all(['memberUids','managerUids'].map(field=>getDocsFromServer(query(collection(db,'managementAreas'),where('active','==',true),where(field,'array-contains',profile.uid),limit(26)))));
-  if(relations.some(result=>result.size>25))throw Error('NOTIFICATION_AREA_COVERAGE_EXCEEDED');
-  const areas=[...new Set(relations.flatMap(result=>result.docs.map(item=>item.id)))];
-  if(!manage&&!areas.length)return [];
-  const batches=manage?[null]:Array.from({length:Math.ceil(areas.length/5)},(_,i)=>areas.slice(i*5,i*5+5));
-  const now=Timestamp.now();const snapshots=await Promise.all(batches.map(ids=>getDocsFromServer(query(collection(db,'notifications'),
-    where('audienceType','==','MANAGEMENT_AREA'),where('active','==',true),where('startAt','<=',now),where('endAt','>=',now),
-    ...(ids?[where('audienceValue','in',ids)]:[]),orderBy('priority','desc'),limit(Math.min(100,Math.max(1,pageSize)))))));
-  const records=[...new Map(snapshots.flatMap(snap=>snap.docs.map(item=>[item.id,{id:item.id,...item.data()}]))).values()];
-  const reads=await Promise.all(records.map(item=>getDocFromServer(doc(db,'notificationReceipts',profile.uid,'reads',item.id))));
-  return records.map((item,i)=>({...item,read:reads[i].exists()}));
+  // Each deployment reads its own database and existing user profile. The
+  // independent Google session does not issue or renew authorization leases.
+  return listIdentityNotifications(profile, options);
 }
 async function listIdentityNotifications(profile, {pageSize = 100, canManage = false} = {}) {
   const uid = profile?.uid;
   if (!uid) return [];
   const now = Timestamp.now();
   if (canManage) {
-    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), ...(managementDataProject==='FB'?[where('audienceType','in',['ALL','USER','ROLE','SIGLA','GROUP'])]:[]), where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
+    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
     const nowMs = now.toMillis();
     return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).filter((item) => {
       const start = typeof item.startAt?.toMillis === 'function' ? item.startAt.toMillis() : new Date(item.startAt).getTime();
@@ -274,8 +257,8 @@ async function listIdentityNotifications(profile, {pageSize = 100, canManage = f
     });
   }
   const [memberAreas, managedAreas, groups] = await Promise.all([
-    managementDataProject==='FB'?Promise.resolve({docs:[]}):getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50))),
-    managementDataProject==='FB'?Promise.resolve({docs:[]}):getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('managerUids', 'array-contains', uid), limit(50))),
+    getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50))),
+    getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('managerUids', 'array-contains', uid), limit(50))),
     getDocsFromServer(query(collection(db, 'notificationGroups'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50)))
   ]);
   const targets = new Map();
