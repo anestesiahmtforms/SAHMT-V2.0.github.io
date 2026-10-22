@@ -17,7 +17,7 @@ function evaluationOccurrenceEvidence_(report, audit, claim) {
     formId: claim.formId, createdAt: stamp(claim.createdAt), points: 2};
 }
 function evaluationOccurrenceEnabled_() {
-  return evaluationProject_() === SAHMT_V2_CONFIG.projectId && sahmtV2Properties_().getProperty('SAHMT_V2_OCCURRENCE_SCORING_ENABLED') === 'true';
+  return [SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FB].includes(evaluationProject_()) && sahmtV2Properties_().getProperty('SAHMT_V2_OCCURRENCE_SCORING_ENABLED') === 'true';
 }
 function evaluationOccurrenceAssertOperator_() {
   if (!evaluationOccurrenceEnabled_()) throw new Error('OCCURRENCE_SCORING_DISABLED');

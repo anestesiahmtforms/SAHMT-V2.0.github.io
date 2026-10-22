@@ -9,6 +9,16 @@ const token='header.'+Buffer.from(JSON.stringify(claims)).toString('base64url')+
 const env={DIRETRIZES_READING_ENABLED:'true',DIRETRIZES_READING_HMAC_SECRET:key,DIRETRIZES_READING_SCRIPT_URL:'https://script.google.com/macros/s/'+'a'.repeat(32)+'/exec',DIRETRIZES_READING_FA_API_KEY:'test-key'};
 const admitRequest=async()=>({allowed:true,release:async()=>{}});
 test('disabled sends nothing',async()=>{const r=await relayDiretrizesReading(request(),{}, {fetchImpl:()=>{throw Error('no');}});assert.equal(r.status,503);});
+test('independent FB reading validates only the configured FB audience with its own Auth key',async()=>{
+ const project='sahmt-gestao-5ae66',fbToken='header.'+Buffer.from(JSON.stringify({...claims,aud:project,iss:'https://securetoken.google.com/'+project})).toString('base64url')+'.'+'a'.repeat(64);
+ const fbEnv={...env,DIRETRIZES_READING_PROJECT_ID:project,DIRETRIZES_READING_FB_API_KEY:'fb-test-key'};let calls=0;
+ const fetchImpl=async(url,options)=>{calls++;if(url.startsWith('https://identitytoolkit.googleapis.com/')){assert.match(url,/key=fb-test-key$/);return Response.json({users:[{localId:'reader',email:'reader@example.test',emailVerified:true,validSince:'0',providerUserInfo:[{providerId:'google.com'}]}]});}
+ const input=JSON.parse(Buffer.from(JSON.parse(options.body).payload,'base64url'));assert.ok(!options.body.includes(fbToken));
+ const payload=Buffer.from(JSON.stringify({v:1,nonce:input.nonce,code:'READING_STARTED',pages:2,sessionId:'f'.repeat(32),pdfBase64:'JVBERi0='})).toString('base64url');return Response.json({payload,mac:createHmac('sha256',key).update('SAHMT_READING_V1\n'+payload).digest('hex')});};
+ const fbRequest=new Request(request(),{headers:{Origin:origin,Authorization:'Bearer '+fbToken,'Content-Type':'application/json'}});
+ const success=await relayDiretrizesReading(fbRequest,fbEnv,{fetchImpl,admitRequest,now:()=>1500000000000});assert.equal(success.status,200);assert.equal(calls,2);
+ calls=0;const denied=await relayDiretrizesReading(request(),fbEnv,{fetchImpl,admitRequest,now:()=>1500000000000});assert.equal(denied.status,401);assert.equal(calls,0);
+});
 test('verified FA identity and authenticated response; never forward Firebase token',async()=>{
  let calls=0;
  const fetchImpl=async(url,options)=>{

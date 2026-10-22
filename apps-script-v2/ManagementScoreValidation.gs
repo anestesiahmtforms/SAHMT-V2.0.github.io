@@ -5,6 +5,7 @@ const SAHMT_V2_MANAGEMENT_SCORE_VALIDATION = Object.freeze({
 });
 
 function validatePendingManagementScoreReviews() {
+  return faBackgroundReadRunV1_('validatePendingManagementScoreReviews', function () {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {skipped: 'another run holds the lock'};
   try {
@@ -26,7 +27,7 @@ function validatePendingManagementScoreReviews() {
     });
     if (batch.length) properties.setProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty), batch[batch.length - 1]._documentName);
     else properties.deleteProperty(evaluationCursorProperty_(SAHMT_V2_MANAGEMENT_SCORE_VALIDATION.cursorProperty));
-    if (evaluationProject_() === SAHMT_V2_CONFIG.projectId) {
+    if ([SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FB].includes(evaluationProject_())) {
       try { result.performanceDelivery=recuperarPontuacoesValidadasFbV1(); }
       catch (_) { result.performanceDelivery={code:'LEGACY_SCORE_DELIVERY_PENDING'}; }
     }
@@ -34,6 +35,8 @@ function validatePendingManagementScoreReviews() {
   } finally {
     lock.releaseLock();
   }
+
+  });
 }
 
 function installManagementScoreValidationTrigger() {
@@ -120,7 +123,7 @@ function validateManagementScoreReview_(review) {
     const scoreId = managementActivityScoreId_(review.activityId, completion.uid);
     const expected = {
       id: scoreId, uid: completion.uid, sourceType: 'MANAGEMENT_TASK_COMPLETION', sourceId: completionId,
-      ruleId: activity.scoringRuleId, ruleVersion: activity.scoringRuleVersion, originProjectId:SAHMT_V2_CONFIG.projectId,
+      ruleId: activity.scoringRuleId, ruleVersion: activity.scoringRuleVersion, originProjectId:evaluationProject_(),
       points: activity.points, createdByUid: review.reviewerUid, approvedByUid: review.reviewerUid, createdAt: new Date()
     };
     const existing = evaluationGetProjected_('scores', scoreId,

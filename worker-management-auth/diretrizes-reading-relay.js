@@ -1,5 +1,5 @@
 import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
-const FA='sahmt-17a16',MAX_REPLY=12*1024*1024;
+const FA='sahmt-17a16',FB='sahmt-gestao-5ae66',MAX_REPLY=12*1024*1024;
 const mac=(payload,key)=>createHmac('sha256',key).update('SAHMT_READING_V1\n'+payload).digest('hex');
 const reply=(code,status,origin,data={})=>Response.json({code,...data},{status,headers:{'Cache-Control':'no-store',...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
 async function limited(response,max,signal){
@@ -19,7 +19,10 @@ export async function relayDiretrizesReading(request,env,{fetchImpl=fetch,now=Da
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Authorization, Content-Type',Vary:'Origin'}});
  if(request.method!=='POST')return reply('READING_METHOD_DENIED',405,origin);
  if(env?.DIRETRIZES_READING_ENABLED!=='true')return reply('READING_DISABLED',503,origin);
- const key=env.DIRETRIZES_READING_HMAC_SECRET,url=env.DIRETRIZES_READING_SCRIPT_URL,apiKey=env.DIRETRIZES_READING_FA_API_KEY;
+ const project=env.DIRETRIZES_READING_PROJECT_ID||FA;
+ if(![FA,FB].includes(project))return reply('READING_CONFIG_MISSING',503,origin);
+ const key=env.DIRETRIZES_READING_HMAC_SECRET,url=env.DIRETRIZES_READING_SCRIPT_URL,
+  apiKey=project===FB?env.DIRETRIZES_READING_FB_API_KEY:env.DIRETRIZES_READING_FA_API_KEY;
  if(!/^[A-Za-z0-9_-]{43}$/.test(key||'')||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(url||'')||typeof apiKey!=='string'||!apiKey||typeof admitRequest!=='function')return reply('READING_CONFIG_MISSING',503,origin);
  const bearer=request.headers.get('Authorization')||'';if(!/^Bearer [A-Za-z0-9_.-]{100,16000}$/.test(bearer))return reply('READING_IDENTITY_DENIED',401,origin);
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),55000);let slot,remoteStarted=false,remoteFinished=false;
@@ -30,7 +33,7 @@ export async function relayDiretrizesReading(request,env,{fetchImpl=fetch,now=Da
   if(!['start','progress','complete'].includes(input?.action)||!/^[A-Za-z0-9_-]{1,200}$/.test(input.documentId||'')||
    (input.action==='start'?keys!=='action,documentId':keys!=='action,documentId,pages,sessionId'||!/^[a-f0-9]{32}$/.test(input.sessionId||'')||!Array.isArray(input.pages)||input.pages.length>300||input.pages.some(p=>!Number.isSafeInteger(p)||p<1||p>300)))return reply('READING_INPUT_INVALID',400,origin);
   const token=bearer.slice(7),claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));
-  if(claims.aud!==FA||claims.iss!==`https://securetoken.google.com/${FA}`||typeof claims.sub!=='string'||!/^[^/\s]{1,128}$/.test(claims.sub)||
+  if(claims.aud!==project||claims.iss!==`https://securetoken.google.com/${project}`||typeof claims.sub!=='string'||!/^[^/\s]{1,128}$/.test(claims.sub)||
    claims.email_verified!==true||typeof claims.email!=='string'||claims.exp*1000<=now()||!Number.isSafeInteger(claims.exp)||!Number.isSafeInteger(claims.auth_time)||claims.firebase?.sign_in_provider!=='google.com')return reply('READING_IDENTITY_DENIED',401,origin);
   const lookup=await fetchImpl('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key='+encodeURIComponent(apiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:token}),redirect:'error',signal:controller.signal});
   if(lookup.status!==200){await lookup.body?.cancel().catch(()=>{});return reply('READING_IDENTITY_DENIED',401,origin);}

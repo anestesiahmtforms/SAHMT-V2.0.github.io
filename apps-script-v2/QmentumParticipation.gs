@@ -1,3 +1,11 @@
+function qmParticipationUsesIndependentFb_() { return typeof managementIndependentFbEnabled_ === 'function' && managementIndependentFbEnabled_(); }
+function qmParticipationAward_(p,review,analysis,id) {
+  const plan=qmParticipationPlan_(p,review);
+  return {uid:p.actorUid,category:'PERFORMANCE',modality:p.modality,creditScopeId:'qmentum-'+p.unitId+'-'+analysis.year+'-Q'+analysis.quarter+'-'+analysis.indicatorId,version:1,points:plan.points,
+      activityId:'qmentum-'+analysis.indicatorId,areaId:'area-coordenacao-clinica',sourceType:'QMENTUM_PARTICIPATION',sourceId:id,sourceFingerprint:p.signature,
+      approvedByUid:review?review.actorUid:'',reason:p.modality==='ACKNOWLEDGEMENT'?'Ciência da análise crítica QMENTUM':'Sugestão QMENTUM aprovada',
+      evidence:{unitId:p.unitId,analysisId:p.analysisId,signature:p.signature,year:analysis.year,quarter:analysis.quarter,indicatorId:analysis.indicatorId}};
+}
 /* FA only. Browser records a request; trusted transactions decide credits.
  * No new timer, AI call, private key or billing dependency is introduced. */
 function qmParticipationPlan_(participation, review) {
@@ -37,16 +45,17 @@ function qmProcessParticipation_(id,reviewMode) {
     qmParticipationIdentity_(p.actorUid,p.unitId,tx,false);const analysis=qmParticipationAnalysis_(p,tx);
     if(review){if(review.participationId!==id || review.unitId!==p.unitId || typeof review.reason!=='string' || review.reason.trim().length<8)throw Error('QMENTUM_SUGGESTION_REVIEW_DENIED');qmParticipationIdentity_(review.actorUid,p.unitId,tx,true);}
     const plan=qmParticipationPlan_(p,review),writes=[];
-    if(plan.points){const award={uid:p.actorUid,category:'PERFORMANCE',modality:p.modality,creditScopeId:'qmentum-'+p.unitId+'-'+analysis.year+'-Q'+analysis.quarter+'-'+analysis.indicatorId,version:1,points:plan.points,
-      activityId:'qmentum-'+analysis.indicatorId,areaId:'area-coordenacao-clinica',sourceType:'QMENTUM_PARTICIPATION',sourceId:id,sourceFingerprint:p.signature,
-      approvedByUid:review?review.actorUid:'',reason:p.modality==='ACKNOWLEDGEMENT'?'Ciência da análise crítica QMENTUM':'Sugestão QMENTUM aprovada',
-      evidence:{unitId:p.unitId,analysisId:p.analysisId,signature:p.signature,year:analysis.year,quarter:analysis.quarter,indicatorId:analysis.indicatorId}};
-      const applied=evaluationApplyAwards_([award],{transaction:tx});if(applied.status==='NEEDS_REVIEW')throw Error('QMENTUM_SCORE_REVIEW_REQUIRED');writes.push.apply(writes,applied.writes);
+    if(plan.points){const award=qmParticipationAward_(p,review,analysis,id);
+      if (qmParticipationUsesIndependentFb_()) {
+        writes.push(evaluationWrite_('qmentumScoreOutbox',id,{participationId:id,status:'PENDING',fingerprint:sha256Hex_(evaluationDeliveryCanonical_(award))},null,['createdAt']));
+      } else {
+        const applied=evaluationApplyAwards_([award],{transaction:tx});if(applied.status==='NEEDS_REVIEW')throw Error('QMENTUM_SCORE_REVIEW_REQUIRED');writes.push.apply(writes,applied.writes);
+      }
     }
-    writes.push(evaluationWrite_('qmentumParticipations',id,{status:plan.status,confirmedPoints:plan.points},p,['processedAt']));
+    writes.push(evaluationWrite_('qmentumParticipations',id,{status:plan.status,confirmedPoints:qmParticipationUsesIndependentFb_() ? 0 : plan.points,scoreStatus:qmParticipationUsesIndependentFb_() && plan.points ? 'PENDING' : 'CONFIRMED'},p,['processedAt']));
     if(review)writes.push(evaluationWrite_('qmentumParticipationReviews',id,{status:'CONFIRMED'},review,['processedAt']));
     return {writes:writes,result:{code:'QMENTUM_PARTICIPATION_PROCESSED',points:plan.points,status:plan.status}};
-  });
+  }, {projectId:SAHMT_V2_CONFIG.projectId});
 }
 function processarParticipacoesQmentumV1(){
   if(SAHMT_V2_CONFIG.projectId!=='sahmt-17a16'||SAHMT_V2_CONFIG.databaseId!=='(default)')throw Error('QMENTUM_FA_REQUIRED');
@@ -56,9 +65,13 @@ function processarParticipacoesQmentumV1(){
     evaluationQuery_(collection,[firestoreFilter_('status','EQUAL',{stringValue:'PENDING'})],[],10).forEach(function(request){
       try{qmProcessParticipation_(request.id,index===1);result.processed++;}catch(error){
         if(/^QMENTUM_(PARTICIPATION_INVALID|PARTICIPATION_ACCESS_REVOKED|ANALYSIS_UNAVAILABLE|ANALYSIS_OBSOLETE|SUGGESTION_REVIEW_DENIED)$/.test(error.message||'')){
-          try{evaluationRunTransaction_(function(tx){const live=evaluationGet_(collection,request.id,tx);return {writes:live&&live.status==='PENDING'?[evaluationWrite_(collection,request.id,{status:'BLOCKED',safeCode:error.message},live,['processedAt'])]:[],result:{code:'QMENTUM_PARTICIPATION_BLOCKED'}};});}catch(_){result.pending++;}
+          try{evaluationRunTransaction_(function(tx){const live=evaluationGet_(collection,request.id,tx);return {writes:live&&live.status==='PENDING'?[evaluationWrite_(collection,request.id,{status:'BLOCKED',safeCode:error.message},live,['processedAt'])]:[],result:{code:'QMENTUM_PARTICIPATION_BLOCKED'}};}, {projectId:SAHMT_V2_CONFIG.projectId});}catch(_){result.pending++;}
         }else result.pending++;
       } // No raw diagnostics or identity in logs.
     });
-  });return result;
+  });
+  if (qmParticipationUsesIndependentFb_()) {
+    evaluationQuery_('qmentumScoreOutbox',[firestoreFilter_('status','EQUAL',{stringValue:'PENDING'})],[],10).forEach(function(event){try{qmDeliverFbParticipation_(event.id);}catch(_){result.pending++;}});
+  }
+  return result;
 }

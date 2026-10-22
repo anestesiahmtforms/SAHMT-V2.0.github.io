@@ -2,19 +2,20 @@
  * Legacy scores are imported only through the verified delivery adapter. */
 const SAHMT_V2_EVALUATION_LEDGER = Object.freeze({maxWrites: 450, maxUsers: 400, maxAwards: 10000, maxAttempts: 4});
 
-// FA is the identity and consolidated management/performance authority.
-// FB remains a historical attribution for migrated receipts, never a destination.
+// The verified release property selects independent FB for this domain.
+// Operational source records and QMENTUM keep FA as their authority.
 const SAHMT_EVALUATION_FB = 'sahmt-gestao-5ae66';
 const SAHMT_EVALUATION_FC = 'indicadores---sahmt';
 const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
   'managementAreas', 'activities', 'activityInteractions', 'activityScoreReviews',
   'indicators', 'indicatorMeasurements', 'actionPlans', 'actionPlanItems',
-  'documents', 'scopedDocuments', 'equipment', 'equipmentEvents', 'maintenanceRecords',
+  'documents', 'scopedDocuments', 'documentAccessEmails', 'equipment', 'equipmentEvents', 'maintenanceRecords',
   'scoringRules', 'scores', 'learningActivities', 'learningActivityReceipts',
   'trainings', 'trainingProgress', 'trainingReceipts', 'trainingCompletions'
 ]);
 const SAHMT_EVALUATION_TRANSACTIONS = new Map();
 function evaluationAssertConsolidationActive_() {
+  if (typeof managementIndependentFbEnabled_ === 'function' && managementIndependentFbEnabled_()) return managementIndependentFbAssert_();
   const state=evaluationGet_('managementRuntime','faConsolidation');
   if (!state || state.schemaVersion!==1 || state.release!=='fa-consolidation-v1' || state.status!=='ACTIVE' ||
       state.sourceProjectId!==SAHMT_EVALUATION_FB || state.destinationProjectId!==SAHMT_V2_CONFIG.projectId ||
@@ -23,27 +24,35 @@ function evaluationAssertConsolidationActive_() {
     throw new Error('EVALUATION_FA_CONSOLIDATION_INACTIVE');
 }
 function evaluationProject_() {
+  if (typeof managementIndependentFbEnabled_ === 'function' && managementIndependentFbEnabled_()) return SAHMT_EVALUATION_FB;
   const configured = sahmtV2Properties_().getProperty('SAHMT_V2_EVALUATION_PROJECT_ID');
   if (configured && configured !== SAHMT_V2_CONFIG.projectId && configured !== SAHMT_EVALUATION_FB)
     throw new Error('EVALUATION_PROJECT_INVALID');
-  // Old routing properties remain backed up but cannot reopen FB. The
-  // server-owned FA consolidation marker independently gates score writes.
+  // Old routing properties cannot enable a destination. Without the new
+  // explicit release property, the previous FA consolidation remains active.
   return SAHMT_V2_CONFIG.projectId;
 }
-function evaluationCollectionProject_(collectionId) {
+function evaluationCollectionProject_(collectionId, transaction) {
+  if (collectionId === 'users' && typeof managementIndependentFbEnabled_ === 'function' && managementIndependentFbEnabled_()) {
+    const context = transaction && SAHMT_EVALUATION_TRANSACTIONS.get(transaction);
+    return context ? context.projectId : SAHMT_EVALUATION_FB;
+  }
   if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_V2_CONFIG.projectId;
   return /^evaluation[A-Z]/.test(collectionId) || SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS.includes(collectionId)
     ? evaluationProject_() : SAHMT_V2_CONFIG.projectId;
 }
 function evaluationCursorProperty_(base) {
   evaluationProject_();
-  return base + '_FA_CONSOLIDATED_V1';
+  return base + (evaluationProject_() === SAHMT_EVALUATION_FB ? '_FB_INDEPENDENT_V1' : '_FA_CONSOLIDATED_V1');
 }
 function evaluationDocumentsUrl_(path, projectId) {
-  if (path === ':commit' || path === ':batchWrite') evaluationAssertConsolidationActive_();
   projectId = projectId || evaluationProject_();
+  if ((path === ':commit' || path === ':batchWrite') && !evaluationIndependentFaSource_(projectId)) evaluationAssertConsolidationActive_();
   if (![SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FB, SAHMT_EVALUATION_FC].includes(projectId)) throw new Error('EVALUATION_PROJECT_INVALID');
   return 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents' + path;
+}
+function evaluationIndependentFaSource_(projectId) {
+  return projectId === SAHMT_V2_CONFIG.projectId && typeof managementIndependentFbEnabled_ === 'function' && managementIndependentFbEnabled_();
 }
 function evaluationDocumentName_(collectionId, documentId) {
   return 'projects/' + evaluationCollectionProject_(collectionId) + '/databases/(default)/documents/' + collectionId + '/' + documentId;
@@ -51,7 +60,8 @@ function evaluationDocumentName_(collectionId, documentId) {
 function evaluationReadTransaction_(transaction, projectId) {
   const context = SAHMT_EVALUATION_TRANSACTIONS.get(transaction);
   if (!context || context.projectId === projectId) return transaction;
-  if (context.projectId !== SAHMT_V2_CONFIG.projectId || projectId !== SAHMT_EVALUATION_FC) throw new Error('EVALUATION_CROSS_PROJECT_TRANSACTION');
+  if (!((context.projectId === SAHMT_V2_CONFIG.projectId && projectId === SAHMT_EVALUATION_FC) ||
+      (context.projectId === SAHMT_EVALUATION_FB && [SAHMT_V2_CONFIG.projectId, SAHMT_EVALUATION_FC].includes(projectId)))) throw new Error('EVALUATION_CROSS_PROJECT_TRANSACTION');
   // Source authorization/evidence is read from FA, never from a copied user profile.
   // It is validated before the destination commit; this is not a cross-project atomic transaction.
   if (!context.sourceTransactions[projectId]) context.sourceTransactions[projectId] = firestoreRequest_(evaluationDocumentsUrl_(':beginTransaction', projectId),
@@ -218,9 +228,9 @@ function evaluationGet_(collectionId, documentId, transaction, fieldPaths) {
     const result = evaluationGetProjected_(collectionId, documentId, fieldPaths);
     return result ? Object.assign(result, {_name: result._documentName}) : null;
   }
-  const projectId = evaluationCollectionProject_(collectionId);
+  const projectId = evaluationCollectionProject_(collectionId, transaction);
   const response = firestoreRequest_(evaluationDocumentsUrl_(':batchGet', projectId), {method: 'post', contentType: 'application/json',
-    payload: JSON.stringify(Object.assign({documents: [evaluationDocumentName_(collectionId, documentId)], transaction: evaluationReadTransaction_(transaction, projectId)},
+    payload: JSON.stringify(Object.assign({documents: ['projects/' + projectId + '/databases/(default)/documents/' + collectionId + '/' + documentId], transaction: evaluationReadTransaction_(transaction, projectId)},
       fieldPaths ? {mask: {fieldPaths: fieldPaths}} : {}))});
   const document = (Array.isArray(response) ? response : [response]).find(function (item) { return item.found; });
   if (!document) return null;
@@ -240,7 +250,7 @@ function evaluationQuery_(collectionId, filters, orderBy, maximum, fieldPaths, t
   if (orderBy.length) query.orderBy = orderBy.map(function (item) { return {field: {fieldPath: item.fieldPath}, direction: item.direction}; });
   if (fieldPaths && fieldPaths.length) query.select = {fields: fieldPaths.map(function (field) { return {fieldPath: field}; })};
   if (cursor) query.startAt = cursor;
-  const projectId = evaluationCollectionProject_(collectionId);
+  const projectId = evaluationCollectionProject_(collectionId, transaction);
   const body = {structuredQuery: query}; if (transaction) body.transaction = evaluationReadTransaction_(transaction, projectId);
   const response = firestoreRequest_(evaluationDocumentsUrl_(':runQuery', projectId), {method: 'post', contentType: 'application/json', payload: JSON.stringify(body)});
   return (Array.isArray(response) ? response : []).filter(function (item) { return item.document; }).map(function (item) { return evaluationDocument_(item.document); });
@@ -257,8 +267,11 @@ function evaluationWrite_(collectionId, documentId, changes, previous, serverTim
 }
 
 function evaluationRunTransaction_(callback, options) {
-  evaluationAssertConsolidationActive_();
   const projectId = options && options.projectId || evaluationProject_();
+  // Operational acceptance in FA must not wait for the FB points ledger.
+  // Each source processor validates its own authorization/evidence; the
+  // transaction below still rejects every write outside its chosen project.
+  if (!evaluationIndependentFaSource_(projectId)) evaluationAssertConsolidationActive_();
   const endpoint = function (operation) { return evaluationDocumentsUrl_(operation, projectId); };
   for (let attempt = 0; attempt < SAHMT_V2_EVALUATION_LEDGER.maxAttempts; attempt++) {
     const started = firestoreRequest_(endpoint(':beginTransaction'), {method: 'post', contentType: 'application/json', payload: '{}'});
@@ -383,13 +396,29 @@ function initializeEvaluationCategoryState_(category) {
   });
 }
 
+// A short audit lease skips only clean, already-confirmed scheduled projections.
+// It never supplies profiles for a write, replaces authorization, or renews itself on a cache hit.
+function evaluationEligibilityAuditCache_() {
+  try { return typeof CacheService === 'undefined' ? null : CacheService.getScriptCache(); } catch (_) { return null; }
+}
+function evaluationReadEligibilityAudit_(cache) {
+  try {
+    const audit = cache && JSON.parse(cache.get('SAHMT_ELIGIBILITY_AUDIT_V1_' + SAHMT_V2_CONFIG.projectId) || 'null');
+    const age = audit && Date.now() - audit.checkedAt;
+    return audit && Number.isFinite(age) && age >= 0 && age < 3600000 && /^[a-f0-9]{64}$/.test(audit.fingerprint) ? audit : null;
+  } catch (_) { return null; }
+}
 function evaluationPublishCategorySummary_(category, options) {
   const scienceOnly = options && options.scienceOnly === true;
   if (scienceOnly) {
     if (category !== 'PERFORMANCE') throw new Error('CHECKLIST_SCIENCE_CATEGORY_DENIED');
     checklistScienceAssertOperator_();
   } else evaluationAssertOperator_(false);
-  return evaluationRunTransaction_(function (transaction) {
+  const auditCache = options && options.reuseEligibilityAudit === true ? evaluationEligibilityAuditCache_() : null;
+  const recentAudit = evaluationReadEligibilityAudit_(auditCache);
+  let freshAudit = null;
+  const result = evaluationRunTransaction_(function (transaction) {
+    freshAudit = null;
     if (scienceOnly) checklistScienceAssertOperator_(transaction);
     const fields = evaluationCategoryFields_(category), runtime = evaluationGet_('evaluationRuntime', 'state', transaction);
     if (!runtime || !Number.isInteger(runtime[fields.revision])) return {writes: [], result: {status: 'PENDING', reason: 'Categoria ainda não reconciliada.'}};
@@ -400,10 +429,16 @@ function evaluationPublishCategorySummary_(category, options) {
       return {writes: [evaluationWrite_('evaluationReference', 'team', refPatch, reference, ['updatedAt']),
         evaluationWrite_('evaluationRuntime', 'state', statePatch, runtime, ['updatedAt'])], result: {status: 'PENDING', category: category, reason: reason}};
     }
+    const eligibilityField = fields.prefix + 'EligibilityFingerprint';
+    if (recentAudit && Date.now() - recentAudit.checkedAt < 3600000 && runtime[fields.dirty] === false && runtime[eligibilityField] === recentAudit.fingerprint &&
+        reference && reference[fields.status] === 'CONFIRMED' && reference[fields.revision] === runtime[fields.revision]) {
+      return {writes: [], result: {status: 'DUPLICATE', category: category, revision: runtime[fields.revision]}};
+    }
+    const checkedAt = Date.now();
     const profiles = evaluationQuery_('users', [firestoreFilter_('active', 'EQUAL', {booleanValue: true}), firestoreFilter_('access', 'EQUAL', {booleanValue: true})], [], SAHMT_V2_EVALUATION_LEDGER.maxUsers + 1, ['uid', 'active', 'access'], transaction);
     if (profiles.length > SAHMT_V2_EVALUATION_LEDGER.maxUsers) return incomplete('Recálculo incompleto: orçamento seguro excedido.');
-    const eligibilityField = fields.prefix + 'EligibilityFingerprint';
     const eligibilityFingerprint = sha256Hex_(JSON.stringify(profiles.map(function (profile) { return [profile.id, profile.uid]; }).sort(function (a, b) { return a[0].localeCompare(b[0]); })));
+    freshAudit = {checkedAt: checkedAt, fingerprint: eligibilityFingerprint};
     if (runtime[fields.dirty] === false && runtime[eligibilityField] === eligibilityFingerprint && reference && reference[fields.status] === 'CONFIRMED' && reference[fields.revision] === runtime[fields.revision]) {
       return {writes: [], result: {status: 'DUPLICATE', category: category, revision: runtime[fields.revision]}};
     }
@@ -424,6 +459,10 @@ function evaluationPublishCategorySummary_(category, options) {
     writes.push(evaluationWrite_('evaluationRuntime', 'state', statePatch, runtime, ['updatedAt']));
     return {writes: writes, result: {status: 'CONFIRMED', category: category, revision: revision, summaries: Object.keys(summary.totals).length}};
   });
+  if (auditCache && freshAudit && ['CONFIRMED', 'DUPLICATE'].includes(result.status)) {
+    try { auditCache.put('SAHMT_ELIGIBILITY_AUDIT_V1_' + SAHMT_V2_CONFIG.projectId, JSON.stringify(freshAudit), 3600); } catch (_) {}
+  }
+  return result;
 }
 
 function evaluationProcessScoreCorrection_(request) {
