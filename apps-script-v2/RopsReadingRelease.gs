@@ -106,8 +106,15 @@ function continuarLeituraRopsFbV1() {
     const complete=state.index===20&&state.verifyIndex===20;
     if(complete){dgrStorePolicy_(state.policy);props.setProperty('SAHMT_READING_CUTOVER_SHA256',formsEvaluationHash_(state.policy.documents));props.setProperty('SAHMT_READING_ENABLED','NO');state.complete=true;file.setContent(JSON.stringify(state));}
     else ScriptApp.newTrigger('continuarLeituraRopsFbV1').timeBased().after(60000).create();
-    if(complete&&loaded.cfg.autoActivate===true){ropsActivateReading_(loaded,state);state.active=true;file.setContent(JSON.stringify(state));}
-    const result={code:state.active?'ROPS_EBOOK_TRAINING_ACTIVE':complete?'ROPS_READING_BACKEND_READY':'ROPS_READING_PROGRESS',completed:state.index,verified:state.verifyIndex||0,total:20,privateRecoveryUrl:file.getUrl(),automaticContinuation:!complete,readingEnabled:state.active===true,financialWrites:0};console.log(JSON.stringify(result));return result;
+    let waitingForPwa=false;
+    if(complete&&loaded.cfg.autoActivate===true){
+      if(!/^sahmt-fb-v2-shell-v[0-9]+$/.test(loaded.cfg.pwaCache||''))throw Error('ROPS_READER_RELEASE_NOT_CONFIGURED');
+      const shell=UrlFetchApp.fetch('https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/gestao/service-worker.js',{headers:{'Cache-Control':'no-cache'},muteHttpExceptions:true,followRedirects:false});
+      waitingForPwa=shell.getResponseCode()!==200||!shell.getContentText().includes(loaded.cfg.pwaCache);
+      if(waitingForPwa)ScriptApp.newTrigger('continuarLeituraRopsFbV1').timeBased().after(180000).create();
+      else {ropsActivateReading_(loaded,state);state.active=true;file.setContent(JSON.stringify(state));}
+    }
+    const result={code:state.active?'ROPS_EBOOK_TRAINING_ACTIVE':waitingForPwa?'ROPS_READING_WAITING_PWA':complete?'ROPS_READING_BACKEND_READY':'ROPS_READING_PROGRESS',completed:state.index,verified:state.verifyIndex||0,total:20,privateRecoveryUrl:file.getUrl(),automaticContinuation:!complete||waitingForPwa,readingEnabled:state.active===true,financialWrites:0};console.log(JSON.stringify(result));return result;
   }catch(error){ropsReleaseRemoveTrigger_();if(current)try{formsEvaluationCloseForm_(current);}catch(_){}throw error;}finally{lock.releaseLock();}
 }
 function ropsActivateReading_(loaded,state) {
