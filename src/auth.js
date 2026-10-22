@@ -1,7 +1,15 @@
 import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
 import {profileForPresentation} from './profile-presentation.js';
-import {reconcileFirebaseSecondarySessions, signOutAllFirebaseProjects} from './firebase-secondary-session-lifecycle.js';
+import {deployment} from './deployment-context.js';
+import {googleProjectAuthEnabled} from './google-project-auth-config.js';
+const directRuntime = () => import('./google-project-auth-runtime.js');
+const reconcileFirebaseSecondarySessions = uid => googleProjectAuthEnabled
+  ? directRuntime().then(module => loadAuthApi().then(api => module.reconcileGoogleProjectSessions(api.auth.currentUser)))
+  : deployment.target === 'FB' ? Promise.resolve({status:'disabled'}) : import('./firebase-secondary-session-lifecycle.js').then(module => module.reconcileFirebaseSecondarySessions(uid));
+const signOutAllFirebaseProjects = options => googleProjectAuthEnabled
+  ? directRuntime().then(module => module.googleProjectAuth.signOutAll()).then(result => result.status === 'complete')
+  : deployment.target === 'FB' ? options.signOutPrimary() : import('./firebase-secondary-session-lifecycle.js').then(module => module.signOutAllFirebaseProjects(options));
 import {isManagementFaFirstLoginPending, observeManagementFaFirstLoginAuthUid,
   subscribeManagementFaFirstLoginPending} from './management-fa-first-login-state.js';
 import {createManagementGoogleLogin} from './management-google-login.js';
@@ -25,7 +33,7 @@ let authApiPromise = null;
 let firstLoginRuntimePromise = null;
 
 async function loadFirstLoginRuntime(api) {
-  if (!managementFaFirstLoginConfig.enabled) return null;
+  if (deployment.target !== 'FA' || googleProjectAuthEnabled || !managementFaFirstLoginConfig.enabled) return null;
   if (!firstLoginRuntimePromise) {
     firstLoginRuntimePromise = Promise.all([
       import('./management-fa-first-login.js'),
@@ -176,7 +184,7 @@ export function watchSession(onState) {
       profileUnsubscribe = null;
       if (user) onState({status: 'first-login-linking', user});
     } else if (user) {
-      void reconcileFirebaseSecondarySessions(user.uid);
+      void reconcileFirebaseSecondarySessions(user.uid).catch(()=>{});
       void loadProfile(user);
     }
   });
@@ -192,7 +200,7 @@ export function watchSession(onState) {
         lastAuthUid = uid;
         // Secondary cleanup is intentionally detached from FA profile loading:
         // FB/FC outages must never delay or fail the primary session.
-        if (!isManagementFaFirstLoginPending()) void reconcileFirebaseSecondarySessions(uid);
+        if (!isManagementFaFirstLoginPending()) void reconcileFirebaseSecondarySessions(uid).catch(()=>{});
       }
       if (!user) {
         generation++;
@@ -314,12 +322,13 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
 
 export async function signInGoogle() {
   const api = await loadAuthApi();
+  if (googleProjectAuthEnabled) (await directRuntime()).assertCanStartPrimarySignIn();
   const popupSignIn = () => {
     const provider = new api.GoogleAuthProvider();
     provider.setCustomParameters({prompt: 'select_account'});
     return api.signInWithPopup(api.auth, provider, api.browserPopupRedirectResolver);
   };
-  const enabled = managementFaFirstLoginConfig.enabled;
+  const enabled = deployment.target === 'FA' && !googleProjectAuthEnabled && managementFaFirstLoginConfig.enabled;
   if (!enabled) return popupSignIn();
   const runtime = await loadFirstLoginRuntime(api);
   const login = createManagementGoogleLogin({enabled, firstLogin: runtime?.flow, popupSignIn});

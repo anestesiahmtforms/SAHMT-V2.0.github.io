@@ -1,9 +1,10 @@
 import {isSafeCacheEntryFresh} from './offline-cache.js';
-const LOCAL_MANAGEMENT_PROJECT = 'FA';
-const DOMAIN_CACHE_GENERATION = 'FA_CONSOLIDATED_V1';
+import {deployment} from './deployment-context.js';
+const LOCAL_MANAGEMENT_PROJECT = deployment.target;
+const DOMAIN_CACHE_GENERATION = deployment.generation;
 const DOMAIN_CACHE_KINDS = new Set(['managementAreas','trainings','trainingProgress','scores']);
 
-const DB_NAME = 'sahmt-v2-local';
+const DB_NAME = deployment.localDatabase;
 const DB_VERSION = 4;
 const PROFILES = 'profiles';
 const CACHE = 'cache';

@@ -44,7 +44,8 @@ test('flush local respeita a autorização atual por operação e mantém a fila
  assert.equal(h.writes.length,0);assert.equal(h.queued.length,1);
 });
 test('old environment targets cannot restore FB cache routing after consolidation',async()=>{
- const source=readFileSync(new URL('../src/outbox.js',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../src/outbox.js',import.meta.url),'utf8')
+   .replace("from './deployment-context.js'",`from '${new URL('../src/deployment-context.js',import.meta.url).href}'`);
  const testFreshCache=`const isSafeCacheEntryFresh=(entry,{uid,kind,now=Date.now(),maxAgeMs=7*86400000}={})=>Boolean(entry&&entry.uid===uid&&entry.kind===kind&&Number.isFinite(entry.cachedAt)&&entry.cachedAt<=now&&now-entry.cachedAt<=maxAgeMs);`;
  const moduleFor=project=>import('data:text/javascript;base64,'+Buffer.from(source.replace("import {isSafeCacheEntryFresh} from './offline-cache.js';",testFreshCache).replace('import.meta.env',JSON.stringify({VITE_MANAGEMENT_DATA_PROJECT:project}))).toString('base64'));
  const fa=await moduleFor('FA'),fb=await moduleFor('FB');

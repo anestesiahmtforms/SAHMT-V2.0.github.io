@@ -28,7 +28,7 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     },
     offline: false
   };
-  const ctx = vm.createContext({pendingSyncBanner:{reset(){}},
+  const ctx = vm.createContext({googleProjectAuthEnabled:false,pendingSyncBanner:{reset(){}},
     session, deniedOperationalModules: new Set(), cleanupCurrentModule: null, currentRoute: () => route, document, navigator: {onLine: false},
     appFeatures: {labels: true, trainings: true, notifications: true}, appFeaturesUid: session.user.uid,
     appFeaturesLoadSequence: 0, DEFAULT_APP_FEATURES: {labels: true, trainings: true, notifications: true},

@@ -1,11 +1,11 @@
-import {browserLocalPersistence, indexedDBLocalPersistence, initializeAuth, getAuth, connectAuthEmulator} from 'firebase/auth';
+import {browserLocalPersistence, indexedDBLocalPersistence, inMemoryPersistence, initializeAuth, getAuth, connectAuthEmulator} from 'firebase/auth';
 import {app} from './firebase-app.js';
 
 function initializeSahmtAuth(firebaseApp) {
   if (!firebaseApp) return null;
   try {
     return initializeAuth(firebaseApp, {
-      persistence: [indexedDBLocalPersistence, browserLocalPersistence]
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence]
     });
   } catch (error) {
     // Vite HMR can re-evaluate this module while the named Firebase app survives.

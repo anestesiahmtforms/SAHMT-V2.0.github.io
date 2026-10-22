@@ -1,10 +1,11 @@
 import {firebaseFailureCode} from './firebase-failure.js';
+import {deployment} from './deployment-context.js';
 // Coordinates application reads. It does not create polling or background network traffic.
 export function createOperationalBackend({now = Date.now, random = Math.random, timeoutMs = 7000, notify = () => {}, storage = null} = {}) {
   const pending = new Map(), denied = new Map();
   let code = '', failures = 0, failureEpoch = 0, nextRetryAt = 0, calls = 0, documentsReceived = 0;
   let quotaRetryAt = 0;
-  const storageKey = 'sahmt-firestore-read-backoff-v1';
+  const storageKey = deployment.target === 'FB' ? 'sahmt-fb-firestore-read-backoff-v1' : 'sahmt-firestore-read-backoff-v1';
   try {
     const stored = JSON.parse(storage?.getItem(storageKey) || 'null');
     if (Number.isFinite(stored?.retryAt) && stored.retryAt > now() && stored.retryAt <= now() + 2 * 3600000) {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
 import {managementPilotPwaConfig, managementPilotManifest, managementPilotServiceWorker,
   managementPilotAssetsConfig, validateManagementPilotFirebaseConfig} from '../scripts/lib/management-pilot-pwa.js';
 const endpoint = 'https://auth.example.invalid/v1/management/session';
@@ -24,7 +25,7 @@ test('build rejects HTTP, credentials, wrong route and query secrets', () => {
     endpoint.replace('auth.', 'a:b@auth.'), 'https://auth.example.invalid/'])
     assert.throws(() => managementPilotPwaConfig({endpoint: value}), /PILOT_ENDPOINT_INVALID/);
 });
-test('manifest and service worker affect only isolated output path and caches', () => {
+test('manifest and service worker affect only isolated output path and caches', async () => {
   const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url)));
   const result = managementPilotManifest(manifest);
   assert.equal(result.scope, '/'); assert.equal(result.start_url, '/');
@@ -34,7 +35,13 @@ test('manifest and service worker affect only isolated output path and caches', 
   const sw = managementPilotServiceWorker(source);
   assert.ok(sw.includes("const BASE = '/';"));
   assert.equal(sw.includes('sahmt-v2-'), false);
-  assert.ok(sw.includes("key.startsWith('sahmt-auth-pilot-')"));
+  const version=Number(source.match(/const CACHE = 'sahmt-v2-shell-v(\d+)'/)[1]);
+  const pilotCache=n=>`sahmt-auth-pilot-shell-v${n}`,deleted=[],handlers={};
+  const context=vm.createContext({self:{addEventListener:(type,callback)=>{handlers[type]=callback;},clients:{claim:async()=>{}}},
+    caches:{keys:async()=>[pilotCache(version),pilotCache(version-1),pilotCache(version-2),`sahmt-v2-shell-v${version}`,'sahmt-v2-offline-schedule-v1','another-app-cache'],
+      delete:async key=>{deleted.push(key);return true;}}});
+  vm.runInContext(sw,context);let activating;handlers.activate({waitUntil:promise=>{activating=promise;}});await activating;
+  assert.deepEqual(deleted,[pilotCache(version-2)]);
   assert.ok(source.includes("const BASE = '/SAHMT-V2.0.github.io/';"));
   assert.throws(() => managementPilotServiceWorker('new unknown source'), /PILOT_SERVICE_WORKER_LAYOUT_CHANGED/);
 });

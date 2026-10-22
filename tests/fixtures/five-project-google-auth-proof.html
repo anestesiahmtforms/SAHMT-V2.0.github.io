@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer-when-downgrade">
+<title>SAHMT · Prova local de autenticação</title>
+<style>
+body{font:17px system-ui;background:#102f4b;color:#17334a;margin:0;padding:24px}main{max-width:760px;margin:auto;background:#fffaf0;border-radius:20px;padding:24px}h1{font-size:25px}button,a{font:inherit}button{padding:12px;border-radius:10px;cursor:pointer}li{padding:7px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef2f5;padding:14px;border-radius:10px;font-size:13px}#status{padding:12px;background:#e6f0f8;border-radius:10px}#google{margin:20px 0}.actions{display:flex;gap:10px;flex-wrap:wrap}
+</style>
+<main>
+<h1>Prova local de autenticação FA–FB–FC–FD–FE</h1>
+<p>Esta página usa somente Firebase Authentication. Não lê nem altera documentos, permissões ou registros.</p>
+<p id="source">Conferindo a sessão FA deste navegador…</p>
+<p id="status" role="status"></p>
+<div id="google"></div>
+<ul id="targets"></ul>
+<div class="actions">
+<button id="restore" disabled>CONFERIR SESSÕES SALVAS</button>
+<button id="logout" disabled>TESTAR SAÍDA DOS CINCO PROJETOS</button>
+<button id="copy">COPIAR RELATÓRIO</button>
+</div>
+<pre id="report"></pre>
+<p>Se não houver sessão FA nesta origem, <a href="../../index.html" target="_blank" rel="noopener">abra o app local</a>, entre com a conta administrativa autorizada e volte para esta página. A prova aceita somente o UID administrativo já cadastrado.</p>
+</main>
+<script type="module" src="./five-project-google-auth-proof.js"></script>
+</html>

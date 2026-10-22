@@ -1,14 +1,15 @@
 import {getApps, initializeApp} from 'firebase/app';
 import {firebaseConfig} from './firebase-config.js';
+import {deployment} from './deployment-context.js';
 import {withAppCheckTokenDeadline} from './app-check-network-policy.js';
 
-export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId === 'sahmt-17a16' && firebaseConfig.appId);
-if (firebaseConfig.projectId !== 'sahmt-17a16') {
-  throw new Error('A V2 só pode usar o projeto Firebase SAHMT (sahmt-17a16).');
+export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId === deployment.projectId && firebaseConfig.appId);
+if (firebaseConfig.projectId !== deployment.projectId) {
+  throw new Error('O projeto Firebase não corresponde a esta instalação do SAHMT.');
 }
 
 export const app = firebaseConfigured
-  ? getApps().find((item) => item.name === 'sahmt-v2') ?? initializeApp(firebaseConfig, 'sahmt-v2')
+  ? getApps().find((item) => item.name === deployment.appName) ?? initializeApp(firebaseConfig, deployment.appName)
   : null;
 
 const appCheckSiteKey = import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim();

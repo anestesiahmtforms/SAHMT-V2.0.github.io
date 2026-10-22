@@ -51,6 +51,8 @@ import {contactActionLinks} from './contact-actions.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
+import {deployment} from './deployment-context.js';
+import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
 const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
 let syncNoticeSequence=0;
@@ -87,7 +89,7 @@ function preloadStartupReports(user, {explicit = false} = {}) {
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
-const firstLoginCohortAdminUiEnabled = firstLoginCohortAdminEnabled();
+const firstLoginCohortAdminUiEnabled = deployment.target === 'FA' && firstLoginCohortAdminEnabled();
 const labels = {
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
@@ -123,6 +125,13 @@ const userPermissions = [
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
 let notice = '';
+let googleAccessPanel;
+if (googleProjectAuthEnabled) {
+  Promise.all([import('./google-project-auth-runtime.js'), import('./google-project-auth-ui.js'), import('./google-project-auth-google-button.js')]).then(([runtime, ui, google]) => {
+    googleAccessPanel=ui.mountGoogleProjectAuthPanel({controller:runtime.googleProjectAuth,confirm:runtime.confirmGoogleProjectAccess,getUser:()=>session.user,
+      createGoogleButton:callbacks=>google.createGoogleProjectAuthGoogleButton({...callbacks,clientId:runtime.googleProjectClientId,getExpectedIdentity:runtime.currentGoogleProjectIdentity})});
+  }).catch(()=>{});
+}
 const deniedOperationalModules = new Set();
 const operationalDrafts = installOperationalDrafts({getSession: () => session, onError: () => {
   const status = document.querySelector('#label-form-status') || document.querySelector('#event-form-status');
@@ -613,6 +622,7 @@ const preloadedDataUsers = new Set();
 const scheduledDataPreloads = new Set();
 
 function preloadOperationalDataWhenIdle(user) {
+  if (deployment.target === 'FB') return;
   if (!user?.uid || !navigator.onLine || session.offline) return;
   const uid = user.uid;
   const profile = session.profile || {};
@@ -733,7 +743,7 @@ function loginView() {
     <section class="login-card" aria-labelledby="login-title">
       <img class="brand-logo" src="${import.meta.env.BASE_URL}assets/icon-192.png" alt="SAHMT">
       <h1 id="login-title">SAHMT</h1>
-      <p class="login-message">Entre com sua conta Google autorizada.</p>
+      <p class="login-message">Entre com sua conta Google autorizada.${deployment.target === 'FB' ? ' Gestão e Desempenho possuem sessão própria.' : ''}</p>
       ${configMessage}${resultMessage}${accessRequest}
       ${profileRetry}
       <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
@@ -4934,6 +4944,8 @@ async function render() {
   }
   if(authLimited && !session.validatingProfile && currentRoute() !== 'home'){navigate('home');return;}
   const requestedRoute = currentRoute();
+  if (deployment.target === 'FB' && requestedRoute === 'qmentum') { location.replace(deployment.faBase + '#/qmentum'); return; }
+  if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
@@ -4960,6 +4972,11 @@ async function render() {
     if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!can('admin'))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
+  if (deployment.target === 'FB' && !authLimited) {
+    const nav = document.createElement('nav'); nav.className = 'management-independent-nav'; nav.setAttribute('aria-label','Gestão e Desempenho');
+    nav.innerHTML = '<button type="button" class="secondary-button" data-route="management">GESTÃO</button><button type="button" class="secondary-button" data-route="training">DESEMPENHO</button><a class="secondary-button" href="' + deployment.faBase + '">VOLTAR AO SAHMT</a>';
+    app.prepend(nav);
+  }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
@@ -5248,6 +5265,7 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
+  if (googleProjectAuthEnabled) queueMicrotask(()=>googleAccessPanel?.refresh());
   if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-session-status', {detail: {status: next.status, code: next.error?.code || '', transportFailure: isFirestoreCacheFallbackError(next.error)}}));
   const wasOffline = session.offline === true;
   const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
