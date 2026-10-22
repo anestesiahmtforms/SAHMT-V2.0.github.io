@@ -41,7 +41,9 @@ export function managementPilotManifest(value) {
 
 export function managementPilotServiceWorker(source) {
   if (typeof source !== 'string' || !source.includes("const BASE = '/SAHMT-V2.0.github.io/';")
-    || !source.includes("key.startsWith('sahmt-v2-')")) throw Error('PILOT_SERVICE_WORKER_LAYOUT_CHANGED');
+    || !/const CACHE = 'sahmt-v2-shell-v\d+';/.test(source)
+    || !(source.includes("key.startsWith('sahmt-v2-')") || source.includes('/^sahmt-v2-shell-v\\d+$/')))
+    throw Error('PILOT_SERVICE_WORKER_LAYOUT_CHANGED');
   return source.replace("const BASE = '/SAHMT-V2.0.github.io/';", "const BASE = '/';")
     .replaceAll('sahmt-v2-', 'sahmt-auth-pilot-');
 }
