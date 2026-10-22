@@ -738,7 +738,6 @@ function loginView() {
       ${profileRetry}
       <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>Entrar com Google</button>
       <small>Uma única conta para acessar as áreas do SAHMT, conforme suas permissões.</small>
-      <a class="secondary-button" href="${import.meta.env.BASE_URL}demo.html">CONHECER O APP · DEMONSTRAÇÃO</a>
     </section>
   </main>`;
 }
