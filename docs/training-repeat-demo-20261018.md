@@ -27,11 +27,9 @@
 
 Em Administração, “Consultar como usuário” apresenta o perfil e os treinamentos elegíveis daquela pessoa. A sessão Google continua sendo a do administrador. A consulta não fornece token do usuário, não faz login no seu nome e não envia atividades por ele. O detalhamento de desempenho continua na seleção “Consultar pessoa”, respeitando a permissão existente de auditoria de ocorrências.
 
-## Dois perfis de demonstração
+## Demonstração removida
 
-`demo.html` oferece **Usuário comum** e **Administrador**, sem contas no Firebase Authentication. Há exemplos fictícios de Escalas, Eventos, Etiquetas, Checklist, Gestão, Desempenho, Informações, Ocorrências, Pessoas, QMENTUM e Administração.
-
-São exercícios simplificados de navegação/registro, não cópias de dados reais. Não importam SDK Firebase, autenticação, outbox, Drive, Forms ou integração Apps Script. A política CSP bloqueia conexões, frames e envio de formulários. Dados existem somente na memória da página e são separados por perfil; “Reiniciar dados fictícios” ou recarregar descarta-os. Não compartilha a sessão Google nem o cache HTML de produção.
+Em 21/10/2026, o administrador solicitou a remoção integral da demonstração. A página, os perfis fictícios, seus estilos e testes exclusivos foram retirados, junto com o acesso na tela de login e a entrada de build. Os dados simulados existiam apenas na memória da página; não havia contas Firebase nem registros de produção a excluir.
 
 ## Conferência real somente de leitura em 18/10/2026
 
@@ -50,7 +48,7 @@ O código local não constitui ativação em produção. Aplicar em conjunto:
 3. Executar `conferirRepeticaoTreinamentosV1`, somente leitura. Antes da ativação geral, completar as 20 configurações ausentes usando a matéria estável, o gestor/área, os grupos, a vigência e os campos reais confirmados. Não inventar gestores, pesos ou autorizações, nem remover os bloqueios das quatro configurações pendentes. Validar um formulário controlado com a nova política e os controles de público existentes.
 4. Executar uma vez `ativarRepeticaoTreinamentosV1`, no novo `TrainingRepetition.gs`. Processa apenas os Forms desse catálogo privado que já têm configuração, cinco por lote, salva recuperação privada e usa continuação automática temporária. Não cria as configurações ausentes nem altera as outras três origens. Se faltarem configurações, informa `TRAINING_REPEAT_PARTIAL_READY` e a quantidade restante, sem anunciar liberação geral. Se uma validação falhar, para; o formulário permanece fechado e o cursor é preservado.
 5. Após `TRAINING_REPEAT_READY`, conferir limite de respostas desativado, edição pós-envio desativada, audiência preservada, primeiro crédito inalterado e uma segunda resposta sem novo crédito.
-6. Publicar o build da PWA com `demo.html` e cache v205. A demonstração também funciona separadamente e não exige ativar pontuação real.
+6. Instrução histórica de publicação da demonstração revogada pela remoção em 21/10/2026.
 7. Confirmar no dispositivo: parcial amarelo, conclusão 50% verde, repetição sem pontos extras, revisão validada azul, nova versão com novo crédito. Histórico anterior deve continuar disponível.
 
 Novos formulários preparados após a ativação usam várias respostas por padrão. O pipeline de publicação/consentimento individual permanece responsável por liberar o acesso real. Arquivos ainda sem configuração de avaliação não são configurados automaticamente, pois exigem vínculo de matéria, gestor, público e questões confirmados.
@@ -70,7 +68,6 @@ Novos formulários preparados após a ativação usam várias respostas por padr
 - Prova de navegador da tela real de Desempenho: verde passa a azul ao receber versão nova, metadados em cache não liberam envio, revisão pendente fecha a participação e todos os observadores são encerrados ao sair.
 - Recuperação do instalador testada também com confirmação HTTP perdida após commit terminal: retomar recupera a intenção persistida sem deixar o formulário fechado por engano.
 - Relatório automatizado: `.local-preview/training-experience-validation.json`. Não contém credenciais ou identificadores de participantes.
-- Prévia local da demonstração: `http://127.0.0.1:5198/SAHMT-V2.0.github.io/demo.html` enquanto o servidor de prévia estiver em execução. Não é um endereço publicado para os participantes.
 - Nenhum arquivo remoto, regra de produção, formulário, conta real ou pontuação de participante foi alterado por essa validação.
 
 ## Aplicação operacional em 18/10/2026
