@@ -89,6 +89,7 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) 
 function renderHarness(session) {
   const navigations = [], loads = [], shells = [];
   const context = vm.createContext({
+    deployment:{target:'FA',externalManagementEnabled:false},
     operationalDrafts:{flush:async()=>{},restore:async()=>{}},deniedOperationalModules:new Set(),
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
     liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),

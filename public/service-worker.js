@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v218';
+const CACHE = 'sahmt-v2-shell-v219';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -43,6 +43,8 @@ self.addEventListener('install', (event) => {
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
       'src/checklist-rotation-listener.js',
       'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
+      'src/google-project-auth-runtime.js', 'src/google-project-auth-ui.js',
+      'src/google-project-auth-google-button.js',
       'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
       'src/offline-cache.js', 'src/offline-runtime-mode.js', 'src/offline-report-cache.js', 'src/outbox.js',
       'src/offline-outbox-policy.js', 'src/provisional-operational-channel.js',
@@ -56,19 +58,28 @@ self.addEventListener('install', (event) => {
       if (!response.ok || response.type !== 'basic') throw new Error(`Asset do shell indisponível: ${assetUrl}`);
       await cache.put(assetUrl, response);
     }));
-    await self.skipWaiting();
+    // Wait for existing app windows to close. Never replace a running form or Auth flow.
+    // The browser activates this worker naturally when the previous version has no clients.
   })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('sahmt-v2-') && key !== CACHE && key !== OFFLINE_SCHEDULE_CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    const keys=await caches.keys();
+    const shells=keys.filter(key=>/^sahmt-v2-shell-v\d+$/.test(key))
+      .sort((a,b)=>Number(b.match(/v(\d+)$/)[1])-Number(a.match(/v(\d+)$/)[1]));
+    const keep=new Set([CACHE,...shells.slice(0,2)]);
+    await Promise.all(shells.filter(key=>!keep.has(key)).map(key=>caches.delete(key)));
+    // Local records, schedule caches and Auth IndexedDB are outside this cleanup.
+    // No clients.claim(): pages already open keep their own version until navigation.
+  })());
 });
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`) || url.pathname === `${BASE}demo.html`) return;
+  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`) || url.pathname.startsWith(`${BASE}gestao/`) || url.pathname === `${BASE}demo.html`) return;
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       // The installed worker owns a consistent HTML/asset set. New releases install
@@ -90,11 +101,20 @@ self.addEventListener('fetch', (event) => {
     })());
     return;
   }
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then(async (response) => {
+  event.respondWith((async()=>{
+    const installed=await caches.open(CACHE);
+    const current=await installed.match(request);
+    if(current)return current;
+    // Only content-addressed chunks may fall back to a previous release's shell.
+    if(/\/assets\/[^/]+-[a-zA-Z0-9_-]{8,}\.(?:js|css)$/.test(url.pathname)){
+      const previous=await caches.match(request);if(previous)return previous;
+    }
+    return fetch(request).then(async (response) => {
     if (response.ok && response.type === 'basic') {
       const cache = await caches.open(CACHE);
       await cache.put(request, response.clone());
     }
     return response;
-  })));
+    });
+  })());
 });

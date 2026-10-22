@@ -20,7 +20,7 @@ async function harness({kind='events',pendingRead}={}) {
     nodes.set('#'+prefix+'-report-sync',element());
   }
   nodes.set('#module-content',element()); nodes.set('#checklist-month',element({value:'2026-09'}));
-  const ctx=vm.createContext({pendingSyncBanner:{reset(){}},
+  const ctx=vm.createContext({googleProjectAuthEnabled:false,pendingSyncBanner:{reset(){}},
     session:{status:'signed-in',user:{uid:'user-a'},profile:{displayName:'Pessoa fictícia A',sigla:'AA',role:'administrador_app',active:true,access:true,permissions:{admin:true,eventsRead:true,eventsWrite:true,labelsRead:true,labelsWrite:true,labelsManage:true,checklistRead:true,checklistWrite:true,checklistSign:true,checklistManage:true}}},
     scheduleGridObserver:null, cleanupCurrentModule:null,evaluationModuleGeneration:0,operationalDrafts:{flush:async()=>{}},
     appFeatures:{events:true,labels:true,checklist:true}, appFeaturesUid:'user-a', appFeaturesLoadSequence:0,
@@ -251,7 +251,7 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
   const stations=Array.from({length:28},(_,index)=>({id:'fictício-'+String(index+1).padStart(2,'0'),name:'Arsenal fictício '+(index+1),active:true,order:index+1}));
   const ids=stations.map(station=>station.id).sort(),initial={stationIds:ids,records:[{id:'safe-answer',stationId:ids[0],condition:'NAO',date:'2026-10-02'}],priorRecords:[]};
   const catalogs=[],reports=[],events=[],writes=[],reads=[],stops=[];let owned=scopeOwned;
-  const ctx=vm.createContext({
+  const ctx=vm.createContext({googleProjectAuthEnabled:false,
     checklistCatalogLive:null,checklistResponsibilityLive:null,stationIsInDateRange:()=>true,can:()=>false,
     isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, navigator:{onLine:true}, emitCachedOfflineReport:async()=>false,subscribeReportWithDeadline:({subscribe,callbacks})=>subscribe(callbacks),
     mockCatalog:{watchChecklistStations:async(next,error)=>{catalogs.push({next,error});return()=>stops.push('catalog');}},
@@ -324,7 +324,7 @@ test('integração main: render ao sair de Etiquetas elimina dados transitórios
 test('Checklist: indicador fica na faixa da data sem ocupar a linha expansível dos arsenais',()=>{
   const shell=source.slice(source.indexOf('function shellView()'),source.indexOf('async function loadHome()')).replaceAll('import.meta.env.BASE_URL',"'/SAHMT-V2.0.github.io/'");
   for(const mode of ['daily','monthly'])for(const write of [true,false]) {
-    const context=vm.createContext({currentRoute:()=> 'checklist',session:{profile:{displayName:'Pessoa fictícia'},user:{uid:'fixture',displayName:'Pessoa fictícia'}},labels:{checklist:['Checklist','']},can:permission=>permission!=='checklistWrite'||write,todayInputValue:()=> '2026-10-02',escapeHtml:String,checklistReportMode:mode,notice:''});
+    const context=vm.createContext({googleProjectAuthEnabled:false,currentRoute:()=> 'checklist',session:{profile:{displayName:'Pessoa fictícia'},user:{uid:'fixture',displayName:'Pessoa fictícia'}},labels:{checklist:['Checklist','']},can:permission=>permission!=='checklistWrite'||write,todayInputValue:()=> '2026-10-02',escapeHtml:String,checklistReportMode:mode,notice:''});
     vm.runInContext(shell,context);const html=context.shellView();
     const dialog=html.slice(html.indexOf('<dialog class="checklist-report-dialog"'),html.indexOf('</dialog>',html.indexOf('<dialog class="checklist-report-dialog"'))+9);
     const root={children:[]},stack=[root],voidTags=new Set(['input','img','br','hr','meta','link']);let indicator;

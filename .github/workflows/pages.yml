@@ -36,6 +36,8 @@ jobs:
         run: npm ci --prefix functions
       - name: Run domain tests
         run: npm run test:domain
+      - name: Run five-project Google authentication regression
+        run: npm run test:google-project-auth
       - name: Run offline operational regression
         run: npm run test:offline-operational
       - name: Run provisional operational channel tests
@@ -76,6 +78,9 @@ jobs:
         run: npx firebase emulators:exec --project demo-sahmt-v2 --only auth,firestore,functions "npm --prefix functions test -- --test-concurrency=1"
       - name: Build PWA
         env:
+          SAHMT_FB_CUTOVER: 'false'
+          VITE_GOOGLE_PROJECT_AUTH_ENABLED: 'true'
+          VITE_MANAGEMENT_FA_FIRST_LOGIN_ENABLED: 'false'
           VITE_MANAGEMENT_DATA_PROJECT: 'FA'
           VITE_EVALUATION_DATA_PROJECT: 'FA'
           VITE_OCCURRENCE_SCORING_ENABLED: ${{ vars.VITE_OCCURRENCE_SCORING_ENABLED }}
@@ -91,7 +96,7 @@ jobs:
           VITE_OPERATIONAL_CHANNEL_ENDPOINT: ${{ vars.VITE_OPERATIONAL_CHANNEL_ENDPOINT }}
           VITE_OPERATIONAL_CONTINUITY_ENABLED: ${{ vars.VITE_OPERATIONAL_CONTINUITY_ENABLED }}
           VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED: ${{ vars.VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED || 'true' }}
-        run: npm run build
+        run: node scripts/build-independent-apps.mjs --fa-only
       - name: Verify consolidated FA production dependencies
         run: node scripts/check-fa-runtime.mjs
       - name: Include local-only review tools

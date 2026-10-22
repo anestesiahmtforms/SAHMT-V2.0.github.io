@@ -94,7 +94,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v218');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v219');
 });
 
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {
@@ -114,7 +114,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/label-ai.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/firebase-auth.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/shared.css'));
-  assert.equal(worker.skipWaiting(), 1);
+  assert.equal(worker.skipWaiting(), 0);
 });
 
 test('mantém os caches de férias e externos ao atualizar o shell', async () => {
@@ -127,11 +127,12 @@ test('mantém os caches de férias e externos ao atualizar o shell', async () =>
   worker.handlers.get('activate')({waitUntil(promise) { activation = promise; }});
   await activation;
 
-  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v200', 'sahmt-v2-shell-v159']);
+  assert.deepEqual(worker.deletes(), ['sahmt-v2-shell-v159']);
+  assert.ok(worker.names.has('sahmt-v2-shell-v200'));
   assert.ok(worker.names.has(currentShellCache));
   assert.ok(worker.names.has('sahmt-v2-offline-schedule-v1'));
   assert.ok(worker.names.has('unrelated-cache'));
-  assert.equal(worker.claim(), 1);
+  assert.equal(worker.claim(), 0);
 });
 
 test('serve o shell salvo quando a navegação ocorre sem rede', async () => {
