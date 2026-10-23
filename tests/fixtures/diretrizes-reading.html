@@ -8,7 +8,12 @@ const bytes=pdf.output('datauristring').split(',')[1];
 window.readingCalls=[];window.readingUser={uid:'synthetic-user'};
 const options={getUser:()=>window.readingUser,client:{request:async body=>{
  window.readingCalls.push(body);
- if(body.action==='start')return {code:'READING_STARTED',pages:2,visited:[],sessionId:'f'.repeat(32),pdfBase64:bytes,hasForm:location.search!=='?reader-only=1'};
+ if(body.action==='open')return {code:'READING_PREPARED',pages:2,pdfBase64:bytes,openTicket:'c3ludGhldGlj'+'.'+'a'.repeat(64),hasForm:location.search!=='?reader-only=1'};
+ if(body.action==='start'){
+  if(location.search==='?slow-register=1')await new Promise(resolve=>{window.finishRegistration=resolve;});
+  if(location.search==='?register-failure=1')throw Error('READING_BUSY');
+  return {code:'READING_STARTED',pages:2,visited:[],sessionId:'f'.repeat(32),hasForm:location.search!=='?reader-only=1'};
+ }
  if(location.search==='?reader-only=1')return {code:'READING_COMPLETED'};
  return {code:'READING_RELEASED',formUrl:'https://docs.google.com/forms/d/e/SyntheticPublicId12345/viewform'};
 }}};

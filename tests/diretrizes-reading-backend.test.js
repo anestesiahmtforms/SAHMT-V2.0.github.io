@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-import {createHash,randomUUID} from 'node:crypto';
+import {createHash,createHmac,randomUUID} from 'node:crypto';
 const source=readFileSync(new URL('../apps-script-v2/DiretrizesReading.gs',import.meta.url),'utf8');
 const sha=x=>createHash('sha256').update(String(x)).digest('hex');
 test('deployed receiver forwards the reading action before other handlers',()=>{
@@ -23,6 +23,7 @@ function fixture() {
  const policy={version:1,pilotUids:['reader'],documents:{doc:{formId:'FormFixture123456',pdfId:'PdfFixture1234567',checksum:'a'.repeat(32),pages:2,version:1,enforced:true}}};
  props.set('SAHMT_READING_POLICY_JSON',JSON.stringify(policy));
  props.set('SAHMT_READING_ENABLED','YES');
+ props.set('SAHMT_READING_HMAC_SECRET','k'.repeat(43));
  props.set('SAHMT_READING_CUTOVER_SHA256',sha(JSON.stringify(policy.documents)));
  data.set('users/reader',{uid:'reader',email:'reader@example.test',active:true,access:true,permissions:{managementRead:true}});
  data.set('documentAccessEmails/reader@example.test',{id:'reader@example.test',email:'reader@example.test',active:true,groups:['GENERAL']});
@@ -31,7 +32,8 @@ function fixture() {
  data.set('managementAreas/area-gestao-de-documentos',{active:true});
  const ctx=vm.createContext({Date,Math,JSON,Set,Map,Number,Object,Array,String,Error,RegExp,
   sahmtV2Properties_:()=>({getProperty:k=>props.get(k)||null}),
-  sha256Hex_:sha,formsEvaluationHash_:value=>sha(JSON.stringify(value)),evaluationClean_:value=>structuredClone(value),Utilities:{getUuid:randomUUID},
+  sha256Hex_:sha,formsEvaluationHash_:value=>sha(JSON.stringify(value)),evaluationClean_:value=>structuredClone(value),ospEqual_:(a,b)=>a===b,
+  Utilities:{getUuid:randomUUID,Charset:{UTF_8:'utf8'},computeHmacSha256Signature:(value,key)=>Array.from(createHmac('sha256',key).update(value).digest()),base64EncodeWebSafe:value=>Buffer.from(value).toString('base64url'),base64DecodeWebSafe:value=>Buffer.from(value,'base64url'),newBlob:value=>({getDataAsString:()=>Buffer.from(value).toString('utf8')})},
   evaluationGet_:(c,id)=>structuredClone(data.get(c+'/'+id)||null),
   evaluationCollectionProject_:()=> 'sahmt-gestao-5ae66',
   evaluationDocumentsUrl_:()=> 'https://firestore.invalid/batchGet',
@@ -59,6 +61,34 @@ test('first read, coverage and idempotent completion retain identity without sco
  assert.equal(f.send('complete',{sessionId:s.sessionId,pages:[1,2]}).code,'READING_RELEASED');
  assert.equal(f.grants.length,2);assert.deepEqual(f.grants,['reader@example.test','reader@example.test']);
  assert.ok([...f.data.keys()].every(k=>!k.startsWith('evaluationAwards/')));
+});
+
+test('authorized PDF delivery precedes receipt writes and ticket start reuses the same authorization',()=>{
+ const f=fixture(),before=f.data.size;let batches=0;const native=f.ctx.firestoreRequest_;f.ctx.firestoreRequest_=(...args)=>{batches++;return native(...args);};
+ const material=f.send('open');assert.equal(material.code,'READING_PREPARED');assert.equal(f.data.size,before);assert.equal(batches,1);assert.equal(f.grants.length,0);
+ assert.throws(()=>f.send('complete',{sessionId:'a'.repeat(32),pages:[1,2]}),/READING_SESSION_INVALID/);
+ const start=f.send('start',{openTicket:material.openTicket});assert.equal(start.code,'READING_STARTED');assert.equal(start.pdfBase64,undefined);assert.equal(batches,2);
+ assert.throws(()=>f.send('complete',{sessionId:start.sessionId,pages:[1]}),/READING_INCOMPLETE/);
+ f.data.get('users/reader').active=false;
+ assert.throws(()=>f.send('complete',{sessionId:start.sessionId,pages:[1,2]}),/READING_ACCESS_DENIED/);assert.equal(f.grants.length,0);
+});
+
+test('short handoff rejects tampering, expiry, identity and document policy changes',()=>{
+ for(const kind of ['mac','email','expiry','policy']){
+  const f=fixture(),material=f.send('open');let ticket=material.openTicket;
+  if(kind==='mac')ticket=ticket.slice(0,-1)+(ticket.endsWith('0')?'1':'0');
+  if(kind==='email')ticket=f.ctx.dgrOpenTicket_({uid:'reader',email:'other@example.test',documentId:'doc'},f.policy.documents.doc,f.policy);
+  if(kind==='expiry'){const now=Date.now();f.ctx.Date={now:()=>now+46000};}
+  if(kind==='policy'){f.policy.documents.doc.version++;f.props.set('SAHMT_READING_POLICY_JSON',JSON.stringify(f.policy));f.props.set('SAHMT_READING_CUTOVER_SHA256',sha(JSON.stringify(f.policy.documents)));}
+  assert.throws(()=>f.send('start',{openTicket:ticket}),/READING_SESSION_INVALID/);assert.equal(f.grants.length,0);
+ }
+});
+
+test('training revision during PDF delivery blocks ticket receipt creation',()=>{
+ const f=fixture(),id=f.policy.documents.doc.formId;
+ f.data.set('evaluationFormConfigs/'+id,{status:'READY',version:1,repeatPolicy:'FIRST_RESPONSE_PER_VERSION'});
+ const material=f.send('open');f.data.get('evaluationFormConfigs/'+id).version=2;
+ assert.throws(()=>f.send('start',{openTicket:material.openTicket}),/READING_CUTOVER_REQUIRED/);
 });
 
 test('preflight batches fresh project-routed reads, deduplicates and rejects incomplete replies',()=>{

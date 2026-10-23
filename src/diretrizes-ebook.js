@@ -56,7 +56,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     '<section class="diretrizes-ebook__pages" tabindex="0" aria-label="Página do documento"><canvas aria-label="Página PDF"></canvas><pre hidden></pre></section>' +
     '<footer><nav aria-label="Páginas"><button type="button" data-reader-prev>ANTERIOR</button><span data-reader-page></span><button type="button" data-reader-next>PRÓXIMA</button><button type="button" data-reader-text>TEXTO</button></nav>' +
     '<nav aria-label="Ampliação do documento"><button type="button" data-reader-zoom-out aria-label="Diminuir zoom">−</button><span data-reader-zoom aria-live="polite">100%</span><button type="button" data-reader-zoom-in aria-label="Aumentar zoom">+</button><button type="button" data-reader-fit>AJUSTAR</button></nav>' +
-    '<button type="button" data-reader-complete disabled>CONCLUIR LEITURA E ABRIR FORMULÁRIO</button><a data-reader-form hidden target="_blank" rel="noopener noreferrer">ABRIR FORMULÁRIO LIBERADO</a>' +
+    '<button type="button" data-reader-retry hidden>TENTAR NOVAMENTE</button><button type="button" data-reader-complete disabled>CONCLUIR LEITURA E ABRIR FORMULÁRIO</button><a data-reader-form hidden target="_blank" rel="noopener noreferrer">ABRIR FORMULÁRIO LIBERADO</a>' +
     '<button type="button" data-reader-close>FECHAR</button></footer>';
   document.body.append(dialog);
   const $ = selector => dialog.querySelector(selector);
@@ -67,7 +67,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
   const controls = state => {
     previous.disabled = state.busy || state.page <= 1;
     next.disabled = state.busy || !state.pdf || state.page >= state.total;
-    complete.disabled = state.busy || state.visited.size !== state.total || !state.pdf;
+    complete.disabled = state.busy || !state.sessionId || state.visited.size !== state.total || !state.pdf;
     $('[data-reader-text]').disabled = state.busy || !state.pdf || !state.textAvailable;
     const zoomIndex=state.zoomIndex||0;
     $('[data-reader-zoom-out]').disabled=state.busy||!state.pdf||zoomIndex===0;
@@ -83,6 +83,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     old?.controller.abort();old?.renderTask?.cancel();
     if(old?.loadingTask)void old.loadingTask.destroy().catch(()=>{});
     canvas.width = canvas.height = 0;canvas.style.width=canvas.style.height='';text.textContent = '';formLink.hidden = true;formLink.removeAttribute('href');
+    $('[data-reader-retry]').hidden=true;delete dialog.dataset.readingFirstPageMs;delete dialog.dataset.readingRegisteredMs;
   };
   const close = () => { if (dialog.open) dialog.close();dispose(); };
   const failure = (error, state) => {if(active(state)){const code=/^READING_[A-Z_]{1,80}$/.test(error?.message||'')?error.message:({engine:'READING_PDF_ENGINE_FAILED',decode:'READING_PDF_DECODE_FAILED',render:'READING_PDF_RENDER_FAILED'}[state.phase]||'READING_UNAVAILABLE');status.textContent=(messages[code]||'Não foi possível concluir esta etapa. Tente novamente sem sair da conta.')+' Código: '+code;}};
@@ -124,7 +125,8 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       state.renderedPage=state.page;
       panel.scrollTop=center?center.y*panel.scrollHeight-panel.clientHeight/2:0;
       panel.scrollLeft=center?center.x*panel.scrollWidth-panel.clientWidth/2:0;
-      status.textContent='Percorra cada página. Ao terminar, confirme a conclusão da leitura.';
+      if(!state.firstPageAt){state.firstPageAt=performance.now();dialog.dataset.readingFirstPageMs=String(Math.round(state.firstPageAt-state.openedAt));}
+      if(!state.registrationError)status.textContent=state.sessionId?'Percorra cada página. Ao terminar, confirme a conclusão da leitura.':'PDF disponível. Preparando o registro da leitura…';
       // Text extraction is an optional alternate view. A failure or delay here
       // must not invalidate a successfully rendered PDF page or its reading gate.
       const renderedPage=state.page,renderTask=state.renderTask;
@@ -135,21 +137,36 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       }).catch(()=>{});
     }catch(error){failure(error,state);}finally{if(active(state)){state.busy=false;controls(state);presented();if(state.pdf&&state.renderedPage!==null&&Math.abs(panel.clientWidth-state.layoutWidth)>1)resize();}}
   };
+  const register = async (state,answer) => {
+    try{
+      const session=await client.request({action:'start',documentId:state.documentId,openTicket:answer.openTicket},{signal:state.controller.signal});
+      if(!active(state))return;
+      if(session.code!=='READING_STARTED'||session.pages!==state.total||!/^[a-f0-9]{32}$/.test(session.sessionId||'')||(session.hasForm!==false)!==state.hasForm)throw Error('READING_RESPONSE_INVALID');
+      state.sessionId=session.sessionId;
+      dialog.dataset.readingRegisteredMs=String(Math.round(performance.now()-state.openedAt));
+      const saved=Array.isArray(session.visited)?session.visited.filter(p=>Number.isInteger(p)&&p>=1&&p<=state.total):[];
+      state.saved=saved.length;for(const page of saved)state.visited.add(page);
+      controls(state);presented();void checkpoint(state);
+      if(state.renderedPage)status.textContent='Percorra cada página. Ao terminar, confirme a conclusão da leitura.';
+    }catch(error){if(active(state)){state.registrationError=true;failure(error,state);$('[data-reader-retry]').hidden=false;controls(state);}}
+  };
   const open = async trigger => {
     trigger.parentElement.querySelector('[data-reader-unavailable]')?.remove();
     dispose();
     const user=getUser();if(!user?.uid)return;
-    const state={generation,uid:user.uid,documentId:trigger.dataset.openDiretrizReader,controller:new AbortController(),busy:true,page:1,total:0,zoomIndex:0,visited:new Set(),saved:0};current=state;
+    const state={generation,uid:user.uid,documentId:trigger.dataset.openDiretrizReader,trigger,openedAt:performance.now(),controller:new AbortController(),busy:true,page:1,total:0,zoomIndex:0,visited:new Set(),saved:0};current=state;
     $('h2').textContent=trigger.dataset.readingTitle||'Documento';canvas.hidden=false;text.hidden=true;
     status.textContent='Carregando o PDF para leitura…';controls(state);
     if(!dialog.open)dialog.showModal();
     // Download the PDF engine while the authorized reading session is prepared.
     if(pdfLoader===loadPdf)void loadPdfEngine().catch(()=>{});
     try{
-      const answer=await client.request({action:'start',documentId:state.documentId},{signal:state.controller.signal});if(!active(state))return;
-      if(!Number.isSafeInteger(answer.pages)||answer.pages<1||answer.pages>300||!/^[a-f0-9]{32}$/.test(answer.sessionId||'')||typeof answer.pdfBase64!=='string'||answer.pdfBase64.length>8388608)throw Error('READING_PDF_INVALID');
-      state.total=answer.pages;state.sessionId=answer.sessionId;state.hasForm=answer.hasForm!==false;complete.textContent=state.hasForm?'CONCLUIR LEITURA E ABRIR FORMULÁRIO':'CONCLUIR LEITURA';
-      state.visited=new Set(Array.isArray(answer.visited)?answer.visited.filter(p=>Number.isInteger(p)&&p>=1&&p<=state.total):[]);state.saved=state.visited.size;
+      const answer=await client.request({action:'open',documentId:state.documentId},{signal:state.controller.signal});if(!active(state))return;
+      if(answer.code!=='READING_PREPARED'||!Number.isSafeInteger(answer.pages)||answer.pages<1||answer.pages>300||typeof answer.openTicket!=='string'||answer.openTicket.length>2500||!/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(answer.openTicket)||typeof answer.pdfBase64!=='string'||answer.pdfBase64.length>8388608)throw Error('READING_PDF_INVALID');
+      state.total=answer.pages;state.hasForm=answer.hasForm!==false;complete.textContent=state.hasForm?'CONCLUIR LEITURA E ABRIR FORMULÁRIO':'CONCLUIR LEITURA';
+      // The authorized PDF can render while its durable receipt is initialized.
+      // Completion remains disabled until registration succeeds.
+      state.registration=register(state,answer);
       const bytes=Uint8Array.from(atob(answer.pdfBase64),char=>char.charCodeAt(0));
       state.phase='engine';state.loadingTask=await pdfLoader(bytes);if(!active(state)){void state.loadingTask.destroy().catch(()=>{});return;}
       state.phase='decode';
@@ -157,7 +174,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       if(state.pdf.numPages!==state.total)throw Error('READING_PDF_INVALID');
       state.page=Math.min(state.total,[...Array(state.total)].findIndex((_,i)=>!state.visited.has(i+1))+1||1);
       await render(state);
-    }catch(error){if(active(state)){state.busy=false;controls(state);failure(error,state);}}
+    }catch(error){if(active(state)){state.busy=false;controls(state);failure(error,state);$('[data-reader-retry]').hidden=false;}}
   };
   const onClick = event => {
     if(dialog.contains(event.target)){
@@ -168,13 +185,14 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     if(trigger&&(root===document||root.contains(trigger))){event.preventDefault();void open(trigger);return;}
     if(event.target.closest?.('[data-reader-close]')){close();return;}
     const state=current;if(!state||!active(state)||state.busy)return;
+    if(event.target.closest?.('[data-reader-retry]')){void open(state.trigger);return;}
     if(event.target.closest?.('[data-reader-zoom-in]')&&state.zoomIndex<PDF_ZOOM_STEPS.length-1){state.zoomIndex++;void render(state,true);return;}
     if(event.target.closest?.('[data-reader-zoom-out]')&&state.zoomIndex>0){state.zoomIndex--;void render(state,true);return;}
     if(event.target.closest?.('[data-reader-fit]')){state.zoomIndex=0;void render(state);return;}
     if(event.target.closest?.('[data-reader-prev]')&&state.page>1){state.page--;void render(state);}
     if(event.target.closest?.('[data-reader-next]')&&state.page<state.total){state.page++;void render(state);}
     if(event.target.closest?.('[data-reader-text]')){text.hidden=!text.hidden;canvas.hidden=!text.hidden;panel.scrollTop=0;presented();}
-    if(event.target.closest?.('[data-reader-complete]')&&state.visited.size===state.total){
+    if(event.target.closest?.('[data-reader-complete]')&&state.sessionId&&state.visited.size===state.total){
       state.busy=true;controls(state);status.textContent='Registrando leitura e verificando a liberação individual…';
       void client.request({action:'complete',documentId:state.documentId,sessionId:state.sessionId,pages:[...state.visited]},{signal:state.controller.signal}).then(answer=>{
         if(!active(state))return;
