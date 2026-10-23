@@ -16,8 +16,24 @@ function mgeContext_(m,tx) {
 function mgePrivate_(id) {
   const f=DriveApp.getFileById(id);if(f.isTrashed()||f.getSharingAccess()!==DriveApp.Access.PRIVATE||f.getEditors().length||f.getViewers().length||f.getOwner().getEmail().toLowerCase()!=='anestesiahmtforms@gmail.com')throw Error('MANAGEMENT_EBOOK_RECOVERY_NOT_PRIVATE');return f;
 }
-function mgeStopTrigger_(){ScriptApp.getProjectTriggers().filter(function(t){return t.getHandlerFunction()==='continuarLeituraDocumentosGestaoFbV1';}).forEach(function(t){ScriptApp.deleteTrigger(t);});}
+function mgeStopTrigger_(){ScriptApp.getProjectTriggers().filter(function(t){return ['continuarLeituraDocumentosGestaoFbV1','retomarLeituraDocumentosGestaoFbV1'].includes(t.getHandlerFunction());}).forEach(function(t){ScriptApp.deleteTrigger(t);});}
 function mgeArm_(delay){mgeStopTrigger_();ScriptApp.newTrigger('continuarLeituraDocumentosGestaoFbV1').timeBased().after(delay||60000).create();}
+function mgeBusyRetry_(event) {
+  const state=mgeSaved_(),props=gpdfProps_();if(!state||state.complete)return {code:'MANAGEMENT_EBOOK_BUSY',automaticContinuation:false};
+  if(Date.now()-Date.parse(state.createdAt)>7*86400000)throw Error('MANAGEMENT_EBOOK_STATE_INVALID');
+  const key=JSON.stringify([state.manifestDigest,state.index,state.pending&&state.pending.phase]);let old;try{old=JSON.parse(props.getProperty('SAHMT_MANAGEMENT_EBOOK_BUSY_RETRY')||'null');}catch(_){}
+  const retry={key:key,attempts:old&&old.key===key?old.attempts+1:1};props.setProperty('SAHMT_MANAGEMENT_EBOOK_BUSY_RETRY',JSON.stringify(retry));
+  const result={code:retry.attempts>6?'MANAGEMENT_EBOOK_BUSY_RETRY_LIMIT':'MANAGEMENT_EBOOK_BUSY_RETRY_SCHEDULED',completed:state.index,total:42,automaticContinuation:retry.attempts<=6};
+  const fired=event&&String(event.triggerUid||'');
+  if(result.automaticContinuation&&!ScriptApp.getProjectTriggers().some(function(t){return t.getHandlerFunction()==='retomarLeituraDocumentosGestaoFbV1'&&(!fired||t.getUniqueId()!==fired);}))ScriptApp.newTrigger('retomarLeituraDocumentosGestaoFbV1').timeBased().after(120000).create();
+  console.log(JSON.stringify(result));return result;
+}
+function retomarLeituraDocumentosGestaoFbV1(event){return continuarLeituraDocumentosGestaoFbV1(event);}
+function conferirLeituraDocumentosGestaoFbV1() {
+  dgrOperator_();const state=mgeSaved_(),triggers=ScriptApp.getProjectTriggers().filter(function(t){return ['continuarLeituraDocumentosGestaoFbV1','retomarLeituraDocumentosGestaoFbV1'].includes(t.getHandlerFunction());});
+  const result=state?{code:'MANAGEMENT_EBOOK_STATUS',completed:state.index,total:42,complete:state.complete===true,runs:state.runs,phase:state.pending?state.pending.phase:null,remainingGrants:state.pending&&state.pending.remainingGrants,lastStage:state.lastStage||null,lastError:state.lastError||null,scheduledContinuations:triggers.length,automaticContinuation:state.complete!==true&&triggers.length>0,privateRecoveryUrl:mgePrivate_(gpdfProps_().getProperty('SAHMT_MANAGEMENT_EBOOK_JOB')).getUrl(),preservedRops:Object.keys(state.originalPolicy.documents||{}).length,firestoreReads:0}:{code:'MANAGEMENT_EBOOK_NOT_STARTED',firestoreReads:0};
+  console.log(JSON.stringify(result));return result;
+}
 function instalarLeituraDocumentosGestaoFbV1() {
   dgrOperator_();evaluationAssertOperator_(true);const lock=LockService.getScriptLock();if(!lock.tryLock(1000))throw Error('MANAGEMENT_EBOOK_BUSY');
   try{
@@ -164,10 +180,11 @@ function mgeContinuePrepared_(m,row,state,file) {
   });
   dgrCatalog_(id,policy.documents[id]);mgeTrainingReleaseVerify_(row.formId);return {pending:false};
 }
-function continuarLeituraDocumentosGestaoFbV1() {
-  ropsOwner_();evaluationAssertOperator_(true);const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'MANAGEMENT_EBOOK_BUSY'};
+function continuarLeituraDocumentosGestaoFbV1(event) {
+  ropsOwner_();const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return mgeBusyRetry_(event);
   let current,state,file;
   try{
+    evaluationAssertOperator_(true);gpdfProps_().deleteProperty('SAHMT_MANAGEMENT_EBOOK_BUSY_RETRY');
     const m=mgeManifest_();file=mgePrivate_(gpdfProps_().getProperty('SAHMT_MANAGEMENT_EBOOK_JOB'));state=JSON.parse(file.getBlob().getDataAsString('UTF-8'));mgeContext_(m,null);
     if(state.manifestDigest!==formsEvaluationHash_(m)||!Number.isInteger(state.index)||state.index<0||state.index>m.items.length||Date.now()-Date.parse(state.createdAt)>7*86400000||++state.runs>300)throw Error('MANAGEMENT_EBOOK_STATE_INVALID');
     if(!state.complete){

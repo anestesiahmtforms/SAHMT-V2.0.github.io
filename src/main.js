@@ -94,8 +94,8 @@ const firstLoginCohortAdminUiEnabled = deployment.target === 'FA' && firstLoginC
 const labels = {
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
-  management: ['Gestão', 'Áreas, atividades e indicadores'],
-  'management-hub': ['Gestão', 'Áreas de gestão'],
+  management: ['Governança', 'Áreas, atividades e indicadores'],
+  'management-hub': ['Governança', 'Áreas de governança'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
@@ -1271,7 +1271,7 @@ async function loadModule(route) {
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||session.profile?.active!==true||session.profile?.access!==true)return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,assetBase:import.meta.env.BASE_URL,
       access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
@@ -4995,13 +4995,13 @@ async function render() {
   if(authLimited){}
   else if(requestedRoute==='qmentum'){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
-    if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!can('admin'))return;
+    if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!canOpenRestrictedModule('qmentum'))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
   if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute)) {
     const hubPanel=requestedRoute==='qmentum'?'/indicators':requestedRoute==='occurrences'?'/records':'';
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
-      button.removeAttribute('data-route');button.textContent='VOLTAR À GESTÃO';
+      button.removeAttribute('data-route');button.textContent='VOLTAR À GOVERNANÇA';
       button.addEventListener('click',()=>location.assign(deployment.faBase+'#/management-hub'+hubPanel));
     });
   }
