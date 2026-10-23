@@ -80,6 +80,7 @@ export function renderManagementDocumentFolders(documents, options = {}) {
     ['RESTRICTED', new Map([['Documentos administrativos', []]])]
   ]);
   for (const item of documents) {
+    if (item.active === false && item.replacedBy) continue;
     const {access, folder} = managementDocumentFolder(item);
     const children = groups.get(access);
     if (!children.has(folder)) children.set(folder, []);

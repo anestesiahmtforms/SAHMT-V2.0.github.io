@@ -1,11 +1,20 @@
 // Writes bounded shards before atomically selecting their content hash in the manifest.
+function dgrPrunePolicy_(props,hashes) {
+  // Only obsolete policy shards are removed. Keep the selected generation
+  // readable while writing its successor; unrelated properties are untouched.
+  const keep=new Set(hashes.filter(function(h){return /^[a-f0-9]{64}$/.test(h||'');}));
+  Object.keys(props.getProperties()).forEach(function(key){const match=key.match(/^SAHMT_READING_POLICY_([a-f0-9]{64})_(\d{1,2})$/);if(match&&!keep.has(match[1]))props.deleteProperty(key);});
+}
 function dgrStorePolicy_(policy) {
   dgrValidatePolicy_(policy);
   const props=sahmtV2Properties_(),raw=JSON.stringify(policy);
-  if(dgrPolicyBytes_(raw)<=8000){props.setProperty('SAHMT_READING_POLICY_JSON',raw);return;}
+  let previous;try{previous=JSON.parse(props.getProperty('SAHMT_READING_POLICY_JSON')||'null');}catch(_){throw Error('READING_CONFIG_INVALID');}
+  const previousHash=previous&&previous.storageVersion===2&&previous.sha256;
+  if(dgrPolicyBytes_(raw)<=8000){props.setProperty('SAHMT_READING_POLICY_JSON',raw);dgrPrunePolicy_(props,[previousHash]);return;}
   const hash=sha256Hex_(raw),parts=[];let part='',size=0;
   for(const char of raw){const bytes=dgrPolicyBytes_(char);if(size+bytes>7000){parts.push(part);part='';size=0;}part+=char;size+=bytes;}if(part)parts.push(part);
   if(parts.length>64)throw Error('READING_CONFIG_INVALID');
+  dgrPrunePolicy_(props,[previousHash,hash]);
   parts.forEach(function(value,index){const key='SAHMT_READING_POLICY_'+hash+'_'+index;props.setProperty(key,value);if(props.getProperty(key)!==value)throw Error('READING_CONFIG_INVALID');});
   props.setProperty('SAHMT_READING_POLICY_JSON',JSON.stringify({storageVersion:2,count:parts.length,sha256:hash}));
 }
