@@ -5,10 +5,12 @@ import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/ru
 import {collection,doc,getDoc,getDocs,limit,query,runTransaction,serverTimestamp,setDoc} from 'firebase/firestore';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 
-const host='127.0.0.1',port=18493,project='demo-sahmt-fc-modules',uid='writer-synthetic',id='10000000-0000-4000-8000-000000000001';let env;
+const emulatorHost=process.env.FIRESTORE_EMULATOR_HOST||'127.0.0.1:18493';
+const [host,portText]=emulatorHost.split(':');
+const port=Number(portText),project='demo-sahmt-fc-modules',uid='writer-synthetic',id='10000000-0000-4000-8000-000000000001';let env;
 const google=(userId,claims={})=>env.authenticatedContext(userId,{firebase:{sign_in_provider:'google.com'},aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:userId,...claims}).firestore();
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
-before(async()=>{assert.equal(process.env.FIRESTORE_EMULATOR_HOST,`${host}:${port}`);env=await initializeTestEnvironment({projectId:project,firestore:{host,port,rules:await readFile(new URL('../firestore.fc.rules',import.meta.url),'utf8')}});});
+before(async()=>{assert.ok(host&&Number.isInteger(port)&&port>0,`Invalid FIRESTORE_EMULATOR_HOST: ${emulatorHost}`);env=await initializeTestEnvironment({projectId:project,firestore:{host,port,rules:await readFile(new URL('../firestore.fc.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{
  const db=c.firestore();await Promise.all([
