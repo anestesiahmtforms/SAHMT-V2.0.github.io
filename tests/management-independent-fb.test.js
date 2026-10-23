@@ -13,7 +13,8 @@ function harness(active){const properties=new Map(active?[['SAHMT_V2_MANAGEMENT_
  vm.runInContext(source+'\n'+release,c);return {c,requests};}
 test('FB routing requires the explicit release property; old project properties do not activate it',()=>{
  const a=harness(false),b=harness(true);assert.equal(a.c.evaluationProject_(),'sahmt-17a16');assert.equal(b.c.evaluationProject_(),'sahmt-gestao-5ae66');
- assert.equal(b.c.evaluationCollectionProject_('qmentumUnits'),'sahmt-17a16');assert.equal(b.c.evaluationCollectionProject_('checklists'),'sahmt-17a16');assert.equal(b.c.evaluationCollectionProject_('scopedDocuments'),'sahmt-gestao-5ae66');
+ for(const root of ['qmentumAccess','qmentumConfig','qmentumDefinitions','qmentumUnits','qmentumUnits/unit/months','qmentumParticipations','qmentumParticipationReviews','qmentumScoreOutbox','qmentumAnalysisJobs','qmentumAnalysisReviewRequests','qmentumQuarterlyJobs','qmentumQuarterlyQuota','qmentumEvidence','qmentumImprovementActions','qmentumWriteRequests'])assert.equal(b.c.evaluationCollectionProject_(root),'indicadores---sahmt');
+ assert.equal(b.c.evaluationCollectionProject_('checklists'),'sahmt-17a16');assert.equal(b.c.evaluationCollectionProject_('scopedDocuments'),'sahmt-gestao-5ae66');
  assert.match(b.c.evaluationCursorProperty_('CURSOR'),/_FB_INDEPENDENT_V1$/);
  assert.equal(b.c.evaluationCollectionProject_('documentAccessEmails'),'sahmt-gestao-5ae66');
  assert.equal(b.c.evaluationCollectionProject_('documentReadingReceipts'),'sahmt-gestao-5ae66');
@@ -55,27 +56,31 @@ test('FB rules preserve profile policy and omit operational/QMENTUM collections'
 test('independent FB logout covers five sessions and new Google entry returns to FA',()=>{
  const auth=readFileSync(new URL('../src/auth.js',import.meta.url),'utf8');assert.match(auth,/googleProjectAuthEnabled \|\| deployment.target === 'FB'/);assert.match(auth,/location.assign\(deployment.faBase \+ '#\/home'\)/);
 });
-test('QMENTUM stays in FA and retries a lost acknowledgement without awarding twice in FB',()=>{
- const {c}=harness(true),stores={FA:new Map(),FB:new Map()},commits=[];let project='FB',awards=0,loseAck=true;
- const rootProject=root=>root.startsWith('qmentum')?'FA':'FB';
+test('QMENTUM stays in FC and retries a lost acknowledgement without awarding twice in FB',()=>{
+ const {c}=harness(true),stores={FC:new Map(),FB:new Map()},commits=[];let project='FB',awards=0,loseAck=true;
+ const rootProject=root=>root.startsWith('qmentum')?'FC':'FB';
  c.sha256Hex_=s=>createHash('sha256').update(s).digest('hex');c.evaluationDeliveryCanonical_=v=>JSON.stringify(v);
  vm.runInContext(readFileSync(new URL('../apps-script-v2/QmentumParticipation.gs',import.meta.url),'utf8'),c);
  c.managementIndependentFbAssert_=()=>true;c.evaluationAssertOperator_=()=>true;
  c.qmParticipationIdentity_=()=>true;c.qmParticipationAnalysis_=()=>({year:2026,quarter:1,indicatorId:'QM14'});
  c.evaluationGet_=(root,id)=>{const row=stores[rootProject(root)].get(root+'/'+id);return row?{...structuredClone(row),id}:null;};
  c.evaluationWrite_=(root,id,data)=>({project:rootProject(root),key:root+'/'+id,data:structuredClone(data)});
- c.evaluationRunTransaction_=(callback,options)=>{const prior=project;project=options?.projectId==='sahmt-17a16'?'FA':'FB';try{
+ c.evaluationRunTransaction_=(callback,options)=>{const prior=project;assert.notEqual(options?.projectId,'sahmt-17a16');project=options?.projectId==='indicadores---sahmt'?'FC':'FB';try{
    const result=callback('synthetic');for(const write of result.writes)assert.equal(write.project,project,'no mixed-project writes');
-   if(project==='FA'&&result.writes.some(w=>w.data.status==='DELIVERED')&&loseAck){loseAck=false;throw Error('LOST_ACK');}
+   if(project==='FC'&&result.writes.some(w=>w.data.status==='DELIVERED')&&loseAck){loseAck=false;throw Error('LOST_ACK');}
    for(const write of result.writes)stores[project].set(write.key,{...stores[project].get(write.key),...write.data});commits.push(project);return result.result;
  }finally{project=prior;}};
  c.checklistSourceTransaction_=callback=>c.evaluationRunTransaction_(callback,{projectId:'sahmt-17a16'});
  c.evaluationApplyAwards_=items=>{awards++;return {status:'APPLIED',writes:items.map((data,i)=>({project:'FB',key:'evaluationAwards/synthetic-'+i,data:structuredClone(data)}))};};
  c.evaluationPublishCategorySummary_=()=>({status:'CONFIRMED'});
  const analysis='a'.repeat(64),id=analysis+'_person_ACKNOWLEDGEMENT';
- stores.FA.set('qmentumParticipations/'+id,{analysisId:analysis,actorUid:'person',modality:'ACKNOWLEDGEMENT',unitId:'SAHMT',signature:'b'.repeat(64),suggestion:'',status:'PENDING'});
- c.qmProcessParticipation_(id,false);assert.equal(awards,0);assert.equal(stores.FA.get('qmentumParticipations/'+id).confirmedPoints,0);
+ stores.FC.set('qmentumParticipations/'+id,{analysisId:analysis,actorUid:'person',modality:'ACKNOWLEDGEMENT',unitId:'SAHMT',signature:'b'.repeat(64),suggestion:'',status:'PENDING'});
+ c.qmProcessParticipation_(id,false);assert.equal(awards,0);assert.equal(stores.FC.get('qmentumParticipations/'+id).confirmedPoints,0);
  assert.throws(()=>c.qmDeliverFbParticipation_(id),/LOST_ACK/);assert.equal(awards,1);
- c.qmDeliverFbParticipation_(id);assert.equal(awards,1);assert.equal(stores.FA.get('qmentumParticipations/'+id).confirmedPoints,1);
- assert.equal(stores.FA.get('qmentumScoreOutbox/'+id).status,'DELIVERED');assert.ok(commits.includes('FA')&&commits.includes('FB'));
+ c.qmDeliverFbParticipation_(id);assert.equal(awards,1);assert.equal(stores.FC.get('qmentumParticipations/'+id).confirmedPoints,1);
+ assert.equal(stores.FC.get('qmentumScoreOutbox/'+id).status,'DELIVERED');assert.ok(commits.includes('FC')&&commits.includes('FB'));
+ const receiptKey='evaluationSourceReceipts/fa-qmentum-'+c.sha256Hex_(id);
+ assert.equal(stores.FB.get(receiptKey).sourceProjectId,'indicadores---sahmt');
+ stores.FB.set(receiptKey,{...stores.FB.get(receiptKey),sourceProjectId:'sahmt-17a16'});
+ c.qmDeliverFbParticipation_(id);assert.equal(awards,1,'historical FA receipt is reused after migration');
 });

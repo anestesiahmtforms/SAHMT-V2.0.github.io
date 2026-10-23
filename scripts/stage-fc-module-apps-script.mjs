@@ -6,7 +6,7 @@ import {createPrivateJsonProtector} from './lib/windows-protected-json.js';
 import {snapshotDigest} from './lib/management-split-plan.js';
 import {assertFcModuleDeployment} from './lib/fc-module-deployment.js';
 
-const FILES=['EvaluationLedger.gs','EvaluationOccurrenceDelivery.gs','QmentumCore.gs','QmentumQuarterly.gs','QmentumWrite.gs'];
+const FILES=['EvaluationLedger.gs','EvaluationOccurrenceDelivery.gs','QmentumCore.gs','QmentumQuarterly.gs','QmentumWrite.gs','QmentumParticipation.gs','ManagementIndependentFb.gs'];
 const demand=(ok,code)=>{if(!ok)throw Error(code);};
 const normalize=text=>String(text).replaceAll('\r\n','\n');
 async function main(){

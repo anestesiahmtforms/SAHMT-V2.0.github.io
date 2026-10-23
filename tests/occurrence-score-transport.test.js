@@ -21,13 +21,14 @@ const code=reply=>reply.payload?JSON.parse(Buffer.from(reply.payload,'base64url'
 const request=()=>new Request(worker,{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+token},body:JSON.stringify({id})});
 test('worker and actual Apps Script receiver agree on both HMACs and redirect protocol',async()=>{
  const h=receiver(),calls=[];let reply;
- const out=await relayOccurrenceScore(request(),env,{fetchImpl:async(url,options)=>{
+ const fcUrl='https://script.google.com/macros/s/'+'f'.repeat(30)+'/exec';
+ const out=await relayOccurrenceScore(request(),{...env,FC_MODULE_SCRIPT_URL:fcUrl},{fetchImpl:async(url,options)=>{
   calls.push({url,options});if(url.startsWith('https://firestore.googleapis.com/'))return Response.json({name:'projects/indicadores---sahmt/databases/(default)/documents/occurrenceScoreClaims/'+id,fields:{uid:{stringValue:'fixture'},sourceId:{stringValue:id}}});
   if(url.startsWith('https://script.google.com/')){reply=h.invoke(JSON.parse(options.body));return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?user_content_key=synthetic'}});}
   return Response.json(reply);
  }});
  assert.equal(out.status,200);assert.equal((await out.json()).code,'OCCURRENCE_SCORE_ACCEPTED');assert.equal(h.calls.length,1);assert.deepEqual([...h.calls[0]],[id,'fixture']);assert.deepEqual(h.logs,[]);
- assert.equal(calls[2].options.method,'GET');assert.equal(calls[2].options.headers,undefined);
+ assert.equal(calls[1].url,fcUrl+'?action=occurrence-score-v1');assert.equal(calls[2].options.method,'GET');assert.equal(calls[2].options.headers,undefined);
  assert.equal(calls[1].options.body.includes(token),false);assert.equal(calls[1].options.body.includes(secret),false);
 });
 test('disabled receiver does no privileged work or nonce storage',()=>{const h=receiver();h.disable();assert.equal(code(h.invoke(envelope())),'OCCURRENCE_SCORING_DISABLED');assert.equal(h.calls.length,0);assert.equal(h.props.size,1);});

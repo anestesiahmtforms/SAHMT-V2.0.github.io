@@ -17,7 +17,8 @@ function fixture({readStatus=200,wrongUid=false,badMac=false,badRedirect=false}=
  return{calls,fetchImpl,admitRequest:async()=>({allowed:true,release:async()=>{releases++;}}),releases:()=>releases};
 }
 test('relay verifies FC bearer through own command, signs request and verifies signed version',async()=>{
- const f=fixture(),r=await relayQmentumWrite(request(),env,f);assert.equal(r.status,200);assert.deepEqual(await r.json(),{code:'QMENTUM_WRITE_CONFIRMED',version:1});assert.equal(f.calls.length,2);assert.equal(f.releases(),1);assert.match(f.calls[1].url,/action=qmentum-write-v1$/);
+ const fcUrl='https://script.google.com/macros/s/'+'f'.repeat(30)+'/exec';
+ const f=fixture(),r=await relayQmentumWrite(request(),{...env,FC_MODULE_SCRIPT_URL:fcUrl},f);assert.equal(r.status,200);assert.deepEqual(await r.json(),{code:'QMENTUM_WRITE_CONFIRMED',version:1});assert.equal(f.calls.length,2);assert.equal(f.releases(),1);assert.equal(f.calls[1].url,fcUrl+'?action=qmentum-write-v1');
 });
 test('Firestore denial and other UID never reach the privileged backend',async()=>{
  for(const options of [{readStatus:403},{wrongUid:true}]){const f=fixture(options),r=await relayQmentumWrite(request(),env,f);assert.equal(r.status,403);assert.equal(f.calls.length,1);}

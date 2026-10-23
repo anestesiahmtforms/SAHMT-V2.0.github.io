@@ -60,7 +60,7 @@ jobs:
         env:
           SAHMT_FIRESTORE_RULES_FILE: firestore.fc.rules
         run: |
-          node --test tests/qmentum-fc-migration-verification.test.js
+          node --test tests/qmentum-fc-migration-verification.test.js tests/fc-source-retirement-rules.test.js
           npm run build:fc-module-rules
           npx firebase emulators:exec --config firebase.fc.test.json --project demo-sahmt-fc-modules --only firestore --non-interactive "node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/fc-occurrence.rules.test.js"
       - name: Run training repetition and continuation regression
@@ -73,7 +73,7 @@ jobs:
         run: node scripts/test-fa-consolidation.mjs
       - name: Run unified FA Occurrences unit tests
         run: node --test tests/occurrence-schema.test.js tests/occurrence-data.test.js tests/occurrence-ui.test.js tests/occurrence-fa-store.test.js tests/occurrence-fa-rules-builder.test.js tests/occurrence-worker-fa.test.js tests/evaluation-occurrence-delivery.test.js tests/occurrence-score-transport.test.js
-      - name: Run unified FA Occurrences Rules tests
+      - name: Verify legacy FA Occurrences rules fixture
         run: npx firebase emulators:exec --config firebase.fa-consolidation.integration.test.json --project demo-sahmt-v2 --only firestore --non-interactive "node --test tests/occurrence-fa.rules.test.js"
       - name: Run management destination Rules tests
         run: npm run test:management-rules

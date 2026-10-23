@@ -6,7 +6,7 @@ function qmParticipationAward_(p,review,analysis,id) {
       approvedByUid:review?review.actorUid:'',reason:p.modality==='ACKNOWLEDGEMENT'?'Ciência da análise crítica QMENTUM':'Sugestão QMENTUM aprovada',
       evidence:{unitId:p.unitId,analysisId:p.analysisId,signature:p.signature,year:analysis.year,quarter:analysis.quarter,indicatorId:analysis.indicatorId}};
 }
-/* FA only. Browser records a request; trusted transactions decide credits.
+/* FC source. Browser records a request; trusted transactions decide credits.
  * No new timer, AI call, private key or billing dependency is introduced. */
 function qmParticipationPlan_(participation, review) {
   if (!participation || ['ACKNOWLEDGEMENT','SUGGESTION'].indexOf(participation.modality)<0) throw Error('QMENTUM_PARTICIPATION_INVALID');
@@ -15,8 +15,17 @@ function qmParticipationPlan_(participation, review) {
   if (review.actorUid===participation.actorUid || ['APPROVE','REJECT'].indexOf(review.decision)<0) throw Error('QMENTUM_SUGGESTION_REVIEW_DENIED');
   return {status:review.decision==='APPROVE'?'APPROVED':'REJECTED',points:review.decision==='APPROVE'?2:0};
 }
+function qmParticipationProfile_(uid,tx) {
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(uid||'') || !tx)throw Error('QMENTUM_PARTICIPATION_ACCESS_REVOKED');
+  // The FB ledger validates its own beneficiary separately. Source access
+  // always uses the FC profile, including while an FB award is being planned.
+  const response=firestoreRequest_(evaluationDocumentsUrl_(':batchGet',SAHMT_EVALUATION_FC),{method:'post',contentType:'application/json',
+    payload:JSON.stringify({documents:['projects/'+SAHMT_EVALUATION_FC+'/databases/(default)/documents/users/'+uid],transaction:evaluationReadTransaction_(tx,SAHMT_EVALUATION_FC)})});
+  const document=(Array.isArray(response)?response:[response]).find(function(item){return item.found;});
+  return document?evaluationDocument_(document.found):null;
+}
 function qmParticipationIdentity_(uid,unit,tx,manager) {
-  const profile=evaluationGet_('users',uid,tx),grant=evaluationGet_('qmentumAccess',uid,tx);
+  const profile=qmParticipationProfile_(uid,tx),grant=evaluationGet_('qmentumAccess',uid,tx);
   if (!evaluationActiveProfile_(profile,uid) || !grant || grant.uid!==uid || grant.active!==true || !Array.isArray(grant.units) || grant.units.indexOf(unit)<0 ||
     (manager ? grant.role!=='manager' : ['collector','reviewer','manager'].indexOf(grant.role)<0)) throw Error('QMENTUM_PARTICIPATION_ACCESS_REVOKED');
 }
@@ -55,17 +64,17 @@ function qmProcessParticipation_(id,reviewMode) {
     writes.push(evaluationWrite_('qmentumParticipations',id,{status:plan.status,confirmedPoints:qmParticipationUsesIndependentFb_() ? 0 : plan.points,scoreStatus:qmParticipationUsesIndependentFb_() && plan.points ? 'PENDING' : 'CONFIRMED'},p,['processedAt']));
     if(review)writes.push(evaluationWrite_('qmentumParticipationReviews',id,{status:'CONFIRMED'},review,['processedAt']));
     return {writes:writes,result:{code:'QMENTUM_PARTICIPATION_PROCESSED',points:plan.points,status:plan.status}};
-  }, {projectId:SAHMT_V2_CONFIG.projectId});
+  }, {projectId:SAHMT_EVALUATION_FC});
 }
 function processarParticipacoesQmentumV1(){
-  if(SAHMT_V2_CONFIG.projectId!=='sahmt-17a16'||SAHMT_V2_CONFIG.databaseId!=='(default)')throw Error('QMENTUM_FA_REQUIRED');
+  if(SAHMT_V2_CONFIG.databaseId!=='(default)')throw Error('QMENTUM_FC_REQUIRED');
   const config=evaluationGet_('qmentumConfig','current');if(!config || config.enabled!==true)return {code:'QMENTUM_PARTICIPATION_DISABLED'};
   const result={code:'QMENTUM_PARTICIPATIONS_PROCESSED',processed:0,pending:0};
   ['qmentumParticipations','qmentumParticipationReviews'].forEach(function(collection,index){
     evaluationQuery_(collection,[firestoreFilter_('status','EQUAL',{stringValue:'PENDING'})],[],10).forEach(function(request){
       try{qmProcessParticipation_(request.id,index===1);result.processed++;}catch(error){
         if(/^QMENTUM_(PARTICIPATION_INVALID|PARTICIPATION_ACCESS_REVOKED|ANALYSIS_UNAVAILABLE|ANALYSIS_OBSOLETE|SUGGESTION_REVIEW_DENIED)$/.test(error.message||'')){
-          try{evaluationRunTransaction_(function(tx){const live=evaluationGet_(collection,request.id,tx);return {writes:live&&live.status==='PENDING'?[evaluationWrite_(collection,request.id,{status:'BLOCKED',safeCode:error.message},live,['processedAt'])]:[],result:{code:'QMENTUM_PARTICIPATION_BLOCKED'}};}, {projectId:SAHMT_V2_CONFIG.projectId});}catch(_){result.pending++;}
+          try{evaluationRunTransaction_(function(tx){const live=evaluationGet_(collection,request.id,tx);return {writes:live&&live.status==='PENDING'?[evaluationWrite_(collection,request.id,{status:'BLOCKED',safeCode:error.message},live,['processedAt'])]:[],result:{code:'QMENTUM_PARTICIPATION_BLOCKED'}};}, {projectId:SAHMT_EVALUATION_FC});}catch(_){result.pending++;}
         }else result.pending++;
       } // No raw diagnostics or identity in logs.
     });

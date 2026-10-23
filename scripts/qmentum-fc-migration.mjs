@@ -5,11 +5,13 @@ import {createPrivateJsonProtector,openPrivateJson} from './lib/windows-protecte
 import {captureScoped} from './lib/fa-consolidation-capture.js';
 import {snapshotDigest,validateSplitSnapshot} from './lib/management-split-plan.js';
 import {isQmentumFcMigrationVerified} from './lib/qmentum-fc-migration-verification.js';
+import {retireFcSourceRules} from './lib/fc-source-retirement-rules.js';
 
 const FA='sahmt-17a16',FC='indicadores---sahmt';
 const OCCURRENCE=['occurrenceAudit','occurrenceCatalogs','occurrenceReports','occurrenceScoreClaims'];
 const QMENTUM=['qmentumAccess','qmentumAnalysisJobs','qmentumAnalysisReviewRequests','qmentumConfig','qmentumDefinitions',
- 'qmentumParticipationReviews','qmentumParticipations','qmentumUnits','qmentumWriteRequests'];
+ 'qmentumParticipationReviews','qmentumParticipations','qmentumUnits','qmentumWriteRequests','qmentumScoreOutbox',
+ 'qmentumQuarterlyJobs','qmentumQuarterlyQuota','qmentumEvidence','qmentumImprovementActions'];
 const SCOPE=[...OCCURRENCE,...QMENTUM].sort();
 const demand=(ok,code)=>{if(!ok)throw Error(code);};
 const stamp=()=>new Date().toISOString().replace(/[^0-9]/g,'');
@@ -49,9 +51,12 @@ async function api(token,url,method='GET',body){
  if(!response.ok){await response.body?.cancel().catch(()=>{});throw Error('QMENTUM_MIGRATION_HTTP_'+response.status);}
  const text=await response.text();demand(Buffer.byteLength(text)<=8*1024*1024,'QMENTUM_MIGRATION_RESPONSE_LIMIT');return text?JSON.parse(text):{};
 }
-async function capture(projectId,token){
- const readTime=new Date(Date.now()-30000).toISOString();
- return (await captureScoped({projectId,scope:SCOPE,readTime,accessToken:token,fetchImpl:fetch,includeRootInventory:true,maxDocuments:3000,maxRequests:6000,maxBytes:64*1024*1024},[FA,FC],SCOPE)).snapshot;
+async function capture(projectId,token,pinnedReadTime){
+ const readTime=pinnedReadTime||new Date(Date.now()-30000).toISOString();
+ const result=await captureScoped({projectId,scope:SCOPE,readTime,accessToken:token,fetchImpl:fetch,includeRootInventory:true,maxDocuments:3000,maxRequests:6000,maxBytes:64*1024*1024},[FA,FC],SCOPE);
+ demand(result.rootInventory?.complete===true&&result.rootInventory.collections
+  .filter(name=>/^qmentum|^occurrence/.test(name)).every(name=>SCOPE.includes(name)||name==='occurrenceRuntime'),'QMENTUM_UNMAPPED_MODULE_COLLECTION');
+ return result.snapshot;
 }
 async function configuration(token){
  const prefix='https://firestore.googleapis.com/v1/projects/'+FC+'/databases/(default)';
@@ -62,7 +67,7 @@ async function configuration(token){
   const rules=await api(token,'https://firebaserules.googleapis.com/v1/'+release.rulesetName);
  return {billing:{billingEnabled:billing.billingEnabled===true,billingAccountName:billing.billingAccountName||null},indexes,rules:{release,rules}};
 }
-let stage='START',diagnostics=null;
+let stage='START',diagnostics=null,mutationStarted=false,observedDeletes=0;
 async function main(){
  const [mode,selected]=process.argv.slice(2);demand(['preview','copy','verify','delete-source'].includes(mode)&&(!selected||/^FC-\d{17}\.dpapi\.json$/.test(selected)),'QMENTUM_MIGRATION_ARGUMENT_INVALID');
  demand(process.env.LOCALAPPDATA,'QMENTUM_MIGRATION_PRIVATE_PATH_REQUIRED');
@@ -87,7 +92,7 @@ async function main(){
  if(mode==='copy'){
   demand(planValue.operations.length<=400,'QMENTUM_MIGRATION_BATCH_LIMIT');
   if(planValue.operations.length){const body={writes:planValue.operations.map(item=>({update:{name:base(FC)+'/'+item.path,fields:item.fields},currentDocument:{exists:false}}))};
-   const result=await api(tokenFC,'https://firestore.googleapis.com/v1/'+base(FC)+':commit','POST',body);
+   mutationStarted=true;const result=await api(tokenFC,'https://firestore.googleapis.com/v1/'+base(FC)+':commit','POST',body);
    demand(Array.isArray(result.writeResults)&&result.writeResults.length===planValue.operations.length,'QMENTUM_MIGRATION_COMMIT_INVALID');writes=result.writeResults.length;}
  }
  if(mode==='verify'||mode==='delete-source'){
@@ -95,18 +100,28 @@ async function main(){
   const [currentFA,currentFC]=await Promise.all([capture(FA,tokenFA),capture(FC,tokenFC)]),currentPlan=plan(currentFA,currentFC);diagnostics=currentPlan.counts;
   demand(isQmentumFcMigrationVerified(currentPlan),'QMENTUM_MIGRATION_FINAL_VERIFY_FAILED');
   if(mode==='delete-source'){
+   const fenceName=(await readdir(directory)).filter(name=>/^FA-module-fence-applied-\d+\.dpapi\.json$/.test(name)).sort().at(-1);
+   demand(fenceName,'QMENTUM_SOURCE_FENCE_REQUIRED');
+   const fence=await openPrivateJson(JSON.parse(await readFile(resolve(directory,fenceName),'utf8')));
+   demand(fence.projectId===FA&&fence.destinationProjectId===FC&&Number.isFinite(Date.parse(fence.appliedAt))&&Date.now()>=Date.parse(fence.appliedAt)+7*60*1000,'QMENTUM_SOURCE_QUIESCENCE_REQUIRED');
+   const release=await api(tokenFA,'https://firebaserules.googleapis.com/v1/projects/'+FA+'/releases/cloud.firestore');
+   const rules=await api(tokenFA,'https://firebaserules.googleapis.com/v1/'+release.rulesetName);
+   demand(rules.source?.files?.length===1&&snapshotDigest(rules.source.files[0].content)===fence.installedRulesSha256&&retireFcSourceRules(rules.source.files[0].content).removed===0,'QMENTUM_SOURCE_FENCE_DRIFT');
    settings=await configuration(tokenFC);demand(settings.billing.billingEnabled===false,'QMENTUM_MIGRATION_BILLING_ENABLED');
    const protector=await createPrivateJsonProtector(),retirement={schemaVersion:1,source:currentFA,destination:currentFC,settings,plan:currentPlan,createdAt:new Date().toISOString()};
    const retirementBackup=resolve(directory,'FA-retirement-'+stamp()+'.dpapi.json');
    await writeFile(retirementBackup,JSON.stringify(protector.seal(retirement)),{flag:'wx',mode:0o600});
    demand(snapshotDigest(await openPrivateJson(JSON.parse(await readFile(retirementBackup,'utf8'))))===snapshotDigest(retirement),'QMENTUM_RETIREMENT_BACKUP_VERIFY_FAILED');
    const sourceRows=currentFA.documents.filter(row=>isModule(row.path));demand(sourceRows.length<=400,'QMENTUM_SOURCE_DELETE_BATCH_LIMIT');
-   const result=await api(tokenFA,'https://firestore.googleapis.com/v1/'+base(FA)+':commit','POST',{writes:sourceRows.map(row=>({delete:base(FA)+'/'+row.path,currentDocument:{updateTime:row.updateTime}}))});
-   demand(Array.isArray(result.writeResults)&&result.writeResults.length===sourceRows.length,'QMENTUM_SOURCE_DELETE_INVALID');deletes=result.writeResults.length;
+   if(sourceRows.length){
+    mutationStarted=true;const result=await api(tokenFA,'https://firestore.googleapis.com/v1/'+base(FA)+':commit','POST',{writes:sourceRows.map(row=>({delete:base(FA)+'/'+row.path,currentDocument:{updateTime:row.updateTime}}))});
+    demand(Array.isArray(result.writeResults)&&result.writeResults.length===sourceRows.length&&typeof result.commitTime==='string','QMENTUM_SOURCE_DELETE_INVALID');deletes=result.writeResults.length;observedDeletes=deletes;
+    stage='VERIFY_SOURCE_EMPTY';const remaining=await capture(FA,tokenFA,result.commitTime);demand(remaining.documents.filter(row=>isModule(row.path)).length===0,'QMENTUM_SOURCE_DELETE_POSTCHECK_FAILED');
+   }
   }
   planValue=currentPlan;
  }
  const report={code:mode==='preview'?'QMENTUM_FC_MIGRATION_PREVIEW':mode==='copy'?'QMENTUM_FC_COPY_APPLIED':mode==='verify'?'QMENTUM_FC_MIGRATION_VERIFIED':'QMENTUM_FA_MODULE_DATA_RETIRED',mode,...planValue.counts,sourceQmentumPreserved:mode!=='delete-source',writes,deletes,billingEnabled:settings?.billing?.billingEnabled??input.settings?.billing?.billingEnabled,privateBackup:backupPath};
  const reportPath=resolve(directory,(mode==='preview'?'preview':mode)+'-'+Date.now()+'.json');await writeFile(reportPath,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});console.log(JSON.stringify(report));
 }
-main().catch(error=>{console.error(JSON.stringify({code:/^QMENTUM_[A-Z0-9_]+$/.test(error.message||'')?error.message:'QMENTUM_FC_MIGRATION_FAILED',stage,...(diagnostics?{counts:diagnostics}:{}),remoteWrites:0,sourceDeletes:0}));process.exitCode=1;});
+main().catch(error=>{console.error(JSON.stringify({code:/^QMENTUM_[A-Z0-9_]+$/.test(error.message||'')?error.message:'QMENTUM_FC_MIGRATION_FAILED',stage,...(diagnostics?{counts:diagnostics}:{}),remoteChangesPossible:mutationStarted,sourceDeletesConfirmed:observedDeletes}));process.exitCode=1;});

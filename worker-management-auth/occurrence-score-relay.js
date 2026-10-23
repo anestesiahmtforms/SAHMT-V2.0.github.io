@@ -17,7 +17,7 @@ export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Authorization, Content-Type',Vary:'Origin'}});
  if(request.method!=='POST')return result('OCCURRENCE_SCORE_METHOD_DENIED',405,origin);
  if(env.OCCURRENCE_SCORING_ENABLED!=='true')return result('OCCURRENCE_SCORING_DISABLED',503,origin);
- const key=env.OCCURRENCE_SCORING_HMAC_SECRET,url=env.OCCURRENCE_SCORING_SCRIPT_URL;
+ const key=env.OCCURRENCE_SCORING_HMAC_SECRET,url=env.FC_MODULE_SCRIPT_URL||env.OCCURRENCE_SCORING_SCRIPT_URL;
  if(!/^[A-Za-z0-9_-]{43}$/.test(key||'')||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(url||''))return result('OCCURRENCE_SCORE_CONFIG_INVALID',503,origin);
  const authorization=request.headers.get('Authorization')||'';
  if(!/^Bearer [A-Za-z0-9_.-]{100,16000}$/.test(authorization))return result('OCCURRENCE_SCORE_SESSION_INVALID',401,origin);
