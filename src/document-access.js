@@ -45,7 +45,7 @@ export function managementDocumentKey(item) {
   return `${item.documentCollection || 'documents'}/${item.id}`;
 }
 
-export function mergeManagementDocuments(legacy, scoped, pageSize = 50) {
+export function mergeManagementDocuments(legacy, scoped, pageSize = 50, {maxPageSize = 100} = {}) {
   const unique = new Map([...legacy, ...scoped].map(item => [managementDocumentKey(item), item]));
   for (const original of scoped) {
     if (original.active !== true || original.id !== `evaluation_${original.driveFileId}`) continue;
@@ -58,5 +58,5 @@ export function mergeManagementDocuments(legacy, scoped, pageSize = 50) {
   }
   const time = item => item.publishedAt?.toMillis?.() ?? (new Date(item.publishedAt).getTime() || 0);
   return [...unique.values()].sort((a, b) => time(b) - time(a) || managementDocumentKey(a).localeCompare(managementDocumentKey(b)))
-    .slice(0, Math.min(100, Math.max(1, pageSize)));
+    .slice(0, Math.min(maxPageSize === 200 ? 200 : 100, Math.max(1, pageSize)));
 }

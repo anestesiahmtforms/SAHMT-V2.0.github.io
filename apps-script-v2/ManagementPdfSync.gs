@@ -9,6 +9,7 @@ function gpdfConfig_() {
   if(String(Session.getEffectiveUser().getEmail()||'').toLowerCase()!==cfg.operatorEmail.toLowerCase())gpdfError_('PDF_SYNC_OPERATOR_DENIED');
   // This optional server-only resolver accepts exact, previously verified bindings, never browser input.
   if(typeof gpdfTrustedReviewLayout_==='function')cfg=Object.assign({},cfg,{pairs:gpdfTrustedReviewLayout_(cfg.pairs)});
+  if(typeof ropsPdfPairs_==='function')cfg=Object.assign({},cfg,{pairs:cfg.pairs.concat(ropsPdfPairs_())});
   if(!Array.isArray(cfg.pairs)||!cfg.pairs.length||cfg.pairs.length>100)gpdfError_('PDF_SYNC_CONFIG_INVALID');
   const sources=new Set(),pdfs=new Set();
   cfg.pairs.forEach(function(p){if(!p||!id.test(p.sourceId||'')||!id.test(p.pdfId||'')||!id.test(p.folderId||'')||p.sourceId===p.pdfId||p.folderId===cfg.workspaceFolderId||sources.has(p.sourceId)||pdfs.has(p.pdfId))gpdfError_('PDF_SYNC_CONFIG_INVALID');
@@ -48,6 +49,7 @@ function gpdfPauseReading_(pdfId) {
   return paused;
 }
 function gpdfSyncPair_(pair,drive,now) {
+  if(gpdfProps_().getProperty('SAHMT_ROPS_EDITABLE_REPAIR_'+pair.sourceId))return {code:'PDF_SYNC_INITIAL_EDITABLE_REPAIR',retry:true};
   const key=gpdfStateKey_(pair),state=gpdfLoad_(key,null),current=gpdfPair_(pair,drive),stamp=gpdfStamp_(current.source);
   if(!state||state.sourceId!==pair.sourceId)gpdfError_('PDF_SYNC_BASELINE_REQUIRED');
   // Recover a completed media upload whose process ended before saving its acknowledgement.

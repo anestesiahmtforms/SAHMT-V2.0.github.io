@@ -17,7 +17,11 @@ function gqpContent_(form) {
   return {formId:form.formId, info:form.info || {}, settings:form.settings || {}, items:items, linkedSheetId:form.linkedSheetId || ''};
 }
 function gqpChoices_(form) {
-  return (form.items || []).filter(function(i) { const c=i.questionItem && i.questionItem.question && i.questionItem.question.choiceQuestion;return c && Array.isArray(c.options) && c.options.length >= 2; });
+  const choices=(form.items || []).filter(function(i) { const c=i.questionItem && i.questionItem.question && i.questionItem.question.choiceQuestion;return c && Array.isArray(c.options) && c.options.length >= 2; });
+  return typeof ropsQuestionChoices_==='function'?ropsQuestionChoices_(form,choices):choices;
+}
+function gqpResolvedConfig_() {
+  const cfg=gqpTrustedConfig_();return typeof ropsQuestionBindings_==='function'?ropsQuestionBindings_(cfg):cfg;
 }
 function gqpModel_(form) {
   const items=gqpChoices_(form);
@@ -152,7 +156,7 @@ function gqpPorts_(cfg) {
     executor:function() { return String(Session.getEffectiveUser().getEmail() || '').toLowerCase(); },
     lock:function() { return lock.tryLock(1000); },unlock:function() { lock.releaseLock(); },
     assignment:function(b) {
-      const live=gqpConfig_(gqpTrustedConfig_());
+      const live=gqpConfig_(gqpResolvedConfig_());
       if(!live.enabled || gqpHash_(live) !== gqpHash_(cfg))gqpFail_('ACCESS_REVOKED');
       const binding=live.bindings.find(function(x) { return x.documentId === b.documentId && x.formId === b.formId; });return binding && binding.assignment;
     },
@@ -189,7 +193,7 @@ function publicarQuestoesAprovadasGestaoV1() {
   let result;
   try {
     if(typeof gqpTrustedConfig_ !== 'function')gqpFail_('CONFIG_MISSING');
-    const cfg=gqpConfig_(gqpTrustedConfig_());
+    const cfg=gqpConfig_(gqpResolvedConfig_());
     if(!cfg.enabled)result={code:'QUESTION_PUBLICATION_DISABLED',formWrites:0};
     else {
       if(String(Session.getEffectiveUser().getEmail() || '').toLowerCase() !== cfg.operatorEmail || String(Session.getActiveUser().getEmail() || '').toLowerCase() !== cfg.operatorEmail)gqpFail_('OPERATOR_DENIED');

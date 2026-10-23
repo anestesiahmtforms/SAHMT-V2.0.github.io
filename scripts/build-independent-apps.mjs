@@ -14,7 +14,9 @@ for (const target of faOnly?['FA']:['FA', 'FB']) {
     VITE_OPERATIONAL_CONTINUITY_ENABLED:'false', VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED:'false',
     VITE_OPERATIONAL_CHANNEL_ENDPOINT:'', VITE_LABEL_AI_ENABLED:'false',
     VITE_MANAGEMENT_FA_FIRST_LOGIN_ENABLED:'false',
-    VITE_GOOGLE_PROJECT_AUTH_ENABLED:'false'
+    VITE_GOOGLE_PROJECT_AUTH_ENABLED:'false',
+    VITE_DIRETRIZES_READING_ENABLED:process.env.SAHMT_FB_READER_ENABLED === 'true' ? 'true' : 'false',
+    VITE_DIRETRIZES_READING_ENDPOINT:process.env.SAHMT_FB_READER_ENDPOINT || ''
   });
   const result = spawnSync(process.execPath, [vite, 'build'], {stdio:'inherit', env});
   if (result.error || result.status !== 0) process.exit(result.status || 1);

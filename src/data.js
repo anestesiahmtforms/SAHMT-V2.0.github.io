@@ -854,14 +854,15 @@ export async function listManagementDocuments(managementAreaId, {includeInactive
   const db = await managementDatabase();
   if (!managementAreaId) return [];
   const access = await scopedDocumentAccess(managementAreaId, actorUid);
+  const documentLimit = Math.min(access.manages && includeInactive ? 200 : 100, Math.max(1, pageSize));
   const constraints = [where('managementAreaId', '==', managementAreaId)];
-  if (!includeInactive) constraints.push(where('active', '==', true));
+  if (!access.manages || !includeInactive) constraints.push(where('active', '==', true));
   constraints.push(orderBy('publishedAt', 'desc'));
-  constraints.push(limit(Math.min(100, Math.max(1, pageSize))));
+  constraints.push(limit(documentLimit));
   const scopedConstraints = [where('managementAreaId', '==', managementAreaId)];
   if (!access.manages || !includeInactive) scopedConstraints.push(where('active', '==', true));
   scopedConstraints.push(where('audienceGroup', 'in', access.groups.length ? access.groups : ['GENERAL']));
-  scopedConstraints.push(orderBy('publishedAt', 'desc'), limit(Math.min(100, Math.max(1, pageSize))));
+  scopedConstraints.push(orderBy('publishedAt', 'desc'), limit(documentLimit));
   const [legacy, scoped] = await Promise.all([
     getDocsFromServer(query(collection(db, 'documents'), ...constraints)),
     access.groups.length ? getDocsFromServer(query(collection(db, 'scopedDocuments'), ...scopedConstraints)) : Promise.resolve(null)
@@ -869,7 +870,7 @@ export async function listManagementDocuments(managementAreaId, {includeInactive
   access.checkSession();
   return mergeManagementDocuments(
     legacy.docs.map(item => ({...item.data(), id: item.id, documentCollection: 'documents'})),
-    scoped?.docs.map(item => ({...item.data(), id: item.id, documentCollection: 'scopedDocuments'})) || [], pageSize);
+    scoped?.docs.map(item => ({...item.data(), id: item.id, documentCollection: 'scopedDocuments'})) || [], pageSize, {maxPageSize: access.manages && includeInactive ? 200 : 100});
 }
 
 export async function saveManagementDocument(input, uid) {
