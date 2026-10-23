@@ -28,7 +28,7 @@ test('59 responder grants are removed in bounded batches and checkpointed before
 function runner(){
   const state={manifestDigest:'manifest',createdAt:new Date().toISOString(),index:8,runs:6,complete:false,backups:[],results:[],originalPolicy:{documents:{rop:{}}}};
   let disk=JSON.stringify(state),events=[];
-  const ctx=context({ropsOwner_:()=>{},evaluationAssertOperator_:()=>{},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>events.push('unlock')})},gpdfProps_:()=>({getProperty:()=> 'Recovery12345'}),formsEvaluationHash_:()=> 'manifest',FormApp:{openById:()=>({})},evaluationProject_:()=> 'sahmt-gestao-5ae66'});
+  const ctx=context({ropsOwner_:()=>{},evaluationAssertOperator_:()=>{},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>events.push('unlock')})},gpdfProps_:()=>({getProperty:()=> 'Recovery12345',deleteProperty(){}}),formsEvaluationHash_:()=> 'manifest',FormApp:{openById:()=>({})},evaluationProject_:()=> 'sahmt-gestao-5ae66'});
   ctx.mgeManifest_=()=>({items:Array.from({length:42},(_,i)=>({formId:'form'+i}))});ctx.mgeContext_=()=>{};ctx.mgePrivate_=()=>({getBlob:()=>({getDataAsString:()=>disk}),setContent:v=>{disk=v;},getUrl:()=> 'private-recovery'});ctx.mgeArm_=delay=>events.push(delay||60000);ctx.mgeStopTrigger_=()=>events.push('stop');ctx.formsEvaluationCloseForm_=()=>events.push('close');
   return {ctx,events,disk:()=>JSON.parse(disk)};
 }
@@ -42,4 +42,17 @@ test('completion advances once; ordinary failures close the Form and disarm auto
 });
 test('repeated timeouts at the same checkpoint stop after four attempts',()=>{
   const f=runner();let calls=0;f.ctx.mgePrepareOne_=()=>{calls++;return {pending:true};};for(let i=0;i<4;i++)f.ctx.continuarLeituraDocumentosGestaoFbV1();assert.throws(()=>f.ctx.continuarLeituraDocumentosGestaoFbV1(),/MANAGEMENT_EBOOK_REPEATED_TIMEOUT/);assert.equal(calls,4);assert.equal(f.disk().lastError.code,'MANAGEMENT_EBOOK_REPEATED_TIMEOUT');
+});
+test('lock contention schedules one bounded fallback without Firestore work or replacing the active watchdog',()=>{
+ const props=new Map(),triggers=[{getHandlerFunction:()=> 'continuarLeituraDocumentosGestaoFbV1'}],delays=[];
+ const ctx=context({ropsOwner_(){},evaluationAssertOperator_:()=>{throw Error('NO_FIRESTORE_ON_BUSY');},LockService:{getScriptLock:()=>({tryLock:()=>false})},gpdfProps_:()=>({getProperty:k=>props.get(k)||null,setProperty:(k,v)=>props.set(k,v)}),ScriptApp:{getProjectTriggers:()=>triggers,newTrigger:handler=>({timeBased:()=>({after:delay=>({create:()=>{delays.push(delay);const id='trigger'+triggers.length;triggers.push({getHandlerFunction:()=>handler,getUniqueId:()=>id});}})})}),deleteTrigger:()=>{throw Error('ACTIVE_WATCHDOG_MUST_SURVIVE');}}});
+ ctx.mgeSaved_=()=>({manifestDigest:'manifest',index:9,createdAt:new Date().toISOString(),complete:false});
+ for(let i=0;i<6;i++)assert.equal(ctx.continuarLeituraDocumentosGestaoFbV1().code,'MANAGEMENT_EBOOK_BUSY_RETRY_SCHEDULED');
+ assert.deepEqual(delays,[120000]);assert.equal(triggers.length,2);assert.equal(ctx.continuarLeituraDocumentosGestaoFbV1().code,'MANAGEMENT_EBOOK_BUSY_RETRY_LIMIT');
+ props.clear();assert.equal(ctx.retomarLeituraDocumentosGestaoFbV1({triggerUid:triggers[1].getUniqueId()}).code,'MANAGEMENT_EBOOK_BUSY_RETRY_SCHEDULED');assert.deepEqual(delays,[120000,120000]);
+});
+test('owner status exposes checkpoint and scheduled continuation counts without querying Firestore',()=>{
+ const ctx=context({dgrOperator_(){},ScriptApp:{getProjectTriggers:()=>[{getHandlerFunction:()=> 'retomarLeituraDocumentosGestaoFbV1'},{getHandlerFunction:()=> 'unrelated'}]},gpdfProps_:()=>({getProperty:()=> 'Recovery12345'}),evaluationGet_:()=>{throw Error('STATUS_MUST_NOT_READ_FIRESTORE');}});
+ ctx.mgeSaved_=()=>({index:9,complete:false,runs:12,pending:{phase:'RESPONDER_ACCESS',remainingGrants:19},lastStage:{item:10,phase:'RESPONDER_ACCESS'},originalPolicy:{documents:{rop:{}}}});ctx.mgePrivate_=()=>({getUrl:()=> 'private-recovery'});
+ const result=ctx.conferirLeituraDocumentosGestaoFbV1();assert.equal(result.completed,9);assert.equal(result.remainingGrants,19);assert.equal(result.scheduledContinuations,1);assert.equal(result.automaticContinuation,true);assert.equal(result.firestoreReads,0);
 });

@@ -196,7 +196,7 @@ test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Dese
   assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
   assert.equal(h.context.canOpenRestrictedModule('management'), false);
   assert.equal(h.context.canOpenRestrictedModule('training'), false);
-  assert.match(h.ui.moduleCards(), /<strong>Gestão<\/strong>/);
+  assert.match(h.ui.moduleCards(), /<strong>Governança<\/strong>/);
   assert.doesNotMatch(h.ui.moduleCards(), /data-route="training"/);
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
   for (const permission of ['trainingsRead', 'trainingsManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) {
