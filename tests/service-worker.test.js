@@ -94,7 +94,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v223');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v224');
 });
 
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {

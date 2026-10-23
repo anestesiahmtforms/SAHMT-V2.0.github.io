@@ -2,19 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
-test('real PDF rendering, mobile modal, coverage, completion and close cleanup',async()=>{
- const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false},optimizeDeps:{include:['jspdf','pdfjs-dist/legacy/build/pdf.mjs']}});let browser;
+test('real PDF rendering, mobile modal, coverage, completion and close cleanup',{timeout:120000},async()=>{
+ const server=await createServer({cacheDir:'.local-preview/vite-pdf-reader-browser',server:{host:'127.0.0.1',port:0,strictPort:false},optimizeDeps:{entries:['tests/fixtures/diretrizes-reading.html'],include:['jspdf','pdfjs-dist/legacy/build/pdf.mjs']}});let browser;
  try{
   await server.listen();const origin='http://127.0.0.1:'+server.httpServer.address().port;
-  browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:390,height:844}});
+  browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:3});
+  page.setDefaultTimeout(30000);
   await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
-  await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html');await page.waitForFunction(()=>window.readingFixtureReady);
+  await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.readingFixtureReady);
   await page.evaluate(()=>{delete Promise.try;delete ReadableStream.prototype[Symbol.asyncIterator];});
   await page.locator('[data-open-diretriz-reader]').click();await page.waitForFunction(()=>document.querySelector('canvas').width>0&&document.querySelector('[data-reader-next]').disabled===false);
   assert.equal(await page.evaluate(()=>typeof Promise.withResolvers),'function');
   assert.equal(await page.evaluate(()=>typeof Promise.try),'function');
   assert.equal(await page.evaluate(()=>typeof ReadableStream.prototype[Symbol.asyncIterator]),'undefined');
   await page.waitForFunction(()=>!document.querySelector('[data-reader-text]').disabled);
+  const fit=await page.locator('canvas').evaluate(el=>({pixels:el.width,css:el.getBoundingClientRect().width}));assert.ok(fit.pixels>=fit.css*2.9);
+  const requestsBeforeZoom=await page.evaluate(()=>window.readingCalls.length);
+  await page.locator('[data-reader-zoom-in]').click();await page.waitForFunction(()=>!document.querySelector('[data-reader-fit]').disabled&&document.querySelector('[data-reader-zoom]').textContent==='125%');
+  assert.ok(await page.locator('.diretrizes-ebook__pages').evaluate(el=>el.scrollWidth>el.clientWidth));
+  const enlarged=await page.locator('canvas').evaluate(el=>({pixels:el.width,css:el.getBoundingClientRect().width}));assert.ok(enlarged.css>fit.css);assert.ok(enlarged.pixels>fit.pixels);
+  assert.equal(await page.evaluate(()=>window.readingCalls.length),requestsBeforeZoom);
+  await page.locator('[data-reader-fit]').click();await page.waitForFunction(()=>!document.querySelector('[data-reader-fit]').disabled&&document.querySelector('[data-reader-zoom]').textContent==='100%');
   assert.equal(await page.locator('dialog[open]').count(),1);assert.equal(await page.locator('[data-reader-complete]').isDisabled(),true);
   const box=await page.locator('[data-reader-close]').boundingBox();assert.ok(box.y+box.height<=844);
   const scrollBottom=()=>page.locator('.diretrizes-ebook__pages').evaluate(el=>{el.scrollTop=el.scrollHeight;el.dispatchEvent(new Event('scroll'));});
@@ -32,6 +40,19 @@ test('real PDF rendering, mobile modal, coverage, completion and close cleanup',
   await scrollBottom();await page.locator('[data-reader-next]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('Página 2')&&!document.querySelector('[data-reader-text]').disabled);
   await scrollBottom();await page.waitForFunction(()=>!document.querySelector('[data-reader-complete]').disabled);await page.locator('[data-reader-complete]').click();
   await page.waitForFunction(()=>document.querySelector('[data-reading-status]').textContent.includes('não possui formulário'));assert.equal(await page.locator('[data-reader-form]').isVisible(),false);
+  await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html?zoom-gate=1');await page.waitForFunction(()=>window.readingFixtureReady);
+  await page.locator('[data-open-diretriz-reader]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('1 apresentadas'));
+  for(const percent of [125,150,200,250,300]){
+   await page.locator('[data-reader-zoom-in]').click();await page.waitForFunction(p=>!document.querySelector('[data-reader-fit]').disabled&&document.querySelector('[data-reader-zoom]').textContent===p+'%',percent);
+  }
+  assert.ok(await page.locator('canvas').evaluate(el=>el.width*el.height<=4000000));
+  await page.locator('[data-reader-next]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('Página 2')&&!document.querySelector('[data-reader-text]').disabled);
+  await scrollBottom();assert.equal(await page.locator('[data-reader-complete]').isDisabled(),true);
+  await page.locator('.diretrizes-ebook__pages').evaluate(el=>{el.scrollLeft=el.scrollWidth;el.dispatchEvent(new Event('scroll'));});
+  const position=await page.locator('.diretrizes-ebook__pages').evaluate(el=>({top:el.scrollTop,left:el.scrollLeft,height:el.clientHeight,width:el.offsetWidth,scrollHeight:el.scrollHeight,scrollWidth:el.scrollWidth,page:document.querySelector('[data-reader-page]').textContent}));
+  assert.ok(position.top+position.height>=position.scrollHeight-8&&position.left+position.width>=position.scrollWidth-8,JSON.stringify(position));
+  await page.waitForFunction(()=>!document.querySelector('[data-reader-complete]').disabled);
+  assert.deepEqual(await page.evaluate(()=>window.readingCalls.map(x=>x.action)),['start']);
   await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html?text-failure=1');await page.waitForFunction(()=>window.readingFixtureReady);
   await page.locator('[data-open-diretriz-reader]').click();await page.waitForFunction(()=>document.querySelector('[data-reader-page]').textContent.includes('1 apresentadas'));
   assert.equal(await page.locator('[data-reader-text]').isDisabled(),true);
