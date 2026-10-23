@@ -37,7 +37,7 @@ jobs:
       - name: Run domain tests
         run: npm run test:domain
       - name: Verify ebook reader transport and backend
-        run: node --test tests/diretrizes-reading.test.js tests/diretrizes-reading-backend.test.js tests/diretrizes-reading-relay.test.js tests/diretrizes-pdf-layout.test.js tests/diretrizes-pdf-cache.test.js
+        run: node --test tests/management-pilot.test.js tests/management-ebook-resume.test.js tests/diretrizes-reading.test.js tests/diretrizes-reading-backend.test.js tests/diretrizes-reading-relay.test.js tests/diretrizes-pdf-layout.test.js tests/diretrizes-pdf-cache.test.js
       - name: Run five-project Google authentication regression
         run: npm run test:google-project-auth
       - name: Verify independent FB data and rules contracts

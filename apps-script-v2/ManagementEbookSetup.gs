@@ -17,7 +17,7 @@ function mgePrivate_(id) {
   const f=DriveApp.getFileById(id);if(f.isTrashed()||f.getSharingAccess()!==DriveApp.Access.PRIVATE||f.getEditors().length||f.getViewers().length||f.getOwner().getEmail().toLowerCase()!=='anestesiahmtforms@gmail.com')throw Error('MANAGEMENT_EBOOK_RECOVERY_NOT_PRIVATE');return f;
 }
 function mgeStopTrigger_(){ScriptApp.getProjectTriggers().filter(function(t){return t.getHandlerFunction()==='continuarLeituraDocumentosGestaoFbV1';}).forEach(function(t){ScriptApp.deleteTrigger(t);});}
-function mgeArm_(){mgeStopTrigger_();ScriptApp.newTrigger('continuarLeituraDocumentosGestaoFbV1').timeBased().after(60000).create();}
+function mgeArm_(delay){mgeStopTrigger_();ScriptApp.newTrigger('continuarLeituraDocumentosGestaoFbV1').timeBased().after(delay||60000).create();}
 function instalarLeituraDocumentosGestaoFbV1() {
   dgrOperator_();evaluationAssertOperator_(true);const lock=LockService.getScriptLock();if(!lock.tryLock(1000))throw Error('MANAGEMENT_EBOOK_BUSY');
   try{
@@ -70,6 +70,7 @@ function mgeMapping_(metadata,previous) {
   payload.modalities={acknowledgement:true,suggestion:true,test:true};return payload;
 }
 function mgePrepareOne_(m,row,state,file) {
+  if(state.pending)return mgeContinuePrepared_(m,row,state,file);
   const drive=gpdfDrive_(gpdfConfig_());mgeBinding_(row,drive);const form=FormApp.openById(row.formId),metadata=formsEvaluationMetadata_(row.formId);
   if(!form.supportsAdvancedResponderPermissions())throw Error('MANAGEMENT_EBOOK_FORM_UNSUPPORTED');
   let backup=state.backups.find(function(b){return b.formId===row.formId;});
@@ -110,10 +111,43 @@ function mgePrepareOne_(m,row,state,file) {
     cfg=evaluationGet_('evaluationFormConfigs',row.formId);
   }
   if(cfg.materialFingerprint!==fingerprint||formsEvaluationSavedQuestionFingerprint_(cfg)!==checked.questionFingerprint||cfg.version!==version||cfg.trainingRevisionRequired===true)throw Error('MANAGEMENT_EBOOK_CONFIGURATION_POSTCHECK');
-  const permissions=formsEvaluationPublishedPermissions_(row.formId);if(dgrNormalFingerprint_(permissions)!==backup.normalFingerprint)throw Error('MANAGEMENT_EBOOK_EDITORS_CHANGED');dgrRemovePublished_(row.formId,permissions);
+  const proof={formId:row.formId,manifestDigest:state.manifestDigest,formDigest:digest,version:version,questionFingerprint:checked.questionFingerprint,materialFingerprint:fingerprint,bankSha256:backup.bank.sha256,questionCodeMap:backup.bank.codes,keepQuestionIds:backup.bank.keepQuestionIds,allBankCodes:backup.bank.allBankCodes};
+  state.pending={formId:row.formId,proof:proof,itemHash:hash(live.items),configVersion:cfg.configVersion,phase:'RESPONDER_ACCESS',updatedAt:new Date().toISOString()};
+  file.setContent(JSON.stringify(state));console.log(JSON.stringify({code:'MANAGEMENT_EBOOK_CHECKPOINT',item:state.index+1,total:m.items.length,phase:state.pending.phase}));return {pending:true};
+}
+function mgeRemovePublishedBatch_(formId,permissions) {
+  if(!formsEvaluationId_(formId)||!permissions.length||permissions.length>20)throw Error('MANAGEMENT_EBOOK_PERMISSION_BATCH_INVALID');
+  // Validate the complete batch before sending any deletion. Editors/owners
+  // never enter these requests; inherited or unexpected grants stop the job.
+  permissions.forEach(function(p){if(p.view!=='published'||!p.id||p.role!=='reader'||!['user','group','domain','anyone'].includes(p.type)||(p.permissionDetails||[]).some(function(d){return d.inherited===true;}))throw Error('READING_CUTOVER_DENIED');});
+  const token=ScriptApp.getOAuthToken(),requests=permissions.map(function(p){return {url:'https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(formId)+'/permissions/'+encodeURIComponent(p.id)+'?supportsAllDrives=true',method:'delete',muteHttpExceptions:true,followRedirects:false,headers:{Authorization:'Bearer '+token}};});
+  const responses=UrlFetchApp.fetchAll(requests);if(responses.length!==requests.length)throw Error('MANAGEMENT_EBOOK_PERMISSION_BATCH_INCOMPLETE');
+  responses.forEach(function(response){const status=response.getResponseCode();if((status<200||status>=300)&&status!==404)throw formsEvaluationGoogleError_(status,requests[0].url,response.getContentText());});
+}
+function mgeContinuePrepared_(m,row,state,file) {
+  const pending=state.pending,proof=pending&&pending.proof,backup=state.backups.find(function(b){return b.formId===row.formId;});
+  if(!pending||pending.formId!==row.formId||!proof||proof.formId!==row.formId||proof.manifestDigest!==state.manifestDigest||!backup||!['RESPONDER_ACCESS','FINALIZE'].includes(pending.phase))throw Error('MANAGEMENT_EBOOK_CHECKPOINT_INVALID');
+  const form=FormApp.openById(row.formId);if(form.isPublished()||form.isAcceptingResponses())formsEvaluationCloseForm_(form);
+  if(!form.supportsAdvancedResponderPermissions()||form.hasLimitOneResponsePerUser()||form.canEditResponse())throw Error('MANAGEMENT_EBOOK_CHECKPOINT_SETTINGS_CHANGED');
+  const metadata=formsEvaluationMetadata_(row.formId),cfg=evaluationGet_('evaluationFormConfigs',row.formId);
+  if(formsEvaluationHash_({formId:row.formId,items:metadata.items})!==pending.itemHash||!cfg||cfg.configVersion!==pending.configVersion||cfg.managementEbookManifestDigest!==state.manifestDigest||cfg.version!==proof.version||cfg.materialFingerprint!==proof.materialFingerprint||formsEvaluationSavedQuestionFingerprint_(cfg)!==proof.questionFingerprint||cfg.trainingRevisionRequired===true||gqpBytesHash_(DriveApp.getFileById(row.bankFileId).getBlob().getBytes())!==proof.bankSha256)throw Error('MANAGEMENT_EBOOK_CHECKPOINT_CHANGED');
+  let permissions=formsEvaluationPublishedPermissions_(row.formId);if(dgrNormalFingerprint_(permissions)!==backup.normalFingerprint)throw Error('MANAGEMENT_EBOOK_EDITORS_CHANGED');
+  if(pending.phase==='RESPONDER_ACCESS'){
+    const began=Date.now();let grants=permissions.filter(function(p){return p.view==='published';});
+    for(let batch=0;grants.length&&batch<3&&Date.now()-began<90000;batch++){
+      mgeRemovePublishedBatch_(row.formId,grants.slice(0,20));permissions=formsEvaluationPublishedPermissions_(row.formId);
+      if(dgrNormalFingerprint_(permissions)!==backup.normalFingerprint)throw Error('MANAGEMENT_EBOOK_EDITORS_CHANGED');
+      grants=permissions.filter(function(p){return p.view==='published';});pending.remainingGrants=grants.length;pending.updatedAt=new Date().toISOString();file.setContent(JSON.stringify(state));
+      console.log(JSON.stringify({code:'MANAGEMENT_EBOOK_PERMISSION_PROGRESS',item:state.index+1,total:m.items.length,remainingGrants:grants.length}));
+    }
+    if(!grants.length){pending.phase='FINALIZE';pending.updatedAt=new Date().toISOString();file.setContent(JSON.stringify(state));}
+    return {pending:true};
+  }
+  if(permissions.some(function(p){return p.view==='published';}))throw Error('MANAGEMENT_EBOOK_RESPONDER_ACCESS_CHANGED');
+  mgeBinding_(row,gpdfDrive_(gpdfConfig_()));
   form.setPublished(true);form.setAcceptingResponses(true);
   if(!form.isPublished()||!form.isAcceptingResponses()||formsEvaluationPublishedPermissions_(row.formId).some(function(p){return p.view==='published';}))throw Error('MANAGEMENT_EBOOK_RESPONDER_ACCESS_CHANGED');
-  const proof={formId:row.formId,manifestDigest:state.manifestDigest,formDigest:digest,version:version,questionFingerprint:checked.questionFingerprint,materialFingerprint:fingerprint,bankSha256:backup.bank.sha256,questionCodeMap:backup.bank.codes,keepQuestionIds:backup.bank.keepQuestionIds,allBankCodes:backup.bank.allBankCodes};
+  const digest=proof.formDigest,version=proof.version;
   const previousResult=state.results.findIndex(function(r){return r.formId===row.formId;});if(previousResult<0)state.results.push(proof);else state.results[previousResult]=proof;file.setContent(JSON.stringify(state));
   // Merge the latest policy so unrelated ROP receipts and concurrent entries survive.
   const props=gpdfProps_(),policy=dgrPolicy_(),id='evaluation_'+row.formId,old=policy.documents[id];
@@ -124,22 +158,30 @@ function mgePrepareOne_(m,row,state,file) {
     mgeContext_(m,tx);const current=evaluationGet_('evaluationFormConfigs',row.formId,tx),activity=evaluationGet_('evaluationActivities',row.formId,tx);if(!current||current.configVersion!==cfg.configVersion||activity.trainingReleaseDigest!==digest)throw Error('MANAGEMENT_EBOOK_READY_CONFLICT');
     const ready={status:'READY',reason:'',publicationPending:false,trainingReleaseBlocked:false,repeatPolicy:'FIRST_RESPONSE_PER_VERSION',managementEbookManifestDigest:state.manifestDigest};
     const writes=[evaluationWrite_('evaluationFormConfigs',row.formId,ready,current,['updatedAt','accessVerifiedAt']),evaluationWrite_('evaluationActivities',row.formId,ready,activity,['updatedAt','accessVerifiedAt'])];
-    [['evaluation_'+row.formId,row.formId,cfg.responderUrl],['pdf_evaluation_'+row.formId,row.pdfId,'https://drive.google.com/file/d/'+row.pdfId+'/view']].forEach(function(parts){const doc=evaluationGet_('scopedDocuments',parts[0],tx);if(doc&&doc.audienceGroup&&doc.audienceGroup!==row.audienceGroup)throw Error('MANAGEMENT_EBOOK_AUDIENCE_CHANGED');const patch={id:parts[0],managementAreaId:m.managerAreaId,title:row.title,category:row.category,audienceGroup:row.audienceGroup,description:'Leitura do material, ciência, avaliação de cinco questões e sugestões.',requiredReading:true,active:true,readingGateRequired:true,driveFileId:parts[1],driveUrl:parts[2],version:doc?doc.version+1:1,updatedByUid:m.actorUid};if(!doc)patch.createdByUid=m.actorUid;writes.push(evaluationWrite_('scopedDocuments',parts[0],patch,doc,doc?['updatedAt']:['createdAt','updatedAt','publishedAt']));});
+    [['evaluation_'+row.formId,row.formId,cfg.responderUrl],['pdf_evaluation_'+row.formId,row.pdfId,'https://drive.google.com/file/d/'+row.pdfId+'/view']].forEach(function(parts){const doc=evaluationGet_('scopedDocuments',parts[0],tx);if(doc&&doc.audienceGroup&&doc.audienceGroup!==row.audienceGroup)throw Error('MANAGEMENT_EBOOK_AUDIENCE_CHANGED');const patch={id:parts[0],managementAreaId:m.managerAreaId,title:row.title,category:row.category,audienceGroup:row.audienceGroup,description:'Leitura do material, ciência, avaliação de cinco questões e sugestões.',requiredReading:true,active:true,readingGateRequired:true,driveFileId:parts[1],driveUrl:parts[2],version:doc?(doc.managementEbookManifestDigest===state.manifestDigest?doc.version:doc.version+1):1,managementEbookManifestDigest:state.manifestDigest,updatedByUid:m.actorUid};if(!doc)patch.createdByUid=m.actorUid;writes.push(evaluationWrite_('scopedDocuments',parts[0],patch,doc,doc?['updatedAt']:['createdAt','updatedAt','publishedAt']));});
     (row.legacyDocuments||[]).forEach(function(d){const old=evaluationGet_('documents',d.id,tx);if(!old||old.driveFileId!==d.driveFileId||!/^Organograma$/i.test(old.title||'')||!/^ORGANOGRAMA$/i.test(row.title))throw Error('MANAGEMENT_EBOOK_LEGACY_CHANGED');if(old.active)writes.push(evaluationWrite_('documents',d.id,{active:false,replacedBy:'scopedDocuments/evaluation_'+row.formId,updatedByUid:m.actorUid},old,['updatedAt']));});
     const alias=formsEvaluationLink_(cfg.responderUrl);if(!alias)throw Error('MANAGEMENT_EBOOK_FORM_URL_INVALID');const linkId='link-'+formsEvaluationHash_('scopedDocuments\u0000evaluation_'+row.formId+'\u0000'+alias.aliasKey),link=evaluationGet_('evaluationLinks',linkId,tx);writes.push(evaluationWrite_('evaluationLinks',linkId,{id:linkId,sourceCollection:'scopedDocuments',sourceId:'evaluation_'+row.formId,sourceVersion:version,areaIds:[m.managerAreaId],aliasKey:alias.aliasKey,normalizedUrl:alias.normalizedUrl,formId:row.formId,active:true,status:'READY',reason:'Liberação individual após leitura.'},link,['updatedAt']));return {writes:writes,result:{}};
   });
-  dgrCatalog_(id,policy.documents[id]);mgeTrainingReleaseVerify_(row.formId);return proof;
+  dgrCatalog_(id,policy.documents[id]);mgeTrainingReleaseVerify_(row.formId);return {pending:false};
 }
 function continuarLeituraDocumentosGestaoFbV1() {
   ropsOwner_();evaluationAssertOperator_(true);const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'MANAGEMENT_EBOOK_BUSY'};
-  let current;
+  let current,state,file;
   try{
-    const m=mgeManifest_(),file=mgePrivate_(gpdfProps_().getProperty('SAHMT_MANAGEMENT_EBOOK_JOB')),state=JSON.parse(file.getBlob().getDataAsString('UTF-8'));mgeContext_(m,null);
-    if(state.manifestDigest!==formsEvaluationHash_(m)||!Number.isInteger(state.index)||state.index<0||state.index>m.items.length||Date.now()-Date.parse(state.createdAt)>7*86400000||++state.runs>70)throw Error('MANAGEMENT_EBOOK_STATE_INVALID');
-    if(!state.complete){const began=Date.now();for(let n=0;state.index<m.items.length&&n<2&&Date.now()-began<145000;state.index++,n++){const row=m.items[state.index];current=FormApp.openById(row.formId);mgePrepareOne_(m,row,state,file);current=null;file.setContent(JSON.stringify(state));}}
+    const m=mgeManifest_();file=mgePrivate_(gpdfProps_().getProperty('SAHMT_MANAGEMENT_EBOOK_JOB'));state=JSON.parse(file.getBlob().getDataAsString('UTF-8'));mgeContext_(m,null);
+    if(state.manifestDigest!==formsEvaluationHash_(m)||!Number.isInteger(state.index)||state.index<0||state.index>m.items.length||Date.now()-Date.parse(state.createdAt)>7*86400000||++state.runs>300)throw Error('MANAGEMENT_EBOOK_STATE_INVALID');
+    if(!state.complete){
+      const phase=state.pending?state.pending.phase:'PREPARING',key=JSON.stringify([state.index,phase,state.pending&&state.pending.remainingGrants]);
+      state.resumeGuard={key:key,attempts:state.resumeGuard&&state.resumeGuard.key===key?state.resumeGuard.attempts+1:1};if(state.resumeGuard.attempts>4)throw Error('MANAGEMENT_EBOOK_REPEATED_TIMEOUT');
+      state.lastStage={item:state.index+1,phase:phase,startedAt:new Date().toISOString()};delete state.lastError;file.setContent(JSON.stringify(state));
+      // Armed before external work: a hard six-minute timeout cannot execute
+      // catch/finally. A delayed retry survives it; ordinary errors disarm it.
+      mgeArm_(420000);console.log(JSON.stringify({code:'MANAGEMENT_EBOOK_STAGE',item:state.index+1,total:m.items.length,phase:phase}));
+      const row=m.items[state.index];current=FormApp.openById(row.formId);const result=mgePrepareOne_(m,row,state,file);if(!result||result.pending!==true){delete state.pending;state.index++;}current=null;file.setContent(JSON.stringify(state));
+    }
     state.complete=state.index===m.items.length;file.setContent(JSON.stringify(state));mgeStopTrigger_();if(!state.complete)mgeArm_();
-    const result={code:state.complete?'MANAGEMENT_EBOOK_TRAININGS_ACTIVE':'MANAGEMENT_EBOOK_PROGRESS',completed:state.index,total:m.items.length,privateRecoveryUrl:file.getUrl(),automaticContinuation:!state.complete,projectId:evaluationProject_(),preservedRops:state.originalPolicy.documents?Object.keys(state.originalPolicy.documents).length:0};console.log(JSON.stringify(result));return result;
-  }catch(e){mgeStopTrigger_();if(current)try{formsEvaluationCloseForm_(current);}catch(_){}throw e;}finally{lock.releaseLock();}
+    const result={code:state.complete?'MANAGEMENT_EBOOK_TRAININGS_ACTIVE':'MANAGEMENT_EBOOK_PROGRESS',completed:state.index,total:m.items.length,phase:state.pending?state.pending.phase:null,remainingGrants:state.pending&&state.pending.remainingGrants,privateRecoveryUrl:file.getUrl(),automaticContinuation:!state.complete,projectId:evaluationProject_(),preservedRops:state.originalPolicy.documents?Object.keys(state.originalPolicy.documents).length:0};console.log(JSON.stringify(result));return result;
+  }catch(e){mgeStopTrigger_();if(current)try{formsEvaluationCloseForm_(current);}catch(_){}if(state&&file)try{state.lastError={at:new Date().toISOString(),code:/^[A-Z][A-Z0-9_]+$/.test(e.message||'')?e.message:'MANAGEMENT_EBOOK_STEP_FAILED'};file.setContent(JSON.stringify(state));}catch(_){}throw e;}finally{lock.releaseLock();}
 }
 function mgeSaved_(){const id=gpdfProps_().getProperty('SAHMT_MANAGEMENT_EBOOK_JOB');if(!id)return null;const m=mgeManifest_(),state=JSON.parse(mgePrivate_(id).getBlob().getDataAsString('UTF-8'));if(state.manifestDigest!==formsEvaluationHash_(m))throw Error('MANAGEMENT_EBOOK_MANIFEST_CHANGED');return state;}
 function mgeRepeatSetup_(payload,actorUid,tx,setup) {
