@@ -36,6 +36,26 @@ test('Google denial never reaches Apps Script',async()=>{
  let calls=0;const r=await relayDiretrizesReading(request(),env,{admitRequest,fetchImpl:async()=>{calls++;return new Response('{}',{status:401});}});
  assert.equal(r.status,401);assert.equal(calls,1);
 });
+test('Workerd redirect compatibility: invalid signature reaches Google rejection without following redirects',async()=>{
+ let calls=0;const r=await relayDiretrizesReading(request(),env,{admitRequest,now:()=>1500000000000,fetchImpl:async(_url,options)=>{
+  calls++;if(options.redirect==='error')throw new TypeError('Invalid redirect value, must be one of follow or manual');
+  assert.equal(options.redirect,'manual');return new Response('{}',{status:400});
+ }});assert.equal(r.status,401);assert.equal((await r.json()).code,'READING_IDENTITY_DENIED');assert.equal(calls,1);
+});
+test('Workerd accepts the single validated Content Service redirect and rejects further redirects',async()=>{
+ for(const extraRedirect of [false,true]){
+  let calls=0,nonce;
+  const r=await relayDiretrizesReading(request(),env,{admitRequest,now:()=>1500000000000,fetchImpl:async(url,options)=>{
+   calls++;assert.equal(options.redirect,'manual');
+   if(calls===1)return Response.json({users:[{localId:'reader',email:'reader@example.test',emailVerified:true,validSince:'0',providerUserInfo:[{providerId:'google.com'}]}]});
+   if(calls===2){nonce=JSON.parse(Buffer.from(JSON.parse(options.body).payload,'base64url')).nonce;return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?user_content_key=fixture&lib=fixture'}});}
+   assert.equal(options.method,'GET');assert.equal(options.headers,undefined);assert.equal(options.body,undefined);
+   if(extraRedirect)return new Response(null,{status:302,headers:{Location:'https://example.invalid'}});
+   const payload=Buffer.from(JSON.stringify({v:1,nonce,code:'READING_STARTED',pages:2,sessionId:'f'.repeat(32),pdfBase64:'JVBERi0='})).toString('base64url');
+   return Response.json({payload,mac:createHmac('sha256',key).update('SAHMT_READING_V1\n'+payload).digest('hex')});
+  }});assert.equal(calls,3);assert.equal(r.status,extraRedirect?503:200);
+ }
+});
 test('admission required before external work',async()=>{
  const r=await relayDiretrizesReading(request(),env,{fetchImpl:()=>{throw Error('no');}});assert.equal(r.status,503);
 });
@@ -55,7 +75,7 @@ test('wrong response HMAC and malicious Content Service redirect fail closed',as
  let calls=0;const r=await relayDiretrizesReading(request(),env,{admitRequest,now:()=>1500000000000,fetchImpl:async()=>{
   calls++;if(calls===1)return Response.json({users:[{localId:'reader',email:'reader@example.test',emailVerified:true,validSince:'0',providerUserInfo:[{providerId:'google.com'}]}]});
   return redirect?new Response(null,{status:302,headers:{Location:'https://attacker.invalid/steal'}}):Response.json({payload:'e30',mac:'a'.repeat(64)});
- }});assert.equal(r.status,503);assert.equal(calls,2);
+ }});assert.equal(r.status,503);assert.equal((await r.json()).code,redirect?'READING_RELAY_UPSTREAM_FAILED':'READING_RELAY_ENVELOPE_FAILED');assert.equal(calls,2);
  }
 });
 
