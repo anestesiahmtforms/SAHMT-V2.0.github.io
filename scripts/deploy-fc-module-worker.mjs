@@ -6,6 +6,7 @@ import {createFaCloudflareClient} from './lib/fa-cloudflare-client.js';
 import {createConsolidationScriptClient} from './lib/fa-consolidation-script-client.js';
 import {createPrivateJsonProtector} from './lib/windows-protected-json.js';
 import {snapshotDigest} from './lib/management-split-plan.js';
+import {cloudflareWorkerSource as workerSource} from './lib/cloudflare-worker-source.js';
 
 const demand=(ok,code)=>{if(!ok)throw Error(code);};
 const path='/workers/scripts/sahmt-auth-broker',owned='FC_MODULE_SCRIPT_URL';
@@ -31,9 +32,10 @@ async function main(){
  }}]})).outputFiles[0].text;
  const cf=await createFaCloudflareClient();demand(cf.accountId==='1851e9f4cd5f026371beaa2c5a85f1b8','FC_WORKER_ACCOUNT_MISMATCH');
  const [settings,source]=await Promise.all([cf.request(path+'/settings'),cf.request(path,{raw:true})]);
- demand(source.content.includes(prior)||source.content.includes(bundle),'FC_WORKER_UNRELATED_SOURCE_DRIFT');
+ const liveModule=await workerSource(source);
+ demand(liveModule===prior||liveModule===bundle,'FC_WORKER_UNRELATED_SOURCE_DRIFT');
  const expected=settings.bindings.filter(b=>b.name!==owned).concat({name:owned,type:'plain_text',text:url});
- const report={code:'FC_WORKER_PREVIEW',targetVersion:target.deploymentConfig.versionNumber,sourceAlreadyCurrent:source.content.includes(bundle),bindingAlreadyCurrent:signature(settings.bindings)===signature(expected),secretsPreserved:settings.bindings.filter(b=>b.type==='secret_text'||b.type==='secret_key').length,changes:0};
+ const report={code:'FC_WORKER_PREVIEW',targetVersion:target.deploymentConfig.versionNumber,sourceAlreadyCurrent:liveModule===bundle,bindingAlreadyCurrent:signature(settings.bindings)===signature(expected),secretsPreserved:settings.bindings.filter(b=>b.type==='secret_text'||b.type==='secret_key').length,changes:0};
  if(mode==='preview'){console.log(JSON.stringify(report));return;}
  const directory=resolve(process.env.LOCALAPPDATA,'SAHMT','qmentum-fc-migration');await mkdir(directory,{recursive:true});
  const protector=await createPrivateJsonProtector(),backup=resolve(directory,'Worker-'+Date.now()+'.dpapi.json');
@@ -41,7 +43,7 @@ async function main(){
  await writeFile(backup,JSON.stringify(protector.seal(saved)),{flag:'wx',mode:0o600});
  demand(snapshotDigest(protector.open(JSON.parse(await readFile(backup,'utf8'))))===snapshotDigest(saved),'FC_WORKER_BACKUP_INVALID');
  const [freshSettings,freshSource]=await Promise.all([cf.request(path+'/settings'),cf.request(path,{raw:true})]);
- demand(signature(freshSettings.bindings)===signature(settings.bindings)&&freshSource.content===source.content,'FC_WORKER_CONCURRENT_CHANGE');
+ demand(signature(freshSettings.bindings)===signature(settings.bindings)&&await workerSource(freshSource)===liveModule,'FC_WORKER_CONCURRENT_CHANGE');
  if(!report.sourceAlreadyCurrent||!report.bindingAlreadyCurrent){
   const metadata={main_module:'worker.js',bindings:expected.filter(b=>!['secret_text','secret_key'].includes(b.type)),keep_bindings:['secret_text','secret_key']};
   for(const key of ['compatibility_date','compatibility_flags','usage_model','logpush','observability','placement','tail_consumers','limits','tags'])if(settings[key]!==undefined)metadata[key]=settings[key];
@@ -49,7 +51,7 @@ async function main(){
   changed=true;await cf.request(path,{method:'PUT',body:form});
  }
  const [after,deployed]=await Promise.all([cf.request(path+'/settings'),cf.request(path,{raw:true})]);
- demand(signature(after.bindings)===signature(expected)&&deployed.content.includes(bundle),'FC_WORKER_POSTCHECK_FAILED');
+ demand(signature(after.bindings)===signature(expected)&&await workerSource(deployed)===bundle,'FC_WORKER_POSTCHECK_FAILED');
  const probes=[];
  for(const [route,code] of [['/v1/qmentum/write','QMENTUM_WRITE_SESSION_INVALID'],['/v1/evaluation/occurrence','OCCURRENCE_SCORE_SESSION_INVALID']]){
   const r=await fetch('https://sahmt-auth-broker.anestesiahmtforms.workers.dev'+route,{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{}',redirect:'error',signal:AbortSignal.timeout(20000)});
