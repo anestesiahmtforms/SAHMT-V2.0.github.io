@@ -39,7 +39,8 @@ export function checklistArsenalFunction(station) {
 export function canEditChecklistStationTitle(user, profile) {
   const email = String(user?.email || '').toLowerCase();
   return !!user?.uid && user.emailVerified === true &&
-    ['wx2064@gmail.com', 'marcio.henrique82@gmail.com'].includes(email) &&
+    ['wx2064@gmail.com', 'marcio.henrique82@gmail.com', 'anestesiahmtforms@gmail.com', 'anestesiahmtforms2@gmail.com',
+      'anestesiahmtforms3@gmail.com', 'anestesiahmtforms4@gmail.com', 'anestesiahmtforms5@gmail.com'].includes(email) &&
     profile?.active === true && profile.access === true &&
     (profile.role === 'administrador_app' || profile.permissions?.admin === true || profile.permissions?.checklistManage === true);
 }

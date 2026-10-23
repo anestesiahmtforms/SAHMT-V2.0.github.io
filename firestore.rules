@@ -802,7 +802,9 @@ service cloud.firestore {
       function stationTitleEditor() {
         return request.auth.token.keys().hasAll(['email', 'email_verified']) &&
           request.auth.token.email is string && request.auth.token.email_verified == true &&
-          request.auth.token.email.lower() in ['wx2064@gmail.com', 'marcio.henrique82@gmail.com'];
+          request.auth.token.email.lower() in ['wx2064@gmail.com', 'marcio.henrique82@gmail.com',
+            'anestesiahmtforms@gmail.com', 'anestesiahmtforms2@gmail.com', 'anestesiahmtforms3@gmail.com',
+            'anestesiahmtforms4@gmail.com', 'anestesiahmtforms5@gmail.com'];
       }
       function validStation(data, stationId) {
         return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
@@ -877,23 +879,19 @@ service cloud.firestore {
           data.justification is string && data.justification.size() >= 8 && data.justification.size() <= 500 &&
           request.auth.token.email_verified == true && can('checklistSign');
         let acknowledgementFields = data.keys().hasAll(['recordKind', 'signerName', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
-          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'signerName', 'declaration', 'justification', 'status', 'recordKind', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
-          requestId == data.day + '_' + request.auth.uid &&
+          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'signerName', 'signerSigla', 'declaration', 'justification', 'status', 'recordKind', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
+          requestId == data.day && data.signerSigla is string && data.signerSigla.size() <= 20 && data.signerSigla == profile().get('sigla', '') &&
           data.signerName is string && data.signerName.size() > 0 && data.signerName.size() <= 120 && data.signerName == profile().displayName &&
           data.recordKind == 'ACKNOWLEDGEMENT' && data.justification == 'Declaro que tomei ciência das informações deste relatório.' &&
           data.status == 'PENDING_VALIDATION' && data.acknowledgedAt == request.time &&
           ((data.rotationSigla == null && data.rotationPosition == null) ||
             (data.rotationSigla is string && data.rotationSigla.matches('^(?:[A-Z]{2}|L2)$') &&
              data.rotationPosition is int && data.rotationPosition >= 1 && data.rotationPosition <= 30));
-        let legacyFields = data.keys().hasAll(['requestedAt']) &&
-          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt']) &&
-          requestId == data.day + '_' + data.revision + '_' + request.auth.uid &&
-          data.status == 'PENDING_VALIDATION' && data.requestedAt == request.time;
-        return common && (acknowledgement ? acknowledgementFields : legacyFields);
+        return common && acknowledgement && acknowledgementFields;
       }
 
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
-        resource.data.signerUid == request.auth.uid || can('checklistManage'));
+        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage'));
       allow list: if can('checklistManage');
       allow create: if validChecklistSignatureRequest(request.resource.data, requestId);
       allow update, delete: if false;
@@ -1571,88 +1569,7 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
-    // BEGIN OCCURRENCES_FA_V1
-    match /{occurrenceCollection}/{reportId} {
-    function occurrenceDomainActive_() {
-      let path = /databases/$(database)/documents/occurrenceRuntime/faConsolidation;
-      return exists(path) && get(path).data.status == 'ACTIVE';
-    }
-    function occurrence_signedFromFa() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid && occurrenceDomainActive_(); }
-    function occurrence_canCatalog() { return occurrence_signedFromFa(); }
-    function occurrence_canWrite() { return occurrence_signedFromFa(); }
-    function occurrence_canRead() { return occurrence_signedFromFa() && profile().permissions.keys().hasAny(['occurrencesRead']) && profile().permissions.occurrencesRead == true; }
-    function occurrence_canAudit() { return occurrence_signedFromFa() && profile().permissions.keys().hasAny(['occurrencesAuditRead']) && profile().permissions.occurrencesAuditRead == true; }
-    function occurrence_reportPath(id) { return /databases/$(database)/documents/occurrenceReports/$(id); }
-    function occurrence_auditPath(id) { return /databases/$(database)/documents/occurrenceAudit/$(id); }
-    function occurrence_scorePath(id) { return /databases/$(database)/documents/occurrenceScoreClaims/$(id); }
-    function occurrence_canReadReport(id) {
-      return occurrence_canRead() || (occurrence_canWrite() && resource == null) ||
-        (occurrence_canWrite() && exists(occurrence_auditPath(id)) && get(occurrence_auditPath(id)).data.uid == request.auth.uid);
-    }
-    function occurrence_canReadPrivate(id) {
-      return occurrence_canAudit() || (occurrence_canWrite() && resource == null) ||
-        (occurrence_canWrite() && resource.data.uid == request.auth.uid);
-    }
-    function occurrence_validReport(reportId, data) {
-      return data.keys().hasOnly(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
-          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
-        data.keys().hasAll(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
-          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
-        data.schemaVersion == 1 && data.id == reportId &&
-        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
-        data.formTitle is string && data.formTitle.size() > 0 && data.formTitle.size() <= 180 &&
-        data.classification is map && data.classification.keys().size() <= 4 &&
-        data.details is map && data.details.keys().size() <= 20 &&
-        data.anonymous is bool && data.authorLabel is string && data.authorLabel.size() > 0 && data.authorLabel.size() <= 120 &&
-        (data.anonymous == true ? data.authorLabel == 'Anônimo' : data.authorLabel != 'Anônimo') &&
-        data.pointsClaimed == 2 && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
-        (data.formId == 'F10' ? data.occurredOn == null && data.occurrence == null && data.description == null :
-          data.occurredOn is string && data.occurredOn.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
-          data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 180 &&
-          data.description is string && data.description.size() > 0 && data.description.size() <= 5000);
-    }
-    function occurrence_validAudit(reportId, data) {
-      return data.keys().hasOnly(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
-        data.keys().hasAll(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
-        data.schemaVersion == 1 && data.reportId == reportId && data.uid == request.auth.uid &&
-        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
-        data.anonymous is bool && data.createdAt == request.time;
-    }
-    function occurrence_validScoreClaim(reportId, data) {
-      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','originProjectId','uid','formId','points','status','createdAt']) &&
-        data.keys().hasAll(['schemaVersion','id','source','sourceId','originProjectId','uid','formId','points','status','createdAt']) &&
-        data.schemaVersion == 1 && data.id == reportId && data.source == 'REGISTRO_OCORRENCIA' &&
-        data.sourceId == reportId && data.originProjectId == 'sahmt-17a16' && data.uid == request.auth.uid &&
-        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
-        data.points == 2 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
-    }
-    function occurrence_pairedAfter(reportId) {
-      let report = getAfter(occurrence_reportPath(reportId)).data;
-      let audit = getAfter(occurrence_auditPath(reportId)).data;
-      let claim = getAfter(occurrence_scorePath(reportId)).data;
-      return report.id == reportId && report.createdAt == request.time &&
-        audit.reportId == reportId && audit.uid == request.auth.uid && audit.formId == report.formId &&
-        audit.anonymous == report.anonymous && audit.createdAt == request.time &&
-        claim.id == reportId && claim.sourceId == reportId && claim.uid == request.auth.uid &&
-        claim.formId == report.formId && claim.points == 2 && claim.status == 'PENDING_VALIDATION' &&
-        claim.createdAt == request.time;
-    }
 
-
-      allow get: if (occurrenceCollection == 'occurrenceCatalogs' && reportId == 'current' && occurrence_canCatalog()) ||
-        (occurrenceCollection == 'occurrenceReports' && occurrence_canReadReport(reportId)) ||
-        (occurrenceCollection in ['occurrenceAudit','occurrenceScoreClaims'] && occurrence_canReadPrivate(reportId));
-      allow list: if request.query.limit != null && request.query.limit <= 50 &&
-        ((occurrenceCollection == 'occurrenceReports' && occurrence_canRead()) ||
-         (occurrenceCollection in ['occurrenceAudit','occurrenceScoreClaims'] && occurrence_canAudit()));
-      allow create: if occurrence_canWrite() &&
-        ((occurrenceCollection == 'occurrenceReports' && !exists(occurrence_reportPath(reportId)) && occurrence_validReport(reportId, request.resource.data)) ||
-         (occurrenceCollection == 'occurrenceAudit' && !exists(occurrence_auditPath(reportId)) && occurrence_validAudit(reportId, request.resource.data)) ||
-         (occurrenceCollection == 'occurrenceScoreClaims' && !exists(occurrence_scorePath(reportId)) && occurrence_validScoreClaim(reportId, request.resource.data))) &&
-        occurrence_pairedAfter(reportId);
-      allow update, delete: if false;
-    }
-    // END OCCURRENCES_FA_V1
 
   }
 }

@@ -3,7 +3,7 @@ import {relayOccurrenceScore as relayActual} from '../worker-management-auth/occ
 const relayOccurrenceScore=(request,env,options={})=>relayActual(request,env,{admitRequest:async()=>({allowed:true,release:async()=>{}}),...options});
 import {notifyOccurrenceScore} from '../src/occurrence-scoring-delivery.js';
 const secret='s'.repeat(43),id='12345678-1234-1234-1234-123456789abc',origin='https://anestesiahmtforms.github.io',worker='https://broker.invalid/v1/evaluation/occurrence';
-const token='header.'+Buffer.from(JSON.stringify({aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16',sub:'fixture',firebase:{sign_in_provider:'custom'},sahmtFaSourceProjectId:'sahmt-17a16'})).toString('base64url')+'.synthetic-signature';
+const token='header.'+Buffer.from(JSON.stringify({aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:'fixture',firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.synthetic-signature';
 const env={OCCURRENCE_SCORING_ENABLED:'true',OCCURRENCE_SCORING_HMAC_SECRET:secret,OCCURRENCE_SCORING_SCRIPT_URL:'https://script.google.com/macros/s/'+'synthetic'.repeat(4)+'/exec'};
 const sign=payload=>createHmac('sha256',secret).update('SAHMT_OCCURRENCE_SCORE_V1\n'+payload).digest('hex');
 const envelope=(overrides={})=>{const payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-occurrence-score',nonce:'a'.repeat(32),id,uid:'fixture',issuedAt:Date.now(),expiresAt:Date.now()+60000,...overrides})).toString('base64url');return{payload,mac:sign(payload)};};
@@ -21,13 +21,14 @@ const code=reply=>reply.payload?JSON.parse(Buffer.from(reply.payload,'base64url'
 const request=()=>new Request(worker,{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+token},body:JSON.stringify({id})});
 test('worker and actual Apps Script receiver agree on both HMACs and redirect protocol',async()=>{
  const h=receiver(),calls=[];let reply;
- const out=await relayOccurrenceScore(request(),env,{fetchImpl:async(url,options)=>{
-  calls.push({url,options});if(url.startsWith('https://firestore.googleapis.com/'))return Response.json({name:'projects/sahmt-17a16/databases/(default)/documents/occurrenceScoreClaims/'+id,fields:{uid:{stringValue:'fixture'},sourceId:{stringValue:id}}});
+ const fcUrl='https://script.google.com/macros/s/'+'f'.repeat(30)+'/exec';
+ const out=await relayOccurrenceScore(request(),{...env,FC_MODULE_SCRIPT_URL:fcUrl},{fetchImpl:async(url,options)=>{
+  calls.push({url,options});if(url.startsWith('https://firestore.googleapis.com/'))return Response.json({name:'projects/indicadores---sahmt/databases/(default)/documents/occurrenceScoreClaims/'+id,fields:{uid:{stringValue:'fixture'},sourceId:{stringValue:id}}});
   if(url.startsWith('https://script.google.com/')){reply=h.invoke(JSON.parse(options.body));return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?user_content_key=synthetic'}});}
   return Response.json(reply);
  }});
  assert.equal(out.status,200);assert.equal((await out.json()).code,'OCCURRENCE_SCORE_ACCEPTED');assert.equal(h.calls.length,1);assert.deepEqual([...h.calls[0]],[id,'fixture']);assert.deepEqual(h.logs,[]);
- assert.equal(calls[2].options.method,'GET');assert.equal(calls[2].options.headers,undefined);
+ assert.equal(calls[1].url,fcUrl+'?action=occurrence-score-v1');assert.equal(calls[2].options.method,'GET');assert.equal(calls[2].options.headers,undefined);
  assert.equal(calls[1].options.body.includes(token),false);assert.equal(calls[1].options.body.includes(secret),false);
 });
 test('disabled receiver does no privileged work or nonce storage',()=>{const h=receiver();h.disable();assert.equal(code(h.invoke(envelope())),'OCCURRENCE_SCORING_DISABLED');assert.equal(h.calls.length,0);assert.equal(h.props.size,1);});
@@ -44,7 +45,7 @@ test('admission failure performs no external reads and a settled denial releases
  await relayOccurrenceScore(request(),env,{fetchImpl,admitRequest:async()=>({allowed:true,release:async()=>{released++;}})});
  assert.equal(calls,1);assert.equal(released,1);
 });
-test('external redirect is rejected without sending credentials to it',async()=>{let n=0;const out=await relayOccurrenceScore(request(),env,{fetchImpl:async()=>++n===1?Response.json({name:'projects/sahmt-17a16/databases/(default)/documents/occurrenceScoreClaims/'+id,fields:{uid:{stringValue:'fixture'},sourceId:{stringValue:id}}}):new Response(null,{status:302,headers:{Location:'https://attacker.invalid/steal'}})});assert.equal(out.status,503);assert.equal(n,2);});
+test('external redirect is rejected without sending credentials to it',async()=>{let n=0;const out=await relayOccurrenceScore(request(),env,{fetchImpl:async()=>++n===1?Response.json({name:'projects/indicadores---sahmt/databases/(default)/documents/occurrenceScoreClaims/'+id,fields:{uid:{stringValue:'fixture'},sourceId:{stringValue:id}}}):new Response(null,{status:302,headers:{Location:'https://attacker.invalid/steal'}})});assert.equal(out.status,503);assert.equal(n,2);});
 test('browser notification is disabled by default, never sends points or follows redirects',async()=>{
  const auth={currentUser:{uid:'fixture',getIdToken:async()=>token}};let n=0;
  const options={id,uid:'fixture',auth,endpoint:worker,allowedOrigin:new URL(worker).origin,fetchImpl:async(_url,o)=>{n++;assert.deepEqual(JSON.parse(o.body),{id});assert.equal(o.redirect,'error');assert.equal(o.credentials,'omit');return new Response(null,{status:200});}};

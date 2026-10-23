@@ -49,8 +49,8 @@ test('two different commands based on the same month version cannot overwrite ea
  second.payloadHash=hash(qmentumCanonical({operation:second.operation,payload:second.payload}));const secondId=uid+'_'+second.payloadHash;f.docs.set('qmentumWriteRequests/'+secondId,second);f.versions.set('qmentumWriteRequests/'+secondId,'t1');
  assert.equal(f.call().code,'QMENTUM_WRITE_CONFIRMED');assert.equal(f.call({nonce:'e'.repeat(32),commandId:secondId}).code,'QMENTUM_VERSION_CONFLICT');assert.equal(f.metrics().commits,1);assert.equal(f.docs.get('qmentumUnits/unit-a/months/2026-10').inputs.comment,'');
 });
-test('a server configured for another project refuses before reading any project',()=>{
- const f=fixture();f.serverConfig.projectId='sahmt-gestao-5ae66';assert.equal(f.call().code,'QMENTUM_FA_REQUIRED');assert.equal(f.metrics().reads,0);assert.equal(f.metrics().commits,0);
+test('a server configured for another database refuses before reading any project',()=>{
+ const f=fixture();f.serverConfig.databaseId='named';assert.equal(f.call().code,'QMENTUM_FC_REQUIRED');assert.equal(f.metrics().reads,0);assert.equal(f.metrics().commits,0);
 });
 
 test('transaction guard conflict keeps its safe conflict code instead of hiding as network failure',()=>{const f=fixture();f.beforeCommit(()=>{throw Error('QMENTUM_VERSION_CONFLICT');});assert.equal(f.call().code,'QMENTUM_VERSION_CONFLICT');assert.equal(f.metrics().commits,0);});

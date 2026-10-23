@@ -260,9 +260,13 @@ test('perder o rodízio depois do preview impede gravar pedido imutável sem esc
 function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
   const stations=Array.from({length:28},(_,index)=>({id:'fictício-'+String(index+1).padStart(2,'0'),name:'Arsenal fictício '+(index+1),active:true,order:index+1}));
   const ids=stations.map(station=>station.id).sort(),initial={stationIds:ids,records:[{id:'safe-answer',stationId:ids[0],condition:'NAO',date:'2026-10-02'}],priorRecords:[]};
-  const catalogs=[],reports=[],events=[],writes=[],reads=[],stops=[];let owned=scopeOwned;
+  const catalogs=[],reports=[],events=[],writes=[],reads=[],stops=[],conferences=[],rotations=[],deadlines=[];let owned=scopeOwned;
   const ctx=vm.createContext({googleProjectAuthEnabled:false,
     checklistCatalogLive:null,checklistResponsibilityLive:null,stationIsInDateRange:()=>true,can:()=>false,
+    session:{profile:{sigla:'AA'}},checklistConferenceLive:null,checklistRotationLive:null,
+    setTimeout:fn=>{deadlines.push(fn);return deadlines.length;},clearTimeout(){},
+    mockConference:{watchChecklistConference:async(options,next)=>{conferences.push({options,next});return()=>stops.push('conference');}},
+    mockRotation:{watchChecklistRotation:async(options,next,error)=>{rotations.push({options,next,error});return()=>stops.push('rotation');}},
     isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, navigator:{onLine:true}, emitCachedOfflineReport:async()=>false,subscribeReportWithDeadline:({subscribe,callbacks})=>subscribe(callbacks),
     mockCatalog:{watchChecklistStations:async(next,error)=>{catalogs.push({next,error});return()=>stops.push('catalog');}},
     mockChecklist:{watchChecklistReport:async(options,next,error)=>{const index=reports.length;reports.push({options,next,error});return()=>stops.push('report:'+index);}},
@@ -271,11 +275,12 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
   });
   let adapter=source.slice(source.indexOf('async function subscribeLiveReport('),source.indexOf('function receiveLiveReport('));
   adapter=adapter.replaceAll("import('./report-live-data.js')",'Promise.resolve(mockCatalog)').replaceAll("import('./checklist-report-listener.js')",'Promise.resolve(mockChecklist)').replaceAll("import('./outbox.js')",'Promise.resolve(mockCache)');
+  adapter=adapter.replaceAll("import('./checklist-conference-listener.js')",'Promise.resolve(mockConference)').replaceAll("import('./checklist-rotation-listener.js')",'Promise.resolve(mockRotation)');
   vm.runInContext(adapter,ctx);
   const scope={kind:'checklist',module:'checklist',key:'checklist:user-a:today',uid:'user-a',day:'2026-10-02',mode:'daily',isAdmin:false,from:'2026-10-02',to:'2026-10-02',pageSize:1000};
   const subscribe=()=>ctx.subscribeLiveReport('checklist',scope,{isCurrent:()=>owned,next:(key,event)=>events.push({key,event}),error:error=>{throw error;}});
   const emit=(records=[],metadata={})=>catalogs[0].next({records,fromCache:true,hasPendingWrites:false,truncated:false,serverConfirmed:false,...metadata});
-  return {ctx,scope,stations,ids,initial,catalogs,reports,events,writes,reads,stops,subscribe,emit,revoke:()=>{owned=false;},lastCatalog:()=>events.filter(item=>item.key==='catalog').at(-1)?.event};
+  return {ctx,scope,stations,ids,initial,catalogs,reports,events,writes,reads,stops,conferences,rotations,deadlines,subscribe,emit,revoke:()=>{owned=false;},lastCatalog:()=>events.filter(item=>item.key==='catalog').at(-1)?.event};
 }
 
 test('adapter real Checklist: primeiro cache de memória vazio preserva os 28 arsenais e as respostas do cache seguro',async()=>{
@@ -318,6 +323,44 @@ test('adapter real Checklist: relatório interrompe os listeners depois do snaps
   assert.ok(h.stops.includes('catalog'));
   assert.ok(h.stops.includes('report:0'));
   close();
+});
+
+test('daily report stops static readers but receives another preceptor until report closes',async()=>{
+  const h=catalogAdapterHarness(),close=await h.subscribe();
+  const meta={ready:true,fromCache:false,hasPendingWrites:false,error:null};
+  h.emit(h.stations,{fromCache:false,serverConfirmed:true});await settle();
+  h.rotations[0].next({...meta,current:true});h.conferences[0].next({...meta,confirmation:null});
+  h.reports[0].next({records:[],priorRecords:[],stationIds:h.ids,...meta,confirmed:true,historyIncomplete:false,truncated:false});
+  assert.ok(h.stops.includes('catalog'));assert.ok(h.stops.includes('report:0'));assert.ok(h.stops.includes('rotation'));
+  assert.equal(h.stops.includes('conference'),false);
+  h.conferences[0].next({...meta,confirmation:{signerName:'Another preceptor',kind:'alternate',validated:false}});
+  assert.equal(h.ctx.checklistConferenceLive.confirmation.signerName,'Another preceptor');
+  close();assert.ok(h.stops.includes('conference'));
+  h.conferences[0].next({...meta,confirmation:{signerName:'Stale callback'}});
+  assert.equal(h.ctx.checklistConferenceLive.confirmation.signerName,'Another preceptor');
+});
+
+test('catalog change waits for its own report and leaves no replacement arsenal listener alive',async()=>{
+  const h=catalogAdapterHarness(),close=await h.subscribe();
+  const meta={ready:true,fromCache:false,hasPendingWrites:false,error:null};
+  h.emit(h.stations);await settle();
+  h.rotations[0].next({...meta,current:true});h.conferences[0].next({...meta,confirmation:null});
+  h.reports[0].next({records:[],priorRecords:[],stationIds:h.ids,...meta,confirmed:true});
+  h.emit(h.stations.slice(1),{fromCache:false,serverConfirmed:true});await settle();
+  assert.equal(h.reports.length,2);assert.equal(h.stops.includes('catalog'),false);
+  h.reports[1].next({records:[],priorRecords:[],stationIds:h.ids.slice(1),...meta,confirmed:true});
+  assert.ok(h.stops.includes('catalog'));assert.ok(h.stops.includes('report:1'));
+  assert.equal(h.stops.includes('conference'),false);close();
+});
+
+test('viewer without rotation access still receives shared confirmation after static read deadline',async()=>{
+  const h=catalogAdapterHarness(),close=await h.subscribe();
+  h.emit(h.stations,{fromCache:false,serverConfirmed:true});await settle();
+  h.rotations[0].error(Error('permission-denied'));
+  h.deadlines[0]();assert.ok(h.stops.includes('catalog'));assert.equal(h.stops.includes('conference'),false);
+  h.conferences[0].next({ready:true,fromCache:false,hasPendingWrites:false,confirmation:{signerName:'First preceptor',kind:'recorded'}});
+  assert.equal(h.ctx.checklistConferenceLive.confirmation.signerName,'First preceptor');close();
+  assert.ok(h.stops.includes('conference'));
 });
 
 test('integração main: render ao sair de Etiquetas elimina dados transitórios mesmo se runtime já encerrou o listener',async()=>{

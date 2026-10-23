@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,writeFile,readFile,unlink,rmdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {execFileSync} from 'node:child_process';
-const base=await readFile(new URL('../firestore.rules',import.meta.url),'utf8');
+const base=(await readFile(new URL('../firestore.rules',import.meta.url),'utf8')).replaceAll('\r\n','\n');
 test('rebuilding a current release replaces only the bounded QMENTUM fragment without duplication',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'sahmt-qmentum-rules-')),files=['base.rules','first.rules','second.rules'].map(n=>join(dir,n));
  try{await writeFile(files[0],base);for(const [input,output] of [[files[0],files[1]],[files[1],files[2]]])execFileSync(process.execPath,['scripts/build-qmentum-rules.mjs','--base',input,'--out',output],{stdio:'pipe',windowsHide:true});

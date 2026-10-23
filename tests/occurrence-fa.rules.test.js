@@ -1,6 +1,7 @@
 import {readFile} from 'node:fs/promises';import {before,beforeEach,after,test} from 'node:test';import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
 import {doc,collection,query,where,collectionGroup,limit,getDocFromServer,getDocsFromServer,runTransaction,setDoc,updateDoc,serverTimestamp} from 'firebase/firestore';
+import {prepareOccurrenceFaRules} from '../scripts/lib/occurrence-fa-rules.js';
 const PROJECT='demo-sahmt-v2',PORT=8279,uid='synthetic-member',id='10000000-0000-4000-8000-000000000001';let env;
 const user=(id=uid)=>env.authenticatedContext(id,{email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();
 const report=(extra={})=>({schemaVersion:1,id,formId:'F01',formTitle:'Synthetic',occurredOn:'2026-10-15',occurrence:'Synthetic',description:'Synthetic',classification:{},details:{},anonymous:true,authorLabel:'Anônimo',pointsClaimed:2,pointsStatus:'PENDING_VALIDATION',createdAt:serverTimestamp(),...extra});
@@ -13,7 +14,9 @@ const commit=(db,{r=report(),a=audit(),c=claim()}={})=>runTransaction(db,async t
 });
 before(async()=>{
  assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:'+PORT);
- env=await initializeTestEnvironment({projectId:PROJECT,firestore:{host:'127.0.0.1',port:PORT,rules:await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE||new URL('../firestore.rules',import.meta.url),'utf8')}});
+ const rules=process.env.SAHMT_FIRESTORE_RULES_FILE?await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE,'utf8'):
+  prepareOccurrenceFaRules(await readFile(new URL('../firestore.rules',import.meta.url),'utf8'),await readFile(new URL('../firestore.occurrences.rules',import.meta.url),'utf8'));
+ env=await initializeTestEnvironment({projectId:PROJECT,firestore:{host:'127.0.0.1',port:PORT,rules}});
 });
 after(async()=>env?.cleanup());
 beforeEach(async()=>{

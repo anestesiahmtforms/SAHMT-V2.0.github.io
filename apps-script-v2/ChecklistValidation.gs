@@ -76,7 +76,7 @@ function validateChecklistSignatureRequest_(request, options) {
       return {writes: [evaluationWrite_('checklistSignatureRequests', current.id, {status: status, validationMessage: message}, current, ['validatedAt'])], result: status};
     }
     const isAcknowledgement = current.recordKind === 'ACKNOWLEDGEMENT';
-    const expectedId = isAcknowledgement ? current.day + '_' + current.signerUid : current.day + '_' + current.revision + '_' + current.signerUid;
+    const expectedId = isAcknowledgement ? (current.id === current.day ? current.day : current.day + '_' + current.signerUid) : current.day + '_' + current.revision + '_' + current.signerUid;
     if (!current.day || !/^\d{4}-\d{2}-\d{2}$/.test(current.day) || current.day > checklistSaoPauloDay_() ||
         !/^[a-f0-9]{64}$/.test(current.revision || '') || !current.signerUid ||
         current.id !== expectedId || current.declaration !== true ||
@@ -89,6 +89,10 @@ function validateChecklistSignatureRequest_(request, options) {
           (typeof current.rotationSigla === 'string' && /^(?:[A-Z]{2}|L2)$/.test(current.rotationSigla) && Number.isInteger(current.rotationPosition) && current.rotationPosition >= 1 && current.rotationPosition <= 30)))) {
       return reject('REJECTED', 'Declaração de ciência inválida.');
     }
+    // The first shared daily acknowledgement owns the conference even while
+    // scoring awaits validation. Legacy private requests cannot replace it.
+    const shared = current.id === current.day ? current : evaluationGet_('checklistSignatureRequests', current.day, transaction);
+    if (shared && shared.id !== current.id) return reject('DUPLICATE', 'A conferência deste dia já foi registrada por ' + shared.signerName + '.');
     const signer = evaluationGet_('users', current.signerUid, transaction);
     if (!evaluationActiveProfile_(signer, current.signerUid) || !hasChecklistSignPermission_(signer)) {
       return reject('REJECTED', 'Perfil do solicitante inativo ou sem permissão atual.');

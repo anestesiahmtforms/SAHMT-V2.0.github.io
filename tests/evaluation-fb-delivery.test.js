@@ -25,7 +25,7 @@ test('consolidation routes scoring to FA despite an obsolete secondary property'
   h.properties.set('SAHMT_V2_EVALUATION_PROJECT_ID','arbitrary'); assert.throws(()=>h.ctx.evaluationProject_(),/PROJECT_INVALID/);
 });
 
-test('all management, operational and occurrence producers share consolidated FA',()=>{
+test('management and operational producers remain in FA while occurrence producers route to FC',()=>{
  const h=harness();
  for(const collection of ['managementAreas','activities','activityInteractions','activityScoreReviews','indicators',
  'indicatorMeasurements','actionPlans','actionPlanItems','documents','scopedDocuments','equipment','equipmentEvents',
@@ -33,8 +33,8 @@ test('all management, operational and occurrence producers share consolidated FA
  'trainingReceipts','trainingCompletions','evaluationFormConfigs']) assert.equal(h.ctx.evaluationCollectionProject_(collection),'sahmt-17a16');
  for(const collection of ['users','documentAccessEmails','checklists','checklistSignatures','events','labels','scheduleDays'])
  assert.equal(h.ctx.evaluationCollectionProject_(collection),'sahmt-17a16');
- for(const collection of ['occurrenceReports','occurrenceAudit','occurrenceScoreClaims'])
- assert.equal(h.ctx.evaluationCollectionProject_(collection),'sahmt-17a16');
+ for(const collection of ['occurrenceReports','occurrenceAudit','occurrenceScoreClaims','occurrenceCatalogs','occurrenceRuntime'])
+ assert.equal(h.ctx.evaluationCollectionProject_(collection),'indicadores---sahmt');
  assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FA_CONSOLIDATED_V1');
  h.properties.delete('SAHMT_V2_EVALUATION_PROJECT_ID');assert.equal(h.ctx.evaluationCursorProperty_('CURSOR'),'CURSOR_FA_CONSOLIDATED_V1');
 });

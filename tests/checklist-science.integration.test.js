@@ -18,7 +18,7 @@ test('ciência isolada usa consultas e commits Firestore reais no emulador, pres
  h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_ENABLED','true');
  h.properties.set('SAHMT_V2_CHECKLIST_SCIENCE_OPERATOR','operator@example.invalid');
  assert.throws(()=>h.ctx.evaluationAssertOperator_(true));
- const snapshot=h.ctx.readTrustedChecklistSnapshot_(day,null,{eventRotation:true}),id=`${day}_synthetic-b`;
+ const snapshot=h.ctx.readTrustedChecklistSnapshot_(day,null,{eventRotation:true}),id=day;
  h.seed('checklistSignatureRequests',id,{id,day,revision:snapshot.fingerprint,signerUid:'synthetic-b',signerName:'Synthetic BB',declaration:true,
   recordKind:'ACKNOWLEDGEMENT',status:'PENDING_VALIDATION',justification:'Declaro que tomei ciência das informações deste relatório.',
   rotationSigla:'AA',rotationPosition:1,acknowledgedAt:new Date()});
@@ -31,6 +31,11 @@ test('ciência isolada usa consultas e commits Firestore reais no emulador, pres
  const before=h.values('evaluationLedger').length;
  assert.equal(before,2);
  assert.equal(h.ctx.validateChecklistSignatureRequest_({id},{scienceOnly:true}),'DUPLICATE');
+ assert.equal(h.values('evaluationLedger').length,before);
+ const legacyId=`${day}_synthetic-a`;
+ h.seed('checklistSignatureRequests',legacyId,{...h.get('checklistSignatureRequests',id),id:legacyId,signerUid:'synthetic-a',signerName:'Synthetic AA',status:'PENDING_VALIDATION',acknowledgedAt:new Date()});
+ assert.equal(h.ctx.validateChecklistSignatureRequest_({id:legacyId},{scienceOnly:true}),'DUPLICATE');
+ assert.equal(h.get('checklistSignatureRequests',id).signerUid,'synthetic-b');
  assert.equal(h.values('evaluationLedger').length,before);
  assert.equal(h.ctx.evaluationPublishCategorySummary_('PERFORMANCE',{scienceOnly:true}).status,'CONFIRMED');
  assert.equal(h.get('evaluationSummaries','synthetic-a').performanceTotal,-1);

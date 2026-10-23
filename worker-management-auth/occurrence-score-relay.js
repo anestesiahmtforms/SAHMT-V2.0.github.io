@@ -1,5 +1,5 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
-const FA='sahmt-17a16';
+const FC='indicadores---sahmt';
 const mac=(payload,key)=>createHmac('sha256',key).update('SAHMT_OCCURRENCE_SCORE_V1\n'+payload).digest('hex');
 const result=(code,status,origin)=>new Response(JSON.stringify({code}),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
 async function limited(message,max,signal) {
@@ -10,14 +10,14 @@ async function limited(message,max,signal) {
  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 /** An exact FC claim read proves bearer identity. Trusted backend independently
- * checks FA approval and FC evidence; no amount or personal narrative is relayed. */
+ * checks FA app authorization and FC evidence; no amount or personal narrative is relayed. */
 export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date.now,admitRequest}={}) {
  const origin=request.headers.get('Origin'),allowed=['https://anestesiahmtforms.github.io',env.OCCURRENCE_SCORING_PILOT_ORIGIN].filter(Boolean);
  if(!allowed.includes(origin))return result('OCCURRENCE_SCORE_ORIGIN_DENIED',403);
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Authorization, Content-Type',Vary:'Origin'}});
  if(request.method!=='POST')return result('OCCURRENCE_SCORE_METHOD_DENIED',405,origin);
  if(env.OCCURRENCE_SCORING_ENABLED!=='true')return result('OCCURRENCE_SCORING_DISABLED',503,origin);
- const key=env.OCCURRENCE_SCORING_HMAC_SECRET,url=env.OCCURRENCE_SCORING_SCRIPT_URL;
+ const key=env.OCCURRENCE_SCORING_HMAC_SECRET,url=env.FC_MODULE_SCRIPT_URL||env.OCCURRENCE_SCORING_SCRIPT_URL;
  if(!/^[A-Za-z0-9_-]{43}$/.test(key||'')||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(url||''))return result('OCCURRENCE_SCORE_CONFIG_INVALID',503,origin);
  const authorization=request.headers.get('Authorization')||'';
  if(!/^Bearer [A-Za-z0-9_.-]{100,16000}$/.test(authorization))return result('OCCURRENCE_SCORE_SESSION_INVALID',401,origin);
@@ -29,11 +29,11 @@ export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date
   if(admission?.allowed!==true||typeof admission.release!=='function')return result('OCCURRENCE_SCORE_BUSY',429,origin);
   const input=await limited(request,512,controller.signal);
   if(!input||Object.keys(input).join(',')!=='id'||!/^[A-Fa-f0-9-]{36}$/.test(input.id||''))return result('OCCURRENCE_SCORE_INPUT_INVALID',400,origin);
-  const name=`projects/${FA}/databases/(default)/documents/occurrenceScoreClaims/${input.id}`;
+  const name=`projects/${FC}/databases/(default)/documents/occurrenceScoreClaims/${input.id}`;
   const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=uid&mask.fieldPaths=sourceId',{method:'GET',headers:{Authorization:authorization},redirect:'error',signal:controller.signal,cache:'no-store'});
   if(read.status!==200){await read.body?.cancel().catch(()=>{});return result('OCCURRENCE_SCORE_CLAIM_UNAVAILABLE',[401,403,404].includes(read.status)?read.status:503,origin);}
   const doc=await limited(read,4096,controller.signal),claims=JSON.parse(Buffer.from(authorization.slice(7).split('.')[1],'base64url').toString('utf8'));
-  if(doc.name!==name||doc.fields?.sourceId?.stringValue!==input.id||claims.aud!==FA||claims.iss!==`https://securetoken.google.com/${FA}`||
+  if(doc.name!==name||doc.fields?.sourceId?.stringValue!==input.id||claims.aud!==FC||claims.iss!==`https://securetoken.google.com/${FC}`||
     typeof claims.sub!=='string'||doc.fields.uid?.stringValue!==claims.sub)return result('OCCURRENCE_SCORE_AUTHOR_DENIED',403,origin);
   const nonce=randomBytes(16).toString('hex'),issuedAt=now(),payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-occurrence-score',nonce,issuedAt,expiresAt:issuedAt+60000,id:input.id,uid:claims.sub})).toString('base64url');
   remoteStarted=true;

@@ -28,17 +28,18 @@ test('existing trusted performance ledger produces separate credits and repeated
  assert.equal(c.evaluationPlanAward_(ack.award,ack.award).changed,false);assert.equal(c.evaluationPlanAward_(suggestion.award,suggestion.award).changed,false);
  assert.throws(()=>c.evaluationPlanAward_(null,{...base,modality:'ACKNOWLEDGEMENT',points:2}));
 });
-test('backend has no trigger or external call at loading and rejects wrong project',()=>{
- const c=vm.createContext({SAHMT_V2_CONFIG:{projectId:'other',databaseId:'(default)'}});vm.runInContext(source,c);assert.throws(()=>c.processarParticipacoesQmentumV1(),/FA_REQUIRED/);
+test('backend has no trigger or external call at loading and rejects a nondefault database',()=>{
+ const c=vm.createContext({SAHMT_V2_CONFIG:{projectId:'sahmt-17a16',databaseId:'other'}});vm.runInContext(source,c);assert.throws(()=>c.processarParticipacoesQmentumV1(),/FC_REQUIRED/);
  assert.doesNotMatch(source,/Logger\.|console\.|UrlFetchApp|ScriptApp|newTrigger/);
 });
 function harness(){
  const store=new Map(),writes=[];let abort=false;
  const c=vm.createContext({sha256Hex_:hash,SAHMT_V2_CONFIG:{projectId:'sahmt-17a16',databaseId:'(default)'},QmentumCore:{calculateMonth,quarterFacts,analysisInputSignature}});vm.runInContext(ledger+'\n'+source,c);
  c.evaluationAssertOperator_=()=>{};c.evaluationGet_=(collection,id)=>structuredClone(store.get(collection+'/'+id)||null);
+ c.qmParticipationProfile_=(uid)=>c.evaluationGet_('users',uid);
  c.evaluationWrite_=(collection,id,data)=>({key:collection+'/'+id,data:structuredClone(data)});
  c.evaluationApplyAwards_=(changes)=>{const result=changes.map(a=>{const id=c.evaluationAwardId_(a),plan=c.evaluationPlanAward_(store.get('evaluationAwards/'+id),a);return plan.changed?[{key:'evaluationAwards/'+id,data:plan.award},{key:'evaluationLedger/'+plan.ledger.id,data:plan.ledger}]:[];}).flat();return {status:'APPLIED',writes:result};};
- c.evaluationRunTransaction_=callback=>{const p=callback('synthetic-transaction');if(abort){abort=false;throw Error('COMMIT_ABORTED');}for(const w of p.writes){store.set(w.key,{...store.get(w.key),...structuredClone(w.data)});writes.push(w);}return p.result;};
+ c.evaluationRunTransaction_=(callback,options)=>{assert.equal(options?.projectId,'indicadores---sahmt');const p=callback('synthetic-transaction');if(abort){abort=false;throw Error('COMMIT_ABORTED');}for(const w of p.writes){store.set(w.key,{...store.get(w.key),...structuredClone(w.data)});writes.push(w);}return p.result;};
  const seed=(path,data)=>store.set(path,structuredClone(data));
  const defs=initialDefinitions(),inputs=emptyInputs();inputs.counts.surgical=100;inputs.counts.techniqueChanges=2;
  const rows=[1,2,3].map(month=>({year:2026,month,version:1,definitionVersion:1,inputs,results:calculateMonth(inputs,defs,{inputVersion:1,calculatedAt:null})}));
@@ -57,6 +58,18 @@ test('complete trusted path: acknowledgement, approval, total 3, replay and inte
  assert.equal(h.c.qmProcessParticipation_(suggestion,true).points,2);assert.equal(h.c.qmProcessParticipation_(suggestion,true).code,'QMENTUM_PARTICIPATION_DUPLICATE');
  assert.equal([...h.store.entries()].filter(([k])=>k.startsWith('evaluationAwards/')).reduce((n,[,a])=>n+a.points,0),3);
  assert.equal([...h.store.keys()].filter(k=>k.startsWith('evaluationLedger/')).length,2);
+});
+test('participation identity reads the FC profile inside an FB award transaction',()=>{
+ const calls=[];const c=vm.createContext({SAHMT_V2_CONFIG:{projectId:'sahmt-17a16'},sahmtV2Properties_:()=>({getProperty:()=> 'fb-independent-20261022-v1'}),
+  managementIndependentFbEnabled_:()=>true,firestoreFieldsToJs_:x=>x,
+  firestoreRequest_:(url,options)=>{calls.push({url,body:JSON.parse(options.payload)});if(url.endsWith(':beginTransaction'))return {transaction:'fc-source'};
+   return [{found:{name:'projects/indicadores---sahmt/databases/(default)/documents/users/person-a',fields:{uid:'person-a',active:true,access:true}}}];}});
+ vm.runInContext(ledger+'\n'+source,c);
+ vm.runInContext("SAHMT_EVALUATION_TRANSACTIONS.set('fb-award',{projectId:'sahmt-gestao-5ae66',sourceTransactions:{}});",c);
+ assert.equal(c.qmParticipationProfile_('person-a','fb-award').uid,'person-a');
+ assert.equal(calls.length,2);assert.ok(calls.every(call=>call.url.includes('/projects/indicadores---sahmt/')));
+ assert.equal(calls[1].body.transaction,'fc-source');assert.equal(calls[1].body.documents[0],'projects/indicadores---sahmt/databases/(default)/documents/users/person-a');
+ assert.equal(c.evaluationCollectionProject_('users','fb-award'),'sahmt-gestao-5ae66','ledger beneficiary still uses FB identity');
 });
 test('revoked account, obsolete analysis, disabled module and self-approval produce no credit',()=>{
  for(const change of [h=>h.seed('users/person-a',{uid:'person-a',active:false,access:true}),h=>h.seed('qmentumConfig/current',{enabled:false}),h=>{const a=h.store.get('qmentumUnits/unit-a/quarterlyAnalyses/'+analysisId);h.seed('qmentumUnits/unit-a/quarterlyAnalyses/'+analysisId,{...a,signature:'c'.repeat(64)});},h=>{const r=h.store.get('qmentumUnits/unit-a/months/2026-01');r.inputs.counts.techniqueChanges=7;h.seed('qmentumUnits/unit-a/months/2026-01',r);}]){

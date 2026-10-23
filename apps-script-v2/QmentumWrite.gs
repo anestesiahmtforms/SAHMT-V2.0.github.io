@@ -1,6 +1,7 @@
-// Signed write processor. Reads stay directly in FA Firestore; no timer or AI.
-function qmWriteAssertFa_() {
-  if(SAHMT_V2_CONFIG.projectId!=='sahmt-17a16'||SAHMT_V2_CONFIG.databaseId!=='(default)')throw Error('QMENTUM_FA_REQUIRED');
+// Signed write processor for the independent FC QMENTUM database. No timer or AI.
+const QMENTUM_DATA_PROJECT_='indicadores---sahmt';
+function qmWriteAssertFc_() {
+  if(SAHMT_V2_CONFIG.databaseId!=='(default)')throw Error('QMENTUM_FC_REQUIRED');
 }
 function qmWriteMac_(payload,secret) {
   return Utilities.computeHmacSha256Signature('SAHMT_QMENTUM_WRITE_V1\n'+payload,secret,Utilities.Charset.UTF_8)
@@ -11,7 +12,7 @@ function qmWriteReply_(nonce,code,version,secret) {
   return ospJson_({payload:payload,mac:qmWriteMac_(payload,secret)});
 }
 function qmWriteApply_(id,uid) {
-  qmWriteAssertFa_();
+  qmWriteAssertFc_();
   const request=qmServerGet_('qmentumWriteRequests/'+id);
   if(!request||request.actorUid!==uid||!['SAVE_MONTH','PUBLISH_DEFINITION'].includes(request.operation))throw Error('QMENTUM_PERMISSION_DENIED');
   const profile=qmServerGet_('users/'+uid),grant=qmServerGet_('qmentumAccess/'+uid),config=qmServerGet_('qmentumConfig/current');
@@ -76,7 +77,7 @@ function qmWriteConfigureHttp_(event) {
   const mac=function(payload,key){return Utilities.computeHmacSha256Signature('SAHMT_QMENTUM_CONFIG_V1\n'+payload,key,Utilities.Charset.UTF_8).map(function(n){return ('0'+((n+256)%256).toString(16)).slice(-2);}).join('');};
   const reply=function(code){const payload=Utilities.base64EncodeWebSafe(JSON.stringify({v:1,nonce:request.nonce,code:code}),Utilities.Charset.UTF_8).replace(/=+$/,'');return ospJson_({payload:payload,mac:mac(payload,secret)});};
   try{
-    qmWriteAssertFa_();
+    qmWriteAssertFc_();
     const props=sahmtV2Properties_();secret=props.getProperty('SAHMT_OPERATIONAL_PUSH_HMAC_SECRET');
     if(!/^[A-Za-z0-9_-]{43}$/.test(secret||''))throw Error('CONFIG');
     const raw=event&&event.postData&&event.postData.contents;if(typeof raw!=='string'||raw.length>2048)throw Error('INPUT');

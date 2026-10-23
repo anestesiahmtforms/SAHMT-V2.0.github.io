@@ -5,9 +5,9 @@ test('QMENTUM entry belongs to Clinical Coordination and is absent from the Home
  assert.match(main,/!\['people', 'admin', 'occurrences', 'qmentum'\]\.includes\(route\)/);
  assert.match(router,/'qmentum'/);
 });
-test('direct route uses only existing FA services and preserves the common-user administrative pause',()=>{
+test('direct route uses the independent FC services and preserves the common-user administrative pause',()=>{
  const body=main.slice(main.indexOf("if(route === 'qmentum')"),main.indexOf("if (['management', 'training'].includes(route)"));
- assert.match(body,/import\('\.\/firebase\.js'\)/);assert.match(body,/import\('\.\/firebase-auth\.js'\)/);assert.doesNotMatch(body,/indicatorsDb|ensureProject|signIn/);
+ assert.match(body,/import\('\.\/fc-module-firebase\.js'\)/);assert.match(body,/import\('\.\/fc-module-session\.js'\)/);assert.match(body,/getIndicatorsAuth\(\),db=getIndicatorsFirestore\(\)/);assert.doesNotMatch(body,/indicatorsDb|ensureProject|signIn/);
  assert.match(body,/session\.user\?\.uid===uid&&can\('admin'\)/);
  assert.match(main,/\['management', 'training', 'qmentum'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
 });

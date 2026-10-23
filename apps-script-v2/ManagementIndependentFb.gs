@@ -30,18 +30,18 @@ function ativarGestaoDesempenhoFbV1() {
     sahmtV2Properties_().setProperty('SAHMT_V2_MANAGEMENT_FB_RELEASE', SAHMT_INDEPENDENT_FB_RELEASE);
     sahmtIndependentFbEvidence_ = proof.status==='ACTIVE'?proof:null;
     const code=proof.status==='ACTIVE'?'INDEPENDENT_FB_BACKEND_ACTIVE':'INDEPENDENT_FB_BACKEND_ARMED';
-    console.log(JSON.stringify({code:code,verifiedDocuments:proof.verifiedDocuments,qmentumProject:'FA',brokerEnabled:false,sourceDeletes:0}));
+    console.log(JSON.stringify({code:code,verifiedDocuments:proof.verifiedDocuments,qmentumProject:'FC',brokerEnabled:false,sourceDeletes:0}));
     return {code:code};
   } finally { lock.releaseLock(); }
 }
 function conferirGestaoDesempenhoFbV1() {
   const active = managementIndependentFbEnabled_();
   if (active) managementIndependentFbAssert_();
-  const report = {code:active?'INDEPENDENT_FB_BACKEND_ACTIVE':'INDEPENDENT_FB_BACKEND_PREPARED',evaluationProject:evaluationProject_(),qmentumProject:SAHMT_V2_CONFIG.projectId,brokerEnabled:false};
+  const report = {code:active?'INDEPENDENT_FB_BACKEND_ACTIVE':'INDEPENDENT_FB_BACKEND_PREPARED',evaluationProject:evaluationProject_(),qmentumProject:SAHMT_EVALUATION_FC,brokerEnabled:false};
   console.log(JSON.stringify(report));return report;
 }
-// QMENTUM records remain in FA. Only the verified award reaches the FB ledger.
-// The FB receipt makes a retry after a lost FA acknowledgement idempotent.
+// QMENTUM sources use FC. Only the verified award reaches the FB ledger.
+// Keep the historical receipt ID so migration cannot duplicate prior awards.
 function qmDeliverFbParticipation_(id) {
   managementIndependentFbAssert_();
   const receiptId = 'fa-qmentum-' + sha256Hex_(id);
@@ -62,15 +62,15 @@ function qmDeliverFbParticipation_(id) {
     }
     const applied=evaluationApplyAwards_([award],{transaction:tx});
     if (applied.status==='NEEDS_REVIEW') throw Error('QMENTUM_SCORE_REVIEW_REQUIRED');
-    applied.writes.push(evaluationWrite_('evaluationSourceReceipts',receiptId,{sourceProjectId:SAHMT_V2_CONFIG.projectId,sourceId:id,fingerprint:fingerprint,points:plan.points},null,['createdAt']));
+    applied.writes.push(evaluationWrite_('evaluationSourceReceipts',receiptId,{sourceProjectId:SAHMT_EVALUATION_FC,sourceId:id,fingerprint:fingerprint,points:plan.points},null,['createdAt']));
     return {writes:applied.writes,result:{fingerprint:fingerprint,points:plan.points}};
   });
   evaluationPublishCategorySummary_('PERFORMANCE');
-  return checklistSourceTransaction_(function(tx) {
+  return evaluationRunTransaction_(function(tx) {
     const event=evaluationGet_('qmentumScoreOutbox',id,tx),p=evaluationGet_('qmentumParticipations',id,tx);
     if (!event || !p || event.fingerprint!==delivered.fingerprint) throw Error('QMENTUM_SCORE_SOURCE_CONFLICT');
     if (event.status==='DELIVERED') return {writes:[],result:{code:'QMENTUM_SCORE_DELIVERED'}};
     return {writes:[evaluationWrite_('qmentumScoreOutbox',id,{status:'DELIVERED'},event,['deliveredAt']),
       evaluationWrite_('qmentumParticipations',id,{confirmedPoints:delivered.points,scoreStatus:'CONFIRMED'},p,['scoreConfirmedAt'])],result:{code:'QMENTUM_SCORE_DELIVERED'}};
-  });
+  }, {projectId:SAHMT_EVALUATION_FC});
 }

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {getIndicatorsApp, getIndicatorsAuth, getIndicatorsFirestore} from '../src/indicators-firebase-app.js';
 import {indicatorsFirebaseConfig, indicatorsFirebaseEnabled} from '../src/indicators-firebase-config.js';
 
-test('reserved FC app is hard-disabled and missing web config cannot initialize Firebase', () => {
+test('FC app has the verified web configuration but stays disabled unless the release build enables it', () => {
   assert.equal(indicatorsFirebaseEnabled, false);
   assert.equal(indicatorsFirebaseConfig.projectId, 'indicadores---sahmt');
-  assert.equal(indicatorsFirebaseConfig.valid, false);
+  assert.equal(indicatorsFirebaseConfig.valid, true);
   assert.equal(getIndicatorsApp(), null);
   assert.equal(getIndicatorsAuth(), null);
   assert.equal(getIndicatorsFirestore(), null);

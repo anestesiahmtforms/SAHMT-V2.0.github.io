@@ -7,27 +7,29 @@ function milliseconds(value) {
 
 /** Presentation only. Existing server validation remains responsible for points. */
 export function checklistConferenceDisplay({day,uid,ownSigla,signatures=[],request=null}={}) {
+  const shared=request?.id===day&&request.day===day&&request.recordKind==='ACKNOWLEDGEMENT'&&request.declaration===true&&request.signerUid&&request.signerName;
   const saved=signatures.filter(item=>item.date===day&&item.declaration===true&&
+    (!shared||item.signerUid===request.signerUid)&&
     typeof item.signerUid==='string'&&item.signerUid&&typeof item.signerName==='string'&&item.signerName.trim())
     .sort((a,b)=>milliseconds(a.acknowledgedAt||a.signedAt)-milliseconds(b.acknowledgedAt||b.signedAt)||String(a.id).localeCompare(String(b.id)))[0];
   if(saved)return {signerName:saved.signerName.trim(),kind:saved.responsibleUid
     ? saved.signerUid===saved.responsibleUid?'scheduled':'alternate':'recorded',validated:true};
-  if(request?.day!==day||request.signerUid!==uid||request.recordKind!=='ACKNOWLEDGEMENT'||
+  if(request?.day!==day||!request.signerUid||(request.id!==day&&request.signerUid!==uid)||request.recordKind!=='ACKNOWLEDGEMENT'||
     request.declaration!==true||typeof request.signerName!=='string'||!request.signerName.trim())return null;
-  const sigla=String(ownSigla||'').trim().toUpperCase();
+  const sigla=String(request.signerSigla||(request.signerUid===uid?ownSigla:'')||'').trim().toUpperCase();
   const known=/^(?:[A-Z]{2}|L2)$/.test(sigla)&&/^(?:[A-Z]{2}|L2)$/.test(request.rotationSigla||'');
-  return {signerName:request.signerName.trim(),kind:known?(sigla===request.rotationSigla?'scheduled':'alternate'):'recorded',validated:false};
+  return {signerName:request.signerName.trim(),kind:known?(sigla===request.rotationSigla?'scheduled':'alternate'):'recorded',validated:request.status==='VALIDATED'};
 }
 
-/** One scoped day query and the caller's own request; never enumerates private requests. */
+/** One shared daily acknowledgement and a bounded historical signature query. */
 export function createChecklistConferenceListener(options,onNext,onError,{sdk,db}={}) {
   const {uid,day,ownSigla,readSignatures=true}=options||{};
   if(!uid||typeof uid!=='string'||!isValidDateKey(day))throw Error('Conferência sem sessão ou data válida.');
-  const sources=[{key:'request',reference:sdk.doc(db,'checklistSignatureRequests',`${day}_${uid}`)}];
+  const sources=[{key:'request',reference:sdk.doc(db,'checklistSignatureRequests',day)}];
   if(readSignatures)sources.push({key:'signatures',reference:sdk.query(sdk.collection(db,'checklistSignatures'),
     sdk.where('date','==',day),sdk.limit(101))});
   const states=new Map(sources.map(({key})=>[key,{ready:false,fromCache:true,pending:false}]));
-  let stopped=false,signatures=[],request=null;const stops=[];
+  let stopped=false,signatures=[],request=null;const stops=new Map();
   const publish=()=>{
     if(stopped)return;
     const values=[...states.values()],error=values.find(value=>value.error)?.error||null;
@@ -35,16 +37,20 @@ export function createChecklistConferenceListener(options,onNext,onError,{sdk,db
       hasPendingWrites:values.some(value=>value.pending),error,
       confirmation:checklistConferenceDisplay({day,uid,ownSigla,signatures,request})});
   };
-  const stop=()=>{stopped=true;for(const unsubscribe of stops.splice(0))unsubscribe();};
+  const closeSource=key=>{const unsubscribe=stops.get(key);stops.delete(key);unsubscribe?.();};
+  const stop=()=>{stopped=true;for(const key of [...stops.keys()])closeSource(key);};
   try {
-    for(const {key,reference} of sources)stops.push(sdk.onSnapshot(reference,{includeMetadataChanges:true},snapshot=>{
-      if(stopped)return;
+    for(const {key,reference} of sources)stops.set(key,sdk.onSnapshot(reference,{includeMetadataChanges:true},snapshot=>{
+      if(stopped||(key==='signatures'&&states.get(key)?.settled))return;
       const pending=snapshot.metadata?.hasPendingWrites===true;
       if(key==='request')request=!pending&&snapshot.exists()?{id:snapshot.id,...snapshot.data()}:null;
       else signatures=snapshot.docs.filter(item=>!item.metadata?.hasPendingWrites).map(item=>({id:item.id,...item.data()}));
       const truncated=key==='signatures'&&snapshot.docs.length>100;
-      states.set(key,{ready:true,fromCache:snapshot.metadata?.fromCache!==false,pending,
+      const settled=key==='signatures'&&snapshot.metadata?.fromCache===false&&!pending;
+      states.set(key,{ready:true,fromCache:snapshot.metadata?.fromCache!==false,pending,settled,
         error:truncated?Error('Conferências do dia requerem revisão.'):null});publish();
+      // History is read once; only the single daily acknowledgement stays live.
+      if(settled)queueMicrotask(()=>closeSource(key));
     },error=>{if(stopped)return;states.set(key,{ready:true,fromCache:true,error});publish();onError?.(error);}));
   }catch(error){stop();throw error;}
   return stop;

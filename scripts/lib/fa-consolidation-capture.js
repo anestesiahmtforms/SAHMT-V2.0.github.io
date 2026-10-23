@@ -8,7 +8,7 @@ const identifier=value=>typeof value==='string'&&value.length>0&&Buffer.byteLeng
  * A single readTime is carried through every page and subcollection. */
 export function captureFaConsolidationSnapshot(options){return captureScoped(options,[FA_PROJECT,FB_PROJECT],FA_CONSOLIDATION_COLLECTIONS);}
 export function captureFcConsolidationSnapshot(options){return captureScoped(options,[FA_PROJECT,FC_PROJECT],FC_CONSOLIDATION_COLLECTIONS);}
-async function captureScoped({projectId,scope,readTime,accessToken,fetchImpl,
+export async function captureScoped({projectId,scope,readTime,accessToken,fetchImpl,
  maxDocuments=3000,maxRequests=6000,maxBytes=64*1024*1024,includeRootInventory=false}={},projects,collectionsAllowed){
  demand(projects.includes(projectId)&&Array.isArray(scope)&&scope.length>0
   &&new Set(scope).size===scope.length&&scope.every(x=>collectionsAllowed.includes(x)),'CONSOLIDATION_CAPTURE_SCOPE_INVALID');

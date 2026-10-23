@@ -22,7 +22,7 @@ try {
   assert.equal(await page.locator('.qm-analysis p').count(),2);assert.equal(await page.locator('.qm-dialog .qm-chart').count(),2);checks+=2;
   await page.screenshot({path:`.local-preview/qmentum/${label}-modal.png`});
   await page.locator('[data-count="safeSurgeryCompliant"]').fill('98');await page.locator('[data-count="safeSurgeryEligible"]').fill('100');await page.locator('[data-qm-action="save"]').click();
-  await page.waitForFunction(()=>document.querySelector('.qm-status')?.textContent.includes('salva no FA'));assert.equal(await page.evaluate(()=>window.qmentumPreview.rows.length),1);checks++;
+  await page.waitForFunction(()=>document.querySelector('.qm-status')?.textContent.includes('salva no FC'));assert.equal(await page.evaluate(()=>window.qmentumPreview.rows.length),1);checks++;
   await page.locator('[data-qm-close]').click();assert.ok(Math.abs(await page.locator('.qm-grid').evaluate(n=>n.scrollTop)-scroll)<2);assert.equal(await page.evaluate(()=>document.activeElement.dataset.qmIndicator),'QM18');checks+=2;
   await page.locator('[data-qm-indicator="QM18"]').click();assert.equal(await page.locator('[data-count="safeSurgeryCompliant"]').inputValue(),'98');checks++;
   const original=await page.locator('[data-date]').inputValue(),selectedDay=original.slice(0,7)+'-20';await page.locator('[data-date]').fill(selectedDay);await page.locator('[data-date]').dispatchEvent('change');await page.locator('[data-qm-action="save"]').click();await page.waitForFunction(()=>window.qmentumPreview.rows[0]?.version===2);assert.equal(await page.evaluate(()=>window.qmentumPreview.rows.length),1);assert.equal(await page.evaluate(()=>window.qmentumPreview.rows[0].referenceDate),selectedDay);checks+=2;

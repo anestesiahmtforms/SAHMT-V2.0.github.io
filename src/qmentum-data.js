@@ -1,4 +1,5 @@
 import * as sdk from 'firebase/firestore';
+import {FIREBASE_PROJECTS} from './firebase-projects.js';
 import {calculateMonth,periodKey,validateDefinitions,validateInputs} from './qmentum-engine.js';
 import {createQmentumCommandSender} from './qmentum-command.js';
 import {participationId,validateParticipation} from './qmentum-participation.js';
@@ -9,7 +10,7 @@ export {transitionMonth} from './qmentum-workflow.js';
 export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestore=sdk,writeCommand,writeEndpoint}={}) {
  const api=firestore,definitions=new Map();
  const ensure=()=>{
-  if(db?.app?.options?.projectId!=='sahmt-17a16'||auth?.app?.options?.projectId!=='sahmt-17a16')throw Error('QMENTUM_FA_REQUIRED');
+  if(db?.app?.options?.projectId!==FIREBASE_PROJECTS.FC.projectId||auth?.app?.options?.projectId!==FIREBASE_PROJECTS.FC.projectId)throw Error('QMENTUM_FC_REQUIRED');
   if(!uid||!isCurrent()||auth.currentUser?.uid!==uid){definitions.clear();throw Error('QMENTUM_SESSION_CHANGED');}
  };
  const sendCommand=writeCommand||createQmentumCommandSender({db,auth,uid,ensure,firestore:api,endpoint:writeEndpoint});
@@ -30,7 +31,7 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
  };
  const access=async(unitId=null)=>{
   ensure();const user=auth.currentUser,token=await user.getIdTokenResult();ensure();
-  if(token.claims?.aud!=='sahmt-17a16'||token.claims?.iss!=='https://securetoken.google.com/sahmt-17a16'||token.claims?.sub!==uid)throw Error('QMENTUM_FA_AUTH_REQUIRED');
+  if(token.claims?.aud!==FIREBASE_PROJECTS.FC.projectId||token.claims?.iss!=='https://securetoken.google.com/'+FIREBASE_PROJECTS.FC.projectId||token.claims?.sub!==uid)throw Error('QMENTUM_FC_AUTH_REQUIRED');
   const p=await read('users',uid);if(!p||p.uid!==uid||p.active!==true||p.access!==true)throw Error('QMENTUM_PERMISSION_DENIED');
   const a=await read('qmentumAccess',uid);
   if(!a||a.active!==true||a.uid!==uid||!['collector','reviewer','manager'].includes(a.role)||!Array.isArray(a.units)||a.units.length>20||a.units.some(u=>!unitPattern.test(u))||unitId!==null&&!a.units.includes(unitId))throw Error('QMENTUM_PERMISSION_DENIED');
@@ -105,6 +106,6 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
 }
 
 export function createDraftStore(storage=globalThis.sessionStorage) {
- const key=({uid,unitId,period})=>{if(!uid||!unitPattern.test(unitId)||!/^\d{4}-\d{2}$/.test(period))throw Error('QMENTUM_DRAFT_SCOPE_INVALID');return `sahmt:qmentum:FA:${uid}:${unitId}:${period}`;};
+ const key=({uid,unitId,period})=>{if(!uid||!unitPattern.test(unitId)||!/^\d{4}-\d{2}$/.test(period))throw Error('QMENTUM_DRAFT_SCOPE_INVALID');return `sahmt:qmentum:FC:${uid}:${unitId}:${period}`;};
  return {read:scope=>{try{const value=JSON.parse(storage.getItem(key(scope))||'null');return value&&Date.now()-value.savedAt<86400000?value:null;}catch{return null;}},save:(scope,value)=>storage.setItem(key(scope),JSON.stringify({...value,savedAt:Date.now()})),remove:scope=>storage.removeItem(key(scope))};
 }

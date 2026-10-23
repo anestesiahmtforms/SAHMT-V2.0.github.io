@@ -3,7 +3,7 @@
 const SAHMT_V2_EVALUATION_LEDGER = Object.freeze({maxWrites: 450, maxUsers: 400, maxAwards: 10000, maxAttempts: 4});
 
 // The verified release property selects independent FB for this domain.
-// Operational source records and QMENTUM keep FA as their authority.
+// Operational records remain in FA; occurrence and QMENTUM sources use FC.
 const SAHMT_EVALUATION_FB = 'sahmt-gestao-5ae66';
 const SAHMT_EVALUATION_FC = 'indicadores---sahmt';
 const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
@@ -37,7 +37,8 @@ function evaluationCollectionProject_(collectionId, transaction) {
     const context = transaction && SAHMT_EVALUATION_TRANSACTIONS.get(transaction);
     return context ? context.projectId : SAHMT_EVALUATION_FB;
   }
-  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_V2_CONFIG.projectId;
+  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims', 'occurrenceCatalogs', 'occurrenceRuntime'].includes(collectionId)) return SAHMT_EVALUATION_FC;
+  if (/^qmentum[A-Z][A-Za-z]*(?:\/|$)/.test(collectionId)) return SAHMT_EVALUATION_FC;
   return /^evaluation[A-Z]/.test(collectionId) || SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS.includes(collectionId)
     ? evaluationProject_() : SAHMT_V2_CONFIG.projectId;
 }
