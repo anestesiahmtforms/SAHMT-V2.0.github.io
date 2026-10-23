@@ -734,7 +734,7 @@ function formsEvaluationRepeatPolicy_(cfg) {
   if(cfg)return cfg.repeatPolicy==='FIRST_RESPONSE_PER_VERSION';
   return PropertiesService.getScriptProperties().getProperty('SAHMT_TRAINING_REPEAT_ENABLED')==='YES';
 }
-function formsEvaluationConfigured_(payload, actorUid, tx) {
+function formsEvaluationConfigured_(payload, actorUid, tx, setup) {
   if (!formsEvaluationAdmin_(evaluationGet_('users', actorUid, tx))) throw new Error('Configuração exige administrador autorizado.');
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (protectedIds.includes(payload.activityId)) throw new Error('Formulário original protegido: não configurar importação de respostas.');
@@ -760,7 +760,13 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
   if (!previous && fromDay < today) throw new Error('Importação histórica exige prévia e decisão administrativa; esta configuração não importa períodos passados.');
   const metadata = formsEvaluationMetadata_(payload.activityId);
   const form = FormApp.openById(payload.activityId);
-  const repeat = formsEvaluationRepeatPolicy_(previous);
+  // Only the armed, server-owned document setup can adopt the approved repeat
+  // policy while replacing an inactive legacy configuration. Browser requests
+  // never supply this fourth argument; normal configuration retains its policy.
+  const repeat = setup
+    ? typeof mgeRepeatSetup_==='function' && mgeRepeatSetup_(payload,actorUid,tx,setup)
+    : formsEvaluationRepeatPolicy_(previous);
+  if(setup&&repeat!==true)throw Error('TRAINING_REPEAT_SETUP_DENIED');
   if(!previous && repeat && form.hasLimitOneResponsePerUser()){
     // Only an authenticated administrative configuration request reaches here.
     // A newly configured legacy copy can adopt repeats while remaining closed;

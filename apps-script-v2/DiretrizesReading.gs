@@ -112,12 +112,12 @@ function dgrPdfDigest_(bytes) {return Utilities.computeDigest(Utilities.DigestAl
 function dgrPdf_(row, includeBytes) {
   const metadata = formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(row.pdfId) + '?fields=id,mimeType,size,md5Checksum,trashed');
   if (metadata.id !== row.pdfId || metadata.mimeType !== 'application/pdf' || metadata.trashed === true || metadata.md5Checksum !== row.checksum ||
-      !Number.isSafeInteger(Number(metadata.size)) || Number(metadata.size) < 5 || Number(metadata.size) > 6 * 1024 * 1024) throw Error('READING_MATERIAL_CHANGED');
+      !Number.isSafeInteger(Number(metadata.size)) || Number(metadata.size) < 5 || Number(metadata.size) > 8 * 1024 * 1024) throw Error('READING_MATERIAL_CHANGED');
   if (!includeBytes) return {checksum: metadata.md5Checksum};
   const cached=dgrCachedPdf_(row,Number(metadata.size));
   if(cached)return {bytes:cached,checksum:row.checksum};
   const bytes = DriveApp.getFileById(row.pdfId).getBlob().getBytes();
-  if (bytes.length !== Number(metadata.size) || bytes.length > 6 * 1024 * 1024 || bytes.slice(0,5).map(function (b) { return String.fromCharCode(b); }).join('') !== '%PDF-') throw Error('READING_PDF_INVALID');
+  if (bytes.length !== Number(metadata.size) || bytes.length > 8 * 1024 * 1024 || bytes.slice(0,5).map(function (b) { return String.fromCharCode(b); }).join('') !== '%PDF-') throw Error('READING_PDF_INVALID');
   const digest = dgrPdfDigest_(bytes);
   if (digest !== row.checksum) throw Error('READING_MATERIAL_CHANGED');
   const encoded=Utilities.base64Encode(bytes);dgrCachePdf_(row,bytes.length,encoded);

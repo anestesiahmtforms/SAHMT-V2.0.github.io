@@ -14,7 +14,7 @@ export async function prepareReadingPolicy(input,{loadPdf}={}){
    (entry.formId!=null && !/^[A-Za-z0-9_-]{10,200}$/.test(entry.formId))||!/^[A-Za-z0-9_-]{10,200}$/.test(entry.pdfId||'')||
    !Number.isSafeInteger(entry.version)||entry.version<1||typeof entry.filePath!=='string'||!isAbsolute(entry.filePath)||Object.hasOwn(documents,entry.documentId)||(entry.formId!=null && forms.has(entry.formId))||!['GENERAL','RESTRICTED'].includes(entry.audienceGroup||'GENERAL')||!['DIRETRIZES','PROTOCOLOS','ROPS','DOCUMENTOS ADMINISTRATIVOS','ORGANOGRAMA'].includes(String(entry.category||'DIRETRIZES').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase())||(entry.sourceFileId!==undefined&&!/^[A-Za-z0-9_-]{10,200}$/.test(entry.sourceFileId))||(entry.pdfDocumentId!==undefined&&!/^[A-Za-z0-9_-]{1,200}$/.test(entry.pdfDocumentId)))throw Error('READING_PREPARATION_INPUT_INVALID');
   if(entry.formId)forms.add(entry.formId);const bytes=await readFile(entry.filePath);
-  if(bytes.length>6*1024*1024||bytes.subarray(0,5).toString()!=='%PDF-')throw Error('READING_PREPARATION_PDF_INVALID');
+  if(bytes.length>8*1024*1024||bytes.subarray(0,5).toString()!=='%PDF-')throw Error('READING_PREPARATION_PDF_INVALID');
   const task=parser({data:new Uint8Array(bytes),isEvalSupported:false,stopAtErrors:true});let pdf;
   try{pdf=await task.promise;
    if(!Number.isSafeInteger(pdf.numPages)||pdf.numPages<1||pdf.numPages>300)throw Error('READING_PREPARATION_PAGE_LIMIT');

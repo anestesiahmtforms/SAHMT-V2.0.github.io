@@ -37,7 +37,7 @@ export function managementDocumentFolder(item) {
   const restricted = item.audienceGroup === 'RESTRICTED' || organogram || administrative;
   const folder = organogram || administrative ? 'Documentos administrativos'
     : /PROTOCOLO/.test(category) ? 'Protocolos' : /\bROPS?\b/.test(category) ? 'ROPs'
-    : catalogFolderName(item, 'Outros documentos');
+    : /DIRETRIZ/.test(category) ? 'Diretrizes' : catalogFolderName(item, 'Outros documentos');
   return {access: restricted ? 'RESTRICTED' : 'GENERAL', folder};
 }
 
@@ -80,6 +80,7 @@ export function renderManagementDocumentFolders(documents, options = {}) {
     ['RESTRICTED', new Map([['Documentos administrativos', []]])]
   ]);
   for (const item of documents) {
+    if (item.active === false && item.replacedBy) continue;
     const {access, folder} = managementDocumentFolder(item);
     const children = groups.get(access);
     if (!children.has(folder)) children.set(folder, []);
