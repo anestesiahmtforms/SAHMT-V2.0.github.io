@@ -4,6 +4,7 @@ import {firebaseCliAccountToken} from './lib/firebase-cli-account-token.js';
 import {createPrivateJsonProtector,openPrivateJson} from './lib/windows-protected-json.js';
 import {captureScoped} from './lib/fa-consolidation-capture.js';
 import {snapshotDigest,validateSplitSnapshot} from './lib/management-split-plan.js';
+import {isQmentumFcMigrationVerified} from './lib/qmentum-fc-migration-verification.js';
 
 const FA='sahmt-17a16',FC='indicadores---sahmt';
 const OCCURRENCE=['occurrenceAudit','occurrenceCatalogs','occurrenceReports','occurrenceScoreClaims'];
@@ -90,8 +91,9 @@ async function main(){
    demand(Array.isArray(result.writeResults)&&result.writeResults.length===planValue.operations.length,'QMENTUM_MIGRATION_COMMIT_INVALID');writes=result.writeResults.length;}
  }
  if(mode==='verify'||mode==='delete-source'){
+  stage='VERIFY_CURRENT';
   const [currentFA,currentFC]=await Promise.all([capture(FA,tokenFA),capture(FC,tokenFC)]),currentPlan=plan(currentFA,currentFC);diagnostics=currentPlan.counts;
-  demand(currentPlan.ready&&currentPlan.counts.create===0&&currentPlan.counts.qmentumSource===currentPlan.counts.qmentumDestination&&currentPlan.counts.equivalent===currentPlan.counts.qmentumSource&&currentPlan.counts.occurrenceEquivalent===currentPlan.counts.occurrenceSource,'QMENTUM_MIGRATION_FINAL_VERIFY_FAILED');
+  demand(isQmentumFcMigrationVerified(currentPlan),'QMENTUM_MIGRATION_FINAL_VERIFY_FAILED');
   if(mode==='delete-source'){
    settings=await configuration(tokenFC);demand(settings.billing.billingEnabled===false,'QMENTUM_MIGRATION_BILLING_ENABLED');
    const protector=await createPrivateJsonProtector(),retirement={schemaVersion:1,source:currentFA,destination:currentFC,settings,plan:currentPlan,createdAt:new Date().toISOString()};
