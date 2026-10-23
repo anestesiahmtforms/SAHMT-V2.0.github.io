@@ -9,7 +9,7 @@ const SAHMT_EVALUATION_FC = 'indicadores---sahmt';
 const SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS = Object.freeze([
   'managementAreas', 'activities', 'activityInteractions', 'activityScoreReviews',
   'indicators', 'indicatorMeasurements', 'actionPlans', 'actionPlanItems',
-  'documents', 'scopedDocuments', 'documentAccessEmails', 'equipment', 'equipmentEvents', 'maintenanceRecords',
+  'documents', 'scopedDocuments', 'documentAccessEmails', 'documentReadingReceipts', 'documentReadingGrants', 'equipment', 'equipmentEvents', 'maintenanceRecords',
   'scoringRules', 'scores', 'learningActivities', 'learningActivityReceipts',
   'trainings', 'trainingProgress', 'trainingReceipts', 'trainingCompletions'
 ]);
