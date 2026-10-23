@@ -97,21 +97,48 @@ function dgrPdf_(row, includeBytes) {
   return {bytes: Utilities.base64Encode(bytes), checksum: digest};
 }
 function dgrReceiptId_(uid, documentId, row) { return sha256Hex_(JSON.stringify([uid, documentId, row.version, row.checksum].concat(row.trainingVersion ? [row.trainingVersion] : []))); }
+function dgrOpenMac_(payload) {
+  const key=sahmtV2Properties_().getProperty('SAHMT_READING_HMAC_SECRET');
+  if(!/^[A-Za-z0-9_-]{43}$/.test(key||''))throw Error('READING_CONFIG_MISSING');
+  return Utilities.computeHmacSha256Signature('SAHMT_READING_OPEN_V1\n'+payload,key,Utilities.Charset.UTF_8).map(function(n){return ('0'+((n+256)%256).toString(16)).slice(-2);}).join('');
+}
+function dgrOpenTicket_(request,row,policy) {
+  const now=Date.now(),payload=Utilities.base64EncodeWebSafe(JSON.stringify({v:1,uid:request.uid,email:request.email,documentId:request.documentId,
+    policy:formsEvaluationHash_(policy.documents),trainingVersion:row.trainingVersion||null,issuedAt:now,expiresAt:now+45000}),Utilities.Charset.UTF_8).replace(/=+$/,'');
+  return payload+'.'+dgrOpenMac_(payload);
+}
+function dgrVerifyOpenTicket_(request,policy) {
+  if(typeof request.openTicket!=='string'||request.openTicket.length>2500||!/^([A-Za-z0-9_-]+)\.([a-f0-9]{64})$/.test(request.openTicket))throw Error('READING_SESSION_INVALID');
+  const parts=request.openTicket.split('.');if(!ospEqual_(dgrOpenMac_(parts[0]),parts[1]))throw Error('READING_SESSION_INVALID');
+  let ticket;try{ticket=JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString('UTF-8'));}catch(_){throw Error('READING_SESSION_INVALID');}
+  if(ticket.v!==1||ticket.uid!==request.uid||ticket.email!==request.email||ticket.documentId!==request.documentId||ticket.policy!==formsEvaluationHash_(policy.documents)||
+    !Number.isSafeInteger(ticket.issuedAt)||!Number.isSafeInteger(ticket.expiresAt)||ticket.expiresAt-ticket.issuedAt!==45000||ticket.issuedAt>Date.now()+5000||ticket.expiresAt<=Date.now()||
+    !(ticket.trainingVersion===null||Number.isSafeInteger(ticket.trainingVersion)&&ticket.trainingVersion>=1))throw Error('READING_SESSION_INVALID');
+  return ticket;
+}
 function dgrHandle_(request) {
   if (sahmtV2Properties_().getProperty('SAHMT_READING_ENABLED') !== 'YES') throw Error('READING_DISABLED');
   const policy = dgrPolicy_(); let row = policy.documents[request.documentId];
   if (!row || row.enforced !== true) throw Error('READING_CUTOVER_REQUIRED');
   if (sahmtV2Properties_().getProperty('SAHMT_READING_CUTOVER_SHA256') !== formsEvaluationHash_(policy.documents)) throw Error('READING_CUTOVER_REQUIRED');
   if(!policy.pilotUids.includes(request.uid))throw Error('READING_ACCESS_DENIED');
-  const read=dgrPreflight_(request,row);
-  const email = dgrIdentity_(request.uid, request.email, policy, row, read);
-  const trainingConfig=row.formId && read('evaluationFormConfigs',row.formId);
-  if(trainingConfig && trainingConfig.repeatPolicy==='FIRST_RESPONSE_PER_VERSION'){
-    if(trainingConfig.status!=='READY' || trainingConfig.trainingRevisionRequired===true)throw Error('READING_CUTOVER_REQUIRED');
-    row=Object.assign({},row,{trainingVersion:trainingConfig.version});
+  let email,pdf;
+  if(request.action==='start'&&request.openTicket){
+    // Short, identity-bound handoff from the freshly authorized PDF response.
+    // It can only create/resume a receipt. Progress/completion still recheck ACL.
+    const ticket=dgrVerifyOpenTicket_(request,policy);email=request.email;
+    if(ticket.trainingVersion)row=Object.assign({},row,{trainingVersion:ticket.trainingVersion});
+  }else{
+    const read=dgrPreflight_(request,row);email=dgrIdentity_(request.uid,request.email,policy,row,read);
+    const trainingConfig=row.formId&&read('evaluationFormConfigs',row.formId);
+    if(trainingConfig&&trainingConfig.repeatPolicy==='FIRST_RESPONSE_PER_VERSION'){
+      if(trainingConfig.status!=='READY'||trainingConfig.trainingRevisionRequired===true)throw Error('READING_CUTOVER_REQUIRED');
+      row=Object.assign({},row,{trainingVersion:trainingConfig.version});
+    }
+    dgrCatalog_(request.documentId,row,read);
+    pdf=dgrPdf_(row,request.action==='start'||request.action==='open');
   }
-  dgrCatalog_(request.documentId, row, read);
-  const pdf = dgrPdf_(row, request.action === 'start');
+  if(request.action==='open')return {code:'READING_PREPARED',openTicket:dgrOpenTicket_(request,row,policy),pages:row.pages,pdfBase64:pdf.bytes,hasForm:Boolean(row.formId)};
   const id = dgrReceiptId_(request.uid, request.documentId, row), now = Date.now();
   const result = evaluationRunTransaction_(function (tx) {
     let liveConfig;
@@ -148,7 +175,7 @@ function dgrHandle_(request) {
     }
     return {writes: writes, result: state};
   });
-  if (request.action === 'start') return {code: 'READING_STARTED', sessionId: result.sessionId, pages: row.pages, visited: result.visited, pdfBase64: pdf.bytes, hasForm: Boolean(row.formId)};
+  if (request.action === 'start') return Object.assign({code:'READING_STARTED',sessionId:result.sessionId,pages:row.pages,visited:result.visited,hasForm:Boolean(row.formId)},pdf?{pdfBase64:pdf.bytes}:{});
   if (request.action === 'progress') return {code: 'READING_PROGRESS_SAVED', visited: result.visited};
   // A completed receipt is durable even when Google permission propagation fails.
   if (!row.formId) return {code:'READING_COMPLETED'};
@@ -235,7 +262,8 @@ function diretrizesReadingHttp_(event) {
     if (request.v !== 1 || request.aud !== 'sahmt-diretrizes-reading' || !/^[a-f0-9]{32}$/.test(request.nonce || '') ||
         !Number.isSafeInteger(request.issuedAt) || !Number.isSafeInteger(request.expiresAt) || request.expiresAt-request.issuedAt !== 60000 || request.issuedAt > Date.now()+5000 || request.expiresAt <= Date.now() ||
         typeof request.uid !== 'string' || !/^[^/\s]{1,128}$/.test(request.uid) || typeof request.email !== 'string' || request.email.length > 254 ||
-        !/^[A-Za-z0-9_-]{1,200}$/.test(request.documentId || '') || !['start','progress','complete'].includes(request.action)) throw Error('READING_INPUT_INVALID');
+        !/^[A-Za-z0-9_-]{1,200}$/.test(request.documentId || '') || !['open','start','progress','complete'].includes(request.action)||
+        (request.openTicket!==undefined&&(request.action!=='start'||typeof request.openTicket!=='string'||request.openTicket.length>2500||!/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(request.openTicket)))) throw Error('READING_INPUT_INVALID');
     lock = LockService.getScriptLock();if (!lock.tryLock(1000)) {lock=null;return dgrReply_(request.nonce,{code:'READING_BUSY'},key);}
     if (request.expiresAt <= Date.now()) throw Error('READING_SESSION_INVALID');
     const prefix='SAHMT_READING_NONCE_',all=props.getProperties(),now=Date.now();let count=0;
@@ -243,7 +271,13 @@ function diretrizesReadingHttp_(event) {
     if (props.getProperty(prefix+request.nonce)) return dgrReply_(request.nonce,{code:'READING_REPLAY_DENIED'},key);
     if (count>=256) return dgrReply_(request.nonce,{code:'READING_BUSY'},key);
     props.setProperty(prefix+request.nonce,String(request.expiresAt+5000));
-    return dgrReply_(request.nonce,dgrHandle_(request),key);
+    // Nonce admission is atomic. Read-only delivery and transactional receipts
+    // do not need to block other readers behind a global script lock.
+    // Form permission changes remain serialized by the complete action.
+    if(request.action!=='complete'){lock.releaseLock();lock=null;}
+    const began=Date.now(),answer=dgrHandle_(request);
+    console.info(JSON.stringify({code:'READING_OPERATION_TIMING',operation:request.action,durationMs:Date.now()-began}));
+    return dgrReply_(request.nonce,answer,key);
   } catch (error) {
     const allowed=['READING_DISABLED','READING_ACCESS_DENIED','READING_CONFIG_MISSING','READING_CONFIG_INVALID','READING_CUTOVER_REQUIRED','READING_CATALOG_CHANGED','READING_MATERIAL_CHANGED','READING_PDF_INVALID','READING_SESSION_INVALID','READING_PAGES_INVALID','READING_INCOMPLETE','READING_GRANT_PENDING'];
     const code=allowed.includes(error && error.message)?error.message:dgrFailureCode_(error);

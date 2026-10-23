@@ -30,8 +30,10 @@ export async function relayDiretrizesReading(request,env,{fetchImpl=fetch,now=Da
   slot=await admitRequest({origin,route:'/v1/diretrizes/reading',method:'POST'},{signal:controller.signal});
   if(slot?.allowed!==true||typeof slot.release!=='function')return reply('READING_BUSY',429,origin);
   stage='INPUT';const input=await limited(request,4096,controller.signal),keys=Object.keys(input||{}).sort().join(',');
-  if(!['start','progress','complete'].includes(input?.action)||!/^[A-Za-z0-9_-]{1,200}$/.test(input.documentId||'')||
-   (input.action==='start'?keys!=='action,documentId':keys!=='action,documentId,pages,sessionId'||!/^[a-f0-9]{32}$/.test(input.sessionId||'')||!Array.isArray(input.pages)||input.pages.length>300||input.pages.some(p=>!Number.isSafeInteger(p)||p<1||p>300)))return reply('READING_INPUT_INVALID',400,origin);
+  if(!['open','start','progress','complete'].includes(input?.action)||!/^[A-Za-z0-9_-]{1,200}$/.test(input.documentId||'')||
+   (['open','start'].includes(input.action)?
+     !(keys==='action,documentId'||input.action==='start'&&keys==='action,documentId,openTicket'&&typeof input.openTicket==='string'&&input.openTicket.length<=2500&&/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(input.openTicket)):
+     keys!=='action,documentId,pages,sessionId'||!/^[a-f0-9]{32}$/.test(input.sessionId||'')||!Array.isArray(input.pages)||input.pages.length>300||input.pages.some(p=>!Number.isSafeInteger(p)||p<1||p>300)))return reply('READING_INPUT_INVALID',400,origin);
   stage='IDENTITY';const token=bearer.slice(7),claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));
   if(claims.aud!==project||claims.iss!==`https://securetoken.google.com/${project}`||typeof claims.sub!=='string'||!/^[^/\s]{1,128}$/.test(claims.sub)||
    claims.email_verified!==true||typeof claims.email!=='string'||claims.exp*1000<=now()||!Number.isSafeInteger(claims.exp)||!Number.isSafeInteger(claims.auth_time)||claims.firebase?.sign_in_provider!=='google.com')return reply('READING_IDENTITY_DENIED',401,origin);
@@ -52,11 +54,14 @@ export async function relayDiretrizesReading(request,env,{fetchImpl=fetch,now=Da
   stage='REPLY';const answer=JSON.parse(Buffer.from(envelope.payload,'base64url').toString('utf8'));if(answer.v!==1||answer.nonce!==nonce||!/^READING_[A-Z_]+$/.test(answer.code||'')||now()>issuedAt+60000)throw Error('REPLY');
   remoteFinished=true;
   // Project only protocol fields: never relay arbitrary private response keys.
-  const data={};for(const k of ['pages','sessionId','pdfBase64','visited','formUrl','hasForm'])if(answer[k]!==undefined)data[k]=answer[k];
-  if(answer.code==='READING_STARTED'&&(!Number.isSafeInteger(data.pages)||data.pages<1||data.pages>300||!/^[a-f0-9]{32}$/.test(data.sessionId||'')||typeof data.pdfBase64!=='string'||data.pdfBase64.length>8388608||!/^JVBER[A-Za-z0-9+/=]*$/.test(data.pdfBase64)))throw Error('PDF');
+  const data={};for(const k of ['pages','sessionId','pdfBase64','visited','formUrl','hasForm','openTicket'])if(answer[k]!==undefined)data[k]=answer[k];
+  const validPages=Number.isSafeInteger(data.pages)&&data.pages>=1&&data.pages<=300;
+  const validPdf=typeof data.pdfBase64==='string'&&data.pdfBase64.length<=8388608&&/^JVBER[A-Za-z0-9+/=]*$/.test(data.pdfBase64);
+  if(answer.code==='READING_PREPARED'&&(input.action!=='open'||!validPages||!validPdf||typeof data.openTicket!=='string'||data.openTicket.length>2500||!/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(data.openTicket)))throw Error('PDF');
+  if(answer.code==='READING_STARTED'&&(input.action!=='start'||!validPages||!/^[a-f0-9]{32}$/.test(data.sessionId||'')||(!input.openTicket&&!validPdf)||(input.openTicket&&data.pdfBase64!==undefined)))throw Error('PDF');
   if(answer.code==='READING_COMPLETED' && data.formUrl!==undefined)throw Error('URL');
   if(answer.code==='READING_RELEASED'&&!/^https:\/\/docs\.google\.com\/forms\/d\/e\/[A-Za-z0-9_-]+\/viewform$/.test(data.formUrl||''))throw Error('URL');
-  return reply(answer.code,['READING_STARTED','READING_PROGRESS_SAVED','READING_RELEASED','READING_COMPLETED'].includes(answer.code)?200:409,origin,data);
+  return reply(answer.code,['READING_PREPARED','READING_STARTED','READING_PROGRESS_SAVED','READING_RELEASED','READING_COMPLETED'].includes(answer.code)?200:409,origin,data);
  }catch{return reply(controller.signal.aborted?'READING_TIMEOUT':'READING_RELAY_'+stage+'_FAILED',503,origin);}finally{
   clearTimeout(timer);if(!controller.signal.aborted&&(!remoteStarted||remoteFinished)&&slot?.allowed===true)await slot.release().catch(()=>{});
  }

@@ -6,6 +6,22 @@ const origin='https://anestesiahmtforms.github.io',key='s'.repeat(43);
 const request=()=>new Request('https://worker.test/v1/diretrizes/reading',{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({action:'start',documentId:'doc'})});
 const claims={aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16',sub:'reader',email:'reader@example.test',email_verified:true,exp:2000000000,auth_time:1000,firebase:{sign_in_provider:'google.com'}};
 const token='header.'+Buffer.from(JSON.stringify(claims)).toString('base64url')+'.'+'a'.repeat(64);
+
+test('prepared PDF and ticket registration preserve the authenticated two-stage contract',async()=>{
+ const ticket='c3ludGhldGlj'+'.'+'a'.repeat(64);
+ for(const action of ['open','start']){
+  const input={action,documentId:'doc',...(action==='start'?{openTicket:ticket}:{})};
+  const req=new Request('https://worker.test/v1/diretrizes/reading',{method:'POST',headers:{Origin:origin,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(input)});
+  const fetchImpl=async(url,options)=>{
+   if(url.startsWith('https://identitytoolkit.googleapis.com/'))return Response.json({users:[{localId:'reader',email:'reader@example.test',emailVerified:true,validSince:'0',providerUserInfo:[{providerId:'google.com'}]}]});
+   const request=JSON.parse(Buffer.from(JSON.parse(options.body).payload,'base64url').toString());
+   assert.equal(request.action,action);assert.equal(request.openTicket,input.openTicket);assert.ok(!JSON.stringify(request).includes(token));
+   const answer=action==='open'?{code:'READING_PREPARED',pages:2,pdfBase64:'JVBERi0=',openTicket:ticket}:{code:'READING_STARTED',pages:2,visited:[],sessionId:'f'.repeat(32)};
+   const payload=Buffer.from(JSON.stringify({v:1,nonce:request.nonce,...answer,privateField:'excluded'})).toString('base64url');return Response.json({payload,mac:createHmac('sha256',key).update('SAHMT_READING_V1\n'+payload).digest('hex')});
+  };
+  const r=await relayDiretrizesReading(req,env,{fetchImpl,admitRequest,now:()=>1500000000000});assert.equal(r.status,200);const data=await r.json();assert.equal(data.privateField,undefined);assert.equal(data.code,action==='open'?'READING_PREPARED':'READING_STARTED');if(action==='start')assert.equal(data.pdfBase64,undefined);
+ }
+});
 const env={DIRETRIZES_READING_ENABLED:'true',DIRETRIZES_READING_HMAC_SECRET:key,DIRETRIZES_READING_SCRIPT_URL:'https://script.google.com/macros/s/'+'a'.repeat(32)+'/exec',DIRETRIZES_READING_FA_API_KEY:'test-key'};
 const admitRequest=async()=>({allowed:true,release:async()=>{}});
 test('disabled sends nothing',async()=>{const r=await relayDiretrizesReading(request(),{}, {fetchImpl:()=>{throw Error('no');}});assert.equal(r.status,503);});
