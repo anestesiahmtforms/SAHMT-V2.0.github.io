@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createReadingClient,readingGateConfig} from '../src/diretrizes-reading.js';
 import {renderManagementDocumentCard} from '../src/management-document-folders.js';
+test('network and malformed replies expose only fixed diagnostic codes',async()=>{
+ const getUser=()=>({uid:'reader',getIdToken:async()=>'test'});
+ for(const [fetchImpl,code]of [[async()=>{throw new TypeError('private network details');},'READING_NETWORK_FAILED'],[async()=>new Response('<html>private response</html>'),'READING_RESPONSE_INVALID']]){
+  const client=createReadingClient({endpoint:'https://worker.test/v1/diretrizes/reading',getUser,fetchImpl});await assert.rejects(client.request({action:'start',documentId:'doc'}),e=>e.message===code);
+ }
+});
 test('configuration disabled by default and refuses insecure endpoint',()=>{
  assert.equal(readingGateConfig({}).enabled,false);
  assert.equal(readingGateConfig({VITE_DIRETRIZES_READING_ENABLED:'true',VITE_DIRETRIZES_READING_ENDPOINT:'http://evil.test'}).enabled,false);

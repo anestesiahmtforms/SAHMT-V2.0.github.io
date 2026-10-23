@@ -1,5 +1,6 @@
 // Bounded, owner-armed ROP release. Uses current FB identities and existing scoring gates.
 function ropsReleaseLoad_() {
+  if(typeof doPost!=='function'||!doPost.toString().includes("diretrizes-reading-v1"))throw Error('ROPS_READING_DISPATCH_MISSING');
   ropsOwner_();const cfg=ropsReadingReleaseConfig_(),file=DriveApp.getFileById(cfg.manifestId);
   if(file.isTrashed()||file.getSharingAccess()!==DriveApp.Access.PRIVATE||file.getEditors().length||file.getViewers().length)throw Error('ROPS_RELEASE_NOT_PRIVATE');
   const raw=file.getBlob().getDataAsString('UTF-8');if(formsEvaluationHash_(raw)!==cfg.manifestSha256)throw Error('ROPS_RELEASE_MANIFEST_CHANGED');

@@ -5,6 +5,19 @@ import {readFileSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 const source=readFileSync(new URL('../apps-script-v2/DiretrizesReading.gs',import.meta.url),'utf8');
 const sha=x=>createHash('sha256').update(String(x)).digest('hex');
+test('deployed receiver forwards the reading action before other handlers',()=>{
+ const event={parameter:{action:'diretrizes-reading-v1'}},calls=[];
+ const c=vm.createContext({diretrizesReadingHttp_:e=>{calls.push(e);return 'READING_HANDLER';}});
+ vm.runInContext(readFileSync(new URL('../apps-script-v2/OperationalSheetPush.gs',import.meta.url),'utf8'),c);
+ assert.equal(c.doPost(event),'READING_HANDLER');assert.equal(calls.length,1);assert.equal(calls[0],event);
+});
+test('ROP release refuses a receiver without its reading dispatch',()=>{
+ const c=vm.createContext({doPost:()=>{},ropsOwner_:()=>{throw Error('OWNER_CHECK_REACHED');}});
+ vm.runInContext(readFileSync(new URL('../apps-script-v2/RopsReadingRelease.gs',import.meta.url),'utf8'),c);
+ assert.throws(()=>c.ropsReleaseLoad_(),/ROPS_READING_DISPATCH_MISSING/);
+ c.doPost=function(){return 'diretrizes-reading-v1';};
+ assert.throws(()=>c.ropsReleaseLoad_(),/OWNER_CHECK_REACHED/);
+});
 function fixture() {
  const data=new Map(),props=new Map(),grants=[];
  const policy={version:1,pilotUids:['reader'],documents:{doc:{formId:'FormFixture123456',pdfId:'PdfFixture1234567',checksum:'a'.repeat(32),pages:2,version:1,enforced:true}}};
