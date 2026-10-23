@@ -17,8 +17,11 @@ The existing incremental Drive trigger is reused; it does not scan Firestore.
 
 ## Reading release
 
-`prepararLeituraRopsFbV1` arms the bounded configuration job. Initializing state is
-durable before policy effects. Existing credit scopes are retained and content
+`prepararLeituraRopsFbV1` arms the bounded configuration job. Setup and activation
+check the installed `doPost` reading dispatch first.
+The deployed receiver must forward `diretrizes-reading-v1` to the reading handler;
+an expired signed request can verify this transport without any identity or Firestore access.
+Initializing state is durable before policy effects. Existing credit scopes are retained and content
 changes create a new version. Forms use the existing evaluation configurator and
 repeat-policy adapter. Publication removes responder grants while preserving
 editors, so participant access remains conditional on the reading receipt.
