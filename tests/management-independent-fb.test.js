@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 import {prepareIndependentFbRules} from '../scripts/lib/management-independent-rules.js';
+import {prepareIndependentFbMigration} from '../scripts/lib/management-independent-fb-plan.js';
 const source=readFileSync(new URL('../apps-script-v2/EvaluationLedger.gs',import.meta.url),'utf8');
 const release=readFileSync(new URL('../apps-script-v2/ManagementIndependentFb.gs',import.meta.url),'utf8');
 function harness(active){const properties=new Map(active?[['SAHMT_V2_MANAGEMENT_FB_RELEASE','fb-independent-20261022-v1']]:[]);
@@ -17,6 +18,22 @@ test('FB routing requires the explicit release property; old project properties 
  assert.equal(b.c.evaluationCollectionProject_('documentAccessEmails'),'sahmt-gestao-5ae66');
  assert.equal(b.c.evaluationCollectionProject_('documentReadingReceipts'),'sahmt-gestao-5ae66');
  assert.equal(b.c.evaluationCollectionProject_('documentReadingGrants'),'sahmt-gestao-5ae66');
+  assert.equal(b.c.evaluationCollectionProject_('trainingTemplateMigrations'),'sahmt-gestao-5ae66');
+  assert.equal(a.c.evaluationCollectionProject_('trainingTemplateMigrations'),'sahmt-17a16');
+});
+
+test('live training template receipts migrate to FB while old integration provenance remains excluded',()=>{
+ const result=prepareIndependentFbMigration({projectId:'sahmt-17a16',documents:[
+  {path:'trainingTemplateMigrations/form-fixture',updateTime:'2026-10-22T00:00:00Z',fields:{status:{stringValue:'CONFIRMED'}}},
+  {path:'migrationOrigins/old-fixture',updateTime:'2026-10-22T00:00:00Z',fields:{}}
+ ]},{projectId:'sahmt-gestao-5ae66',documents:[]});
+ assert.equal(result.ready,true);assert.deepEqual(result.operations.map(x=>x.path),['trainingTemplateMigrations/form-fixture']);
+ assert.deepEqual(result.excluded,['migrationOrigins/old-fixture']);
+});
+
+test('active FB authorization never reads the removed FA consolidation marker',()=>{
+ const {c,requests}=harness(true);let assertions=0;c.managementIndependentFbAssert_=()=>{assertions++;return {status:'ACTIVE'};};
+ c.evaluationAssertConsolidationActive_();assert.equal(assertions,1);assert.equal(requests.length,0);
 });
 test('source Checklist uses FA users and FB evaluation uses FB users with matching batchGet names',()=>{
  const {c,requests}=harness(true);vm.runInContext("SAHMT_EVALUATION_TRANSACTIONS.set('fa-tx',{projectId:'sahmt-17a16',sourceTransactions:{}});SAHMT_EVALUATION_TRANSACTIONS.set('fb-tx',{projectId:'sahmt-gestao-5ae66',sourceTransactions:{}});",c);

@@ -8,7 +8,7 @@ export const INDEPENDENT_FB_COLLECTIONS = Object.freeze([
   'documents', 'scopedDocuments', 'documentAccessEmails', 'equipment', 'equipmentEvents',
   'maintenanceRecords', 'scoringRules', 'scores', 'learningActivities', 'learningActivityReceipts',
   'trainings', 'trainingProgress', 'trainingReceipts', 'trainingCompletions',
-  'documentReadingReceipts', 'evaluationActivities', 'evaluationFormConfigs', 'evaluationLinks',
+  'documentReadingReceipts', 'trainingTemplateMigrations', 'evaluationActivities', 'evaluationFormConfigs', 'evaluationLinks',
   'evaluationParticipations', 'evaluationTrainingAttempts', 'evaluationAssignments',
   'evaluationAssignmentHistory', 'evaluationGovernanceRevisions', 'evaluationRequests',
   'evaluationAwards', 'evaluationLedger', 'evaluationSummaries', 'evaluationReference',
@@ -17,7 +17,7 @@ export const INDEPENDENT_FB_COLLECTIONS = Object.freeze([
 ]);
 export const EXCLUDED_FB_CONFIGURATION = Object.freeze([
   'managementAuthorizationLeases', 'managementAuthorizationFences', 'managementRuntime',
-  'migrationOrigins', 'trainingTemplateMigrations', 'evaluationHomologationInputs'
+  'migrationOrigins', 'evaluationHomologationInputs'
 ]);
 export function canonicalMigrationValue(value) {
   if (Array.isArray(value)) return '[' + value.map(canonicalMigrationValue).join(',') + ']';
