@@ -33,6 +33,10 @@ function fixture() {
   sahmtV2Properties_:()=>({getProperty:k=>props.get(k)||null}),
   sha256Hex_:sha,formsEvaluationHash_:value=>sha(JSON.stringify(value)),evaluationClean_:value=>structuredClone(value),Utilities:{getUuid:randomUUID},
   evaluationGet_:(c,id)=>structuredClone(data.get(c+'/'+id)||null),
+  evaluationCollectionProject_:()=> 'sahmt-gestao-5ae66',
+  evaluationDocumentsUrl_:()=> 'https://firestore.invalid/batchGet',
+  evaluationDocument_:doc=>structuredClone(doc.fields),
+  firestoreRequest_:(_url,options)=>JSON.parse(options.payload).documents.map(name=>{const key=name.split('/documents/')[1],fields=data.get(key);return fields?{found:{name,fields}}:{missing:name};}),
   evaluationWrite_:(c,id,changes)=>({c,id,changes}),
   evaluationRunTransaction_:fn=>{const out=fn('tx');for(const w of out.writes)data.set(w.c+'/'+w.id,structuredClone(w.changes));return out.result;}
  });
@@ -55,6 +59,18 @@ test('first read, coverage and idempotent completion retain identity without sco
  assert.equal(f.send('complete',{sessionId:s.sessionId,pages:[1,2]}).code,'READING_RELEASED');
  assert.equal(f.grants.length,2);assert.deepEqual(f.grants,['reader@example.test','reader@example.test']);
  assert.ok([...f.data.keys()].every(k=>!k.startsWith('evaluationAwards/')));
+});
+
+test('preflight batches fresh project-routed reads, deduplicates and rejects incomplete replies',()=>{
+ const f=fixture(),requests=[],original=f.ctx.firestoreRequest_;
+ f.ctx.firestoreRequest_=(url,options)=>{requests.push(JSON.parse(options.payload));return original(url,options);};
+ f.send('start');assert.equal(requests.length,1);assert.equal(requests[0].documents.length,6);
+ f.data.get('users/reader').active=false;assert.throws(()=>f.send('start'),/READING_ACCESS_DENIED/);
+ assert.equal(requests.length,2);
+ f.ctx.firestoreRequest_=()=>[];assert.throws(()=>f.send('start'),/READING_PREFLIGHT_INVALID/);
+ f.ctx.firestoreRequest_=original;
+ const read=f.ctx.dgrPreflight_({uid:'reader',email:'reader@example.test',documentId:'doc'},{pdfId:'PdfFixture1234567',formId:null});
+ assert.ok(read('scopedDocuments','doc'));assert.throws(()=>read('users','other'),/READING_PREFLIGHT_INVALID/);
 });
 for(const [label,mutate] of [
  ['disabled',f=>f.props.delete('SAHMT_READING_ENABLED')],

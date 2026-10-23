@@ -40,20 +40,45 @@ function dgrManagedForm_(formId) {
   try { const p = dgrPolicy_(); return Object.keys(p.documents).some(function (id) { return p.documents[id].formId === formId; }); }
   catch (_) { return true; }
 }
-function dgrIdentity_(uid, email, policy, row) {
-  const profile = evaluationGet_('users', uid);
+// Request-scoped batch only: permissions are freshly read on every action.
+// Group by the existing router, so this never moves a read to another project.
+function dgrPreflight_(request, row) {
+  const email=String(request.email||'').trim().toLowerCase();
+  if(!/^[^/@\s]+@[^/@\s]+\.[^/@\s]+$/.test(email))throw Error('READING_ACCESS_DENIED');
+  const refs=[['users',request.uid],['documentAccessEmails',email],['scopedDocuments',request.documentId],
+    ['scopedDocuments',row.pdfDocumentId||(row.formId?'pdf_'+request.documentId:request.documentId)],['managementAreas','area-gestao-de-documentos']];
+  if(row.formId)refs.push(['evaluationFormConfigs',row.formId]);
+  const groups={},values=new Map();
+  refs.forEach(function(ref){const project=evaluationCollectionProject_(ref[0]),name='projects/'+project+'/databases/(default)/documents/'+ref[0]+'/'+ref[1];
+    if(!groups[project])groups[project]=new Map();groups[project].set(name,ref.join('/'));});
+  Object.keys(groups).forEach(function(project){
+    const expected=groups[project],response=firestoreRequest_(evaluationDocumentsUrl_(':batchGet',project),{method:'post',contentType:'application/json',payload:JSON.stringify({documents:[...expected.keys()]})});
+    const seen=new Set();
+    (Array.isArray(response)?response:[response]).forEach(function(item){
+      const name=item.found&&item.found.name||item.missing;
+      if(!expected.has(name)||seen.has(name))throw Error('READING_PREFLIGHT_INVALID');
+      seen.add(name);values.set(expected.get(name),item.found?evaluationDocument_(item.found):null);
+    });
+    if(seen.size!==expected.size)throw Error('READING_PREFLIGHT_INVALID');
+  });
+  return function(collection,id){const key=collection+'/'+id;if(!values.has(key))throw Error('READING_PREFLIGHT_INVALID');return values.get(key);};
+}
+function dgrIdentity_(uid, email, policy, row, read) {
+  read=read||evaluationGet_;
+  const profile = read('users', uid);
   const normalized = String(email || '').trim().toLowerCase();
   if (!policy.pilotUids.includes(uid) || !profile || profile.uid !== uid || profile.active !== true || profile.access !== true ||
       String(profile.email || '').trim().toLowerCase() !== normalized || !/^[^/@\s]+@[^/@\s]+\.[^/@\s]+$/.test(normalized)) throw Error('READING_ACCESS_DENIED');
   const permissions = profile.permissions || {};
   if (profile.role !== 'administrador_app' && permissions.admin !== true && permissions.managementRead !== true && permissions.documentsManage !== true) throw Error('READING_ACCESS_DENIED');
-  const access = evaluationGet_('documentAccessEmails', normalized);
+  const access = read('documentAccessEmails', normalized);
   if (!access || access.id !== normalized || access.email !== normalized || access.active !== true || !Array.isArray(access.groups) || !access.groups.includes(dgrAudience_(row || {}))) throw Error('READING_ACCESS_DENIED');
   return normalized;
 }
-function dgrCatalog_(id, row) {
-  const doc=evaluationGet_('scopedDocuments',id),pdfId=row.pdfDocumentId || (row.formId ? 'pdf_'+id : id),pdf=evaluationGet_('scopedDocuments',pdfId);
-  const area=evaluationGet_('managementAreas','area-gestao-de-documentos');
+function dgrCatalog_(id, row, read) {
+  read=read||evaluationGet_;
+  const doc=read('scopedDocuments',id),pdfId=row.pdfDocumentId || (row.formId ? 'pdf_'+id : id),pdf=read('scopedDocuments',pdfId);
+  const area=read('managementAreas','area-gestao-de-documentos');
   const category=row.category||'DIRETRIZES',audience=dgrAudience_(row);
   if(!area || area.active!==true || !doc || !pdf || doc.active!==true || pdf.active!==true ||
       doc.driveFileId!==(row.formId || row.sourceFileId || row.pdfId) || pdf.driveFileId!==row.pdfId ||
@@ -77,18 +102,21 @@ function dgrHandle_(request) {
   const policy = dgrPolicy_(); let row = policy.documents[request.documentId];
   if (!row || row.enforced !== true) throw Error('READING_CUTOVER_REQUIRED');
   if (sahmtV2Properties_().getProperty('SAHMT_READING_CUTOVER_SHA256') !== formsEvaluationHash_(policy.documents)) throw Error('READING_CUTOVER_REQUIRED');
-  const email = dgrIdentity_(request.uid, request.email, policy, row);
-  const trainingConfig=row.formId && evaluationGet_('evaluationFormConfigs',row.formId);
+  if(!policy.pilotUids.includes(request.uid))throw Error('READING_ACCESS_DENIED');
+  const read=dgrPreflight_(request,row);
+  const email = dgrIdentity_(request.uid, request.email, policy, row, read);
+  const trainingConfig=row.formId && read('evaluationFormConfigs',row.formId);
   if(trainingConfig && trainingConfig.repeatPolicy==='FIRST_RESPONSE_PER_VERSION'){
     if(trainingConfig.status!=='READY' || trainingConfig.trainingRevisionRequired===true)throw Error('READING_CUTOVER_REQUIRED');
     row=Object.assign({},row,{trainingVersion:trainingConfig.version});
   }
-  dgrCatalog_(request.documentId, row);
+  dgrCatalog_(request.documentId, row, read);
   const pdf = dgrPdf_(row, request.action === 'start');
   const id = dgrReceiptId_(request.uid, request.documentId, row), now = Date.now();
   const result = evaluationRunTransaction_(function (tx) {
+    let liveConfig;
     if(row.trainingVersion){
-      const live=evaluationGet_('evaluationFormConfigs',row.formId,tx);
+      const live=liveConfig=evaluationGet_('evaluationFormConfigs',row.formId,tx);
       if(!live || live.status!=='READY' || live.version!==row.trainingVersion || live.trainingRevisionRequired===true)throw Error('READING_CUTOVER_REQUIRED');
     }
     const previous = evaluationGet_('documentReadingReceipts', id, tx);
@@ -111,7 +139,7 @@ function dgrHandle_(request) {
     const writes = [evaluationWrite_('documentReadingReceipts', id, state, previous)];
     // Sanitized progress for the existing per-user participation query. No email,
     // reading session ID, PDF bytes or grant capability leaves the reading gate.
-    const cfg = request.action!=='progress' && row.formId && evaluationGet_('evaluationFormConfigs',row.formId,tx);
+    const cfg = request.action!=='progress' && row.formId && (liveConfig||evaluationGet_('evaluationFormConfigs',row.formId,tx));
     if (cfg && cfg.repeatPolicy === 'FIRST_RESPONSE_PER_VERSION' && cfg.status === 'READY') {
       const progressId='reading-'+id, old=evaluationGet_('evaluationParticipations',progressId,tx);
       writes.push(evaluationWrite_('evaluationParticipations',progressId,{id:progressId,recordType:'READING',uid:request.uid,

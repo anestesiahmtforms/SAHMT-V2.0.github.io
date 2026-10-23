@@ -2,7 +2,7 @@
 .diretrizes-ebook[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px}
 .diretrizes-ebook::backdrop{background:#001b2bd9;backdrop-filter:blur(4px)}
 .diretrizes-ebook header h2{font-size:1.1rem;margin:0 0 6px}.diretrizes-ebook header p{font-size:.9rem;margin:0}
-.diretrizes-ebook__pages{overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:#e8edf0;text-align:center;min-height:0;padding:12px;border-radius:8px}
+.diretrizes-ebook__pages{overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y;scrollbar-gutter:stable;background:#e8edf0;text-align:center;min-height:0;min-width:0;padding:12px;border-radius:8px}
 .diretrizes-ebook canvas{display:block;max-width:none;margin:auto;background:white}.diretrizes-ebook canvas[hidden]{display:none}
 .diretrizes-ebook pre{white-space:pre-wrap;text-align:left;background:#fff;padding:16px;font:1.1rem/1.6 system-ui;color:#172c3a;overflow-wrap:anywhere}
 .diretrizes-ebook footer{display:grid;gap:8px}.diretrizes-ebook nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
