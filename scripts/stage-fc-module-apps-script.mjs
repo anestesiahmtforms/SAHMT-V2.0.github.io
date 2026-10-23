@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createConsolidationScriptClient} from './lib/fa-consolidation-script-client.js';
 import {createPrivateJsonProtector} from './lib/windows-protected-json.js';
 import {snapshotDigest} from './lib/management-split-plan.js';
-import {assertConsolidationDeployments} from './lib/fa-consolidation-deployment.js';
+import {assertFcModuleDeployment} from './lib/fc-module-deployment.js';
 
 const FILES=['EvaluationLedger.gs','EvaluationOccurrenceDelivery.gs','QmentumCore.gs','QmentumQuarterly.gs','QmentumWrite.gs'];
 const demand=(ok,code)=>{if(!ok)throw Error(code);};
@@ -52,8 +52,7 @@ async function main(){
  await client.updateDeployment(deployment,version.versionNumber,'FC independent modules: QMENTUM and occurrences');
  updated.push(deployment.deploymentId);
  const current=await client.readDeployments();
- assertConsolidationDeployments({before:deployments,current,versionNumber:version.versionNumber});
+ assertFcModuleDeployment({before:deployments,current,targetDeploymentId:deployment.deploymentId,versionNumber:version.versionNumber});
  console.log(JSON.stringify({code:'FC_MODULE_APPS_SCRIPT_STAGED',updatedFiles:changed.length,remoteFilesPreserved:remote.files.length-FILES.length,version:version.versionNumber,targetDeploymentId:deployment.deploymentId,versionedDeploymentsUpdated:updated.length,otherDeploymentsPreserved:deployments.deployments.length-updated.length,backup}));
 }
 main().catch(error=>{const code=/^FC_SCRIPT_[A-Z0-9_]+$/.test(error.message||'')?error.message:'FC_MODULE_APPS_SCRIPT_STAGE_FAILED';console.error(JSON.stringify({code,automaticRollback:false}));process.exitCode=1;});
-
