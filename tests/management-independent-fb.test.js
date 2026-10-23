@@ -15,6 +15,8 @@ test('FB routing requires the explicit release property; old project properties 
  assert.equal(b.c.evaluationCollectionProject_('qmentumUnits'),'sahmt-17a16');assert.equal(b.c.evaluationCollectionProject_('checklists'),'sahmt-17a16');assert.equal(b.c.evaluationCollectionProject_('scopedDocuments'),'sahmt-gestao-5ae66');
  assert.match(b.c.evaluationCursorProperty_('CURSOR'),/_FB_INDEPENDENT_V1$/);
  assert.equal(b.c.evaluationCollectionProject_('documentAccessEmails'),'sahmt-gestao-5ae66');
+ assert.equal(b.c.evaluationCollectionProject_('documentReadingReceipts'),'sahmt-gestao-5ae66');
+ assert.equal(b.c.evaluationCollectionProject_('documentReadingGrants'),'sahmt-gestao-5ae66');
 });
 test('source Checklist uses FA users and FB evaluation uses FB users with matching batchGet names',()=>{
  const {c,requests}=harness(true);vm.runInContext("SAHMT_EVALUATION_TRANSACTIONS.set('fa-tx',{projectId:'sahmt-17a16',sourceTransactions:{}});SAHMT_EVALUATION_TRANSACTIONS.set('fb-tx',{projectId:'sahmt-gestao-5ae66',sourceTransactions:{}});",c);
