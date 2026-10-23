@@ -179,8 +179,8 @@ async function signatureHarness({checked = true} = {}) {
   const content=h.nodes.get('#module-content');content.querySelector=selector=>h.nodes.get(selector)||null;content.querySelectorAll=()=>[];
   Object.assign(h.ctx,{checklistConferenceReadiness,checklistDayMode:()=> 'today', stationIsInDateRange:()=>true,stationIsValidOn:()=>true,summarizeChecklistDay:()=>({}),resolveChecklistDayRecord:()=>null,sortChecklistStationsForDisplay:value=>[...value],
     checklistArsenalFunction:()=>'',checklistArsenalButtonLabel:station=>station.name,interactionDateTime:String,formatRecordDate:String,reconcileReportMarkup:(target,html)=>{target.innerHTML=html;},
-    mockSignature:{getChecklistSignaturePreview:()=>waiting.promise}});
-  const daily=source.slice(source.indexOf('async function loadDailyChecklist('),source.indexOf('function revealChecklistStation(')).replaceAll("await import('./checklist-signature.js')",'mockSignature');
+    mockSignature:{previewChecklistSignatureRequest:()=>waiting.promise}});
+  const daily=source.slice(source.indexOf('async function loadDailyChecklist('),source.indexOf('function revealChecklistStation(')).replaceAll("await import('./data.js')",'mockSignature');
   vm.runInContext(daily,h.ctx);await h.ctx.loadDailyChecklist(stations,scope.day,result,scope);
   return {...h,scope,waiting,prepare:h.nodes.get('#checklist-signature-prepare'),status:h.nodes.get('#checklist-signature-status'),preview:h.nodes.get('#checklist-signature-preview'),dialog};
 }
@@ -198,6 +198,16 @@ test('integração main: preview sem ownership não substitui rascunho mesmo na 
   h.dialog._checklistSignatureRequest={};h.preview.innerHTML='Rascunho da consulta nova';h.status.textContent='Consulta nova';
   h.waiting.resolve({requestStatus:'PENDING_VALIDATION'});await pending;
   assert.equal(h.preview.innerHTML,'Rascunho da consulta nova');assert.equal(h.status.textContent,'Consulta nova');h.close();
+});
+
+test('conferência usa o módulo de dados do Checklist sem adaptador tardio',async()=>{
+  const daily=source.slice(source.indexOf('async function loadDailyChecklist('),source.indexOf('function revealChecklistStation('));
+  assert.doesNotMatch(daily,/import\('\.\/checklist-signature\.js'\)/);
+  assert.match(daily,/previewChecklistSignatureRequest: getChecklistSignaturePreview, createChecklistSignatureRequest: signChecklistReport/);
+  const h=await signatureHarness(),pending=h.prepare.onclick();
+  h.waiting.reject(new Error('Importing a module script failed.'));await pending;
+  assert.match(h.status.textContent,/Não foi possível carregar a conferência/);
+  assert.doesNotMatch(h.status.textContent,/Importing a module/);h.close();
 });
 
 test('conferência concluída pinta o botão, mantém o nome e impede reabrir o modal',async()=>{
@@ -240,7 +250,7 @@ test('perder o rodízio depois do preview impede gravar pedido imutável sem esc
   const h=await signatureHarness(),writes=[];let confirmClick;
   const confirm={disabled:false,addEventListener:(_event,callback)=>{confirmClick=callback;}};
   h.preview.querySelector=selector=>selector==='#checklist-signature-confirm'?confirm:null;
-  h.ctx.mockSignature.signChecklistReport=async request=>{writes.push(request);};
+  h.ctx.mockSignature.createChecklistSignatureRequest=async request=>{writes.push(request);};
   h.waiting.resolve({requestStatus:'',revision:'a'.repeat(64)});await h.prepare.onclick();
   assert.equal(h.dialog.open,true);assert.equal(typeof confirmClick,'function');
   h.ctx.testReports.setRotation({...confirmedRotation(h.scope),current:false});

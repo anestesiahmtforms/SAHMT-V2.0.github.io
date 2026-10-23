@@ -2167,12 +2167,17 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
       const previewTarget = content.querySelector('#checklist-signature-preview');
       previewTarget.replaceChildren();
       const previewToken = confirmationDialog._checklistSignatureRequest = {};
+      const signatureErrorMessage = (error, fallback) => /Importing a module script failed|Failed to fetch dynamically imported module|error loading dynamically imported module|Unable to preload/i.test(error?.message || '')
+        ? 'Não foi possível carregar a conferência. Feche e reabra o app, mantendo sua conta e seus registros, e tente novamente.'
+        : error?.message || fallback;
       const previewCurrent = () => confirmationDialog._checklistSignatureRequest === previewToken && confirmationDialog.open && confirmationDialog.isConnected && document.querySelector('#checklist-confirmation-dialog') === confirmationDialog && reportScopeCurrent(scope) && checklistReportContext?.fingerprint === fingerprint;
       prepareSignature.disabled = true;
       status.textContent = 'Preparando a conferência…';
       try {
         if (!signerName.trim()) throw new Error('Seu perfil precisa de um nome para registrar a conferência.');
-        const {getChecklistSignaturePreview} = await import('./checklist-signature.js');
+        // The Checklist already loaded and precached data.js. Do not depend on
+        // another late chunk that may have disappeared after a Pages release.
+        const {previewChecklistSignatureRequest: getChecklistSignaturePreview, createChecklistSignatureRequest: signChecklistReport} = await import('./data.js');
         if (!checklistSignatureCurrent(scope, fingerprint)) return;
         const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid});
         if (!previewCurrent()) return;
@@ -2209,7 +2214,6 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           confirm.disabled = true;
           status.textContent = 'Registrando a conferência…';
           try {
-            const {signChecklistReport} = await import('./checklist-signature.js');
             if (!previewCurrent() || !checklistSignatureCurrent(scope, fingerprint)) return;
             if (session.profile?.displayName !== signerName) {
               invalidateChecklistSignature('Seu perfil mudou. Reabra a conferência para confirmar sua identificação.');
@@ -2235,7 +2239,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             await loadDailyChecklist(stations, day);
           } catch (error) {
             if (!previewCurrent()) return;
-            status.textContent = error.message || 'Não foi possível registrar a conferência. Atualize o relatório e tente novamente.';
+            status.textContent = signatureErrorMessage(error, 'Não foi possível registrar a conferência. Atualize o relatório e tente novamente.');
             submitting = false;
             confirm.disabled = !checklistSignatureCurrent(scope, fingerprint);
             prepareSignature.disabled = !canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint);
@@ -2243,7 +2247,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
         });
       } catch (error) {
         if (!previewCurrent()) return;
-        status.textContent = error.message || 'Não foi possível conferir a revisão do relatório.';
+        status.textContent = signatureErrorMessage(error, 'Não foi possível conferir a revisão do relatório.');
       } finally {
         if (previewCurrent()) {
           const disabled = !canPrepareSignature || !checklistSignatureCurrent(scope, fingerprint);
