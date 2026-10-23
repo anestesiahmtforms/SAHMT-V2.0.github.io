@@ -1,7 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
-const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8'),router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8');
-test('QMENTUM entry belongs to Clinical Coordination and is absent from the Home menu',()=>{
- assert.match(main,/area\.id === 'area-coordenacao-clinica' && can\('admin'\)[^\n]+id="qmentum-open">INDICADORES OBRIGATÓRIOS QMENTUM/);
+const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8'),router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8'),hub=readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8');
+test('QMENTUM opens directly from Registro de Indicadores and is absent from Clinical Coordination',()=>{
+ assert.doesNotMatch(main,/qmentum-open/);
+ assert.match(hub,/label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'/);
+ assert.doesNotMatch(hub,/label:'Indicadores Qmentum'|indicators:\{title:/);
  assert.match(main,/!\['people', 'admin', 'occurrences', 'qmentum'\]\.includes\(route\)/);
  assert.match(router,/'qmentum'/);
 });

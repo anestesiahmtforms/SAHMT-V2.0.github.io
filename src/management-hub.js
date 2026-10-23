@@ -20,10 +20,7 @@ const panels={
  ]},
  records:{title:'Registros',icon:'records',parent:'home',items:[
   {label:'Registros de Ocorrências',icon:'occurrence',route:'occurrences',access:'occurrences'},
-  {label:'Registro de Indicadores',icon:'indicators',panel:'indicators',access:'qmentum'}
- ]},
- indicators:{title:'Registro de Indicadores',icon:'indicators',parent:'records',items:[
-  {label:'Indicadores Qmentum',icon:'indicators',route:'qmentum',access:'qmentum'}
+  {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'}
  ]},
  results:{title:'Resultados dos Indicadores',icon:'results',parent:'home',message:'Os resultados dos indicadores serão disponibilizados nesta área.'},
  surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',message:'As enquetes e consultas serão disponibilizadas nesta área.'}
@@ -32,7 +29,8 @@ const panels={
 // This menu reads no database. Each destination retains its existing session,
 // profile and server authorization checks. Future FD/FE areas stay empty.
 export function mountManagementHub(root,{access={},initialPanel='home',onNavigate,onExit,onPanelChange=()=>{}}={}){
- const panelAllowed=name=>name==='home'||access[name==='indicators'?'qmentum':name]===true;
+ if(initialPanel==='indicators')initialPanel='records';
+ const panelAllowed=name=>name==='home'||access[name]===true;
  let disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><h2 id="management-hub-title" tabindex="-1"></h2></header><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');

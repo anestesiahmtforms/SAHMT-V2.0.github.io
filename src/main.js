@@ -3225,7 +3225,6 @@ async function loadManagementAreaActivities(area) {
   cleanupDocumentTraining?.(); cleanupDocumentTraining=null;
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
-  if(detail)detail.onclick=event=>{if(event.target.closest('#qmentum-open')&&can('admin')){detail.closest('dialog')?.close();navigate('qmentum');}};
   const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
@@ -3292,7 +3291,7 @@ async function loadManagementAreaActivities(area) {
     const equipmentView = area.id === 'area-gestao-de-equipamentos'
       ? can('equipmentManage') ? '<div id="equipment-management-root"></div>' : '<section class="equipment-manager"><h4>Equipamentos</h4><p class="empty-state">Esta área exige a permissão Gerenciar equipamentos.</p></section>'
       : '';
-    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${area.id === 'area-coordenacao-clinica' && can('admin') ? '<button class="primary-button" type="button" id="qmentum-open">INDICADORES OBRIGATÓRIOS QMENTUM</button>' : ''}${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
+    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
       const responsible = item.responsibleUids?.includes(session.user.uid);
       const scoreReview = scoreReviewByActivity.get(item.id);
       const action = responsible && item.status === 'OPEN' ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="IN_PROGRESS">Iniciar</button>` :
