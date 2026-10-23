@@ -19,6 +19,14 @@ Erros passam a indicar etapas fixas, sem expor tokens, identidades ou respostas 
 - Testes isolados cobrem identidade, redirecionamentos, assinatura da resposta, controle de leitura e liberação individual de formulário.
 - A abertura com a sessão real no iPhone exige confirmação separada; rejeitar uma assinatura inválida não prova o fluxo completo de leitura.
 
+## Segunda falha: texto opcional após desenhar a página
+
+Após a correção da autenticação, o iPhone apresentou um documento de sete páginas com `READING_PDF_RENDER_FAILED` e nenhuma página confirmada. O leitor aguardava a extração de texto antes de marcar a página renderizada, acoplando uma visualização opcional ao controle de leitura.
+
+A versão 223 confirma a renderização somente após a promessa de desenho concluir. A extração de texto ocorre separadamente; sua falha mantém a visualização PDF disponível e o botão TEXTO desativado. Respostas antigas de texto são descartadas após navegação ou fechamento, e cada nova página inicia na visualização PDF. A renderização que falha continua sem crédito de leitura.
+
+O teste em navegador com viewport móvel cobre PDF real, extração de texto que falha, conclusão após duas páginas apresentadas e falha real de renderização que impede concluir. Os 75 testes de cliente, backend, relay e service worker passaram. A confirmação no iPhone da versão 223 permanece separada.
+
 ## Limpeza em FA
 
 O usuário autorizou eliminar o conteúdo remanescente de Gestão e Desempenho em FA **depois** de concluir o funcionamento em FB. Antes da exclusão, conferir a origem efetiva e as dependências de cada coleção. Preservar QMENTUM, registros operacionais, autenticação, perfis compartilhados e evidências de origem usadas pelo desempenho em FB. Esta correção não executa exclusões.

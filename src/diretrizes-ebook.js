@@ -49,7 +49,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     previous.disabled = state.busy || state.page <= 1;
     next.disabled = state.busy || !state.pdf || state.page >= state.total;
     complete.disabled = state.busy || state.visited.size !== state.total || !state.pdf;
-    $('[data-reader-text]').disabled = state.busy || !state.pdf;
+    $('[data-reader-text]').disabled = state.busy || !state.pdf || !state.textAvailable;
     $('[data-reader-page]').textContent = state.pdf ? `Página ${state.page} de ${state.total} · ${state.visited.size} apresentadas` : '';
   };
   const dispose = () => {
@@ -74,8 +74,8 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
   };
   const render = async state => {
     state.phase='render';
-    state.busy=true;state.renderedPage=null;controls(state);
-    canvas.width=canvas.height=0;text.textContent='';
+    state.busy=true;state.renderedPage=null;state.textAvailable=false;controls(state);
+    canvas.width=canvas.height=0;canvas.hidden=false;text.hidden=true;text.textContent='';
     try{
       const page=await state.pdf.getPage(state.page);if(!active(state))return;
       const base=page.getViewport({scale:1});
@@ -84,10 +84,16 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       canvas.width=Math.floor(viewport.width);canvas.height=Math.floor(viewport.height);
       state.renderTask=page.render({canvasContext:canvas.getContext('2d'),viewport});
       await state.renderTask.promise;if(!active(state))return;
-      const content=await page.getTextContent();if(!active(state))return;
-      text.textContent=content.items.map(item=>item.str+(item.hasEOL?'\n':' ')).join('');
       state.renderedPage=state.page;
       panel.scrollTop=0;status.textContent='Percorra cada página. Ao terminar, confirme a conclusão da leitura.';
+      // Text extraction is an optional alternate view. A failure or delay here
+      // must not invalidate a successfully rendered PDF page or its reading gate.
+      const renderedPage=state.page,renderTask=state.renderTask;
+      void Promise.resolve().then(()=>page.getTextContent()).then(content=>{
+        if(!active(state)||state.renderedPage!==renderedPage||state.renderTask!==renderTask)return;
+        text.textContent=content.items.map(item=>String(item.str||'')+(item.hasEOL?'\n':' ')).join('');
+        state.textAvailable=Boolean(text.textContent.trim());controls(state);
+      }).catch(()=>{});
     }catch(error){failure(error,state);}finally{if(active(state)){state.busy=false;controls(state);presented();}}
   };
   const open = async trigger => {
