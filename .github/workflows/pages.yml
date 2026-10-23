@@ -67,6 +67,8 @@ jobs:
         run: node --test tests/training-participation-state.test.js tests/training-repetition.test.js tests/training-repeat-scheduling.test.js tests/training-native-recovery.test.js tests/training-material-publication.test.js tests/forms-evaluation.test.js
       - name: Run management migration local tests
         run: npm run test:management
+      - name: Verify FC module deployment targeting
+        run: node --test tests/fc-module-deployment.test.js
       - name: Run FA consolidation safety tests
         run: node scripts/test-fa-consolidation.mjs
       - name: Run unified FA Occurrences unit tests
