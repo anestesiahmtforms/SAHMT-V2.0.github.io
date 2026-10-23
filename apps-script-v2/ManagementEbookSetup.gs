@@ -80,11 +80,6 @@ function mgePrepareOne_(m,row,state,file) {
     backup={formId:row.formId,metadata:metadata,bank:bank,permissions:permissions,normalFingerprint:dgrNormalFingerprint_(permissions),wasPublished:form.isPublished(),wasAccepting:form.isAcceptingResponses(),configuration:previous,activity:activity,documents:[evaluationGet_('scopedDocuments','evaluation_'+row.formId),evaluationGet_('scopedDocuments','pdf_evaluation_'+row.formId)]};
     backup.legacyDocuments=(row.legacyDocuments||[]).map(function(d){return evaluationGet_('documents',d.id);});state.backups.push(backup);file.setContent(JSON.stringify(state));
   }
-  if(backup.configuration&&!backup.repeatPrepared){
-    if(!formsEvaluationRepeatPolicy_(evaluationGet_('evaluationFormConfigs',row.formId)))trainingRepeatActivateOne_(row.formId);
-    const activated=evaluationGet_('evaluationFormConfigs',row.formId);if(!activated||!formsEvaluationRepeatPolicy_(activated))throw Error('MANAGEMENT_EBOOK_REPEAT_NOT_READY');
-    backup.expectedConfigurationVersion=activated.configVersion;backup.repeatPrepared=true;file.setContent(JSON.stringify(state));
-  }
   if(gqpBytesHash_(DriveApp.getFileById(row.bankFileId).getBlob().getBytes())!==backup.bank.sha256)throw Error('MANAGEMENT_EBOOK_BANK_CHANGED');
   const original=backup.metadata,keep=ropsScored_(original).slice(0,5),extra=new Set(ropsScored_(original).slice(5).map(function(i){return i.itemId;}));
   const materialIds=[row.pdfId,row.sourceId].filter(Boolean),materialLink=function(text){return materialIds.some(function(id){return String(text||'').includes('/d/'+id);});};
@@ -108,7 +103,7 @@ function mgePrepareOne_(m,row,state,file) {
     if((cfg?cfg.configVersion:0)!==(backup.expectedConfigurationVersion||row.expectedConfigVersion))throw Error('MANAGEMENT_EBOOK_CONFIGURATION_CHANGED');
     evaluationRunTransaction_(function(tx){mgeContext_(m,tx);const activity=evaluationGet_('evaluationActivities',row.formId,tx);return {writes:[evaluationWrite_('evaluationActivities',row.formId,{id:row.formId,formId:row.formId,title:row.title,active:true,areaIds:[m.managerAreaId],status:'CONFIGURATION_PENDING',trainingReleaseBlocked:true,trainingReleaseManifestDigest:state.manifestDigest,trainingReleaseDigest:digest,trainingReleaseClosedBaseline:true,sourceId:row.folderId,rootId:row.rootId},activity,['updatedAt'])],result:{}};});
     const payload=Object.assign({},mapping,{activityId:row.formId,creditScopeId:row.creditScopeId,version:version,expectedVersion:backup.expectedConfigurationVersion||row.expectedConfigVersion,eligibleUids:[],eligibleGroups:[row.audienceGroup],managerAreaId:m.managerAreaId,validFrom:Utilities.formatDate(new Date(),'America/Sao_Paulo','yyyy-MM-dd'),validUntil:m.validUntil,materialUrls:['https://drive.google.com/file/d/'+row.pdfId+'/view']});
-    evaluationRunTransaction_(function(tx){mgeContext_(m,tx);const result=formsEvaluationConfigured_(payload,m.actorUid,tx);result.writes.forEach(function(w){w.update.fields.managementEbookManifestDigest={stringValue:state.manifestDigest};if(w.updateMask&&!w.updateMask.fieldPaths.includes('managementEbookManifestDigest'))w.updateMask.fieldPaths.push('managementEbookManifestDigest');});return result;});
+    evaluationRunTransaction_(function(tx){mgeContext_(m,tx);const result=formsEvaluationConfigured_(payload,m.actorUid,tx,{kind:'MANAGEMENT_EBOOK_RECONCILIATION',manifestDigest:state.manifestDigest});result.writes.forEach(function(w){w.update.fields.managementEbookManifestDigest={stringValue:state.manifestDigest};if(w.updateMask&&!w.updateMask.fieldPaths.includes('managementEbookManifestDigest'))w.updateMask.fieldPaths.push('managementEbookManifestDigest');});return result;});
     cfg=evaluationGet_('evaluationFormConfigs',row.formId);
   }
   if(cfg.materialFingerprint!==fingerprint||formsEvaluationSavedQuestionFingerprint_(cfg)!==checked.questionFingerprint||cfg.version!==version||cfg.trainingRevisionRequired===true)throw Error('MANAGEMENT_EBOOK_CONFIGURATION_POSTCHECK');
@@ -144,6 +139,14 @@ function continuarLeituraDocumentosGestaoFbV1() {
   }catch(e){mgeStopTrigger_();if(current)try{formsEvaluationCloseForm_(current);}catch(_){}throw e;}finally{lock.releaseLock();}
 }
 function mgeSaved_(){const id=gpdfProps_().getProperty('SAHMT_MANAGEMENT_EBOOK_JOB');if(!id)return null;const m=mgeManifest_(),state=JSON.parse(mgePrivate_(id).getBlob().getDataAsString('UTF-8'));if(state.manifestDigest!==formsEvaluationHash_(m))throw Error('MANAGEMENT_EBOOK_MANIFEST_CHANGED');return state;}
+function mgeRepeatSetup_(payload,actorUid,tx,setup) {
+  if(!tx||!setup||setup.kind!=='MANAGEMENT_EBOOK_RECONCILIATION')throw Error('MANAGEMENT_EBOOK_REPEAT_SETUP_DENIED');
+  const m=mgeManifest_(),state=mgeSaved_(),row=m.items.find(function(r){return r.formId===payload.activityId;});
+  if(!state||state.complete||state.manifestDigest!==setup.manifestDigest||actorUid!==m.actorUid||!row||m.items[state.index].formId!==row.formId||payload.creditScopeId!==row.creditScopeId||payload.managerAreaId!==m.managerAreaId||!state.backups.some(function(b){return b.formId===row.formId;})||formsEvaluationHash_(payload.eligibleGroups)!==formsEvaluationHash_([row.audienceGroup])||payload.eligibleUids.length)throw Error('MANAGEMENT_EBOOK_REPEAT_SETUP_DENIED');
+  mgeContext_(m,tx);const form=FormApp.openById(row.formId);
+  if(form.isAcceptingResponses()||form.isPublished()||form.canEditResponse()||form.hasLimitOneResponsePerUser())throw Error('MANAGEMENT_EBOOK_REPEAT_FORM_NOT_CLOSED');
+  return true;
+}
 function mgeTrainingReleaseVerify_(formId) {
   if(typeof mgeTrustedManifest_!=='function')return null;const row=mgeManifest_().items.find(function(r){return r.formId===formId;});if(!row)return null;const state=mgeSaved_();if(!state)return null;
   const proof=state.results.find(function(r){return r.formId===formId;});if(!proof)throw Error('MANAGEMENT_EBOOK_PUBLICATION_PENDING');const m=mgeManifest_();mgeContext_(m,null);

@@ -200,7 +200,7 @@ function setupFixture(){
  const f=fixture();vm.runInContext(readFileSync(new URL('../apps-script-v2/DiretrizesReadingSetup.gs',import.meta.url),'utf8'),f.ctx);
  f.policy.documents.doc.enforced=false;f.props.set('SAHMT_READING_POLICY_JSON',JSON.stringify(f.policy));f.props.set('SAHMT_READING_ENABLED','NO');f.props.delete('SAHMT_READING_CUTOVER_SHA256');
  f.props.set('SAHMT_READING_OPERATOR_EMAIL','operator@example.test');
- f.ctx.sahmtV2Properties_=()=>({getProperty:k=>f.props.get(k)||null,setProperty:(k,v)=>f.props.set(k,v),deleteProperty:k=>f.props.delete(k)});
+ f.ctx.sahmtV2Properties_=()=>({getProperty:k=>f.props.get(k)||null,setProperty:(k,v)=>f.props.set(k,v),deleteProperty:k=>f.props.delete(k),getProperties:()=>Object.fromEntries(f.props)});
  f.ctx.Session={getEffectiveUser:()=>({getEmail:()=> 'operator@example.test'}),getActiveUser:()=>({getEmail:()=> 'operator@example.test'})};
  f.ctx.ScriptApp={getScriptId:()=> 'synthetic-script'};f.ctx.console={log:()=>{}};
  f.ctx.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})};
