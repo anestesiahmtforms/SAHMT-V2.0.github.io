@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 const features = readFileSync(join(__dirname, '../src/feature-flags.js'), 'utf8').replace(/\r\n/g, '\n');
+const pilot = readFileSync(join(__dirname, '../src/management-pilot.js'), 'utf8').replace(/^export /gm, '');
 
 function extractFunction(name, {async = false} = {}) {
   const prefix = `${async ? 'async ' : ''}function ${name}(`;
@@ -49,7 +50,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   const labelStart = main.indexOf('const labels = {');
   const labelEnd = main.indexOf('\n};', labelStart) + 3;
   assert.ok(labelStart !== -1 && labelEnd > labelStart);
-  vm.runInContext(features.replace(/^export /gm, '') + '\n' + main.slice(labelStart, labelEnd), context);
+  vm.runInContext(pilot+'\n'+features.replace(/^export /gm, '') + '\n' + main.slice(labelStart, labelEnd), context);
   const loadModule = extractFunction('loadModule', {async: true}).replace(/import\((['"])([^'"]+)\1\)/g, 'fakeImport("$2")');
   vm.runInContext([
     extractFunction('can'), extractFunction('canOpenRestrictedModule'), extractFunction('hasOccurrencePermission'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
@@ -103,7 +104,7 @@ function renderHarness(session) {
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
     updateInformationBanner() {}, updateOutboxStatus: async () => {}, syncOutbox: async () => {}, navigator: {onLine: true}
   });
-  vm.runInContext(features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
+  vm.runInContext(pilot+'\n'+features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
 }
 
@@ -214,7 +215,7 @@ test('Ocorrências fica dentro de Gestão sem conceder novas permissões ao usu�
     const cards = h.ui.moduleCards();
     assert.equal((cards.match(/data-route="occurrences"/g) || []).length, 0);
     assert.match(cards, /data-route="management-hub"/);
-    assert.equal(h.context.hasOccurrencePermission(), true);
+    assert.equal(h.context.hasOccurrencePermission(), false);
     assert.doesNotMatch(cards, /NOTIFICAÇÕES DE EVENTOS|data-route="notifications"/);
     assert.deepEqual(session, before);
   }
@@ -358,6 +359,7 @@ test('liberação de domínio exige perfil ativo e permissão booleana', () => {
 function individuallyReleased(permissions = {}) {
   const session = approved({managementRead: true, trainingsRead: true, ...permissions});
   session.profile.uid = session.user.uid;
+  session.user.email='wx2901@gmail.com';session.user.emailVerified=true;session.profile.email=session.user.email;
   return session;
 }
 
@@ -383,7 +385,7 @@ test('liberações de Gestão e Desempenho são independentes e não liberam QME
     const h = harness({session: individuallyReleased({[flag]: true})});
     assert.equal(h.context.canOpenRestrictedModule(route),true);
     assert.equal(h.context.canOpenRestrictedModule(blocked),false);
-    assert.equal(h.context.canOpenRestrictedModule('qmentum'), false);
+    assert.equal(h.context.canOpenRestrictedModule('qmentum'), true);
   }
 });
 

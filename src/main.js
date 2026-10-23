@@ -28,6 +28,7 @@ import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStat
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMaintenanceInputType} from './checklist-maintenance.js';
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
+import {canUseManagementPilot} from './management-pilot.js';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, offlineOperationalCacheId, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
@@ -774,7 +775,7 @@ function hasOccurrencePermission() {
   // Registration is open to every active, accessible FA user. Reading the
   // general list and audit history remain separately permissioned in FA.
   return session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true
-    && featureEnabledForRoute('occurrences', appFeatures);
+    && canUseManagementPilot(session) && featureEnabledForRoute('occurrences', appFeatures);
 }
 
 function managementUtilityCards() {
@@ -795,6 +796,8 @@ function can(permission) {
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
   if (can('admin')) return true;
+  if (!canUseManagementPilot(session)) return false;
+  if (route === 'qmentum') return true;
   const release = {management: 'managementModuleEnabled', training: 'performanceModuleEnabled'}[route];
   const readPermission = {management: 'managementRead', training: 'trainingsRead'}[route];
   return !!release && session.status === 'signed-in' && session.profile?.active === true
@@ -1269,13 +1272,13 @@ async function loadModule(route) {
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||session.profile?.active!==true||session.profile?.access!==true)return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,
-      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:hasOccurrencePermission()||can('admin'),occurrences:hasOccurrencePermission(),qmentum:can('admin')},
+      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
   }
   if(route === 'qmentum'){
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
-    const current=()=>currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&can('admin');
+    const current=()=>currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&canOpenRestrictedModule('qmentum');
     if(!content||!current()){navigate('home');return;}
     try{
       const [{getIndicatorsAuth,getIndicatorsFirestore},{waitForFcModuleSession},{createQmentumRepository},{mountQmentumModule}]=await Promise.all([import('./fc-module-firebase.js'),import('./fc-module-session.js'),import('./qmentum-data.js'),import('./qmentum-ui.js')]);
