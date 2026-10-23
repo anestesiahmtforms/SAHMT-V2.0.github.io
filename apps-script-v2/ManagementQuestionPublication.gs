@@ -18,7 +18,8 @@ function gqpContent_(form) {
 }
 function gqpChoices_(form) {
   const choices=(form.items || []).filter(function(i) { const c=i.questionItem && i.questionItem.question && i.questionItem.question.choiceQuestion;return c && Array.isArray(c.options) && c.options.length >= 2; });
-  return typeof ropsQuestionChoices_==='function'?ropsQuestionChoices_(form,choices):choices;
+  const selected=typeof ropsQuestionChoices_==='function'?ropsQuestionChoices_(form,choices):choices;
+  return typeof mgeQuestionChoices_==='function'?mgeQuestionChoices_(form,selected):selected;
 }
 function gqpResolvedConfig_() {
   const cfg=gqpTrustedConfig_();return typeof ropsQuestionBindings_==='function'?ropsQuestionBindings_(cfg):cfg;
@@ -85,7 +86,7 @@ function gqpPublish_(cfg, approval, ports) {
       if(doc.sha256 !== approval.documentSha256)gqpFail_('APPROVAL_CHANGED');
       return doc;
     }
-    const doc=authorizedDocument(), baseline=gqpModel_(approval.baselineForm), edited=gqrParse_(gqrRows_(doc.blob),baseline), plan=gqpPlan_(approval.baselineForm,edited);
+    const doc=authorizedDocument(), baseline=gqpModel_(approval.baselineForm), tables=gqrRows_(doc.blob), edited=gqrParse_(typeof mgeQuestionTables_==='function'?mgeQuestionTables_(approval.baselineForm,tables):tables,baseline), plan=gqpPlan_(approval.baselineForm,edited);
     const beforeHash=gqpHash_(gqpContent_(approval.baselineForm)), afterHash=gqpHash_(gqpContent_(plan.target));
     let state=ports.load(key), current=ports.form(b.formId), currentHash=gqpHash_(gqpContent_(current));
     if(current.formId !== b.formId || !current.revisionId)gqpFail_('FORM_INVALID');
@@ -127,7 +128,7 @@ function gqpDraft_(cfg, binding, ports) {
   const assignment=ports.assignment(b), profile=ports.profile(b.assignment.uid);
   if(!assignment || assignment.uid !== b.assignment.uid || assignment.version !== b.assignment.version || !profile || profile.active !== true || profile.access !== true || profile.uid && profile.uid !== b.assignment.uid || typeof profile.email !== 'string')gqpFail_('ACCESS_REVOKED');
   const document=ports.document(b,profile.email.toLowerCase()),form=ports.form(b.formId);
-  const edited=gqrParse_(gqrRows_(document.blob),gqpModel_(form)),plan=gqpPlan_(form,edited);
+  const tables=gqrRows_(document.blob),edited=gqrParse_(typeof mgeQuestionTables_==='function'?mgeQuestionTables_(form,tables):tables,gqpModel_(form)),plan=gqpPlan_(form,edited);
   return {version:1,code:plan.requests.length?'QUESTION_PUBLICATION_DRAFT_READY':'QUESTION_PUBLICATION_UNCHANGED',formId:b.formId,documentId:b.documentId,
     managerUid:b.assignment.uid,assignmentVersion:b.assignment.version,documentSha256:document.sha256,baselineForm:form,
     changedQuestions:plan.requests.length,approvedBy:null,approvedAt:null,expiresAt:null};

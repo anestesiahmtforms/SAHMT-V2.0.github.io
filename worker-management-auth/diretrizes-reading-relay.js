@@ -1,5 +1,5 @@
 import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
-const FA='sahmt-17a16',FB='sahmt-gestao-5ae66',MAX_REPLY=12*1024*1024;
+const FA='sahmt-17a16',FB='sahmt-gestao-5ae66',MAX_REPLY=16*1024*1024;
 const mac=(payload,key)=>createHmac('sha256',key).update('SAHMT_READING_V1\n'+payload).digest('hex');
 const reply=(code,status,origin,data={})=>Response.json({code,...data},{status,headers:{'Cache-Control':'no-store',...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
 async function limited(response,max,signal){
@@ -56,7 +56,7 @@ export async function relayDiretrizesReading(request,env,{fetchImpl=fetch,now=Da
   // Project only protocol fields: never relay arbitrary private response keys.
   const data={};for(const k of ['pages','sessionId','pdfBase64','visited','formUrl','hasForm','openTicket'])if(answer[k]!==undefined)data[k]=answer[k];
   const validPages=Number.isSafeInteger(data.pages)&&data.pages>=1&&data.pages<=300;
-  const validPdf=typeof data.pdfBase64==='string'&&data.pdfBase64.length<=8388608&&/^JVBER[A-Za-z0-9+/=]*$/.test(data.pdfBase64);
+  const validPdf=typeof data.pdfBase64==='string'&&data.pdfBase64.length<=4*Math.ceil(8*1024*1024/3)&&/^JVBER[A-Za-z0-9+/=]*$/.test(data.pdfBase64);
   if(answer.code==='READING_PREPARED'&&(input.action!=='open'||!validPages||!validPdf||typeof data.openTicket!=='string'||data.openTicket.length>2500||!/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(data.openTicket)))throw Error('PDF');
   if(answer.code==='READING_STARTED'&&(input.action!=='start'||!validPages||!/^[a-f0-9]{32}$/.test(data.sessionId||'')||(!input.openTicket&&!validPdf)||(input.openTicket&&data.pdfBase64!==undefined)))throw Error('PDF');
   if(answer.code==='READING_COMPLETED' && data.formUrl!==undefined)throw Error('URL');

@@ -862,7 +862,9 @@ export async function listManagementDocuments(managementAreaId, {includeInactive
   const scopedConstraints = [where('managementAreaId', '==', managementAreaId)];
   if (!access.manages || !includeInactive) scopedConstraints.push(where('active', '==', true));
   scopedConstraints.push(where('audienceGroup', 'in', access.groups.length ? access.groups : ['GENERAL']));
-  scopedConstraints.push(orderBy('publishedAt', 'desc'), limit(documentLimit));
+  // Each training has a Form row and its PDF row; merge before applying the
+  // visible-card limit so the paired catalog does not truncate older topics.
+  scopedConstraints.push(orderBy('publishedAt', 'desc'), limit(Math.min(200, documentLimit * 2)));
   const [legacy, scoped] = await Promise.all([
     getDocsFromServer(query(collection(db, 'documents'), ...constraints)),
     access.groups.length ? getDocsFromServer(query(collection(db, 'scopedDocuments'), ...scopedConstraints)) : Promise.resolve(null)
