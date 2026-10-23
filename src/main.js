@@ -94,6 +94,7 @@ const labels = {
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
   management: ['Gestão', 'Áreas, atividades e indicadores'],
+  'management-hub': ['Gestão', 'Áreas de gestão'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
@@ -758,20 +759,15 @@ function loginView() {
 function moduleCards() {
   const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], occurrences: ['occurrencesRead','occurrencesWrite','occurrencesAuditRead'], people: ['peopleManage'], admin: ['usersManage']};
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
-  const commonModules = commonUserActive ? ['management', 'training', 'notifications'] : [];
+  const commonModules = commonUserActive ? ['management'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
   return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum'].includes(route)
-    && (route === 'notifications' ? commonModules.includes(route) : commonModules.includes(route) || permissionFor[route]?.some(can))
-    && (route === 'notifications' || (commonUserActive && !can('admin') && ['management', 'training'].includes(route)) || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => route === 'notifications'
-      ? hasOccurrencePermission() ? `<button class="module-card" data-route="occurrences" aria-label="Registro de Ocorrências"><span class="module-mark" aria-hidden="true">OC</span><span><strong>REGISTRO DE OCORRÊNCIAS</strong><small>Registrar ocorrência</small></span><span class="arrow" aria-hidden="true">›</span></button>` : ''
-      : (() => {
-        const lockedForCommonUser = commonUserActive && ['management', 'training'].includes(route) && (!canOpenRestrictedModule(route) || !featureEnabledForRoute(route, appFeatures));
-        const lockedAttributes = lockedForCommonUser ? ' disabled aria-disabled="true" class="module-card module-card--inactive" title="Aguardando liberação do administrador"' : ' class="module-card"';
-        return `<button${lockedAttributes} data-route="${route}">
+    && !['training', 'notifications', 'management-hub'].includes(route)
+    && (commonModules.includes(route) || permissionFor[route]?.some(can))
+    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}">
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
-    <span><strong>${title}</strong><small>${lockedForCommonUser ? 'Aguardando liberação do administrador' : subtitle}</small></span>${lockedForCommonUser ? '' : '<span class="arrow" aria-hidden="true">›</span>'}
-  </button>`;
-      })()).join('');
+    <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
+  </button>`).join('');
 }
 
 function hasOccurrencePermission() {
@@ -1267,6 +1263,16 @@ function showScheduleContacts(contacts, context = {}) {
 }
 
 async function loadModule(route) {
+  if(route === 'management-hub'){
+    const content=document.querySelector('#module-content'),uid=session.user?.uid;
+    const {mountManagementHub}=await import('./management-hub.js');
+    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||session.profile?.active!==true||session.profile?.access!==true)return;
+    const initialPanel=location.hash.split('/')[2]||'home';
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,
+      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:hasOccurrencePermission()||can('admin'),occurrences:hasOccurrencePermission(),qmentum:can('admin')},
+      onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
+    return;
+  }
   if(route === 'qmentum'){
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
     const current=()=>currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&can('admin');
@@ -4990,10 +4996,12 @@ async function render() {
     if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!can('admin'))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
-  if (deployment.target === 'FB' && !authLimited) {
-    const nav = document.createElement('nav'); nav.className = 'management-independent-nav'; nav.setAttribute('aria-label','Gestão e Desempenho');
-    nav.innerHTML = '<button type="button" class="secondary-button" data-route="management">GESTÃO</button><button type="button" class="secondary-button" data-route="training">DESEMPENHO</button><a class="secondary-button" href="' + deployment.faBase + '">VOLTAR AO SAHMT</a>';
-    app.prepend(nav);
+  if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute)) {
+    const hubPanel=requestedRoute==='qmentum'?'/indicators':requestedRoute==='occurrences'?'/records':'';
+    app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
+      button.removeAttribute('data-route');button.textContent='VOLTAR À GESTÃO';
+      button.addEventListener('click',()=>location.assign(deployment.faBase+'#/management-hub'+hubPanel));
+    });
   }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
