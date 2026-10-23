@@ -28,12 +28,13 @@ const panels={
 
 // This menu reads no database. Each destination retains its existing session,
 // profile and server authorization checks. Future FD/FE areas stay empty.
-export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',onNavigate,onExit,onPanelChange=()=>{}}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
  const panelAllowed=name=>name==='home'||access[name]===true;
  let disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
- root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><h2 id="management-hub-title" tabindex="-1"></h2></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
+ root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user" data-hub-user></div><h2 id="management-hub-title" tabindex="-1"></h2></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
+ dialog.querySelector('[data-hub-user]').textContent=displayName;
  const render=()=>{
   const spec=panels[panel];dialog.dataset.panel=panel;
   dialog.querySelector('#management-hub-title').textContent=spec.title;

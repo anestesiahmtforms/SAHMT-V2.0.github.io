@@ -1271,7 +1271,7 @@ async function loadModule(route) {
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||session.profile?.active!==true||session.profile?.access!==true)return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,assetBase:import.meta.env.BASE_URL,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',
       access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
