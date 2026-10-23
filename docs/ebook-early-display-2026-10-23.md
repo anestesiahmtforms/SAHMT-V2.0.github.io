@@ -19,6 +19,12 @@ O leitor guarda apenas em atributos locais do diálogo o tempo até a primeira p
 
 Esta versão retira a transação do caminho crítico da primeira apresentação, mas não promete um tempo fixo: rede, inicialização do Apps Script, Drive e desenho ainda variam. Não armazena PDFs privados no GitHub nem modifica seus bytes.
 
+### Ajuste posterior: cache privado de bytes no serviço
+
+Após o relato de 7–10 segundos, o serviço ganhou cache temporário de PDFs até 2 MiB, por 10 minutos, no CacheService do Apps Script. A chave inclui o arquivo e seu checksum. O cache é fragmentado em partes de 80 mil caracteres, com manifesto publicado por último. Cada leitura valida tamanho e digest; fragmentos ausentes/corrompidos ou falha do cache retornam ao caminho original do Drive.
+
+O perfil, público, catálogo e metadados atuais do Drive continuam sendo conferidos antes de servir o material. Somente o novo download dos bytes é evitado. O cache é compartilhado entre solicitações autorizadas, sem nova coleção Firestore, serviços pagos ou publicação dos PDFs. Sua duração é máxima: o Google pode removê-lo antes. A primeira abertura após expiração/remoção ainda precisa baixar o arquivo, e arquivos maiores usam o caminho original. O ganho efetivo no aparelho ainda precisa ser medido.
+
 ## Leitura e pontos atuais
 
 A evidência atual é apresentação/rolagem das páginas e confirmação explícita, não prova de compreensão. Não há tempo mínimo por página. O recibo é vinculado ao UID, material, checksum e versão. A leitura libera individualmente o Forms; sozinha não cria crédito. A resposta validada no Forms é que gera os créditos conforme configuração, incluindo ciência e nota, com revisão administrativa para sugestões.

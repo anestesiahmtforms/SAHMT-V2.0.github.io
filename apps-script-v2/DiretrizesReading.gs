@@ -85,16 +85,43 @@ function dgrCatalog_(id, row, read) {
       pdf.driveUrl!=='https://drive.google.com/file/d/'+row.pdfId+'/view' ||
       [doc,pdf].some(function(item){return item.category!==category || item.audienceGroup!==audience || item.managementAreaId!=='area-gestao-de-documentos';}))throw Error('READING_CATALOG_CHANGED');
 }
+function dgrPdfCacheKey_(row) {return 'READING_PDF_V1_'+sha256Hex_(row.pdfId+'\n'+row.checksum);}
+function dgrCachedPdf_(row,size) {
+  if(size>2*1024*1024)return null;
+  try{
+    const cache=CacheService.getScriptCache(),key=dgrPdfCacheKey_(row),raw=cache.get(key);if(!raw)return null;
+    const manifest=JSON.parse(raw),length=4*Math.ceil(size/3);
+    if(manifest.v!==1||manifest.size!==size||manifest.length!==length||manifest.count!==Math.ceil(length/80000))return null;
+    const keys=Array.from({length:manifest.count},function(_,i){return key+'_'+i;}),parts=cache.getAll(keys);
+    const value=keys.map(function(k){return parts[k]||'';}).join('');
+    if(value.length!==length)return null;
+    const bytes=Utilities.base64Decode(value);
+    if(bytes.length!==size||dgrPdfDigest_(bytes)!==row.checksum)return null;
+    return value;
+  }catch(_){return null;}
+}
+function dgrCachePdf_(row,size,value) {
+  if(size>2*1024*1024)return;
+  try{
+    const cache=CacheService.getScriptCache(),key=dgrPdfCacheKey_(row),count=Math.ceil(value.length/80000),parts={};
+    for(let i=0;i<count;i++)parts[key+'_'+i]=value.slice(i*80000,(i+1)*80000);
+    cache.putAll(parts,600);cache.put(key,JSON.stringify({v:1,size:size,length:value.length,count:count}),600);
+  }catch(_){} // Eviction/quota/cache failure never blocks the original Drive path.
+}
+function dgrPdfDigest_(bytes) {return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,bytes).map(function(n){return ('0'+((n+256)%256).toString(16)).slice(-2);}).join('');}
 function dgrPdf_(row, includeBytes) {
   const metadata = formsEvaluationGoogleRequest_('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(row.pdfId) + '?fields=id,mimeType,size,md5Checksum,trashed');
   if (metadata.id !== row.pdfId || metadata.mimeType !== 'application/pdf' || metadata.trashed === true || metadata.md5Checksum !== row.checksum ||
       !Number.isSafeInteger(Number(metadata.size)) || Number(metadata.size) < 5 || Number(metadata.size) > 6 * 1024 * 1024) throw Error('READING_MATERIAL_CHANGED');
   if (!includeBytes) return {checksum: metadata.md5Checksum};
+  const cached=dgrCachedPdf_(row,Number(metadata.size));
+  if(cached)return {bytes:cached,checksum:row.checksum};
   const bytes = DriveApp.getFileById(row.pdfId).getBlob().getBytes();
   if (bytes.length !== Number(metadata.size) || bytes.length > 6 * 1024 * 1024 || bytes.slice(0,5).map(function (b) { return String.fromCharCode(b); }).join('') !== '%PDF-') throw Error('READING_PDF_INVALID');
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, bytes).map(function (n) { return ('0' + ((n + 256) % 256).toString(16)).slice(-2); }).join('');
+  const digest = dgrPdfDigest_(bytes);
   if (digest !== row.checksum) throw Error('READING_MATERIAL_CHANGED');
-  return {bytes: Utilities.base64Encode(bytes), checksum: digest};
+  const encoded=Utilities.base64Encode(bytes);dgrCachePdf_(row,bytes.length,encoded);
+  return {bytes:encoded,checksum:digest};
 }
 function dgrReceiptId_(uid, documentId, row) { return sha256Hex_(JSON.stringify([uid, documentId, row.version, row.checksum].concat(row.trainingVersion ? [row.trainingVersion] : []))); }
 function dgrOpenMac_(payload) {
