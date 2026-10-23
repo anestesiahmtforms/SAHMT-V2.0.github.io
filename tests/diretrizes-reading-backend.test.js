@@ -43,6 +43,11 @@ function fixture() {
  const send=(action,extra={})=>ctx.dgrHandle_({uid:'reader',email:'reader@example.test',action,documentId:'doc',...extra});
  return {ctx,send,data,props,policy,grants,nativeGrant};
 }
+
+test('backend diagnostics distinguish quota, backoff and permissions without exposing error text',()=>{
+ const f=fixture();
+ for(const [error,expected] of [[{status:429,retryAfter:Date.now()+60000},'READING_FIRESTORE_BACKOFF'],[{status:429},'READING_FIRESTORE_QUOTA_WAIT'],[{status:403},'READING_FIRESTORE_FORBIDDEN'],[{status:403,service:'drive'},'READING_GOOGLE_FORBIDDEN'],[{status:401},'READING_BACKEND_UNAUTHORIZED'],[{status:503},'READING_BACKEND_UPSTREAM_FAILED']])assert.equal(f.ctx.dgrFailureCode_({...error,message:'private contents'}),expected);
+});
 test('first read, coverage and idempotent completion retain identity without scoring',()=>{
  const f=fixture(),s=f.send('start');assert.equal(s.code,'READING_STARTED');
  assert.throws(()=>f.send('complete',{sessionId:s.sessionId,pages:[1]}),/READING_INCOMPLETE/);
@@ -138,7 +143,9 @@ test('receiver authenticates HMAC, rejects replay/expiry/tampering before work',
  assert.equal(send(input,true).code,'READING_DENIED');assert.equal(calls,0);
  assert.equal(send(input).code,'READING_STARTED');assert.equal(calls,1);
  assert.equal(send(input).code,'READING_REPLAY_DENIED');assert.equal(calls,1);
- assert.equal(send({...input,nonce:'e'.repeat(32),issuedAt:now-120000,expiresAt:now-60000}).code,'READING_UNAVAILABLE');assert.equal(calls,1);
+ assert.equal(send({...input,nonce:'e'.repeat(32),issuedAt:now-120000,expiresAt:now-60000}).code,'READING_INPUT_INVALID');assert.equal(calls,1);
+ f.ctx.dgrHandle_=()=>{throw new ReferenceError('private-helper is not defined');};
+ const failed=send({...input,nonce:'d'.repeat(32)});assert.equal(failed.code,'READING_BACKEND_REFERENCE_FAILED');assert.ok(!JSON.stringify(failed).includes('private-helper'));
 });
 test('Apps Script setup is valid V8 syntax',()=>{
  assert.doesNotThrow(()=>new vm.Script(readFileSync(new URL('../apps-script-v2/DiretrizesReadingSetup.gs',import.meta.url),'utf8')));

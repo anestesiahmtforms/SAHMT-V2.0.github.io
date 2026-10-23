@@ -181,6 +181,17 @@ function dgrReply_(nonce, data, key) {
   const payload = Utilities.base64EncodeWebSafe(JSON.stringify(Object.assign({v:1,nonce:nonce},data)),Utilities.Charset.UTF_8).replace(/=+$/,'');
   return ospJson_({payload:payload,mac:dgrMac_(payload,key)});
 }
+function dgrFailureCode_(error) {
+  if(error && error.message==='READING_INPUT_INVALID')return 'READING_INPUT_INVALID';
+  if(error && error.message==='EVALUATION_CROSS_PROJECT_TRANSACTION')return 'READING_TRANSACTION_PROJECT_FAILED';
+  if(error && error.status===429)return Number.isFinite(error.retryAfter)?'READING_FIRESTORE_BACKOFF':error.service?'READING_GOOGLE_QUOTA_WAIT':'READING_FIRESTORE_QUOTA_WAIT';
+  if(error && error.status===403)return error.service?'READING_GOOGLE_FORBIDDEN':'READING_FIRESTORE_FORBIDDEN';
+  if(error && error.status===401)return 'READING_BACKEND_UNAUTHORIZED';
+  if(error && error.status>=500)return 'READING_BACKEND_UPSTREAM_FAILED';
+  if(error && error.name==='ReferenceError')return 'READING_BACKEND_REFERENCE_FAILED';
+  if(error && error.name==='TypeError')return 'READING_BACKEND_TYPE_FAILED';
+  return 'READING_BACKEND_FAILED';
+}
 function diretrizesReadingHttp_(event) {
   let request, key, lock;
   try {
@@ -207,8 +218,8 @@ function diretrizesReadingHttp_(event) {
     return dgrReply_(request.nonce,dgrHandle_(request),key);
   } catch (error) {
     const allowed=['READING_DISABLED','READING_ACCESS_DENIED','READING_CONFIG_MISSING','READING_CONFIG_INVALID','READING_CUTOVER_REQUIRED','READING_CATALOG_CHANGED','READING_MATERIAL_CHANGED','READING_PDF_INVALID','READING_SESSION_INVALID','READING_PAGES_INVALID','READING_INCOMPLETE','READING_GRANT_PENDING'];
-    const code=allowed.includes(error && error.message)?error.message:'READING_UNAVAILABLE';
-    if(code==='READING_UNAVAILABLE'){
+    const code=allowed.includes(error && error.message)?error.message:dgrFailureCode_(error);
+    if(!allowed.includes(code)){
       const message=String(error&&error.message||''),symbol=message.match(/^([A-Za-z_$][A-Za-z0-9_$]{0,80}) is not defined$/);
       console.warn(JSON.stringify({code:'READING_RUNTIME_FAILURE',operation:request&&['start','progress','complete'].includes(request.action)?request.action:'input',reason:/^(READING|EVALUATION|INDEPENDENT|PDF)_[A-Z_]{1,70}$/.test(message)?message:'UNEXPECTED',kind:['Error','TypeError','ReferenceError','RangeError','SyntaxError'].includes(error&&error.name)?error.name:'Error',status:Number.isInteger(error&&error.status)?error.status:null,missingSymbol:symbol?symbol[1]:null}));
     }
