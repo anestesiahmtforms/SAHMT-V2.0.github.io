@@ -25,6 +25,8 @@ Após a correção da autenticação, o iPhone apresentou um documento de sete p
 
 A versão 223 confirma a renderização somente após a promessa de desenho concluir. A extração de texto ocorre separadamente; sua falha mantém a visualização PDF disponível e o botão TEXTO desativado. Respostas antigas de texto são descartadas após navegação ou fechamento, e cada nova página inicia na visualização PDF. A renderização que falha continua sem crédito de leitura.
 
+O PDF.js usa iteração assíncrona de `ReadableStream` em `getTextContent`, ausente nas versões afetadas do Safari. A extração do leitor passa a consumir `streamTextContent().getReader().read()` diretamente, preservando o modo TEXTO sem modificar globais do navegador. O teste remove `ReadableStream.prototype[Symbol.asyncIterator]` antes de abrir um PDF real e confirma a extração e conclusão. Referências do projeto: [Mozilla PDF.js #21924](https://github.com/mozilla/pdf.js/issues/21924), [#21557](https://github.com/mozilla/pdf.js/issues/21557).
+
 O teste em navegador com viewport móvel cobre PDF real, extração de texto que falha, conclusão após duas páginas apresentadas e falha real de renderização que impede concluir. Os 75 testes de cliente, backend, relay e service worker passaram. A confirmação no iPhone da versão 223 permanece separada.
 
 ## Limpeza em FA

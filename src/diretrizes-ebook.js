@@ -7,6 +7,18 @@ async function loadPdf(bytes) {
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   return pdfjs.getDocument({data: bytes, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
 }
+async function extractPageText(page, signal) {
+  // PDF.js getTextContent uses ReadableStream async iteration, unavailable in
+  // affected Safari versions. getReader/read works there without global patches.
+  if(typeof page.streamTextContent!=='function')return page.getTextContent();
+  const reader=page.streamTextContent().getReader(),items=[];
+  const abort=()=>{void reader.cancel().catch(()=>{});};
+  signal.addEventListener('abort',abort,{once:true});
+  try{
+    while(!signal.aborted){const {done,value}=await reader.read();if(done)break;for(const item of value.items||[])items.push(item);}
+    return {items};
+  }finally{signal.removeEventListener('abort',abort);reader.releaseLock();}
+}
 const messages = {
   READING_ACCESS_DENIED: 'Seu acesso a este documento não está autorizado.',
   READING_LOGIN_REQUIRED: 'Entre novamente para continuar a leitura.',
@@ -89,7 +101,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       // Text extraction is an optional alternate view. A failure or delay here
       // must not invalidate a successfully rendered PDF page or its reading gate.
       const renderedPage=state.page,renderTask=state.renderTask;
-      void Promise.resolve().then(()=>page.getTextContent()).then(content=>{
+      void Promise.resolve().then(()=>extractPageText(page,state.controller.signal)).then(content=>{
         if(!active(state)||state.renderedPage!==renderedPage||state.renderTask!==renderTask)return;
         text.textContent=content.items.map(item=>String(item.str||'')+(item.hasEOL?'\n':' ')).join('');
         state.textAvailable=Boolean(text.textContent.trim());controls(state);
