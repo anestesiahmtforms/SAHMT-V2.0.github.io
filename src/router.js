@@ -1,5 +1,5 @@
 import {deployment} from './deployment-context.js';
-const routes = new Set(['home', 'events', 'labels', 'management', 'qmentum', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'offline']);
+const routes = new Set(['home', 'events', 'labels', 'management-hub', 'management', 'qmentum', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'offline']);
 
 export function currentRoute() {
   const route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';

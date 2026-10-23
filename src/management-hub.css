@@ -1,0 +1,21 @@
+.management-hub-dialog{position:fixed;inset:max(12px,4dvh,env(safe-area-inset-top)) max(10px,4vw) max(12px,4dvh,env(safe-area-inset-bottom));box-sizing:border-box;width:min(92vw,780px);height:auto;max-height:920px;max-width:none;margin:auto;padding:0;overflow:hidden;border:2px solid #fff;border-radius:22px;color:#123854;background:linear-gradient(145deg,#fffaf0,#e5eff3);box-shadow:0 22px 70px #001b3577;overscroll-behavior:contain}
+.management-hub-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.management-hub-dialog::backdrop{background:#041c30d9;backdrop-filter:blur(4px)}
+.management-hub-header{display:flex;align-items:center;justify-content:center;gap:12px;min-height:76px;padding:16px;background:linear-gradient(145deg,#1d6087,#103a60);color:#fff;border-bottom:2px solid #fff;text-align:center}
+.management-hub-header h2{margin:0;color:inherit;font-size:clamp(1.1rem,3.8vw,1.55rem);font-weight:950;line-height:1.2;overflow-wrap:anywhere}
+.management-hub-header h2:focus{outline:none}
+.management-hub-icon{display:block;flex:0 0 auto;width:30px;height:30px}
+.management-hub-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:clamp(14px,3vw,28px);-webkit-overflow-scrolling:touch}
+.management-hub-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(12px,2dvh,20px);align-content:center;min-height:100%;padding-bottom:6px}
+.management-hub-button{display:flex;align-items:center;gap:14px;width:100%;min-height:clamp(58px,9dvh,92px);padding:14px 18px;border:2px solid #fff;border-radius:16px;background:linear-gradient(145deg,#fffdf5,#dce9ed);color:#133a59;font:inherit;font-size:clamp(.9rem,3.5vw,1.12rem);font-weight:900;text-align:left;box-shadow:0 5px 0 #9eb4bd,0 9px 15px #092f4c22,inset 0 1px 0 #fff;cursor:pointer;touch-action:manipulation}
+.management-hub-button>span:not(.management-hub-arrow){flex:1;min-width:0;overflow-wrap:anywhere}
+.management-hub-arrow{font-size:1.8rem;line-height:1}
+.management-hub-button:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px 0 #9eb4bd,0 5px 9px #092f4c22}
+.management-hub-button:focus-visible{outline:3px solid #2779b0;outline-offset:3px}
+.management-hub-button:disabled{opacity:.55;filter:grayscale(.6);cursor:not-allowed}
+.management-hub-footer{padding:14px 18px max(14px,env(safe-area-inset-bottom));border-top:1px solid #bfced5;background:linear-gradient(145deg,#fffaf0,#dce9ed)}
+.management-hub-footer button{width:100%;min-height:48px;margin:0;font-weight:950}
+.management-hub-empty{display:flex;min-height:100%;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;font-size:1rem;line-height:1.6}
+.management-hub-empty>.management-hub-icon{width:64px;height:64px;color:#2779a2}
+@media(min-width:680px){.management-hub-dialog[data-panel="home"] .management-hub-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.management-hub-dialog[data-panel="home"] .management-hub-button:last-child{grid-column:1/-1}}
+@media(max-height:580px){.management-hub-header{min-height:48px;padding:10px}.management-hub-body{padding:12px}.management-hub-grid{gap:10px;align-content:start}.management-hub-button{min-height:48px;padding:10px 12px;font-size:.85rem}.management-hub-icon{width:25px;height:25px}.management-hub-footer{padding:10px 12px}.management-hub-footer button{min-height:42px}}

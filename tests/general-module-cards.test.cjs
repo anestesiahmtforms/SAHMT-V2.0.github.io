@@ -69,14 +69,14 @@ function cardMarkup(h, route) {
 const legacyManagementPermissions = ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage'];
 
 for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) {
-  test(`Gestão aparece inativa e não carrega para ${role}, mesmo com permissões antigas`, async () => {
+  test(`menu Gestão aparece para ${role}, mas grupos continuam protegidos sem liberação`, async () => {
     for (const permission of legacyManagementPermissions) {
       const session = approved({[permission]: true}, role);
       const before = structuredClone(session);
       const h = harness({session, route: 'management'});
-      assert.equal(visibleRoutes(h).includes('management'), true, permission);
-      assert.match(cardMarkup(h, 'management'), /disabled/);
-      assert.match(cardMarkup(h, 'management'), /Aguardando liberação do administrador/);
+      assert.equal(visibleRoutes(h).includes('management-hub'), true, permission);
+      assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
+      assert.equal(h.context.canOpenRestrictedModule('management'), false);
       await h.ui.loadModule('management');
       assert.deepEqual(h.navigations, ['home'], permission);
       assert.deepEqual(h.imports, [], permission);
@@ -96,7 +96,7 @@ function renderHarness(session) {
     labelReportLoad: 0, labelReportLoadingMore: false, labelReportState: 'idle',
     scheduleGridObserver:null, cleanupLabelMedia: null, cleanupCurrentModule: null, cleanupDocumentTraining:null, cleanupUserInspection:null, startupBannerActive: false,
     stopChecklistQrScanner() {}, currentRoute: () => 'management',
-    app: {innerHTML: ''}, notice: '', labels: {management: ['Gestão']},
+    app: {innerHTML: '', querySelectorAll: () => []}, notice: '', labels: {management: ['Gestão']},
     navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
     featureEnabledForRoute: () => true, preloadOperationalDataWhenIdle() {}, renderOfflineOperationalView: async () => {},
     document: {querySelectorAll: () => [], querySelector: () => null},
@@ -187,15 +187,16 @@ test('link direto de Gestão bloqueia antes de renderizar e carregar; revogaçã
   }
 });
 
-test('Gestão e Desempenho aparecem inativos para usuários comuns enquanto aguardam liberação', () => {
+test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Desempenho', () => {
   const session = approved();
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['management', 'training']);
-  assert.match(cardMarkup(h, 'management'), /disabled/);
-  assert.match(cardMarkup(h, 'training'), /disabled/);
+  assert.deepEqual(visibleRoutes(h), ['management-hub']);
+  assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
+  assert.equal(h.context.canOpenRestrictedModule('management'), false);
+  assert.equal(h.context.canOpenRestrictedModule('training'), false);
   assert.match(h.ui.moduleCards(), /<strong>Gestão<\/strong>/);
-  assert.match(h.ui.moduleCards(), /<strong>Desempenho<\/strong>/);
+  assert.doesNotMatch(h.ui.moduleCards(), /data-route="training"/);
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
   for (const permission of ['trainingsRead', 'trainingsManage', 'notificationsRead', 'notificationsManage', 'usersManage', 'admin']) {
     assert.equal(h.ui.can(permission), false, `${permission} continua sem concessão`);
@@ -206,13 +207,14 @@ test('Gestão e Desempenho aparecem inativos para usuários comuns enquanto agua
   assert.deepEqual(session, before);
 });
 
-test('o botão antigo de notificações abre Registro de Ocorrências para todo usuário ativo e autorizado', () => {
+test('Ocorrências fica dentro de Gestão sem conceder novas permissões ao usuário', () => {
   for (const session of [approved(), approved({notificationsRead: false, occurrencesWrite: false}, 'gestor')]) {
     const before = structuredClone(session);
     const h = harness({session, appFeatures: {occurrences: true, notifications: false}});
     const cards = h.ui.moduleCards();
-    assert.equal((cards.match(/data-route="occurrences"/g) || []).length, 1);
-    assert.match(cards, /<strong>REGISTRO DE OCORRÊNCIAS<\/strong>/);
+    assert.equal((cards.match(/data-route="occurrences"/g) || []).length, 0);
+    assert.match(cards, /data-route="management-hub"/);
+    assert.equal(h.context.hasOccurrencePermission(), true);
     assert.doesNotMatch(cards, /NOTIFICAÇÕES DE EVENTOS|data-route="notifications"/);
     assert.deepEqual(session, before);
   }
@@ -222,7 +224,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
   const session = approved({trainingsRead: false, notificationsRead: false, labelsWrite: true});
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['labels', 'management', 'training']);
+  assert.deepEqual(visibleRoutes(h), ['labels', 'management-hub']);
   assert.equal(h.ui.can('trainingsRead'), false);
   assert.equal(h.ui.can('notificationsRead'), false);
   assert.deepEqual(session, before);
@@ -231,9 +233,9 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
 test('administradores preservam os cartões e os controles administrativos existentes', () => {
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
-    assert.deepEqual(visibleRoutes(h), ['events', 'labels', 'management', 'checklist', 'training']);
-    assert.doesNotMatch(cardMarkup(h, 'management'), /disabled/);
-    assert.doesNotMatch(cardMarkup(h, 'training'), /disabled/);
+    assert.deepEqual(visibleRoutes(h), ['events', 'labels', 'management-hub', 'checklist']);
+    assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
+    assert.equal(h.context.canOpenRestrictedModule('training'), true);
     assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);
     assert.match(h.ui.actionForm('training'), /id="training-catalog-form"/);
     assert.match(h.ui.actionForm('notifications'), /data-module-form="notifications"/);
@@ -256,22 +258,23 @@ test('o acesso comum aos cartões exige sessão aprovada e ambos os indicadores 
   for (const session of sessions) assert.deepEqual(visibleRoutes(harness({session})), [], JSON.stringify(session));
 });
 
-test('Gestão e Desempenho continuam visíveis e inativos para comuns com as flags desligadas', () => {
+test('o menu Gestão permanece disponível quando os destinos estão desativados', () => {
   const common = harness({session: approved(), appFeatures: {management: false, trainings: false, notifications: false}});
-  assert.deepEqual(visibleRoutes(common), ['management', 'training']);
-  assert.match(cardMarkup(common, 'management'), /disabled/);
-  assert.match(cardMarkup(common, 'training'), /disabled/);
+  assert.deepEqual(visibleRoutes(common), ['management-hub']);
+  assert.doesNotMatch(cardMarkup(common, 'management-hub'), /disabled/);
+  assert.equal(common.context.canOpenRestrictedModule('management'), false);
+  assert.equal(common.context.canOpenRestrictedModule('training'), false);
   assert.equal(visibleRoutes(common).includes('notifications'), false);
   const admin = harness({session: approved({}, 'administrador_app'), appFeatures: {management: false, trainings: false, notifications: false}});
   assert.equal(visibleRoutes(admin).includes('training'), false);
   assert.equal(visibleRoutes(admin).includes('notifications'), false);
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), ['management', 'training']);
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['management', 'training']);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), ['management-hub']);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['management-hub']);
 });
 
 test('permissões de leitura existentes permitem consultar sem mostrar formulários de gestão', () => {
   const h = harness({session: approved({trainingsRead: true, notificationsRead: true})});
-  assert.deepEqual(visibleRoutes(h), ['management', 'training']);
+  assert.deepEqual(visibleRoutes(h), ['management-hub']);
   assert.equal(h.ui.can('trainingsRead'), true);
   assert.equal(h.ui.can('notificationsRead'), true);
   assert.equal(h.ui.can('trainingsManage'), false);
@@ -334,11 +337,13 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
 
 test('pausa administrativa mantém os dois módulos inativos mesmo com permissões individuais', () => {
  const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.match(cardMarkup(h,'management'), /disabled/);
- assert.match(cardMarkup(h,'training'), /disabled/);
+ assert.doesNotMatch(cardMarkup(h,'management-hub'), /disabled/);
+ assert.equal(h.context.canOpenRestrictedModule('management'),false);
+ assert.equal(h.context.canOpenRestrictedModule('training'),false);
  const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.match(cardMarkup(p,'management'), /disabled/);
- assert.match(cardMarkup(p,'training'), /disabled/);
+ assert.doesNotMatch(cardMarkup(p,'management-hub'), /disabled/);
+ assert.equal(p.context.canOpenRestrictedModule('management'),false);
+ assert.equal(p.context.canOpenRestrictedModule('training'),false);
 });
 test('liberação de domínio exige perfil ativo e permissão booleana', () => {
  const h=harness();
@@ -360,7 +365,7 @@ test('liberação individual habilita apenas os dois módulos solicitados, sem p
   const session = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
   const before = structuredClone(session);
   const h = harness({session, route: 'training'});
-  for (const route of ['management', 'training']) assert.doesNotMatch(cardMarkup(h, route), /disabled/);
+  for (const route of ['management', 'training']) assert.equal(h.context.canOpenRestrictedModule(route),true);
   for (const permission of ['admin', 'usersManage', 'managementManage', 'trainingsManage']) assert.equal(h.ui.can(permission), false);
   assert.equal(h.ui.managementUtilityCards(), '');
   await h.ui.loadModule('training');
@@ -376,8 +381,8 @@ test('liberação individual habilita apenas os dois módulos solicitados, sem p
 test('liberações de Gestão e Desempenho são independentes e não liberam QMENTUM', () => {
   for (const [flag, route, blocked] of [['managementModuleEnabled','management','training'], ['performanceModuleEnabled','training','management']]) {
     const h = harness({session: individuallyReleased({[flag]: true})});
-    assert.doesNotMatch(cardMarkup(h, route), /disabled/);
-    assert.match(cardMarkup(h, blocked), /disabled/);
+    assert.equal(h.context.canOpenRestrictedModule(route),true);
+    assert.equal(h.context.canOpenRestrictedModule(blocked),false);
     assert.equal(h.context.canOpenRestrictedModule('qmentum'), false);
   }
 });
