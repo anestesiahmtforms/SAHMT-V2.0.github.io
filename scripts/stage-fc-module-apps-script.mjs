@@ -14,6 +14,13 @@ async function main(){
  const client=await createConsolidationScriptClient();
  const [remote,deployments]=await Promise.all([client.readContent(),client.readDeployments()]);
  demand(Array.isArray(remote.files)&&remote.files.length===73&&Array.isArray(deployments.deployments)&&deployments.deployments.length===4,'FC_SCRIPT_REMOTE_SHAPE_CHANGED');
+ const targetDeploymentId=process.env.SAHMT_FC_APPS_SCRIPT_DEPLOYMENT_ID;
+ demand(typeof targetDeploymentId==='string'&&targetDeploymentId.length>0,'FC_SCRIPT_TARGET_DEPLOYMENT_REQUIRED');
+ const targetDeployments=deployments.deployments.filter(item=>item.deploymentId===targetDeploymentId);
+ demand(targetDeployments.length===1,'FC_SCRIPT_TARGET_DEPLOYMENT_INVALID');
+ const targetDescription=String(targetDeployments[0].deploymentConfig?.description||'');
+ demand(/(?:^|\b)(?:FC|INDICADORES|QMENTUM|OCORR[EÊ]NCIAS)(?:\b|$)/i.test(targetDescription),'FC_SCRIPT_TARGET_DEPLOYMENT_NOT_LABELED');
+ demand(Number.isSafeInteger(targetDeployments[0].deploymentConfig?.versionNumber)&&targetDeployments[0].deploymentConfig.versionNumber>0,'FC_SCRIPT_TARGET_DEPLOYMENT_NOT_VERSIONED');
  const next=structuredClone(remote),originalByName=new Map(remote.files.map(file=>[file.type+'\n'+file.name,file]));
  demand(originalByName.size===remote.files.length,'FC_SCRIPT_DUPLICATE_REMOTE_FILE');
  const local=new Map();
@@ -41,14 +48,12 @@ async function main(){
   }
  }
  const version=await client.createVersion('FC independent modules: QMENTUM and occurrences');
- const updated=[];
- for(const deployment of deployments.deployments){
-  if(!Number.isSafeInteger(deployment.deploymentConfig?.versionNumber))continue;
-  await client.updateDeployment(deployment,version.versionNumber,'FC independent modules: QMENTUM and occurrences');
-  updated.push(deployment.deploymentId);
- }
+ const deployment=targetDeployments[0],updated=[];
+ await client.updateDeployment(deployment,version.versionNumber,'FC independent modules: QMENTUM and occurrences');
+ updated.push(deployment.deploymentId);
  const current=await client.readDeployments();
  assertConsolidationDeployments({before:deployments,current,versionNumber:version.versionNumber});
- console.log(JSON.stringify({code:'FC_MODULE_APPS_SCRIPT_STAGED',updatedFiles:changed.length,remoteFilesPreserved:remote.files.length-FILES.length,version:version.versionNumber,versionedDeploymentsUpdated:updated.length,headDeploymentPreserved:deployments.deployments.length-updated.length,backup}));
+ console.log(JSON.stringify({code:'FC_MODULE_APPS_SCRIPT_STAGED',updatedFiles:changed.length,remoteFilesPreserved:remote.files.length-FILES.length,version:version.versionNumber,targetDeploymentId:deployment.deploymentId,versionedDeploymentsUpdated:updated.length,otherDeploymentsPreserved:deployments.deployments.length-updated.length,backup}));
 }
 main().catch(error=>{const code=/^FC_SCRIPT_[A-Z0-9_]+$/.test(error.message||'')?error.message:'FC_MODULE_APPS_SCRIPT_STAGE_FAILED';console.error(JSON.stringify({code,automaticRollback:false}));process.exitCode=1;});
+
