@@ -26,6 +26,7 @@ export function createFcModuleSession({auth, sourceUid, authApi = {GoogleAuthPro
 
 export async function waitForFcModuleSession(container, {auth, sourceUid, title, isCurrent = () => true} = {}) {
   const session = createFcModuleSession({auth, sourceUid});
+  await auth.authStateReady?.();
   if (session.current()) return auth;
   if (!container?.isConnected || !isCurrent()) return null;
   container.innerHTML = `<section class="management-area-detail"><h3>Conectar ao Firebase Registros</h3><p>Para abrir ${title}, confirme a mesma conta Google usada no app.</p><button class="primary-button" type="button" data-fc-module-login>Continuar com Google</button><p role="status" aria-live="polite" data-fc-module-status></p></section>`;

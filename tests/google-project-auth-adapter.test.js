@@ -42,6 +42,17 @@ function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFail
     restoreTimeoutMs:25,verifyDestination:async args=>{calls.push({kind:'preflight',target:args.entry.config.projectId});return verify?.(args);}});
   return {runtime,auth,instances,apps,calls,saved};
 }
+test('módulos FC reutilizam a sessão coordenada, incluindo bloqueio de outra identidade e saída global',async()=>{
+  const h=fixture({persisted:{FC:person()}});
+  const fc=h.runtime.getTargetAuth('FC');
+  await h.runtime.reconcile(h.auth.currentUser);
+  assert.equal(h.runtime.getTargetAuth('FC'),fc);
+  assert.equal(h.calls.filter(c=>c.kind==='initialize'&&c.target==='FC').length,1);
+  assert.throws(()=>fc.guard(person('different-uid')),/AUTH_UID_MISMATCH/);
+  await h.runtime.controller.signOutAll();
+  assert.equal(fc.currentUser,null);
+});
+
 test('uma confirmação Google conecta quatro destinos com SDK e mesma identidade',async()=>{
   const f=fixture();await f.runtime.reconcile(f.auth.currentUser);
   const first=f.runtime.confirm(credential),second=f.runtime.confirm(credential);assert.equal(first,second);await first;

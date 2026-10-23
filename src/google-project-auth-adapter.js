@@ -90,5 +90,6 @@ function assertCanStartPrimarySignIn(){
   if(coordinator.snapshot().signingOut)throw fail('AUTH_LOGOUT_IN_PROGRESS');
 }
 
-return {controller:coordinator,confirm:confirmGoogleProjectAccess,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn};
+return {controller:coordinator,confirm:confirmGoogleProjectAccess,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,
+  getTargetAuth:target=>{if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');return targetAuth(target);}};
 }
