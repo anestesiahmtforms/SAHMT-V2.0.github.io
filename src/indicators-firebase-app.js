@@ -7,8 +7,8 @@ import {resolveFirebaseProjectApp} from './firebase-projects.js';
 export function getIndicatorsApp() {
   return resolveFirebaseProjectApp({target: 'FC', enabled: indicatorsFirebaseEnabled,
     config: indicatorsFirebaseConfig, getApps, initializeApp,
-    invalidConfigMessage: 'A configuração Firebase de Indicadores está ausente ou não corresponde ao projeto aprovado.',
-    mismatchMessage: 'A instância Firebase de Indicadores não corresponde ao projeto aprovado.'});
+    invalidConfigMessage: 'A configuração Firebase de Registros está ausente ou não corresponde ao projeto aprovado.',
+    mismatchMessage: 'A instância Firebase de Registros não corresponde ao projeto aprovado.'});
 }
 
 /** Returns only the FC Firestore instance, and only when the FC feature is enabled. */
@@ -24,6 +24,6 @@ export function getIndicatorsAuth() {
   try { return initializeAuth(app, {persistence: inMemoryPersistence}); }
   catch (error) {
     if (error?.code === 'auth/already-initialized') return getAuth(app);
-    throw new Error('A autenticação do Firebase de Indicadores não pôde ser inicializada.');
+    throw new Error('A autenticação do Firebase de Registros não pôde ser inicializada.');
   }
 }

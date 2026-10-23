@@ -39,7 +39,7 @@ export const GOOGLE_PROJECT_CONFIG = Object.freeze({
     "clientSignupDisabled": true
   },
   "FC": {
-    "label": "Indicadores",
+    "label": "Registros",
     "appName": "sahmt-fc-direct",
     "config": {
       "apiKey": "AIzaSyA_NMnXXdGgd6aM0AHHWut0uifw5hXKYrw",
@@ -57,7 +57,7 @@ export const GOOGLE_PROJECT_CONFIG = Object.freeze({
     "clientSignupDisabled": true
   },
   "FD": {
-    "label": "Rotinas",
+    "label": "Indicadores",
     "appName": "sahmt-fd-direct",
     "config": {
       "apiKey": "AIzaSyASifVm_jtSW8Q7wABBp5fgzMqaGuZTyb8",
@@ -75,7 +75,7 @@ export const GOOGLE_PROJECT_CONFIG = Object.freeze({
     "clientSignupDisabled": true
   },
   "FE": {
-    "label": "Outros",
+    "label": "Enquetes/Consultas",
     "appName": "sahmt-fe-direct",
     "config": {
       "apiKey": "AIzaSyCWgKi55gx_jJ0h5gwqBaj5hQlc4SDwtrE",
