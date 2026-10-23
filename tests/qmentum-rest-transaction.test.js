@@ -6,7 +6,8 @@ import {readFile} from 'node:fs/promises';
 const code=await readFile(new URL('../apps-script-v2/QmentumQuarterly.gs',import.meta.url),'utf8');
 function fixture({stale=false,missing=false,fail=false}={}){
  const calls=[];
- const context={firestoreDocumentsUrl_:suffix=>suffix,firestoreRequest_:(suffix,options)=>{
+ const context={QMENTUM_DATA_PROJECT_:'indicadores---sahmt',firestoreRequest_:(url,options)=>{
+  const suffix=String(url).replace(/^https:\/\/firestore\.googleapis\.com\/v1\/projects\/indicadores---sahmt\/databases\/\(default\)\/documents/,'');
   const body=JSON.parse(options.payload);calls.push({suffix,body});assert.equal(options.method,'post');
   if(suffix===':beginTransaction')return {transaction:'synthetic-transaction'};
   if(suffix===':batchGet'){assert.deepEqual(body.mask,{fieldPaths:['schemaVersion']});return missing?[{missing:'profile'}]:[{found:{name:'profile',updateTime:stale?'changed':'t1'}}];}

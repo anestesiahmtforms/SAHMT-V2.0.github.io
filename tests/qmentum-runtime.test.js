@@ -4,7 +4,7 @@ import {createQmentumRepository} from '../src/qmentum-data.js';
 import {emptyInputs,initialDefinitions} from '../src/qmentum-catalog.js';
 
 function fixture() {
- const app={options:{projectId:'sahmt-17a16'}},uid='runtime-user',reads=[],transactionReads=[];
+ const app={options:{projectId:'indicadores---sahmt'}},uid='runtime-user',reads=[],transactionReads=[];
  const definitions=initialDefinitions(),docs=new Map([
   ['users/'+uid,{uid,active:true,access:true}],
   ['qmentumAccess/'+uid,{uid,active:true,role:'manager',units:['unit-a']}],
@@ -12,7 +12,7 @@ function fixture() {
   ['qmentumUnits/unit-a',{unitId:'unit-a',name:'Synthetic unit',active:true}],
   ['qmentumDefinitions/1',definitions]
  ]);
- const auth={app,currentUser:{uid,getIdTokenResult:async()=>({claims:{aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16',sub:uid}})}};
+ const auth={app,currentUser:{uid,getIdTokenResult:async()=>({claims:{aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:uid}})}};
  const state={beforeRead:null,rows:[],current:true,commands:[]};
  const snapshot=path=>({exists:()=>docs.has(path),data:()=>structuredClone(docs.get(path))});
  const firestore={
