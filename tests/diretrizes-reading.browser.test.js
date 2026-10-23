@@ -9,6 +9,7 @@ test('real PDF rendering, mobile modal, coverage, completion and close cleanup',
   browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:390,height:844}});
   await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html');await page.waitForFunction(()=>window.readingFixtureReady);
+  await page.evaluate(()=>{delete Promise.try;delete Promise.withResolvers;});
   await page.locator('[data-open-diretriz-reader]').click();await page.waitForFunction(()=>document.querySelector('canvas').width>0&&document.querySelector('[data-reader-next]').disabled===false);
   assert.equal(await page.locator('dialog[open]').count(),1);assert.equal(await page.locator('[data-reader-complete]').isDisabled(),true);
   const box=await page.locator('[data-reader-close]').boundingBox();assert.ok(box.y+box.height<=844);

@@ -36,6 +36,8 @@ jobs:
         run: npm ci --prefix functions
       - name: Run domain tests
         run: npm run test:domain
+      - name: Verify ebook reader transport and backend
+        run: node --test tests/diretrizes-reading.test.js tests/diretrizes-reading-backend.test.js
       - name: Run five-project Google authentication regression
         run: npm run test:google-project-auth
       - name: Verify independent FB data and rules contracts

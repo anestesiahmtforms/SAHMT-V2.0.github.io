@@ -208,6 +208,10 @@ function diretrizesReadingHttp_(event) {
   } catch (error) {
     const allowed=['READING_DISABLED','READING_ACCESS_DENIED','READING_CONFIG_MISSING','READING_CONFIG_INVALID','READING_CUTOVER_REQUIRED','READING_CATALOG_CHANGED','READING_MATERIAL_CHANGED','READING_PDF_INVALID','READING_SESSION_INVALID','READING_PAGES_INVALID','READING_INCOMPLETE','READING_GRANT_PENDING'];
     const code=allowed.includes(error && error.message)?error.message:'READING_UNAVAILABLE';
+    if(code==='READING_UNAVAILABLE'){
+      const message=String(error&&error.message||''),symbol=message.match(/^([A-Za-z_$][A-Za-z0-9_$]{0,80}) is not defined$/);
+      console.warn(JSON.stringify({code:'READING_RUNTIME_FAILURE',operation:request&&['start','progress','complete'].includes(request.action)?request.action:'input',reason:/^(READING|EVALUATION|INDEPENDENT|PDF)_[A-Z_]{1,70}$/.test(message)?message:'UNEXPECTED',kind:['Error','TypeError','ReferenceError','RangeError','SyntaxError'].includes(error&&error.name)?error.name:'Error',status:Number.isInteger(error&&error.status)?error.status:null,missingSymbol:symbol?symbol[1]:null}));
+    }
     return request && /^[a-f0-9]{32}$/.test(request.nonce || '') && key ? dgrReply_(request.nonce,{code:code},key) : ospJson_({code:'READING_DENIED'});
   } finally {if(lock)lock.releaseLock();}
 }

@@ -13,6 +13,6 @@ export function createReadingClient({endpoint,getUser,fetchImpl=fetch}){
    const data=await response.json();if(getUser()?.uid!==user.uid)throw Error('READING_USER_CHANGED');
    if(!response.ok||!['READING_STARTED','READING_PROGRESS_SAVED','READING_RELEASED','READING_COMPLETED'].includes(data?.code))throw Error(/^READING_[A-Z_]+$/.test(data?.code||'')?data.code:'READING_UNAVAILABLE');
    return data;
-  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+  }catch(error){if(/^READING_[A-Z_]+$/.test(error?.message||''))throw error;throw Error(error?.name==='AbortError'?'READING_TIMEOUT':error?.name==='SyntaxError'?'READING_RESPONSE_INVALID':'READING_NETWORK_FAILED');}finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
  }};
 }

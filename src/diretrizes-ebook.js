@@ -2,8 +2,8 @@ import './diretrizes-ebook.css';
 import {createReadingClient} from './diretrizes-reading.js';
 
 async function loadPdf(bytes) {
-  const pdfjs = await import('pdfjs-dist');
-  const {default: workerUrl} = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const {default: workerUrl} = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
   return pdfjs.getDocument({data: bytes, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
 }
@@ -18,7 +18,15 @@ const messages = {
   READING_CONFIG_MISSING: 'O serviço de leitura ainda não foi configurado.',
   READING_DISABLED: 'O serviço de leitura ainda não foi ativado.',
   READING_INCOMPLETE: 'Apresente todas as páginas antes de concluir.',
-  READING_BUSY: 'O serviço está ocupado. Tente novamente em instantes.'
+  READING_BUSY: 'O serviço está ocupado. Tente novamente em instantes.',
+  READING_IDENTITY_DENIED: 'Não foi possível validar sua sessão de Gestão para esta leitura.',
+  READING_NETWORK_FAILED: 'Não foi possível conectar ao serviço de leitura.',
+  READING_TIMEOUT: 'O serviço de leitura demorou para responder. Tente novamente.',
+  READING_UNAVAILABLE: 'O serviço de leitura não conseguiu concluir a solicitação.',
+  READING_RESPONSE_INVALID: 'O serviço de leitura devolveu uma resposta inválida.',
+  READING_PDF_ENGINE_FAILED: 'Não foi possível iniciar o leitor PDF neste navegador.',
+  READING_PDF_DECODE_FAILED: 'Não foi possível carregar o conteúdo do PDF.',
+  READING_PDF_RENDER_FAILED: 'Não foi possível apresentar a página do PDF.'
 };
 
 /** Modal owns its tasks and discards every response after close or identity change. */
@@ -51,7 +59,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     canvas.width = canvas.height = 0;text.textContent = '';formLink.hidden = true;formLink.removeAttribute('href');
   };
   const close = () => { if (dialog.open) dialog.close();dispose(); };
-  const failure = (error, state) => {if(active(state))status.textContent = messages[error?.message] || 'Não foi possível concluir esta etapa. Tente novamente sem sair da conta.';};
+  const failure = (error, state) => {if(active(state)){const code=/^READING_[A-Z_]{1,80}$/.test(error?.message||'')?error.message:({engine:'READING_PDF_ENGINE_FAILED',decode:'READING_PDF_DECODE_FAILED',render:'READING_PDF_RENDER_FAILED'}[state.phase]||'READING_UNAVAILABLE');status.textContent=(messages[code]||'Não foi possível concluir esta etapa. Tente novamente sem sair da conta.')+' Código: '+code;}};
   const checkpoint = async state => {
     if(!active(state) || state.saving || !state.sessionId || state.visited.size - state.saved < 5)return;
     state.saving=true;
@@ -65,6 +73,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     state.visited.add(state.page);controls(state);void checkpoint(state);
   };
   const render = async state => {
+    state.phase='render';
     state.busy=true;state.renderedPage=null;controls(state);
     canvas.width=canvas.height=0;text.textContent='';
     try{
@@ -95,7 +104,8 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       state.total=answer.pages;state.sessionId=answer.sessionId;state.hasForm=answer.hasForm!==false;complete.textContent=state.hasForm?'CONCLUIR LEITURA E ABRIR FORMULÁRIO':'CONCLUIR LEITURA';
       state.visited=new Set(Array.isArray(answer.visited)?answer.visited.filter(p=>Number.isInteger(p)&&p>=1&&p<=state.total):[]);state.saved=state.visited.size;
       const bytes=Uint8Array.from(atob(answer.pdfBase64),char=>char.charCodeAt(0));
-      state.loadingTask=await pdfLoader(bytes);if(!active(state)){void state.loadingTask.destroy().catch(()=>{});return;}
+      state.phase='engine';state.loadingTask=await pdfLoader(bytes);if(!active(state)){void state.loadingTask.destroy().catch(()=>{});return;}
+      state.phase='decode';
       state.pdf=await state.loadingTask.promise;if(!active(state))return;
       if(state.pdf.numPages!==state.total)throw Error('READING_PDF_INVALID');
       state.page=Math.min(state.total,[...Array(state.total)].findIndex((_,i)=>!state.visited.has(i+1))+1||1);
