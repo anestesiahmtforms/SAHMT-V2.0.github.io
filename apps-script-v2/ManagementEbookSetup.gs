@@ -89,11 +89,14 @@ function mgePrepareOne_(m,row,state,file) {
   const hash=function(items){return formsEvaluationHash_({formId:row.formId,items:items});};
   if(![hash(original.items),hash(expected)].includes(hash(metadata.items)))throw Error('MANAGEMENT_EBOOK_FORM_CHANGED');
   formsEvaluationCloseForm_(form);form.setLimitOneResponsePerUser(false);form.setAllowResponseEdits(false);
-  const remove=(metadata.items||[]).map(function(i,index){return {item:i,index:index};}).filter(function(x){return removeItem(x.item);});
+  // Native Form settings can change the API revision token. Re-read after
+  // closing and changing those settings, then apply the content CAS once.
+  const writable=formsEvaluationMetadata_(row.formId);if(hash(writable.items)!==hash(metadata.items))throw Error('MANAGEMENT_EBOOK_FORM_CHANGED_BEFORE_WRITE');
+  const remove=(writable.items||[]).map(function(i,index){return {item:i,index:index};}).filter(function(x){return removeItem(x.item);});
   const requests=remove.sort(function(a,b){return b.index-a.index;}).map(function(x){return {deleteItem:{location:{index:x.index}}};});
-  const description=String(metadata.info&&metadata.info.description||''),cleanDescription=description.split('\n').filter(function(line){return !materialLink(line)&&!obsolete.test(line.trim());}).join('\n').trim();
+  const description=String(writable.info&&writable.info.description||''),cleanDescription=description.split('\n').filter(function(line){return !materialLink(line)&&!obsolete.test(line.trim());}).join('\n').trim();
   if(description!==cleanDescription)requests.push({updateFormInfo:{info:{description:cleanDescription},updateMask:'description'}});
-  if(requests.length)formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/'+row.formId+':batchUpdate',{method:'post',contentType:'application/json',payload:JSON.stringify({writeControl:{requiredRevisionId:metadata.revisionId},requests:requests})});
+  if(requests.length)formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/'+row.formId+':batchUpdate',{method:'post',contentType:'application/json',payload:JSON.stringify({writeControl:{requiredRevisionId:writable.revisionId},requests:requests})});
   const live=formsEvaluationMetadata_(row.formId);if(ropsScored_(live).length!==5||formsEvaluationHash_(ropsScored_(live))!==formsEvaluationHash_(keep)||hash(live.items)!==hash(expected))throw Error('MANAGEMENT_EBOOK_FIRST_FIVE_CHANGED');
   const mapping=mgeMapping_(live,backup.configuration),checked=formsEvaluationConfiguration_(live,mapping),fingerprint=formsEvaluationMaterialFingerprint_([{contentHash:row.checksum}]);
   const prior=backup.configuration,changed=prior&&(formsEvaluationSavedQuestionFingerprint_(prior)!==checked.questionFingerprint||prior.materialFingerprint!==fingerprint||formsEvaluationHash_(prior.mapping)!==formsEvaluationHash_(checked.mapping));
