@@ -17,8 +17,8 @@ test('saved title overrides the default without changing the arsenal number', ()
 
 const manager = {active:true,access:true,permissions:{checklistManage:true}};
 const user = {uid:'manager',email:'wx2064@gmail.com',emailVerified:true};
-test('only the two verified accounts with arsenal management can edit titles', () => {
-  for (const email of ['wx2064@gmail.com','marcio.henrique82@gmail.com','WX2064@gmail.com']) assert.equal(checklist.canEditChecklistStationTitle({...user,email}, manager), true);
+test('designated managers and five verified owners with arsenal management can edit titles', () => {
+  for (const email of ['wx2064@gmail.com','marcio.henrique82@gmail.com','WX2064@gmail.com',...Array.from({length:5},(_,i)=>`anestesiahmtforms${i?i+1:''}@gmail.com`)]) assert.equal(checklist.canEditChecklistStationTitle({...user,email}, manager), true);
   for (const other of [{...user,email:'other@example.com'}, {...user,emailVerified:false}, {...user,uid:''}, null]) assert.equal(checklist.canEditChecklistStationTitle(other, manager), false);
   for (const profile of [{...manager,access:false},{...manager,active:false},{...manager,permissions:{}},null]) assert.equal(checklist.canEditChecklistStationTitle(user,profile),false);
   assert.equal(checklist.canEditChecklistStationTitle({...user,email:'other@example.com'}, {...manager,role:'administrador_app'}),false);

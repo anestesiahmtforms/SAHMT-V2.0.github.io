@@ -43,22 +43,37 @@ function harness() {
     onSnapshot:(reference,_options,next,error)=>{watched.push({reference,next,error});return()=>stops.push(reference);}};
   const stop=createChecklistConferenceListener({uid,day,ownSigla:'AA'},value=>values.push(value),e=>errors.push(e),{sdk,db:{}});
   const meta={fromCache:false,hasPendingWrites:false};
-  const own=(data,pending=false)=>watched[0].next({id:`${day}_${uid}`,exists:()=>Boolean(data),data:()=>data,metadata:{...meta,hasPendingWrites:pending}});
+  const own=(data,pending=false)=>watched[0].next({id:day,exists:()=>Boolean(data),data:()=>data,metadata:{...meta,hasPendingWrites:pending}});
   const daily=records=>watched[1].next({docs:records.map(data=>({id:data.id,data:()=>data,metadata:meta})),metadata:meta});
   return {watched,values,errors,stops,stop,own,daily};
 }
-test('listener waits for server metadata, ignores uncommitted writes and refreshes validated history',()=>{
+test('listener waits for server metadata, ignores uncommitted writes and refreshes shared validation',async()=>{
   const h=harness();h.daily([]);h.own(null);assert.equal(h.values.at(-1).ready,true);assert.equal(h.values.at(-1).confirmation,null);
   h.own(request,true);assert.equal(h.values.at(-1).confirmation,null);assert.equal(h.values.at(-1).hasPendingWrites,true);
   h.own(request);assert.equal(h.values.at(-1).confirmation.kind,'scheduled');
-  h.daily([{...signature,responsibleUid:'other'}]);assert.equal(h.values.at(-1).confirmation.kind,'alternate');
+  await Promise.resolve();assert.equal(h.stops.length,1);
+  h.own({...request,signerSigla:'BB',status:'VALIDATED'});assert.equal(h.values.at(-1).confirmation.kind,'alternate');
   assert.equal(h.values.at(-1).confirmation.validated,true);h.stop();assert.equal(h.stops.length,2);
 });
-test('queries are limited to one day and one private owner document; stale snapshots are discarded',()=>{
+test('queries are limited to one day and one shared document; stale snapshots are discarded',()=>{
   const h=harness();assert.equal(h.watched.length,2);
-  assert.deepEqual(h.watched[0].reference,{collection:'checklistSignatureRequests',id:`${day}_${uid}`});
+  assert.deepEqual(h.watched[0].reference,{collection:'checklistSignatureRequests',id:day});
   assert.deepEqual(h.watched[1].reference.parts,[{collection:'checklistSignatures'},{where:['date','==',day]},{limit:101}]);
   h.stop();h.daily([signature]);assert.equal(h.values.length,0);
+});
+
+test('all viewers see the same shared signer and color even before scoring validation',()=>{
+  const shared={...request,id:day,signerSigla:'BB'};
+  for(const viewer of [uid,'another-viewer','read-only-viewer']) {
+    assert.deepEqual(checklistConferenceDisplay({day,uid:viewer,ownSigla:'AA',request:shared}),
+      {signerName:request.signerName,kind:'alternate',validated:false});
+  }
+});
+
+test('shared acknowledgement remains authoritative if an old private signature differs',()=>{
+  const shared={...request,id:day,signerUid:'new-first',signerName:'First shared signer',signerSigla:'BB'};
+  assert.deepEqual(checklistConferenceDisplay({day,uid:'viewer',request:shared,signatures:[signature]}),
+    {signerName:'First shared signer',kind:'alternate',validated:false});
 });
 test('read failure fails closed rather than presenting an empty day as unconfirmed',()=>{
   const h=harness();h.own(null);h.watched[1].error(Error('permission-denied'));

@@ -466,13 +466,14 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
   const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
   let catalogServerSeen = false, reportServerSeen = false, conferenceServerSeen = scope.mode !== 'daily', rotationServerSeen = scope.mode !== 'daily';
-  let writtenCatalog = '', catalogWriteSequence = 0, snapshotExpiry = 0;
+  let writtenCatalog = '', catalogWriteSequence = 0, snapshotExpiry = 0, staticStopped = false;
   const current = () => !stopped && callbacks.isCurrent();
-  const stop = () => { stopped = true; if (snapshotExpiry) globalThis.clearTimeout?.(snapshotExpiry); sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); conferenceStop?.(); };
+  const stopStaticReaders = () => { staticStopped = true; if (snapshotExpiry) globalThis.clearTimeout?.(snapshotExpiry); sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
+  const stop = () => { stopped = true; stopStaticReaders(); conferenceStop?.(); };
   const stopAfterInitialSnapshot = () => {
-    if (current() && catalogServerSeen && reportServerSeen && conferenceServerSeen && rotationServerSeen) stop();
+    if (current() && !staticStopped && catalogServerSeen && reportServerSeen && conferenceServerSeen && rotationServerSeen) stopStaticReaders();
   };
-  snapshotExpiry = globalThis.setTimeout?.(stop, 20000) || 0;
+  snapshotExpiry = globalThis.setTimeout?.(stopStaticReaders, 20000) || 0;
   const error = failure => {
     if (!current()) return;
     stop();
@@ -510,7 +511,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       checklistRotationLive = {key: scope.key, ready: true, error: failure};
       updateChecklistResponsibilityUI();
     }) : null).then(unsubscribe => {
-      if (!current()) unsubscribe?.(); else displayResponsibilityStop = unsubscribe;
+      if (!current() || staticStopped) unsubscribe?.(); else displayResponsibilityStop = unsubscribe;
     }).catch(failure => {
       if (!current()) return;
       checklistRotationLive = {key: scope.key, ready: true, error: failure};
@@ -520,7 +521,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   if (!current()) return stop;
   try {
     catalogStop = await watchChecklistStations(payload => {
-      if (!current()) return;
+      if (!current() || staticStopped) return;
       const serverConfirmed = payload.fromCache === false && payload.hasPendingWrites === false;
       if (serverConfirmed) catalogServerSeen = true;
       if (!catalogServerSeen && initialCatalog.length) {
@@ -538,8 +539,10 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       checklistCatalogLive = {...payload, uid: scope.uid};
       const stationIds = payload.records.filter(station => scope.mode === 'monthly' || stationIsInDateRange(station, scope.day)).map(station => station.id).sort();
       const key = JSON.stringify(stationIds);
+      if (key !== idsKey) reportServerSeen = false;
       callbacks.next('catalog', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites});
       stopAfterInitialSnapshot();
+      if (staticStopped) return;
       if (key === idsKey) return;
       idsKey = key;
       const ownSequence = ++sequence; reportStop?.(); reportStop = null;
@@ -562,7 +565,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
         }, error);
       }).then(unsubscribe => { if (!current() || sequence !== ownSequence) unsubscribe?.(); else reportStop = unsubscribe; }).catch(error);
     }, error);
-    if (!current()) catalogStop?.();
+    if (!current() || staticStopped) catalogStop?.();
     return stop;
   } catch (failure) { stop(); throw failure; }
 }
@@ -2186,6 +2189,12 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
         const preview = await getChecklistSignaturePreview({day, stations: applicableStations, records, uid});
         if (!previewCurrent()) return;
         if (!checklistSignatureCurrent(scope, fingerprint)) { invalidateChecklistSignature('O relatório mudou durante a conferência. Revise novamente.'); return; }
+        if (preview.requestId === day && preview.signerName) {
+          checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,
+            confirmation: {signerName: preview.signerName, kind: 'recorded', validated: preview.requestStatus === 'VALIDATED'}};
+          updateChecklistResponsibilityUI();
+          return;
+        }
         if (preview.requestStatus === 'PENDING_VALIDATION') {
           previewTarget.innerHTML = '<p class="sync-state">Sua conferência já está registrada. A apuração da pontuação aguarda validação.</p>';
           status.textContent = 'Conferência registrada; pontuação em apuração.';
@@ -2229,15 +2238,15 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
               return;
             }
             // The explicit confirmation keeps the existing acknowledgement contract and server-side scoring.
-            await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
-              signerName, rotationSigla: rotation.sigla, rotationPosition: rotation.position});
+            const result = await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
+              signerName, signerSigla: session.profile?.sigla || '', rotationSigla: rotation.sigla, rotationPosition: rotation.position});
             await removeOperationalDraft(uid, 'checklists', 'conference:' + day); checklistLocalIntent = null;
             pendingSyncBanner.confirmed(uid, 'conference:' + day);void updateOutboxStatus();
             if (!previewCurrent()) return;
-            const sigla = String(session.profile?.sigla || '').trim().toUpperCase();
+            const sigla = String(result.signerSigla || '').trim().toUpperCase();
             checklistConferenceLive = {key: scope.key, ready: true, fromCache: false, hasPendingWrites: false,
-              confirmation: {signerName, kind: sigla && rotation?.sigla ? (sigla === rotation.sigla ? 'scheduled' : 'alternate') : 'recorded', validated: false}};
-            status.textContent = 'Conferência do preceptor registrada.';
+              confirmation: {signerName: result.signerName, kind: sigla && rotation?.sigla ? (sigla === rotation.sigla ? 'scheduled' : 'alternate') : 'recorded', validated: result.status === 'VALIDATED'}};
+            status.textContent = 'Conferência registrada por ' + result.signerName + '.';
             confirmationDialog.close();
             updateChecklistResponsibilityUI();
             await loadDailyChecklist(stations, day);

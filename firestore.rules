@@ -802,7 +802,9 @@ service cloud.firestore {
       function stationTitleEditor() {
         return request.auth.token.keys().hasAll(['email', 'email_verified']) &&
           request.auth.token.email is string && request.auth.token.email_verified == true &&
-          request.auth.token.email.lower() in ['wx2064@gmail.com', 'marcio.henrique82@gmail.com'];
+          request.auth.token.email.lower() in ['wx2064@gmail.com', 'marcio.henrique82@gmail.com',
+            'anestesiahmtforms@gmail.com', 'anestesiahmtforms2@gmail.com', 'anestesiahmtforms3@gmail.com',
+            'anestesiahmtforms4@gmail.com', 'anestesiahmtforms5@gmail.com'];
       }
       function validStation(data, stationId) {
         return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
@@ -877,23 +879,19 @@ service cloud.firestore {
           data.justification is string && data.justification.size() >= 8 && data.justification.size() <= 500 &&
           request.auth.token.email_verified == true && can('checklistSign');
         let acknowledgementFields = data.keys().hasAll(['recordKind', 'signerName', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
-          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'signerName', 'declaration', 'justification', 'status', 'recordKind', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
-          requestId == data.day + '_' + request.auth.uid &&
+          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'signerName', 'signerSigla', 'declaration', 'justification', 'status', 'recordKind', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
+          requestId == data.day && data.signerSigla is string && data.signerSigla.size() <= 20 && data.signerSigla == profile().get('sigla', '') &&
           data.signerName is string && data.signerName.size() > 0 && data.signerName.size() <= 120 && data.signerName == profile().displayName &&
           data.recordKind == 'ACKNOWLEDGEMENT' && data.justification == 'Declaro que tomei ciência das informações deste relatório.' &&
           data.status == 'PENDING_VALIDATION' && data.acknowledgedAt == request.time &&
           ((data.rotationSigla == null && data.rotationPosition == null) ||
             (data.rotationSigla is string && data.rotationSigla.matches('^(?:[A-Z]{2}|L2)$') &&
              data.rotationPosition is int && data.rotationPosition >= 1 && data.rotationPosition <= 30));
-        let legacyFields = data.keys().hasAll(['requestedAt']) &&
-          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status', 'requestedAt']) &&
-          requestId == data.day + '_' + data.revision + '_' + request.auth.uid &&
-          data.status == 'PENDING_VALIDATION' && data.requestedAt == request.time;
-        return common && (acknowledgement ? acknowledgementFields : legacyFields);
+        return common && acknowledgement && acknowledgementFields;
       }
 
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
-        resource.data.signerUid == request.auth.uid || can('checklistManage'));
+        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage'));
       allow list: if can('checklistManage');
       allow create: if validChecklistSignatureRequest(request.resource.data, requestId);
       allow update, delete: if false;

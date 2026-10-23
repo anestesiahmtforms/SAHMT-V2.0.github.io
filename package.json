@@ -27,7 +27,7 @@
     "test:secondary-pilot-rules": "firebase emulators:exec --config firebase.secondary-pilot.test.json --project demo-sahmt-secondary-pilot --only firestore --non-interactive \"node --test --test-concurrency=1 tests/firestore-secondary-pilot.rules.test.js\"",
     "test:occurrences-rules": "firebase emulators:exec --config firebase.occurrences.test.json --project demo-sahmt-occurrence-rules --only firestore --non-interactive \"node --test --test-concurrency=1 tests/occurrence-rules.test.js\"",
     "test:label-ai-worker": "node --test worker-label-ai/worker.test.js",
-    "test:rules": "node --test tests/firestore-rules-scope.test.js && firebase emulators:exec --project demo-sahmt-v2 --only firestore \"node --test --test-concurrency=1 --test-force-exit tests/firestore-rules.test.js tests/report-realtime.rules.test.cjs tests/evaluation.rules.test.js\"",
+    "test:rules": "node --test tests/firestore-rules-scope.test.js && firebase emulators:exec --project demo-sahmt-v2 --only firestore \"node --test --test-concurrency=1 --test-force-exit tests/firestore-rules.test.js tests/report-realtime.rules.test.cjs tests/evaluation.rules.test.js tests/checklist-shared-conference.rules.test.js\"",
     "preview": "vite preview --host 0.0.0.0",
     "test:evaluation-integration": "firebase emulators:exec --project demo-sahmt-v2 --only firestore \"node --test --test-concurrency=1 tests/evaluation-homologation.integration.test.js\"",
     "test:checklist-integration": "firebase emulators:exec --config firebase.checklist.test.json --project demo-sahmt-v2 --only firestore \"node --test tests/checklist-science.integration.test.js\"",

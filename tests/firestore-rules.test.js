@@ -1690,8 +1690,9 @@ test('station maintenance is shared with checklist readers and editable only by 
   await assertSucceeds(updateDoc(ref, {maintenance: '', updatedByUid: 'station-manager', updatedAt: serverTimestamp(), version: 3}));
 });
 
-test('only the two verified arsenal managers can create, change or remove a station title', async () => {
+test('designated verified arsenal managers and owners can create, change or remove a station title', async () => {
   const accounts = [
+    ...Array.from({length:5},(_,i)=>({uid:'title-owner-'+i,email:`anestesiahmtforms${i?i+1:''}@gmail.com`,verified:true,allowed:true})),
     {uid:'title-wx',email:'wx2064@gmail.com',verified:true,allowed:true},
     {uid:'title-marcio',email:'marcio.henrique82@gmail.com',verified:true,allowed:true},
     {uid:'title-other-admin',email:'other@example.invalid',verified:true,allowed:false,role:'administrador_app'},
@@ -1943,8 +1944,8 @@ test('horários da liberação exigem scheduleWrite e pertencem a siglas liberad
 test('ciência: elegível registra declaração própria sem responsabilidade; não elegível, autoria falsa e alteração são negadas', async()=>{
  await seedProfiles([accessProfile('science-eligible',{checklistSign:true},{displayName:'Pessoa elegível'}),accessProfile('science-denied',{checklistRead:true})]);
  const db=testEnvironment.authenticatedContext('science-eligible',{email_verified:true}).firestore();
- const day=saoPauloDay(),revision='a'.repeat(64),id=`${day}_science-eligible`;
- const receipt={id,day,revision,signerUid:'science-eligible',signerName:'Pessoa elegível',declaration:true,justification:'Declaro que tomei ciência das informações deste relatório.',status:'PENDING_VALIDATION',acknowledgedAt:serverTimestamp(),recordKind:'ACKNOWLEDGEMENT',rotationSigla:'AA',rotationPosition:1};
+ const day=saoPauloDay(),revision='a'.repeat(64),id=day;
+ const receipt={id,day,revision,signerUid:'science-eligible',signerName:'Pessoa elegível',signerSigla:'',declaration:true,justification:'Declaro que tomei ciência das informações deste relatório.',status:'PENDING_VALIDATION',acknowledgedAt:serverTimestamp(),recordKind:'ACKNOWLEDGEMENT',rotationSigla:'AA',rotationPosition:1};
  await assertSucceeds(setDoc(doc(db,'checklistSignatureRequests',id),receipt));
  await assertFails(updateDoc(doc(db,'checklistSignatureRequests',id),{recordKind:'LEGACY_SIGNATURE'}));
  const denied=testEnvironment.authenticatedContext('science-denied',{email_verified:true}).firestore(),otherId=`${day}_science-denied`;
