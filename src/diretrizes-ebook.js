@@ -1,10 +1,10 @@
 import './diretrizes-ebook.css';
 import {createReadingClient} from './diretrizes-reading.js';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 async function loadPdf(bytes) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const {default: workerUrl} = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   return pdfjs.getDocument({data: bytes, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
 }
 const messages = {
