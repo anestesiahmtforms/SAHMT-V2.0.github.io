@@ -1269,10 +1269,12 @@ async function loadModule(route) {
     const current=()=>currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&can('admin');
     if(!content||!current()){navigate('home');return;}
     try{
-      const [{db},{auth},{createQmentumRepository},{mountQmentumModule}]=await Promise.all([import('./firebase.js'),import('./firebase-auth.js'),import('./qmentum-data.js'),import('./qmentum-ui.js')]);
+      const [{getIndicatorsAuth,getIndicatorsFirestore},{waitForFcModuleSession},{createQmentumRepository},{mountQmentumModule}]=await Promise.all([import('./indicators-firebase-app.js'),import('./fc-module-session.js'),import('./qmentum-data.js'),import('./qmentum-ui.js')]);
       if(!current())return;
+      const fcAuth=getIndicatorsAuth(),db=getIndicatorsFirestore();if(!fcAuth||!db)throw Error('FC_MODULE_CONFIG_REQUIRED');
+      const auth=await waitForFcModuleSession(content,{auth:fcAuth,sourceUid:uid,title:'Indicadores QMENTUM',isCurrent:current});if(!auth||!current())return;
       cleanupCurrentModule=await mountQmentumModule(content,{uid,isCurrent:current,repository:createQmentumRepository({db,auth,uid,isCurrent:current})});
-    }catch(error){if(current())content.innerHTML='<p class="empty-state" role="status">O módulo QMENTUM aguarda configuração de unidade, permissões ou habilitação no FA. Nenhuma alteração foi realizada.</p>';}
+    }catch(error){if(current())content.innerHTML='<p class="empty-state" role="status">O módulo QMENTUM aguarda conexão ao Firebase Registros, configuração de unidade ou permissões. Nenhuma alteração foi realizada.</p>';}
     return;
   }
   if (['management', 'training'].includes(route) && !canOpenRestrictedModule(route)) {
@@ -1316,12 +1318,14 @@ async function loadModule(route) {
     const current = () => generation === evaluationModuleGeneration && content.isConnected && currentRoute() === 'occurrences'
       && session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true
       && session.profile?.access === true && featureEnabledForRoute('occurrences', appFeatures) && hasOccurrencePermission();
-    const [{auth},{db},{mountOccurrenceModule}] = await Promise.all([
-      import('./firebase-auth.js'), import('./firebase.js'), import('./occurrences-ui.js')
+    const [{getIndicatorsAuth,getIndicatorsFirestore},{waitForFcModuleSession},{mountOccurrenceModule}] = await Promise.all([
+      import('./indicators-firebase-app.js'), import('./fc-module-session.js'), import('./occurrences-ui.js')
     ]);
     if (!current()) return;
+    const fcAuth=getIndicatorsAuth(),db=getIndicatorsFirestore();if(!fcAuth||!db){content.innerHTML='<p class="empty-state" role="status">O Firebase Registros não está configurado para este módulo.</p>';return;}
+    const auth=await waitForFcModuleSession(content,{auth:fcAuth,sourceUid:requestUid,title:'Registro de Ocorrências',isCurrent:current});if(!auth||!current())return;
     cleanupCurrentModule = mountOccurrenceModule(content,{uid:requestUid,displayName:session.profile?.displayName||session.user?.displayName||'Usuário',
-      auth,db,permissions:{...session.profile.permissions,occurrencesWrite:true},isCurrent:current});
+      auth,db,permissions:{...session.profile.permissions},isCurrent:current});
     return;
   }
   if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {

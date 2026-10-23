@@ -5,8 +5,8 @@ import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 
 function harness({claims={}, active=true, failTransaction=false, failTransactionCode='permission-denied', failProfileReadCode='', failCatalogRead=false, failCatalogReadCode='permission-denied', current=true}={}) {
   const store = new Map(), calls=[];
-  const db={app:{options:{projectId:'sahmt-17a16'}}};
-  const user={uid:'uid-synthetic',async getIdTokenResult(force){calls.push(['token',force]);return {claims:{firebase:{sign_in_provider:'custom'},sahmtFaSourceProjectId:'sahmt-17a16',...claims}};}};
+  const db={app:{options:{projectId:'indicadores---sahmt'}}};
+  const user={uid:'uid-synthetic',async getIdTokenResult(force){calls.push(['token',force]);return {claims:{aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:'uid-synthetic',firebase:{sign_in_provider:'google.com'},...claims}};}};
   const auth={currentUser:user};
   const firestore={
     doc:(_db,collection,id)=>({path:`${collection}/${id}`,collection,id}),
@@ -47,7 +47,7 @@ test('consultas consecutivas no FC usam o token gerenciado pelo SDK sem renovaç
   assert.equal(calls.filter(([name])=>name==='token').length,0);assert.equal(calls.filter(([name])=>name==='profile').length,4);
 });
 
-test('nega catálogo e escrita para perfil FA inativo independentemente de claims antigos', async()=>{
+test('nega catálogo e escrita para perfil FC inativo independentemente das permissões', async()=>{
   const {repository,calls}=harness({active:false});
   await assert.rejects(repository.loadCatalog({uid:input.uid}),{message:'OCCURRENCE_PERMISSION_DENIED'});
   await assert.rejects(repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});

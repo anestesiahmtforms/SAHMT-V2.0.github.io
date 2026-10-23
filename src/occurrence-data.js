@@ -6,7 +6,7 @@ const REPORTS = 'occurrenceReports';
 const AUDIT = 'occurrenceAudit';
 const SCORE_CLAIMS = 'occurrenceScoreClaims';
 const CATALOGS = 'occurrenceCatalogs';
-const SOURCE_PROJECT = FIREBASE_PROJECTS.FA.projectId;
+const SOURCE_PROJECT = FIREBASE_PROJECTS.FC.projectId;
 const MAX_RECORD_BYTES = 500000;
 const TRANSIENT_FIRESTORE_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)

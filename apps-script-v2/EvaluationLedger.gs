@@ -37,7 +37,7 @@ function evaluationCollectionProject_(collectionId, transaction) {
     const context = transaction && SAHMT_EVALUATION_TRANSACTIONS.get(transaction);
     return context ? context.projectId : SAHMT_EVALUATION_FB;
   }
-  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims'].includes(collectionId)) return SAHMT_V2_CONFIG.projectId;
+  if (['occurrenceReports', 'occurrenceAudit', 'occurrenceScoreClaims', 'occurrenceCatalogs', 'occurrenceRuntime'].includes(collectionId)) return SAHMT_EVALUATION_FC;
   return /^evaluation[A-Z]/.test(collectionId) || SAHMT_MANAGEMENT_DOMAIN_COLLECTIONS.includes(collectionId)
     ? evaluationProject_() : SAHMT_V2_CONFIG.projectId;
 }

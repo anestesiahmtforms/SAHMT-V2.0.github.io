@@ -38,6 +38,7 @@
     "prepare:qmentum": "node scripts/prepare-qmentum.mjs",
     "test:qmentum-browser": "node scripts/test-qmentum-browser.mjs && node --test tests/qmentum-runtime.browser.test.js",
     "build:qmentum-backend": "node scripts/build-qmentum-backend.mjs",
+    "build:fc-module-rules": "node scripts/build-fc-module-rules.mjs && node scripts/build-qmentum-rules.mjs --base firestore.fc.base.rules --out firestore.fc.rules",
     "verify:training-experience": "node scripts/verify-training-experience.mjs",
     "test:offline-browser": "node scripts/test-offline-operational-browser.mjs",
     "test:offline-browser-expired": "node scripts/test-offline-operational-browser.mjs --expired-app-check",

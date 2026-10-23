@@ -1,25 +1,29 @@
 /* Local-only preparation. No trigger is installed on file load. All operations
- * target the existing FA default database. No patient/author data goes to AI. */
+ * target the independent FC default database. No patient/author data goes to AI. */
+function qmServerUrl_(path){
+  if(typeof path!=='string'||!/^\/?(?::[a-zA-Z]+|[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*(?::[a-zA-Z]+)?)$/.test(path))throw Error('QMENTUM_PATH_INVALID');
+  return 'https://firestore.googleapis.com/v1/projects/'+QMENTUM_DATA_PROJECT_+'/databases/(default)/documents'+path;
+}
 function qmServerConfig_() {
-  if (SAHMT_V2_CONFIG.projectId !== 'sahmt-17a16' || SAHMT_V2_CONFIG.databaseId !== '(default)') throw Error('QMENTUM_FA_REQUIRED');
+  if (SAHMT_V2_CONFIG.databaseId !== '(default)') throw Error('QMENTUM_FC_REQUIRED');
   const p = sahmtV2Properties_();
   return {enabled:p.getProperty('QMENTUM_QUARTERLY_ENABLED') === 'true', key:p.getProperty('QMENTUM_GEMINI_API_KEY'), model:p.getProperty('QMENTUM_GEMINI_MODEL'),
     proof:p.getProperty('QMENTUM_AI_FREE_TIER_PROOF_JSON'), years:p.getProperty('QMENTUM_RECONCILIATION_YEARS_JSON')};
 }
 function qmServerGet_(path) {
-  try { const d=firestoreRequest_(firestoreDocumentsUrl_('/'+path),{method:'get'});return evaluationDocument_(d); }
+  try { const d=firestoreRequest_(qmServerUrl_('/'+path),{method:'get'});return evaluationDocument_(d); }
   catch(e){if(e.status===404)return null;throw Error('QMENTUM_BACKEND_READ_FAILED');}
 }
 function qmServerList_(parent,collection,maximum) {
-  const result=firestoreRequest_(firestoreDocumentsUrl_(parent?'/'+parent+':runQuery':':runQuery'),{method:'post',contentType:'application/json',payload:JSON.stringify({structuredQuery:{from:[{collectionId:collection}],limit:maximum}})});
+  const result=firestoreRequest_(qmServerUrl_(parent?'/'+parent+':runQuery':':runQuery'),{method:'post',contentType:'application/json',payload:JSON.stringify({structuredQuery:{from:[{collectionId:collection}],limit:maximum}})});
   return result.filter(function(r){return r.document;}).map(function(r){return evaluationDocument_(r.document);});
 }
 function qmServerWrite_(path,data,old) {
-  return {update:{name:'projects/sahmt-17a16/databases/(default)/documents/'+path,fields:firestoreFieldsFromJs_(data)},currentDocument:old?{updateTime:old._updateTime}:{exists:false}};
+  return {update:{name:'projects/'+QMENTUM_DATA_PROJECT_+'/databases/(default)/documents/'+path,fields:firestoreFieldsFromJs_(data)},currentDocument:old?{updateTime:old._updateTime}:{exists:false}};
 }
 function qmServerCommit_(writes){
   const guards=writes.filter(function(w){return typeof w.verify==='string';}),updates=writes.filter(function(w){return typeof w.verify!=='string';});
-  const request=function(suffix,body){return firestoreRequest_(firestoreDocumentsUrl_(suffix),{method:'post',contentType:'application/json',payload:JSON.stringify(body)});};
+  const request=function(suffix,body){return firestoreRequest_(qmServerUrl_(suffix),{method:'post',contentType:'application/json',payload:JSON.stringify(body)});};
   // `verify` is an internal plan item, not a Firestore REST Write operation.
   // Read those documents in a transaction and compare their metadata; the
   // transaction read set protects them atomically without rewriting profiles.
@@ -66,10 +70,10 @@ function processarFilaQmentumV1(){
   try{
     const config=qmServerGet_('qmentumConfig/current');if(!config || !config.enabled)return {code:'QMENTUM_CONFIG_REQUIRED'};
     let proof;try{proof=JSON.parse(c.proof||'null');}catch(_){return {code:'QMENTUM_FREE_TIER_REQUIRED'};}
-    if(!proof||proof.projectId!=='sahmt-17a16'||proof.billingEnabled!==false||proof.termsAccepted!==true||proof.accountModelVerified!==true||!Number.isSafeInteger(proof.expiresAt)||proof.expiresAt<=Date.now()||proof.model!==c.model||!c.key||!/^gemini-[a-z0-9.-]{3,60}$/.test(c.model||''))return {code:'QMENTUM_FREE_TIER_REQUIRED'};
+    if(!proof||proof.projectId!==QMENTUM_DATA_PROJECT_||proof.billingEnabled!==false||proof.termsAccepted!==true||proof.accountModelVerified!==true||!Number.isSafeInteger(proof.expiresAt)||proof.expiresAt<=Date.now()||proof.model!==c.model||!c.key||!/^gemini-[a-z0-9.-]{3,60}$/.test(c.model||''))return {code:'QMENTUM_FREE_TIER_REQUIRED'};
     // Ordered/filter query prevents finished jobs from starving pending work.
     const query={structuredQuery:{from:[{collectionId:'qmentumQuarterlyJobs'}],where:{fieldFilter:{field:{fieldPath:'nextAt'},op:'LESS_THAN_OR_EQUAL',value:{integerValue:String(Date.now())}}},orderBy:[{field:{fieldPath:'nextAt'},direction:'ASCENDING'}],limit:2}};
-    const jobs=firestoreRequest_(firestoreDocumentsUrl_(':runQuery'),{method:'post',contentType:'application/json',payload:JSON.stringify(query)}).filter(function(r){return r.document;}).map(function(r){return evaluationDocument_(r.document);});
+    const jobs=firestoreRequest_(qmServerUrl_(':runQuery'),{method:'post',contentType:'application/json',payload:JSON.stringify(query)}).filter(function(r){return r.document;}).map(function(r){return evaluationDocument_(r.document);});
     let generated=0;
     jobs.forEach(function(job){
       if(['GENERATED','NO_DATA','OBSOLETE','EXHAUSTED'].indexOf(job.status)>=0||job.lockUntil>Date.now())return;
@@ -91,7 +95,7 @@ function processarFilaQmentumV1(){
         if(QmentumCore.analysisInputSignature(fresh.facts,sha256Hex_)!==signature)throw Error('QMENTUM_JOB_OBSOLETE');
         // Preconditions on every source month close the check/publish race.
         const writes=fresh.rows.filter(function(r){return r.year===job.year||r.year===job.year-1;}).map(function(r){return {verify:r._name,currentDocument:{updateTime:r._updateTime}};});
-        [{year:job.year,quarter:job.quarter},{year:job.quarter===1?job.year-1:job.year,quarter:job.quarter===1?4:job.quarter-1}].forEach(function(period){[0,1,2].forEach(function(i){const m=(period.quarter-1)*3+i+1;if(!fresh.rows.some(function(r){return r.year===period.year&&r.month===m;}))writes.push({verify:'projects/sahmt-17a16/databases/(default)/documents/qmentumUnits/'+job.unitId+'/months/'+period.year+'-'+('0'+m).slice(-2),currentDocument:{exists:false}});});});
+        [{year:job.year,quarter:job.quarter},{year:job.quarter===1?job.year-1:job.year,quarter:job.quarter===1?4:job.quarter-1}].forEach(function(period){[0,1,2].forEach(function(i){const m=(period.quarter-1)*3+i+1;if(!fresh.rows.some(function(r){return r.year===period.year&&r.month===m;}))writes.push({verify:'projects/'+QMENTUM_DATA_PROJECT_+'/databases/(default)/documents/qmentumUnits/'+job.unitId+'/months/'+period.year+'-'+('0'+m).slice(-2),currentDocument:{exists:false}});});});
         writes.push({verify:evidence._name,currentDocument:{updateTime:evidence._updateTime}});
         writes.push({verify:config._name,currentDocument:{updateTime:config._updateTime}});
         const result={id:job.id,unitId:job.unitId,indicatorId:job.indicatorId,year:job.year,quarter:job.quarter,signature:signature,facts:fresh.facts,paragraphs:paragraphs,status:'GENERATED_PENDING_REVIEW',reviewed:false,provider:'Gemini Developer API',model:c.model,evidenceVersion:evidence.version,promptVersion:'qmentum-pt-1',generatedAt:Date.now()};
@@ -109,7 +113,7 @@ function validarRevisoesQmentumV1(){
   const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'QMENTUM_BUSY'};
   try{
     const query={structuredQuery:{from:[{collectionId:'qmentumAnalysisReviewRequests'}],where:{fieldFilter:{field:{fieldPath:'status'},op:'EQUAL',value:{stringValue:'PENDING'}}},limit:5}};
-    const requests=firestoreRequest_(firestoreDocumentsUrl_(':runQuery'),{method:'post',contentType:'application/json',payload:JSON.stringify(query)}).filter(function(r){return r.document;}).map(function(r){return evaluationDocument_(r.document);});
+    const requests=firestoreRequest_(qmServerUrl_(':runQuery'),{method:'post',contentType:'application/json',payload:JSON.stringify(query)}).filter(function(r){return r.document;}).map(function(r){return evaluationDocument_(r.document);});
     let reviewed=0;
     requests.forEach(function(request){
       if(!/^[a-f0-9]{64}$/.test(request.analysisId)||!/^[A-Za-z0-9_-]{1,80}$/.test(request.unitId))return;
@@ -126,7 +130,7 @@ function validarRevisoesQmentumV1(){
       const writes=[qmServerWrite_(path,data,analysis),qmServerWrite_(path+'/reviewHistory/'+request.id,data,null),qmServerWrite_('qmentumAnalysisReviewRequests/'+request.id,Object.assign(qmServerClean_(request),{status:'CONFIRMED'}),request),{verify:profile._name,currentDocument:{updateTime:profile._updateTime}},{verify:grant._name,currentDocument:{updateTime:grant._updateTime}},{verify:config._name,currentDocument:{updateTime:config._updateTime}}];
       writes.push({verify:unit._name,currentDocument:{updateTime:unit._updateTime}});
       fresh.rows.forEach(function(r){writes.push({verify:r._name,currentDocument:{updateTime:r._updateTime}});});
-      [{year:analysis.year,quarter:analysis.quarter},{year:analysis.quarter===1?analysis.year-1:analysis.year,quarter:analysis.quarter===1?4:analysis.quarter-1}].forEach(function(period){[0,1,2].forEach(function(i){const m=(period.quarter-1)*3+i+1;if(!fresh.rows.some(function(r){return r.year===period.year&&r.month===m;}))writes.push({verify:'projects/sahmt-17a16/databases/(default)/documents/qmentumUnits/'+request.unitId+'/months/'+period.year+'-'+('0'+m).slice(-2),currentDocument:{exists:false}});});});
+      [{year:analysis.year,quarter:analysis.quarter},{year:analysis.quarter===1?analysis.year-1:analysis.year,quarter:analysis.quarter===1?4:analysis.quarter-1}].forEach(function(period){[0,1,2].forEach(function(i){const m=(period.quarter-1)*3+i+1;if(!fresh.rows.some(function(r){return r.year===period.year&&r.month===m;}))writes.push({verify:'projects/'+QMENTUM_DATA_PROJECT_+'/databases/(default)/documents/qmentumUnits/'+request.unitId+'/months/'+period.year+'-'+('0'+m).slice(-2),currentDocument:{exists:false}});});});
       qmServerCommit_(writes);reviewed++;
     });return {code:'QMENTUM_REVIEWS_VALIDATED',reviewed:reviewed};
   }finally{lock.releaseLock();}

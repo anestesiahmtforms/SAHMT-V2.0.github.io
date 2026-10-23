@@ -1,5 +1,5 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
-const FA='sahmt-17a16';
+const FC='indicadores---sahmt';
 const mac=(payload,key)=>createHmac('sha256',key).update('SAHMT_QMENTUM_WRITE_V1\n'+payload).digest('hex');
 const result=(code,status,origin,version=null)=>new Response(JSON.stringify({code,...(version===null?{}:{version})}),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
 async function limited(message,max,signal) {
@@ -9,7 +9,7 @@ async function limited(message,max,signal) {
  finally{signal?.removeEventListener('abort',abort);await reader.cancel().catch(()=>{});}
  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
-/** An exact own-command read proves FA bearer identity. The backend revalidates
+/** An exact own-command read proves FC bearer identity. The backend revalidates
  * profile, grant, payload, arithmetic and versions atomically before writing. */
 export async function relayQmentumWrite(request,env,{fetchImpl=fetch,now=Date.now,admitRequest}={}) {
  const origin=request.headers.get('Origin'),allowed=['https://anestesiahmtforms.github.io',env.QMENTUM_PILOT_ORIGIN].filter(Boolean);
@@ -29,11 +29,11 @@ export async function relayQmentumWrite(request,env,{fetchImpl=fetch,now=Date.no
   if(admission?.allowed!==true||typeof admission.release!=='function')return result('QMENTUM_WRITE_BUSY',429,origin);
   const input=await limited(request,512,controller.signal);
   if(!input||Object.keys(input).join(',')!=='id'||!/^[A-Za-z0-9_-]{1,128}_[a-f0-9]{64}$/.test(input.id||''))return result('QMENTUM_WRITE_INPUT_INVALID',400,origin);
-  const name=`projects/${FA}/databases/(default)/documents/qmentumWriteRequests/${input.id}`;
+  const name=`projects/${FC}/databases/(default)/documents/qmentumWriteRequests/${input.id}`;
   const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=actorUid&mask.fieldPaths=payloadHash',{method:'GET',headers:{Authorization:authorization},redirect:'error',signal:controller.signal,cache:'no-store'});
   if(read.status!==200){await read.body?.cancel().catch(()=>{});return result('QMENTUM_WRITE_CLAIM_UNAVAILABLE',[401,403,404].includes(read.status)?read.status:503,origin);}
   const doc=await limited(read,4096,controller.signal),claims=JSON.parse(Buffer.from(authorization.slice(7).split('.')[1],'base64url').toString('utf8'));
-  if(doc.name!==name||doc.fields?.payloadHash?.stringValue!==input.id.slice(-64)||claims.aud!==FA||claims.iss!==`https://securetoken.google.com/${FA}`||
+  if(doc.name!==name||doc.fields?.payloadHash?.stringValue!==input.id.slice(-64)||claims.aud!==FC||claims.iss!==`https://securetoken.google.com/${FC}`||
     typeof claims.sub!=='string'||doc.fields.actorUid?.stringValue!==claims.sub)return result('QMENTUM_WRITE_AUTHOR_DENIED',403,origin);
   const nonce=randomBytes(16).toString('hex'),issuedAt=now(),payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-qmentum-write',nonce,issuedAt,expiresAt:issuedAt+60000,id:input.id,uid:claims.sub})).toString('base64url');
   remoteStarted=true;

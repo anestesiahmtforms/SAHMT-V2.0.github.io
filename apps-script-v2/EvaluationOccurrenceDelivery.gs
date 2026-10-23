@@ -21,12 +21,12 @@ function evaluationOccurrenceEnabled_() {
 }
 function evaluationOccurrenceAssertOperator_() {
   if (!evaluationOccurrenceEnabled_()) throw new Error('OCCURRENCE_SCORING_DISABLED');
-  const migration=evaluationGet_('occurrenceRuntime','faConsolidation');
-  if(!migration || migration.status!=='ACTIVE' || migration.release!=='occurrence-fa-consolidation-v1' ||
-      migration.sourceProjectId!==SAHMT_EVALUATION_FC || migration.destinationProjectId!==SAHMT_V2_CONFIG.projectId ||
+  const migration=evaluationGet_('occurrenceRuntime','independentV1');
+  if(!migration || migration.status!=='ACTIVE' || migration.release!=='occurrence-fc-independent-v1' ||
+      migration.sourceProjectId!==SAHMT_V2_CONFIG.projectId || migration.destinationProjectId!==SAHMT_EVALUATION_FC ||
       !/^[a-f0-9]{64}$/.test(migration.planSha256||'') || !Number.isSafeInteger(migration.verifiedDocuments) ||
       migration.verifiedDocuments<1 || migration.plannedDocuments!==migration.verifiedDocuments ||
-      migration.migrationCode!=='FA_CONSOLIDATION_VERIFIED') throw new Error('OCCURRENCE_FA_CONSOLIDATION_INACTIVE');
+      migration.migrationCode!=='FC_INDEPENDENT_VERIFIED') throw new Error('OCCURRENCE_FC_RELEASE_INACTIVE');
   // Occurrence awards are independent of the Forms evaluation rollout. The
   // destination still requires an explicit server-side approval marker.
   evaluationAssertOperator_(false);
@@ -79,7 +79,7 @@ function evaluationDeliverOccurrence_(reportId, expectedUid) {
     return {writes: [evaluationWrite_('occurrenceScoreClaims', reportId,
       {status: 'VALIDATED', destinationProjectId: evaluationProject_(), awardId: result.awardId}, claim, ['validatedAt']),
       evaluationWrite_('occurrenceReports', reportId, {pointsStatus: 'VALIDATED'}, report, [])], result: true};
-  }, {projectId: SAHMT_V2_CONFIG.projectId});
+  }, {projectId: SAHMT_EVALUATION_FC});
   return {status: result.status};
 }
 /** Bounded recovery tool only. Does not install a timer or scan report contents. */

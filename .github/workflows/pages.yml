@@ -52,10 +52,16 @@ jobs:
         run: npm run test:remote-continuity
       - name: Run shared channel realtime tests
         run: npm run test:channel-realtime
-      - name: Validate QMENTUM FA local package
+      - name: Validate QMENTUM FC local package
         run: node scripts/build-qmentum-backend.mjs && npm run test:qmentum
-      - name: Run QMENTUM FA Rules tests
+      - name: Run legacy QMENTUM rules regression
         run: npm run test:qmentum-rules
+      - name: Build FC module rules and test QMENTUM plus occurrences
+        env:
+          SAHMT_FIRESTORE_RULES_FILE: firestore.fc.rules
+        run: |
+          npm run build:fc-module-rules
+          npx firebase emulators:exec --config firebase.fc.test.json --project demo-sahmt-fc-modules --only firestore --non-interactive "node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/fc-occurrence.rules.test.js"
       - name: Run training repetition and continuation regression
         run: node --test tests/training-participation-state.test.js tests/training-repetition.test.js tests/training-repeat-scheduling.test.js tests/training-native-recovery.test.js tests/training-material-publication.test.js tests/forms-evaluation.test.js
       - name: Run management migration local tests
@@ -93,7 +99,7 @@ jobs:
           VITE_EVALUATION_DATA_PROJECT: 'FA'
           VITE_OCCURRENCE_SCORING_ENABLED: ${{ vars.VITE_OCCURRENCE_SCORING_ENABLED }}
           VITE_MANAGEMENT_FIREBASE_ENABLED: 'false'
-          VITE_INDICATORS_FIREBASE_ENABLED: 'false'
+          VITE_INDICATORS_FIREBASE_ENABLED: 'true'
           VITE_FIREBASE_PROJECT_AUTH_ENABLED: 'false'
           VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED: 'false'
           VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN }}

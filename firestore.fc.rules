@@ -1,0 +1,255 @@
+rules_version = '2';
+
+// FC occurrence and QMENTUM modules use FC Google Authentication and local user permissions.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return database == '(default)' && request.auth != null && request.auth.token.firebase is map && request.auth.token.firebase.sign_in_provider == 'google.com'; }
+    function profilePath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function hasProfile() { return signedIn() && exists(profilePath(request.auth.uid)); }
+    function profile() { return get(profilePath(request.auth.uid)).data; }
+    function activeUser() { return hasProfile() && profile().uid == request.auth.uid && profile().active == true && profile().access == true; }
+    function profileCan(permission) { return activeUser() && profile().permissions is map && profile().permissions.keys().hasAny([permission]) && profile().permissions[permission] == true; }
+    function canCatalog() { return profileCan('occurrencesCatalogRead'); }
+    function canWrite() { return profileCan('occurrencesWrite'); }
+    function canRead() { return profileCan('occurrencesRead'); }
+    function canAudit() { return profileCan('occurrencesAuditRead'); }
+    function reportPath(id) { return /databases/$(database)/documents/occurrenceReports/$(id); }
+    function auditPath(id) { return /databases/$(database)/documents/occurrenceAudit/$(id); }
+    function scorePath(id) { return /databases/$(database)/documents/occurrenceScoreClaims/$(id); }
+    function canReadReport(id) {
+      return canRead() || (canWrite() && resource == null) ||
+        (canWrite() && exists(auditPath(id)) && get(auditPath(id)).data.uid == request.auth.uid);
+    }
+    function canReadPrivate(id) {
+      return canAudit() || (canWrite() && resource == null) ||
+        (canWrite() && resource.data.uid == request.auth.uid);
+    }
+    function validReport(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
+          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','id','formId','formTitle','occurredOn','occurrence','description',
+          'classification','details','anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&
+        data.schemaVersion == 1 && data.id == reportId &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.formTitle is string && data.formTitle.size() > 0 && data.formTitle.size() <= 180 &&
+        data.classification is map && data.classification.keys().size() <= 4 &&
+        data.details is map && data.details.keys().size() <= 20 &&
+        data.anonymous is bool && data.authorLabel is string && data.authorLabel.size() > 0 && data.authorLabel.size() <= 120 &&
+        (data.anonymous == true ? data.authorLabel == 'Anônimo' : data.authorLabel != 'Anônimo') &&
+        data.pointsClaimed == 2 && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
+        (data.formId == 'F10' ? data.occurredOn == null && data.occurrence == null && data.description == null :
+          data.occurredOn is string && data.occurredOn.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 180 &&
+          data.description is string && data.description.size() > 0 && data.description.size() <= 5000);
+    }
+    function validAudit(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','reportId','uid','formId','anonymous','createdAt']) &&
+        data.schemaVersion == 1 && data.reportId == reportId && data.uid == request.auth.uid &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.anonymous is bool && data.createdAt == request.time;
+    }
+    function validScoreClaim(reportId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&
+        data.keys().hasAll(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&
+        data.schemaVersion == 1 && data.id == reportId && data.source == 'REGISTRO_OCORRENCIA' &&
+        data.sourceId == reportId && data.uid == request.auth.uid &&
+        data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
+        data.points == 2 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
+    }
+    function pairedAfter(reportId) {
+      let report = getAfter(reportPath(reportId)).data;
+      let audit = getAfter(auditPath(reportId)).data;
+      let claim = getAfter(scorePath(reportId)).data;
+      return report.id == reportId && report.createdAt == request.time &&
+        audit.reportId == reportId && audit.uid == request.auth.uid && audit.formId == report.formId &&
+        audit.anonymous == report.anonymous && audit.createdAt == request.time &&
+        claim.id == reportId && claim.sourceId == reportId && claim.uid == request.auth.uid &&
+        claim.formId == report.formId && claim.points == 2 && claim.status == 'PENDING_VALIDATION' &&
+        claim.createdAt == request.time;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+    match /occurrenceCatalogs/current {
+      allow get: if canCatalog();
+      allow list, create, update, delete: if false;
+    }
+    match /occurrenceReports/{reportId} {
+      allow get: if canReadReport(reportId);
+      allow list: if canRead() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if canWrite() && !exists(reportPath(reportId)) &&
+        validReport(reportId, request.resource.data) && pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    match /occurrenceAudit/{reportId} {
+      allow get: if canReadPrivate(reportId);
+      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if canWrite() && !exists(auditPath(reportId)) &&
+        validAudit(reportId, request.resource.data) && pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    match /occurrenceScoreClaims/{reportId} {
+      allow get: if canReadPrivate(reportId);
+      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
+      allow create: if canWrite() && !exists(scorePath(reportId)) &&
+        validScoreClaim(reportId, request.resource.data) && pairedAfter(reportId);
+      allow update, delete: if false;
+    }
+    // Preserve the existing bounded indicators probe for signed-in FC users.
+    match /indicators/{indicatorId} {
+      allow list: if activeUser() && request.query.limit != null && request.query.limit <= 1;
+      allow get, create, update, delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+// BEGIN QMENTUM_FA
+    match /qmentumAccess/{uid} {
+function qmentumAccess_0_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+ allow get: if qmentumAccess_0_qmSigned() && request.auth.uid == uid; allow list,write: if false; }
+    match /qmentumConfig/current {
+function qmentumConfig_1_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+function qmentumConfig_1_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
+ allow get: if qmentumConfig_1_qmSigned() && qmentumConfig_1_qmAccess().active == true && qmentumConfig_1_qmAccess().uid == request.auth.uid;allow list,write: if false; }
+    match /qmentumDefinitions/{version} {
+function qmentumDefinitions_2_qmMember() { let a=qmentumDefinitions_2_qmAccess();return qmentumDefinitions_2_qmSigned() && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] && qmentumDefinitions_2_qmEnabled(); }
+function qmentumDefinitions_2_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+function qmentumDefinitions_2_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
+function qmentumDefinitions_2_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
+ allow get: if qmentumDefinitions_2_qmMember();allow list,write: if false; }
+    match /qmentumUnits/{unit} {
+function qmentumUnits_3_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
+function qmentumUnits_3_qmMember() { let a=qmentumUnits_3_qmAccess();return qmentumUnits_3_qmSigned() && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] && qmentumUnits_3_qmEnabled(); }
+function qmentumUnits_3_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
+function qmentumUnits_3_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
+function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units && get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true; }
+
+      allow get: if qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units;allow list,write: if false;
+      match /months/{period} {
+
+
+        allow get: if qmentumUnits_3_qmUnit(unit);allow list: if qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 12;allow write: if false;
+        match /history/{version} {
+
+ allow get: if qmentumUnits_3_qmUnit(unit);allow list: if qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 30;allow write: if false; }
+      }
+      match /imports/{hash} {
+
+
+        allow get: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'; allow list,update,delete: if false;
+        allow create: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' && request.resource.data.keys().hasOnly(['schemaVersion','hash','unitId','year','status','backupReference','chunkCount','createdBy','createdAt','sheetNames']) &&
+          hash.matches('^[a-f0-9]{64}$') && request.resource.data.hash == hash && request.resource.data.schemaVersion == 1 &&
+          request.resource.data.unitId == unit && request.resource.data.year is int && request.resource.data.year >= 1900 && request.resource.data.year <= 2200 &&
+          request.resource.data.status == 'STAGED' && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.backupReference is string && request.resource.data.backupReference.size() <= 2000 &&
+          request.resource.data.chunkCount is int && request.resource.data.chunkCount > 0 && request.resource.data.chunkCount <= 40;
+        match /cells/{index} {
+
+
+          allow get: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'; allow list,update,delete: if false;
+          allow create: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' &&
+            getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(hash)).data.createdAt == request.time &&
+            request.resource.data.keys().hasOnly(['cells','hash','index']) && request.resource.data.hash == hash &&
+            request.resource.data.index == int(index) && int(index) >= 0 && int(index) < getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(hash)).data.chunkCount &&
+            request.resource.data.cells is list && request.resource.data.cells.size() <= 2000;
+        }
+      }
+
+    }
+    match /qmentumUnits/{unit}/quarterlyAnalyses/{id} {
+      allow get,list: if activeUser() && profile().uid == request.auth.uid &&
+        get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true &&
+        get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.active == true &&
+        get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.uid == request.auth.uid &&
+        unit in get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.units &&
+        (request.method == 'get' || request.query.limit != null && request.query.limit <= 40);
+      allow write: if false;
+    }
+    match /qmentumQuarterlyJobs/{id} { allow read,write: if false; }
+    match /qmentumEvidence/{id} { allow read,write: if false; }
+    match /qmentumImprovementActions/{id} { allow read,write: if false; }
+    match /qmentumAnalysisReviewRequests/{id} {
+      function qmAnalysisReviewer(unit) {
+        let grant=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
+        return activeUser() && profile().uid == request.auth.uid && grant.active == true && grant.uid == request.auth.uid &&
+          grant.role in ['reviewer','manager'] && unit in grant.units &&
+          get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
+      }
+      allow get: if activeUser() && (resource == null || resource.data.actorUid == request.auth.uid);
+      allow list,update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['unitId','analysisId','signature','reason','actorUid','status','createdAt']) &&
+        qmAnalysisReviewer(request.resource.data.unitId) &&
+        request.resource.data.analysisId.matches('^[a-f0-9]{64}$') && request.resource.data.signature.matches('^[a-f0-9]{64}$') &&
+        id == request.resource.data.analysisId+'_'+request.auth.uid && request.resource.data.actorUid == request.auth.uid &&
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
+        request.resource.data.reason is string && request.resource.data.reason.size() >= 8 && request.resource.data.reason.size() <= 1000 &&
+        get(/databases/$(database)/documents/qmentumUnits/$(request.resource.data.unitId)/quarterlyAnalyses/$(request.resource.data.analysisId)).data.signature == request.resource.data.signature;
+    }
+
+    match /qmentumParticipations/{id} {
+      function qmParticipationMember(unit) {
+        let grant=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
+        return activeUser() && profile().uid == request.auth.uid && grant.active == true && grant.uid == request.auth.uid &&
+          unit in grant.units && grant.role in ['collector','reviewer','manager'] &&
+          get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true &&
+          get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
+      }
+      function qmParticipationManager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
+
+      function approvedAnalysis(d) {
+        let a=get(/databases/$(database)/documents/qmentumUnits/$(d.unitId)/quarterlyAnalyses/$(d.analysisId)).data;
+        return a.status == 'REVIEWED' && a.reviewed == true && a.signature == d.signature;
+      }
+      allow get: if activeUser() && (resource == null || qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager()));
+      allow list: if request.query.limit != null && request.query.limit <= 100 && qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager());
+      allow update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['unitId','analysisId','signature','actorUid','modality','suggestion','status','createdAt']) &&
+        qmParticipationMember(request.resource.data.unitId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
+        request.resource.data.analysisId.matches('^[a-f0-9]{64}$') && request.resource.data.signature.matches('^[a-f0-9]{64}$') &&
+        request.resource.data.modality in ['ACKNOWLEDGEMENT','SUGGESTION'] &&
+        id == request.resource.data.analysisId+'_'+request.auth.uid+'_'+request.resource.data.modality && approvedAnalysis(request.resource.data) &&
+        request.resource.data.suggestion is string && (request.resource.data.modality == 'ACKNOWLEDGEMENT' ? request.resource.data.suggestion == '' : request.resource.data.suggestion.size() >= 8 && request.resource.data.suggestion.size() <= 2000);
+    }
+    match /qmentumParticipationReviews/{id} {
+      function qmReviewMember(unit) {
+        let grant=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
+        return activeUser() && profile().uid == request.auth.uid && grant.active == true && grant.uid == request.auth.uid &&
+          unit in grant.units && grant.role in ['collector','reviewer','manager'] &&
+          get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true &&
+          get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
+      }
+      function qmReviewManager() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.role == 'manager'; }
+
+      function reviewTarget(d) {
+        let p=get(/databases/$(database)/documents/qmentumParticipations/$(id)).data;
+        return p.unitId == d.unitId && p.modality == 'SUGGESTION' && p.actorUid != request.auth.uid && p.status == 'AWAITING_APPROVAL';
+      }
+      allow get: if activeUser() && (resource == null || qmReviewMember(resource.data.unitId) && qmReviewManager());
+      allow list,update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['participationId','unitId','actorUid','decision','reason','status','createdAt']) &&
+        qmReviewMember(request.resource.data.unitId) && qmReviewManager() && request.resource.data.actorUid == request.auth.uid && request.resource.data.participationId == id &&
+        request.resource.data.decision in ['APPROVE','REJECT'] && request.resource.data.reason is string && request.resource.data.reason.size() >= 8 && request.resource.data.reason.size() <= 1000 &&
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && reviewTarget(request.resource.data);
+    }
+
+    match /qmentumWriteRequests/{id} {
+      function allowed(d) {
+        let a=get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data;
+        return database == '(default)' && activeUser() && profile().uid == request.auth.uid && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] &&
+          get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true &&
+          (d.operation == 'PUBLISH_DEFINITION' && a.role == 'manager' || d.operation == 'SAVE_MONTH' && d.payload.unitId in a.units &&
+            get(/databases/$(database)/documents/qmentumUnits/$(d.payload.unitId)).data.active == true);
+      }
+      allow get: if activeUser() && (resource == null || resource.data.actorUid == request.auth.uid);
+      allow list,update,delete: if false;
+      allow create: if request.resource.data.keys().hasOnly(['actorUid','payloadHash','operation','payload','status','createdAt']) &&
+        request.resource.data.actorUid == request.auth.uid && request.resource.data.payloadHash.matches('^[a-f0-9]{64}$') &&
+        id == request.auth.uid+'_'+request.resource.data.payloadHash && request.resource.data.payload is map &&
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && allowed(request.resource.data);
+    }
+
+// END QMENTUM_FA
+
+  }
+}

@@ -9,14 +9,14 @@ import * as sdk from 'firebase/firestore';
 import {createQmentumRepository} from '../src/qmentum-data.js';
 import {createQmentumCommandSender} from '../src/qmentum-command.js';
 import {prepareQmentumWrite} from '../src/qmentum-write.js';
-const claims={firebase:{sign_in_provider:'google.com'},aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16'};
+const claims={firebase:{sign_in_provider:'google.com'},aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt'};
 let env;const defs=initialDefinitions();
 before(async()=>{assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:18493');env=await initializeTestEnvironment({projectId:'demo-sahmt-qmentum',firestore:{host:'127.0.0.1',port:18493,rules:await readFile(process.env.SAHMT_FIRESTORE_RULES_FILE||new URL('../firestore.qmentum.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await Promise.all([setDoc(doc(db,'qmentumConfig/current'),{enabled:true,definitionVersion:1}),setDoc(doc(db,'qmentumDefinitions/1'),defs),setDoc(doc(db,'qmentumUnits/unit-a'),{unitId:'unit-a',name:'Unidade sintética',active:true}),...['collector','reviewer','manager'].map(role=>setDoc(doc(db,'qmentumAccess',role),{uid:role,active:true,role,units:['unit-a']})),...['collector','reviewer','manager'].map(uid=>setDoc(doc(db,'users',uid),{uid,active:true,access:true,role:'usuario',permissions:{}}))]);});});
 const dbFor=role=>env.authenticatedContext(role,claims).firestore();
 function repository(role,isCurrent=()=>true){
- const real=dbFor(role),app={options:{projectId:'sahmt-17a16'}},db={app,real};
+ const real=dbFor(role),app={options:{projectId:'indicadores---sahmt'}},db={app,real};
  const auth={app,currentUser:{uid:role,getIdToken:async()=> 'synthetic-token',getIdTokenResult:async()=>({claims:{...claims,sub:role}})}};
  const api={...sdk,doc:(db,...s)=>sdk.doc(db.real,...s),collection:(db,...s)=>sdk.collection(db.real,...s),runTransaction:(db,callback)=>sdk.runTransaction(db.real,callback)};
  const writeCommand=createQmentumCommandSender({db,auth,uid:role,firestore:api,endpoint:'https://synthetic.local/endpoint',ensure:()=>{if(!isCurrent())throw Error('QMENTUM_SESSION_CHANGED');},fetchImpl:async(_url,options)=>{
@@ -102,7 +102,7 @@ test('write commands require own UID, valid grant, enabled unit and immutable pe
  await assertFails(setDoc(doc(db,'qmentumWriteRequests','collector_'+'b'.repeat(64)),{...value,payloadHash:'b'.repeat(64)}));
 });
 const completeInputs=()=>{const i=emptyInputs();for(const k of Object.keys(i.counts)){i.counts[k]=10;i.origins[k]='MANUAL';}i.counts.pending48=0;i.counts.pending30=0;i.attribution48=true;i.attribution30=true;i.uniqueEventProceduresConfirmed=true;return i;};
-test('FA client → immutable command → trusted validation → month/history → reload and full lifecycle',async()=>{
+test('FC client → immutable command → trusted validation → month/history → reload and full lifecycle',async()=>{
  const approved=structuredClone(defs);Object.values(approved.items).forEach(d=>{d.approved=true;d.criterion='Critério institucional sintético';});await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'qmentumDefinitions/1'),approved));
  const repo=repository('manager'),input={unitId:'unit-a',year:2026,month:1,inputs:completeInputs(),referenceDate:'2026-01-20'};
  await repo.open();await repo.save(input);const first=await repo.month('unit-a',2026,1);assert.equal(first.version,1);assert.equal(first.results.QM11.ratio,0);
