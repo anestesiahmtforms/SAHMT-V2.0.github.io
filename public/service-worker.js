@@ -45,7 +45,7 @@ self.addEventListener('install', (event) => {
       'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
       'src/google-project-auth-runtime.js', 'src/google-project-auth-ui.js',
       'src/google-project-auth-google-button.js',
-      'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
+      'src/management-hub.js', 'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
       'src/offline-cache.js', 'src/offline-runtime-mode.js', 'src/offline-report-cache.js', 'src/outbox.js',
       'src/offline-outbox-policy.js', 'src/provisional-operational-channel.js',
       'src/checklist-conference-listener.js', 'src/checklist-responsibility-listener.js', 'src/label-ai.js'
