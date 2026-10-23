@@ -3,8 +3,12 @@ import {createReadingClient} from './diretrizes-reading.js';
 import {pdfPageLayout, PDF_ZOOM_STEPS} from './diretrizes-pdf-layout.js';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
+let enginePromise;
+function loadPdfEngine() {
+  return enginePromise ||= import('pdfjs-dist/legacy/build/pdf.mjs').catch(error=>{enginePromise=null;throw error;});
+}
 async function loadPdf(bytes) {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await loadPdfEngine();
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   return pdfjs.getDocument({data: bytes, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
 }
@@ -46,6 +50,7 @@ const messages = {
 export function installDiretrizesReader({root = document, getUser, endpoint, client = createReadingClient({endpoint, getUser}), pdfLoader = loadPdf} = {}) {
   const dialog = document.createElement('dialog');
   dialog.className = 'diretrizes-ebook';
+  dialog.setAttribute('closedby','none');
   dialog.setAttribute('aria-label', 'Leitura do documento');
   dialog.innerHTML = '<header><h2></h2><p data-reading-status role="status" aria-live="polite"></p></header>' +
     '<section class="diretrizes-ebook__pages" tabindex="0" aria-label="Página do documento"><canvas aria-label="Página PDF"></canvas><pre hidden></pre></section>' +
@@ -57,7 +62,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
   const $ = selector => dialog.querySelector(selector);
   const panel = $('.diretrizes-ebook__pages'), canvas = $('canvas'), text = $('pre');
   const status = $('[data-reading-status]'), previous = $('[data-reader-prev]'), next = $('[data-reader-next]'), complete = $('[data-reader-complete]'), formLink = $('[data-reader-form]');
-  let current = null, generation = 0, resizeFrame = 0;
+  let current = null, generation = 0, resizeFrame = 0, pinch=null, suppressClickUntil=0;
   const active = state => current === state && state.generation === generation && dialog.open && getUser()?.uid === state.uid;
   const controls = state => {
     previous.disabled = state.busy || state.page <= 1;
@@ -73,6 +78,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
   };
   const dispose = () => {
     generation++; const old = current; current = null;
+    pinch=null;
     cancelAnimationFrame(resizeFrame);
     old?.controller.abort();old?.renderTask?.cancel();
     if(old?.loadingTask)void old.loadingTask.destroy().catch(()=>{});
@@ -88,7 +94,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
   };
   const presented = () => {
     const state=current;
-    if(!state||!active(state)||state.busy||!state.pdf||state.renderedPage!==state.page||document.visibilityState==='hidden')return;
+    if(!state||pinch||!active(state)||state.busy||!state.pdf||state.renderedPage!==state.page||document.visibilityState==='hidden')return;
     if(panel.scrollTop + panel.clientHeight < panel.scrollHeight - 8)return;
     // The stable scrollbar gutter is reserved space, not unread page content.
     const gutter=Math.max(0,panel.offsetWidth-panel.clientWidth);
@@ -96,6 +102,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     state.visited.add(state.page);controls(state);void checkpoint(state);
   };
   const resize = () => {
+    if(pinch)return;
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(()=>{const state=current;if(state&&active(state)&&state.pdf&&!state.busy&&Math.abs(panel.clientWidth-state.layoutWidth)>1)void render(state,true);});
   };
@@ -136,6 +143,8 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     $('h2').textContent=trigger.dataset.readingTitle||'Documento';canvas.hidden=false;text.hidden=true;
     status.textContent='Carregando o PDF para leitura…';controls(state);
     if(!dialog.open)dialog.showModal();
+    // Download the PDF engine while the authorized reading session is prepared.
+    if(pdfLoader===loadPdf)void loadPdfEngine().catch(()=>{});
     try{
       const answer=await client.request({action:'start',documentId:state.documentId},{signal:state.controller.signal});if(!active(state))return;
       if(!Number.isSafeInteger(answer.pages)||answer.pages<1||answer.pages>300||!/^[a-f0-9]{32}$/.test(answer.sessionId||'')||typeof answer.pdfBase64!=='string'||answer.pdfBase64.length>8388608)throw Error('READING_PDF_INVALID');
@@ -151,6 +160,10 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     }catch(error){if(active(state)){state.busy=false;controls(state);failure(error,state);}}
   };
   const onClick = event => {
+    if(dialog.contains(event.target)){
+      event.stopPropagation();
+      if(performance.now()<suppressClickUntil){event.preventDefault();return;}
+    }
     const trigger=event.target.closest?.('[data-open-diretriz-reader]');
     if(trigger&&(root===document||root.contains(trigger))){event.preventDefault();void open(trigger);return;}
     if(event.target.closest?.('[data-reader-close]')){close();return;}
@@ -173,6 +186,35 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       }).catch(error=>failure(error,state)).finally(()=>{if(active(state)){state.busy=false;controls(state);}});
     }
   };
+  const distance=touches=>Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);
+  const pinchStart=event=>{
+    if(event.touches.length!==2||!current||current.busy||!current.pdf||!text.hidden)return;
+    event.preventDefault();event.stopPropagation();
+    pinch={state:current,distance:Math.max(1,distance(event.touches)),zoom:PDF_ZOOM_STEPS[current.zoomIndex],ratio:1,width:parseFloat(canvas.style.width),height:parseFloat(canvas.style.height)};
+  };
+  const pinchMove=event=>{
+    if(!pinch)return;
+    event.preventDefault();event.stopPropagation();
+    if(event.touches.length!==2)return;
+    pinch.ratio=Math.max(1/ pinch.zoom,Math.min(3/pinch.zoom,distance(event.touches)/pinch.distance));
+    // Reuse the existing bitmap during the gesture; rerender only on release.
+    canvas.style.width=Math.floor(pinch.width*pinch.ratio)+'px';canvas.style.height=Math.floor(pinch.height*pinch.ratio)+'px';
+  };
+  const pinchEnd=event=>{
+    if(!pinch||event.touches.length>=2)return;
+    event.preventDefault();event.stopPropagation();
+    const ended=pinch;pinch=null;suppressClickUntil=performance.now()+600;
+    if(!active(ended.state))return;
+    const target=ended.zoom*ended.ratio;
+    ended.state.zoomIndex=PDF_ZOOM_STEPS.reduce((best,zoom,i)=>Math.abs(zoom-target)<Math.abs(PDF_ZOOM_STEPS[best]-target)?i:best,0);
+    void render(ended.state,true);
+  };
+  const preventCancel=event=>event.preventDefault();
+  dialog.addEventListener('cancel',preventCancel);
+  panel.addEventListener('touchstart',pinchStart,{passive:false});
+  panel.addEventListener('touchmove',pinchMove,{passive:false});
+  panel.addEventListener('touchend',pinchEnd,{passive:false});
+  panel.addEventListener('touchcancel',pinchEnd,{passive:false});
   root.addEventListener('click',onClick);dialog.addEventListener('close',dispose);panel.addEventListener('scroll',presented);
   document.addEventListener('visibilitychange',presented);
   window.addEventListener('resize',resize);

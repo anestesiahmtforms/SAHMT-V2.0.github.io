@@ -22,6 +22,18 @@ test('real PDF rendering, mobile modal, coverage, completion and close cleanup',
   assert.ok(await page.locator('.diretrizes-ebook__pages').evaluate(el=>el.scrollWidth>el.clientWidth));
   const enlarged=await page.locator('canvas').evaluate(el=>({pixels:el.width,css:el.getBoundingClientRect().width}));assert.ok(enlarged.css>fit.css);assert.ok(enlarged.pixels>fit.pixels);
   assert.equal(await page.evaluate(()=>window.readingCalls.length),requestsBeforeZoom);
+  await page.locator('.diretrizes-ebook__pages').evaluate(el=>{
+    const fire=(type,touches)=>{const event=new Event(type,{bubbles:true,cancelable:true});Object.defineProperty(event,'touches',{value:touches});el.dispatchEvent(event);};
+    fire('touchstart',[{clientX:100,clientY:200},{clientX:200,clientY:200}]);
+    fire('touchmove',[{clientX:70,clientY:200},{clientX:230,clientY:200}]);
+    fire('touchend',[]);
+  });
+  await page.waitForFunction(()=>!document.querySelector('[data-reader-fit]').disabled&&document.querySelector('[data-reader-zoom]').textContent==='200%');
+  assert.equal(await page.locator('dialog[open]').count(),1);
+  assert.equal(await page.evaluate(()=>window.readingCalls.length),requestsBeforeZoom);
+  assert.equal(await page.locator('dialog').evaluate(el=>el.dispatchEvent(new Event('cancel',{cancelable:true}))),false);
+  assert.equal(await page.locator('dialog[open]').count(),1);
+  await page.waitForTimeout(650);
   await page.locator('[data-reader-fit]').click();await page.waitForFunction(()=>!document.querySelector('[data-reader-fit]').disabled&&document.querySelector('[data-reader-zoom]').textContent==='100%');
   assert.equal(await page.locator('dialog[open]').count(),1);assert.equal(await page.locator('[data-reader-complete]').isDisabled(),true);
   const box=await page.locator('[data-reader-close]').boundingBox();assert.ok(box.y+box.height<=844);
