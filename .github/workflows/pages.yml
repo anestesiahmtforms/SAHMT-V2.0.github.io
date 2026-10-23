@@ -60,6 +60,7 @@ jobs:
         env:
           SAHMT_FIRESTORE_RULES_FILE: firestore.fc.rules
         run: |
+            node --test tests/qmentum-fc-migration-verification.test.js
           npm run build:fc-module-rules
           npx firebase emulators:exec --config firebase.fc.test.json --project demo-sahmt-fc-modules --only firestore --non-interactive "node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/fc-occurrence.rules.test.js"
       - name: Run training repetition and continuation regression
