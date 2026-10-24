@@ -24,6 +24,7 @@ export async function waitForManagementSession({auth,getSourceUser,controller,ti
 export async function ensureManagementSession(){
  try{
   const [{auth},runtime]=await Promise.all([import('./firebase-auth.js'),import('./google-project-auth-runtime.js')]);
-  return await waitForManagementSession({auth:runtime.getGoogleProjectAuth('FB'),getSourceUser:()=>auth?.currentUser,controller:runtime.googleProjectAuth});
+  if(!await waitForManagementSession({auth:runtime.getGoogleProjectAuth('FB'),getSourceUser:()=>auth?.currentUser,controller:runtime.googleProjectAuth}))return false;
+  return await runtime.verifyGoogleProjectSession('FB');
  }catch(error){if(staleModuleFailure(error))throw error;return false;}
 }

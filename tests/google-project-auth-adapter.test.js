@@ -18,6 +18,7 @@ function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFail
       return instances[target]=instance;
     },
     getAuth:app=>instances[app.options.projectId],
+    getIdTokenResult:async user=>{const target=Object.entries(instances).find(([,instance])=>instance.currentUser===user)?.[0];return {claims:{sub:user.uid,aud:target,iss:'https://securetoken.google.com/'+target,firebase:{sign_in_provider:user.fixtureProvider||'google.com'}}};},
     beforeAuthStateChanged:(instance,guard)=>{instance.guard=guard;},
     onAuthStateChanged:(instance,listener)=>{instance.listener=listener;queueMicrotask(()=>listener(instance.currentUser));},
     signOut:async instance=>{calls.push({kind:'out',target:instance.target});if(logoutFailure===instance.target)throw Error('mock-storage-error');instance.currentUser=null;instance.listener?.(null);},
@@ -72,6 +73,15 @@ test('credencial do login primário conecta destinos existentes sem segunda reau
 test('credencial inicial de outra identidade nunca conecta os destinos',()=>{
  const f=fixture();assert.throws(()=>f.runtime.connectFromPrimarySignIn(credential,person('another-uid')),/AUTH_GOOGLE_IDENTITY_MISMATCH/);
  assert.equal(f.calls.length,0);
+});
+
+test('legacy custom session stays pending and is upgraded with the same Google identity',async()=>{
+ const legacy={...person(),fixtureProvider:'custom'},f=fixture({persisted:{FB:legacy}});
+ await f.runtime.reconcile(f.auth.currentUser);assert.equal(f.runtime.controller.snapshot().targets.FB.status,'pending');
+ assert.equal(await f.runtime.verifyTargetSession('FB'),false);
+ await f.runtime.confirm(credential);assert.equal(await f.runtime.verifyTargetSession('FB'),true);
+ assert.equal(f.calls.filter(c=>c.kind==='signin'&&c.target==='FB').length,1);
+ assert.equal(f.instances.FB.currentUser.uid,'same-uid');
 });
 test('restauração SDK usa cadeia IndexedDB/local/memória sem preflight nem nova entrada',async()=>{
   const f=fixture({persisted:Object.fromEntries(['FB','FC','FD','FE'].map(t=>[t,person()]))});

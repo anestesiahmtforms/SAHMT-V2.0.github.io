@@ -13,12 +13,13 @@ Foram encontrados fluxos reproduzíveis no cliente: a revalidação com falha re
 - A área escolhida fica na rota `#/management/area-…`. Falhas e revalidações não descartam essa escolha.
 - O painel de conexões abre somente por solicitação de recuperação na área Sincronização. A restauração silenciosa de sessões não inicia o botão Google nem exibe o painel.
 - O login Google habitual reaproveita sua credencial transitória para conectar os destinos existentes, com a mesma identidade. Continuam os controles de conta previamente cadastrada, UID e identidade Google; a credencial não é persistida.
+- Sessões antigas de provedor `custom` não são marcadas como uma sessão Google atual só pelo vínculo da conta. A restauração confere provedor, UID, emissor e projeto do token corrente do SDK; a credencial Google permite atualizar a sessão existente mantendo a identidade.
 - A entrada em FB consulta a sessão já restaurada do SDK e, quando uma conexão inicial ainda está em andamento, espera por ela com prazo e limpeza dos observadores. Não consulta Firestore nem aguarda projetos não relacionados se FB já está pronto.
 - Se a sessão de FB realmente estiver ausente, a recuperação explícita usa a entrada FA e retorna à pasta original após conectar FB.
 - Falha reconhecida de importação na inicialização pode abrir uma recuperação única dos arquivos. A página estática `tools/refresh-app.html` atualiza e ativa os shells instalados de FA e FB e retoma a rota. O protocolo não apaga Auth, IndexedDB, filas, cache de registros ou rascunhos e não recarrega outras janelas.
 
 ## Validação
 
-As suítes locais de domínio e autenticação passaram: 1.073 e 145 testes, respectivamente. Os testes específicos cobrem troca de identidade, restauração tardia, prazo, remoção dos observadores e recuperação de arquivos sem repetição automática. A regressão de navegador isolada manteve Gestão de Documentos na transição autorizado → validação indisponível → autorizado e confirmou que o painel exige abertura explícita. Outra regressão ativou ambos os shells, preservando o armazenamento e um rascunho aberto em outra janela. Todos os acessos externos foram bloqueados nesses testes de navegador.
+As suítes locais de domínio e autenticação passaram: 1.073 e 146 testes, respectivamente. Os testes específicos cobrem troca de identidade, restauração tardia, prazo, remoção dos observadores e recuperação de arquivos sem repetição automática. A regressão de navegador isolada manteve Gestão de Documentos na transição autorizado → validação indisponível → autorizado e confirmou que o painel exige abertura explícita. Outra regressão ativou ambos os shells, preservando o armazenamento e um rascunho aberto em outra janela. Todos os acessos externos foram bloqueados nesses testes de navegador.
 
 Publicação via revisão no GitHub e checks completos. Não houve alteração de dados dos treinamentos nem retomada do lote Apps Script nesta correção.
