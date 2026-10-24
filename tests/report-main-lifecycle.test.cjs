@@ -27,7 +27,7 @@ async function harness({kind='events',pendingRead}={}) {
     appFeaturesRefreshPromise:null, appFeaturesRefreshPromiseUid:'', lastForcedAppFeaturesRefresh:{uid:'',at:0},
     DEFAULT_APP_FEATURES:{events:true,labels:true,checklist:true},
     currentRoute:()=>route, featureEnabledForRoute:(value,features)=>features[value]!==false,
-    isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, setOfflineRuntimeMode() {}, onlineValidationRequired:false,
+    isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, setOfflineRuntimeMode() {}, onlineValidationRequired:false, backendFailureDisplayed:false, operationalBackend:{snapshot:()=>({code:''})},
     operationalReportCacheId:()=>'', checklistCacheId:()=>'', checklistCachedCatalogMatches:()=>false,
     readFreshSafeCache:async()=>null, writeSafeCache:async()=>{}, confirmQueuedOperation:async()=>false,
     eventReportMode:'daily',labelReportMode:'daily',checklistReportMode:'daily',eventReportCursor:null,labelReportCursor:null,

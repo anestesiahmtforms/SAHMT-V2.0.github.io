@@ -32,13 +32,13 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     session, deniedOperationalModules: new Set(), cleanupCurrentModule: null, currentRoute: () => route, document, navigator: {onLine: false},
     appFeatures: {labels: true, trainings: true, notifications: true}, appFeaturesUid: session.user.uid,
     appFeaturesLoadSequence: 0, DEFAULT_APP_FEATURES: {labels: true, trainings: true, notifications: true},
-    startupReports: {clear() {}}, liveReports: {clear: (reason) => liveClears.push(reason)},
+    startupReports: {clear() {}}, liveReports: {clear: (reason) => liveClears.push(reason),setOnline(){}},
     reportPayloads: new Map(), reportPaintKeys: new Map(), reportStates: new Map(), reportWaiters: new Map(),
     suspendedReportScopes: [], checklistCatalogLive: {}, checklistModuleStations: [], checklistResponsibilityLive: {},
     loadedLabelRecords: [], loadedEventReportRecords: [], eventReportSourceRecords: [], checklistReportContext: {},
     startupBannerActive: false, labelManualConfirmation: {uid: session.user.uid, status: 'Rascunho'}, notice: '',
     scheduleOutboxRetry() {}, preloadStartupReports() {}, preloadOperationalDataWhenIdle() {}, syncOutbox() {},
-    settleReportWaiter() {}, onlineValidationRequired: false,
+    settleReportWaiter() {}, onlineValidationRequired: false, backendFailureDisplayed: false,operationalBackend:{snapshot:()=>({code:''})},
     setOfflineRuntimeMode() {},
     render: async () => {
       renders.push(route);
@@ -68,6 +68,29 @@ test('sessionChanged: recusa de módulo de outra conta não bloqueia a conta seg
   const next = h.next(); next.user.uid = 'fictional-user-b'; next.profile.uid = next.user.uid;
   h.ctx.sessionChanged(next);
   assert.equal(h.ctx.deniedOperationalModules.size, 0);
+});
+
+test('server-confirmed FB session clears the local lock and redraws identical-profile management',()=>{
+ const h=harness({route:'management'}),modes=[];
+ h.ctx.session.offline=true;h.ctx.navigator.onLine=true;
+ h.ctx.onlineValidationRequired=true;h.ctx.backendFailureDisplayed=true;
+ h.ctx.liveReports.setOnline=()=>{};h.ctx.liveReports.get=()=>null;h.ctx.setOfflineRuntimeMode=value=>modes.push(value);
+ const next=h.next();next.offline=false;h.ctx.sessionChanged(next);
+ assert.equal(h.ctx.onlineValidationRequired,false);assert.equal(h.ctx.backendFailureDisplayed,false);
+ assert.equal(modes.at(-1),false);assert.deepEqual(h.renders,['management']);
+});
+
+test('cached and revoked profiles cannot clear an outstanding online validation',()=>{
+ for(const mutation of [next=>next.offline=true,next=>next.profile.access=false]){
+  const h=harness();h.ctx.onlineValidationRequired=true;const next=h.next();mutation(next);h.ctx.sessionChanged(next);
+  assert.equal(h.ctx.onlineValidationRequired,true);
+ }
+});
+
+test('profile confirmation does not clear a concurrent Firestore quota lock',()=>{
+ const h=harness(),modes=[];h.ctx.backendFailureDisplayed=true;h.ctx.navigator.onLine=true;
+ h.ctx.operationalBackend.snapshot=()=>({code:'resource-exhausted'});h.ctx.setOfflineRuntimeMode=value=>modes.push(value);
+ h.ctx.sessionChanged(h.next());assert.equal(h.ctx.backendFailureDisplayed,true);assert.equal(modes.at(-1),true);
 });
 
 function assertPreserved(h) {
