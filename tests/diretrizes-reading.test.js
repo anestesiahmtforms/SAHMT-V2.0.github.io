@@ -12,6 +12,11 @@ test('configuration disabled by default and refuses insecure endpoint',()=>{
  assert.equal(readingGateConfig({}).enabled,false);
  assert.equal(readingGateConfig({VITE_DIRETRIZES_READING_ENABLED:'true',VITE_DIRETRIZES_READING_ENDPOINT:'http://evil.test'}).enabled,false);
 });
+
+test('daily Apps Script quota crosses the client without becoming a generic PDF or Firestore failure',async()=>{
+ let requests=0;const client=createReadingClient({endpoint:'https://worker.test/v1/diretrizes/reading',getUser:()=>({uid:'reader',getIdToken:async()=>'test'}),fetchImpl:async()=>{requests++;return Response.json({code:'READING_URLFETCH_QUOTA_WAIT'},{status:409});}});
+ await assert.rejects(client.request({action:'open',documentId:'doc'}),e=>e.message==='READING_URLFETCH_QUOTA_WAIT');assert.equal(requests,1);
+});
 test('opt-in card never exposes Form href',()=>{
  const html=renderManagementDocumentCard({id:'doc',title:'Diretriz',category:'DIRETRIZES',driveUrl:'https://docs.google.com/forms/d/e/PrivatePublic123/viewform'},{readingGate:true});
  assert.match(html,/data-open-diretriz-reader/);assert.doesNotMatch(html,/href=/);
