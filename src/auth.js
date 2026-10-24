@@ -119,6 +119,8 @@ export function watchSession(onState) {
     onState({status: 'unconfigured'});
     return () => {};
   }
+  let lastState=null,profileLoad=null;
+  const emit=state=>{lastState=state;onState(state);};
   let disposed = false;
   let authUnsubscribe = null;
   let auth = null;
@@ -133,13 +135,15 @@ export function watchSession(onState) {
   };
   const scheduleReconnect = (user, currentGeneration) => {
     if (currentGeneration !== generation) return;
+    if (lastState?.status==='signed-in' && lastState.offline===false && lastState.user?.uid===user.uid) return;
     onlineHandler = () => {
       onlineHandler = null;
-      if (currentGeneration === generation) void loadProfile(user);
+      if(globalThis.document?.hidden)return;
+      if (currentGeneration === generation) void loadProfile(user,{silent:true});
     };
     window.addEventListener('online', onlineHandler, {once: true});
   };
-  const loadProfile = async (user) => {
+  const performProfileLoad = async (user, {silent=false}={}) => {
     if (!user) return;
     const currentGeneration = ++generation;
     clearOnlineHandler();
@@ -147,34 +151,41 @@ export function watchSession(onState) {
     profileUnsubscribe = null;
     // Let Firebase Authentication open the restricted shell immediately.
     // Firestore profile data upgrades this to a normal authorized session.
-    showAuthLimitedSession(user,onState,true);
+    const preserve=silent&&lastState?.status==='signed-in'&&lastState.user?.uid===user.uid&&lastState.profile?.active===true&&lastState.profile?.access===true;
+    if(!preserve)showAuthLimitedSession(user,emit,true);
     try {
       if (!navigator.onLine) {
-        await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
+        await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
         scheduleReconnect(user, currentGeneration);
         return;
       }
       const cached = await readCachedProfile(user.uid).catch(() => null);
       if (currentGeneration !== generation || disposed) return;
-      if (cached?.uid === user.uid && cached.active === true && cached.access === true) {
-        onState({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true});
-      } else if (!cached) {
-        await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
+      if (!preserve && cached?.uid === user.uid && cached.active === true && cached.access === true) {
+        emit({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true});
+      } else if (!preserve && !cached) {
+        await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
         if (currentGeneration !== generation || disposed) return;
       }
-      await onAuthChangedProfile(user, onState, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
+      await onAuthChangedProfile(user, emit, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
     } catch (error) {
       if (currentGeneration !== generation) return;
-      if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === generation && !disposed);
-      else showAuthLimitedSession(user, onState, false, profileReadFailureCode(error));
+      if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
+      else showAuthLimitedSession(user, emit, false, profileReadFailureCode(error));
     }
     scheduleReconnect(user, currentGeneration);
+  };
+  const loadProfile = (user,options={}) => {
+    if(profileLoad?.uid===user?.uid)return profileLoad.promise;
+    const entry={uid:user?.uid,promise:null};
+    entry.promise=performProfileLoad(user,options).finally(()=>{if(profileLoad===entry)profileLoad=null;});
+    profileLoad=entry;return entry.promise;
   };
   retryCurrentProfile = () => {
     const user = auth?.currentUser;
     if (!user) return Promise.resolve(false);
     operationalBackend.reset();
-    return loadProfile(user);
+    return loadProfile(user,{silent:true});
   };
   firstLoginPendingUnsubscribe = subscribeManagementFaFirstLoginPending((pending) => {
     if (disposed) return;
@@ -184,13 +195,13 @@ export function watchSession(onState) {
       clearOnlineHandler();
       profileUnsubscribe?.();
       profileUnsubscribe = null;
-      if (user) onState({status: 'first-login-linking', user});
+      if (user) emit({status: 'first-login-linking', user});
     } else if (user) {
       void reconcileFirebaseSecondarySessions(user.uid).catch(()=>{});
       void loadProfile(user);
     }
   });
-  onState({status: 'checking'});
+  emit({status: 'checking'});
   loadAuthApi().then(({onAuthStateChanged, auth: initializedAuth}) => {
     if (disposed) return;
     auth = initializedAuth;
@@ -198,7 +209,9 @@ export function watchSession(onState) {
       if (disposed) return;
       const uid = user?.uid || null;
       observeManagementFaFirstLoginAuthUid(uid);
-      if (uid !== lastAuthUid) {
+      const identityChanged=uid!==lastAuthUid;
+      if (identityChanged) {
+        profileLoad=null;
         lastAuthUid = uid;
         // Secondary cleanup is intentionally detached from FA profile loading:
         // FB/FC outages must never delay or fail the primary session.
@@ -209,7 +222,7 @@ export function watchSession(onState) {
         clearOnlineHandler();
         profileUnsubscribe?.();
         profileUnsubscribe = null;
-        onState({status: 'signed-out'});
+        emit({status: 'signed-out'});
         return;
       }
       if (isManagementFaFirstLoginPending()) {
@@ -217,14 +230,14 @@ export function watchSession(onState) {
         clearOnlineHandler();
         profileUnsubscribe?.();
         profileUnsubscribe = null;
-        onState({status: 'first-login-linking', user});
+        emit({status: 'first-login-linking', user});
         return;
       }
-      await loadProfile(user);
-    }, (error) => { if (!disposed) onState({status: 'auth-error', error}); });
+      await loadProfile(user,{silent:!identityChanged});
+    }, (error) => { if (!disposed) emit({status: 'auth-error', error}); });
   }).catch((error) => {
     if(disposed)return;
-    onState({status:'auth-error',error});
+    emit({status:'auth-error',error});
     if(staleModuleFailure(error))repairAppFiles({target:deployment.target,automatic:true});
   });
   return () => {

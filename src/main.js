@@ -55,6 +55,7 @@ import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdmi
 import {deployment} from './deployment-context.js';
 import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {repairAppFiles} from './app-repair.js';
+import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
 const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
@@ -5270,19 +5271,19 @@ async function syncOutbox() {
 }
 
 async function revalidateOnlineSession() {
-  if (!navigator.onLine || session.status !== 'signed-in') return false;
-  onlineValidationRequired = true;
+  if (!navigator.onLine || !['signed-in','auth-limited'].includes(session.status) || !session.user?.uid) return false;
+  const uid=session.user.uid;
+  if(operationalBackend.snapshot().nextRetryAt>Date.now())return false;
   operationalBackend.reset(); deniedOperationalModules.clear();
-  setOfflineRuntimeMode(true);
-  try { await retryAuthenticatedProfile(); }
+  try { if(await retryAuthenticatedProfile()===false)return false; }
   catch (error) { console.warn('[SAHMT sync] Perfil não foi revalidado:', error.code || error.message); }
-  if (session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true) return false;
+  if (session.user?.uid!==uid || session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true || operationalBackend.snapshot().code) return false;
   onlineValidationRequired = false;
   backendFailureDisplayed = false;
   setOfflineRuntimeMode(false);
-  for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'profile-revalidated');
+  for (const kind of ['events', 'labels', 'checklist']) {const state=liveReports.get(kind)?.snapshot();if(state?.scope?.warm===false&&['offline','error'].includes(state.state))liveReports.refresh(kind, 'profile-revalidated');}
   void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
-  void refreshAppFeatures(session.user.uid, true);
+  void refreshAppFeatures(session.user.uid);
   await syncOutbox();
   return true;
 }
@@ -5324,6 +5325,7 @@ function sessionChanged(next) {
   const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
   const profileBecameLocal = !session.offline && next.offline === true;
   const profileRevalidated = session.offline === true && next.offline !== true;
+  const reconnectReports=profileRevalidated?['events','labels','checklist'].filter(kind=>['offline','error'].includes(liveReports.get?.(kind)?.snapshot().state)):[];
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const nextPresentation = JSON.stringify([next.status, next.user?.uid, next.profile?.displayName, next.profile?.sigla, next.profile?.role, next.profile?.active, next.profile?.access, Object.entries(next.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
   const generalReadPermissions = ['trainingsRead', 'notificationsRead'];
@@ -5361,6 +5363,7 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+  connectionRecovery?.sessionChanged();
   if(next.status==='signed-in'&&userChanged&&globalThis.sahmtRemoteContinuityEnabled===true){
     const uid=next.user.uid;
     void import('./remote-continuity.js').then(module=>module.recoverRemoteContinuity(next.user,{isCurrent:()=>session.status==='signed-in'&&session.user.uid===uid})).then(()=>{
@@ -5370,10 +5373,9 @@ function sessionChanged(next) {
   if (globalThis.sahmtProvisionalChannelEnabled) window.dispatchEvent(new CustomEvent('sahmt-channel-session'));
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired || backendFailureDisplayed);
   if (profileBecameLocal) {cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false);}
-  if (profileRevalidated && navigator.onLine) {document.querySelector?.('[data-local-profile-notice]')?.remove(); cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);void syncOutbox();}
+  if (profileRevalidated && navigator.onLine) {document.querySelector?.('[data-local-profile-notice]')?.remove(); cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);for(const kind of reconnectReports)liveReports.refresh(kind,'profile-online');void syncOutbox();}
   if (next.status === 'signed-in' && !next.offline && (wasOffline || userChanged)) {
     preloadOperationalDataWhenIdle(next.user); preloadStartupReports(next.user);
-    for (const kind of ['events', 'labels', 'checklist']) if (liveReports.get?.(kind)?.snapshot().scope?.warm === false) liveReports.refresh(kind, 'profile-online');
   }
   if (next.status === 'signed-in' && userChanged) {
     void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(next.user.uid)).catch(() => {});
@@ -5435,23 +5437,30 @@ async function refreshAppFeatures(uid, force = false) {
     }
   }
 }
+const connectionRecovery=createConnectionLifecycle({
+ getSession:()=>session,getBackend:()=>operationalBackend.snapshot(),isForcedOffline:isOfflineRuntimeForced,
+ isVisible:()=>!document.hidden,restoreAuth:async()=>{const runtime=await import('./google-project-auth-runtime.js');return runtime.maintainGoogleProjectSessions();},
+ revalidate:revalidateOnlineSession,resume:async()=>{
+  liveReports.setOnline(true);
+  cleanupCurrentModule?.resume?.();
+  const scopes=suspendedReportScopes;suspendedReportScopes=[];
+  for(const scope of scopes)if(reportScopeCurrent(scope))liveReports.open(scope.kind,scope,{force:true});
+  for(const kind of ['events','labels','checklist']){const state=liveReports.get(kind)?.snapshot();if(state?.scope&&['offline','error'].includes(state.state))liveReports.refresh(kind,'connection-recovered');}
+  void syncOutbox();void updateOutboxStatus();
+ }
+});
 window.addEventListener('hashchange', () => {
   if (shouldRenderHashChange(session)) void render();
+  void connectionRecovery.recover('navigation');
 });
-window.addEventListener('online', () => {
-  onlineValidationRequired = session.status === 'signed-in';
-  cleanupCurrentModule?.setOnline?.(true);
-  liveReports.setOnline(true);
-  if (session.status === 'signed-in') {
-    setOfflineRuntimeMode(true);
-    void revalidateOnlineSession();
-  }
-});
+window.addEventListener('online', () => {void connectionRecovery.recover('online');});
+window.addEventListener('pageshow', () => {void connectionRecovery.recover('pageshow');});
 window.addEventListener('offline', () => {
   onlineValidationRequired = session.status === 'signed-in';
   setOfflineRuntimeMode(true);
   cleanupCurrentModule?.setOnline?.(false);
-  if (liveReports.get('checklist')?.snapshot().scope) closeReportLive('checklist', 'offline');
+  const checklistScope=liveReports.get('checklist')?.snapshot().scope;
+  if(checklistScope){if(!suspendedReportScopes.some(scope=>scope.key===checklistScope.key))suspendedReportScopes.push(checklistScope);closeReportLive('checklist','offline');}
   liveReports.setOnline(false);
   invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.');
   void updateOutboxStatus();
@@ -5459,17 +5468,14 @@ window.addEventListener('offline', () => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     cleanupCurrentModule?.suspend?.();
-    suspendedReportScopes = ['events', 'labels'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
-    if (liveReports.get('checklist')?.snapshot().scope) closeReportLive('checklist', 'suspend');
-    for (const scope of suspendedReportScopes) { liveReports.close(scope.kind, 'suspend'); reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false}); updateReportSync(scope.kind); }
+    suspendedReportScopes = ['events', 'labels','checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
+    for (const scope of suspendedReportScopes) {if(scope.kind==='checklist')closeReportLive(scope.kind,'suspend');else liveReports.close(scope.kind, 'suspend'); reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false}); updateReportSync(scope.kind); }
     startupReports.clear();
     invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
-  } else {
-    cleanupCurrentModule?.resume?.();
-    if (session.status === 'signed-in' && navigator.onLine && (session.offline || isOfflineRuntimeForced()) && Date.now() >= operationalBackend.snapshot().nextRetryAt) void revalidateOnlineSession();
-    const scopes = suspendedReportScopes; suspendedReportScopes = [];
-    for (const scope of scopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, scope, {force: true});
-  }
+  } else void connectionRecovery.recover('foreground');
+});
+window.addEventListener('sahmt-module-connection-error',event=>{
+ if(session.status==='signed-in'&&['management','training'].includes(currentRoute()))operationalBackend.noteFailure(event.detail,'active-evaluation');
 });
 function refreshLivePending() {
   if (session.status === 'signed-in' && !session.offline) void liveReports.invalidatePending(session.user.uid);
@@ -5488,6 +5494,7 @@ window.addEventListener('sahmt-write-queued', event => {
 window.addEventListener('sahmt-write-local-pending', refreshLivePending);
 let backendFailureDisplayed = false;
 window.addEventListener('sahmt-backend-status', event => {
+  if(event.detail?.code)connectionRecovery.failure(event.detail);
   if (!event.detail?.code) {
     if (session.status === 'signed-in' && session.offline === false && !onlineValidationRequired && navigator.onLine) {
       backendFailureDisplayed = false; setOfflineRuntimeMode(false); void updateOutboxStatus();

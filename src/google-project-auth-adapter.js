@@ -9,7 +9,7 @@ export function createGoogleProjectAuthRuntime({sdk,auth,entries,primary='FA',en
     signInWithCredential,signOut,GoogleAuthProvider,reauthenticateWithCredential,
     beforeAuthStateChanged,getAdditionalUserInfo,onAuthStateChanged,getIdTokenResult}=sdk;
 const fail=code=>Object.assign(new Error(code),{code});
-const initialized=new Map([[primary,auth]]),locks=new Map();
+const initialized=new Map([[primary,auth]]),locks=new Map(),sessionChecks=new Map();
 let popup=null,coordinator;
 async function nativeGoogleSession(user,target){
   if(!googleIdentity(user)||typeof getIdTokenResult!=='function')return false;
@@ -45,12 +45,12 @@ function targetAuth(target){
   return instance;
 }
 async function ready(instance){let timer;
-  try{await Promise.race([instance.authStateReady(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]);}
+  try{await Promise.race([instance.authStateReady?.(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]);}
   finally{clearTimeout(timer);}}
 const progress=createGoogleAuthProgressStore(storage,randomId);
 coordinator=createGoogleProjectAuth({primary:primary,getPrimaryUser:()=>auth.currentUser,
   isOnline,saveProgress:progress.save,
-  restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;if(user&&!await nativeGoogleSession(user,target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');return user;},
+  restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;if(user&&!await verifyTargetSession(target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');return instance.currentUser;},
   signOutTarget:(target,{isCurrent=()=>true}={})=>withTargetLock(target,async()=>{
     if(!isCurrent())return;const instance=targetAuth(target);await signOut(instance);
   }),
@@ -109,7 +109,37 @@ function assertCanStartPrimarySignIn(){
   if(coordinator.snapshot().signingOut)throw fail('AUTH_LOGOUT_IN_PROGRESS');
 }
 
-return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,
-  verifyTargetSession:async target=>{if(!enabled)return false;const expected=googleIdentity(auth.currentUser),instance=targetAuth(target),user=instance.currentUser;return sameGoogleIdentity(user,expected)&&await nativeGoogleSession(user,target)&&instance.currentUser===user&&sameGoogleIdentity(auth.currentUser,expected);},
+function verifyTargetSession(target){
+  if(!enabled&&target!==primary)return Promise.resolve(false);
+  const expected=googleIdentity(auth?.currentUser);if(!expected)return Promise.resolve(false);
+  const prior=sessionChecks.get(target);
+  if(prior&&prior.uid===expected.uid&&prior.googleUid===expected.googleUid)return prior.promise;
+  const instance=targetAuth(target);let timer;
+  const task=(async()=>{
+    await ready(instance);
+    if(!sameGoogleIdentity(auth.currentUser,expected))return false;
+    const user=instance.currentUser;
+    const valid=sameGoogleIdentity(user,expected)&&await nativeGoogleSession(user,target);
+    return valid&&instance.currentUser===user&&sameGoogleIdentity(auth.currentUser,expected);
+  })();
+  const entry={...expected,promise:null};
+  entry.promise=Promise.race([task,new Promise(resolve=>{timer=setTimeout(()=>resolve(false),restoreTimeoutMs);})]).catch(()=>false).finally(()=>{
+    clearTimeout(timer);if(sessionChecks.get(target)===entry)sessionChecks.delete(target);
+  });
+  sessionChecks.set(target,entry);return entry.promise;
+}
+async function maintainSessions(){
+  if(!auth)return {status:'unconfigured'};
+  await ready(auth);const user=auth.currentUser;
+  if(!user)return {status:'signed-out'};
+  const primaryReady=await verifyTargetSession(primary);
+  if(!primaryReady)return {status:'pending'};
+  // SDK refreshes expiring tokens here. No popup, credential exchange or
+  // Firestore read is performed; each destination keeps its own SDK session.
+  if(enabled)void coordinator.restore(user).catch(()=>{});
+  return {status:'ready',primary};
+}
+
+return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,maintainSessions,verifyTargetSession,
   getTargetAuth:target=>{if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');return targetAuth(target);}};
 }
