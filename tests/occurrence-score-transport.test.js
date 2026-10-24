@@ -6,7 +6,7 @@ const secret='s'.repeat(43),id='12345678-1234-1234-1234-123456789abc',origin='ht
 const token='header.'+Buffer.from(JSON.stringify({aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:'fixture',firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.synthetic-signature';
 const env={OCCURRENCE_SCORING_ENABLED:'true',OCCURRENCE_SCORING_HMAC_SECRET:secret,OCCURRENCE_SCORING_SCRIPT_URL:'https://script.google.com/macros/s/'+'synthetic'.repeat(4)+'/exec'};
 const sign=payload=>createHmac('sha256',secret).update('SAHMT_OCCURRENCE_SCORE_V1\n'+payload).digest('hex');
-const envelope=(overrides={})=>{const payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-occurrence-score',nonce:'a'.repeat(32),id,uid:'fixture',issuedAt:Date.now(),expiresAt:Date.now()+60000,...overrides})).toString('base64url');return{payload,mac:sign(payload)};};
+const envelope=(overrides={})=>{const issuedAt=Date.now();const payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-occurrence-score',nonce:'a'.repeat(32),id,uid:'fixture',issuedAt,expiresAt:issuedAt+60000,...overrides})).toString('base64url');return{payload,mac:sign(payload)};};
 function receiver() {
  const props=new Map([['SAHMT_V2_OCCURRENCE_SCORING_HMAC_SECRET',secret]]),calls=[],logs=[];let enabled=true;
  const ctx=vm.createContext({Date,JSON,Object,Number,String,Error,console:{log:x=>logs.push(x),error:x=>logs.push(x)},
