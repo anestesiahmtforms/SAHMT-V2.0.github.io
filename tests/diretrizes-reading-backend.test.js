@@ -42,6 +42,7 @@ function fixture() {
   evaluationWrite_:(c,id,changes)=>({c,id,changes}),
   evaluationRunTransaction_:fn=>{const out=fn('tx');for(const w of out.writes)data.set(w.c+'/'+w.id,structuredClone(w.changes));return out.result;}
  });
+ vm.runInContext(readFileSync(new URL('../apps-script-v2/ServiceQuota.gs',import.meta.url),'utf8'),ctx);
  vm.runInContext(source,ctx);
  const nativeGrant=ctx.dgrGrant_;
  ctx.dgrPdf_=()=>({bytes:'JVBERi0=',checksum:'a'.repeat(32)});
@@ -53,6 +54,14 @@ function fixture() {
 test('backend diagnostics distinguish quota, backoff and permissions without exposing error text',()=>{
  const f=fixture();
  for(const [error,expected] of [[{status:429,retryAfter:Date.now()+60000},'READING_FIRESTORE_BACKOFF'],[{status:429},'READING_FIRESTORE_QUOTA_WAIT'],[{status:403},'READING_FIRESTORE_FORBIDDEN'],[{status:403,service:'drive'},'READING_GOOGLE_FORBIDDEN'],[{status:401},'READING_BACKEND_UNAUTHORIZED'],[{status:503},'READING_BACKEND_UPSTREAM_FAILED']])assert.equal(f.ctx.dgrFailureCode_({...error,message:'private contents'}),expected);
+});
+
+test('native daily UrlFetch quota is identified without confusing short limits or Firestore failures',()=>{
+ const f=fixture();
+ for(const message of ['Service invoked too many times for one day: urlfetch.','Serviço chamado muitas vezes no mesmo dia: urlfetch.'])assert.equal(f.ctx.dgrFailureCode_({message}),'READING_URLFETCH_QUOTA_WAIT');
+ assert.equal(f.ctx.dgrFailureCode_({message:'Service invoked too many times in a short time: urlfetch.'}),'READING_BACKEND_FAILED');
+ assert.equal(f.ctx.dgrFailureCode_({message:'Service invoked too many times for one day: drive.'}),'READING_BACKEND_FAILED');
+ assert.equal(f.ctx.dgrFailureCode_({code:'SAHMT_URLFETCH_DAILY_QUOTA',status:429,service:'urlfetch',retryAfter:Date.now()+60000}),'READING_URLFETCH_QUOTA_WAIT');
 });
 test('first read, coverage and idempotent completion retain identity without scoring',()=>{
  const f=fixture(),s=f.send('start');assert.equal(s.code,'READING_STARTED');
@@ -192,6 +201,11 @@ test('receiver authenticates HMAC, rejects replay/expiry/tampering before work',
  assert.equal(send({...input,nonce:'e'.repeat(32),issuedAt:now-120000,expiresAt:now-60000}).code,'READING_INPUT_INVALID');assert.equal(calls,1);
  f.ctx.dgrHandle_=()=>{throw new ReferenceError('private-helper is not defined');};
  const failed=send({...input,nonce:'d'.repeat(32)});assert.equal(failed.code,'READING_BACKEND_REFERENCE_FAILED');assert.ok(!JSON.stringify(failed).includes('private-helper'));
+ const logs=[];f.ctx.console={warn:x=>logs.push(JSON.parse(x))};
+ f.ctx.dgrHandle_=()=>{throw Error('Serviço chamado muitas vezes no mesmo dia: urlfetch.');};
+ const quota=send({...input,action:'open',nonce:'c'.repeat(32)});
+ assert.equal(quota.code,'READING_URLFETCH_QUOTA_WAIT');assert.equal(logs[0].operation,'open');assert.equal(logs[0].reason,'READING_URLFETCH_QUOTA_WAIT');
+ assert.ok(!JSON.stringify(quota).includes('Serviço'));assert.ok(!JSON.stringify(logs).includes('reader@example.test'));
 });
 test('Apps Script setup is valid V8 syntax',()=>{
  assert.doesNotThrow(()=>new vm.Script(readFileSync(new URL('../apps-script-v2/DiretrizesReadingSetup.gs',import.meta.url),'utf8')));

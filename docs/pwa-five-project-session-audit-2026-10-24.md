@@ -1,4 +1,4 @@
-# Auditoria de sessões e navegação FA–FE — shell 240
+# Auditoria de sessões e navegação FA–FE — shell 241
 
 ## Escopo e diagnóstico
 
@@ -23,7 +23,7 @@ A autenticação já utilizava persistência do SDK, com preferência por Indexe
 5. **Erro de restauração confundido com falha final:** durante o login automático, uma sessão antiga pode falhar na restauração e ser reparada logo depois com a credencial disponível. A espera distingue essa etapa da falha final de conexão; uma falha definitiva do destino não aguarda projetos alheios.
 6. **Redirecionamento de navegação anterior:** uma conferência FB atrasada podia enviar o usuário a Gestão ou Sincronização depois de ele escolher outra página. Geração da navegação e hash de origem impedem esse redirecionamento antigo.
 
-`google-project-session.js` reúne a espera por identidade, prazo, descarte de navegação e limpeza de assinaturas. O runtime mantém a validação de UID, identidade Google, emissor, projeto e provedor. Logout e troca de conta continuam invalidando operações antigas. O shell passa a 240 para entregar os novos arquivos pelo ciclo de atualização já existente.
+`google-project-session.js` reúne a espera por identidade, prazo, descarte de navegação e limpeza de assinaturas. O runtime mantém a validação de UID, identidade Google, emissor, projeto e provedor. Logout e troca de conta continuam invalidando operações antigas. O shell passa a 241 para entregar os novos arquivos pelo ciclo de atualização já existente, preservando a atualização de cota do leitor publicada na versão 240.
 
 ## Persistência e limites
 
@@ -40,6 +40,6 @@ Persistência de autenticação, cache de documentos e conexão de rede são mec
 - Navegador Edge, com acessos externos bloqueados: recuperação FB e preservação de rascunho; FC abre enquanto FB permanece restaurando, sem login manual; atualização dos dois shells preserva dados locais e rascunho de outra janela. Três testes aprovados.
 - Compilação FA/FB com autenticação FA–FE e corte para FB habilitados; `check-fa-runtime.mjs` aprovado. O Vite mantém aviso de chunk maior que 500 kB.
 
-Os totais das suítes se sobrepõem. Ainda é necessária observação após publicação no aparelho em que o sintoma ocorre. Esta entrega altera os arquivos locais; não publica nem modifica o backend.
+Os totais das suítes se sobrepõem. Ainda é necessária observação após publicação no aparelho em que o sintoma ocorre. A publicação do frontend segue o workflow de GitHub Pages; esta correção de sessões não altera o backend.
 
 Referências: [persistência Auth](https://firebase.google.com/docs/auth/web/auth-state-persistence), [cache e sincronização Firestore](https://firebase.google.com/docs/firestore/manage-data/enable-offline).

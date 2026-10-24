@@ -8,6 +8,7 @@ const bytes=pdf.output('datauristring').split(',')[1];
 window.readingCalls=[];window.readingUser={uid:'synthetic-user'};
 const options={getUser:()=>window.readingUser,client:{request:async body=>{
  window.readingCalls.push(body);
+ if(location.search==='?urlfetch-quota=1')throw Error('READING_URLFETCH_QUOTA_WAIT');
  if(body.action==='open')return {code:'READING_PREPARED',pages:2,pdfBase64:bytes,openTicket:'c3ludGhldGlj'+'.'+'a'.repeat(64),hasForm:location.search!=='?reader-only=1'};
  if(body.action==='start'){
   if(location.search==='?slow-register=1')await new Promise(resolve=>{window.finishRegistration=resolve;});
