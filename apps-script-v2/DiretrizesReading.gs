@@ -264,6 +264,7 @@ function dgrReply_(nonce, data, key) {
   return ospJson_({payload:payload,mac:dgrMac_(payload,key)});
 }
 function dgrFailureCode_(error) {
+  if(typeof sahmtUrlFetchDailyQuota_==='function' && sahmtUrlFetchDailyQuota_(error))return 'READING_URLFETCH_QUOTA_WAIT';
   if(error && error.message==='READING_INPUT_INVALID')return 'READING_INPUT_INVALID';
   if(error && error.message==='EVALUATION_CROSS_PROJECT_TRANSACTION')return 'READING_TRANSACTION_PROJECT_FAILED';
   if(error && error.status===429)return Number.isFinite(error.retryAfter)?'READING_FIRESTORE_BACKOFF':error.service?'READING_GOOGLE_QUOTA_WAIT':'READING_FIRESTORE_QUOTA_WAIT';
@@ -310,7 +311,7 @@ function diretrizesReadingHttp_(event) {
     const code=allowed.includes(error && error.message)?error.message:dgrFailureCode_(error);
     if(!allowed.includes(code)){
       const message=String(error&&error.message||''),symbol=message.match(/^([A-Za-z_$][A-Za-z0-9_$]{0,80}) is not defined$/);
-      console.warn(JSON.stringify({code:'READING_RUNTIME_FAILURE',operation:request&&['start','progress','complete'].includes(request.action)?request.action:'input',reason:/^(READING|EVALUATION|INDEPENDENT|PDF)_[A-Z_]{1,70}$/.test(message)?message:'UNEXPECTED',kind:['Error','TypeError','ReferenceError','RangeError','SyntaxError'].includes(error&&error.name)?error.name:'Error',status:Number.isInteger(error&&error.status)?error.status:null,missingSymbol:symbol?symbol[1]:null}));
+      console.warn(JSON.stringify({code:'READING_RUNTIME_FAILURE',operation:request&&['open','start','progress','complete'].includes(request.action)?request.action:'input',reason:code==='READING_URLFETCH_QUOTA_WAIT'?code:/^(READING|EVALUATION|INDEPENDENT|PDF)_[A-Z_]{1,70}$/.test(message)?message:'UNEXPECTED',kind:['Error','TypeError','ReferenceError','RangeError','SyntaxError'].includes(error&&error.name)?error.name:'Error',status:Number.isInteger(error&&error.status)?error.status:null,missingSymbol:symbol?symbol[1]:null}));
     }
     return request && /^[a-f0-9]{32}$/.test(request.nonce || '') && key ? dgrReply_(request.nonce,{code:code},key) : ospJson_({code:'READING_DENIED'});
   } finally {if(lock)lock.releaseLock();}

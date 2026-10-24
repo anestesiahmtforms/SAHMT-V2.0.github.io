@@ -91,5 +91,11 @@ test('real PDF rendering, mobile modal, coverage, completion and close cleanup',
   await scrollBottom();assert.equal(await page.locator('[data-reader-complete]').isDisabled(),true);
   assert.match(await page.locator('[data-reader-page]').innerText(),/1 apresentadas/);
   assert.equal(await page.locator('canvas').evaluate(el=>el.width),0);
+  await page.goto(origin+server.config.base+'tests/fixtures/diretrizes-reading.html?urlfetch-quota=1');await page.waitForFunction(()=>window.readingFixtureReady);
+  await page.locator('[data-open-diretriz-reader]').click();
+  await page.waitForFunction(()=>document.querySelector('[data-reading-status]').textContent.includes('READING_URLFETCH_QUOTA_WAIT'));
+  assert.match(await page.locator('[data-reading-status]').innerText(),/limite diário do Google Apps Script/);
+  assert.equal(await page.locator('[data-reader-complete]').isDisabled(),true);assert.equal(await page.locator('[data-reader-form]').isVisible(),false);
+  await page.waitForTimeout(750);assert.equal(await page.evaluate(()=>window.readingCalls.length),1);
  }finally{await browser?.close();await server.close();}
 });
