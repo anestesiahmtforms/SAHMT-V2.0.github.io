@@ -73,3 +73,23 @@ test('resposta tardia de cota após timeout também instala a pausa', async () =
   fail({code:'resource-exhausted'});await new Promise(resolve=>setImmediate(resolve));
   await assert.rejects(gate.run('other',()=>assert.fail('Não consultar')),{code:'resource-exhausted'});
 });
+
+test('late server result reaches coalesced observers once and clears its own timeout',async()=>{
+ let finish,calls=0;const results=[],gate=createOperationalBackend({timeoutMs:5});
+ await assert.rejects(gate.run('profile',()=>{calls++;return new Promise(resolve=>finish=resolve);},{onLateResult:value=>results.push(['first',value])}),{code:'deadline-exceeded'});
+ await assert.rejects(gate.run('profile',()=>assert.fail('No duplicate read'),{onLateResult:value=>results.push(['second',value])}),{code:'deadline-exceeded'});
+ finish('confirmed');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,1);assert.deepEqual(results,[['first','confirmed'],['second','confirmed']]);
+ assert.equal(gate.snapshot().code,'');assert.equal(gate.snapshot().inFlight,0);assert.equal(gate.snapshot().documentsReceived,1);
+});
+
+test('late success never clears another request quota and late permission denial is reported',async()=>{
+ let finish,reject;const results=[],gate=createOperationalBackend({timeoutMs:5});
+ await assert.rejects(gate.run('slow',()=>new Promise(resolve=>finish=resolve)));
+ gate.noteFailure({code:'resource-exhausted'},'quota');finish([]);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(gate.snapshot().code,'resource-exhausted');
+ const other=createOperationalBackend({timeoutMs:5});
+ await assert.rejects(other.run('profile',()=>new Promise((_resolve,fail)=>reject=fail),{onLateResult:(_value,error)=>results.push(error.code)}));
+ reject({code:'permission-denied'});await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(results,['permission-denied']);assert.throws(()=>other.assertCacheAllowed('profile'),{code:'permission-denied'});
+});

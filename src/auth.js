@@ -242,14 +242,16 @@ export function retryAuthenticatedProfile() {
   return retryCurrentProfile ? retryCurrentProfile() : Promise.resolve(false);
 }
 
-async function onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe) {
+async function onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe, {watch = true, force = false} = {}) {
   const [{doc, getDoc}, {db}] = await Promise.all([import('firebase/firestore/lite'), import('./firebase-lite.js')]);
   if (currentGeneration !== getGeneration()) return;
   const profileRef = doc(db, 'users', user.uid);
-  try {
-    const snapshot = await operationalBackend.run(`profile:${user.uid}`, () => getDoc(profileRef));
+  let serverResultReceived = false;
+  const acceptSnapshot = async snapshot => {
     if (currentGeneration !== getGeneration()) return;
+    serverResultReceived = true;
     if (!snapshot.exists()) {
+      onState({status: 'profile-missing', user});
       const requestSnapshot = await getDoc(doc(db, 'accessRequests', user.uid));
       if (currentGeneration !== getGeneration()) return;
       onState({status: requestSnapshot.exists() && requestSnapshot.data().status === 'PENDING' ? 'access-pending' : 'profile-missing', user});
@@ -261,10 +263,28 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     try{await cacheProfile(user.uid, profile);}catch{}
     if (currentGeneration !== getGeneration()) return;
     onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: false});
-    deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
+    if (watch) deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
+  };
+  const onLateResult = async (snapshot, error) => {
+    if (currentGeneration !== getGeneration()) return;
+    try {
+      if (error) throw error;
+      await acceptSnapshot(snapshot);
+    } catch (failure) {
+      if (currentGeneration === getGeneration() && !isFirestoreCacheFallbackError(failure)) {
+        serverResultReceived = true;
+        showAuthLimitedSession(user, onState, false, profileReadFailureCode(failure));
+      }
+    }
+  };
+  try {
+    const snapshot = await operationalBackend.run(`profile:${user.uid}`, () => getDoc(profileRef), {force, onLateResult});
+    await acceptSnapshot(snapshot);
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
-    if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, onState, () => currentGeneration === getGeneration());
+    if (isFirestoreCacheFallbackError(error)) {
+      if (!serverResultReceived) await showCachedSession(user, onState, () => currentGeneration === getGeneration() && !serverResultReceived);
+    }
     else showAuthLimitedSession(user, onState, false, profileReadFailureCode(error));
   }
 }
@@ -308,7 +328,9 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
         if (currentGeneration !== getGeneration()) return;
         if (isFirestoreCacheFallbackError(error)) {
           operationalBackend.noteFailure(error, `profile:${user.uid}`);
-          showCachedSession(user, onState, () => currentGeneration === getGeneration() && !cancelled).catch((cacheError) => {
+          // A Watch transport error does not prove REST is unavailable. One
+          // server read confirms the profile; no listener is reattached here.
+          onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe, {watch: false, force: true}).catch((cacheError) => {
             if (currentGeneration === getGeneration() && !cancelled) onState({status: 'profile-error', user, error: cacheError});
           });
         } else {

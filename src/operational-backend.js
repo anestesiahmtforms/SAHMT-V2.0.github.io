@@ -2,7 +2,7 @@ import {firebaseFailureCode} from './firebase-failure.js';
 import {deployment} from './deployment-context.js';
 // Coordinates application reads. It does not create polling or background network traffic.
 export function createOperationalBackend({now = Date.now, random = Math.random, timeoutMs = 7000, notify = () => {}, storage = null} = {}) {
-  const pending = new Map(), denied = new Map();
+  const pending = new Map(), denied = new Map(), lateObservers = new Map();
   let code = '', failures = 0, failureEpoch = 0, nextRetryAt = 0, calls = 0, documentsReceived = 0;
   let quotaRetryAt = 0;
   const storageKey = deployment.target === 'FB' ? 'sahmt-fb-firestore-read-backoff-v1' : 'sahmt-firestore-read-backoff-v1';
@@ -33,15 +33,17 @@ export function createOperationalBackend({now = Date.now, random = Math.random, 
   const assertCacheAllowed = key => {
     if (denied.has(key)) throw Object.assign(new Error('O acesso remoto a este dado foi recusado.'), {code: denied.get(key)});
   };
-  const run = (key, task, {force = false} = {}) => {
-    if (pending.has(key)) return pending.get(key);
+  const run = (key, task, {force = false, onLateResult} = {}) => {
+    const observe = () => {if (typeof onLateResult === 'function') lateObservers.get(key)?.add(onLateResult);};
+    if (pending.has(key)) {observe(); return pending.get(key);}
     // Reload, reconnect and explicit refresh do not bypass a known quota failure.
     if (quotaRetryAt > now()) return Promise.reject(Object.assign(new Error('Atualização remota aguardando a recuperação da cota.'), {code: 'resource-exhausted', retryAt: quotaRetryAt, circuitOpen: true}));
     if (!force) {
       try {assertCacheAllowed(key);} catch (error) {return Promise.reject(error);}
       if (nextRetryAt > now()) return Promise.reject(Object.assign(new Error('Atualização remota temporariamente suspensa.'), {code, retryAt: nextRetryAt, circuitOpen: true}));
     }
-    let timer, timedOut = false; const startedEpoch = failureEpoch;
+    let timer, timedOut = false, rejectedEpoch; const startedEpoch = failureEpoch;
+    lateObservers.set(key, new Set()); observe();
     calls++;
     const taskPromise = Promise.resolve().then(task);
     const operation = Promise.race([
@@ -55,11 +57,22 @@ export function createOperationalBackend({now = Date.now, random = Math.random, 
         try { storage?.removeItem(storageKey); } catch {}
       }
       publish(); return value;
-    }, error => {failure(error, key); throw error;}).finally(() => {clearTimeout(timer);});
+    }, error => {failure(error, key); rejectedEpoch = failureEpoch; throw error;}).finally(() => {clearTimeout(timer);});
     pending.set(key, operation);
     // A UI timeout does not cancel the SDK request. Keep it coalesced until it settles.
-    const release = () => { if (pending.get(key) === operation) {pending.delete(key); publish();} };
-    taskPromise.then(release, error => {if (timedOut) failure(error, key); release();});
+    const notifyLate = (value, error) => {
+      if (timedOut) for (const listener of lateObservers.get(key) || []) {
+        try {Promise.resolve(listener(value, error)).catch(() => {});} catch {}
+      }
+    };
+    const release = () => { if (pending.get(key) === operation) {pending.delete(key); lateObservers.delete(key); publish();} };
+    taskPromise.then(value => {
+      if (timedOut) documentsReceived += Array.isArray(value?.docs) ? value.docs.length : Array.isArray(value) ? value.length : Array.isArray(value?.records) ? value.records.length : value === null ? 0 : 1;
+      if (timedOut && rejectedEpoch === failureEpoch && quotaRetryAt <= now()) {
+        code = ''; failures = 0; nextRetryAt = 0;
+      }
+      notifyLate(value); release();
+    }, error => {if (timedOut) failure(error, key); notifyLate(undefined, error); release();});
     return operation;
   };
   return {run, snapshot, assertCacheAllowed, noteFailure: failure, reset() {code = quotaRetryAt > now() ? 'resource-exhausted' : ''; failures = 0; failureEpoch++; nextRetryAt = Math.max(0, quotaRetryAt); denied.clear(); publish();}};
