@@ -86,10 +86,20 @@ function reconcileGoogleProjectSessions(user){
   if(!enabled)return Promise.resolve({status:'disabled'});
   return user?coordinator.restore(user):coordinator.clearSecondaries(null);
 }
+function connectFromPrimarySignIn(credential,user){
+  assertCanStartPrimarySignIn();
+  if(!enabled)return Promise.resolve({status:'disabled'});
+  const expected=googleIdentity(auth.currentUser),claims=googleTokenClaims(credential);
+  if(!sameGoogleIdentity(user,expected)||claims.sub!==expected.googleUid)throw fail('AUTH_GOOGLE_IDENTITY_MISMATCH');
+  if(!entries[primary]?.acceptedGoogleClientIds?.includes(claims.aud))throw fail('AUTH_AUDIENCE_NOT_VERIFIED');
+  // The primary popup already authenticated this identity. Reuse its ephemeral
+  // Google credential for existing destinations without another popup.
+  return coordinator.connect(credential);
+}
 function assertCanStartPrimarySignIn(){
   if(coordinator.snapshot().signingOut)throw fail('AUTH_LOGOUT_IN_PROGRESS');
 }
 
-return {controller:coordinator,confirm:confirmGoogleProjectAccess,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,
+return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,
   getTargetAuth:target=>{if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');return targetAuth(target);}};
 }

@@ -14,7 +14,7 @@ const messages={AUTH_AUDIENCE_NOT_VERIFIED:'A compatibilidade Google deste proje
   AUTH_SOURCE_GOOGLE_LINK_REQUIRED:'Seu cadastro precisa ter a conta Google vinculada pelo administrador.'};
 
 /** This small panel never replaces the app, forms, report DOM or offline queues. */
-export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGoogleButton,document:doc=document,now=Date.now}={}){
+export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGoogleButton,isVisible=()=>true,document:doc=document,now=Date.now}={}){
   const panel=doc.createElement('section');panel.className='google-auth-update';panel.hidden=true;
   panel.setAttribute('aria-label','Atualização de acesso');
   const heading=doc.createElement('h2');heading.textContent='ATUALIZAR O APP';
@@ -23,7 +23,7 @@ export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGo
   host.className='google-auth-button';message.setAttribute('role','status');
   retry.className='secondary-button';retry.textContent='TENTAR CARREGAR O GOOGLE NOVAMENTE';retry.hidden=true;
   panel.append(heading,explanation,list,message,host,retry);doc.body.append(panel);
-  let localBusy=false,lastState=controller.snapshot(),lastError='',lastUid='',widget=null,disposed=false,loadFailed=false;
+  let localBusy=false,lastState=controller.snapshot(),lastError='',lastUid='',widget=null,disposed=false,loadFailed=false,opened=false;
   function startButton(){
     if(widget||loadFailed||disposed||panel.hidden)return;
     try{
@@ -41,7 +41,7 @@ export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGo
   function paint(state=lastState,install=true){
     if(disposed)return;lastState=state;const user=getUser();
     if(lastUid!==user?.uid){lastError='';lastUid=user?.uid;}
-    panel.hidden=!user||now()<GOOGLE_AUTH_START||state.complete||state.uid!==user.uid;
+    panel.hidden=!opened||!isVisible()||!user||now()<GOOGLE_AUTH_START||state.complete||state.uid!==user.uid||state.busy&&!localBusy;
     list.replaceChildren();for(const [target,value]of Object.entries(state.targets)){
       const item=doc.createElement('li');item.dataset.status=value.status;
       const status={ready:'conectado',pending:'pendente',restoring:'restaurando',connecting:'conectando'}[value.status]||'pendente';
@@ -53,7 +53,7 @@ export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGo
     const code=lastError||Object.values(state.targets).find(v=>v.code)?.code;
     message.textContent=code?(messages[code]||'Uma conexão ficou pendente. Você pode continuar usando o app e tentar novamente.'):
       localBusy?'Conectando com Google…':'';
-    if(install&&!sourceBlocked)startButton();
+    if(install&&!sourceBlocked&&!panel.hidden)startButton();
   }
   retry.addEventListener('click',()=>{
     if(localBusy||lastState.busy)return;
@@ -61,5 +61,5 @@ export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGo
   });
   const unsubscribe=controller.subscribe(paint),visible=()=>{if(doc.visibilityState!=='hidden')paint();};
   doc.addEventListener('visibilitychange',visible);
-  return {refresh:()=>paint(),dispose(){disposed=true;unsubscribe();widget?.dispose();doc.removeEventListener('visibilitychange',visible);panel.remove();}};
+  return {open(){opened=true;paint();},close(){opened=false;paint();},refresh:()=>paint(),dispose(){disposed=true;unsubscribe();widget?.dispose();doc.removeEventListener('visibilitychange',visible);panel.remove();}};
 }

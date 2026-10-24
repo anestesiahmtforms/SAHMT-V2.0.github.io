@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v236';
+const CACHE = 'sahmt-v2-shell-v237';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -73,6 +73,15 @@ self.addEventListener('activate', (event) => {
     // Local records, schedule caches and Auth IndexedDB are outside this cleanup.
     // No clients.claim(): pages already open keep their own version until navigation.
   })());
+});
+
+// An error/recovery page can activate a fully installed release. It never
+// claims or reloads other windows, and does not touch Auth or local records.
+self.addEventListener('message', event => {
+  if(event.data?.type!=='SAHMT_ACTIVATE_REPAIRED_APP')return;
+  let source;try{source=new URL(event.source?.url);}catch{return;}
+  if(source.origin!==self.location.origin||source.pathname!=='/SAHMT-V2.0.github.io'+'/tools/refresh-app.html')return;
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('fetch', (event) => {

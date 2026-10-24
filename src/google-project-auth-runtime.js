@@ -11,6 +11,7 @@ const runtime=createGoogleProjectAuthRuntime({sdk:{...firebaseApp,...firebaseAut
   requestUri:()=>location.origin+import.meta.env.BASE_URL});
 export const googleProjectAuth=runtime.controller;
 export const confirmGoogleProjectAccess=runtime.confirm;
+export const connectGoogleProjectsFromSignIn=runtime.connectFromPrimarySignIn;
 export const reconcileGoogleProjectSessions=runtime.reconcile;
 export const assertCanStartPrimarySignIn=runtime.assertCanStartPrimarySignIn;
 export const getGoogleProjectAuth=runtime.getTargetAuth;

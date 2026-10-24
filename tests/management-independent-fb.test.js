@@ -54,7 +54,7 @@ test('FB rules preserve profile policy and omit operational/QMENTUM collections'
  assert.throws(()=>prepareIndependentFbRules('unrelated'),/SOURCE_INVALID/);
 });
 test('independent FB logout covers five sessions and new Google entry returns to FA',()=>{
- const auth=readFileSync(new URL('../src/auth.js',import.meta.url),'utf8');assert.match(auth,/googleProjectAuthEnabled \|\| deployment.target === 'FB'/);assert.match(auth,/location.assign\(deployment.faBase \+ '#\/home'\)/);
+ const auth=readFileSync(new URL('../src/auth.js',import.meta.url),'utf8');assert.match(auth,/googleProjectAuthEnabled \|\| deployment.target === 'FB'/);assert.match(auth,/location.assign\(deployment.faBase \+ '#\/offline'\)/);
 });
 test('QMENTUM stays in FC and retries a lost acknowledgement without awarding twice in FB',()=>{
  const {c}=harness(true),stores={FC:new Map(),FB:new Map()},commits=[];let project='FB',awards=0,loseAck=true;

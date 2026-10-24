@@ -2,6 +2,7 @@ import {firebaseConfigured} from './firebase-app.js';
 import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
 import {profileForPresentation} from './profile-presentation.js';
 import {deployment} from './deployment-context.js';
+import {rememberManagementReturn,consumeManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const directRuntime = () => import('./google-project-auth-runtime.js');
 const reconcileFirebaseSecondarySessions = uid => googleProjectAuthEnabled
@@ -16,6 +17,7 @@ import {createManagementGoogleLogin} from './management-google-login.js';
 import {managementFaFirstLoginConfig} from './management-fa-first-login-config.js';
 import {isFirestoreCacheFallbackError} from './offline-cache.js';
 import {operationalBackend} from './operational-backend.js';
+import {repairAppFiles,staleModuleFailure} from './app-repair.js';
 
 let retryCurrentProfile = null;
 const TEMPORARY_PROFILE_READ_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
@@ -220,7 +222,11 @@ export function watchSession(onState) {
       }
       await loadProfile(user);
     }, (error) => { if (!disposed) onState({status: 'auth-error', error}); });
-  }).catch((error) => { if (!disposed) onState({status: 'auth-error', error}); });
+  }).catch((error) => {
+    if(disposed)return;
+    onState({status:'auth-error',error});
+    if(staleModuleFailure(error))repairAppFiles({target:deployment.target,automatic:true});
+  });
   return () => {
     disposed = true;
     generation++;
@@ -251,7 +257,8 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     }
     const profile = snapshot.data();
     if (profile.uid !== user.uid) throw new Error('O UID do perfil não corresponde à identidade autenticada.');
-    await cacheProfile(user.uid, profile);
+    // A confirmed server profile is usable even if Safari rejects local storage.
+    try{await cacheProfile(user.uid, profile);}catch{}
     if (currentGeneration !== getGeneration()) return;
     onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: false});
     deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
@@ -294,7 +301,7 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
           onState({status: 'profile-error', user, error: new Error('O UID do perfil não corresponde à identidade autenticada.')});
           return;
         }
-        await cacheProfile(user.uid, updatedProfile);
+        try{await cacheProfile(user.uid, updatedProfile);}catch{}
         if (cancelled || currentGeneration !== getGeneration()) return;
         onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(updatedProfile, user), offline: !navigator.onLine});
       }, (error) => {
@@ -324,15 +331,26 @@ export async function signInGoogle() {
   // The FB app restores the session established by FA. New Google entry stays
   // at the verified FA origin/client; no second signup or identity linking.
   if (deployment.target === 'FB') {
-    location.assign(deployment.faBase + '#/home');
+    rememberManagementReturn(location.hash||'#/management');
+    location.assign(deployment.faBase + '#/offline');
     return;
   }
   const api = await loadAuthApi();
   if (googleProjectAuthEnabled) (await directRuntime()).assertCanStartPrimarySignIn();
-  const popupSignIn = () => {
+  const popupSignIn = async () => {
     const provider = new api.GoogleAuthProvider();
     provider.setCustomParameters({prompt: 'select_account'});
-    return api.signInWithPopup(api.auth, provider, api.browserPopupRedirectResolver);
+    const result=await api.signInWithPopup(api.auth, provider, api.browserPopupRedirectResolver);
+    if(googleProjectAuthEnabled){
+      const credential=api.GoogleAuthProvider.credentialFromResult(result);
+      if(credential?.idToken)try{
+        const connected=await (await directRuntime()).connectGoogleProjectsFromSignIn(credential,result.user);
+        if(connected.targets?.FB?.status==='ready'){
+          const destination=consumeManagementReturn();if(destination){rememberModuleNavigation(deployment.fbBase);location.assign(deployment.fbBase+destination);}
+        }
+      }catch{/* Primary login remains valid; manual recovery stays in Synchronization. */}
+    }
+    return result;
   };
   const enabled = deployment.target === 'FA' && !googleProjectAuthEnabled && managementFaFirstLoginConfig.enabled;
   if (!enabled) return popupSignIn();

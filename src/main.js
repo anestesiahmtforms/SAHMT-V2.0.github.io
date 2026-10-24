@@ -53,7 +53,8 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 import {deployment} from './deployment-context.js';
-import {consumeModuleNavigation} from './module-navigation.js';
+import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
+import {repairAppFiles} from './app-repair.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
 const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
@@ -131,8 +132,14 @@ let notice = '';
 let googleAccessPanel;
 if (googleProjectAuthEnabled) {
   Promise.all([import('./google-project-auth-runtime.js'), import('./google-project-auth-ui.js'), import('./google-project-auth-google-button.js')]).then(([runtime, ui, google]) => {
-    googleAccessPanel=ui.mountGoogleProjectAuthPanel({controller:runtime.googleProjectAuth,confirm:runtime.confirmGoogleProjectAccess,getUser:()=>session.user,
+    googleAccessPanel=ui.mountGoogleProjectAuthPanel({controller:runtime.googleProjectAuth,confirm:async credential=>{
+      const result=await runtime.confirmGoogleProjectAccess(credential);
+      if(result.targets?.FB?.status==='ready'){const destination=consumeManagementReturn();if(destination){rememberModuleNavigation(deployment.fbBase);location.assign(deployment.fbBase+destination);}}
+      return result;
+    },getUser:()=>session.user,
+      isVisible:()=>currentRoute()==='offline'&&session.status==='signed-in',
       createGoogleButton:callbacks=>google.createGoogleProjectAuthGoogleButton({...callbacks,clientId:runtime.googleProjectClientId,getExpectedIdentity:runtime.currentGoogleProjectIdentity})});
+    if(currentRoute()==='offline'&&hasManagementReturn())googleAccessPanel.open();
   }).catch(()=>{});
 }
 const deniedOperationalModules = new Set();
@@ -749,10 +756,11 @@ function loginView() {
     <section class="login-card" aria-labelledby="login-title">
       <img class="brand-logo" src="${import.meta.env.BASE_URL}assets/icon-192.png" alt="SAHMT">
       <h1 id="login-title">SAHMT</h1>
-      <p class="login-message">${deployment.target === 'FB' ? 'Entre no SAHMT e confirme sua conta em ATUALIZAR O APP para acessar Gestão e Desempenho.' : 'Entre com sua conta Google autorizada.'}</p>
+      <p class="login-message">${deployment.target === 'FB' ? 'Sua sessão de Gestão precisa ser restaurada. Confirme a mesma conta Google na área Sincronização.' : 'Entre com sua conta Google autorizada.'}</p>
       ${configMessage}${resultMessage}${accessRequest}
       ${profileRetry}
-      <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>${deployment.target === 'FB' ? 'Voltar à entrada do SAHMT' : 'Entrar com Google'}</button>
+      ${session.status==='auth-error'?'<button class="primary-button" id="repair-app-files" type="button">Restaurar abertura do app</button>':''}
+      <button class="primary-button google-button" id="google-login" type="button" ${!firebaseConfigured ? 'disabled' : ''}>${deployment.target === 'FB' ? 'Restaurar acesso à Gestão' : 'Entrar com Google'}</button>
       <small>Uma única conta para acessar as áreas do SAHMT, conforme suas permissões.</small>
     </section>
   </main>`;
@@ -1596,6 +1604,8 @@ async function loadModule(route) {
       return;
     }
     if (route === 'management') {
+      const areaSlug=location.hash.split('/')[2];
+      if(items.some(item=>item.id===areaSlug))selectedManagementAreaId=areaSlug;
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
       const areas = items.map((item) => `<button class="area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"><span class="module-mark">${escapeHtml(item.shortName || item.icon || 'GE')}</span><span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
@@ -1612,7 +1622,7 @@ async function loadModule(route) {
       if (!evaluationCurrent()) return;
       cleanupCurrentModule = mountManagementEvaluationAccess(evaluationHost, {uid: requestUid, profile: session.profile, areas: items, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: evaluationCurrent});
       const areaDialog = content.querySelector('#management-area-dialog');
-      areaDialog?.addEventListener('close', () => { managementActivityLoad++; });
+      areaDialog?.addEventListener('close', () => { managementActivityLoad++; history.replaceState(history.state,'','#/management'); });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
         const button = event.currentTarget;
@@ -1635,6 +1645,7 @@ async function loadModule(route) {
         if (areaSelect) areaSelect.value = selectedManagementAreaId;
         content.querySelectorAll('[data-management-area]').forEach((button) => button.addEventListener('click', async () => {
           selectedManagementAreaId = button.dataset.managementArea;
+          history.replaceState(history.state,'','#/management/'+selectedManagementAreaId);
           content.querySelectorAll('[data-management-area]').forEach((card) => {
             const selected = card.dataset.managementArea === selectedManagementAreaId;
             card.classList.toggle('is-selected', selected);
@@ -1645,6 +1656,13 @@ async function loadModule(route) {
           if (areaDialog && !areaDialog.open) areaDialog.showModal();
           await loadManagementAreaActivities(items.find((area) => area.id === selectedManagementAreaId));
         }));
+        const requestedArea=location.hash.split('/')[2];
+        const restoredArea=items.find(area=>area.id===requestedArea);
+        if(restoredArea&&evaluationCurrent()){
+          selectedManagementAreaId=restoredArea.id;
+          if(areaDialog&&!areaDialog.open)areaDialog.showModal();
+          await loadManagementAreaActivities(restoredArea);
+        }
       }
     } else {
       const heading = (item) => route === 'events'
@@ -1747,6 +1765,11 @@ async function loadOfflineView(target) {
     const readySection = document.createElement('section'); readySection.className = 'offline-panel';
     readySection.innerHTML = '<h3>Preparação deste aparelho</h3><p data-offline-readiness role="status">Conferindo somente os dados locais…</p><p data-offline-storage class="record-meta"></p><button class="secondary-button" type="button" data-prepare-offline>Preparar uso offline</button><p class="record-meta">Use o cache em aparelho pessoal ou autorizado. Registros pendentes ficam neste navegador até sua confirmação de envio. Não limpe os dados do site enquanto houver registros pendentes.</p>';
     target.querySelector('#offline-sync-panel').prepend(readySection);
+    if(googleProjectAuthEnabled){
+      const restore=document.createElement('button');restore.type='button';restore.className='secondary-button';restore.textContent='Restaurar acesso aos módulos';
+      restore.addEventListener('click',()=>googleAccessPanel?.open());readySection.append(restore);
+      if(hasManagementReturn())googleAccessPanel?.open();
+    }
     if (globalThis.sahmtProvisionalChannelEnabled) {
       const section=document.createElement('section');section.className='panel shared-channel-recovery';
       section.innerHTML='<h3>Canal compartilhado provisório</h3><p>Compartilha checagens, registros e liberações com internet. A confirmação definitiva depende do Firestore. A recuperação abaixo restaura somente seus registros, sem enviá-los.</p><label>Data<input type="date" data-channel-recovery-day value="'+todayInputValue()+'"></label><label>Módulo<select data-channel-recovery-kind><option value="checklists">Checklist</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="scheduleReleases">Liberações da escala</option></select></label><button type="button" class="secondary-button" data-channel-recover>Recuperar meus registros provisórios</button><p role="status" data-channel-recovery-status></p>';
@@ -4924,6 +4947,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  if(currentRoute()!=='offline')googleAccessPanel?.close();else googleAccessPanel?.refresh();
   scheduleGridObserver?.disconnect(); scheduleGridObserver = null;
   await operationalDrafts.flush();
   if (session.status !== 'signed-in') updateInformationBanner(null);
@@ -4969,7 +4993,6 @@ async function render() {
     bindLogin();
     return;
   }
-  if(authLimited && !session.validatingProfile && currentRoute() !== 'home'){navigate('home');return;}
   const requestedRoute = currentRoute();
   if (deployment.target === 'FB' && requestedRoute === 'qmentum') { location.replace(deployment.faBase + '#/qmentum'); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
@@ -4978,7 +5001,7 @@ async function render() {
     navigate('home'); return;
   }
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
-  if (['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if (!authLimited && ['management', 'training', 'qmentum'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
@@ -5287,6 +5310,7 @@ function bindLogin() {
     notice = '';
     await retryAuthenticatedProfile();
   });
+  document.querySelector('#repair-app-files')?.addEventListener('click',()=>repairAppFiles({target:deployment.target}));
   document.querySelector('#google-login')?.addEventListener('click', async () => {
     try { notice = ''; await signInGoogle(); }
     catch { notice = 'Não foi possível entrar com Google. Verifique a conta e tente novamente.'; await render(); }

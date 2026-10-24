@@ -95,7 +95,16 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v236');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v237');
+});
+
+test('only the same-origin repair entry activates an installed update without claiming windows',async()=>{
+ const worker=createWorker();let operation;
+ const send=(url,type='SAHMT_ACTIVATE_REPAIRED_APP')=>worker.handlers.get('message')({data:{type},source:{url},waitUntil:p=>{operation=p;}});
+ send('https://other.example/SAHMT-V2.0.github.io/tools/refresh-app.html');
+ send('https://sahmt.example/another-page');assert.equal(worker.skipWaiting(),0);
+ send('https://sahmt.example/SAHMT-V2.0.github.io/tools/refresh-app.html');await operation;
+ assert.equal(worker.skipWaiting(),1);assert.equal(worker.claim(),0);assert.deepEqual(worker.deletes(),[]);
 });
 
 test('instala o shell atual com os símbolos da Home e os imports estáticos do Vite', async () => {

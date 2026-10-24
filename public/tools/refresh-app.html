@@ -1,0 +1,33 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Atualizar SAHMT</title><style>body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#10334d;color:#173b50;font:18px system-ui}main{margin:20px;padding:28px;max-width:520px;border-radius:24px;background:#fffaf0;text-align:center}button{font:inherit;padding:14px 22px;border:0;border-radius:14px;background:#d8e7ed;color:#173b50;font-weight:700}</style></head><body><main><h1>SAHMT</h1><p id="status" role="status">Preparando a abertura atualizada do app…</p><button id="retry" hidden>Tentar novamente</button></main><script type="module">
+const params=new URLSearchParams(location.search),target=params.get('target')==='FB'?'FB':'FA';
+const root='/SAHMT-V2.0.github.io/',base=target==='FB'?root+'gestao/':root;
+const requested=params.get('route')|| (target==='FB'?'#/management':'#/home');
+const route=/^#\/[a-z0-9/-]*$/i.test(requested)&&requested.length<=250?requested:(target==='FB'?'#/management':'#/home');
+const status=document.querySelector('#status'),retry=document.querySelector('#retry');
+function waitState(worker,states){return new Promise((resolve,reject)=>{
+ const check=()=>{if(states.includes(worker.state)){cleanup();resolve();}else if(worker.state==='redundant'){cleanup();reject(Error('UPDATE_REPLACED'));}};
+ const timer=setTimeout(()=>{cleanup();reject(Error('UPDATE_TIMEOUT'));},45000);
+ const cleanup=()=>{clearTimeout(timer);worker.removeEventListener('statechange',check);};
+ worker.addEventListener('statechange',check);check();
+});}
+async function run(){
+ retry.hidden=true;status.textContent='Atualizando a abertura do app. Aguarde…';
+ try{
+  if('serviceWorker'in navigator){
+   await Promise.all([root,root+'gestao/'].map(async scope=>{
+    const registration=await navigator.serviceWorker.register(scope+'service-worker.js',{scope});
+    await registration.update();
+    const candidate=registration.installing||registration.waiting;
+    if(candidate&&candidate.state!=='activated'){
+     await waitState(candidate,['installed','activated']);
+     if(candidate.state!=='activated'){candidate.postMessage({type:'SAHMT_ACTIVATE_REPAIRED_APP'});await waitState(candidate,['activated']);}
+    }
+   }));
+  }
+  // Navigation hint affects the introductory animation only.
+  try{sessionStorage.setItem('sahmt-module-navigation-v1',JSON.stringify({from:target==='FB'?root:root+'gestao/',to:base,at:Date.now()}));}catch{}
+  location.replace(base+route);
+ }catch{status.textContent='A atualização ainda não terminou. Confira a conexão e tente novamente.';retry.hidden=false;}
+}
+retry.addEventListener('click',run);void run();
+</script></body></html>

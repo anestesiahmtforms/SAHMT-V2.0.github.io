@@ -62,6 +62,17 @@ test('uma confirmação Google conecta quatro destinos com SDK e mesma identidad
   assert.equal(f.runtime.controller.snapshot().complete,true);
   assert.ok([...f.saved.values()].every(v=>!v.includes(idToken)&&!v.includes('fixture@example')));
 });
+
+test('credencial do login primário conecta destinos existentes sem segunda reautenticação',async()=>{
+ const f=fixture();await f.runtime.connectFromPrimarySignIn(credential,f.auth.currentUser);
+ assert.equal(f.runtime.controller.snapshot().complete,true);
+ assert.equal(f.calls.filter(c=>c.kind==='signin').length,4);
+ assert.equal(f.calls.filter(c=>c.kind==='reauth').length,0);
+});
+test('credencial inicial de outra identidade nunca conecta os destinos',()=>{
+ const f=fixture();assert.throws(()=>f.runtime.connectFromPrimarySignIn(credential,person('another-uid')),/AUTH_GOOGLE_IDENTITY_MISMATCH/);
+ assert.equal(f.calls.length,0);
+});
 test('restauração SDK usa cadeia IndexedDB/local/memória sem preflight nem nova entrada',async()=>{
   const f=fixture({persisted:Object.fromEntries(['FB','FC','FD','FE'].map(t=>[t,person()]))});
   await f.runtime.reconcile(f.auth.currentUser);

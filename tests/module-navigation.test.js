@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {rememberModuleNavigation, consumeModuleNavigation} from '../src/module-navigation.js';
+import {rememberModuleNavigation, consumeModuleNavigation,rememberManagementReturn,consumeManagementReturn} from '../src/module-navigation.js';
 const FA='/SAHMT-V2.0.github.io/',FB=FA+'gestao/';
 const fixture=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
 test('a same-tab app switch consumes the animation hint once',()=>{
@@ -22,4 +22,12 @@ test('same-app routes and unrecognized paths cannot create a module handoff',()=
 test('unavailable browser storage cannot break navigation',()=>{
  const storage={getItem(){throw Error('blocked');},setItem(){throw Error('blocked');},removeItem(){throw Error('blocked');}};
  assert.equal(rememberModuleNavigation(FB,{storage,pathname:FA}),false);assert.equal(consumeModuleNavigation({storage,pathname:FB}),false);
+});
+test('explicit session repair returns once to the original management area',()=>{
+ const storage=fixture(),hash='#/management/area-gestao-de-documentos';
+ assert.equal(rememberManagementReturn(hash,{storage,now:1000}),true);
+ assert.equal(consumeManagementReturn({storage,now:1100}),hash);
+ assert.equal(consumeManagementReturn({storage,now:1200}),null);
+ assert.equal(rememberManagementReturn('https://example.com',{storage}),false);
+ rememberManagementReturn(hash,{storage,now:1000});assert.equal(consumeManagementReturn({storage,now:602000}),null);
 });
