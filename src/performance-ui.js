@@ -3,6 +3,14 @@ import {createLiveReportSession} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {renderCatalogFolders} from './catalog-folders.js';
 import {googleMaterialPreview, renderMaterialViewerTrigger, materialPresentationUrls} from './material-viewer.js';
+import {isOfflineRuntimeForced} from './offline-runtime-mode.js';
+const reportedConnectionErrors=new WeakSet();
+function reportEvaluationConnectionError(error){
+  const code=String(error?.code||'').split('/').at(-1);
+  if(!error||typeof error!=='object'||reportedConnectionErrors.has(error)||!['unavailable','deadline-exceeded','network-request-failed','resource-exhausted'].includes(code))return;
+  reportedConnectionErrors.add(error);
+  if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-module-connection-error',{detail:{code}}));
+}
 
 const CATEGORIES = new Set(['PERFORMANCE', 'GOVERNANCE']);
 const MODALITY_LABELS = {ACKNOWLEDGEMENT: 'Ciência', SUGGESTION: 'Sugestão aprovada', TEST: 'Teste', MATERIAL: 'Material', QUESTIONS: 'Questões', CHECKLIST_TRANSFER: 'Transferência do Checklist', CHECKLIST: 'Checklist', OCCURRENCE: 'Registro de ocorrências', TRAINING_ACCESS: 'Acesso ao treinamento', TRAINING_COMPLETION: 'Conclusão do treinamento', MANAGEMENT_TASK: 'Atividade de Gestão'};
@@ -112,8 +120,10 @@ export function createEvaluationLifecycle({services, actorUid, subjectUid = acto
       if (!callbacks.isCurrent()) return null;
       return data.watchEvaluation({actorUid, subjectUid, category, loadedLimit, onData: payload => callbacks.next('report', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.pendingWrites}), onError: callbacks.error});
     }});
-  controller.start(scope);
-  return {dispose() { if (disposed) return; disposed = true; controller.close('dispose'); }, suspend() { if (disposed || suspended) return; suspended = true; controller.close('suspend'); }, resume() { if (disposed || !isCurrent()) return; suspended = false; controller.setOnline(isOnline()); controller.start(scope, {force: true, reason: 'resume'}); }, setOnline(value) { if (!disposed) { controller.setOnline(value); if (value && !suspended && isCurrent()) controller.refresh('reconnect'); } }, snapshot: controller.snapshot};
+  if(isOnline())controller.start(scope);else onState({state:'offline',confirmed:false,error:null});
+  return {dispose() { if (disposed) return; disposed = true; controller.close('dispose'); }, suspend() { if (disposed || suspended) return; suspended = true; controller.close('suspend'); },
+    resume() {if(disposed||!isCurrent())return false;const wasSuspended=suspended;suspended=false;if(!isOnline())return false;const before=controller.snapshot();controller.setOnline(true);return wasSuspended||['closed','offline','error'].includes(before.state)?controller.start(scope,{force:true,reason:'resume'}):false;},
+    setOnline(value) {if(disposed)return false;if(!value){controller.close('offline');onState({state:'offline',confirmed:false,error:null});return false;}const before=controller.snapshot();controller.setOnline(true);return !suspended&&isCurrent()&&['closed','offline','error'].includes(before.state)?controller.start(scope,{force:true,reason:'reconnect'}):false;},snapshot:controller.snapshot};
 }
 
 function baseMarkup(category, isAdmin) {
@@ -160,7 +170,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
   const eventController = new AbortController();
   const servicePromise = services ? Promise.resolve(services) : import('./evaluation-data.js');
   const current = () => !disposed && !blocked && content.isConnected && isCurrent();
-  const isModuleOnline = () => onlineOverride ?? (navigator.onLine !== false);
+  const isModuleOnline = () => (onlineOverride ?? (navigator.onLine !== false)) && !isOfflineRuntimeForced();
   const admin = () => current() && isAdmin() === true;
   const suggestionReviewer = () => current() && (admin() || canReviewSuggestions() === true || assignments.some(item => item.uid === uid));
   content.innerHTML = baseMarkup(category, isAdmin() === true);
@@ -251,6 +261,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     lifecycle = createEvaluationLifecycle({services: servicePromise, actorUid: uid, subjectUid: selectedUid, category, loadedLimit, isCurrent: () => current() && version === mountVersion && (selectedUid === uid || admin()), isOnline: isModuleOnline, onData: snapshot => renderSnapshot(snapshot, {live: true}),
       onState: state => {
         if (!current() || version !== mountVersion) return;
+        reportEvaluationConnectionError(state.error);
         const failure = evaluationFailureState(state.error, {online: isModuleOnline() && state.state !== 'offline'});
         if (failure === 'blocked') { blockAccess(); return; }
         if (!state.confirmed || failure === 'offline') { setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); }
@@ -309,6 +320,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
       }
     } catch (error) {
       if (!current() || loadSequence !== metadataLoadSequence) return;
+      reportEvaluationConnectionError(error);
       if (evaluationFailureState(error, {online: isModuleOnline()}) === 'blocked') { blockAccess(); return; }
       if (evaluationFailureState(error, {online: isModuleOnline()}) === 'offline') { connectionUnavailable = true; lifecycle?.setOnline(false); }
       markup('[data-evaluation-activities]', `<p class="empty-state" role="status">Não foi possível consultar atividades e atribuições. ${escapeHtml(error.message || '')}</p>`);
@@ -508,8 +520,9 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     latest = null; assignments = []; activities = []; people = []; reviewQueue = [];
   };
   cleanup.suspend = () => { lifecycle?.suspend(); stopActivityMetadata(); renderActivities(); };
-  cleanup.resume = () => { if (current()) { if (isModuleOnline()) connectionUnavailable = false; lifecycle?.resume(); void refreshMetadata(); } };
-  cleanup.setOnline = value => { if (!current()) return; onlineOverride = Boolean(value); if (value) connectionUnavailable = false; if (!value) { page.dataset.evaluationState = 'offline'; setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); stopActivityMetadata(); renderActivities(); } lifecycle?.setOnline(value); if (value) void refreshMetadata(); };
+  cleanup.resume = () => { if (current()) { const unavailable=connectionUnavailable;onlineOverride=navigator.onLine!==false;if (isModuleOnline()) connectionUnavailable = false; if(lifecycle?.resume()||unavailable)void refreshMetadata(); } };
+  cleanup.needsConnectionRecovery=()=>connectionUnavailable||['offline','error'].includes(lifecycle?.snapshot().state);
+  cleanup.setOnline = value => { if (!current()) return; const changed=isModuleOnline()!==Boolean(value)||connectionUnavailable;onlineOverride = Boolean(value); if (value) connectionUnavailable = false; if (!value) { page.dataset.evaluationState = 'offline'; setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); stopActivityMetadata(); renderActivities(); }const started=lifecycle?.setOnline(value);if(value&&(started||changed&&lifecycle?.snapshot().state!=='closed'))void refreshMetadata(); };
   cleanup.revalidate = () => { if (!current()) cleanup(); };
   cleanup.updateProfile = nextProfile => { if (!current()) return; profile = nextProfile || profile; setText('.evaluation-subject', nameFor(selectedUid)); };
   cleanup.canPreserveSession = (previous, next) => !blocked && evaluationSessionCanPreserve(previous, next);

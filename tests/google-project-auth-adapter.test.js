@@ -5,8 +5,34 @@ const person=(uid='same-uid')=>({uid,email:'fixture@example.test',providerData:[
 const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),resolve:v=>resolve(v)};};
 const idToken='header.'+Buffer.from(JSON.stringify({iss:'https://accounts.google.com',sub:'google-same-uid',aud:'source-client'})).toString('base64url')+'.signature';
 const credential={providerId:'google.com',idToken};
+
+test('foreground maintenance validates five existing SDK sessions without login or forced refresh',async()=>{
+ const tokens=[],h=fixture({persisted:Object.fromEntries(['FB','FC','FD','FE'].map(target=>[target,person()])),tokenRead:(target,force)=>tokens.push({target,force})});
+ assert.equal((await h.runtime.maintainSessions()).status,'ready');await h.runtime.controller.restore(h.auth.currentUser);
+ assert.equal(h.runtime.controller.snapshot().complete,true);assert.deepEqual(new Set(tokens.map(value=>value.target)),new Set(['FA','FB','FC','FD','FE']));
+ assert.equal(tokens.every(value=>value.force===false),true);assert.equal(h.calls.some(c=>['signin','reauth','preflight'].includes(c.kind)),false);
+});
+
+test('an unavailable FC token does not disconnect FA or a healthy FB',async()=>{
+ const h=fixture({persisted:Object.fromEntries(['FB','FC','FD','FE'].map(target=>[target,person()])),tokenRead:target=>{if(target==='FC')throw {code:'auth/network-request-failed'};}});
+ assert.equal((await h.runtime.maintainSessions()).status,'ready');await h.runtime.controller.restore(h.auth.currentUser);
+ assert.equal(h.runtime.controller.snapshot().targets.FB.status,'ready');assert.equal(h.runtime.controller.snapshot().targets.FC.status,'pending');
+ assert.equal(h.auth.currentUser.uid,'same-uid');assert.equal(h.instances.FC.currentUser.uid,'same-uid');assert.equal(h.calls.some(c=>c.kind==='out'),false);
+});
+
+test('concurrent target checks share one bounded verification',async()=>{
+ const gate=deferred(),h=fixture({persisted:{FB:person()},tokenRead:target=>target==='FB'?gate.promise:undefined});
+ const a=h.runtime.verifyTargetSession('FB'),b=h.runtime.verifyTargetSession('FB');assert.equal(a,b);gate.resolve();assert.equal(await a,true);
+});
+
+test('independent FB maintenance refreshes its own SDK session without initializing other projects',async()=>{
+ const auth={currentUser:person(),authStateReady:async()=>{}},calls=[];
+ const sdk={getIdTokenResult:async(user,force)=>{calls.push(force);return {claims:{sub:user.uid,aud:'FB',iss:'https://securetoken.google.com/FB',firebase:{sign_in_provider:'google.com'}}};},getApps:()=>{assert.fail('No secondary app should be initialized');}};
+ const runtime=createGoogleProjectAuthRuntime({sdk,auth,entries,primary:'FB',enabled:false});
+ assert.equal((await runtime.maintainSessions()).status,'ready');assert.deepEqual(calls,[false]);assert.equal(await runtime.verifyTargetSession('FC'),false);
+});
 const entries=Object.fromEntries(['FA','FB','FC','FD','FE'].map(t=>[t,{acceptedGoogleClientIds:['source-client'],appName:'app-'+t,config:{projectId:t,appId:'id-'+t}}]));
-function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFailure}={}){
+function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFailure,tokenRead}={}){
   const auth={target:'FA',currentUser:person()},apps=[],instances={FA:auth},calls=[],saved=new Map();
   const sdk={
     indexedDBLocalPersistence:'indexeddb',browserLocalPersistence:'local',inMemoryPersistence:'memory',browserPopupRedirectResolver:{},
@@ -18,7 +44,7 @@ function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFail
       return instances[target]=instance;
     },
     getAuth:app=>instances[app.options.projectId],
-    getIdTokenResult:async user=>{const target=Object.entries(instances).find(([,instance])=>instance.currentUser===user)?.[0];return {claims:{sub:user.uid,aud:target,iss:'https://securetoken.google.com/'+target,firebase:{sign_in_provider:user.fixtureProvider||'google.com'}}};},
+    getIdTokenResult:async(user,force)=>{const target=Object.entries(instances).find(([,instance])=>instance.currentUser===user)?.[0];await tokenRead?.(target,force);return {claims:{sub:user.uid,aud:target,iss:'https://securetoken.google.com/'+target,firebase:{sign_in_provider:user.fixtureProvider||'google.com'}}};},
     beforeAuthStateChanged:(instance,guard)=>{instance.guard=guard;},
     onAuthStateChanged:(instance,listener)=>{instance.listener=listener;queueMicrotask(()=>listener(instance.currentUser));},
     signOut:async instance=>{calls.push({kind:'out',target:instance.target});if(logoutFailure===instance.target)throw Error('mock-storage-error');instance.currentUser=null;instance.listener?.(null);},

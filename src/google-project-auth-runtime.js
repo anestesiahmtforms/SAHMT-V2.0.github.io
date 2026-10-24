@@ -16,5 +16,6 @@ export const reconcileGoogleProjectSessions=runtime.reconcile;
 export const assertCanStartPrimarySignIn=runtime.assertCanStartPrimarySignIn;
 export const getGoogleProjectAuth=runtime.getTargetAuth;
 export const verifyGoogleProjectSession=runtime.verifyTargetSession;
+export const maintainGoogleProjectSessions=runtime.maintainSessions;
 export const currentGoogleProjectIdentity=()=>googleIdentity(auth.currentUser);
 export const googleProjectClientId=GOOGLE_PROJECT_CONFIG.FA.acceptedGoogleClientIds[0];

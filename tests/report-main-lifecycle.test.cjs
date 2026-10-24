@@ -20,7 +20,7 @@ async function harness({kind='events',pendingRead}={}) {
     nodes.set('#'+prefix+'-report-sync',element());
   }
   nodes.set('#module-content',element()); nodes.set('#checklist-month',element({value:'2026-09'}));
-  const ctx=vm.createContext({googleProjectAuthEnabled:false,googleAccessPanel:null,pendingSyncBanner:{reset(){}},
+  const ctx=vm.createContext({createConnectionLifecycle:()=>({sessionChanged(){},recover(){}}),googleProjectAuthEnabled:false,googleAccessPanel:null,pendingSyncBanner:{reset(){}},
     session:{status:'signed-in',user:{uid:'user-a'},profile:{displayName:'Pessoa fictícia A',sigla:'AA',role:'administrador_app',active:true,access:true,permissions:{admin:true,eventsRead:true,eventsWrite:true,labelsRead:true,labelsWrite:true,labelsManage:true,checklistRead:true,checklistWrite:true,checklistSign:true,checklistManage:true}}},
     scheduleGridObserver:null, cleanupCurrentModule:null,evaluationModuleGeneration:0,operationalDrafts:{flush:async()=>{}},
     appFeatures:{events:true,labels:true,checklist:true}, appFeaturesUid:'user-a', appFeaturesLoadSequence:0,
@@ -43,7 +43,7 @@ async function harness({kind='events',pendingRead}={}) {
     loadMonthlyChecklist:(stations,data,scope)=>paints.push({kind:'checklist',stations,data,scope}),
     setTimeout:callback=>{const id=++timerId;timers.set(id,callback);return id;},clearTimeout:id=>timers.delete(id),
     startupBannerActive:false,notice:'',labelManualConfirmation:{},scheduleOutboxRetry(){},preloadStartupReports(){},preloadOperationalDataWhenIdle(){},syncOutbox(){},
-    render:async()=>{renders++;}, normalizeAppFeatures:features=>({...features}),mockLite:{readAppFeatures:async()=>({...ctx.appFeatures})},console
+    revalidateOnlineSession(){},render:async()=>{renders++;}, normalizeAppFeatures:features=>({...features}),mockLite:{readAppFeatures:async()=>({...ctx.appFeatures})},console
   });
   ctx.can=permission=>ctx.session.status==='signed-in'&&ctx.session.profile.active!==false&&ctx.session.profile.access!==false&&ctx.session.profile.permissions?.[permission]===true;
   let helpers=source.slice(source.indexOf('// Report state is transient'),source.indexOf('const preloadedDataUsers ='));
