@@ -53,6 +53,7 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 import {deployment} from './deployment-context.js';
+import {consumeModuleNavigation} from './module-navigation.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
 const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
@@ -74,7 +75,7 @@ if (diretrizesReading.enabled) {
   });
 }
 const STARTUP_BANNER_DURATION_MS = 3000;
-let startupBannerActive = firebaseConfigured;
+let startupBannerActive = firebaseConfigured && !consumeModuleNavigation();
 const startupReports = createStartupReportCache();
 
 function preloadStartupReports(user, {explicit = false} = {}) {
@@ -4999,10 +5000,10 @@ async function render() {
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
   if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute)) {
-    const hubPanel=requestedRoute==='qmentum'?'/indicators':requestedRoute==='occurrences'?'/records':'';
+    const hubPanel=requestedRoute==='qmentum'?'indicators':requestedRoute==='occurrences'?'records':undefined;
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR À GOVERNANÇA';
-      button.addEventListener('click',()=>location.assign(deployment.faBase+'#/management-hub'+hubPanel));
+      button.addEventListener('click',()=>navigate('management-hub',{panel:hubPanel}));
     });
   }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);

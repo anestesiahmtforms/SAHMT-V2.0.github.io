@@ -3,14 +3,25 @@ import {createReadingClient} from './diretrizes-reading.js';
 import {pdfPageLayout, PDF_ZOOM_STEPS} from './diretrizes-pdf-layout.js';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
-let enginePromise;
+let enginePromise, workerPromise;
 function loadPdfEngine() {
   return enginePromise ||= import('pdfjs-dist/legacy/build/pdf.mjs').catch(error=>{enginePromise=null;throw error;});
 }
-async function loadPdf(bytes) {
+async function preparePdfEngine() {
   const pdfjs = await loadPdfEngine();
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-  return pdfjs.getDocument({data: bytes, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
+  workerPromise ||= (async () => {
+    const worker = new pdfjs.PDFWorker();
+    try { await worker.promise; return worker; }
+    catch (error) { worker.destroy(); workerPromise = null; throw error; }
+  })();
+  return {pdfjs, worker: await workerPromise};
+}
+async function loadPdf(bytes) {
+  const {pdfjs, worker} = await preparePdfEngine();
+  // External workers survive loadingTask.destroy(). Documents are still
+  // destroyed on close; subsequent books reuse only the PDF engine.
+  return pdfjs.getDocument({data: bytes, worker, isEvalSupported: false, enableXfa: false, stopAtErrors: true, useSystemFonts: true});
 }
 async function extractPageText(page, signal) {
   // PDF.js getTextContent uses ReadableStream async iteration, unavailable in
@@ -159,7 +170,7 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
     status.textContent='Carregando o PDF para leitura…';controls(state);
     if(!dialog.open)dialog.showModal();
     // Download the PDF engine while the authorized reading session is prepared.
-    if(pdfLoader===loadPdf)void loadPdfEngine().catch(()=>{});
+    if(pdfLoader===loadPdf)void preparePdfEngine().catch(()=>{});
     try{
       const answer=await client.request({action:'open',documentId:state.documentId},{signal:state.controller.signal});if(!active(state))return;
       if(answer.code!=='READING_PREPARED'||!Number.isSafeInteger(answer.pages)||answer.pages<1||answer.pages>300||typeof answer.openTicket!=='string'||answer.openTicket.length>2500||!/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(answer.openTicket)||typeof answer.pdfBase64!=='string'||answer.pdfBase64.length>8388608)throw Error('READING_PDF_INVALID');
@@ -167,7 +178,8 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
       // The authorized PDF can render while its durable receipt is initialized.
       // Completion remains disabled until registration succeeds.
       state.registration=register(state,answer);
-      const bytes=Uint8Array.from(atob(answer.pdfBase64),char=>char.charCodeAt(0));
+      const binary=atob(answer.pdfBase64),bytes=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
       state.phase='engine';state.loadingTask=await pdfLoader(bytes);if(!active(state)){void state.loadingTask.destroy().catch(()=>{});return;}
       state.phase='decode';
       state.pdf=await state.loadingTask.promise;if(!active(state))return;
@@ -242,7 +254,14 @@ export function installDiretrizesReader({root = document, getUser, endpoint, cli
 export async function installAuthenticatedDiretrizesReader(config){
   const [{auth},{onAuthStateChanged}]=await Promise.all([import('./firebase-auth.js'),import('firebase/auth')]);
   const reader=installDiretrizesReader({endpoint:config.endpoint,getUser:()=>auth?.currentUser});
-  let uid=auth?.currentUser?.uid;
-  const unsubscribe=auth?onAuthStateChanged(auth,user=>{if(uid!==user?.uid)reader.close();uid=user?.uid;}):()=>{};
-  return ()=>{unsubscribe();reader.dispose();};
+  let uid=auth?.currentUser?.uid, idle=null, timer=null, disposed=false;
+  const cancelWarmup=()=>{if(idle!==null)globalThis.cancelIdleCallback?.(idle);if(timer!==null)clearTimeout(timer);idle=timer=null;};
+  const warmup=()=>{
+    cancelWarmup();if(!uid||disposed)return;
+    const run=()=>{idle=timer=null;if(!disposed&&auth?.currentUser?.uid===uid)void preparePdfEngine().catch(()=>{});};
+    if(typeof globalThis.requestIdleCallback==='function')idle=globalThis.requestIdleCallback(run,{timeout:1500});
+    else timer=setTimeout(run,500);
+  };
+  const unsubscribe=auth?onAuthStateChanged(auth,user=>{if(uid!==user?.uid)reader.close();uid=user?.uid;warmup();}):()=>{};
+  return ()=>{disposed=true;cancelWarmup();unsubscribe();reader.dispose();};
 }

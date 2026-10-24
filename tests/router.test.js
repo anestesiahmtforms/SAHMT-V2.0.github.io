@@ -29,3 +29,11 @@ test('sessão autenticada offline redesenha a rota ao navegar', () => {
   assert.equal(shouldRenderHashChange({status: 'signed-in', offline: false}), true);
   assert.equal(shouldRenderHashChange({status: 'auth-limited', offline: true}), false);
 });
+
+test('voltar aos painéis de Governança usa a rota local sem recarregar FA', () => {
+  navigate('management-hub', {panel:'records'});
+  assert.equal(location.hash, '#/management-hub/records');
+  assert.equal(currentRoute(), 'management-hub');
+  navigate('management-hub', {panel:'https://example.com'});
+  assert.equal(location.hash, '#/management-hub');
+});

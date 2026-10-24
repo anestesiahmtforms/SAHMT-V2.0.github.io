@@ -1,4 +1,5 @@
 import {deployment} from './deployment-context.js';
+import {rememberModuleNavigation} from './module-navigation.js';
 const routes = new Set(['home', 'events', 'labels', 'management-hub', 'management', 'qmentum', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'offline']);
 
 export function currentRoute() {
@@ -7,15 +8,18 @@ export function currentRoute() {
   return routes.has(route) ? route : 'home';
 }
 
-export function navigate(route) {
+export function navigate(route, {panel} = {}) {
   if (!routes.has(route)) return;
+  const suffix = route === 'management-hub' && ['records', 'indicators', 'results', 'surveys'].includes(panel) ? '/' + panel : '';
   if (deployment.target === 'FB' && !['management','training'].includes(route)) {
-    location.assign(deployment.faBase + '#/' + route); return;
+    rememberModuleNavigation(deployment.faBase);
+    location.assign(deployment.faBase + '#/' + route + suffix); return;
   }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(route)) {
+    rememberModuleNavigation(deployment.fbBase);
     location.assign(deployment.fbBase + '#/' + route); return;
   }
-  location.hash = `#/${route}`;
+  location.hash = `#/${route}${suffix}`;
 }
 
 export function shouldRenderHashChange(session) {
