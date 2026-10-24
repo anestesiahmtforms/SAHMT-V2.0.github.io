@@ -7,10 +7,15 @@ export function createGoogleProjectAuthRuntime({sdk,auth,entries,primary='FA',en
   requestUri=()=>location.origin+'/',restoreTimeoutMs=12000,verifyDestination=verifyExistingGoogleDestination}) {
   const {getApps,initializeApp,initializeAuth,getAuth,indexedDBLocalPersistence,browserLocalPersistence,inMemoryPersistence,
     signInWithCredential,signOut,GoogleAuthProvider,reauthenticateWithCredential,
-    beforeAuthStateChanged,getAdditionalUserInfo,onAuthStateChanged}=sdk;
+    beforeAuthStateChanged,getAdditionalUserInfo,onAuthStateChanged,getIdTokenResult}=sdk;
 const fail=code=>Object.assign(new Error(code),{code});
 const initialized=new Map([[primary,auth]]),locks=new Map();
 let popup=null,coordinator;
+async function nativeGoogleSession(user,target){
+  if(!googleIdentity(user)||typeof getIdTokenResult!=='function')return false;
+  const {claims}=await getIdTokenResult(user,false),project=entries[target]?.config?.projectId;
+  return claims?.sub===user.uid&&claims.aud===project&&claims.iss==='https://securetoken.google.com/'+project&&claims.firebase?.sign_in_provider==='google.com';
+}
 function withTargetLock(target,operation){const previous=locks.get(target)||Promise.resolve();
   const next=previous.catch(()=>{}).then(operation);locks.set(target,next);
   next.finally(()=>{if(locks.get(target)===next)locks.delete(target);}).catch(()=>{});return next;}
@@ -26,7 +31,10 @@ function targetAuth(target){
   beforeAuthStateChanged(instance,user=>{if(user&&!sameGoogleIdentity(user,googleIdentity(auth.currentUser)))throw fail('AUTH_UID_MISMATCH');});
   // Auth-only listener. No Firestore listener or periodic token refresh is added.
   onAuthStateChanged(instance,user=>{
-    coordinator?.observeTarget(target,user);
+    if(!user)coordinator?.observeTarget(target,null);
+    else void nativeGoogleSession(user,target).then(valid=>{
+      if(instance.currentUser===user)coordinator?.observeTarget(target,valid?user:null);
+    }).catch(()=>{if(instance.currentUser===user)coordinator?.observeTarget(target,null);});
     // SDK storage events from another tab may bypass beforeAuthStateChanged.
     if(user&&!sameGoogleIdentity(user,googleIdentity(auth.currentUser))){
       void withTargetLock(target,async()=>{
@@ -42,14 +50,14 @@ async function ready(instance){let timer;
 const progress=createGoogleAuthProgressStore(storage,randomId);
 coordinator=createGoogleProjectAuth({primary:primary,getPrimaryUser:()=>auth.currentUser,
   isOnline,saveProgress:progress.save,
-  restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);return instance.currentUser;},
+  restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;if(user&&!await nativeGoogleSession(user,target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');return user;},
   signOutTarget:(target,{isCurrent=()=>true}={})=>withTargetLock(target,async()=>{
     if(!isCurrent())return;const instance=targetAuth(target);await signOut(instance);
   }),
   connectTarget:(target,credential,expected,isCurrent)=>withTargetLock(target,async()=>{
     if(!isCurrent())throw fail('AUTH_ACCOUNT_CHANGED');
     const instance=targetAuth(target);await ready(instance);
-    if(sameGoogleIdentity(instance.currentUser,expected))return instance.currentUser;
+    if(sameGoogleIdentity(instance.currentUser,expected)&&await nativeGoogleSession(instance.currentUser,target))return instance.currentUser;
     await verifyDestination({entry:entries[target],credential,expected,isCurrent,
       requestUri:requestUri()});
     if(!isCurrent())throw fail('AUTH_ACCOUNT_CHANGED');
@@ -58,6 +66,7 @@ coordinator=createGoogleProjectAuth({primary:primary,getPrimaryUser:()=>auth.cur
       if(getAdditionalUserInfo(result)?.isNewUser===true||!sameGoogleIdentity(result.user,expected)){
         rejectSession=true;throw fail('AUTH_UID_MISMATCH');
       }
+      if(!await nativeGoogleSession(result.user,target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');
       if(!isCurrent())throw fail('AUTH_ACCOUNT_CHANGED');return result.user;
     }catch(error){
       if(instance.currentUser&&(rejectSession||!isCurrent()||!sameGoogleIdentity(instance.currentUser,expected)))await signOut(instance);
@@ -86,10 +95,21 @@ function reconcileGoogleProjectSessions(user){
   if(!enabled)return Promise.resolve({status:'disabled'});
   return user?coordinator.restore(user):coordinator.clearSecondaries(null);
 }
+function connectFromPrimarySignIn(credential,user){
+  assertCanStartPrimarySignIn();
+  if(!enabled)return Promise.resolve({status:'disabled'});
+  const expected=googleIdentity(auth.currentUser),claims=googleTokenClaims(credential);
+  if(!sameGoogleIdentity(user,expected)||claims.sub!==expected.googleUid)throw fail('AUTH_GOOGLE_IDENTITY_MISMATCH');
+  if(!entries[primary]?.acceptedGoogleClientIds?.includes(claims.aud))throw fail('AUTH_AUDIENCE_NOT_VERIFIED');
+  // The primary popup already authenticated this identity. Reuse its ephemeral
+  // Google credential for existing destinations without another popup.
+  return coordinator.connect(credential);
+}
 function assertCanStartPrimarySignIn(){
   if(coordinator.snapshot().signingOut)throw fail('AUTH_LOGOUT_IN_PROGRESS');
 }
 
-return {controller:coordinator,confirm:confirmGoogleProjectAccess,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,
+return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,
+  verifyTargetSession:async target=>{if(!enabled)return false;const expected=googleIdentity(auth.currentUser),instance=targetAuth(target),user=instance.currentUser;return sameGoogleIdentity(user,expected)&&await nativeGoogleSession(user,target)&&instance.currentUser===user&&sameGoogleIdentity(auth.currentUser,expected);},
   getTargetAuth:target=>{if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');return targetAuth(target);}};
 }

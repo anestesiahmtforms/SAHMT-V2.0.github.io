@@ -15,7 +15,7 @@ export function safeGoogleAuthCode(error) {
   const allowed=new Set(['auth/network-request-failed','auth/too-many-requests','auth/user-disabled','auth/user-not-found',
     'auth/invalid-credential','auth/account-exists-with-different-credential','auth/operation-not-allowed',
     'auth/popup-blocked','auth/popup-closed-by-user','auth/user-mismatch','auth/unauthorized-domain',
-    'AUTH_RESTORE_TIMEOUT','AUTH_CONFIGURATION_REQUIRED','AUTH_AUDIENCE_NOT_VERIFIED','AUTH_UID_MISMATCH',
+    'AUTH_RESTORE_TIMEOUT','AUTH_CONFIGURATION_REQUIRED','AUTH_AUDIENCE_NOT_VERIFIED','AUTH_UID_MISMATCH','AUTH_GOOGLE_SESSION_REQUIRED',
     'AUTH_GOOGLE_IDENTITY_MISMATCH','AUTH_EXISTING_ACCOUNT_REQUIRED','AUTH_ACCOUNT_CHANGED','AUTH_CREDENTIAL_REQUIRED',
     'AUTH_OFFLINE','AUTH_UNAVAILABLE','AUTH_SOURCE_REQUIRED','AUTH_SOURCE_GOOGLE_LINK_REQUIRED','AUTH_SIGNUP_GUARD_REQUIRED',
     'AUTH_LOGOUT_FAILED','AUTH_LOGOUT_IN_PROGRESS','AUTH_POPUP_BUSY']);
