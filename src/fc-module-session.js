@@ -30,9 +30,13 @@ export function createFcModuleSession({auth, sourceUid, authApi = defaultAuthApi
   return Object.freeze({current, connect});
 }
 
-export async function waitForFcModuleSession(container, {auth, sourceUid, title, isCurrent = () => true,authApi=defaultAuthApi,timeoutMs=12000} = {}) {
+export async function waitForFcModuleSession(container, {auth, sourceUid, title, isCurrent = () => true,authApi=defaultAuthApi,timeoutMs=12000,restoreSession} = {}) {
   const session = createFcModuleSession({auth, sourceUid,authApi,timeoutMs});
-  try{await boundedAuth(auth.authStateReady?.(),timeoutMs);if(session.current()){await session.connect();if(isCurrent())return auth;}}catch{}
+  const restore=()=>restoreSession?boundedAuth(Promise.resolve().then(restoreSession),timeoutMs):session.connect();
+  try{
+    if(restoreSession){if(await restore()&&session.current()&&isCurrent()&&container?.isConnected)return auth;}
+    else{await boundedAuth(auth.authStateReady?.(),timeoutMs);if(session.current()){await restore();if(isCurrent())return auth;}}
+  }catch{}
   if (!container?.isConnected || !isCurrent()) return null;
   container.innerHTML = `<section class="management-area-detail"><h3>Conectar ao Firebase Registros</h3><p>Para abrir ${title}, confirme a mesma conta Google usada no app.</p><button class="primary-button" type="button" data-fc-module-login>Continuar com Google</button><p role="status" aria-live="polite" data-fc-module-status></p></section>`;
   const button = container.querySelector('[data-fc-module-login]'), status = container.querySelector('[data-fc-module-status]');
@@ -60,7 +64,7 @@ export async function waitForFcModuleSession(container, {auth, sourceUid, title,
     globalThis.addEventListener?.('hashchange', finish, {once: true});
     unsubscribe=authApi.onAuthStateChanged?.(auth,()=>{
       if(!container.isConnected||!isCurrent()){finish();return;}
-      if(session.current())void session.connect().then(finish,()=>{});
+      if(session.current())void restore().then(ready=>{if(ready)finish();},()=>{});
     });
     if(settled)unsubscribe?.();
     if(globalThis.MutationObserver&&globalThis.document?.body){observer=new MutationObserver(()=>{if(!container.isConnected||!isCurrent())finish();});observer.observe(document.body,{childList:true,subtree:true});if(settled)observer.disconnect();}

@@ -25,6 +25,51 @@ test('concurrent target checks share one bounded verification',async()=>{
  const a=h.runtime.verifyTargetSession('FB'),b=h.runtime.verifyTargetSession('FB');assert.equal(a,b);gate.resolve();assert.equal(await a,true);
 });
 
+test('restoration and Auth observation share an in-flight native token check',async()=>{
+ const gate=deferred(),reads=[],h=fixture({persisted:{FC:person()},tokenRead:target=>{reads.push(target);if(target==='FC')return gate.promise;}});
+ const checking=h.runtime.verifyTargetSession('FC');await new Promise(resolve=>setImmediate(resolve));
+ try{assert.equal(reads.filter(target=>target==='FC').length,1);}finally{gate.resolve();await checking;}
+});
+
+test('a replacement destination user does not inherit an older in-flight check',async()=>{
+ const gate=deferred();let stalled=true;
+ const h=fixture({persisted:{FC:person()},tokenRead:target=>target==='FC'&&stalled?gate.promise:undefined});
+ const old=h.runtime.verifyTargetSession('FC');await new Promise(resolve=>setImmediate(resolve));
+ h.instances.FC.currentUser=person();stalled=false;
+ const replacement=h.runtime.verifyTargetSession('FC');
+ try{assert.equal(await replacement,true);}finally{gate.resolve();await old;}
+});
+
+test('a timed out native check can be retried without a stale in-flight lock',async()=>{
+ let stalled=true;const h=fixture({persisted:{FC:person()},tokenRead:target=>target==='FC'&&stalled?new Promise(()=>{}):undefined});
+ assert.equal(await h.runtime.verifyTargetSession('FC'),false);
+ await new Promise(resolve=>setTimeout(resolve,30));stalled=false;
+ assert.equal(await h.runtime.verifyTargetSession('FC'),true);
+});
+
+test('FC module entry joins automatic credential exchange without another login',async()=>{
+ const entered=deferred(),gate=deferred();
+ const h=fixture({signin:async instance=>{if(instance.target==='FC'){entered.resolve();await gate.promise;}return {user:person(),additional:{isNewUser:false}};}});
+ const connecting=h.runtime.confirm(credential);await entered.promise;
+ const entering=h.runtime.waitForTargetSession('FC');gate.resolve();
+ assert.equal(await entering,true);await connecting;
+ assert.equal(h.calls.filter(call=>call.kind==='signin'&&call.target==='FC').length,1);
+ assert.equal(h.calls.filter(call=>call.kind==='reauth').length,1);
+});
+
+test('module entry uses its healthy project while another restoration is stalled',async()=>{
+ const h=fixture({persisted:{FC:person()},restoration:target=>target==='FB'?new Promise(()=>{}):undefined});
+ const restoring=h.runtime.reconcile(h.auth.currentUser);
+ assert.equal(await h.runtime.waitForTargetSession('FC'),true);await restoring;
+ assert.equal(h.instances.FC.currentUser.uid,'same-uid');
+});
+
+test('module entry never releases a navigation cancelled during verification',async()=>{
+ const gate=deferred();let current=true;const h=fixture({persisted:{FC:person()},tokenRead:target=>target==='FC'?gate.promise:undefined});
+ const entering=h.runtime.waitForTargetSession('FC',{isCurrent:()=>current});await new Promise(resolve=>setImmediate(resolve));
+ current=false;gate.resolve();assert.equal(await entering,false);
+});
+
 test('independent FB maintenance refreshes its own SDK session without initializing other projects',async()=>{
  const auth={currentUser:person(),authStateReady:async()=>{}},calls=[];
  const sdk={getIdTokenResult:async(user,force)=>{calls.push(force);return {claims:{sub:user.uid,aud:'FB',iss:'https://securetoken.google.com/FB',firebase:{sign_in_provider:'google.com'}}};},getApps:()=>{assert.fail('No secondary app should be initialized');}};

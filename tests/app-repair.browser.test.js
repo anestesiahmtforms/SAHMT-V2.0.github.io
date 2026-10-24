@@ -8,7 +8,7 @@ test('repair activates both current shells and preserves another open draft and 
  const sources={};for(const prefix of ['','gestao/'])sources[root+prefix+'service-worker.js']=await readFile('dist/'+prefix+'service-worker.js','utf8');
  try{
   server=await preview({preview:{host:'127.0.0.1',port:0},plugins:[{name:'isolated-release-update',configurePreviewServer(server){server.middlewares.use((req,res,next)=>{
-   const source=sources[req.url?.split('?')[0]];if(!source)return next();res.setHeader('Content-Type','application/javascript');res.setHeader('Cache-Control','no-store');res.end(source.replaceAll('shell-v239','shell-v'+version));
+   const source=sources[req.url?.split('?')[0]];if(!source)return next();res.setHeader('Content-Type','application/javascript');res.setHeader('Cache-Control','no-store');res.end(source.replace(/shell-v\d+/g,'shell-v'+version));
   });}}]});
   const origin='http://127.0.0.1:'+server.httpServer.address().port;
   browser=await chromium.launch({channel:'msedge',headless:true});const context=await browser.newContext();

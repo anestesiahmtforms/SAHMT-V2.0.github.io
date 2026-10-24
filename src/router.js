@@ -2,6 +2,7 @@ import {deployment} from './deployment-context.js';
 import {rememberModuleNavigation,rememberManagementReturn} from './module-navigation.js';
 import {repairAppFiles,staleModuleFailure} from './app-repair.js';
 const routes = new Set(['home', 'events', 'labels', 'management-hub', 'management', 'qmentum', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'offline']);
+let navigationGeneration=0;
 
 export function currentRoute() {
   const route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';
@@ -11,6 +12,8 @@ export function currentRoute() {
 
 export async function navigate(route, {panel} = {}) {
   if (!routes.has(route)) return;
+  const generation=++navigationGeneration,sourceHash=location.hash;
+  const isCurrent=()=>generation===navigationGeneration&&location.hash===sourceHash;
   const suffix = route === 'management-hub' && ['records', 'indicators', 'results', 'surveys'].includes(panel) ? '/' + panel : '';
   if (deployment.target === 'FB' && !['management','training'].includes(route)) {
     rememberModuleNavigation(deployment.faBase);
@@ -18,8 +21,9 @@ export async function navigate(route, {panel} = {}) {
   }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(route)) {
     let ready=false;
-    try{const {ensureManagementSession}=await import('./management-entry-session.js');ready=await ensureManagementSession();}
-    catch(error){if(staleModuleFailure(error)&&repairAppFiles({target:'FA',hash:'#/'+route,automatic:true}))return;}
+    try{const {ensureManagementSession}=await import('./management-entry-session.js');if(!isCurrent())return;ready=await ensureManagementSession({isCurrent});}
+    catch(error){if(isCurrent()&&staleModuleFailure(error)&&repairAppFiles({target:'FA',hash:'#/'+route,automatic:true}))return;}
+    if(!isCurrent())return;
     if(!ready){
       rememberManagementReturn('#/'+route);location.hash='#/offline';return;
     }

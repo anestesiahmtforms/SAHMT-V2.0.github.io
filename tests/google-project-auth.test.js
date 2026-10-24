@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 import {createGoogleProjectAuth,createGoogleAuthProgressStore,GOOGLE_AUTH_START,googleIdentity} from '../src/google-project-auth-core.js';
 const user=(uid='person-a',googleUid='google-a')=>({uid,providerData:[{providerId:'google.com',uid:googleUid}]});
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+test('slow FB and FC restoration never hold back existing FD and FE sessions',async()=>{
+ const gate=deferred(),f=fixture({restoreTarget:async target=>{if(['FB','FC'].includes(target))await gate.promise;return user();}});
+ const work=f.api.restore();
+ try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.api.snapshot().targets.FD.status,'ready');assert.equal(f.api.snapshot().targets.FE.status,'ready');}
+ finally{gate.resolve();await work;}
+});
+test('background validation keeps verified destinations ready until a real failure',async()=>{
+ const gate=deferred();let slow=false;
+ const f=fixture({restoreTarget:async()=>{if(slow)await gate.promise;return user();}});
+ await f.api.restore();slow=true;const work=f.api.restore();
+ try{assert.equal(f.api.snapshot().targets.FB.status,'ready');assert.equal(f.api.snapshot().targets.FC.status,'ready');}
+ finally{gate.resolve();await work;}
+});
 function fixture(overrides={}){let primary=user(),connected=0,max=0;const users={FA:primary,FB:null,FC:null,FD:null,FE:null},calls=[],saved=[];
  const api=createGoogleProjectAuth({getPrimaryUser:()=>primary,restoreTarget:async t=>users[t],
   connectTarget:async(t,credential,expected,isCurrent)=>{calls.push(t);connected++;max=Math.max(max,connected);await Promise.resolve();connected--;if(!isCurrent())throw {code:'AUTH_ACCOUNT_CHANGED'};return users[t]=user(expected.uid,expected.googleUid);},

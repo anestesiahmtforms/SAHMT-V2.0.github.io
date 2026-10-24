@@ -24,3 +24,18 @@ test('UID change during token refresh is rejected',async()=>{
  const h=fixture();h.auth.currentUser=h.user;h.user.getIdToken=async()=>{h.auth.currentUser={uid:'other'};};
  const session=createFcModuleSession({auth:h.auth,sourceUid:'one',authApi:h.authApi});await assert.rejects(session.connect(),/FC_MODULE_UID_MISMATCH/);
 });
+
+test('coordinated FC entry waits for automatic login before showing manual recovery',async()=>{
+ const h=fixture();let finish;const ready=new Promise(resolve=>finish=resolve);
+ const result=waitForFcModuleSession(h.host,{auth:h.auth,sourceUid:'one',title:'Registros',authApi:h.authApi,restoreSession:()=>ready});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(h.host.innerHTML,'');h.auth.currentUser=h.user;finish(true);
+ assert.equal(await result,h.auth);assert.equal(h.popups,0);assert.equal(h.tokens,0);
+});
+
+test('coordinated FC result is discarded after navigating away',async()=>{
+ const h=fixture();let finish,current=true;const ready=new Promise(resolve=>finish=resolve);
+ const result=waitForFcModuleSession(h.host,{auth:h.auth,sourceUid:'one',title:'Registros',authApi:h.authApi,isCurrent:()=>current,restoreSession:()=>ready});
+ await new Promise(resolve=>setImmediate(resolve));current=false;h.auth.currentUser=h.user;finish(true);
+ assert.equal(await result,null);assert.equal(h.popups,0);
+});

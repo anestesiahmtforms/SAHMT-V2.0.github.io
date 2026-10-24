@@ -1,5 +1,6 @@
 import {createGoogleProjectAuth,createGoogleAuthProgressStore,googleIdentity,sameGoogleIdentity} from './google-project-auth-core.js';
 import {googleTokenClaims,verifyExistingGoogleDestination} from './google-project-auth-preflight.js';
+import {waitForGoogleProjectSession} from './google-project-session.js';
 
 /** Firebase SDK dependency injection keeps production composition and local tests identical. */
 export function createGoogleProjectAuthRuntime({sdk,auth,entries,primary='FA',enabled=false,storage,
@@ -10,11 +11,20 @@ export function createGoogleProjectAuthRuntime({sdk,auth,entries,primary='FA',en
     beforeAuthStateChanged,getAdditionalUserInfo,onAuthStateChanged,getIdTokenResult}=sdk;
 const fail=code=>Object.assign(new Error(code),{code});
 const initialized=new Map([[primary,auth]]),locks=new Map(),sessionChecks=new Map();
+const nativeChecks=new WeakMap();
 let popup=null,coordinator;
-async function nativeGoogleSession(user,target){
-  if(!googleIdentity(user)||typeof getIdTokenResult!=='function')return false;
-  const {claims}=await getIdTokenResult(user,false),project=entries[target]?.config?.projectId;
-  return claims?.sub===user.uid&&claims.aud===project&&claims.iss==='https://securetoken.google.com/'+project&&claims.firebase?.sign_in_provider==='google.com';
+function nativeGoogleSession(user,target){
+  if(!googleIdentity(user)||typeof getIdTokenResult!=='function')return Promise.resolve(false);
+  const prior=nativeChecks.get(user);if(prior?.target===target)return prior.promise;
+  let timer;const entry={target,promise:null};
+  const task=Promise.resolve().then(async()=>{
+    const {claims}=await getIdTokenResult(user,false),project=entries[target]?.config?.projectId;
+    return claims?.sub===user.uid&&claims.aud===project&&claims.iss==='https://securetoken.google.com/'+project&&claims.firebase?.sign_in_provider==='google.com';
+  });
+  entry.promise=Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]).finally(()=>{
+    clearTimeout(timer);if(nativeChecks.get(user)===entry)nativeChecks.delete(user);
+  });
+  nativeChecks.set(user,entry);return entry.promise;
 }
 function withTargetLock(target,operation){const previous=locks.get(target)||Promise.resolve();
   const next=previous.catch(()=>{}).then(operation);locks.set(target,next);
@@ -112,9 +122,9 @@ function assertCanStartPrimarySignIn(){
 function verifyTargetSession(target){
   if(!enabled&&target!==primary)return Promise.resolve(false);
   const expected=googleIdentity(auth?.currentUser);if(!expected)return Promise.resolve(false);
-  const prior=sessionChecks.get(target);
-  if(prior&&prior.uid===expected.uid&&prior.googleUid===expected.googleUid)return prior.promise;
-  const instance=targetAuth(target);let timer;
+  const instance=targetAuth(target),prior=sessionChecks.get(target);
+  if(prior&&prior.source===auth.currentUser&&prior.user===instance.currentUser)return prior.promise;
+  let timer;
   const task=(async()=>{
     await ready(instance);
     if(!sameGoogleIdentity(auth.currentUser,expected))return false;
@@ -122,7 +132,7 @@ function verifyTargetSession(target){
     const valid=sameGoogleIdentity(user,expected)&&await nativeGoogleSession(user,target);
     return valid&&instance.currentUser===user&&sameGoogleIdentity(auth.currentUser,expected);
   })();
-  const entry={...expected,promise:null};
+  const entry={source:auth.currentUser,user:instance.currentUser,promise:null};
   entry.promise=Promise.race([task,new Promise(resolve=>{timer=setTimeout(()=>resolve(false),restoreTimeoutMs);})]).catch(()=>false).finally(()=>{
     clearTimeout(timer);if(sessionChecks.get(target)===entry)sessionChecks.delete(target);
   });
@@ -140,6 +150,17 @@ async function maintainSessions(){
   return {status:'ready',primary};
 }
 
-return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,maintainSessions,verifyTargetSession,
+async function waitForTargetSession(target,{isCurrent=()=>true}={}){
+  if(!enabled||!isCurrent()||coordinator.snapshot().signingOut)return false;
+  const source=auth.currentUser,expected=googleIdentity(source);if(!expected)return false;
+  const state=coordinator.snapshot();
+  if(state.uid!==expected.uid||!state.busy&&state.targets[target]?.status!=='ready')void coordinator.restore(source).catch(()=>{});
+  const current=()=>isCurrent()&&sameGoogleIdentity(auth.currentUser,expected)&&!coordinator.snapshot().signingOut;
+  const restored=await waitForGoogleProjectSession({target,auth:targetAuth(target),getSourceUser:()=>auth.currentUser,
+    controller:coordinator,isCurrent:current,timeoutMs:restoreTimeoutMs});
+  return restored&&current()&&await verifyTargetSession(target)&&current();
+}
+
+return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,maintainSessions,verifyTargetSession,waitForTargetSession,
   getTargetAuth:target=>{if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');return targetAuth(target);}};
 }
