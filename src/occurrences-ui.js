@@ -121,11 +121,18 @@ export function createOccurrenceSessionGate({auth,uid,isCurrent}={}) {
 }
 
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID()}={}) {
+  const pageCurrent=isCurrent;
+  let disposed=false;
+  isCurrent=()=>!disposed&&root.isConnected&&pageCurrent();
   const access=occurrenceModuleAccess(permissions);
   if(!access.any||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
   const repository=createOccurrenceRepository({db,auth,idGenerator,isCurrent});
   const ensureSession=createOccurrenceSessionGate({auth,uid,isCurrent});
-  let catalogs={},saving=false,loading=false,pendingRecordId=null;
+  let catalogs={},saving=false,loading=false,pendingRecordId=null,catalogLoadSequence=0,activeCatalogDialog=null;
+  const cancelCatalogLoad=dialog=>{
+    if(activeCatalogDialog!==dialog)return;
+    catalogLoadSequence++;loading=false;activeCatalogDialog=null;
+  };
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências">${!navigator.onLine?'<p class="sync-state">Sem conexão. Formulários já abertos após validação podem ser salvos neste dispositivo e enviados quando o serviço voltar.</p>':''}<p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
@@ -168,16 +175,19 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     const form=getOccurrenceForm(formId);if(!form)return;
     const categoryDialog=categoryHost.querySelector('dialog');
     const categoryStatus=direct?root.querySelector('.occurrence-module-status'):categoryHost.querySelector('.occurrence-category-status');
+    const loadSequence=++catalogLoadSequence;
+    const currentLoad=()=>loadSequence===catalogLoadSequence&&isCurrent()&&(direct||categoryDialog?.open);
+    activeCatalogDialog=categoryDialog;
     loading=true;
     if(categoryStatus)categoryStatus.textContent='Carregando…';
-    const categoryBack=direct?null:categoryHost.querySelector('[data-occurrence-group-cancel]');
-    if(categoryBack)categoryBack.disabled=true;
     try {
       await ensureSession();
-      catalogs=(await loadOccurrenceCatalogForSession({repository,uid,isCurrent})).catalogs;
-    } catch(error) {if(isCurrent()&&categoryStatus)categoryStatus.textContent=occurrenceCatalogErrorMessage(error);return;}
-    finally {loading=false;if(categoryBack)categoryBack.disabled=false;}
-    if(!isCurrent()||(!direct&&!categoryDialog?.open))return;
+      const result=await loadOccurrenceCatalogForSession({repository,uid,isCurrent:currentLoad});
+      if(!currentLoad())return;
+      catalogs=result.catalogs;
+    } catch(error) {if(currentLoad()&&categoryStatus)categoryStatus.textContent=occurrenceCatalogErrorMessage(error);return;}
+    finally {if(loadSequence===catalogLoadSequence){loading=false;activeCatalogDialog=null;}}
+    if(!currentLoad())return;
     if(categoryStatus)categoryStatus.textContent='';
     host.innerHTML=occurrenceFormMarkup(form,catalogs,displayName);
     const dialog=host.querySelector('dialog'), formElement=host.querySelector('form'), status=host.querySelector('.occurrence-form-status'), saveButton=host.querySelector('[data-occurrence-save]'), cancelButton=host.querySelector('[data-occurrence-cancel]');
@@ -220,11 +230,12 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(forms?.length===1){void open(forms[0],{direct:true});return;}
     categoryHost.innerHTML=occurrenceCategoryMarkup(button.dataset.occurrenceGroup,{canWrite:access.write});
     const dialog=categoryHost.querySelector('dialog');
-    categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>dialog.close());
-    dialog.addEventListener('cancel',event=>{if(loading||saving)event.preventDefault();});
+    categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>{if(saving)return;cancelCatalogLoad(dialog);dialog.close();});
+    dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();else cancelCatalogLoad(dialog);});
+    dialog.addEventListener('close',()=>cancelCatalogLoad(dialog));
     if(access.write)categoryHost.querySelectorAll('[data-occurrence-form]').forEach(launch=>launch.addEventListener('click',()=>void open(launch.dataset.occurrenceForm)));
     dialog.showModal();
   }));
   void loadRecords();void loadAudit();
-  return ()=>{repository.clear();window.removeEventListener('sahmt-write-queued',onOutboxChange);window.removeEventListener('sahmt-write-synced',onOutboxChange);window.removeEventListener('sahmt-write-rejected',onOutboxChange);root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
+  return ()=>{disposed=true;catalogLoadSequence++;loading=false;activeCatalogDialog=null;repository.clear();window.removeEventListener('sahmt-write-queued',onOutboxChange);window.removeEventListener('sahmt-write-synced',onOutboxChange);window.removeEventListener('sahmt-write-rejected',onOutboxChange);root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
 }

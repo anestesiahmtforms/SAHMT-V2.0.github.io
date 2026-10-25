@@ -29,6 +29,9 @@ export function installOperationalDrafts({root = document, getSession, onError =
   const restore = async (form, {force = false} = {}) => {
     const own = scope(form); if (!own || touched.has(form) && !force) return false;
     touched.delete(form);
+    // Navigation can proceed while saves finish; reopening this form must read
+    // after its own last captured revision, rather than an older stored value.
+    await pending.get(`${own.uid}:${own.module}`)?.catch(() => {});
     const draft = await readOperationalDraft(own.uid, own.module, own.id).catch(() => null);
     if (!draft || !form.isConnected || touched.has(form) || scope(form)?.uid !== own.uid) return false;
     restoring.add(form);

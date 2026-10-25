@@ -1288,14 +1288,16 @@ async function loadModule(route) {
   }
   if(route === 'qmentum'){
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
-    const current=()=>currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&canOpenRestrictedModule('qmentum');
+    const generation=evaluationModuleGeneration;
+    const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()==='qmentum'&&session.status==='signed-in'&&session.user?.uid===uid&&canOpenRestrictedModule('qmentum');
     if(!content||!current()){navigate('home');return;}
     try{
       const [{getIndicatorsAuth,getIndicatorsFirestore,waitForIndicatorsSession},{waitForFcModuleSession},{createQmentumRepository},{mountQmentumModule}]=await Promise.all([import('./fc-module-firebase.js'),import('./fc-module-session.js'),import('./qmentum-data.js'),import('./qmentum-ui.js')]);
       if(!current())return;
       const fcAuth=getIndicatorsAuth(),db=getIndicatorsFirestore();if(!fcAuth||!db)throw Error('FC_MODULE_CONFIG_REQUIRED');
       const auth=await waitForFcModuleSession(content,{auth:fcAuth,sourceUid:uid,title:'Indicadores QMENTUM',isCurrent:current,restoreSession:()=>waitForIndicatorsSession({isCurrent:current})});if(!auth||!current())return;
-      cleanupCurrentModule=await mountQmentumModule(content,{uid,isCurrent:current,repository:createQmentumRepository({db,auth,uid,isCurrent:current})});
+      const cleanup=await mountQmentumModule(content,{uid,isCurrent:current,repository:createQmentumRepository({db,auth,uid,isCurrent:current})});
+      if(current())cleanupCurrentModule=cleanup;else cleanup?.();
     }catch(error){if(current())content.innerHTML='<p class="empty-state" role="status">O módulo QMENTUM aguarda conexão ao Firebase Registros, configuração de unidade ou permissões. Nenhuma alteração foi realizada.</p>';}
     return;
   }
@@ -4948,11 +4950,14 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  const generation=++evaluationModuleGeneration,requestRoute=currentRoute();
+  const current=()=>generation===evaluationModuleGeneration&&requestRoute===currentRoute();
   if(currentRoute()!=='offline')googleAccessPanel?.close();else googleAccessPanel?.refresh();
   scheduleGridObserver?.disconnect(); scheduleGridObserver = null;
-  await operationalDrafts.flush();
+  // Captured draft fields are already queued independently of the outgoing DOM.
+  // IndexedDB completion must not hold the navigation hostage.
+  void operationalDrafts.flush();
   if (session.status !== 'signed-in') updateInformationBanner(null);
-  evaluationModuleGeneration++;
   for (const kind of ['events', 'labels', 'checklist']) { const scope = liveReports.get(kind)?.snapshot().scope; if (scope?.warm !== true && (scope || reportStates.has(kind) || reportPayloads.has(kind))) closeReportLive(kind, 'render'); }
   labelReportLoad++;
   labelReportLoadingMore = false;
@@ -4967,7 +4972,8 @@ async function render() {
   if (cleanupCurrentModule) {
     const cleanup = cleanupCurrentModule;
     cleanupCurrentModule = null;
-    await cleanup();
+    try {void Promise.resolve(cleanup()).catch(()=>console.warn('[SAHMT] Encerramento do módulo pendente; navegação mantida.'));}
+    catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
   if (startupBannerActive) {
     if (app.querySelector('.boot-screen')) return;
@@ -5020,7 +5026,7 @@ async function render() {
   if(authLimited){}
   else if(requestedRoute==='qmentum'){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
-    if(currentRoute()!==requestedRoute||session.status!=='signed-in'||!canOpenRestrictedModule('qmentum'))return;
+    if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule('qmentum'))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário'});
   }else app.innerHTML = shellView();
   if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute)) {
@@ -5044,11 +5050,15 @@ async function render() {
   if (currentRoute() === 'home') await loadHome(); else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);
+    if(!current())return;
     await loadModule(route);
+    if(!current())return;
     if (route !== 'events') await bindModuleForm(route);
+    if(!current())return;
     const draftForm = document.querySelector('form[data-module-form="' + route + '"]');
     if (draftForm) await operationalDrafts.restore(draftForm);
   }
+  if(!current())return;
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
   if (navigator.onLine && !session.offline) void syncOutbox();

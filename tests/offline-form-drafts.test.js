@@ -15,3 +15,15 @@ test('confirmação de formulário anterior nunca remove um rascunho novo ou de 
   await drafts.clearSubmitted(latest); await drafts.flush();
   assert.equal((await readOperationalDraft('draft-submit-b', 'events', 'entry')).fields.description, 'Outra conta');
 });
+
+test('retorno rápido ao formulário recupera a última captura mesmo com gravações ainda na fila',async()=>{
+  const handlers=new Map(),session={status:'signed-in',user:{uid:'draft-rapid-return'},profile:{active:true,access:true,permissions:{eventsWrite:true}}};
+  const drafts=installOperationalDrafts({root:{addEventListener:(name,fn)=>handlers.set(name,fn)},getSession:()=>session});
+  const input={name:'description',type:'text',value:''},oldForm={dataset:{moduleForm:'events'},elements:[input]};
+  for(let i=1;i<=8;i++){input.value='Revisão '+i;handlers.get('input')({target:{closest:()=>oldForm,type:'text'}});}
+  const restored={name:'description',type:'text',value:''},elements=[restored];elements.namedItem=()=>restored;
+  const form={dataset:{moduleForm:'events'},elements,isConnected:true,querySelectorAll:()=>[],querySelector:()=>({textContent:''})};
+  await drafts.restore(form);
+  await drafts.flush();
+  assert.equal(restored.value,'Revisão 8');
+});

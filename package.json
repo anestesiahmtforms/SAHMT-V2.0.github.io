@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "test:google-project-auth": "node --test tests/google-project-auth*.test.js tests/management-entry-session.test.js tests/router-session-race.test.js tests/fc-module-session.test.js tests/service-worker.test.js tests/general-access-session.test.cjs tests/report-main-lifecycle.test.cjs tests/outbox.test.js tests/outbox-recovery.test.js tests/offline-storage-policy.test.js tests/offline-form-drafts.test.js",
+    "test:google-project-auth": "node --test tests/google-project-auth*.test.js tests/management-entry-session.test.js tests/router-session-race.test.js tests/module-navigation-lifecycle.test.js tests/fc-module-session.test.js tests/service-worker.test.js tests/general-access-session.test.cjs tests/report-main-lifecycle.test.cjs tests/outbox.test.js tests/outbox-recovery.test.js tests/offline-storage-policy.test.js tests/offline-form-drafts.test.js",
     "test:remote-continuity": "node --test tests/remote-continuity*.test.js tests/provisional-channel.test.js tests/provisional-channel-workerd.test.js",
     "prepare:remote-continuity": "node scripts/prepare-remote-continuity.mjs",
     "audit:fa": "node scripts/audit-fa-runtime.mjs --read-once",
