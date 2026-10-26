@@ -191,6 +191,7 @@ const reportStates = new Map();
 const reportPayloads = new Map();
 const reportPaintKeys = new Map();
 const reportWaiters = new Map();
+const reportRefreshFlights = new Map();
 let checklistCatalogLive = null;
 let checklistModuleStations = [];
 let checklistResponsibilityLive = null;
@@ -275,11 +276,35 @@ const liveReports = createReportRuntime({
       }
       let retry = state.scope.targetNode.querySelector('[data-report-retry]');
       if (!retry) { retry = document.createElement('button'); retry.type = 'button'; retry.className = 'secondary-button'; retry.dataset.reportRetry = kind; retry.textContent = 'Tentar atualizar novamente'; state.scope.targetNode.append(retry); }
-      retry.onclick = () => liveReports.refresh(kind, 'retry');
+      retry.onclick = () => retryLiveReport(kind);
       settleReportWaiter(kind, state.scope.key, false);
     }
   }
 });
+// A report retry must recover the transport/profile first, not repeat a forced-local read.
+function retryLiveReport(kind) {
+  const pending = reportRefreshFlights.get(kind);
+  if (pending) return pending;
+  const scope = liveReports.get(kind)?.snapshot().scope;
+  if (!scope || !reportScopeCurrent(scope)) return Promise.resolve(false);
+  let attempt;
+  attempt = (async () => {
+    if (!navigator.onLine) {
+      liveReports.open(kind, {...scope, localOnly:true}, {force:true});
+      return true;
+    }
+    if (!await connectionRecovery.recover('manual')) return false;
+    const latest = liveReports.get(kind)?.snapshot();
+    if (!latest?.scope || latest.scope.key !== scope.key || !reportScopeCurrent(latest.scope)) return false;
+    // Recovery may already have replaced an offline/error subscription.
+    if (latest.scope !== scope && !latest.scope.localOnly) return true;
+    liveReports.setOnline(true);
+    liveReports.open(kind, {...latest.scope, localOnly:false}, {force:true});
+    return true;
+  })().catch(() => false).finally(() => {if (reportRefreshFlights.get(kind) === attempt) reportRefreshFlights.delete(kind);});
+  reportRefreshFlights.set(kind, attempt);
+  return attempt;
+}
 function settleReportWaiter(kind, key, ok) {
   const waiter = reportWaiters.get(kind);
   if (!waiter || waiter.key !== key) return;
@@ -1574,8 +1599,7 @@ async function loadModule(route) {
       reportRefresh.setAttribute('aria-label', 'Consultar novamente o relatório do Checklist');
       reportRefresh.onclick = () => {
         if (!checklistReportOpen || currentRoute() !== 'checklist') return;
-        closeReportLive('checklist', 'manual-refresh');
-        void loadChecklistView(checklistModuleStations);
+        void retryLiveReport('checklist');
       };
       document.querySelector('.checklist-report-periods')?.append(reportRefresh);
       const reportDay = document.querySelector('#checklist-report-day');
