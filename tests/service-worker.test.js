@@ -24,6 +24,7 @@ const manifest = {
   'src/label-camera.js': {src: 'src/label-camera.js', file: 'assets/label-camera.js', imports: ['assets/shared.js']},
   'src/label-ai.js': {src: 'src/label-ai.js', file: 'assets/label-ai.js', imports: ['src/firebase-auth.js']},
   'src/firebase-auth.js': {src: 'src/firebase-auth.js', file: 'assets/firebase-auth.js', imports: ['assets/shared.js']},
+  'src/profile-server.js': {src: 'src/profile-server.js', file: 'assets/profile-server.js', imports: ['src/firebase-auth.js']},
   'optional-pdf': {file: 'assets/report-pdf.js', imports: []},
   'assets/shared.js': {
     file: 'assets/shared.js',
@@ -123,6 +124,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/label-camera.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/label-ai.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/firebase-auth.js'));
+  assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/profile-server.js'));
   assert.ok(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/shared.css'));
   assert.equal(worker.skipWaiting(), 0);
 });

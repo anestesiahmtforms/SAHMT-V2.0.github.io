@@ -42,7 +42,7 @@ self.addEventListener('install', (event) => {
     const reportEssentials = new Set([
       'src/report-live-data.js', 'src/checklist-report-listener.js', 'src/label-report-reader.js',
       'src/checklist-rotation-listener.js',
-      'src/firebase.js', 'src/firebase-auth.js', 'src/data.js', 'src/data-lite.js',
+      'src/firebase.js', 'src/firebase-auth.js', 'src/profile-server.js', 'src/data.js', 'src/data-lite.js',
       'src/google-project-auth-runtime.js', 'src/google-project-auth-ui.js',
       'src/google-project-auth-google-button.js',
       'src/management-hub.js', 'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
