@@ -383,33 +383,34 @@ function updateChecklistResponsibilityUI() {
   }
 }
 async function emitCachedOfflineReport(kind, scope, callbacks) {
+  const readDisplayCache = (uid, kind, id, options = {}) => readFreshSafeCache(uid, kind, id, {...options, localOnly:scope.localOnly === true});
   const current = () => callbacks.isCurrent?.() !== false && session.status === 'signed-in' && session.user?.uid === scope.uid;
   if (!current()) return false;
   if (kind === 'events' || kind === 'labels') {
     const cacheId = operationalReportCacheId(kind, scope);
-    let cached = cacheId ? await readFreshSafeCache(scope.uid, kind, cacheId) : null;
+    let cached = cacheId ? await readDisplayCache(scope.uid, kind, cacheId) : null;
     if (!cached && scope.mode === 'daily') {
       const legacyId = offlineOperationalCacheId(kind, scope.day, scope);
-      cached = legacyId ? await readFreshSafeCache(scope.uid, 'offlineOperational', legacyId, kind === 'labels' ? {maxAgeMs: 86400000} : {}) : null;
+      cached = legacyId ? await readDisplayCache(scope.uid, 'offlineOperational', legacyId, kind === 'labels' ? {maxAgeMs: 86400000} : {}) : null;
     }
     if (!Array.isArray(cached?.data?.records) || !current()) return false;
     callbacks.next('report', {data: {...cached.data, records: cached.data.records.map(record => ({...record, stale: true})), stale: true, fromCache: true, hasPendingWrites: false, serverConfirmed: false}, complete: true, fromCache: true, hasPendingWrites: false});
     return true;
   }
   if (kind !== 'checklist') return false;
-  const catalogEntry = await readFreshSafeCache(scope.uid, 'stations', 'all');
+  const catalogEntry = await readDisplayCache(scope.uid, 'stations', 'all');
   if (!Array.isArray(catalogEntry?.data)) return false;
   const stations = catalogEntry.data.filter(station => scope.mode === 'monthly' || stationIsInDateRange(station, scope.day));
   const stationIds = stations.map(station => station.id).sort();
   const cacheId = checklistCacheId(scope);
-  const reportEntry = cacheId ? await readFreshSafeCache(scope.uid, 'checklists', cacheId) : null;
+  const reportEntry = cacheId ? await readDisplayCache(scope.uid, 'checklists', cacheId) : null;
   const hasDayRecords = Array.isArray(reportEntry?.data?.records);
   if (!current() || (!hasDayRecords && scope.mode !== 'daily')) return false;
   const cachedReport = hasDayRecords ? reportEntry.data : {records: [], priorRecords: [], stationIds: [], truncated: false};
   const sameCatalog = hasDayRecords && checklistCachedCatalogMatches(cachedReport.stationIds, stationIds);
   const [schedule, vacations, directory, conference, intent] = await Promise.all([
-    readFreshSafeCache(scope.uid, 'scheduleDays', scope.day), readFreshSafeCache(scope.uid, 'vacations', scope.day), readFreshSafeCache(scope.uid, 'eventMembers', 'all'),
-    readFreshSafeCache(scope.uid, 'checklistConference', scope.day), readOperationalDraft(scope.uid, 'checklists', 'conference:' + scope.day)
+    readDisplayCache(scope.uid, 'scheduleDays', scope.day), readDisplayCache(scope.uid, 'vacations', scope.day), readDisplayCache(scope.uid, 'eventMembers', 'all'),
+    readDisplayCache(scope.uid, 'checklistConference', scope.day), readOperationalDraft(scope.uid, 'checklists', 'conference:' + scope.day)
   ]);
   if (!current()) return false;
   if (schedule?.data && Array.isArray(vacations?.data) && Array.isArray(directory?.data)) {
@@ -433,12 +434,12 @@ async function emitCachedOfflineReport(kind, scope, callbacks) {
 }
 
 async function subscribeLiveReport(kind, scope, callbacks) {
-  if (isOfflineRuntimeForced() || !navigator.onLine) return subscribeLiveReportUnbounded(kind, scope, callbacks);
+  if (scope.localOnly || isOfflineRuntimeForced() || !navigator.onLine) return subscribeLiveReportUnbounded(kind, scope, callbacks);
   return subscribeReportWithDeadline({scope, callbacks, subscribe: hooks => subscribeLiveReportUnbounded(kind, scope, hooks), onTimeout: error => operationalBackend.noteFailure(error, kind)});
 }
 
 async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
-  if (isOfflineRuntimeForced() || !navigator.onLine) {
+  if (scope.localOnly || isOfflineRuntimeForced() || !navigator.onLine) {
     if (await emitCachedOfflineReport(kind, scope, callbacks)) return () => {};
     throw Object.assign(new Error('Não há uma cópia local recente deste período. Conecte-se para atualizar os dados.'), {code: 'unavailable'});
   }
@@ -1070,6 +1071,8 @@ async function loadHome() {
   if (!dateInput || !content) return;
   dateInput.value = localDateKey();
   let requestSequence = 0;
+  let suspended = false, disposed = false, needsServerResume = false;
+  const homeUid = session.user.uid;
   let contacts = [];
   let contactsCacheAt = 0;
   let contactsRequest = null;
@@ -1096,7 +1099,8 @@ async function loadHome() {
       });
     }));
   };
-  const render = async () => {
+  const render = async ({localOnly = false} = {}) => {
+    if (disposed || suspended || !content.isConnected || session.user?.uid !== homeUid) return;
     const requestId = ++requestSequence;
     const selectedDate = dateInput.value;
     if (!selectedDate) return;
@@ -1129,13 +1133,16 @@ async function loadHome() {
     };
     try {
       try {
-        const cachedSchedule = await readCachedSchedule(session.user.uid, selectedDate);
+        const cachedSchedule = await readCachedSchedule(session.user.uid, selectedDate, {localOnly});
         if (cachedSchedule && requestId === requestSequence && content.isConnected) {
           schedule = cachedSchedule;
           draw();
         }
       } catch {}
+      if (requestId !== requestSequence || disposed || suspended || !content.isConnected) return;
+      if (localOnly) {schedulePending = false; scheduleError = !schedule; draw(); return;}
       const {readSchedule, listActiveContacts, listVacationsForDate} = await import('./data-lite.js');
+      if (requestId !== requestSequence || disposed || suspended || !content.isConnected) return;
       const readContacts = () => {
         if (contactsCacheAt && Date.now() - contactsCacheAt < 30_000) return Promise.resolve(contacts);
         if (!contactsRequest) contactsRequest = listActiveContacts({uid: session.user.uid, pageSize: 200, onRefresh: items => {
@@ -1212,6 +1219,17 @@ async function loadHome() {
   });
   dateInput.addEventListener('change', render);
   dateInput.addEventListener('sahmt-shared-refresh',()=>{const uid=session.user?.uid,day=dateInput.value;void readCachedSchedule(uid,day).then(value=>{if(value&&session.user?.uid===uid&&dateInput.isConnected&&dateInput.value===day)renderSchedule(value,day,vacationsCache.get(day)?.items||[],contacts);});});
+  const cleanup = () => {disposed = true; requestSequence++;};
+  cleanup.suspend = () => {suspended = true; needsServerResume = true; requestSequence++; contactsRequest = null;};
+  cleanup.resumeLocal = () => {
+    if (disposed || !suspended || !content.isConnected || session.user?.uid !== homeUid) return;
+    suspended = false; void render({localOnly:true});
+  };
+  cleanup.resume = () => {
+    if (disposed || (!suspended && !needsServerResume) || !content.isConnected || session.user?.uid !== homeUid) return;
+    suspended = false; needsServerResume = false; void render();
+  };
+  cleanupCurrentModule = cleanup;
   await render();
 }
 
@@ -5478,7 +5496,7 @@ const connectionRecovery=createConnectionLifecycle({
   liveReports.setOnline(true);
   cleanupCurrentModule?.resume?.();
   const scopes=suspendedReportScopes;suspendedReportScopes=[];
-  for(const scope of scopes)if(reportScopeCurrent(scope))liveReports.open(scope.kind,scope,{force:true});
+  for(const scope of scopes)if(reportScopeCurrent(scope))liveReports.open(scope.kind,{...scope,localOnly:false},{force:true});
   for(const kind of ['events','labels','checklist']){const state=liveReports.get(kind)?.snapshot();if(state?.scope&&['offline','error'].includes(state.state))liveReports.refresh(kind,'connection-recovered');}
   void syncOutbox();void updateOutboxStatus();
  }
@@ -5489,7 +5507,14 @@ window.addEventListener('hashchange', () => {
   void connectionRecovery.recover('navigation');
 });
 window.addEventListener('online', () => {void connectionRecovery.recover('online');});
-window.addEventListener('pageshow', () => {void connectionRecovery.recover('pageshow');});
+window.addEventListener('pageshow', () => {resumeLocalConnections();void connectionRecovery.recover('pageshow');});
+// Local views must remain usable even when online recovery is unavailable.
+function resumeLocalConnections() {
+  if (document.hidden || !connectionsSuspended || session.status !== 'signed-in') return;
+  cleanupCurrentModule?.resumeLocal?.();
+  liveReports.setOnline(false);
+  for (const scope of suspendedReportScopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, {...scope, localOnly:true});
+}
 // Both events can describe the same departure (including the back/forward cache).
 // Keep the saved scopes until a visible, authorized recovery actually resumes them.
 function suspendConnections() {
@@ -5522,7 +5547,7 @@ window.addEventListener('offline', () => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     suspendConnections();
-  } else void connectionRecovery.recover('foreground');
+  } else {resumeLocalConnections();void connectionRecovery.recover('foreground');}
 });
 window.addEventListener('sahmt-module-connection-error',event=>{
  if(session.status==='signed-in'&&['management','training'].includes(currentRoute()))operationalBackend.noteFailure(event.detail,'active-evaluation');

@@ -22,6 +22,16 @@ export function isSafeCacheEntryFresh(entry, {uid, kind, now = Date.now(), maxAg
   return now - entry.cachedAt <= maxAgeMs;
 }
 
+// Local cache failure is distinct from Firestore authorization or connectivity.
+// Server-confirmed data remains usable while WebKit reopens local storage.
+async function optionalCache(action) {
+  try {return await action();}
+  catch (error) {
+    if (['storage-timeout','storage-blocked','storage-aborted'].includes(error?.code) || error?.name === 'InvalidStateError') return null;
+    throw error;
+  }
+}
+
 export async function readThroughSafeCache({uid, kind, id, fetchOnline, readCache, writeCache, mayFallback, localFirst = false, onRefresh, onRemoteError, backend = operationalBackend}) {
   const key = `${uid || ''}:${kind}:${id}`;
   if (localFirst) backend.assertCacheAllowed(key);
@@ -31,7 +41,7 @@ export async function readThroughSafeCache({uid, kind, id, fetchOnline, readCach
     return markStale(cached.data);
   }
   if (localFirst && uid) {
-    const cached = await readCache(uid, kind, id);
+    const cached = await optionalCache(() => readCache(uid, kind, id));
     if (isSafeCacheEntryFresh(cached, {uid, kind})) {
       // Stable catalogs do not need a new query at every route change.
       // This is read reuse, not a polling timer; live reports still receive real changes.
@@ -39,7 +49,7 @@ export async function readThroughSafeCache({uid, kind, id, fetchOnline, readCach
       if (Date.now() - cached.cachedAt > refreshAfterMs) {
         void backend.run(key, fetchOnline).then(async value => {
           if (value === null || value === undefined) return;
-          await writeCache(uid, kind, id, value);
+          await optionalCache(() => writeCache(uid, kind, id, value));
           onRefresh?.(value);
         }).catch(error => {
           onRemoteError?.(error);
@@ -53,7 +63,7 @@ export async function readThroughSafeCache({uid, kind, id, fetchOnline, readCach
   }
   try {
     const value = await (localFirst ? backend.run(key, fetchOnline) : fetchOnline());
-    if (uid && value !== null && value !== undefined) await writeCache(uid, kind, id, value);
+    if (uid && value !== null && value !== undefined) await optionalCache(() => writeCache(uid, kind, id, value));
     return value;
   } catch (error) {
     if (!uid || !mayFallback(error)) throw error;
