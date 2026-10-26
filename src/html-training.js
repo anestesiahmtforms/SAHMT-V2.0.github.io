@@ -2,8 +2,9 @@ import './html-training.css';
 import { deployment } from './deployment-context.js';
 import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument, createContentCache } from './html-training-model.js';
 import { mountTrainingAudit } from './html-training-audit.js';
+import {trainingCategories,trainingFolderLevel} from './html-training-folders.js';
 
-const categories = ['Diretrizes','Documentos administrativos','Protocolos','ROPs'];
+const categories = trainingCategories;
 const uuid = () => globalThis.crypto.randomUUID();
 const button = (action, label, extra='') => `<button type="button" data-ht="${action}" ${extra}>${label}</button>`;
 const field = (name,label,value='',type='text',extra='') => `<label class="ht-field">${h(label)}<input name="${h(name)}" type="${type}" value="${h(value)}" ${extra}></label>`;
@@ -36,7 +37,7 @@ export async function createHtmlTrainingClient(user) {
 /** Mount returns cleanup immediately, including while startup/auth is pending. */
 export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {}) {
   let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false;
-  let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', selectedCategory='', readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null;
+  let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null;
   let storage; try { storage=globalThis.localStorage; } catch {}
   const cache=createContentCache(storage), uid=user?.uid;
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
@@ -62,10 +63,14 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     try {await fn();} catch(err){fail(err);} finally {busy=false;if(alive)renderBusy();}
   }
   function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy;});}
-  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Treinamentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Leitura, avaliação e melhoria contínua.':'O envio final confirmado contabiliza uma tentativa. Limite de duas por treinamento.'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('catalog','← Catálogo','class="ht-secondary"'):''}</header>`;}
+  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'O envio final confirmado contabiliza uma tentativa. Limite de duas por treinamento.'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('catalog','← Catálogo','class="ht-secondary"'):''}</header>`;}
   function catalogue(){
-    const visible=selectedCategory?catalog.filter(t=>t.category===selectedCategory):catalog;
-    return `<nav class="ht-categories" aria-label="Categorias">${button('category','Todas',`data-category="" aria-pressed="${!selectedCategory}"`)}${categories.map(c=>button('category',h(c),`data-category="${h(c)}" aria-pressed="${selectedCategory===c}"`)).join('')}</nav><div class="ht-catalog">${visible.map(t=>`<article class="ht-card"><span class="ht-eyebrow">${h(t.category)}${t.subcategory?' · '+h(t.subcategory):''}</span><h3>${h(t.title)}</h3><p>${t.status==='DRAFT'?'Rascunho · aguardando publicação':`${Number(t.sectionCount)||0} seções · 5 questões`}</p><div class="ht-card-actions">${t.status==='PUBLISHED'?button('open','Abrir treinamento',`data-id="${h(t.id)}"`):''}${canManageTraining(t,user,profile)?button('edit','Editar treinamento',`data-id="${h(t.id)}" class="ht-secondary"`):''}</div></article>`).join('') || '<div class="ht-empty"><h3>Nenhum treinamento publicado nesta categoria</h3><p>O acervo aparecerá após a importação e publicação pelo responsável.</p></div>'}</div>`;
+    const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
+    const folderButton=(path,label,extra='')=>button('folder',label,`data-folder="${h(JSON.stringify(path))}" ${extra}`);
+    const crumbs=`<nav class="ht-breadcrumb" aria-label="Caminho das pastas">${folderButton([],'Gestão de documentos','class="ht-secondary"')}${level.path.map((name,index)=>`<span aria-hidden="true">›</span>${index===level.path.length-1?`<span aria-current="page">${h(name)}</span>`:folderButton(level.path.slice(0,index+1),h(name),'class="ht-secondary"')}`).join('')}</nav>`;
+    const folders=level.folders.length?`<div class="ht-folders" aria-label="Pastas">${level.folders.map(folder=>folderButton(folder.path,`<span class="ht-folder-icon" aria-hidden="true"><svg viewBox="0 0 48 40" fill="none"><path d="M3 9a5 5 0 0 1 5-5h11l5 6h16a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V9Z" fill="currentColor"/><path d="M4 17h40" stroke="white" stroke-opacity=".55" stroke-width="2"/></svg></span><span class="ht-folder-copy"><strong>${h(folder.name)}</strong><small>${folder.count} ${folder.count===1?'documento disponível':'documentos disponíveis'}</small></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder"')).join('')}</div>`:'';
+    const documents=visible.length?`<div class="ht-folder-heading"><h3>Documentos</h3><span>${visible.length} ${visible.length===1?'item':'itens'}</span></div><div class="ht-catalog">${visible.map(t=>`<article class="ht-card"><span class="ht-eyebrow">${h(t.category)}${t.subcategory?' · '+h(t.subcategory):''}</span><h3>${h(t.title)}</h3><p>${t.status==='DRAFT'?'Rascunho · aguardando publicação':`${Number(t.sectionCount)||0} seções · 5 questões`}</p><div class="ht-card-actions">${t.status==='PUBLISHED'?button('open','Abrir treinamento',`data-id="${h(t.id)}"`):''}${canManageTraining(t,user,profile)?button('edit','Editar treinamento',`data-id="${h(t.id)}" class="ht-secondary"`):''}</div></article>`).join('')}</div>`:'';
+    return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'← Voltar','class="ht-secondary"'):''}<p class="ht-muted">${folderPath.length?h(folderPath.at(-1)):'Pastas de documentos'}</p></div>`+folders+documents+(!level.folders.length&&!visible.length?'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>':'');
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
@@ -130,7 +135,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
       if(action==='catalog')return loadCatalog();
-      if(action==='category'){selectedCategory=b.dataset.category;render();return;}
+      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;folderPath=path;render();return;}
       if(action==='open')return open(b.dataset.id);
       if(action==='edit')return edit(b.dataset.id);
       if(action==='audit'){

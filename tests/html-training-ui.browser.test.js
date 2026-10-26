@@ -17,6 +17,19 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   const requests=[];page.on('request',r=>requests.push(r.url()));
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/training-fixture`);
+  const enterFolder=async()=>{
+    await page.getByRole('button',{name:/^ROPs\s/}).click();
+    await page.getByRole('button',{name:/^Segurança\s/}).click();
+  };
+  await page.getByRole('button',{name:/^Protocolos\s/}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Abrir treinamento',exact:true}).count(),0);
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:'.local-preview/html-training-folders-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1366,height:1000});
+  await enterFolder();
+  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='LIST').length),1);
+  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),0);
   await page.getByRole('button',{name:'Abrir treinamento',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Editar treinamento',exact:true}).count(),0);
   await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
@@ -44,6 +57,7 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),1);
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length),2);
   await page.evaluate(()=>window.mount('manager'));
+  await enterFolder();
   await page.getByRole('button',{name:'Editar treinamento',exact:true}).click();
   await page.frameLocator('[data-section="0"]').locator('.material').fill('Conteúdo alterado pelo gestor');
   assert.equal(await page.locator('.ht-bank').count(),6);
@@ -82,7 +96,7 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:'.local-preview/html-training-ui-mobile.png',fullPage:true});
-  await page.evaluate(()=>window.mount());await page.getByRole('button',{name:'Abrir treinamento',exact:true}).waitFor();
+  await page.evaluate(()=>window.mount());await enterFolder();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).waitFor();
   await page.evaluate(()=>window.denyOpen());await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
   await page.getByText('Acesso revogado para esta conta.',{exact:true}).waitFor();
   assert.equal(await page.locator('iframe').count(),0);
