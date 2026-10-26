@@ -37,7 +37,7 @@ export async function createHtmlTrainingClient(user) {
 /** Mount returns cleanup immediately, including while startup/auth is pending. */
 export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {}) {
   let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false;
-  let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null;
+  let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   let storage; try { storage=globalThis.localStorage; } catch {}
   const cache=createContentCache(storage), uid=user?.uid;
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
@@ -63,14 +63,22 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     try {await fn();} catch(err){fail(err);} finally {busy=false;if(alive)renderBusy();}
   }
   function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy;});}
-  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'O envio final confirmado contabiliza uma tentativa. Limite de duas por treinamento.'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('catalog','← Catálogo','class="ht-secondary"'):''}</header>`;}
+  function goBack(){
+    if(!alive)return false;
+    if(busy)return true;
+    if(mode==='editor'){mode=editorParent;editor=null;error='';render();return true;}
+    if(mode==='participant'){revision++;active=null;content=null;questions=[];state=null;mode='catalog';error='';notice='';render();return true;}
+    if(mode==='catalog'&&folderPath.length){folderPath=folderPath.slice(0,-1);render();return true;}
+    return false;
+  }
+  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'O envio final confirmado contabiliza uma tentativa. Limite de duas por treinamento.'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;}
   function catalogue(){
     const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
     const folderButton=(path,label,extra='')=>button('folder',label,`data-folder="${h(JSON.stringify(path))}" ${extra}`);
     const crumbs=`<nav class="ht-breadcrumb" aria-label="Caminho das pastas">${folderButton([],'Gestão de documentos','class="ht-secondary"')}${level.path.map((name,index)=>`<span aria-hidden="true">›</span>${index===level.path.length-1?`<span aria-current="page">${h(name)}</span>`:folderButton(level.path.slice(0,index+1),h(name),'class="ht-secondary"')}`).join('')}</nav>`;
     const folders=level.folders.length?`<div class="ht-folders" aria-label="Pastas">${level.folders.map(folder=>folderButton(folder.path,`<span class="ht-folder-icon" aria-hidden="true"><svg viewBox="0 0 48 40" fill="none"><path d="M3 9a5 5 0 0 1 5-5h11l5 6h16a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V9Z" fill="currentColor"/><path d="M4 17h40" stroke="white" stroke-opacity=".55" stroke-width="2"/></svg></span><span class="ht-folder-copy"><strong>${h(folder.name)}</strong><small>${folder.count} ${folder.count===1?'documento disponível':'documentos disponíveis'}</small></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder"')).join('')}</div>`:'';
     const documents=visible.length?`<div class="ht-folder-heading"><h3>Documentos</h3><span>${visible.length} ${visible.length===1?'item':'itens'}</span></div><div class="ht-catalog">${visible.map(t=>`<article class="ht-card"><span class="ht-eyebrow">${h(t.category)}${t.subcategory?' · '+h(t.subcategory):''}</span><h3>${h(t.title)}</h3><p>${t.status==='DRAFT'?'Rascunho · aguardando publicação':`${Number(t.sectionCount)||0} seções · 5 questões`}</p><div class="ht-card-actions">${t.status==='PUBLISHED'?button('open','Abrir treinamento',`data-id="${h(t.id)}"`):''}${canManageTraining(t,user,profile)?button('edit','Editar treinamento',`data-id="${h(t.id)}" class="ht-secondary"`):''}</div></article>`).join('')}</div>`:'';
-    return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'← Voltar','class="ht-secondary"'):''}<p class="ht-muted">${folderPath.length?h(folderPath.at(-1)):'Pastas de documentos'}</p></div>`+folders+documents+(!level.folders.length&&!visible.length?'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>':'');
+    return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"'):''}<p class="ht-muted">${folderPath.length?h(folderPath.at(-1)):'Pastas de documentos'}</p></div>`+folders+documents+(!level.folders.length&&!visible.length?'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>':'');
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
@@ -133,11 +141,12 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     const b=event.target.closest('[data-ht]');if(!b||!root.contains(b)||busy)return;
     const action=b.dataset.ht;
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
+    if(action==='back'){goBack();return;}
     perform(async()=>{
       if(action==='catalog')return loadCatalog();
       if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;folderPath=path;render();return;}
       if(action==='open')return open(b.dataset.id);
-      if(action==='edit')return edit(b.dataset.id);
+      if(action==='edit'){editorParent=mode==='participant'?'participant':'catalog';return edit(b.dataset.id);}
       if(action==='audit'){
         const result=await call('EDIT',{trainingId:active.id});
         if(!result.auditSchema)throw new Error('Modelo de auditoria não disponível para esta ROP.');
@@ -172,5 +181,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   root.addEventListener('submit',preventSubmit);
   root.classList.add('html-trainings');root.innerHTML='<p class="ht-notice" role="status">Consultando treinamentos autorizados…</p>';
   (async()=>{try{if(!uid)throw new Error('Entre com sua conta institucional para acessar os treinamentos.');if(!api){const client=await createHtmlTrainingClient(user);if(!alive)return;api=client.api;valid=client.valid;unsubscribe=client.subscribeInvalidated(()=>fail(Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'})));}if(!current(revision))return;await loadCatalog();}catch(err){fail(err);}})();
-  return () => {root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
+  const cleanup=() => {root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
+  cleanup.goBack=goBack;
+  return cleanup;
 }

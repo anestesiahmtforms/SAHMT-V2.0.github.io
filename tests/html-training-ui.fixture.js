@@ -25,6 +25,7 @@ async function api(action,input){
  state.version++;return {state:copy(state)};
 }
 let cleanup;
+window.trainingBack=()=>cleanup?.goBack?.();
 window.mount=(role='participant')=>{cleanup?.();state.uid=role;const profile=role==='admin'?{role:'administrador_app'}:{};cleanup=mountHtmlTrainings(root,{user:{uid:role},profile,api});return typeof cleanup;};
 window.cleanup=()=>cleanup?.();window.holdList=()=>holdList=true;window.releaseList=()=>{holdList=false;releaseList?.();};
 window.mountUnavailable=()=>{cleanup?.();cleanup=mountHtmlTrainings(root,{user:{uid:'participant'}});};

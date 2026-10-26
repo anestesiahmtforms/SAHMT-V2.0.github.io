@@ -28,6 +28,12 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.screenshot({path:'.local-preview/html-training-folders-mobile.png',fullPage:true});
   await page.setViewportSize({width:1366,height:1000});
   await enterFolder();
+  assert.equal(await page.evaluate(()=>window.trainingBack()),true);
+  await page.getByRole('button',{name:/^Segurança\s/}).waitFor();
+  assert.equal(await page.evaluate(()=>window.trainingBack()),true);
+  await page.getByRole('button',{name:/^ROPs\s/}).waitFor();
+  assert.equal(await page.evaluate(()=>window.trainingBack()),false,'root delegates return to the management area dialog');
+  await enterFolder();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='LIST').length),1);
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),0);
   await page.getByRole('button',{name:'Abrir treinamento',exact:true}).waitFor();
@@ -53,7 +59,8 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.getByRole('button',{name:'Iniciar segunda tentativa'}).click();
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='SUBMIT').length),1);
-  await page.getByRole('button',{name:'← Catálogo'}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='LIST').length),1,'returning to the containing folder must not reread the catalog');
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),1);
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length),2);
   await page.evaluate(()=>window.mount('manager'));
@@ -68,7 +75,7 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   assert.equal(await page.evaluate(()=>window.published.bank.length),6);
   assert.equal(await page.evaluate(()=>window.published.selectedQuestionIds.length),5);
   assert.match(await page.evaluate(()=>window.published.sections[0].html),/Conteúdo alterado pelo gestor/);
-  await page.getByRole('button',{name:'← Catálogo'}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
   await page.getByRole('button',{name:'Realizar auditoria'}).click();
   await page.getByLabel('Unidade / setor *').fill('SRPA');
   await page.getByRole('button',{name:'Salvar rascunho',exact:true}).click();

@@ -1668,6 +1668,12 @@ async function loadModule(route) {
       if (!evaluationCurrent()) return;
       cleanupCurrentModule = mountManagementEvaluationAccess(evaluationHost, {uid: requestUid, profile: session.profile, areas: items, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: evaluationCurrent});
       const areaDialog = content.querySelector('#management-area-dialog');
+      const areaBack=areaDialog?.querySelector?.('.management-area-dialog__footer button');
+      if(areaBack){
+        areaBack.type='button';areaBack.textContent='VOLTAR';
+        areaBack.addEventListener('click',()=>{if(!cleanupDocumentTraining?.goBack?.())areaDialog.close();});
+      }
+      areaDialog?.addEventListener('cancel',event=>{if(cleanupDocumentTraining?.goBack?.())event.preventDefault();});
       areaDialog?.addEventListener('close', () => { managementActivityLoad++; history.replaceState(history.state,'','#/management'); });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
@@ -5090,11 +5096,17 @@ async function render() {
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
   if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute)) {
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
-      button.removeAttribute('data-route');button.textContent='HOME';
-      button.addEventListener('click',()=>navigate('home'));
+      button.removeAttribute('data-route');button.textContent='VOLTAR';
+      button.addEventListener('click',()=>navigate('management-hub',{panel:['occurrences','qmentum'].includes(requestedRoute)?'records':undefined}));
     });
   }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);
+  if(!authLimited&&['people','admin','notifications'].includes(requestedRoute)){
+    app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
+      button.removeAttribute('data-route');button.textContent='VOLTAR';
+      button.addEventListener('click',()=>navigate('management'));
+    });
+  }
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   if (authLimited) {

@@ -20,14 +20,14 @@ const isOfflineRuntimeForced=()=>forced,setOfflineRuntimeMode=value=>forced=valu
 const cleanupCurrentModule={suspend(){calls.push('suspend');},resume(){calls.push('resume');}};
 const revalidateOnlineSession=async()=>{session.offline=false;forced=false;};
 const liveReports={get:kind=>reports.has(kind)?{snapshot:()=>({scope:reports.get(kind),state:'server'})}:null,
- setOnline(){},close:kind=>reports.delete(kind),open:(kind,scope)=>{reports.set(kind,scope);calls.push('open:'+kind);},refresh(){}};
+ setOnline(){},close:kind=>reports.delete(kind),open:(kind,scope)=>{reports.set(kind,scope);calls.push((scope.localOnly?'local:':'server:')+kind);},refresh(){}};
 const closeReportLive=kind=>reports.delete(kind),reportScopeCurrent=scope=>scope.uid===session.user.uid;
 function syncOutbox(){}function updateOutboxStatus(){}function updateReportSync(){}function invalidateChecklistSignature(){}
 const currentRoute=()=> 'checklist',shouldRenderHashChange=()=>false;function render(){}
 ${wiring}
 const pageId=crypto.randomUUID(),shows=[];
 window.addEventListener('pageshow',event=>shows.push(event.persisted));
-window.connectionFixture={snapshot:()=>({pageId,shows,calls,reports:[...reports.keys()],suspended:suspendedReportScopes.length,busy:connectionRecovery.snapshot().busy})};
+window.connectionFixture={snapshot:()=>({pageId,shows,calls,reports:[...reports.keys()],serverReports:[...reports.values()].filter(scope=>scope.localOnly===false).length,suspended:suspendedReportScopes.length,busy:connectionRecovery.snapshot().busy})};
 document.querySelector('#ready').textContent='FA pronta';
 `;
 
@@ -51,12 +51,16 @@ test('FA → FB → browser Back repeatedly resumes suspended reports without re
   const id=await page.evaluate(()=>window.connectionFixture.snapshot().pageId);
   for(let cycle=1;cycle<=4;cycle++){
    await page.getByText('Abrir FB').click();await page.waitForURL('**/fb');await page.goBack({waitUntil:'commit'});
-   await page.waitForFunction(()=>window.connectionFixture?.snapshot().reports.length===3&&!window.connectionFixture.snapshot().busy);
+   await page.waitForFunction(()=>window.connectionFixture?.snapshot().serverReports===3&&!window.connectionFixture.snapshot().busy);
    const state=await page.evaluate(()=>window.connectionFixture.snapshot());
    assert.equal(state.pageId,id,'FA must resume its cached document, not restart');
    assert.equal(state.shows.at(-1),true);assert.equal(state.suspended,0);
    assert.equal(state.calls.filter(value=>value==='suspend').length,cycle);
-   for(const kind of ['events','labels','checklist'])assert.equal(state.calls.filter(value=>value==='open:'+kind).length,cycle);
+   for(const kind of ['events','labels','checklist']){
+    assert.equal(state.calls.filter(value=>value==='server:'+kind).length,cycle,'one confirmed server subscription per return');
+    const firstLocal=state.calls.indexOf('local:'+kind),firstServer=state.calls.indexOf('server:'+kind);
+    assert.ok(firstLocal>=0&&firstLocal<firstServer,'local content must be available before server confirmation');
+   }
   }
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
