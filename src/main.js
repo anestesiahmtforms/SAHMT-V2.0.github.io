@@ -760,7 +760,7 @@ function moduleCards() {
   return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum'].includes(route)
     && !['training', 'notifications', 'management-hub'].includes(route)
     && (commonModules.includes(route) || permissionFor[route]?.some(can))
-    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}">
+    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseManagementPilot(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
@@ -1262,9 +1262,10 @@ function showScheduleContacts(contacts, context = {}) {
 
 async function loadModule(route) {
   if(route === 'management-hub'){
+    if(!canUseManagementPilot(session)){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
     const {mountManagementHub}=await import('./management-hub.js');
-    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||session.profile?.active!==true||session.profile?.access!==true)return;
+    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseManagementPilot(session))return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',
       access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum')},
@@ -5009,6 +5010,10 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if(requestedRoute==='management-hub'&&!canUseManagementPilot(session)){
+    notice='Governança está temporariamente indisponível para este perfil.';
+    navigate('home');return;
+  }
   if (deployment.target === 'FB' && requestedRoute === 'qmentum') { location.replace(deployment.faBase + '#/qmentum'); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
