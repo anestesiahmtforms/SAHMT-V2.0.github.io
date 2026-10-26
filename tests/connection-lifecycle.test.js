@@ -69,3 +69,21 @@ test('a recovery that becomes hidden cannot resume or consume suspended listener
  const h=fixture();let finish;h.options.restoreAuth=()=>new Promise(resolve=>finish=resolve);const flow=createConnectionLifecycle(h.options);
  const work=flow.recover();await tick();h.hide();finish({status:'ready'});assert.equal(await work,false);assert.equal(h.calls.includes('resume'),false);
 });
+
+test('a stalled Auth restoration reaches profile validation after its deadline',async()=>{
+ const h=fixture();h.offline();h.options.restoreAuth=()=>new Promise(()=>{});
+ const flow=createConnectionLifecycle(h.options),work=flow.recover();await tick();await h.fire();
+ assert.equal(await work,true);assert.deepEqual(h.calls,['profile','resume']);assert.equal(flow.snapshot().busy,false);
+});
+test('a stalled profile attempt releases the recovery so the next manual attempt can succeed',async()=>{
+ const h=fixture();h.state.offline=true;h.options.revalidate=()=>new Promise(()=>{});
+ let read=h.options.revalidate;h.options.revalidate=()=>read();const flow=createConnectionLifecycle(h.options);
+ const first=flow.recover();await tick();await h.fire();assert.equal(await first,false);assert.equal(flow.snapshot().busy,false);
+ read=async()=>{h.state.offline=false;};
+ assert.equal(await flow.recover('manual'),true);assert.equal(h.timers.size,0);flow.dispose();
+});
+test('a local profile arriving after pageshow schedules recovery even when the shared backend has reset',async()=>{
+ const h=fixture();h.state.offline=true;h.state.validatingProfile=true;h.flow.sessionChanged();assert.equal(h.timers.size,0);
+ h.state.validatingProfile=false;h.flow.sessionChanged();assert.equal(h.timers.size,1);
+ await h.fire();assert.equal(h.state.offline,false);assert.equal(h.calls.filter(x=>x==='profile').length,1);h.flow.dispose();
+});

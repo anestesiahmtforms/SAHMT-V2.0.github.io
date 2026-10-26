@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {profileForPresentation} from '../src/profile-presentation.js';
 import {isFirestoreCacheFallbackError} from '../src/offline-cache.js';
+import {withinDeadline} from '../src/async-deadline.js';
 
 const fixture = () => ({
   profile: {uid: 'fictional-uid', email: 'fictional.member@gmail.com', displayName: 'fictional.member@gmail.com', sigla: 'FC', phone: '', active: true, access: true, role: 'temporario', permissions: {managementRead: true, trainingsRead: true, notificationsRead: true}},
@@ -74,12 +75,12 @@ function harness({active = true, access = true, online = true, profileReadError 
     .replace(/\bexport /g, '')
     .replace(/import\((['"][^'"]+['"])\)/g, 'fakeImport($1)');
   const context = vm.createContext({
-    operationalBackend:{run:(_key,action)=>action(),reset(){},noteFailure(){}},isFirestoreCacheFallbackError,
+    withinDeadline,operationalBackend:{run:(_key,action)=>action(),reset(){},noteFailure(){}},isFirestoreCacheFallbackError,
     firebaseConfigured: true, profileForPresentation, navigator: {onLine: online},
     window: {requestIdleCallback: (fn) => { context.idle = fn; return 1; }, cancelIdleCallback() {}, addEventListener() {}, removeEventListener() {}},
     cacheProfile: async (_uid, value) => { cached.push(value); }, readCachedProfile: async () => { cacheReads++; return cachedProfile === undefined ? f.profile : cachedProfile; },
     clearUserLocalData() {}, pendingOperationCount() {}, pendingTrainingProgressCount() {},
-    fakeImport: async (name) => name.includes('firebase/firestore') ? api : {db: {}},
+    fakeImport: async (name) => name==='./profile-server.js'?{readOwnProfileDocument:api.getDoc}:name.includes('firebase/firestore') ? api : {db: {}},
     onState: (next) => { states.push(next); }, user: f.user
   });
   vm.runInContext(source, context, {filename: 'src/auth.js'});
@@ -118,13 +119,13 @@ test('cache offline usa a mesma apresentação sem conceder acesso novo', async 
   assert.equal(h.states[0].offline, true);
 });
 
-test('troca de conta durante persistência do perfil não emite a sessão anterior', async () => {
+test('cache concluído após troca de conta não emite novamente a sessão anterior', async () => {
   const h = harness(); let finish;
   h.context.cacheProfile = () => new Promise(resolve => {finish = resolve;}); h.context.currentGeneration = 1;
   const loading = vm.runInContext('onAuthChangedProfile(user, onState, 1, () => currentGeneration, () => {})', h.context);
-  while (!finish) await new Promise(resolve => setImmediate(resolve));
-  h.context.currentGeneration = 2; finish(); await loading;
-  assert.equal(h.states.length, 0);
+  await loading;assert.equal(typeof finish,'function');assert.equal(h.states.length,1);
+  h.context.currentGeneration = 2; finish(); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.states.length, 1);
 });
 for (const code of ['resource-exhausted','firestore/unavailable']) test(`perfil cacheado abre o app durante falha transitória do Firestore (${code})`, async () => {
   const h = harness({profileReadError: Object.assign(new Error('private response'), {code})});

@@ -2368,3 +2368,6 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .google-auth-update{position:fixed;z-index:1700;inset:auto max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) auto;width:min(380px,calc(100vw - 24px));max-height:55dvh;overflow:auto;padding:16px;border:2px solid #fff;border-radius:18px;background:#f3ecd8;color:#123654;box-shadow:0 6px 24px #0005;font-size:14px}.google-auth-update[hidden]{display:none}.google-auth-update h2{font-size:18px;margin:0 0 8px}.google-auth-update ul{list-style:none;padding:0;margin:8px 0;display:grid;gap:4px}.google-auth-update li[data-status="ready"]{color:#176634}.google-auth-update li[data-status="pending"]{color:#845600}.google-auth-update button{width:100%}
 
 .module-card:disabled{opacity:.48;filter:grayscale(.8);cursor:not-allowed}.module-card:disabled:hover{transform:none}
+.profile-connection-notice{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.profile-connection-notice>span{flex:1 1 240px}.profile-connection-notice button{flex:0 0 auto;min-height:44px;padding:8px 16px}
+.profile-connection-notice small{flex-basis:100%;line-height:1.4}.profile-connection-notice small:empty{display:none}

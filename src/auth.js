@@ -17,6 +17,7 @@ import {createManagementGoogleLogin} from './management-google-login.js';
 import {managementFaFirstLoginConfig} from './management-fa-first-login-config.js';
 import {isFirestoreCacheFallbackError} from './offline-cache.js';
 import {operationalBackend} from './operational-backend.js';
+import {withinDeadline} from './async-deadline.js';
 import {repairAppFiles,staleModuleFailure} from './app-repair.js';
 
 let retryCurrentProfile = null;
@@ -72,7 +73,7 @@ function loadAuthApi() {
 
 async function showCachedSession(user, onState, isCurrent = () => true) {
   let profile;
-  try {profile = await readCachedProfile(user.uid);}
+  try {profile = await withinDeadline(()=>readCachedProfile(user.uid),{timeoutMs:1500,code:'storage-unavailable'});}
   catch {
     if (isCurrent()) showAuthLimitedSession(user, onState, false, 'LOCAL_STORAGE_UNAVAILABLE');
     return;
@@ -80,8 +81,10 @@ async function showCachedSession(user, onState, isCurrent = () => true) {
   if (!isCurrent()) return;
     if (globalThis.navigator?.onLine !== false && profile?.active !== false) {
       try {
-        const {recoverRemoteContinuity} = await import('./remote-continuity.js');
-        const recovered = await recoverRemoteContinuity(user, {isCurrent});
+        const recovered = await withinDeadline(async()=>{
+          const {recoverRemoteContinuity} = await import('./remote-continuity.js');
+          return recoverRemoteContinuity(user, {isCurrent});
+        },{timeoutMs:2500});
         if (!isCurrent()) return;
         if (recovered?.profile?.uid === user.uid) {
           const chosen=profile?.uid===user.uid&&profile.cachedAt>recovered.profileVerifiedAt?profile:recovered.profile;
@@ -143,7 +146,7 @@ export function watchSession(onState) {
     };
     window.addEventListener('online', onlineHandler, {once: true});
   };
-  const performProfileLoad = async (user, {silent=false}={}) => {
+  const performProfileLoad = async (user, {silent=false,signal}={}) => {
     if (!user) return;
     const currentGeneration = ++generation;
     clearOnlineHandler();
@@ -159,15 +162,12 @@ export function watchSession(onState) {
         scheduleReconnect(user, currentGeneration);
         return;
       }
-      const cached = await readCachedProfile(user.uid).catch(() => null);
+      const cached = await withinDeadline(()=>readCachedProfile(user.uid),{timeoutMs:1500,code:'storage-unavailable'}).catch(() => null);
       if (currentGeneration !== generation || disposed) return;
       if (!preserve && cached?.uid === user.uid && cached.active === true && cached.access === true) {
-        emit({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true});
-      } else if (!preserve && !cached) {
-        await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
-        if (currentGeneration !== generation || disposed) return;
+        emit({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true, validatingProfile:true});
       }
-      await onAuthChangedProfile(user, emit, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; });
+      await onAuthChangedProfile(user, emit, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; }, {signal});
     } catch (error) {
       if (currentGeneration !== generation) return;
       if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
@@ -177,8 +177,19 @@ export function watchSession(onState) {
   };
   const loadProfile = (user,options={}) => {
     if(profileLoad?.uid===user?.uid)return profileLoad.promise;
-    const entry={uid:user?.uid,promise:null};
-    entry.promise=performProfileLoad(user,options).finally(()=>{if(profileLoad===entry)profileLoad=null;});
+    const entry={uid:user?.uid,promise:null,controller:new AbortController()};
+    entry.promise=withinDeadline(()=>performProfileLoad(user,{...options,signal:entry.controller.signal}),{
+      timeoutMs:18000,onTimeout:error=>{
+        entry.controller.abort(error);
+        if(profileLoad===entry){generation++;profileUnsubscribe?.();profileUnsubscribe=null;}
+      }
+    }).catch(async error=>{
+      if(disposed||profileLoad!==entry||auth?.currentUser?.uid!==entry.uid)return false;
+      operationalBackend.noteFailure(error,`profile:${entry.uid}`);
+      if(lastState?.user?.uid===entry.uid&&lastState.status==='signed-in')emit({...lastState,offline:true,validatingProfile:false});
+      else await showCachedSession(user,emit,()=>!disposed&&profileLoad===entry&&auth?.currentUser?.uid===entry.uid);
+      return false;
+    }).finally(()=>{if(profileLoad===entry)profileLoad=null;});
     profileLoad=entry;return entry.promise;
   };
   retryCurrentProfile = () => {
@@ -211,6 +222,7 @@ export function watchSession(onState) {
       observeManagementFaFirstLoginAuthUid(uid);
       const identityChanged=uid!==lastAuthUid;
       if (identityChanged) {
+        profileLoad?.controller.abort();
         profileLoad=null;
         lastAuthUid = uid;
         // Secondary cleanup is intentionally detached from FA profile loading:
@@ -243,6 +255,7 @@ export function watchSession(onState) {
   return () => {
     disposed = true;
     generation++;
+    profileLoad?.controller.abort();
     clearOnlineHandler();
     authUnsubscribe?.();
     profileUnsubscribe?.();
@@ -255,27 +268,26 @@ export function retryAuthenticatedProfile() {
   return retryCurrentProfile ? retryCurrentProfile() : Promise.resolve(false);
 }
 
-async function onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe, {watch = true, force = false} = {}) {
-  const [{doc, getDoc}, {db}] = await Promise.all([import('firebase/firestore/lite'), import('./firebase-lite.js')]);
+async function onAuthChangedProfile(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe, {watch = true, force = false, signal} = {}) {
+  const {readOwnProfileDocument} = await import('./profile-server.js');
   if (currentGeneration !== getGeneration()) return;
-  const profileRef = doc(db, 'users', user.uid);
+  const isCurrent=()=>currentGeneration===getGeneration()&&!signal?.aborted;
   let serverResultReceived = false;
   const acceptSnapshot = async snapshot => {
     if (currentGeneration !== getGeneration()) return;
     serverResultReceived = true;
     if (!snapshot.exists()) {
       onState({status: 'profile-missing', user});
-      const requestSnapshot = await getDoc(doc(db, 'accessRequests', user.uid));
+      const requestSnapshot = await readOwnProfileDocument(user,{collection:'accessRequests',isCurrent,signal});
       if (currentGeneration !== getGeneration()) return;
       onState({status: requestSnapshot.exists() && requestSnapshot.data().status === 'PENDING' ? 'access-pending' : 'profile-missing', user});
       return;
     }
     const profile = snapshot.data();
     if (profile.uid !== user.uid) throw new Error('O UID do perfil não corresponde à identidade autenticada.');
-    // A confirmed server profile is usable even if Safari rejects local storage.
-    try{await cacheProfile(user.uid, profile);}catch{}
-    if (currentGeneration !== getGeneration()) return;
+    // Server confirmation must not wait for a stalled IndexedDB transaction.
     onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: false});
+    void Promise.resolve().then(()=>isCurrent()?cacheProfile(user.uid,profile):null).catch(()=>{});
     if (watch) deferProfileListener(user, onState, currentGeneration, getGeneration, setProfileUnsubscribe);
   };
   const onLateResult = async (snapshot, error) => {
@@ -291,7 +303,7 @@ async function onAuthChangedProfile(user, onState, currentGeneration, getGenerat
     }
   };
   try {
-    const snapshot = await operationalBackend.run(`profile:${user.uid}`, () => getDoc(profileRef), {force, onLateResult});
+    const snapshot = await operationalBackend.run(`profile:${user.uid}`, () => readOwnProfileDocument(user,{isCurrent,signal}), {force, onLateResult});
     await acceptSnapshot(snapshot);
   } catch (error) {
     if (currentGeneration !== getGeneration()) return;
@@ -334,9 +346,9 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
           onState({status: 'profile-error', user, error: new Error('O UID do perfil não corresponde à identidade autenticada.')});
           return;
         }
-        try{await cacheProfile(user.uid, updatedProfile);}catch{}
         if (cancelled || currentGeneration !== getGeneration()) return;
         onState({status: updatedProfile.active === true && updatedProfile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(updatedProfile, user), offline: !navigator.onLine});
+        void Promise.resolve().then(()=>!cancelled&&currentGeneration===getGeneration()?cacheProfile(user.uid,updatedProfile):null).catch(()=>{});
       }, (error) => {
         if (currentGeneration !== getGeneration()) return;
         if (isFirestoreCacheFallbackError(error)) {
@@ -352,7 +364,7 @@ function deferProfileListener(user, onState, currentGeneration, getGeneration, s
       });
     } catch (error) {
       if (!cancelled && currentGeneration === getGeneration()) {
-        if (isTemporaryProfileReadFailure(error)) showCachedSession(user, onState).catch(() => showAuthLimitedSession(user,onState));
+        if (isTemporaryProfileReadFailure(error)) showCachedSession(user, onState,()=>!cancelled&&currentGeneration===getGeneration()).catch(() => {if(!cancelled&&currentGeneration===getGeneration())showAuthLimitedSession(user,onState);});
         else showAuthLimitedSession(user,onState,false,profileReadFailureCode(error));
       }
     }

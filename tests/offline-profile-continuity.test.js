@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {isFirestoreCacheFallbackError} from '../src/offline-cache.js';
 import {firebaseFailureCode} from '../src/firebase-failure.js';
+import {withinDeadline} from '../src/async-deadline.js';
 
 globalThis.indexedDB = indexedDB;
 globalThis.IDBKeyRange = IDBKeyRange;
@@ -46,11 +47,11 @@ test('data futura não é aceita como perfil validado', async () => {
 function harness(code, uid) {
   const states = [];
   const context = vm.createContext({
-    firebaseConfigured: true, firebaseFailureCode, isFirestoreCacheFallbackError,
+    withinDeadline, firebaseConfigured: true, firebaseFailureCode, isFirestoreCacheFallbackError,
     profileForPresentation: value => value, readCachedProfile: outbox.readCachedProfile,
     cacheProfile: outbox.cacheProfile, navigator: {onLine: true},
     operationalBackend: {run: (_key, action) => action()},
-    fakeImport: async () => ({db: {}, doc: () => ({}), getDoc: async () => {throw Object.assign(new Error('private body must never appear'), {code});}})
+    fakeImport: async () => ({readOwnProfileDocument: async () => {throw Object.assign(new Error('private body must never appear'), {code});}})
   });
   vm.runInContext(source, context);
   return {states, run: () => context.onAuthChangedProfile({uid}, state => states.push(state), 1, () => 1, () => {})};
@@ -86,7 +87,7 @@ test('perfil desativado continua bloqueado', async () => {
 });
 
 test('falha no armazenamento local é identificada sem expor exceções', async () => {
-  const context = vm.createContext({readCachedProfile: async () => {throw Error('private storage details');}, profileForPresentation: value => value});
+  const context = vm.createContext({withinDeadline,readCachedProfile: async () => {throw Error('private storage details');}, profileForPresentation: value => value});
   const slice = source.slice(source.indexOf('async function showCachedSession('), source.indexOf('function watchSession('));
   vm.runInContext(slice, context); const states = [];
   await context.showCachedSession({uid: 'storage-fixture'}, state => states.push(state));

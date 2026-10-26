@@ -38,7 +38,7 @@ test('FA → FB → browser Back repeatedly resumes suspended reports without re
   if(path==='/fa'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><meta charset="utf-8"><p id="ready"></p><a href="/fb">Abrir FB</a><script type="module" src="/harness.js"></script>');}
   else if(path==='/fb'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><meta charset="utf-8"><p>FB pronta</p>');}
   else if(path==='/harness.js'){res.setHeader('Content-Type','text/javascript');res.end(harness);}
-  else if(['/src/connection-lifecycle.js','/src/firebase-failure.js','/src/operational-backend.js','/src/deployment-context.js'].includes(path)){
+  else if(['/src/async-deadline.js','/src/connection-lifecycle.js','/src/firebase-failure.js','/src/operational-backend.js','/src/deployment-context.js'].includes(path)){
    res.setHeader('Content-Type','text/javascript');res.end(readFileSync(new URL('..'+path,import.meta.url)));
   }else{res.statusCode=404;res.end();}
  });

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {withinDeadline} from '../src/async-deadline.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
@@ -6,7 +7,7 @@ const source=readFileSync(new URL('../src/auth.js',import.meta.url),'utf8');
 const slice=source.slice(source.indexOf('async function showCachedSession('),source.indexOf('export function watchSession(')).replace(/import\((['"][^'"]+['"])\)/g,'fakeImport($1)');
 function harness({denied=false,current=()=>true,cached=false}={}){
  const states=[];const profile={uid:'member',active:true,access:true,permissions:{checklistRead:true}};
- const ctx=vm.createContext({navigator:{onLine:true},readCachedProfile:async()=>cached?profile:null,profileForPresentation:value=>value,
+ const ctx=vm.createContext({withinDeadline,navigator:{onLine:true},readCachedProfile:async()=>cached?profile:null,profileForPresentation:value=>value,
  fakeImport:async()=>({recoverRemoteContinuity:async()=>{if(denied)throw Object.assign(Error('denied'),{code:'CONTINUITY_ACCESS_DENIED'});return {profile};}})});
  vm.runInContext(slice,ctx);
  return {states,run:()=>ctx.showCachedSession({uid:'member'},state=>states.push(state),current)};

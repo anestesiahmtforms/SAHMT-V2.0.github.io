@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {createOperationalBackend} from '../src/operational-backend.js';
 import {isFirestoreCacheFallbackError} from '../src/offline-cache.js';
+import {withinDeadline} from '../src/async-deadline.js';
 const source=readFileSync(new URL('../src/auth.js',import.meta.url),'utf8');
 const helpers=source.slice(source.indexOf('async function showCachedSession('),source.indexOf('export function watchSession('));
 const profileCode=source.slice(source.indexOf('async function onAuthChangedProfile('),source.indexOf('export async function signInGoogle(')).replaceAll('import(','fakeImport(');
@@ -12,10 +13,10 @@ function fixture({slow=true}={}){
  let finish,fail,generation=1,calls=0,watches=0,watchError;const states=[];
  const profile={uid:'fixture',active:true,access:true,permissions:{managementRead:true,trainingsRead:true}};
  const snapshot=(changes={})=>({exists:()=>true,data:()=>({...profile,...changes})});
- const ctx=vm.createContext({navigator:{onLine:false},isFirestoreCacheFallbackError,profileForPresentation:p=>p,
+ const ctx=vm.createContext({withinDeadline,navigator:{onLine:false},isFirestoreCacheFallbackError,profileForPresentation:p=>p,
   cacheProfile:async()=>{},readCachedProfile:async()=>profile,operationalBackend:createOperationalBackend({timeoutMs:5}),
   window:{setTimeout:fn=>{queueMicrotask(fn);return 1;},clearTimeout(){}},
-  fakeImport:async name=>name==='firebase/firestore/lite'?{doc:()=>({}),getDoc:async()=>{calls++;if(slow&&calls===1)return new Promise((resolve,reject)=>{finish=resolve;fail=reject;});return snapshot();}}:name==='firebase/firestore'?{doc:()=>({}),onSnapshot:(_ref,_next,error)=>{watches++;watchError=error;return()=>{};}}:{db:{}}});
+  fakeImport:async name=>name==='./profile-server.js'?{readOwnProfileDocument:async()=>{calls++;if(slow&&calls===1)return new Promise((resolve,reject)=>{finish=resolve;fail=reject;});return snapshot();}}:name==='firebase/firestore'?{doc:()=>({}),onSnapshot:(_ref,_next,error)=>{watches++;watchError=error;return()=>{};}}:{db:{}}});
  vm.runInContext(helpers+profileCode,ctx);
  return {ctx,states,snapshot,get calls(){return calls;},get watches(){return watches;},
   changeUser:()=>generation++,finish:value=>finish(value),fail:error=>fail(error),watchError:error=>watchError(error),
