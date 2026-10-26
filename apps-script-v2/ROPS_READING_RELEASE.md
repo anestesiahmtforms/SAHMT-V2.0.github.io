@@ -1,3 +1,7 @@
+# Modelo retirado em 25/10/2026
+
+Este arquivo é histórico. A publicação de ROPs por leitor PDF/Forms foi aposentada pelo usuário e seus instaladores foram removidos. Não executar estas instruções. As ROPs passarão ao modelo HTML em FB, com auditoria restrita a gestor e administrador. A integração e a importação ainda não foram publicadas.
+
 # ROP training release in FB
 
 The owner-only jobs use immutable, private Drive manifests and existing FB

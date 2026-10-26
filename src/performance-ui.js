@@ -162,7 +162,7 @@ function pendingMarkup(snapshot, subjectUid, category) {
   const items = [...participations.map(item => ({...item, title: item.activityTitle || item.activityId || 'Participação', note: item.reason || (['PENDING_GRADE', 'PENDING'].includes(item.test?.status) ? 'Nota do Forms ainda indisponível.' : '')})), ...revisions.map(item => ({...item, title: item.activityTitle || item.activityId || 'Revisão', note: item.reason || item.summary})), ...requests.map(item => ({...item, title: REQUEST_LABELS[item.type] || item.type, note: item.result?.message || item.error || item.reason}))];
   return `<h4>Pendências, recusas e falhas</h4>${items.length ? `<ul class="evaluation-pending-list">${items.map(item => `<li><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(STATUS_LABELS[item.status] || item.status || 'Pendente')}${item.updatedAt || item.createdAt ? ` · ${escapeHtml(dateLabel(item.updatedAt || item.createdAt))}` : ''}</small>${item.note ? `<p>${escapeHtml(item.note)}</p>` : ''}</li>`).join('')}</ul>` : '<p class="empty-state">Nenhuma pendência informada. Pendências não entram no saldo confirmado.</p>'}`;
 }
-export function mountPerformanceModule(content, {uid, profile = {}, category = 'PERFORMANCE', subjectUid = uid, areas = [], isAdmin = () => false, isCurrent = () => true, canReviewSuggestions = () => false, services, onOpenGovernance, onBlocked} = {}) {
+export function mountPerformanceModule(content, {uid, profile = {}, category = 'PERFORMANCE', subjectUid = uid, areas = [], isAdmin = () => false, isCurrent = () => true, canReviewSuggestions = () => false, services, onOpenGovernance, onBlocked, onBalance} = {}) {
   if (!uid || !CATEGORIES.has(category)) throw new TypeError('Informe a conta e a categoria da avaliação.');
   let disposed = false, blocked = false, connectionUnavailable = false, onlineOverride, metadataLoadSequence = 0, selectedUid = subjectUid, lifecycle = null, latest = null, mountVersion = 0, loadedLimit = 200;
   let assignments = [], activities = [], people = [], reviewQueue = [];
@@ -223,6 +223,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     const liveConfirmed = lifecycle?.snapshot().confirmed === true;
     if (live && liveConfirmed && snapshot.fromCache === false && snapshot.pendingWrites === false) connectionUnavailable = false;
     const presentation = evaluationPresentation({...snapshot, fromCache: snapshot.fromCache !== false || !liveConfirmed}, {category, subjectUid: selectedUid, online: isModuleOnline() && !connectionUnavailable});
+    onBalance?.({subjectUid:selectedUid,category,presentation});
     setText('[data-evaluation-total]', presentation.total === null ? '—' : pointLabel(presentation.total));
     setText('[data-evaluation-percentage]', presentation.percentageLabel);
     setText('[data-evaluation-state]', presentation.stateLabel);
@@ -264,7 +265,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
         reportEvaluationConnectionError(state.error);
         const failure = evaluationFailureState(state.error, {online: isModuleOnline() && state.state !== 'offline'});
         if (failure === 'blocked') { blockAccess(); return; }
-        if (!state.confirmed || failure === 'offline') { setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); }
+        if (!state.confirmed || failure === 'offline') { setText('[data-evaluation-total]', '—'); setText('[data-evaluation-percentage]', 'Aguardando atualização'); onBalance?.({subjectUid:selectedUid,category,presentation:{confirmed:false}}); }
         if (failure === 'offline') { connectionUnavailable = true; page.dataset.evaluationState = 'offline'; setText('[data-evaluation-state]', 'Sem conexão. Aguarde a atualização do saldo.'); }
         else if (state.error) { page.dataset.evaluationState = 'error'; setText('[data-evaluation-state]', 'Falha na atualização. ' + (state.error.message || 'Tente novamente ao retornar ao app.')); }
         else if (!state.confirmed) setText('[data-evaluation-state]', 'Aguardando confirmação dos dados no servidor.');

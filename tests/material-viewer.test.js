@@ -69,7 +69,7 @@ test('Gestão, Desempenho e Treinamentos route Google Drive materials to the in-
 test('Gestão de documentos mantém o card premium e abre um arquivo Drive no painel interno', () => {
   const markup = renderManagementDocumentCard({id: 'doc', title: 'Protocolo sintético', category: 'Protocolos',
     driveUrl: 'https://drive.google.com/file/d/DriveFile_123456789/view'});
-  assert.match(markup, /<button class="management-document-link management-document-premium"/);
+  assert.match(markup, /<button class="management-document-link management-document-premium(?: training-state-button)?"/);
   assert.match(markup, /data-open-material-viewer/);
   assert.match(markup, /data-material-title="Protocolo sintético"/);
   assert.doesNotMatch(markup, /target="_blank"/);
@@ -92,7 +92,7 @@ test('Diretrizes abre o formulário pelo título sem botão de treinamento separ
     materialPdfUrl: 'https://drive.google.com/file/d/PdfFile_123456789/view'};
   for (const record of [item, {...item, category: 'Outra categoria', rootId: '1ZVHg-9fcnBv1q8PJgFoUGQ50b5EwAggR'}]) {
     const markup = renderManagementDocumentCard(record, {canEdit: true});
-    assert.match(markup, /<a class="management-document-link management-document-premium" href="https:\/\/docs.google.com\/forms\/d\/FormFile_123456789\/viewform"/);
+    assert.match(markup, /<a class="management-document-link management-document-premium(?: training-state-button)?" href="https:\/\/docs.google.com\/forms\/d\/FormFile_123456789\/viewform"/);
     assert.match(markup, /Diretriz sintética/);
     assert.match(markup, /data-document-edit/);
     assert.doesNotMatch(markup, /ABRIR TREINAMENTO|data-open-material-viewer|PdfFile_123456789/);

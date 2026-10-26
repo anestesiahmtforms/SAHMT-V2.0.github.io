@@ -1,7 +1,6 @@
 import {buildManagementAuthRuntime,MANAGEMENT_RUNTIME_DEFAULTS} from './runtime.js';
 import {relayQmentumWrite} from './qmentum-write-relay.js';
 import {relayOperationalSheet} from './operational-sheet-relay.js';
-import {relayDiretrizesReading} from './diretrizes-reading-relay.js';
 import {relayOccurrenceScore} from './occurrence-score-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
 import {createManagementFaFirstLoginHttp} from '../scripts/lib/management-fa-first-login-http.js';
@@ -53,15 +52,11 @@ export function createManagementAuthWorker({buildRuntime,buildOperationalRuntime
   return Object.freeze({
     async fetch(request, env, context) {
       if (new URL(request.url).pathname === '/v1/diretrizes/reading') {
-        if(env?.DIRETRIZES_READING_ENABLED!=='true'||request.method!=='POST')return relayDiretrizesReading(request,env||{});
-        if(env?.DIRETRIZES_READING_DURABLE_RELAY_ENABLED==='true'){
-          try{
-            const id=env.BROKER_STATE.idFromName('sahmt-reading-relay-v1');
-            return await env.BROKER_STATE.get(id).fetch(new Request('https://broker-state.internal/reading-relay',{method:'POST',headers:request.headers,body:request.body,signal:request.signal,duplex:'half'}));
-          }catch{return relayDiretrizesReading(request,env||{});}
-        }
-        try {const runtime=await operationalFor(env);if(runtime.maxRequestMs<55000)return relayDiretrizesReading(request,env);return await relayDiretrizesReading(request,env,{admitRequest:runtime.admitRequest});}
-        catch {return relayDiretrizesReading(request,env||{});}
+        const origin=request.headers.get('Origin');
+        const headers={'Cache-Control':'no-store',Vary:'Origin'};
+        if(origin==='https://anestesiahmtforms.github.io')Object.assign(headers,{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type'});
+        if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
+        return Response.json({code:'READING_RETIRED'},{status:410,headers});
       }
       if (new URL(request.url).pathname === '/v1/qmentum/write') {
         if(env?.QMENTUM_WRITE_ENABLED!=='true'||request.method!=='POST')return relayQmentumWrite(request,env||{});

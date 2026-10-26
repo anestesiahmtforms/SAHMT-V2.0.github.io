@@ -30,14 +30,3 @@ function sahmtUrlFetchRun_(operation) {
     throw sahmtUrlFetchQuotaError_(state);
   }
 }
-// Manual owner-only diagnostic. One public certificate request, no identities,
-// PDFs, Firestore documents or training changes. The pause is never bypassed.
-function conferirServicoLeituraGestaoFbV1() {
-  dgrOperator_();let code;
-  try{
-    const response=sahmtUrlFetchRun_(function(){return UrlFetchApp.fetch('https://www.googleapis.com/oauth2/v1/certs',{muteHttpExceptions:true,followRedirects:false});});
-    code=response.getResponseCode()===200?'READING_SERVICE_AVAILABLE':'READING_SERVICE_PROBE_FAILED';
-  }catch(error){code=sahmtUrlFetchDailyQuota_(error)?'READING_URLFETCH_QUOTA_WAIT':'READING_SERVICE_PROBE_FAILED';}
-  const result={code:code,firestoreReads:0,firestoreWrites:0,formWrites:0};
-  console.log(JSON.stringify(result));return result;
-}

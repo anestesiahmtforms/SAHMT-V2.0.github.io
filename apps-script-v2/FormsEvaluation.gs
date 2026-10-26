@@ -16,6 +16,12 @@ function formsEvaluationStable_(value) {
 function formsEvaluationId_(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(value); }
 function formsEvaluationActive_(profile) { return profile && profile.active === true && profile.access === true; }
 function formsEvaluationAdmin_(profile) { return formsEvaluationActive_(profile) && evaluationAdmin_(profile); }
+// Document training now belongs to the HTML flow; shared Forms services must not recreate its retired integration.
+function formsEvaluationDocumentArea_(record) {
+  return Boolean(record && (record.managerAreaId === 'area-gestao-de-documentos' ||
+    record.managementAreaId === 'area-gestao-de-documentos' ||
+    Array.isArray(record.areaIds) && record.areaIds.includes('area-gestao-de-documentos')));
+}
 function formsEvaluationLink_(value) {
   const input = String(value || '').trim();
   let match = input.match(/^https:\/\/forms\.gle\/([A-Za-z0-9_-]{4,200})\/?(?:[?#].*)?$/);
@@ -208,6 +214,7 @@ function formsEvaluationReconcileLinks_() {
     formsEvaluationAll_(collection).forEach(function (source) {
       outcomes.scanned++;
       const areaIds = collection === 'managementAreas' ? [source.id] : source.managementAreaId ? [source.managementAreaId] : Array.isArray(source.areaIds) ? source.areaIds : [];
+      if (formsEvaluationDocumentArea_({areaIds: areaIds})) return;
       const body = source; // Future origin fields containing URLs are discovered without a fixed field catalog.
       const drive = formsEvaluationDriveDiscover_(formsEvaluationDriveReferences_(body));
       if (!drive.complete) { incompleteSources[collection + '/' + source.id] = true; outcomes.failures.push({sourceCollection: collection, sourceId: source.id, reason: 'Conteúdo inacessível ou inspeção incompleta.'}); }
@@ -595,8 +602,6 @@ function formsEvaluationPublishedPermissionsExact_(permissions, expected) {
   return actual.length === expected.length && actual.every(function (email, index) { return email === expected[index]; });
 }
 function formsEvaluationSyncResponders_(form, emails) {
-  // Reading-gated forms are managed only by the individual receipt/grant flow.
-  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(form.getId())) return false;
   try {
     formsEvaluationCloseForm_(form);
     if (!emails.length || typeof form.supportsAdvancedResponderPermissions !== 'function' || !form.supportsAdvancedResponderPermissions() || typeof form.setPublished !== 'function') return false;
@@ -674,11 +679,10 @@ function formsEvaluationPublicationPending_(formId, configVersion, closureConfir
   });
 }
 function formsEvaluationFinalizePublication_(formId, requestId) {
-  // Skip before roster comparison, form closure or READY configuration writes.
-  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(formId)) return {status: 'READING_MANAGED'};
   let form = null, configVersion = null, stage = 'CONTEXT';
   try {
     const cfg = evaluationGet_('evaluationFormConfigs', formId), activity = evaluationGet_('evaluationActivities', formId);
+    if (formsEvaluationDocumentArea_(cfg) || formsEvaluationDocumentArea_(activity)) return {status: 'RETIRED', code: 'TRAINING_HTML_REQUIRED'};
     if (!cfg || !activity || !Array.isArray(cfg.eligibleGroups) || !cfg.eligibleGroups.length || (cfg.status !== 'READY' && cfg.publicationPending !== true)) return {status: 'CONFIGURATION_PENDING'};
     configVersion = cfg.configVersion;
     form = FormApp.openById(formId);
@@ -734,8 +738,9 @@ function formsEvaluationRepeatPolicy_(cfg) {
   if(cfg)return cfg.repeatPolicy==='FIRST_RESPONSE_PER_VERSION';
   return PropertiesService.getScriptProperties().getProperty('SAHMT_TRAINING_REPEAT_ENABLED')==='YES';
 }
-function formsEvaluationConfigured_(payload, actorUid, tx, setup) {
+function formsEvaluationConfigured_(payload, actorUid, tx) {
   if (!formsEvaluationAdmin_(evaluationGet_('users', actorUid, tx))) throw new Error('Configuração exige administrador autorizado.');
+  if (formsEvaluationDocumentArea_(payload)) throw new Error('TRAINING_HTML_REQUIRED');
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (protectedIds.includes(payload.activityId)) throw new Error('Formulário original protegido: não configurar importação de respostas.');
   const eligibleGroups = Array.isArray(payload.eligibleGroups) ? [...new Set(payload.eligibleGroups)] : [];
@@ -745,6 +750,7 @@ function formsEvaluationConfigured_(payload, actorUid, tx, setup) {
       (!payload.eligibleUids.length && !eligibleGroups.length)) throw new Error('Confira matéria estável, versão, configuração e público.');
   const projection = evaluationGet_('evaluationActivities', payload.activityId, tx);
   const previous = evaluationGet_('evaluationFormConfigs', payload.activityId, tx);
+  if (formsEvaluationDocumentArea_(projection) || formsEvaluationDocumentArea_(previous)) throw new Error('TRAINING_HTML_REQUIRED');
   if (!projection || !projection.active || !projection.areaIds || !projection.areaIds.includes(payload.managerAreaId)) throw new Error('Formulário precisa de vínculo ativo na área escolhida.');
   if ((previous ? previous.configVersion : 0) !== payload.expectedVersion) throw new Error('A configuração mudou; atualize a página.');
   const assignment = evaluationGet_('evaluationAssignments', payload.managerAreaId, tx);
@@ -760,13 +766,7 @@ function formsEvaluationConfigured_(payload, actorUid, tx, setup) {
   if (!previous && fromDay < today) throw new Error('Importação histórica exige prévia e decisão administrativa; esta configuração não importa períodos passados.');
   const metadata = formsEvaluationMetadata_(payload.activityId);
   const form = FormApp.openById(payload.activityId);
-  // Only the armed, server-owned document setup can adopt the approved repeat
-  // policy while replacing an inactive legacy configuration. Browser requests
-  // never supply this fourth argument; normal configuration retains its policy.
-  const repeat = setup
-    ? typeof mgeRepeatSetup_==='function' && mgeRepeatSetup_(payload,actorUid,tx,setup)
-    : formsEvaluationRepeatPolicy_(previous);
-  if(setup&&repeat!==true)throw Error('TRAINING_REPEAT_SETUP_DENIED');
+  const repeat = formsEvaluationRepeatPolicy_(previous);
   if(!previous && repeat && form.hasLimitOneResponsePerUser()){
     // Only an authenticated administrative configuration request reaches here.
     // A newly configured legacy copy can adopt repeats while remaining closed;
@@ -896,9 +896,10 @@ function formsEvaluationFormGovernance_(response, cfg, uid, tx) {
   return {writes:[evaluationWrite_('evaluationRequests',requestId,{id:requestId,type:'REQUEST_GOVERNANCE',actorUid:uid,status:'PENDING',payload:payload,sourceType:'GOOGLE_FORM',sourceId:response.responseId},null,['createdAt'])],projection:{status:'PENDING',requestId:requestId}};
 }
 function formsEvaluationProcessResponse_(formId, responseId, profilePool) {
-  const metadata = formsEvaluationMetadata_(formId);
   const cfg = evaluationGet_('evaluationFormConfigs', formId);
+  if (formsEvaluationDocumentArea_(cfg)) return {status: 'RETIRED', code: 'TRAINING_HTML_REQUIRED'};
   if (!cfg || cfg.status !== 'READY') return {status: 'CONFIGURATION_PENDING', reason: 'Formulário não configurado.'};
+  const metadata = formsEvaluationMetadata_(formId);
   const response = formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/' + encodeURIComponent(formId) + '/responses/' + encodeURIComponent(responseId));
   if (response.responseId !== responseId || response.formId && response.formId !== formId) throw new Error('A resposta não corresponde à origem solicitada.');
   const profiles = profilePool || formsEvaluationAll_('users');
@@ -962,14 +963,6 @@ function formsEvaluationTrainingState_(metadata, cfg, response, uid, tx) {
   });
   const declaration = cfg.modalities.acknowledgement !== true || formsEvaluationAnswer_(response, cfg.mapping.acknowledgement) === cfg.mapping.acknowledgement.affirmativeValue;
   let readingComplete = true;
-  if (typeof dgrManagedForm_ === 'function' && dgrManagedForm_(cfg.formId)) {
-    const policy = dgrPolicy_(), documentId = Object.keys(policy.documents).find(function(id) { return policy.documents[id].formId === cfg.formId; });
-    const row = policy.documents[documentId] && Object.assign({},policy.documents[documentId],{trainingVersion:cfg.version});
-    const receipt = row && evaluationGet_('documentReadingReceipts', dgrReceiptId_(uid, documentId, row), tx);
-    readingComplete = Boolean(row && row.enforced === true && receipt && receipt.uid === uid && receipt.status === 'COMPLETED' &&
-      Number.isFinite(receipt.completedAt) && receipt.completedAt<=new Date(response.createTime).getTime() &&
-      receipt.trainingVersion===cfg.version && receipt.materialVersion === row.version && receipt.checksum === row.checksum);
-  }
   return {complete: readingComplete && declaration && (cfg.modalities.test !== true || answered && testItems.length > 0),
     readingComplete: readingComplete, declaration: declaration, answersComplete: answered,
     score: typeof response.totalScore === 'number' && Number.isFinite(response.totalScore) ? response.totalScore : null,
@@ -1244,7 +1237,7 @@ function reconcileEvaluationResponderAccess() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {status: 'PENDING'};
   try {
-    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true) && !(typeof dgrManagedForm_ === 'function' && dgrManagedForm_(cfg.id)); });
+    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return !formsEvaluationDocumentArea_(cfg) && Array.isArray(cfg.eligibleGroups) && cfg.eligibleGroups.length && (cfg.status === 'READY' || cfg.publicationPending === true); });
     const properties = PropertiesService.getScriptProperties(), cursorKey = 'SAHMT_V2_EVALUATION_ACCESS_CURSOR', cursor = properties.getProperty(cursorKey) || '';
     const ordered = configs.filter(function (cfg) { return cfg.id > cursor; }).concat(configs.filter(function (cfg) { return cfg.id <= cursor; }));
     const result = {checked: 0, ready: 0, pending: 0};
@@ -1263,7 +1256,7 @@ function reconcileEvaluationResponses() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {status: 'PENDING'};
   try {
-    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return cfg.status === 'READY'; });
+    const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return !formsEvaluationDocumentArea_(cfg) && cfg.status === 'READY'; });
     const properties = PropertiesService.getScriptProperties();
     const last = properties.getProperty('SAHMT_V2_EVALUATION_FORM_CURSOR') || '';
     const ordered = configs.filter(function (cfg) { return cfg.id > last; }).concat(configs.filter(function (cfg) { return cfg.id <= last; }));
@@ -1309,7 +1302,7 @@ function reconciliarAvaliacaoSahmtV2() {
 }
 function installEvaluationTriggers() {
   evaluationAssertOperator_(true);
-  const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return cfg.status === 'READY'; });
+  const configs = formsEvaluationAll_('evaluationFormConfigs').filter(function (cfg) { return !formsEvaluationDocumentArea_(cfg) && cfg.status === 'READY'; });
   const existing = ScriptApp.getProjectTriggers();
   const forms = existing.filter(function (trigger) { return trigger.getHandlerFunction() === 'onEvaluationFormSubmit'; }).map(function (trigger) { return trigger.getTriggerSourceId(); });
   let available = Math.max(0, 20 - existing.length - ['reconciliarAvaliacaoSahmtV2', 'reconcileEvaluationLinks'].filter(function (handler) { return !existing.some(function (trigger) { return trigger.getHandlerFunction() === handler; }); }).length);

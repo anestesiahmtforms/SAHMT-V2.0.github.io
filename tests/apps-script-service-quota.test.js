@@ -10,7 +10,6 @@ function fixture(){
  const c=vm.createContext({Date:{now:()=>now},console:{warn:x=>logs.push(JSON.parse(x)),log:x=>logs.push(JSON.parse(x))},
   PropertiesService:{getUserProperties:()=>({getProperty:k=>{propertyReads++;return props.get(k)||null;},setProperty:(k,v)=>props.set(k,v)})},
   CacheService:{getUserCache:()=>({get:k=>cache.get(k)||null,put:(k,v)=>cache.set(k,v)})},
-  dgrOperator_:()=>{if(!owner)throw Error('READING_OPERATOR_DENIED');},
   UrlFetchApp:{fetch:()=>{fetches++;return {getResponseCode:()=>200};}}
  });
  vm.runInContext(quota+'\n'+safety,c);
@@ -41,10 +40,4 @@ test('native background wrapper preserves work as pending when the executor quot
  const f=fixture();const result=f.c.faBackgroundReadRunV1_('job',()=>f.c.sahmtUrlFetchRun_(()=>{throw Error('Serviço chamado muitas vezes no mesmo dia: urlfetch.');}));
  assert.equal(result.pending,true);assert.equal(result.code,'SAHMT_URLFETCH_DAILY_QUOTA');assert.equal(result.handler,'job');
  assert.equal(f.c.SAHMT_BACKGROUND_READ_CONTEXT_V1,null);
-});
-test('owner diagnostic probes only public certificates and never overrides a known pause',()=>{
- const f=fixture();assert.equal(f.c.conferirServicoLeituraGestaoFbV1().code,'READING_SERVICE_AVAILABLE');assert.equal(f.counts().fetches,1);
- assert.throws(()=>f.c.sahmtUrlFetchRun_(()=>{throw Error('Service invoked too many times for one day: urlfetch.');}));
- assert.equal(f.c.conferirServicoLeituraGestaoFbV1().code,'READING_URLFETCH_QUOTA_WAIT');assert.equal(f.counts().fetches,1);
- f.denyOwner();assert.throws(()=>f.c.conferirServicoLeituraGestaoFbV1(),/READING_OPERATOR_DENIED/);assert.equal(f.counts().fetches,1);
 });

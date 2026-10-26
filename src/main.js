@@ -7,7 +7,6 @@ import {trainingActivityId, trainingParticipationState, paintTrainingButton} fro
 import {renderCatalogFolders} from './catalog-folders.js';
 import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
 import {installMaterialViewer} from './material-viewer.js';
-import {readingGateConfig} from './diretrizes-reading.js';
 import {updateInformationBanner} from './information-banner.js';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {createReportRuntime} from './report-runtime.js';
@@ -53,6 +52,7 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 import {deployment} from './deployment-context.js';
+const htmlTrainingConfigured = Boolean(import.meta.env.VITE_HTML_TRAINING_ENDPOINT);
 import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {repairAppFiles} from './app-repair.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
@@ -61,21 +61,6 @@ const app = document.querySelector('#app');
 const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
 let syncNoticeSequence=0;
 installMaterialViewer(document);
-const diretrizesReading = readingGateConfig(import.meta.env);
-const diretrizesReadingRequested = import.meta.env.VITE_DIRETRIZES_READING_ENABLED === 'true';
-let diretrizesReaderReady = false;
-document.addEventListener('click', event => {
-  const trigger = event.target.closest?.('[data-open-diretriz-reader]');
-  if (!trigger || diretrizesReaderReady) return;
-  let message = trigger.parentElement.querySelector('[data-reader-unavailable]');
-  if (!message) { message = document.createElement('p'); message.dataset.readerUnavailable = ''; message.setAttribute('role', 'status'); trigger.after(message); }
-  message.textContent = 'O leitor está indisponível neste momento. Tente novamente em instantes.';
-});
-if (diretrizesReading.enabled) {
-  import('./diretrizes-ebook.js').then(module => module.installAuthenticatedDiretrizesReader(diretrizesReading)).then(() => { diretrizesReaderReady = true; }).catch(() => {
-    // Keep gated buttons closed if the reader cannot load; no direct Form fallback.
-  });
-}
 const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured && !consumeModuleNavigation();
 const startupReports = createStartupReportCache();
@@ -1328,8 +1313,21 @@ async function loadModule(route) {
       featureEnabledForRoute('training', appFeatures) && canOpenRestrictedModule('training') && (can('trainingsRead') || can('trainingsManage'));
     const {mountPerformanceModule} = await import('./performance-ui.js');
     if (!current()) return;
-    cleanupCurrentModule = mountPerformanceModule(content, {uid: requestUid, profile: session.profile, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: current,
+    let htmlPerformance = null, lastBalance = null;
+    const cleanupPerformance = mountPerformanceModule(content, {uid: requestUid, profile: session.profile, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: current,
+      onBalance: value => { lastBalance = value; htmlPerformance?.setBase(value); },
       onOpenGovernance: () => { if (current() && featureEnabledForRoute('management', appFeatures)) navigate('management'); }});
+    cleanupCurrentModule = cleanupPerformance;
+    if (deployment.target === 'FB' && htmlTrainingConfigured) {
+      const {mountHtmlTrainingPerformance} = await import('./html-training-performance.js');
+      if (!current()) return;
+      const panel = document.createElement('section');
+      panel.className = 'html-training-performance';
+      content.querySelector('.evaluation-balance')?.after(panel);
+      htmlPerformance = mountHtmlTrainingPerformance(panel, {user:session.user, container:content, isCurrent:current});
+      if (lastBalance) htmlPerformance.setBase(lastBalance);
+      cleanupCurrentModule = () => { htmlPerformance?.(); cleanupPerformance(); };
+    }
     return;
   }
   if (route === 'occurrences') {
@@ -3255,6 +3253,17 @@ async function loadManagementAreaActivities(area) {
   const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
+  if (deployment.target === 'FB' && area.id === 'area-gestao-de-documentos') {
+    detail.innerHTML = '<p class="loading" role="status">Carregando treinamentos…</p>';
+    try {
+      const {mountHtmlTrainings} = await import('./html-training.js');
+      if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
+      cleanupDocumentTraining = mountHtmlTrainings(detail, {user:session.user, profile:session.profile});
+    } catch {
+      if (loadId === managementActivityLoad && detail.isConnected && session.user?.uid === requestUid) detail.innerHTML = '<p class="empty-state" role="status">Não foi possível abrir os treinamentos agora. Tente novamente ao retornar à área.</p>';
+    }
+    return;
+  }
   detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">ATIVIDADES</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header><p class="loading">Carregando atividades…</p>`;
   detail.querySelector('#new-area-activity')?.addEventListener('click', () => {
     const form = document.querySelector('#activity-area');
@@ -3271,7 +3280,7 @@ async function loadManagementAreaActivities(area) {
       ['managementRead', 'managementActivityWrite'].some(can) ? listManagementActivities(area.id) : Promise.resolve([]),
       ['managementRead', 'managementIndicatorsRead', 'managementIndicatorsWrite'].some(can) ? listManagementIndicators(area.id, {pageSize: 12}) : Promise.resolve([]),
       ['managementRead', 'managementPlansManage'].some(can) ? listManagementActionPlans(area.id, {pageSize: 20}) : Promise.resolve([]),
-      (['managementRead', 'documentsManage'].some(can) || managesDocuments) ? listManagementDocuments(area.id, {includeInactive: managesDocuments, pageSize: managesDocuments ? 200 : 100, actorUid: session.user.uid}) : Promise.resolve([]),
+      area.id !== 'area-gestao-de-documentos' && (['managementRead', 'documentsManage'].some(can) || managesDocuments) ? listManagementDocuments(area.id, {includeInactive: managesDocuments, pageSize: managesDocuments ? 200 : 100, actorUid: session.user.uid}) : Promise.resolve([]),
       can('managementManage') ? getManagementTaskScoringRule() : Promise.resolve(null),
       canReviewActivityPoints ? listManagementActivityScoreReviews(area.id, {pageSize: 50}) : Promise.resolve([])
     ]);
@@ -3308,17 +3317,16 @@ async function loadManagementAreaActivities(area) {
     }).join('')}</ul>` : '<p class="empty-state">Nenhum plano de ação nesta área.</p>'}</section>`;
     const documentForm = managesDocuments ? `<details class="quick-form" id="management-document-editor"><summary><svg class="document-action-icon" data-document-icon="edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m4 16-1 5 5-1L21 7l-4-4L4 16ZM14 6l4 4M4 16l4 4"/></svg><span>Adicionar ou editar documento</span></summary><form id="management-document-form"><input type="hidden" name="managementAreaId" value="${escapeHtml(area.id)}"><input type="hidden" name="documentId"><input type="hidden" name="documentCollection" value="scopedDocuments"><input type="hidden" name="version" value="0"><div class="form-grid"><label>Título<input name="title" required maxlength="160"></label><label>Categoria<input name="category" required maxlength="80" list="management-document-categories" placeholder="Escolha ou informe a categoria"><datalist id="management-document-categories"><option value="Protocolos"><option value="ROPs"><option value="Documentos administrativos"><option value="Organograma"></datalist></label><label data-document-audience>Público<select name="audienceGroup"><option value="GENERAL">Acesso geral</option><option value="RESTRICTED">Acesso restrito</option></select></label><label>Link do Google Drive ou Docs<input name="driveUrl" type="url" required maxlength="800" placeholder="https://drive.google.com/file/d/…/view"></label><label class="contact-active-field"><input name="requiredReading" type="checkbox"> Leitura requerida</label><label class="contact-active-field"><input name="active" type="checkbox" checked> Documento ativo</label></div><label>Descrição<textarea name="description" rows="2" maxlength="1200"></textarea></label><div class="admin-user-actions"><button class="primary-button" type="submit"><svg class="document-action-icon" data-document-icon="save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3h13l4 4v14H3V3h1ZM7 3v6h9V3M7 21v-8h10v8"/></svg><span>Salvar documento</span></button><button class="secondary-button" type="button" id="management-document-reset"><svg class="document-action-icon" data-document-icon="add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 4v16M4 12h16"/></svg><span>Novo documento</span></button></div><p id="management-document-status" class="record-meta" role="status" aria-live="polite"></p></form></details>` : '';
     const documentOptions = {canEdit: managesDocuments};
-    documentOptions.readingGate = area.id === 'area-gestao-de-documentos' && diretrizesReadingRequested;
-    documentOptions.registeredReadingOnly = true;
-    const documentsView = `<section class="management-documents"><h4>Documentos · ${documents.length}</h4>${area.id === 'area-gestao-de-documentos'
-      ? renderManagementDocumentFolders(documents, documentOptions)
+    documentOptions.htmlTrainingOnly = area.id === 'area-gestao-de-documentos';
+    const documentsView = `<section class="management-documents"><h4>${documentOptions.htmlTrainingOnly ? 'Gestão de Documentos · Treinamentos HTML' : `Documentos · ${documents.length}`}</h4>${area.id === 'area-gestao-de-documentos'
+      ? '<div class="empty-state" role="status"><strong>Novo modelo de treinamentos em preparação</strong><p>Esta área receberá os textos HTML, a ciência da leitura, a avaliação e as sugestões. As ROPs terão auditoria para gestor e administrador.</p><p>Os materiais serão disponibilizados após a integração do novo modelo.</p></div>' + renderManagementDocumentFolders([], documentOptions)
       : documents.length ? renderCatalogFolders(documents, item => renderManagementDocumentCard(item, documentOptions), {scope: 'documents', listClass: 'record-list', fallback: 'Outros documentos'})
       : '<p class="empty-state">Nenhum documento publicado nesta área.</p>'}</section>`;
 
     const equipmentView = area.id === 'area-gestao-de-equipamentos'
       ? can('equipmentManage') ? '<div id="equipment-management-root"></div>' : '<section class="equipment-manager"><h4>Equipamentos</h4><p class="empty-state">Esta área exige a permissão Gerenciar equipamentos.</p></section>'
       : '';
-    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
+    detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">${activities.length} ATIVIDADE(S)</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header>${assignmentEditor}${scoringRuleForm}${indicatorForm}${planForm}${documentsView}${documentOptions.htmlTrainingOnly ? '' : documentForm}${equipmentView}${indicatorsView}${plansView}${activities.length ? `<ul class="record-list">${activities.map((item) => {
       const responsible = item.responsibleUids?.includes(session.user.uid);
       const scoreReview = scoreReviewByActivity.get(item.id);
       const action = responsible && item.status === 'OPEN' ? `<button class="secondary-button" type="button" data-activity-id="${escapeHtml(item.id)}" data-next-status="IN_PROGRESS">Iniciar</button>` :

@@ -86,8 +86,18 @@ test('observes native triggers but keeps changed operational source unapproved',
   // Safe publication diagnostics change one additional body; its historical hash stays unapproved.
   const reviewedFinalizer=h.context.SAHMT_MIGRATION_INVENTORY_REVIEW_.functions.find(row=>row.name==='formsEvaluationFinalizePublication_');
   assert.notEqual(createHash('sha256').update(h.context.formsEvaluationFinalizePublication_.toString().replace(/\r\n?/g,'\n').trim()).digest('hex'),reviewedFinalizer.sha256);
-  // ROP reading release adds one guarded hook; the legacy source hash remains unapproved.
-  assert.equal(result.sourceVerification.verifiedFunctionCount,207);assert.equal(result.sourceVerification.changedFunctionCount,21);
+  // Retiring the PDF runtime removes reviewed functions. Derive exact counts
+  // from the unchanged historical pins, and prove absence remains unapproved.
+  const expected={verifiedFunctionCount:0,changedFunctionCount:0,missingFunctionCount:0};
+  for(const row of h.context.SAHMT_MIGRATION_INVENTORY_REVIEW_.functions){
+    const fn=h.context[row.name];
+    if(typeof fn!=='function')expected.missingFunctionCount++;
+    else if(createHash('sha256').update(fn.toString().replace(/\r\n?/g,'\n').trim()).digest('hex')===row.sha256)expected.verifiedFunctionCount++;
+    else expected.changedFunctionCount++;
+  }
+  for(const [key,count]of Object.entries(expected))assert.equal(result.sourceVerification[key],count,key);
+  assert.ok(expected.missingFunctionCount>0);assert.ok(expected.changedFunctionCount>0);
+  assert.equal(expected.verifiedFunctionCount+expected.changedFunctionCount+expected.missingFunctionCount,228);
   assert.deepEqual(result.blockers,['MMI_SOURCE_NOT_PINNED_TO_REVIEW']);
   assert.equal(result.observedAt,new Date(TIME).toISOString());assert.equal(result.native.visibleCurrentUserTriggerCount,3);
   assert.ok(result.native.knownJobs.every(job=>job.potentiallyExecutable===true));

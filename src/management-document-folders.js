@@ -41,21 +41,17 @@ export function managementDocumentFolder(item) {
   return {access: restricted ? 'RESTRICTED' : 'GENERAL', folder};
 }
 
-export function renderManagementDocumentCard(item, {canEdit = false, readingGate = false, registeredReadingOnly = false} = {}) {
+export function renderManagementDocumentCard(item, {canEdit = false, htmlTrainingOnly = false} = {}) {
   const title = escapeHtml(item.title || 'Documento');
+  if (htmlTrainingOnly || item.managementAreaId === 'area-gestao-de-documentos') {
+    return '<li class="management-document-card"><div class="management-document-link management-document-premium">' + managementDocumentIcon('document') + '<span>' + title + '</span><small>Treinamento HTML em preparação</small></div></li>';
+  }
   const trainingId=trainingActivityId(item);
   const trainingAttributes=trainingId ? ' data-training-activity="'+escapeHtml(trainingId)+'" data-training-title="'+title+'" data-training-state="blue"' : '';
   const kind = /ORGANOGRAMA/.test(normalize(item.title) + ' ' + normalize(item.category))
     ? 'organization' : folderIconKind(managementDocumentFolder(item).folder);
   const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
   const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
-  const registeredReading = item.readingGateRequired === true;
-  if (registeredReading && !readingGate) {
-    return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium" disabled aria-label="' + title + ' · Leitura em preparação">' + content + '</button>' + edit + '</li>';
-  }
-  if (readingGate && (!registeredReadingOnly || registeredReading) && ['Diretrizes', 'Protocolos', 'ROPs', 'Documentos administrativos'].includes(managementDocumentFolder(item).folder)) {
-    return '<li class="management-document-card"><button type="button" class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' data-open-diretriz-reader="' + escapeHtml(String(item.id).startsWith('pdf_evaluation_') ? String(item.id).slice(4) : item.id) + '" data-reading-title="' + title + '">' + content + '</button>' + edit + '</li>';
-  }
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
   const directTraining = managementDocumentFolder(item).folder === 'Diretrizes' && /^https:\/\/docs\.google\.com\/forms\//.test(href);

@@ -18,11 +18,10 @@ function gqpContent_(form) {
 }
 function gqpChoices_(form) {
   const choices=(form.items || []).filter(function(i) { const c=i.questionItem && i.questionItem.question && i.questionItem.question.choiceQuestion;return c && Array.isArray(c.options) && c.options.length >= 2; });
-  const selected=typeof ropsQuestionChoices_==='function'?ropsQuestionChoices_(form,choices):choices;
-  return typeof mgeQuestionChoices_==='function'?mgeQuestionChoices_(form,selected):selected;
+  return choices;
 }
 function gqpResolvedConfig_() {
-  const cfg=gqpTrustedConfig_();return typeof ropsQuestionBindings_==='function'?ropsQuestionBindings_(cfg):cfg;
+  return gqpTrustedConfig_();
 }
 function gqpModel_(form) {
   const items=gqpChoices_(form);
@@ -86,7 +85,7 @@ function gqpPublish_(cfg, approval, ports) {
       if(doc.sha256 !== approval.documentSha256)gqpFail_('APPROVAL_CHANGED');
       return doc;
     }
-    const doc=authorizedDocument(), baseline=gqpModel_(approval.baselineForm), tables=gqrRows_(doc.blob), edited=gqrParse_(typeof mgeQuestionTables_==='function'?mgeQuestionTables_(approval.baselineForm,tables):tables,baseline), plan=gqpPlan_(approval.baselineForm,edited);
+    const doc=authorizedDocument(), baseline=gqpModel_(approval.baselineForm), tables=gqrRows_(doc.blob), edited=gqrParse_(tables,baseline), plan=gqpPlan_(approval.baselineForm,edited);
     const beforeHash=gqpHash_(gqpContent_(approval.baselineForm)), afterHash=gqpHash_(gqpContent_(plan.target));
     let state=ports.load(key), current=ports.form(b.formId), currentHash=gqpHash_(gqpContent_(current));
     if(current.formId !== b.formId || !current.revisionId)gqpFail_('FORM_INVALID');
@@ -128,7 +127,7 @@ function gqpDraft_(cfg, binding, ports) {
   const assignment=ports.assignment(b), profile=ports.profile(b.assignment.uid);
   if(!assignment || assignment.uid !== b.assignment.uid || assignment.version !== b.assignment.version || !profile || profile.active !== true || profile.access !== true || profile.uid && profile.uid !== b.assignment.uid || typeof profile.email !== 'string')gqpFail_('ACCESS_REVOKED');
   const document=ports.document(b,profile.email.toLowerCase()),form=ports.form(b.formId);
-  const tables=gqrRows_(document.blob),edited=gqrParse_(typeof mgeQuestionTables_==='function'?mgeQuestionTables_(form,tables):tables,gqpModel_(form)),plan=gqpPlan_(form,edited);
+  const tables=gqrRows_(document.blob),edited=gqrParse_(tables,gqpModel_(form)),plan=gqpPlan_(form,edited);
   return {version:1,code:plan.requests.length?'QUESTION_PUBLICATION_DRAFT_READY':'QUESTION_PUBLICATION_UNCHANGED',formId:b.formId,documentId:b.documentId,
     managerUid:b.assignment.uid,assignmentVersion:b.assignment.version,documentSha256:document.sha256,baselineForm:form,
     changedQuestions:plan.requests.length,approvedBy:null,approvedAt:null,expiresAt:null};
@@ -163,23 +162,23 @@ function gqpPorts_(cfg) {
     },
     profile:function(uid) { return evaluationGet_('users',uid); },
     document:function(b,email) {
-      const source=gpdfJson_('https://www.googleapis.com/drive/v3/files/'+b.documentId+'?fields=id,mimeType,parents,trashed,size,lastModifyingUser(emailAddress),owners(emailAddress)');
+      const source=managementDriveJson_('https://www.googleapis.com/drive/v3/files/'+b.documentId+'?fields=id,mimeType,parents,trashed,size,lastModifyingUser(emailAddress),owners(emailAddress)');
       if(source.id !== b.documentId || source.trashed || source.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || !(source.parents || []).includes(b.reviewFolderId) || !source.owners || source.owners.length !== 1 || source.owners[0].emailAddress !== cfg.operatorEmail || !source.lastModifyingUser || source.lastModifyingUser.emailAddress.toLowerCase() !== email || !Number.isFinite(Number(source.size)) || Number(source.size) > 20*1024*1024)gqpFail_('DOCUMENT_IDENTITY_INVALID');
-      const folder=gpdfJson_('https://www.googleapis.com/drive/v3/files/'+b.reviewFolderId+'?fields=id,mimeType,parents,trashed,inheritedPermissionsDisabled');
+      const folder=managementDriveJson_('https://www.googleapis.com/drive/v3/files/'+b.reviewFolderId+'?fields=id,mimeType,parents,trashed,inheritedPermissionsDisabled');
       if(folder.trashed || folder.mimeType !== 'application/vnd.google-apps.folder' || folder.inheritedPermissionsDisabled !== true || !(folder.parents || []).includes(b.readingFolderId))gqpFail_('FOLDER_INVALID');
       const allowed=[cfg.operatorEmail,email].concat(cfg.administratorEditorEmails);
       [b.reviewFolderId,b.documentId].forEach(function(id) {
-        const grants=graPermissions_(id).filter(function(p) { return p.view !== 'metadata'; });
+        const grants=managementDrivePermissions_(id).filter(function(p) { return p.view !== 'metadata'; });
         if(grants.some(function(p) { return p.type !== 'user' || !allowed.includes(p.emailAddress) || !['owner','writer'].includes(p.role); }) || !grants.some(function(p) { return p.role === 'owner' && p.emailAddress === cfg.operatorEmail; }) || !grants.some(function(p) { return p.emailAddress === email && ['owner','writer'].includes(p.role); }))gqpFail_('REVIEW_ACCESS_INVALID');
       });
-      const formMeta=gpdfJson_('https://www.googleapis.com/drive/v3/files/'+b.formId+'?fields=id,mimeType,parents,trashed,owners(emailAddress)');
+      const formMeta=managementDriveJson_('https://www.googleapis.com/drive/v3/files/'+b.formId+'?fields=id,mimeType,parents,trashed,owners(emailAddress)');
       if(formMeta.trashed || formMeta.mimeType !== 'application/vnd.google-apps.form' || !(formMeta.parents || []).includes(b.readingFolderId) || !formMeta.owners || formMeta.owners.length !== 1 || formMeta.owners[0].emailAddress !== cfg.operatorEmail)gqpFail_('FORM_IDENTITY_INVALID');
-      const blob=gpdfHttp_('https://www.googleapis.com/drive/v3/files/'+b.documentId+'?alt=media').getBlob();
+      const blob=managementDriveRequest_('https://www.googleapis.com/drive/v3/files/'+b.documentId+'?alt=media').getBlob();
       if(blob.getBytes().length !== Number(source.size))gqpFail_('DOCUMENT_DOWNLOAD_INVALID');
       return {blob:blob,sha256:gqpBytesHash_(blob.getBytes())};
     },
     form:function(id) { return request(id); },batch:function(id,body) { return request(id,body); },
-    close:function(id) { if(typeof trainingRepeatInvalidate_==='function')trainingRepeatInvalidate_(id,'QUESTIONS');const f=native(id);f.setAcceptingResponses(false);if(f.isPublished())f.setPublished(false); },
+    close:function(id) { const f=native(id);f.setAcceptingResponses(false);if(f.isPublished())f.setPublished(false); },
     closed:function(id) { const f=native(id);return !f.isPublished() && !f.isAcceptingResponses(); },
     load:function(key) { const id=props.getProperty('SAHMT_QUESTION_PUBLICATION_'+key);return id?JSON.parse(gqpPrivateFile_(id).getBlob().getDataAsString('UTF-8')):null; },
     save:function(key,value) {

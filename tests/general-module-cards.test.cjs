@@ -34,6 +34,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   };
   const context = vm.createContext({
     session, appFeatures, secondaryDomainProjects, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
+    deployment:{target:'FA'}, htmlTrainingConfigured:false,
     currentRoute: () => context.route,
     document: {querySelector: (selector) => selector === '#module-content' && hasContent ? content : null},
     navigate: (target) => navigations.push(target),

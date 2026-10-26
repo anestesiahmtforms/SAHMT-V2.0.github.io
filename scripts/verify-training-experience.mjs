@@ -3,7 +3,7 @@ import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
-const files=['FormsEvaluation','TrainingRepetition','DiretrizesReading','ManagementPdfSync','ManagementQuestionPublication','TrainingRelease','TrainingMaterialPublication'];
+const files=['FormsEvaluation','ManagementQuestionPublication'];
 const report={schemaVersion:1,code:'TRAINING_EXPERIENCE_LOCAL_VALIDATION',productionWrites:0,steps:[]};
 for(const file of files)new vm.Script(await readFile(new URL('../apps-script-v2/'+file+'.gs',import.meta.url),'utf8'),{filename:file+'.gs'});
 report.steps.push({name:'apps-script-syntax',passed:true,files:files.length});
@@ -11,7 +11,7 @@ function run(name,args){const result=spawnSync(process.execPath,args,{cwd:root,e
  process.stdout.write(result.stdout || '');process.stderr.write(result.stderr || '');
  const output=result.stdout || '',count=output.match(/(?:ℹ|#) tests (\d+)/)?.[1];
  report.steps.push({name,passed:result.status===0,...(count?{tests:Number(count)}:{})});return result.status===0;}
-const tests=['training-participation-state.test.js','training-repetition.test.js','training-repeat-scheduling.test.js','training-native-recovery.test.js','training-material-publication.test.js','demo-training.test.js','admin-user-inspection.test.js','forms-evaluation.test.js','diretrizes-reading-backend.test.js','evaluation-data.test.cjs','performance-ui.test.js','service-worker.test.js','management-pdf-sync.test.js','management-question-publication.test.js','catalog-folders.test.js','document-access.test.js','training-release.test.js','management-area-dialog.test.cjs','report-main-lifecycle.test.cjs','startup-banner.test.cjs','general-module-cards.test.cjs','general-access-session.test.cjs','training-template-migration.test.js','diretrizes-reading.test.js'];
+const tests=['training-participation-state.test.js','demo-training.test.js','admin-user-inspection.test.js','forms-evaluation.test.js','evaluation-data.test.cjs','performance-ui.test.js','service-worker.test.js','management-question-publication.test.js','catalog-folders.test.js','document-access.test.js','management-area-dialog.test.cjs','report-main-lifecycle.test.cjs','startup-banner.test.cjs','general-module-cards.test.cjs','general-access-session.test.cjs'];
 let passed=run('unit',['--test',...tests.map(file=>'tests/'+file)]);
 if(passed)passed=run('build',['node_modules/vite/bin/vite.js','build']);
 if(passed)passed=run('browser',['--test','tests/demo-training.browser.test.js','tests/admin-user-inspection.browser.test.js','tests/performance-training-live.browser.test.js']);

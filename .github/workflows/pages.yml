@@ -39,8 +39,8 @@ jobs:
       # The executor quota guard is independent of Firestore authorization.
       - name: Verify Apps Script quota protection
         run: node --test tests/apps-script-service-quota.test.js
-      - name: Verify ebook reader transport and backend
-        run: node --test tests/auth-server-profile.test.js tests/auth-profile-recovery.test.js tests/watch-session-recovery.test.js tests/connection-lifecycle.test.js tests/connection-main.test.js tests/fc-module-session.test.js tests/app-repair.test.js tests/management-entry-session.test.js tests/module-navigation.test.js tests/startup-banner.test.cjs tests/management-pilot.test.js tests/management-ebook-resume.test.js tests/diretrizes-reading.test.js tests/diretrizes-reading-backend.test.js tests/diretrizes-reading-relay.test.js tests/diretrizes-pdf-layout.test.js tests/diretrizes-pdf-cache.test.js
+      - name: Verify authentication and module navigation lifecycle
+        run: node --test tests/auth-server-profile.test.js tests/auth-profile-recovery.test.js tests/watch-session-recovery.test.js tests/connection-lifecycle.test.js tests/connection-main.test.js tests/fc-module-session.test.js tests/app-repair.test.js tests/management-entry-session.test.js tests/module-navigation.test.js tests/startup-banner.test.cjs tests/management-pilot.test.js
       - name: Run five-project Google authentication regression
         run: npm run test:google-project-auth
       - name: Verify independent FB data and rules contracts
@@ -67,7 +67,9 @@ jobs:
           npm run build:fc-module-rules
           npx firebase emulators:exec --config firebase.fc.test.json --project demo-sahmt-fc-modules --only firestore --non-interactive "node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/fc-occurrence.rules.test.js"
       - name: Run training repetition and continuation regression
-        run: node --test tests/training-participation-state.test.js tests/training-repetition.test.js tests/training-repeat-scheduling.test.js tests/training-native-recovery.test.js tests/training-material-publication.test.js tests/forms-evaluation.test.js
+        run: node --test tests/training-participation-state.test.js tests/forms-evaluation.test.js
+      - name: Validate HTML training, privacy, scoring and ROP audits
+        run: npm run test:html-training
       - name: Run management migration local tests
         run: npm run test:management
       - name: Verify FC module deployment targeting
@@ -97,8 +99,6 @@ jobs:
       - name: Build PWA
         env:
           SAHMT_FB_CUTOVER: 'true'
-          SAHMT_FB_READER_ENABLED: 'true'
-          SAHMT_FB_READER_ENDPOINT: 'https://sahmt-auth-broker.anestesiahmtforms.workers.dev/v1/diretrizes/reading'
           VITE_GOOGLE_PROJECT_AUTH_ENABLED: 'true'
           VITE_MANAGEMENT_FA_FIRST_LOGIN_ENABLED: 'false'
           VITE_MANAGEMENT_DATA_PROJECT: 'FA'
@@ -111,6 +111,7 @@ jobs:
           VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN }}
           VITE_APP_CHECK_SITE_KEY: ${{ vars.VITE_APP_CHECK_SITE_KEY }}
           VITE_LABEL_AI_ENDPOINT: ${{ vars.VITE_LABEL_AI_ENDPOINT }}
+          VITE_HTML_TRAINING_ENDPOINT: ${{ vars.VITE_HTML_TRAINING_ENDPOINT || 'https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/training' }}
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
           VITE_OPERATIONAL_CHANNEL_ENDPOINT: ${{ vars.VITE_OPERATIONAL_CHANNEL_ENDPOINT }}

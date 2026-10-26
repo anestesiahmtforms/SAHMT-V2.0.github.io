@@ -62,24 +62,3 @@ function gqrPlan_(baseline,current,edited) {
 function gqrEditedHash_(edited) {
   return gqeHash_({formId:edited.formId,questions:edited.questions.map(function(q){return {questionId:q.questionId,title:q.title,description:q.description,points:q.points,options:q.options};})});
 }
-function gqrApplyIsolated_(policy,baseline,edited,approval,docBlob) {
-  // Production automatic application remains blocked. This path accepts only private validation fixtures.
-  if(!policy||policy.mode!=='ISOLATED_VALIDATION'||!policy.runId||!policy.formId||!policy.reviewFolderId||!policy.documentId||String(Session.getEffectiveUser().getEmail()||'').toLowerCase()!==policy.operatorEmail)throw Error('QUESTION_REVISION_APPLICATION_BLOCKED');
-  if(policy.formId!==baseline.formId||!approval||approval.formId!==policy.formId||approval.documentId!==policy.documentId||approval.runId!==policy.runId||approval.documentSha256!==gvrDigest_(docBlob.getBytes())||approval.editedSha256!==gqrEditedHash_(edited))throw Error('QUESTION_REVISION_APPROVAL_CHANGED');
-  gvrFile_(policy.documentId,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',policy.reviewFolderId);
-  const liveDoc=gpdfHttp_('https://www.googleapis.com/drive/v3/files/'+policy.documentId+'?alt=media').getBlob();
-  if(gvrDigest_(liveDoc.getBytes())!==approval.documentSha256||gqrEditedHash_(gqrParse_(gqrRows_(liveDoc),baseline))!==approval.editedSha256)throw Error('QUESTION_REVISION_APPROVAL_CHANGED');
-  gvrFile_(policy.formId,'application/vnd.google-apps.form',policy.formFolderId);
-  const form=FormApp.openById(policy.formId),current=gqrSnapshot_(form),plan=gqrPlan_(baseline,current,edited);
-  if(form.isPublished()||form.isAcceptingResponses())throw Error('QUESTION_REVISION_FORM_NOT_CLOSED');
-  plan.changed.forEach(function(change){
-    const before=change.before,next=change.after,item=form.getItems().find(function(i){return i.getId()===before.nativeItemId;});
-    if(!item)throw Error('QUESTION_REVISION_IDENTITY_CHANGED');
-    const type=String(item.getType()),q=type==='MULTIPLE_CHOICE'?item.asMultipleChoiceItem():type==='CHECKBOX'?item.asCheckboxItem():type==='LIST'?item.asListItem():null;
-    if(!q||q.getPoints()!==before.points||q.isRequired()!==before.required||q.getChoices().some(function(c){return typeof c.getGotoPage==='function'&&c.getGotoPage();}))throw Error('QUESTION_REVISION_IDENTITY_CHANGED');
-    q.setTitle(next.title);q.setHelpText(next.description);q.setChoices(next.options.map(function(o){return q.createChoice(o.text,o.correct);}));
-  });
-  const after=gqrModel_(gqrSnapshot_(form));
-  if(after.questions.some(function(q){const wanted=edited.questions.find(function(e){return e.questionId===q.questionId;});return !wanted||q.title!==wanted.title||q.description!==wanted.description||q.points!==wanted.points||JSON.stringify(q.options)!==JSON.stringify(wanted.options);}))throw Error('QUESTION_REVISION_WRITE_UNCONFIRMED');
-  return {code:plan.changed.length?'QUESTION_REVISION_APPLIED_ISOLATED':'QUESTION_REVISION_UNCHANGED',changedQuestions:plan.changed.length};
-}

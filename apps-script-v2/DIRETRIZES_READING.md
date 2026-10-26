@@ -1,3 +1,7 @@
+# Modelo retirado em 25/10/2026
+
+Este arquivo é histórico. O usuário determinou excluir o leitor PDF/e-book e os instaladores antigos de Gestão de Documentos. As rotinas citadas abaixo foram retiradas do código: não executar nem reinstalar estas instruções. O novo fluxo usará HTML no Firestore de FB, conforme as regras aprovadas em `../docs/treinamentos-html-regras-aprovadas-2026-10-25.md`. A exclusão local ainda depende de implantação no ambiente remoto.
+
 # Gestão de Documentos: leitor e liberação individual
 
 ## Estado da entrega

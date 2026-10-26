@@ -1,0 +1,12 @@
+name = "sahmt-html-training"
+account_id = "1851e9f4cd5f026371beaa2c5a85f1b8"
+main = "worker.js"
+compatibility_date = "2026-10-13"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+HTML_TRAINING_ENABLED = "true"
+FB_WEB_API_KEY = "AIzaSyBYzRB28_ashHrVe7AXsUDvLWc4N2Cj-y8"
+# FB_WEB_API_KEY: public Firebase FB web key, configured at deployment.
+# FB_TRAINING_SERVICE_ACCOUNT_JSON: Worker secret, never in source or client.
