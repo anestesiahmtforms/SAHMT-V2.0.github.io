@@ -408,7 +408,7 @@ function updateChecklistResponsibilityUI() {
   }
 }
 async function emitCachedOfflineReport(kind, scope, callbacks) {
-  const readDisplayCache = (uid, kind, id, options = {}) => readFreshSafeCache(uid, kind, id, {...options, localOnly:scope.localOnly === true});
+  const readDisplayCache = (uid, kind, id, options = {}) => readFreshSafeCache(uid, kind, id, {...options, localOnly:true});
   const current = () => callbacks.isCurrent?.() !== false && session.status === 'signed-in' && session.user?.uid === scope.uid;
   if (!current()) return false;
   if (kind === 'events' || kind === 'labels') {
@@ -487,7 +487,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   ]);
   if (!callbacks.isCurrent()) return () => {};
   let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, conferenceStop = null, sequence = 0, idsKey = null;
-  const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all').catch(() => null))?.data;
+  const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all', {localOnly:true}).catch(() => null))?.data;
   const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
   let catalogServerSeen = false, reportServerSeen = false, conferenceServerSeen = scope.mode !== 'daily', rotationServerSeen = scope.mode !== 'daily';
   let writtenCatalog = '', catalogWriteSequence = 0, snapshotExpiry = 0, staticStopped = false;
@@ -571,7 +571,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       idsKey = key;
       const ownSequence = ++sequence; reportStop?.(); reportStop = null;
       callbacks.next('report', {data: null, complete: false, fromCache: true, hasPendingWrites: false});
-      void readSafeCache(scope.uid, 'checklists', scope.mode === 'daily' ? scope.day : 'month:' + scope.month).catch(() => null).then(cached => {
+      void readSafeCache(scope.uid, 'checklists', scope.mode === 'daily' ? scope.day : 'month:' + scope.month, {localOnly:true}).catch(() => null).then(cached => {
         if (!current() || sequence !== ownSequence) return null;
         const value = cached?.data || cached?.value || cached;
         const initial = value && JSON.stringify(value.stationIds || []) === key
@@ -1584,7 +1584,7 @@ async function loadModule(route) {
       if (route === 'checklist') {
         const cached = checklistCatalogLive?.uid === session.user.uid
           ? checklistCatalogLive.records
-          : (await readSafeCache(session.user.uid, 'stations', 'all').catch(() => null))?.data;
+          : (await readSafeCache(session.user.uid, 'stations', 'all', {localOnly:true}).catch(() => null))?.data;
         items = Array.isArray(cached) ? [...cached] : [];
       } else items = await data.listModuleRecords(route, session.user.uid, {pageSize: 50});
       if (route === 'checklist') checklistModuleStations = items;
@@ -5089,10 +5089,9 @@ async function render() {
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
   if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute)) {
-    const hubPanel=requestedRoute==='qmentum'?'indicators':requestedRoute==='occurrences'?'records':undefined;
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
-      button.removeAttribute('data-route');button.textContent='VOLTAR À GOVERNANÇA';
-      button.addEventListener('click',()=>navigate('management-hub',{panel:hubPanel}));
+      button.removeAttribute('data-route');button.textContent='HOME';
+      button.addEventListener('click',()=>navigate('home'));
     });
   }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);
