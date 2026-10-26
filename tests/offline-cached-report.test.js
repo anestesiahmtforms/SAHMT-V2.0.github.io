@@ -24,3 +24,13 @@ test('relatório Checklist local emite a mesma estrutura por fonte do adaptador 
   assert.equal(emitted.get('report').fromCache, true);
   assert.equal(ctx.checklistRotationLive.rotation.sigla, 'BB');
 });
+
+test('a missing local report never waits for remote continuity before the Firestore query can start',async()=>{
+ const calls=[];
+ const ctx=vm.createContext({session:{status:'signed-in',user:{uid:'fixture'}},checklistCacheId,checklistCachedCatalogMatches,stationIsInDateRange,
+  readFreshSafeCache:async(uid,kind,id,options)=>{calls.push({kind,localOnly:options?.localOnly});return options?.localOnly?null:new Promise(()=>{});}});
+ vm.runInContext(source.slice(source.indexOf('async function emitCachedOfflineReport('),source.indexOf('async function subscribeLiveReport(')),ctx);
+ const work=ctx.emitCachedOfflineReport('checklist',{uid:'fixture',day:'2026-10-26',mode:'daily',localOnly:false},{isCurrent:()=>true,next(){}});
+ const result=await Promise.race([work,new Promise(resolve=>setImmediate(()=>resolve('blocked-by-remote-cache')))]);
+ assert.equal(result,false);assert.deepEqual(calls,[{kind:'stations',localOnly:true}]);
+});
