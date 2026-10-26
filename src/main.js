@@ -1,6 +1,8 @@
 import './styles.css';
 import './performance-ui.css';
 import './catalog-folders.css';
+import './management-cards.css';
+import {managementAreaIcon} from './management-area-icons.js';
 import './training-state.css';
 import {createPendingSyncBanner} from './pending-sync-banner.js';
 import {trainingActivityId, trainingParticipationState, paintTrainingButton} from './training-participation-state.js';
@@ -774,9 +776,9 @@ function hasOccurrencePermission() {
 }
 
 function managementUtilityCards() {
-  return [['people', 'peopleManage', 'PS'], ['admin', 'usersManage', 'AD'], ['notifications', 'admin', 'IN']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route, , mark]) => {
+  return [['people', 'peopleManage'], ['admin', 'usersManage'], ['notifications', 'admin']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route]) => {
     const [title, subtitle] = labels[route];
-    return `<button class="module-card" data-route="${route}"><span class="module-mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
+    return `<button class="module-card" data-route="${route}">${managementAreaIcon({id:'utility-'+route})}<span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
   }).join('');
 }
 
@@ -1609,7 +1611,7 @@ async function loadModule(route) {
       const areaSlug=location.hash.split('/')[2];
       if(items.some(item=>item.id===areaSlug))selectedManagementAreaId=areaSlug;
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
-      const areas = items.map((item) => `<button class="area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"><span class="module-mark">${escapeHtml(item.shortName || item.icon || 'GE')}</span><span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
+      const areas = items.map((item) => `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}">${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`

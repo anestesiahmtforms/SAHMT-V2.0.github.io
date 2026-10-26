@@ -15,6 +15,7 @@ test('a entrada em Gestão não abre uma área; o clique abre o modal antes de c
   const dialog = {open: false, showModal() {this.open = true; calls.push('modal');}, addEventListener: (event, fn) => handlers.set(event, fn)};
   const content = {isConnected:true, innerHTML: '', querySelector: selector => selector === '#management-area-dialog' ? dialog : null, querySelectorAll: () => [button]};
   const context = vm.createContext({route: 'management', projectAuthOptinEnabled:false, session:{user:{uid:'fictitious'},status:'signed-in',profile:{active:true,access:true}}, evaluationModuleGeneration:0, cleanupCurrentModule:null, currentRoute:()=> 'management', featureEnabledForRoute:()=>true, appFeatures:{}, evaluationUi:{mountManagementEvaluationAccess:()=>()=>{}}, items: [{id: 'area-1', name: 'Gestão clínica'}], selectedManagementAreaId: '', content, can: () => false, MANAGEMENT_AREA_SEED: [], escapeHtml: String, actionForm: () => '<form data-module-form="management"></form>', populateSelect: async () => {}, document: {querySelector: () => null}, managementActivityLoad: 0, loadManagementAreaActivities: async area => {calls.push(area.id);}});
+  context.managementAreaIcon=()=>'<span aria-hidden="true"></span>';
   context.location={hash:'#/management'};
   context.history={state:null,replaceState(_state,_title,hash){context.location.hash=hash;}};
   await vm.runInContext('(async () => {\n' + source.slice(start, end)

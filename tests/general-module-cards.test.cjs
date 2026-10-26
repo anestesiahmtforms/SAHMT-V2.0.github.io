@@ -38,7 +38,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     currentRoute: () => context.route,
     document: {querySelector: (selector) => selector === '#module-content' && hasContent ? content : null},
     navigate: (target) => navigations.push(target),
-    escapeHtml: String,
+    escapeHtml: String, managementAreaIcon: () => '<span aria-hidden="true"></span>',
     hasFinanceOnlyManagementAccess: () => false,
     todayInputValue: () => '2026-10-02',
     fakeImport: async (path) => {
