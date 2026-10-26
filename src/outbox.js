@@ -18,12 +18,26 @@ const MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID = 20;
 const MAX_OCCURRENCE_QUEUE_BYTES = 500_000;
 let dbPromise;
 
+const STORAGE_TIMEOUT_MS = 5000;
+const storageTimeout = () => Object.assign(new Error('O armazenamento local não respondeu. Tente novamente.'), {code:'storage-timeout'});
+
 function openDb() {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    let blocked = false;
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+  let entry;
+  entry = new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (dbPromise === entry) dbPromise = null;
+      reject(error);
+    };
+    const timer = setTimeout(() => fail(storageTimeout()), STORAGE_TIMEOUT_MS);
+    let request;
+    try { request = indexedDB.open(DB_NAME, DB_VERSION); }
+    catch (error) { fail(error); return; }
     request.onupgradeneeded = () => {
+      if (settled) {request.transaction.abort(); return;}
       const db = request.result;
       if (!db.objectStoreNames.contains(PROFILES)) db.createObjectStore(PROFILES, {keyPath: 'uid'});
       if (!db.objectStoreNames.contains(CACHE)) db.createObjectStore(CACHE, {keyPath: 'key'});
@@ -39,53 +53,60 @@ function openDb() {
     };
     request.onsuccess = () => {
       const db = request.result;
-      if (blocked) {db.close(); return;}
-      db.onversionchange = () => {
-        db.close();
-        dbPromise = null;
-      };
+      if (settled) {db.close(); return;}
+      settled = true; clearTimeout(timer);
+      const retire = () => {if (dbPromise === entry) dbPromise = null;};
+      db.onclose = retire;
+      db.onversionchange = () => {db.close(); retire();};
       resolve(db);
     };
-    request.onerror = () => {
-      dbPromise = null;
-      reject(request.error);
-    };
-    request.onblocked = () => {blocked = true; dbPromise = null; reject(Object.assign(new Error('Feche as outras abas do SAHMT para atualizar o armazenamento local.'), {code: 'storage-blocked'}));};
+    request.onerror = () => fail(request.error);
+    request.onblocked = () => fail(Object.assign(new Error('Feche as outras abas do SAHMT para atualizar o armazenamento local.'), {code:'storage-blocked'}));
   });
-  return dbPromise;
+  dbPromise = entry;
+  void entry.catch(() => {if (dbPromise === entry) dbPromise = null;});
+  return entry;
+}
+
+// WebKit may restore a page whose old IndexedDB transaction never completes.
+// Abort only that transaction, retire the connection, and preserve all stores.
+async function localTransaction(storeNames, mode, action, resultValue) {
+  const connection = openDb();
+  const db = await connection;
+  return new Promise((resolve, reject) => {
+    let tx, result, settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (error) reject(error);
+      else {try {resolve(resultValue(result));} catch (error) {reject(error);}}
+    };
+    const timer = setTimeout(() => {
+      const error = storageTimeout();
+      finish(error);
+      try {tx?.abort();} catch {}
+      if (dbPromise === connection) dbPromise = null;
+      db.close();
+    }, STORAGE_TIMEOUT_MS);
+    try {
+      tx = db.transaction(storeNames, mode);
+      tx.oncomplete = () => finish();
+      tx.onerror = tx.onabort = () => finish(tx.error || Object.assign(new Error('Transação local interrompida.'), {code:'storage-aborted'}));
+      result = action(tx);
+    } catch (error) {
+      finish(error);
+      try {tx?.abort();} catch {}
+      if (error.name === 'InvalidStateError') {if (dbPromise === connection) dbPromise = null; db.close();}
+    }
+  });
 }
 
 async function transact(storeName, mode, action) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, mode);
-    const store = tx.objectStore(storeName);
-    let result;
-    try { result = action(store); } catch (error) {
-      try { tx.abort(); } catch {}
-      reject(error);
-      return;
-    }
-    tx.oncomplete = () => resolve(result?.result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
+  return localTransaction(storeName, mode, tx => action(tx.objectStore(storeName)), result => result?.result);
 }
 
 async function transactAcross(storeNames, mode, action) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeNames, mode);
-    let result;
-    try { result = action(tx); } catch (error) {
-      try { tx.abort(); } catch {}
-      reject(error);
-      return;
-    }
-    tx.oncomplete = () => resolve(typeof result === 'function' ? result() : result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
+  return localTransaction(storeNames, mode, action, result => typeof result === 'function' ? result() : result);
 }
 
 export async function cacheProfile(uid, profile, {validatedAt = Date.now()} = {}) {
@@ -221,9 +242,9 @@ export async function discardCachedTrainingProgress(uid, trainingId) {
   });
 }
 
-export async function readCachedSchedule(uid, day) {
+export async function readCachedSchedule(uid, day, {localOnly = false} = {}) {
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return null;
-  const cached = await readFreshSafeCache(uid, 'scheduleDays', day);
+  const cached = await readFreshSafeCache(uid, 'scheduleDays', day, {localOnly});
   return cached?.data ? {...cached.data, stale: true} : null;
 }
 
@@ -594,9 +615,9 @@ export async function pruneLocalReadCache(uid, {maxEntries = 240, maxBytes = 8 *
 }
 
 
-export async function readFreshSafeCache(uid, kind, id, {now = Date.now(), maxAgeMs} = {}) {
+export async function readFreshSafeCache(uid, kind, id, {now = Date.now(), maxAgeMs, localOnly = false} = {}) {
   if (!uid) return null;
-  const entry = await readSafeCache(uid, kind, id);
+  const entry = await readSafeCache(uid, kind, id, {localOnly});
   if (isSafeCacheEntryFresh(entry, {uid, kind, now, ...(maxAgeMs === undefined ? {} : {maxAgeMs})})) return entry;
   if (entry?.uid === uid && entry.kind === kind) await transact(CACHE, 'readwrite', (store) => store.delete(cacheKey(uid, kind, id)));
   return null;

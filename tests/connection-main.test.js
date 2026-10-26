@@ -4,18 +4,18 @@ const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('const connectionRecovery=createConnectionLifecycle('),source.indexOf('function refreshLivePending()')).replace("await import('./google-project-auth-runtime.js')",'fakeRuntime');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture(){
- const events=new Map(),scopes=new Map(['events','labels','checklist'].map(kind=>[kind,{kind,key:kind+'-today',uid:'one',warm:false}])),closed=[],opened=[],refreshes=[],calls=[];
- let forced=false;const ctx=vm.createContext({createConnectionLifecycle,session:{status:'signed-in',user:{uid:'one'},offline:false},
+ const events=new Map(),scopes=new Map(['events','labels','checklist'].map(kind=>[kind,{kind,key:kind+'-today',uid:'one',warm:false}])),closed=[],opened=[],localOpened=[],refreshes=[],calls=[];
+ let forced=false;const ctx=vm.createContext({createConnectionLifecycle:options=>createConnectionLifecycle({...options,isOnline:()=>ctx.navigator.onLine}),session:{status:'signed-in',user:{uid:'one'},offline:false},
   operationalBackend:{snapshot:()=>({code:'',nextRetryAt:0}),noteFailure(){},interruptReads(){}},isOfflineRuntimeForced:()=>forced,setOfflineRuntimeMode:value=>forced=value,onlineValidationRequired:false,
   document:{hidden:false,addEventListener:(name,fn)=>events.set(name,fn)},window:{addEventListener:(name,fn)=>events.set(name,fn)},navigator:{onLine:true},
   fakeRuntime:{maintainGoogleProjectSessions:async()=>{calls.push('auth');return {status:'ready'};}},
   revalidateOnlineSession:async()=>{calls.push('profile');forced=false;ctx.onlineValidationRequired=false;ctx.session.offline=false;},
   cleanupCurrentModule:{suspend:()=>calls.push('suspend'),resume:()=>calls.push('resume'),setOnline:()=>{}},suspendedReportScopes:[],reportStates:new Map(),
-  liveReports:{get:kind=>scopes.has(kind)?{snapshot:()=>({scope:scopes.get(kind),state:'server'})}:null,setOnline:()=>{},close:(kind,reason)=>{closed.push([kind,reason]);scopes.delete(kind);},open:(kind,scope)=>{opened.push(kind);scopes.set(kind,scope);},refresh:kind=>refreshes.push(kind)},
+  liveReports:{get:kind=>scopes.has(kind)?{snapshot:()=>({scope:scopes.get(kind),state:'server'})}:null,setOnline:()=>{},close:(kind,reason)=>{closed.push([kind,reason]);scopes.delete(kind);},open:(kind,scope)=>{(scope.localOnly?localOpened:opened).push(kind);scopes.set(kind,scope);},refresh:kind=>refreshes.push(kind)},
   closeReportLive:(kind,reason)=>{closed.push([kind,reason]);scopes.delete(kind);},reportScopeCurrent:scope=>scope.uid===ctx.session.user.uid,
   syncOutbox(){},updateOutboxStatus(){},currentRoute:()=> 'checklist',shouldRenderHashChange:()=>true,render(){},updateReportSync(){},startupReports:{clear(){}},invalidateChecklistSignature(){}
  });vm.runInContext(code,ctx);
- return {ctx,events,closed,opened,refreshes,calls,show:async()=>{ctx.document.hidden=false;events.get('visibilitychange')();await tick();await tick();},hide:()=>{ctx.document.hidden=true;events.get('visibilitychange')();}};
+ return {ctx,events,closed,opened,localOpened,refreshes,calls,show:async()=>{ctx.document.hidden=false;events.get('visibilitychange')();await tick();await tick();},hide:()=>{ctx.document.hidden=true;events.get('visibilitychange')();}};
 }
 test('all three open operational reports survive suspend/resume with a single replacement each',async()=>{
  const h=fixture();h.hide();assert.deepEqual(h.closed.map(([kind])=>kind),['events','labels','checklist']);await h.show();
@@ -47,4 +47,18 @@ test('profile confirmation does not wait for an interrupted outbox flush to resu
 test('a cached page return also reconnects when visibilitychange was not delivered',async()=>{
  const h=fixture();h.events.get('pagehide')?.({persisted:true});h.events.get('pageshow')({persisted:true});await tick();await tick();
  assert.deepEqual(h.opened,['events','labels','checklist']);assert.equal(h.closed.length,3);
+});
+
+ test('offline return restores all operational report scopes locally without waiting for server recovery',async()=>{
+ const h=fixture();h.hide();h.ctx.navigator.onLine=false;await h.show();
+ assert.deepEqual(h.localOpened,['events','labels','checklist']);assert.deepEqual(h.opened,[]);assert.equal(h.calls.includes('profile'),false);
+ });
+
+test('return during a quota backoff still restores local views in all three FA reports',async()=>{
+ const h=fixture();h.hide();h.ctx.operationalBackend.snapshot=()=>({code:'resource-exhausted',nextRetryAt:Date.now()+300000});await h.show();
+ assert.deepEqual(h.localOpened,['events','labels','checklist']);assert.deepEqual(h.opened,[]);assert.equal(h.calls.includes('profile'),false);
+});
+test('repeated local returns cannot keep report subscriptions cache-only after online recovery',async()=>{
+ const h=fixture();h.hide();h.ctx.navigator.onLine=false;await h.show();h.hide();h.ctx.navigator.onLine=true;await h.show();
+ assert.deepEqual(h.opened,['events','labels','checklist']);
 });
