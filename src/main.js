@@ -5307,7 +5307,7 @@ async function revalidateOnlineSession() {
   for (const kind of ['events', 'labels', 'checklist']) {const state=liveReports.get(kind)?.snapshot();if(state?.scope?.warm===false&&['offline','error'].includes(state.state))liveReports.refresh(kind, 'profile-revalidated');}
   void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
   void refreshAppFeatures(session.user.uid);
-  await syncOutbox();
+  void syncOutbox();
   return true;
 }
 
@@ -5464,6 +5464,7 @@ const connectionRecovery=createConnectionLifecycle({
  getSession:()=>session,getBackend:()=>operationalBackend.snapshot(),isForcedOffline:isOfflineRuntimeForced,
  isVisible:()=>!document.hidden,restoreAuth:async()=>{const runtime=await import('./google-project-auth-runtime.js');return runtime.maintainGoogleProjectSessions();},
  revalidate:revalidateOnlineSession,resume:async()=>{
+  connectionsSuspended=false;
   liveReports.setOnline(true);
   cleanupCurrentModule?.resume?.();
   const scopes=suspendedReportScopes;suspendedReportScopes=[];
@@ -5472,13 +5473,33 @@ const connectionRecovery=createConnectionLifecycle({
   void syncOutbox();void updateOutboxStatus();
  }
 });
+let connectionsSuspended=false;
 window.addEventListener('hashchange', () => {
   if (shouldRenderHashChange(session)) void render();
   void connectionRecovery.recover('navigation');
 });
 window.addEventListener('online', () => {void connectionRecovery.recover('online');});
 window.addEventListener('pageshow', () => {void connectionRecovery.recover('pageshow');});
+// Both events can describe the same departure (including the back/forward cache).
+// Keep the saved scopes until a visible, authorized recovery actually resumes them.
+function suspendConnections() {
+  connectionRecovery.suspend();
+  operationalBackend.interruptReads();
+  if(!connectionsSuspended)cleanupCurrentModule?.suspend?.();
+  connectionsSuspended=true;
+  const scopes = ['events', 'labels','checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
+  for (const scope of scopes) {
+    suspendedReportScopes = suspendedReportScopes.filter(saved => saved.kind !== scope.kind);
+    suspendedReportScopes.push(scope);
+    if(scope.kind==='checklist')closeReportLive(scope.kind,'suspend');else liveReports.close(scope.kind,'suspend');
+    reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false});updateReportSync(scope.kind);
+  }
+  startupReports.clear();
+  invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
+}
+window.addEventListener('pagehide', suspendConnections);
 window.addEventListener('offline', () => {
+  operationalBackend.interruptReads();
   onlineValidationRequired = session.status === 'signed-in';
   setOfflineRuntimeMode(true);
   cleanupCurrentModule?.setOnline?.(false);
@@ -5490,11 +5511,7 @@ window.addEventListener('offline', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    cleanupCurrentModule?.suspend?.();
-    suspendedReportScopes = ['events', 'labels','checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
-    for (const scope of suspendedReportScopes) {if(scope.kind==='checklist')closeReportLive(scope.kind,'suspend');else liveReports.close(scope.kind, 'suspend'); reportStates.set(scope.kind, {scope, state: navigator.onLine ? 'awaiting' : 'offline', confirmed: false}); updateReportSync(scope.kind); }
-    startupReports.clear();
-    invalidateChecklistSignature('O app foi suspenso. Aguarde a conferência ao retornar.');
+    suspendConnections();
   } else void connectionRecovery.recover('foreground');
 });
 window.addEventListener('sahmt-module-connection-error',event=>{

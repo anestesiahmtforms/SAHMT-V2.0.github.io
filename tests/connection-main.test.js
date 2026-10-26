@@ -6,7 +6,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture(){
  const events=new Map(),scopes=new Map(['events','labels','checklist'].map(kind=>[kind,{kind,key:kind+'-today',uid:'one',warm:false}])),closed=[],opened=[],refreshes=[],calls=[];
  let forced=false;const ctx=vm.createContext({createConnectionLifecycle,session:{status:'signed-in',user:{uid:'one'},offline:false},
-  operationalBackend:{snapshot:()=>({code:'',nextRetryAt:0}),noteFailure(){}},isOfflineRuntimeForced:()=>forced,setOfflineRuntimeMode:value=>forced=value,onlineValidationRequired:false,
+  operationalBackend:{snapshot:()=>({code:'',nextRetryAt:0}),noteFailure(){},interruptReads(){}},isOfflineRuntimeForced:()=>forced,setOfflineRuntimeMode:value=>forced=value,onlineValidationRequired:false,
   document:{hidden:false,addEventListener:(name,fn)=>events.set(name,fn)},window:{addEventListener:(name,fn)=>events.set(name,fn)},navigator:{onLine:true},
   fakeRuntime:{maintainGoogleProjectSessions:async()=>{calls.push('auth');return {status:'ready'};}},
   revalidateOnlineSession:async()=>{calls.push('profile');forced=false;ctx.onlineValidationRequired=false;ctx.session.offline=false;},
@@ -26,4 +26,25 @@ test('real offline/online cycle restores Checklist even if its cached profile di
  const h=fixture();h.events.get('offline')();assert.deepEqual(h.closed,[['checklist','offline']]);
  h.events.get('online')();await tick();await tick();
  assert.deepEqual(h.opened,['checklist']);assert.equal(h.calls.filter(value=>value==='profile').length,1);assert.equal(h.ctx.onlineValidationRequired,false);
+});
+test('repeated suspension and pagehide preserve the reports needed on return from FB',async()=>{
+ const h=fixture();h.hide();h.hide();h.events.get('pagehide')?.({persisted:true});await h.show();
+ assert.deepEqual(h.opened,['events','labels','checklist']);assert.equal(h.closed.length,3);
+ assert.equal(h.calls.filter(value=>value==='suspend').length,1);
+});
+test('returning after the route or identity changed never reopens the old reports',async()=>{
+ const h=fixture();h.hide();h.ctx.session.user.uid='two';await h.show();assert.deepEqual(h.opened,[]);
+});
+test('profile confirmation does not wait for an interrupted outbox flush to resume navigation',async()=>{
+ const code=source.slice(source.indexOf('async function revalidateOnlineSession()'),source.indexOf('function bindLogin()')).replace("import('./operational-sheet-delivery.js')",'Promise.resolve({flushOperationalSheetDelivery(){}})');
+ const calls=[],ctx=vm.createContext({navigator:{onLine:true},session:{status:'signed-in',offline:false,user:{uid:'one'},profile:{active:true,access:true}},
+  operationalBackend:{snapshot:()=>({code:'',nextRetryAt:0}),reset(){}},deniedOperationalModules:new Set(),retryAuthenticatedProfile:async()=>true,
+  onlineValidationRequired:true,backendFailureDisplayed:true,setOfflineRuntimeMode:value=>calls.push(['offline',value]),liveReports:{get(){}},refreshAppFeatures(){},
+  syncOutbox:()=>{calls.push(['outbox']);return new Promise(()=>{});}});
+ vm.runInContext(code,ctx);assert.equal(await Promise.race([ctx.revalidateOnlineSession(),tick().then(()=> 'blocked')]),true);
+ assert.equal(ctx.onlineValidationRequired,false);assert.deepEqual(calls,[['offline',false],['outbox']]);
+});
+test('a cached page return also reconnects when visibilitychange was not delivered',async()=>{
+ const h=fixture();h.events.get('pagehide')?.({persisted:true});h.events.get('pageshow')({persisted:true});await tick();await tick();
+ assert.deepEqual(h.opened,['events','labels','checklist']);assert.equal(h.closed.length,3);
 });

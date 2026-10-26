@@ -8,9 +8,9 @@ export function createConnectionLifecycle({getSession,getBackend,isForcedOffline
   setTimer=setTimeout,clearTimer=clearTimeout,authCooldownMs=30000,readCooldownMs=15000}={}){
  let flight=null,owner='',epoch=0,lastAuth=-Infinity,lastRead=-Infinity,retryTimer=null,retrySpent=false,disposed=false;
  const cancel=()=>{if(retryTimer!==null)clearTimer(retryTimer);retryTimer=null;};
- const reset=()=>{cancel();epoch++;owner='';lastAuth=-Infinity;lastRead=-Infinity;retrySpent=false;};
+ const reset=()=>{cancel();epoch++;flight=null;owner='';lastAuth=-Infinity;lastRead=-Infinity;retrySpent=false;};
  const eligible=state=>Boolean(state?.user?.uid)&&['signed-in','auth-limited'].includes(state.status);
- const current=(uid,ticket)=>!disposed&&ticket===epoch&&getSession()?.user?.uid===uid&&eligible(getSession());
+ const current=(uid,ticket)=>!disposed&&isOnline()&&isVisible()&&ticket===epoch&&getSession()?.user?.uid===uid&&eligible(getSession());
  function failure(error){
   const code=firebaseFailureCode(error),state=getSession();
   if(disposed||!eligible(state)||!isOnline()||!isVisible())return;
@@ -50,7 +50,7 @@ export function createConnectionLifecycle({getSession,getBackend,isForcedOffline
   })().catch(()=>false).finally(()=>{if(flight===entry)flight=null;});
   flight=entry;return entry.promise;
  }
- return {recover,failure,sessionChanged(){if(owner&&(!eligible(getSession())||getSession().user.uid!==owner))reset();
+ return {recover,failure,suspend(){cancel();epoch++;flight=null;lastAuth=-Infinity;},sessionChanged(){if(owner&&(!eligible(getSession())||getSession().user.uid!==owner))reset();
    const state=getSession();if(state?.status==='signed-in'&&state.offline===false&&!getBackend().code)cancel();},
   dispose(){disposed=true;reset();},snapshot:()=>({busy:Boolean(flight),retryScheduled:retryTimer!==null,retrySpent})};
 }

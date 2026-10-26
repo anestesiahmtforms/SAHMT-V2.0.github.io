@@ -93,3 +93,33 @@ test('late success never clears another request quota and late permission denial
  reject({code:'permission-denied'});await new Promise(resolve=>setImmediate(resolve));
  assert.deepEqual(results,['permission-denied']);assert.throws(()=>other.assertCacheAllowed('profile'),{code:'permission-denied'});
 });
+test('a timed-out read interrupted by FA/FB navigation can recover after backoff without a restart',async()=>{
+ let clock=1000,finish,calls=0;const late=[],gate=createOperationalBackend({now:()=>clock,random:()=>0,timeoutMs:5});
+ await assert.rejects(gate.run('profile',()=>{calls++;return new Promise(resolve=>finish=resolve);},{onLateResult:value=>late.push(['old',value])}));
+ gate.interruptReads();
+ await assert.rejects(gate.run('profile',()=>assert.fail('Respect the existing backoff')),{code:'deadline-exceeded'});
+ clock=gate.snapshot().nextRetryAt+1;
+ const replacement=gate.run('profile',()=>{calls++;return 'new';},{onLateResult:value=>late.push(['new',value])});
+ assert.equal(await replacement,'new');finish('stale');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls,2);assert.deepEqual(late,[]);assert.equal(gate.snapshot().inFlight,0);assert.equal(gate.snapshot().code,'');
+});
+test('page departure never duplicates a read that has not timed out or bypasses quota',async()=>{
+ let finish;const gate=createOperationalBackend({timeoutMs:1000}),first=gate.run('live',()=>new Promise(resolve=>finish=resolve));
+ gate.interruptReads();assert.equal(gate.run('live',()=>assert.fail('No duplicate')),first);await Promise.resolve();finish([]);await first;
+ const slow=createOperationalBackend({timeoutMs:5});await assert.rejects(slow.run('profile',()=>new Promise(()=>{})));
+ slow.interruptReads();slow.noteFailure({code:'resource-exhausted'},'quota');slow.reset();
+ await assert.rejects(slow.run('profile',()=>assert.fail('Quota must remain closed'),{force:true}));assert.equal(slow.snapshot().code,'resource-exhausted');
+});
+test('completion of a retired request cannot release the replacement or deliver to its observers',async()=>{
+ let clock=1000,oldFinish,newFinish;const values=[],gate=createOperationalBackend({now:()=>clock,random:()=>0,timeoutMs:5});
+ await assert.rejects(gate.run('profile',()=>new Promise(resolve=>oldFinish=resolve)));gate.interruptReads();clock=gate.snapshot().nextRetryAt+1;
+ const next=gate.run('profile',()=>new Promise(resolve=>newFinish=resolve),{onLateResult:value=>values.push(value)});await assert.rejects(next);
+ oldFinish('old');await new Promise(resolve=>setImmediate(resolve));assert.equal(gate.snapshot().inFlight,1);assert.deepEqual(values,[]);
+ newFinish('new');await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(values,['new']);assert.equal(gate.snapshot().inFlight,0);
+});
+test('late quota from a retired read remains effective even after a successful replacement',async()=>{
+ let clock=1000,fail;const gate=createOperationalBackend({now:()=>clock,random:()=>0,timeoutMs:5});
+ await assert.rejects(gate.run('profile',()=>new Promise((_resolve,reject)=>fail=reject)));gate.interruptReads();clock=gate.snapshot().nextRetryAt+1;
+ await gate.run('profile',async()=>[]);fail({code:'resource-exhausted'});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(gate.snapshot().code,'resource-exhausted');await assert.rejects(gate.run('other',()=>assert.fail('Quota retained')),{code:'resource-exhausted'});
+});

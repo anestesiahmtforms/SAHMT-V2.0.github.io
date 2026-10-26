@@ -59,3 +59,13 @@ test('an online event upgrades the coalesced foreground request during profile c
  const a=h.flow.recover('pageshow'),b=h.flow.recover('online');assert.equal(a,b);assert.equal(await a,true);
  assert.equal(h.calls.filter(value=>value==='profile').length,2);assert.equal(h.timers.size,0);
 });
+test('suspension retires an interrupted recovery and its late completion cannot resume the page',async()=>{
+ const h=fixture();let finish;let count=0;h.options.restoreAuth=()=>++count===1?new Promise(resolve=>finish=resolve):Promise.resolve({status:'ready'});
+ const flow=createConnectionLifecycle(h.options),old=flow.recover();await tick();flow.suspend();
+ assert.equal(await flow.recover('pageshow'),true);finish({status:'ready'});assert.equal(await old,false);
+ assert.equal(h.calls.filter(value=>value==='resume').length,1);
+});
+test('a recovery that becomes hidden cannot resume or consume suspended listeners',async()=>{
+ const h=fixture();let finish;h.options.restoreAuth=()=>new Promise(resolve=>finish=resolve);const flow=createConnectionLifecycle(h.options);
+ const work=flow.recover();await tick();h.hide();finish({status:'ready'});assert.equal(await work,false);assert.equal(h.calls.includes('resume'),false);
+});
