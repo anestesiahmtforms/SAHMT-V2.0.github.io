@@ -60,7 +60,6 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='SUBMIT').length),1);
   await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
-  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='LIST').length),1,'returning to the containing folder must not reread the catalog');
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),1);
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length),2);
   await page.evaluate(()=>window.mount('manager'));

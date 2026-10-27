@@ -14,6 +14,7 @@ const ICON_PATHS = Object.freeze({
   document: '<path d="M14 2H5v20h14V7l-5-5ZM14 2v5h5M8 12h8M8 16h6"/>',
   folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
   edit: '<path d="m4 16-1 5 5-1L21 7l-4-4L4 16ZM14 6l4 4M4 16l4 4"/>',
+  back: '<path d="m15 6-6 6 6 6M9 12h12"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   save: '<path d="M4 3h13l4 4v14H3V3h1ZM7 3v6h9V3M7 21v-8h10v8"/>',
   add: '<path d="M12 4v16M4 12h16"/>'
@@ -58,7 +59,7 @@ export function renderManagementDocumentCard(item, {canEdit = false, htmlTrainin
   const pdfTarget = !directTraining && item.materialPdfUrl && item.materialPdfSourceFileId === item.driveFileId
     ? googleMaterialPreview(item.materialPdfUrl) : null;
   const viewerTarget = pdfTarget || (href ? googleMaterialPreview(href) : null);
-  const viewer = viewerTarget ? '<button class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' type="button" data-open-material-viewer data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
+  const viewer = viewerTarget ? '<button class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' type="button" data-open-material-viewer data-material-return="management" data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
   const link = viewer || (href ? '<a class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + content + '</a>'
     : '<button class="management-document-premium" type="button" disabled>' + content + '</button>');
   const training = pdfTarget && href && /^https:\/\/docs\.google\.com\/forms\//.test(href)
@@ -88,7 +89,7 @@ export function renderManagementDocumentFolders(documents, options = {}) {
     const body = '<div class="catalog-folders">' + [...children].map(([name, rows]) => folderMarkup(name,
       rows.length ? '<ul class="record-list management-document-list">' + rows.map(item => renderManagementDocumentCard(item, options)).join('') + '</ul>' : '<p class="empty-state">Nenhum documento disponível nesta pasta.</p>', rows.length)).join('') + '</div>';
     const button = '<button class="management-document-premium management-document-access-button" type="button" data-document-access-open="' + access + '" aria-haspopup="dialog" aria-controls="' + titleId + '">' + managementDocumentIcon(access === 'GENERAL' ? 'general' : 'restricted') + '<span>' + name + '</span></button>';
-    const dialog = '<dialog class="management-document-dialog" id="' + titleId + '" data-document-access-panel="' + access + '" aria-labelledby="' + titleId + '-title"><header class="management-area-dialog__header"><h2 id="' + titleId + '-title">' + managementDocumentIcon(access === 'GENERAL' ? 'general' : 'restricted') + '<span>' + name + '</span></h2></header><div class="management-area-dialog__body">' + body + '</div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" autofocus>' + managementDocumentIcon('close') + '<span>VOLTAR</span></button></form></footer></dialog>';
+    const dialog = '<dialog class="management-document-dialog" id="' + titleId + '" data-document-access-panel="' + access + '" aria-labelledby="' + titleId + '-title"><header class="management-area-dialog__header"><h2 id="' + titleId + '-title">' + managementDocumentIcon(access === 'GENERAL' ? 'general' : 'restricted') + '<span>' + name + '</span></h2></header><div class="management-area-dialog__body">' + body + '</div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" autofocus>' + managementDocumentIcon('back') + '<span>VOLTAR</span></button></form></footer></dialog>';
     return {button, dialog};
   });
   return '<div class="management-document-access-folders">' + panels.map(panel => panel.button).join('') + '</div>' + panels.map(panel => panel.dialog).join('');
