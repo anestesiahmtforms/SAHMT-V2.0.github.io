@@ -10,6 +10,7 @@
     "test:stress-rules": "firebase emulators:exec --config firebase.climate.test.json --project demo-sahmt-stress --only firestore --non-interactive \"node --test tests/stress.rules.test.js\"",
     "test:climate-rules": "firebase emulators:exec --config firebase.climate.test.json --project demo-sahmt-climate --only firestore --non-interactive \"node --test tests/climate.rules.test.js tests/climate.integration.test.js tests/stress.rules.test.js\"",
     "test:google-project-auth": "node --test tests/google-project-auth*.test.js tests/management-entry-session.test.js tests/router-session-race.test.js tests/module-navigation-lifecycle.test.js tests/fc-module-session.test.js tests/service-worker.test.js tests/general-access-session.test.cjs tests/report-main-lifecycle.test.cjs tests/outbox.test.js tests/outbox-recovery.test.js tests/offline-storage-policy.test.js tests/offline-form-drafts.test.js",
+    "test:online-only": "node --test tests/online-only.test.js tests/offline-storage-policy.test.js",
     "test:remote-continuity": "node --test tests/remote-continuity*.test.js tests/provisional-channel.test.js tests/provisional-channel-workerd.test.js",
     "prepare:remote-continuity": "node scripts/prepare-remote-continuity.mjs",
     "audit:fa": "node scripts/audit-fa-runtime.mjs --read-once",

@@ -12,15 +12,15 @@ function harness({denied=false,current=()=>true,cached=false}={}){
  vm.runInContext(slice,ctx);
  return {states,run:()=>ctx.showCachedSession({uid:'member'},state=>states.push(state),current)};
 }
-test('sem cache local e com quota esgotada recupera perfil remoto autenticado',async()=>{
- const h=harness();await h.run();assert.equal(h.states.at(-1).status,'signed-in');assert.equal(h.states.at(-1).continuity,true);assert.equal(h.states.at(-1).offline,true);
+test('sem perfil confirmado no servidor mantém sessão limitada',async()=>{
+ const h=harness();await h.run();assert.equal(h.states.at(-1).status,'auth-limited');assert.equal(h.states.at(-1).profileFailureCode,'ONLINE_PROFILE_REQUIRED');assert.equal(h.states.at(-1).profile.active,false);
 });
 test('revogação remota mantém a sessão restrita',async()=>{
- const h=harness({denied:true});await h.run();assert.equal(h.states.at(-1).status,'auth-limited');assert.equal(h.states.at(-1).profileFailureCode,'CONTINUITY_ACCESS_DENIED');
+ const h=harness({denied:true});await h.run();assert.equal(h.states.at(-1).status,'auth-limited');assert.equal(h.states.at(-1).profileFailureCode,'ONLINE_PROFILE_REQUIRED');
 });
 test('troca de conta não permite reabrir a sessão antiga',async()=>{
  const h=harness({current:()=>false});await h.run();assert.equal(h.states.length,0);
 });
 test('revogação remota não é contornada por um perfil local ainda ativo',async()=>{
- const h=harness({denied:true,cached:true});await h.run();assert.equal(h.states.at(-1).status,'auth-limited');
+ const h=harness({denied:true,cached:true});await h.run();assert.equal(h.states.at(-1).status,'auth-limited');assert.equal(h.states.at(-1).profileFailureCode,'ONLINE_PROFILE_REQUIRED');assert.equal(h.states.at(-1).profile.active,false);
 });

@@ -8,6 +8,7 @@ function fixture(){
  let forced=false;const ctx=vm.createContext({createConnectionLifecycle:options=>createConnectionLifecycle({...options,isOnline:()=>ctx.navigator.onLine}),session:{status:'signed-in',user:{uid:'one'},offline:false},
   operationalBackend:{snapshot:()=>({code:'',nextRetryAt:0}),noteFailure(){},interruptReads(){}},isOfflineRuntimeForced:()=>forced,setOfflineRuntimeMode:value=>forced=value,onlineValidationRequired:false,
   document:{hidden:false,addEventListener:(name,fn)=>events.set(name,fn)},window:{addEventListener:(name,fn)=>events.set(name,fn)},navigator:{onLine:true},
+  app:{querySelector:()=>null},renderOnlineGate:()=>calls.push('online-gate'),
   fakeRuntime:{maintainGoogleProjectSessions:async()=>{calls.push('auth');return {status:'ready'};}},
   revalidateOnlineSession:async()=>{calls.push('profile');forced=false;ctx.onlineValidationRequired=false;ctx.session.offline=false;},
   cleanupCurrentModule:{suspend:()=>calls.push('suspend'),resume:()=>calls.push('resume'),setOnline:()=>{}},suspendedReportScopes:[],reportStates:new Map(),
@@ -35,30 +36,31 @@ test('repeated suspension and pagehide preserve the reports needed on return fro
 test('returning after the route or identity changed never reopens the old reports',async()=>{
  const h=fixture();h.hide();h.ctx.session.user.uid='two';await h.show();assert.deepEqual(h.opened,[]);
 });
-test('profile confirmation does not wait for an interrupted outbox flush to resume navigation',async()=>{
+test('profile confirmation does not wait for an interrupted cleanup task to finish navigation',async()=>{
  const code=source.slice(source.indexOf('async function revalidateOnlineSession()'),source.indexOf('function bindLogin()')).replace("import('./operational-sheet-delivery.js')",'Promise.resolve({flushOperationalSheetDelivery(){}})');
  const calls=[],ctx=vm.createContext({navigator:{onLine:true},session:{status:'signed-in',offline:false,user:{uid:'one'},profile:{active:true,access:true}},
   operationalBackend:{snapshot:()=>({code:'',nextRetryAt:0}),reset(){}},deniedOperationalModules:new Set(),retryAuthenticatedProfile:async()=>true,
-  onlineValidationRequired:true,backendFailureDisplayed:true,setOfflineRuntimeMode:value=>calls.push(['offline',value]),liveReports:{get(){}},refreshAppFeatures(){},
+  onlineValidationRequired:true,backendFailureDisplayed:true,setOfflineRuntimeMode:value=>calls.push(['offline',value]),liveReports:{get(){}},app:{querySelector:()=>null},refreshAppFeatures(){},
   syncOutbox:()=>{calls.push(['outbox']);return new Promise(()=>{});}});
  vm.runInContext(code,ctx);assert.equal(await Promise.race([ctx.revalidateOnlineSession(),tick().then(()=> 'blocked')]),true);
- assert.equal(ctx.onlineValidationRequired,false);assert.deepEqual(calls,[['offline',false],['outbox']]);
+ assert.equal(ctx.onlineValidationRequired,false);assert.deepEqual(calls,[['offline',false]]);
 });
 test('a cached page return also reconnects when visibilitychange was not delivered',async()=>{
  const h=fixture();h.events.get('pagehide')?.({persisted:true});h.events.get('pageshow')({persisted:true});await tick();await tick();
  assert.deepEqual(h.opened,['events','labels','checklist']);assert.equal(h.closed.length,3);
 });
 
- test('offline return restores all operational report scopes locally without waiting for server recovery',async()=>{
+test('offline return keeps reports closed and presents the online requirement',async()=>{
  const h=fixture();h.hide();h.ctx.navigator.onLine=false;await h.show();
- assert.deepEqual(h.localOpened,['events','labels','checklist']);assert.deepEqual(h.opened,[]);assert.equal(h.calls.includes('profile'),false);
+ assert.deepEqual(h.localOpened,[]);assert.deepEqual(h.opened,[]);assert.equal(h.calls.includes('profile'),false);
  });
 
-test('return during a quota backoff still restores local views in all three FA reports',async()=>{
+test('return during quota backoff keeps reports closed until the server can be confirmed',async()=>{
  const h=fixture();h.hide();h.ctx.operationalBackend.snapshot=()=>({code:'resource-exhausted',nextRetryAt:Date.now()+300000});await h.show();
- assert.deepEqual(h.localOpened,['events','labels','checklist']);assert.deepEqual(h.opened,[]);assert.equal(h.calls.includes('profile'),false);
+ assert.deepEqual(h.localOpened,[]);assert.deepEqual(h.opened,[]);assert.equal(h.calls.includes('profile'),false);
 });
-test('repeated local returns cannot keep report subscriptions cache-only after online recovery',async()=>{
- const h=fixture();h.hide();h.ctx.navigator.onLine=false;await h.show();h.hide();h.ctx.navigator.onLine=true;await h.show();
+test('offline return does not cache reports and resumes live listeners after online confirmation',async()=>{
+ const h=fixture();h.hide();h.ctx.navigator.onLine=false;await h.show();h.ctx.session.offline=true;h.ctx.onlineValidationRequired=true;h.hide();h.ctx.navigator.onLine=true;await h.show();
  assert.deepEqual(h.opened,['events','labels','checklist']);
+ assert.deepEqual(h.localOpened,[]);assert.equal(h.calls.filter(value=>value==='profile').length,1);
 });

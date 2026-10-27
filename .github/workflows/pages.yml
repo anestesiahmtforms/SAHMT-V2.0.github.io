@@ -54,8 +54,8 @@ jobs:
         run: node --test tests/management-independent-fb.test.js
       - name: Verify independent FB Google access in local emulator
         run: npx firebase emulators:exec --project demo-sahmt-v2 --only firestore "node --test tests/management-independent-fb.rules.test.js"
-      - name: Run offline operational regression
-        run: npm run test:offline-operational
+      - name: Verify online-only operational policy
+        run: npm run test:online-only
       - name: Run provisional operational channel tests
         run: npm run test:provisional-channel
       - name: Run remote continuity and reconciliation tests

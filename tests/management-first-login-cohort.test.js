@@ -22,6 +22,7 @@ function cohortHarness({profile = {uid: 'uid-sintetico'}, readError} = {}) {
   const updates = [];
   const context = vm.createContext({
     db,
+    assertOnlineOperation: () => {},
     FIRST_LOGIN_COHORTS,
     PROTECTED_FIRST_LOGIN_COHORTS,
     doc: (actualDb, collection, id) => {
