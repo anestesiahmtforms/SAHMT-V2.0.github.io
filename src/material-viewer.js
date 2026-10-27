@@ -53,7 +53,8 @@ export function installMaterialViewer(root = document) {
   dialog.setAttribute('aria-label', 'Material de apoio para leitura');
   dialog.innerHTML = '<iframe title="Material de apoio para leitura" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin" scrolling="auto"></iframe><footer class="material-viewer-dialog__footer"><button type="button" class="secondary-button" data-material-viewer-close>FECHAR</button></footer>';
   document.body.append(dialog);
-  const frame = dialog.querySelector('iframe');
+  const frame = dialog.querySelector('iframe'), back = dialog.querySelector('[data-material-viewer-close]');
+  let returnTrigger = null;
   const close = () => { if (dialog.open) dialog.close(); };
   const onClick = event => {
     if (event.target?.closest?.('[data-material-viewer-close]')) { close(); return; }
@@ -62,13 +63,19 @@ export function installMaterialViewer(root = document) {
     if (!trigger || (root !== document && !root.contains(trigger))) return;
     const target = googleMaterialPreview(trigger.dataset.materialUrl);
     if (!target || !dialog.showModal) return;
+    returnTrigger = trigger.dataset.materialReturn === 'management' ? trigger : null;
+    back.textContent = returnTrigger ? 'VOLTAR' : 'FECHAR';
     frame.title = trigger.dataset.materialTitle || 'Material de apoio para leitura';
     frame.src = target.previewUrl + (target.previewUrl.includes('#') ? '' : '#toolbar=0&navpanes=0');
     if (!dialog.open) {
       try { dialog.showModal(); } catch { frame.src = 'about:blank'; }
     }
   };
-  const onClose = () => { frame.src = 'about:blank'; };
+  const onClose = () => {
+    frame.src = 'about:blank';
+    const previous = returnTrigger; returnTrigger = null;
+    if(previous?.isConnected)previous.focus?.({preventScroll: true});
+  };
   root.addEventListener('click', onClick);
   dialog.addEventListener('close', onClose);
   return () => { root.removeEventListener('click', onClick); dialog.removeEventListener('close', onClose); dialog.remove(); };

@@ -36,7 +36,7 @@ export async function createHtmlTrainingClient(user) {
 
 /** Mount returns cleanup immediately, including while startup/auth is pending. */
 export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {}) {
-  let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false;
+  let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false, operationId=0;
   let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   let storage; try { storage=globalThis.localStorage; } catch {}
   const cache=createContentCache(storage), uid=user?.uid;
@@ -59,18 +59,19 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   }
   async function perform(fn) {
     if(busy) return;
-    busy=true; error=''; renderBusy();
-    try {await fn();} catch(err){fail(err);} finally {busy=false;if(alive)renderBusy();}
+    const operation=++operationId; busy=true; error=''; renderBusy();
+    try {await fn();} catch(err){if(operation===operationId)fail(err);} finally {if(operation===operationId){busy=false;if(alive)renderBusy();}}
   }
-  function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy;});}
   function goBack(){
-    if(!alive)return false;
-    if(busy)return true;
+    if(!current(revision))return false;
+    // Leaving a pending read invalidates its response without trapping the modal.
+    if(busy){revision++;operationId++;busy=false;render();return true;}
     if(mode==='editor'){mode=editorParent;editor=null;error='';render();return true;}
-    if(mode==='participant'){revision++;active=null;content=null;questions=[];state=null;mode='catalog';error='';notice='';render();return true;}
+    if(mode!=='catalog'&&mode!=='denied'){void perform(loadCatalog);return true;}
     if(mode==='catalog'&&folderPath.length){folderPath=folderPath.slice(0,-1);render();return true;}
     return false;
   }
+  function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy&&b.dataset.ht!=='back';});}
   function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'O envio final confirmado contabiliza uma tentativa. Limite de duas por treinamento.'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;}
   function catalogue(){
     const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
@@ -117,7 +118,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   async function open(id){
     revision++;const token=revision;error='';notice='';
     const opened=await call('OPEN',{trainingId:id},token);
-    active=opened.training;state=opened.state;questions=opened.questions||[];answers={...(state?.run?.answers||{})};suggestion='';confirm=false;submitRequest=null;
+    active=opened.training;state=opened.state;questions=opened.questions||[];answers={...(state?.run?.answers||{})};suggestion='';confirm=false;submitRequest=null, editorParent='catalog';
     // OPEN always precedes a cache lookup and is revalidated for every new visit.
     content=await cache.read(uid,id,active.version);
     if(!current(token))return;
@@ -138,10 +139,11 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   }
   async function publish(status){collectEditor();if(editor.selectedQuestionIds.length!==5)throw new Error('Selecione exatamente cinco questões do banco.');const e=editor;const res=await call('PUBLISH',{trainingId:active.id,expectedVersion:e.training.version,training:{...e.training,status},institutionalReviewConfirmed:e.institutionalReviewConfirmed===true,deferInstitutionalReview:isTrainingAdmin(profile)&&!!e.training.source?.pendingReviewPublication&&e.institutionalReviewConfirmed!==true,reviewDeferralReason:e.training.source?.pendingReviewPublication?.reason,sections:e.sections,bank:e.bank,selectedQuestionIds:e.selectedQuestionIds,auditSchema:e.auditSchema});active=res.training;await edit(active.id);notice=status==='DRAFT'?'Rascunho salvo no serviço.':'Treinamento publicado no PWA. Consulte o estado da sincronização com o Drive.';render();}
   const click=event=>{
-    const b=event.target.closest('[data-ht]');if(!b||!root.contains(b)||busy)return;
+    const b=event.target.closest('[data-ht]');if(!b||!root.contains(b))return;
     const action=b.dataset.ht;
-    if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     if(action==='back'){goBack();return;}
+    if(busy)return;
+    if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
       if(action==='catalog')return loadCatalog();
       if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;folderPath=path;render();return;}
@@ -181,7 +183,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   root.addEventListener('submit',preventSubmit);
   root.classList.add('html-trainings');root.innerHTML='<p class="ht-notice" role="status">Consultando treinamentos autorizados…</p>';
   (async()=>{try{if(!uid)throw new Error('Entre com sua conta institucional para acessar os treinamentos.');if(!api){const client=await createHtmlTrainingClient(user);if(!alive)return;api=client.api;valid=client.valid;unsubscribe=client.subscribeInvalidated(()=>fail(Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'})));}if(!current(revision))return;await loadCatalog();}catch(err){fail(err);}})();
-  const cleanup=() => {root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
+  const cleanup = () => {root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
   cleanup.goBack=goBack;
   return cleanup;
 }

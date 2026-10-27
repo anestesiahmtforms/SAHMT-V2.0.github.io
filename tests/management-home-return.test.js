@@ -15,3 +15,10 @@ test('FB Home navigation targets the main FA entry rather than the Governance di
  vm.runInContext(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export ',''),ctx);await ctx.navigate('home');
  assert.deepEqual(calls,['/SAHMT-V2.0.github.io/#/home']);
 });
+
+test('FB Management back targets Governance in FA',async()=>{
+ const source=readFileSync(new URL('../src/router.js',import.meta.url),'utf8'),calls=[];
+ const ctx=vm.createContext({deployment:{target:'FB',faBase:'/SAHMT-V2.0.github.io/'},location:{hash:'#/management',assign:url=>calls.push(url)},rememberModuleNavigation(){}});
+ vm.runInContext(source.replace(/^import .*;\r?\n/gm,'').replaceAll('export ',''),ctx);await ctx.navigate('management-hub');
+ assert.deepEqual(calls,['/SAHMT-V2.0.github.io/#/management-hub']);
+});

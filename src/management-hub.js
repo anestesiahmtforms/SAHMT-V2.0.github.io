@@ -43,7 +43,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
    const allowed=!item.access||access[item.access]===true;
    return '<button type="button" class="management-hub-button" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+item.label+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
-  back.textContent='VOLTAR';body.scrollTop=0;onPanelChange(panel);
+  back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
  };
  const goBack=()=>{const parent=panels[panel].parent;if(parent){panel=parent;render();}else onExit();};

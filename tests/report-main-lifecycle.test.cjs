@@ -263,17 +263,20 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
   const catalogs=[],reports=[],events=[],writes=[],reads=[],stops=[],conferences=[],rotations=[],deadlines=[];let owned=scopeOwned;
   const ctx=vm.createContext({googleProjectAuthEnabled:false,
     checklistCatalogLive:null,checklistResponsibilityLive:null,stationIsInDateRange:()=>true,can:()=>false,
-    session:{profile:{sigla:'AA'}},checklistConferenceLive:null,checklistRotationLive:null,
+    session:{status:'signed-in',user:{uid:'user-a'},profile:{sigla:'AA'}},checklistConferenceLive:null,checklistRotationLive:null,
+    checklistCacheId:scope=>scope.mode==='daily'?scope.day:'month:'+scope.month,checklistCachedCatalogMatches:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+    readOperationalDraft:async()=>null,checklistLocalIntent:null,
     setTimeout:fn=>{deadlines.push(fn);return deadlines.length;},clearTimeout(){},
     mockConference:{watchChecklistConference:async(options,next)=>{conferences.push({options,next});return()=>stops.push('conference');}},
     mockRotation:{watchChecklistRotation:async(options,next,error)=>{rotations.push({options,next,error});return()=>stops.push('rotation');}},
-    isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, navigator:{onLine:true}, emitCachedOfflineReport:async()=>false,subscribeReportWithDeadline:({subscribe,callbacks})=>subscribe(callbacks),
+    isOfflineRuntimeForced:()=>false, isFirestoreCacheFallbackError:()=>false, navigator:{onLine:true},subscribeReportWithDeadline:({subscribe,callbacks})=>subscribe(callbacks),
     mockCatalog:{watchChecklistStations:async(next,error)=>{catalogs.push({next,error});return()=>stops.push('catalog');}},
     mockChecklist:{watchChecklistReport:async(options,next,error)=>{const index=reports.length;reports.push({options,next,error});return()=>stops.push('report:'+index);}},
-    mockCache:{readSafeCache:async(uid,type,key)=>{reads.push({uid,type,key});return type==='stations'?(catalogGate?catalogGate.promise:{data:stations}):{data:initial};},writeSafeCache:async(uid,type,key,data)=>{writes.push({uid,type,key,data});}},
+    mockCache:{readSafeCache:async(uid,type,key)=>{reads.push({uid,type,key});return type==='stations'?(catalogGate?catalogGate.promise:{data:stations}):type==='checklists'?{data:initial}:null;},writeSafeCache:async(uid,type,key,data)=>{writes.push({uid,type,key,data});}},
     reportFingerprint:JSON.stringify,invalidateChecklistSignature(){},updateChecklistResponsibilityUI(){}
   });
-  let adapter=source.slice(source.indexOf('async function subscribeLiveReport('),source.indexOf('function receiveLiveReport('));
+  ctx.readFreshSafeCache=(...args)=>ctx.mockCache.readSafeCache(...args);
+  let adapter=source.slice(source.indexOf('async function emitCachedOfflineReport('),source.indexOf('function receiveLiveReport('));
   adapter=adapter.replaceAll("import('./report-live-data.js')",'Promise.resolve(mockCatalog)').replaceAll("import('./checklist-report-listener.js')",'Promise.resolve(mockChecklist)').replaceAll("import('./outbox.js')",'Promise.resolve(mockCache)');
   adapter=adapter.replaceAll("import('./checklist-conference-listener.js')",'Promise.resolve(mockConference)').replaceAll("import('./checklist-rotation-listener.js')",'Promise.resolve(mockRotation)');
   vm.runInContext(adapter,ctx);
@@ -284,14 +287,14 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
 }
 
 test('adapter real Checklist: primeiro cache de memória vazio preserva os 28 arsenais e as respostas do cache seguro',async()=>{
-  const h=catalogAdapterHarness(),close=await h.subscribe();h.emit();await settle();
+  const h=catalogAdapterHarness(),close=await h.subscribe();await settle();h.emit();await settle();
   const catalog=h.lastCatalog();assert.equal(catalog.data.records.length,28);assert.equal(catalog.fromCache,true);assert.equal(catalog.data.serverConfirmed,false);
   assert.deepEqual(Array.from(h.reports[0].options.stationIds),h.ids);assert.equal(h.reports[0].options.initial.records[0].id,'safe-answer');
-  assert.equal(h.writes.length,0);assert.deepEqual(h.reads,[{uid:'user-a',type:'stations',key:'all'},{uid:'user-a',type:'checklists',key:'2026-10-02'}]);close();
+  assert.equal(h.writes.length,0);assert.deepEqual(h.reads.filter(read=>['stations','checklists'].includes(read.type)),[{uid:'user-a',type:'stations',key:'all'},{uid:'user-a',type:'checklists',key:'2026-10-02'}]);close();
 });
 
 test('adapter real Checklist: catálogo vazio confirmado no servidor substitui baseline e encerra históricos antigos',async()=>{
-  const h=catalogAdapterHarness(),close=await h.subscribe();h.emit();await settle();
+  const h=catalogAdapterHarness(),close=await h.subscribe();await settle();h.emit();await settle();
   h.emit([],{fromCache:false,serverConfirmed:true});await settle();
   assert.equal(h.lastCatalog().data.records.length,0);assert.equal(h.lastCatalog().fromCache,false);
   assert.deepEqual(Array.from(h.reports.at(-1).options.stationIds),[]);assert.ok(h.stops.includes('report:0'));
@@ -308,10 +311,11 @@ test('adapter real Checklist: grava cache seguro apenas de catálogo confirmado,
   close();h.emit([],{fromCache:false,serverConfirmed:true});await settle();assert.equal(h.writes.length,1);
 });
 
-test('adapter real Checklist: fechamento enquanto cache seguro aguarda não instala consultas da sessão antiga',async()=>{
-  const gate=deferred(),h=catalogAdapterHarness({catalogGate:gate});const attaching=h.subscribe();await settle();
-  h.revoke();gate.resolve({data:h.stations});const close=await attaching;
-  assert.equal(h.catalogs.length,0);assert.equal(h.reports.length,0);assert.equal(h.events.length,0);assert.equal(h.writes.length,0);close();
+test('adapter real Checklist: fechamento cancela a consulta independente e ignora cache seguro tardio',async()=>{
+  const gate=deferred(),h=catalogAdapterHarness({catalogGate:gate});const close=await h.subscribe();await settle();
+  assert.equal(h.catalogs.length,1);
+  h.revoke();close();gate.resolve({data:h.stations});await settle();
+  assert.ok(h.stops.includes('catalog'));assert.equal(h.reports.length,0);assert.equal(h.events.length,0);assert.equal(h.writes.length,0);
 });
 
 test('adapter real Checklist: relatório interrompe os listeners depois do snapshot completo',async()=>{

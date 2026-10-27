@@ -444,9 +444,9 @@ async function emitCachedOfflineReport(kind, scope, callbacks) {
     const localSchedule = projectPendingSchedule(schedule.data, await listUnsettledOperations(scope.uid), {uid: scope.uid, day: scope.day});
     if (!current()) return false;
     const rotation = resolveChecklistRotation({schedule: localSchedule, day: scope.day, vacations: vacations.data, directory: directory.data});
-    checklistRotationLive = {key: scope.key, rotation, ready: true, current: false, fromCache: true, stale: true};
+    if (callbacks.canApplyLocalState?.('rotation') !== false) checklistRotationLive = {key: scope.key, rotation, ready: true, current: false, fromCache: true, stale: true};
   }
-  if (conference?.data) checklistConferenceLive = {...conference.data, key: scope.key, fromCache: true};
+  if (conference?.data && callbacks.canApplyLocalState?.('conference') !== false) checklistConferenceLive = {...conference.data, key: scope.key, fromCache: true};
   checklistLocalIntent = intent ? {uid: scope.uid, day: scope.day, signerName: intent.fields.signerName} : null;
   const catalog = {records: catalogEntry.data.map(station => ({...station, stale: true})), truncated: false, fromCache: true, hasPendingWrites: false, serverConfirmed: false, stale: true};
   const report = {
@@ -470,32 +470,52 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
     if (await emitCachedOfflineReport(kind, scope, callbacks)) return () => {};
     throw Object.assign(new Error('Não há uma cópia local recente deste período. Conecte-se para atualizar os dados.'), {code: 'unavailable'});
   }
-  const hasCachedDisplay = await emitCachedOfflineReport(kind, scope, callbacks).catch(() => false);
-  if (callbacks.isCurrent?.() === false) return () => {};
+  // Display cache and Firestore are independent. A suspended IndexedDB read
+  // must never consume the server deadline before a listener is even attached.
+  const observer = callbacks, cachedSources = new Map(), serverSources = new Set(), liveAuxiliarySources = new Set();
+  let cacheClosed = false, hasCachedDisplay = false;
+  const cacheCurrent = () => !cacheClosed && !serverSources.size && observer.isCurrent?.() !== false;
+  void emitCachedOfflineReport(kind, scope, {
+    ...observer, isCurrent: cacheCurrent, canApplyLocalState: key => !liveAuxiliarySources.has(key),
+    next(key, event) {
+      if (!cacheCurrent()) return;
+      cachedSources.set(key, event.data); hasCachedDisplay = true;
+      observer.next(key, event);
+    }
+  }).catch(() => false);
+  callbacks = {...observer, next(key, event) {
+    if (event.fromCache === false) serverSources.add(key);
+    if (event.hasPendingWrites === true) cacheClosed = true;
+    // An empty SDK memory cache cannot erase a saved display while the server
+    // is still answering. A confirmed snapshot always replaces local data.
+    if (event.fromCache !== false && event.hasPendingWrites !== true && cachedSources.has(key) && !serverSources.has(key)) return;
+    observer.next(key, event);
+  }};
+  if (callbacks.isCurrent?.() === false) return () => { cacheClosed = true; };
   if (kind === 'events' || kind === 'labels') {
     const module = kind === 'events' ? await import('./report-live-data.js') : await import('./label-report-reader.js');
     if (!callbacks.isCurrent()) return () => {};
     const watcher = kind === 'events' ? module.watchEventRecords : module.watchLabelRecords;
-    return watcher(scope, payload => callbacks.next('report', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites}), failure => {
+    const unsubscribe = await watcher(scope, payload => callbacks.next('report', {data: payload, complete: true, fromCache: payload.fromCache, hasPendingWrites: payload.hasPendingWrites}), failure => {
       if (!isFirestoreCacheFallbackError(failure, {online: navigator.onLine})) { callbacks.error(failure); return; }
       operationalBackend.noteFailure(failure, kind);
       void emitCachedOfflineReport(kind, scope, callbacks).then(used => {
         if (!used && callbacks.isCurrent()) callbacks.error(failure);
       }).catch(() => callbacks.isCurrent() && callbacks.error(failure));
     });
+    return () => { cacheClosed = true; unsubscribe?.(); };
   }
-  const [{watchChecklistStations}, {watchChecklistReport}, {readSafeCache, writeSafeCache}] = await Promise.all([
+  const [{watchChecklistStations}, {watchChecklistReport}, {writeSafeCache}] = await Promise.all([
     import('./report-live-data.js'), import('./checklist-report-listener.js'), import('./outbox.js')
   ]);
   if (!callbacks.isCurrent()) return () => {};
   let stopped = false, reportStop = null, catalogStop = null, responsibilityStop = null, displayResponsibilityStop = null, conferenceStop = null, sequence = 0, idsKey = null;
-  const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : (await readSafeCache(scope.uid, 'stations', 'all', {localOnly:true}).catch(() => null))?.data;
-  const initialCatalog = Array.isArray(savedCatalog) ? savedCatalog : [];
+  const savedCatalog = checklistCatalogLive?.uid === scope.uid ? checklistCatalogLive.records : null;
   let catalogServerSeen = false, reportServerSeen = false, conferenceServerSeen = scope.mode !== 'daily', rotationServerSeen = scope.mode !== 'daily';
   let writtenCatalog = '', catalogWriteSequence = 0, snapshotExpiry = 0, staticStopped = false;
   const current = () => !stopped && callbacks.isCurrent();
   const stopStaticReaders = () => { staticStopped = true; if (snapshotExpiry) globalThis.clearTimeout?.(snapshotExpiry); sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
-  const stop = () => { stopped = true; stopStaticReaders(); conferenceStop?.(); };
+  const stop = () => { stopped = true; cacheClosed = true; stopStaticReaders(); conferenceStop?.(); };
   const stopAfterInitialSnapshot = () => {
     if (current() && !staticStopped && catalogServerSeen && reportServerSeen && conferenceServerSeen && rotationServerSeen) stopStaticReaders();
   };
@@ -513,6 +533,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
     void import('./checklist-conference-listener.js').then(module => current()
       ? module.watchChecklistConference({...scope, ownSigla: session.profile?.sigla, readSignatures: can('checklistRead')}, payload => {
         if (!current()) return;
+        liveAuxiliarySources.add('conference');
         checklistConferenceLive = {...payload, key: scope.key};
         if (payload.ready && !payload.fromCache && !payload.hasPendingWrites && !payload.error) void writeSafeCache(scope.uid, 'checklistConference', scope.day, payload).catch(() => {});
         updateChecklistResponsibilityUI();
@@ -522,18 +543,21 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
         if (!current()) unsubscribe?.(); else conferenceStop = unsubscribe;
       }).catch(error => {
         if (!current()) return;
+        liveAuxiliarySources.add('conference');
         checklistConferenceLive = {key: scope.key, ready: true, error};
         updateChecklistResponsibilityUI();
       });
     // Rotation is schedule information; it never authorizes a signature.
     void import('./checklist-rotation-listener.js').then(module => current() ? module.watchChecklistRotation(scope, payload => {
       if (!current()) return;
+      liveAuxiliarySources.add('rotation');
       checklistRotationLive = {...payload, key: scope.key};
       updateChecklistResponsibilityUI();
       rotationServerSeen = payload.ready === true && payload.current === true && payload.fromCache === false && payload.hasPendingWrites !== true && !payload.error;
       stopAfterInitialSnapshot();
     }, failure => {
       if (!current()) return;
+      liveAuxiliarySources.add('rotation');
       checklistRotationLive = {key: scope.key, ready: true, error: failure};
       updateChecklistResponsibilityUI();
     }) : null).then(unsubscribe => {
@@ -550,6 +574,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       if (!current() || staticStopped) return;
       const serverConfirmed = payload.fromCache === false && payload.hasPendingWrites === false;
       if (serverConfirmed) catalogServerSeen = true;
+      const initialCatalog = cachedSources.get('catalog')?.records || savedCatalog || [];
       if (!catalogServerSeen && initialCatalog.length) {
         const merged = new Map(initialCatalog.map(station => [station.id, {...station}]));
         for (const station of payload.records) merged.set(station.id, station);
@@ -573,9 +598,9 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
       idsKey = key;
       const ownSequence = ++sequence; reportStop?.(); reportStop = null;
       callbacks.next('report', {data: null, complete: false, fromCache: true, hasPendingWrites: false});
-      void readSafeCache(scope.uid, 'checklists', scope.mode === 'daily' ? scope.day : 'month:' + scope.month, {localOnly:true}).catch(() => null).then(cached => {
+      void Promise.resolve().then(() => {
         if (!current() || sequence !== ownSequence) return null;
-        const value = cached?.data || cached?.value || cached;
+        const value = cachedSources.get('report');
         const initial = value && JSON.stringify(value.stationIds || []) === key
           ? {...value, ...(scope.mode === 'daily' ? {priorRecords: []} : {})} : null;
         if (!initial && scope.mode === 'daily' && !hasCachedDisplay) {
@@ -1660,7 +1685,7 @@ async function loadModule(route) {
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" autofocus><svg class="document-action-icon" data-document-icon="close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Fechar</span></button></form></footer></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" data-management-area-back autofocus><svg class="document-action-icon" data-document-icon="back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 6-6 6 6 6M9 12h12"/></svg><span>VOLTAR</span></button></form></footer></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
       const evaluationHost = content.querySelector('#management-evaluation-access');
       const requestUid = session.user?.uid;
       const generation = evaluationModuleGeneration;
