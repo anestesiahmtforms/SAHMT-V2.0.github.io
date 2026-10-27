@@ -36,6 +36,8 @@ jobs:
         run: npm ci --prefix functions
       - name: Run domain tests
         run: npm run test:domain
+      - name: Verify member categories and five-project identity classification
+        run: node --test tests/member-categories.test.js
       # The executor quota guard is independent of Firestore authorization.
       - name: Verify Apps Script quota protection
         run: node --test tests/apps-script-service-quota.test.js

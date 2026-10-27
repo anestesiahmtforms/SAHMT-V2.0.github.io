@@ -514,6 +514,11 @@ export async function listEventMembers({uid} = {}) {
   }});
 }
 
+export async function listMemberCategoryAssignments(){
+ const result=await getDocsFromServer(query(collection(db,'userCategories'),limit(1000)));
+ return result.docs.map(snapshot=>({id:snapshot.id,...snapshot.data()}));
+}
+
 export async function listUserProfiles({pageSize = 200} = {}) {
   const result = await getDocsFromServer(query(
     collection(db, 'users'),

@@ -1,4 +1,5 @@
 import {readFile, writeFile} from 'node:fs/promises';
+import {addMemberCategoryRules} from './lib/member-category-rules.js';
 
 const source=(await readFile('firestore.occurrences.rules','utf8')).replaceAll('\r\n','\n');
 const replacements=[
@@ -50,5 +51,5 @@ ${marker}`);
 const legacy='    function signedFromFc() { return activeUser(); }\n';
 if(!output.includes(legacy))throw Error('FC_RULES_IDENTITY_HELPER_MISSING');
 output=output.replace(legacy,'');
-await writeFile('firestore.fc.base.rules',output);
+await writeFile('firestore.fc.base.rules',addMemberCategoryRules(output));
 console.log('FC_MODULE_RULE_BASE_PREPARED');

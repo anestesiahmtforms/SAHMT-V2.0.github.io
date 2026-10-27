@@ -1,6 +1,8 @@
 import './styles.css';
 import './performance-ui.css';
 import './catalog-folders.css';
+import {MEMBER_CATEGORIES,memberCategoryLabels,mergeMemberCategoryAssignments,memberCategoryCounts} from './member-categories.js';
+import {withinDeadline} from './async-deadline.js';
 import './management-cards.css';
 import {managementAreaIcon} from './management-area-icons.js';
 import './training-state.css';
@@ -1982,8 +1984,13 @@ async function loadAdminModule(content) {
   }
   content.innerHTML = '<p class="loading">Carregando perfis da V2…</p>';
   try {
-    const {listUserProfiles, listAccessRequests} = await import('./data.js');
-    const [profiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
+    const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments} = await import('./data.js');
+    const [rawProfiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
+    let assignments=[],categoryLoadFailed=false;
+    try{assignments=await withinDeadline(listMemberCategoryAssignments,{timeoutMs:4000});}catch{categoryLoadFailed=true;}
+    const profiles=mergeMemberCategoryAssignments(rawProfiles,assignments);
+    const categoryCounts=memberCategoryCounts(assignments);
+    const categorySummary=`<section class="admin-user-list"><h3>Categorias dos membros</h3><p class="record-meta">Categorias de vínculo e responsabilidade podem se sobrepor. A classificação não concede permissões automaticamente.</p>${categoryLoadFailed?'<p role="status">Classificações ainda não disponíveis nesta instância.</p>':`<ul>${Object.entries(MEMBER_CATEGORIES).map(([id,label])=>`<li>${escapeHtml(label)}: <strong>${categoryCounts[id]}</strong></li>`).join('')}</ul><p class="record-meta">${assignments.filter(row=>row.identityStatus==='PENDING_ACCOUNT').length} classificação(ões) aguardando vínculo com uma conta.</p>`}</section>`;
     let configuredFeatures = appFeatures;
     if (can('admin')) {
       try { configuredFeatures = normalizeAppFeatures(await (await import('./data-lite.js')).readAppFeatures(session.user.uid)); }
@@ -2004,12 +2011,13 @@ async function loadAdminModule(content) {
       const protectedCohort = PROTECTED_FIRST_LOGIN_COHORTS.includes(profile.firstLoginCohort);
       const cohortControl = firstLoginCohortAdminUiEnabled && can('admin') ? `<div class="first-login-cohort-controls"><label>Primeiro login<select data-first-login-cohort="${escapeHtml(profile.uid)}" ${protectedCohort ? 'disabled' : ''}>${FIRST_LOGIN_COHORTS.map((value) => `<option value="${value}" ${cohort === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>${protectedCohort ? '<small>Classificação protegida; não pode ser reclassificada por este painel.</small>' : `<button type="button" class="secondary-button" data-save-first-login-cohort="${escapeHtml(profile.uid)}">Salvar classificação</button>`}<small data-first-login-cohort-status="${escapeHtml(profile.uid)}">A classificação não altera função, permissões, atividade ou acesso.</small></div>` : '';
       const cohortSummary = firstLoginCohortAdminUiEnabled && can('admin') ? `<small>Primeiro login: ${cohort}${profile.firstLoginCohort ? '' : ' · não classificado'}</small>` : '';
-      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button>` : ''}${cohortControl}</article>`;
+      const membershipSummary=memberCategoryLabels(profile.memberCategories).join(' · ')||'Sem classificação';
+      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button>` : ''}${cohortControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
     content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Solicitações de acesso</h3></div><p class="record-meta">Pedidos feitos no login aparecem aqui. Eles não concedem acesso automaticamente; escolha função e permissões antes de provisionar.</p>${requestEntries || '<p class="empty-state">Nenhuma solicitação pendente.</p>'}</section>
-      ${featureSettings}
+      ${featureSettings}${categorySummary}
       <details id="admin-user-editor" class="quick-form admin-user-form"><summary id="user-form-summary">Configurar um pedido ou editar perfil</summary><section class="panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Ao abrir um pedido, UID, e-mail e nome são preenchidos automaticamente. O cadastro manual sem pedido fica reservado a casos administrativos excepcionais.</p>
         <form id="admin-user-form"><div class="form-grid"><label>UID Firebase<input name="uid" required maxlength="128" autocomplete="off" placeholder="Preenchido pelo pedido ou manualmente"></label><label>E-mail do Google<input name="email" type="email" required maxlength="200" autocomplete="off"></label><label>Nome exibido<input name="displayName" required maxlength="120"></label><label>Sigla<input name="sigla" maxlength="20"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>Função<select name="role" required>${userRoles.map(([id, title]) => `<option value="${id}" ${id === 'temporario' ? 'selected' : ''} ${id === 'administrador_app' && !can('admin') ? 'disabled' : ''}>${escapeHtml(title)}</option>`).join('')}</select></label></div>
           <fieldset><legend>Permissões SAHMT</legend><p class="record-meta">Desempenho e Notificações são liberados para todos os perfis aprovados. As demais permissões seguem a seleção abaixo.</p><div class="permission-grid">${permissions}</div></fieldset>
@@ -2017,7 +2025,7 @@ async function loadAdminModule(content) {
           <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar perfil</button><button class="secondary-button" id="cancel-user-edit" type="button" hidden>Cancelar edição</button></div><p id="admin-user-status" class="record-meta" role="status" aria-live="polite"></p>
         </form>
       </section></details>
-      <section class="admin-user-list"><div class="admin-list-heading"><h3>Perfis V2</h3><label>Filtrar perfis<input id="admin-user-search" type="search" placeholder="Nome, sigla, e-mail ou UID"></label></div><p class="record-meta">Exibindo até 200 perfis, ordenados por nome. Para remover acesso, desative o perfil; o registro não é apagado.</p>${entries || '<p class="empty-state">Nenhum perfil provisionado foi encontrado.</p>'}</section>`;
+      <section class="admin-user-list"><div class="admin-list-heading"><h3>Perfis V2</h3><label>Filtrar perfis<input id="admin-user-search" type="search" placeholder="Nome, sigla, e-mail, UID ou categoria"></label></div><p class="record-meta">Exibindo até 200 perfis, ordenados por nome. Para remover acesso, desative o perfil; o registro não é apagado.</p>${entries || '<p class="empty-state">Nenhum perfil provisionado foi encontrado.</p>'}</section>`;
     const featureForm = content.querySelector('#app-feature-form');
     featureForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
