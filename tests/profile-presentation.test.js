@@ -7,8 +7,8 @@ import {isFirestoreCacheFallbackError} from '../src/offline-cache.js';
 import {withinDeadline} from '../src/async-deadline.js';
 
 const fixture = () => ({
-  profile: {uid: 'fictional-uid', email: 'fictional.member@gmail.com', displayName: 'fictional.member@gmail.com', sigla: 'FC', phone: '', active: true, access: true, role: 'temporario', permissions: {managementRead: true, trainingsRead: true, notificationsRead: true}},
-  user: {uid: 'fictional-uid', email: 'fictional.member@gmail.com', emailVerified: true, displayName: 'Nome Google Fictício', providerData: [{providerId: 'google.com'}]}
+  profile: {uid: 'fictional-uid', email: 'test-user-1@example.test', displayName: 'test-user-1@example.test', sigla: 'FC', phone: '', active: true, access: true, role: 'temporario', permissions: {managementRead: true, trainingsRead: true, notificationsRead: true}},
+  user: {uid: 'fictional-uid', email: 'test-user-1@example.test', emailVerified: true, displayName: 'Nome Google Fictício', providerData: [{providerId: 'google.com'}]}
 });
 
 test('substitui somente nome-placeholder na apresentação sem mutar perfil ou permissões', () => {
@@ -28,7 +28,7 @@ test('preserva nome real cadastrado, ainda que o Google forneça nome diferente'
 for (const [name, mutate] of [
   ['UID diferente', ({user}) => { user.uid = 'other-uid'; }],
   ['UID ausente', ({profile}) => { delete profile.uid; }],
-  ['email diferente', ({user}) => { user.email = 'other@gmail.com'; }],
+  ['email diferente', ({user}) => { user.email = 'test-user-2@example.test'; }],
   ['email ausente', ({profile}) => { profile.email = ''; }],
   ['Google não verificado', ({user}) => { user.emailVerified = false; }],
   ['verificação textual', ({user}) => { user.emailVerified = 'true'; }],
@@ -36,7 +36,7 @@ for (const [name, mutate] of [
   ['provedor ausente', ({user}) => { delete user.providerData; }],
   ['nome Google vazio', ({user}) => { user.displayName = '  '; }],
   ['nome Google igual email', ({user}) => { user.displayName = user.email; }],
-  ['nome Google igual outro email', ({user}) => { user.displayName = 'other@gmail.com'; }],
+  ['nome Google igual outro email', ({user}) => { user.displayName = 'test-user-2@example.test'; }],
   ['nome acima do limite', ({user}) => { user.displayName = 'N'.repeat(121); }],
   ['placeholder genérico diferente do email', ({profile}) => { profile.displayName = 'Usuário'; }]
 ]) test(`mantém o perfil sem alteração: ${name}`, () => {
@@ -46,8 +46,8 @@ for (const [name, mutate] of [
 });
 test('normaliza caixa/espaços do email e conserva nome/sigla/estado', () => {
   const {profile, user} = fixture();
-  profile.email = ' Fictional.Member@GMAIL.com ';
-  profile.displayName = 'FICTIONAL.MEMBER@gmail.com';
+  profile.email = ' test-user-1@example.test ';
+  profile.displayName = 'test-user-1@example.test';
   const display = profileForPresentation(profile, user);
   assert.equal(display.displayName, user.displayName);
   assert.equal(display.sigla, 'FC');
@@ -115,7 +115,7 @@ test('cache offline usa a mesma apresentação sem conceder acesso novo', async 
   const h = harness({active: false, online: false});
   await vm.runInContext('showCachedSession(user, onState)', h.context);
   assert.equal(h.states[0].profile.displayName, h.user.displayName);
-  assert.equal(h.states[0].status, 'blocked');
+  assert.equal(h.states[0].status, 'auth-limited');
   assert.equal(h.states[0].offline, true);
 });
 
@@ -127,13 +127,13 @@ test('cache concluído após troca de conta não emite novamente a sessão anter
   h.context.currentGeneration = 2; finish(); await new Promise(resolve=>setImmediate(resolve));
   assert.equal(h.states.length, 1);
 });
-for (const code of ['resource-exhausted','firestore/unavailable']) test(`perfil cacheado abre o app durante falha transitória do Firestore (${code})`, async () => {
+for (const code of ['resource-exhausted','firestore/unavailable']) test(`perfil cacheado não libera o app durante falha transitória do Firestore (${code})`, async () => {
   const h = harness({profileReadError: Object.assign(new Error('private response'), {code})});
   await vm.runInContext('onAuthChangedProfile(user, onState, 1, () => 1, () => {})', h.context);
-  assert.equal(h.states.at(-1).status, 'signed-in');
+  assert.equal(h.states.at(-1).status, 'auth-limited');
   assert.equal(h.states.at(-1).offline, true);
   assert.equal(h.states.at(-1).profile.uid, h.user.uid);
-  assert.equal(h.cacheReads, 1);
+  assert.equal(h.cacheReads, 0);
 });
 for(const online of [true,false])test(`cache não contorna negação explícita do perfil (${online?'online':'offline'})`, async () => {
   const h = harness({online,profileReadError: Object.assign(new Error('private response'), {code: 'permission-denied'})});
@@ -145,9 +145,9 @@ test('perfil cacheado inativo continua bloqueado durante esgotamento de cota', a
   const cachedProfile = {...fixture().profile, active: false};
   const h = harness({profileReadError: Object.assign(new Error('private response'), {code: 'resource-exhausted'}), cachedProfile});
   await vm.runInContext('onAuthChangedProfile(user, onState, 1, () => 1, () => {})', h.context);
-  assert.equal(h.states.at(-1).status, 'blocked');
+  assert.equal(h.states.at(-1).status, 'auth-limited');
   assert.equal(h.states.at(-1).profile.active, false);
-  assert.equal(h.cacheReads, 1);
+  assert.equal(h.cacheReads, 0);
 });
 test('cache ausente não libera a sessão quando Firestore está indisponível', async () => {
   const h = harness({profileReadError: Object.assign(new Error('private response'), {code: 'resource-exhausted'}), cachedProfile: null});
@@ -155,5 +155,5 @@ test('cache ausente não libera a sessão quando Firestore está indisponível',
   assert.equal(h.states.at(-1).status, 'auth-limited');
   assert.equal(h.states.at(-1).profile.active, false);
   assert.equal(Object.keys(h.states.at(-1).profile.permissions).length, 0);
-  assert.equal(h.cacheReads, 1);
+  assert.equal(h.cacheReads, 0);
 });

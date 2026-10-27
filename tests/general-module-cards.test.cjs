@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 const features = readFileSync(join(__dirname, '../src/feature-flags.js'), 'utf8').replace(/\r\n/g, '\n');
 const pilot = readFileSync(join(__dirname, '../src/management-pilot.js'), 'utf8').replace(/^export /gm, '');
+const managementPilotOwnerEmail=pilot.match(/===['\"]([^'\"]+@gmail\.com)['\"]/)[1];
 
 function extractFunction(name, {async = false} = {}) {
   const prefix = `${async ? 'async ' : ''}function ${name}(`;
@@ -32,7 +33,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivities: async (...args) => { queries.push({name: 'listLearningActivities', args}); return []; },
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
-  const context = vm.createContext({
+  const context = vm.createContext({isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     session, appFeatures, secondaryDomainProjects, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
     location:{hash:'#/management-hub'},history:{replaceState(){}},
@@ -92,7 +93,7 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) 
 
 function renderHarness(session, route='management') {
   const navigations = [], loads = [], shells = [];
-  const context = vm.createContext({
+  const context = vm.createContext({isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     deployment:{target:'FA',externalManagementEnabled:false},googleAccessPanel:null,
     operationalDrafts:{flush:async()=>{},restore:async()=>{}},deniedOperationalModules:new Set(),
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
@@ -111,20 +112,9 @@ function renderHarness(session, route='management') {
   return {context, navigations, loads, shells};
 }
 
-test('modo offline preserva a tela normal e troca somente o painel salvo ao redesenhar', async () => {
-  const {mountOfflineOperationalDashboard} = await import('../src/offline-operational-snapshot.js');
-  assert.match(main, /const routeKind = \{home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'\}\[route\]/);
-  assert.match(main, /route === 'home' \? document\.querySelector\('#schedule-content'\) : document\.querySelector\('\.module-view\.panel'\)/);
-  const host = fakeOfflineHost('<nav data-route="events">Eventos</nav><section id="schedule-content">Escala</section>');
-  mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia inicial</section>');
-  assert.match(host.innerHTML, /data-route="events"/);
-  assert.match(host.innerHTML, /Escala/);
-  mountOfflineOperationalDashboard(host, '<section class="offline-operational-dashboard">Cópia atualizada</section>');
-  assert.match(host.innerHTML, /data-route="events"/);
-  assert.match(host.innerHTML, /Cópia atualizada/);
-  assert.doesNotMatch(host.innerHTML, /Cópia inicial/);
+test('produção bloqueia o app em vez de montar um painel offline',()=>{
+ assert.match(main,/renderOnlineGate/);assert.doesNotMatch(main,/async function renderOfflineOperationalView/);
 });
-
 
 test('painel offline fica na área do módulo e preserva os contêineres visuais do app', async () => {
   const {offlineOperationalDashboardMarkup} = await import('../src/offline-operational-snapshot.js');
@@ -362,7 +352,7 @@ test('liberação de domínio exige perfil ativo e permissão booleana', () => {
 function individuallyReleased(permissions = {}) {
   const session = approved({managementRead: true, trainingsRead: true, ...permissions});
   session.profile.uid = session.user.uid;
-  session.user.email='wx2901@gmail.com';session.user.emailVerified=true;session.profile.email=session.user.email;
+  session.user.email=managementPilotOwnerEmail;session.user.emailVerified=true;session.profile.email=session.user.email;
   return session;
 }
 

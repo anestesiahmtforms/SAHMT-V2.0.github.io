@@ -35,7 +35,7 @@ test('late FC mount disposes itself without replacing the current module cleanup
  assert.equal(h.ctx.cleanupCurrentModule,activeCleanup);assert.equal(disposed,1);
 });
 
-const renderCode=source.slice(source.indexOf('async function render() {'),source.indexOf('async function renderOfflineOperationalView()'));
+const renderCode=source.slice(source.indexOf('async function render() {'),source.indexOf('function renderOnlineGate()'));
 function renderFixture({flush=async()=>{},cleanup=null}={}){
  const app={innerHTML:'FC',querySelector:()=>null,querySelectorAll:()=>[]};
  const ctx=vm.createContext({
@@ -46,7 +46,7 @@ function renderFixture({flush=async()=>{},cleanup=null}={}){
   cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:cleanup,startupBannerActive:false,
   deployment:{target:'FA',externalManagementEnabled:false},deniedOperationalModules:new Set(),featureEnabledForRoute:()=>true,appFeatures:{},
   shellView:()=> 'HOME',preloadOperationalDataWhenIdle(){},document:{querySelectorAll:()=>[],querySelector:()=>null},
-  loadHome:async()=>{},loadModule:async()=>{},updateInformationBanner(){},can:()=>false,updateOutboxStatus(){},navigator:{onLine:false},
+  loadHome:async()=>{},loadModule:async()=>{},updateInformationBanner(){},can:()=>false,updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
   console:{warn(){}},notice:'',labels:{},navigate(){},canOpenRestrictedModule:()=>true,importMeta:{env:{BASE_URL:'/'}}
  });
  vm.runInContext(renderCode.replaceAll('import.meta','importMeta'),ctx);

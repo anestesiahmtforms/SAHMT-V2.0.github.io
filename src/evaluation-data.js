@@ -205,7 +205,7 @@ export async function listEvaluationReviewQueue(actorUid) {
 export async function submitEvaluationRequest(type, payload, actorUid, {requestId = crypto.randomUUID().replaceAll('-', '')} = {}) {
   validateEvaluationRequest(type, payload);
   if (!validId(requestId)) throw new Error('Identificador da solicitação inválido.');
-  if (globalThis.navigator?.onLine === false) throw new Error('Conecte-se para enviar a solicitação. Seu rascunho foi preservado.');
+  if (globalThis.navigator?.onLine === false) throw new Error('Conecte-se ao servidor para enviar a solicitação. Nenhum envio foi agendado.');
   const service = await store(); await actor(service, actorUid); const {sdk, db} = service;
   const ref = sdk.doc(db, 'evaluationRequests', requestId);
   // Repeating this action reuses its ID. A completed request is never reset to PENDING.

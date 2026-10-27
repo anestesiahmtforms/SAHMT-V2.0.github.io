@@ -52,17 +52,17 @@ test('reconciliação global mantém somente os privilégios anteriores e não d
 });
 
 test('e-mail de acesso é normalizado e nunca permite usar caminhos de documentos', () => {
-  assert.equal(normalizeDocumentAccessEmail('  Person.Name+test@Example.invalid '), 'person.name+test@example.invalid');
-  for (const value of ['', 'a/b@example.invalid', 'person @example.invalid', 'person@example.invalid/path', 'invalid']) {
+  assert.equal(normalizeDocumentAccessEmail('  test-user-1@example.test '), 'test-user-1@example.test');
+  for (const value of ['', 'a/test-user-2@example.test', 'person @example.invalid', 'test-user-3@example.test/path', 'invalid']) {
     assert.throws(() => normalizeDocumentAccessEmail(value));
   }
 });
 
 test('grupo só vem de cadastro ativo, coerente e com enumeração válida', () => {
-  const email = 'person@example.invalid';
+  const email = 'test-user-3@example.test';
   const record = {id: email, email, active: true, groups: ['RESTRICTED', 'GENERAL']};
   assert.deepEqual(documentGroupsFromAccess(record, email), ['GENERAL', 'RESTRICTED']);
-  for (const patch of [{active: false}, {email: 'other@example.invalid'}, {id: 'other@example.invalid'}, {groups: ['ADMIN']}, {groups: ['GENERAL', 'GENERAL']}, {groups: null}]) {
+  for (const patch of [{active: false}, {email: 'test-user-4@example.test'}, {id: 'test-user-4@example.test'}, {groups: ['ADMIN']}, {groups: ['GENERAL', 'GENERAL']}, {groups: null}]) {
     assert.deepEqual(documentGroupsFromAccess({...record, ...patch}, email), []);
   }
   assert.deepEqual(documentGroupsFromAccess(null, email), []);
@@ -115,10 +115,10 @@ const accessSource = dataSource.slice(dataSource.indexOf('async function scopedD
   .replace("await import('./firebase-auth.js')", 'authModule');
 function accessHarness({profile = approvedManager, area = assignedDocumentArea, afterAreaRead = () => {}} = {}) {
   const calls = [];
-  const email = 'document-manager@example.invalid';
+  const email = 'test-user-5@example.test';
   const user = {uid: 'document-manager', getIdTokenResult: async () => ({claims: {email, email_verified: true, firebase: {sign_in_provider: 'google.com'}}})};
   const auth = {currentUser: user};
-  const ctx = {db: {}, identityDb: {}, managementDatabase:async()=>({}), managementProfileCollection:()=> 'users',
+  const ctx = {assertOnlineOperation(){},db: {}, identityDb: {}, managementDatabase:async()=>({}), managementProfileCollection:()=> 'users',
     managementProfileData:(_db,snapshot)=>snapshot.exists()?snapshot.data():null,
     authModule: {auth}, DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments,
     normalizeDocumentAccessEmail, documentGroupsFromAccess, doc: (_, collection, id) => ({collection, id}),
@@ -242,7 +242,7 @@ test('perfil ausente e troca de sessão durante leitura do vínculo bloqueiam an
 const listing = dataSource.slice(dataSource.indexOf('export async function listManagementDocuments('), dataSource.indexOf('export async function saveManagementDocument(')).replace('export ', '');
 function listHarness({groups = ['GENERAL'], manages = false, checkSession = () => {}} = {}) {
   const calls = [];
-  const ctx = {db: {}, managementDatabase:async()=>({}), scopedDocumentAccess: async () => ({groups, manages, checkSession}), mergeManagementDocuments,
+  const ctx = {assertOnlineOperation(){},db: {}, managementDatabase:async()=>({}), scopedDocumentAccess: async () => ({groups, manages, checkSession}), mergeManagementDocuments,
     where: (...args) => ({where: args}), orderBy: (...args) => ({orderBy: args}), limit: value => ({limit: value}),
     collection: (_, name) => name, query: (collection, ...constraints) => ({collection, constraints}),
     getDocsFromServer: async request => {calls.push(request); return {docs: [{id: 'shared-id', data: () => ({publishedAt: new Date(), active: true})}]};}};

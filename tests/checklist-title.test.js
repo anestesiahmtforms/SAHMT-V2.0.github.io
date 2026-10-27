@@ -16,12 +16,15 @@ test('saved title overrides the default without changing the arsenal number', ()
 });
 
 const manager = {active:true,access:true,permissions:{checklistManage:true}};
-const user = {uid:'manager',email:'wx2064@gmail.com',emailVerified:true};
+const ownerSource=readFileSync(new URL('../src/checklist-display.js',import.meta.url),'utf8');
+const ownerEmails=[...ownerSource.matchAll(/'([^']+@gmail\.com)'/g)].map(([,email])=>email);
+const user = {uid:'manager',email:ownerEmails[0],emailVerified:true};
 test('designated managers and five verified owners with arsenal management can edit titles', () => {
-  for (const email of ['wx2064@gmail.com','marcio.henrique82@gmail.com','WX2064@gmail.com',...Array.from({length:5},(_,i)=>`anestesiahmtforms${i?i+1:''}@gmail.com`)]) assert.equal(checklist.canEditChecklistStationTitle({...user,email}, manager), true);
-  for (const other of [{...user,email:'other@example.com'}, {...user,emailVerified:false}, {...user,uid:''}, null]) assert.equal(checklist.canEditChecklistStationTitle(other, manager), false);
+  assert.equal(ownerEmails.length,7);
+  for (const email of ownerEmails) assert.equal(checklist.canEditChecklistStationTitle({...user,email}, manager), true);
+  for (const other of [{...user,email:'other@example.test'}, {...user,emailVerified:false}, {...user,uid:''}, null]) assert.equal(checklist.canEditChecklistStationTitle(other, manager), false);
   for (const profile of [{...manager,access:false},{...manager,active:false},{...manager,permissions:{}},null]) assert.equal(checklist.canEditChecklistStationTitle(user,profile),false);
-  assert.equal(checklist.canEditChecklistStationTitle({...user,email:'other@example.com'}, {...manager,role:'administrador_app'}),false);
+  assert.equal(checklist.canEditChecklistStationTitle({...user,email:'other@example.test'}, {...manager,role:'administrador_app'}),false);
 });
 
 test('title validation normalizes whitespace and rejects empty, oversized or control text', () => {
@@ -38,7 +41,7 @@ test('title transaction preserves QR, maintenance, identity, dates and current c
   let stored = {id:'100170010',name:'Arsenal 100170010',qrCode:'QR-1',order:4,active:true,maintenance:{preventiveAnnual:'2027-01-01'},start:'2026-01-01',createdByUid:'creator',createdAt:'CREATED',version:5};
   const original = structuredClone(stored);
   let writes=0;
-  const ctx = {navigator:{onLine:true},normalizeChecklistStationTitle:checklist.normalizeChecklistStationTitle,db:{},doc:(_db,collection,id)=>({collection,id}),serverTimestamp:()=>'SERVER',runTransaction:async(_db,task)=>task({get:async()=>({exists:()=>true,data:()=>structuredClone(stored)}),update:(_ref,update)=>{stored={...stored,...update};writes++;}})};
+  const ctx = {assertOnlineOperation(){},navigator:{onLine:true},normalizeChecklistStationTitle:checklist.normalizeChecklistStationTitle,db:{},doc:(_db,collection,id)=>({collection,id}),serverTimestamp:()=>'SERVER',runTransaction:async(_db,task)=>task({get:async()=>({exists:()=>true,data:()=>structuredClone(stored)}),update:(_ref,update)=>{stored={...stored,...update};writes++;}})};
   vm.runInNewContext(source.slice(start,end).replace('export ',''),ctx);
   const saved = await ctx.saveChecklistStationTitle(original.id,' Sala 14 ','manager');
   assert.deepEqual(stored,{...original,functionLabel:'Sala 14',updatedByUid:'manager',updatedAt:'SERVER',version:6});

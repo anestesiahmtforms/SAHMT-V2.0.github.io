@@ -11,7 +11,7 @@ const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export ','');
 const shell=main.slice(main.indexOf('function shellView() {'),main.indexOf('async function loadHome()'));
 const cards=main.slice(main.indexOf('function moduleCards() {'),main.indexOf('function hasOccurrencePermission()'));
-const render=main.slice(main.indexOf('async function render() {'),main.indexOf('async function renderOfflineOperationalView()'));
+const render=main.slice(main.indexOf('async function render() {'),main.indexOf('async function updateOutboxStatus()'));
 const hubLoader=main.slice(main.indexOf('async function loadModule(route) {'),main.indexOf("  if(route === 'qmentum'){",main.indexOf('async function loadModule(route) {')))+"\nloaded.push(route);}";
 
 // Parse the actual shell. Selectors must match real attributes and ancestry;
@@ -70,7 +70,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,
     loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,canUseGovernanceHub,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
     canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
-    bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:false},
+    bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
     labels:{management:['Grupos de Gestão'],training:['Desempenho'],'management-hub':['Governança']},
     managementUtilityCards:()=>'',can:()=>false,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
@@ -82,7 +82,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
   return {ctx,app,assignments,mounts,loaded,render:()=>ctx.render()};
 }
 
-for(const route of ['management','training'])for(const sessionFactory of [authorized,limited]){
+for(const route of ['management','training'])for(const sessionFactory of [authorized]){
   test(`${route}: actual ${sessionFactory.name} footer sends FB to the Governance root`,async()=>{
     const h=harness({route,session:sessionFactory()});await h.render();
     const footer=h.app.querySelector('.'+route+'-home-button');assert.ok(footer);
@@ -98,32 +98,24 @@ for(const route of ['management','training'])for(const sessionFactory of [author
 test('FA preserves Governance while validating the profile, then mounts it after authorization',async()=>{
   const h=harness({target:'FA',route:'management-hub',session:limited()});
   await h.render();assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,[]);assert.deepEqual(h.loaded,[]);
-  assert.match(h.app.textContent,/Verificando seu perfil/);
+  assert.match(h.app.textContent,/validação do perfil/);
   h.ctx.session={...limited(),validatingProfile:false,profileFailureCode:'PROFILE_READ_FAILED'};
   await h.render();assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,[]);
-  assert.ok(h.app.querySelector('#retry-profile-access'));
+  assert.ok(h.app.querySelector('[data-profile-reconnect]'));
   h.ctx.session=authorized();await h.render();
   assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);
 });
 
-test('returning from FB keeps HOME responsive while FA validates the profile',async()=>{
-  const h=harness({target:'FA',route:'management-hub',session:limited()});
-  let reads=0;h.ctx.loadHome=async()=>{reads++;};
-  await h.render();
-  const home=h.app.querySelector('.brand');assert.ok(home);
-  for(const click of home.listeners.click||[])await click();
-  assert.equal(h.ctx.location.hash,'#/home');
-  if(shouldRenderHashChange(h.ctx.session))await h.render();
-  assert.ok(h.app.querySelector('#schedule-content'),'HOME must render even before profile confirmation');
-  assert.equal(reads,0,'restricted navigation cannot read application data');
-  assert.deepEqual(h.mounts,[]);
-  h.ctx.session=authorized();await h.render();
-  assert.equal(reads,1,'the selected page loads once FA confirms the profile');
+for(const route of ['management','training','management-hub','labels'])test(`${route} is blocked offline and only reopens with server authorization`,async()=>{
+ const h=harness({target:'FA',route,session:limited()});await h.render();
+ assert.ok(h.app.querySelector('[data-online-gate]'));assert.equal(h.app.querySelector('.brand'),null);
+ assert.deepEqual(h.loaded,[]);assert.deepEqual(h.mounts,[]);assert.equal(h.ctx.location.hash,'#/'+route);
+ h.ctx.session=authorized();h.ctx.navigator.onLine=false;await h.render();assert.ok(h.app.querySelector('[data-online-gate]'));
 });
-test('FA opens Governance for the survey without granting access to pilot modules',async()=>{
+test('FA opens Governance for surveys without granting access to pilot modules',async()=>{
   const session=authorized();session.profile.role='anestesiologista';
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(h.ctx.location.hash,'#/management-hub');assert.equal(h.mounts.length,1);
+  assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();

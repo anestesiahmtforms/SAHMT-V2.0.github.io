@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
 const data = readFileSync(join(__dirname, '../src/data.js'), 'utf8');
-test('Checklist consulta os 28 arsenais ativos e inativos e usa cache próprio', async () => {
+test('Checklist consulta os 28 arsenais ativos e inativos sem gravar cache local', async () => {
   const {readThroughSafeCache} = await import('../src/offline-cache.js');
   let constraints, cacheKey;
   const stations = Array.from({length: 28}, (_, i) => ({id: String(i), active: i < 23}));
@@ -21,7 +21,7 @@ test('Checklist consulta os 28 arsenais ativos e inativos e usa cache próprio',
   assert.equal(items.length, 28);
   assert.equal(items.filter(item => !item.active).length, 5);
   assert.ok(!constraints.some(item => item.where));
-  assert.equal(cacheKey, 'all');
+  assert.equal(cacheKey, undefined);
   await ctx.listModuleRecords('events', 'user');
   assert.ok(constraints.some(item => item.where?.[0] === 'active'));
   const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
