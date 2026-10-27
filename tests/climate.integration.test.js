@@ -14,6 +14,11 @@ test('free FE rules validate anonymous atomic writes, exact retries and closure 
   await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'climateCycles/2026'),{status:'open',survey_version:'1.0'}));
   const send=()=>{const batch=writeBatch(db);batch.set(doc(db,'climateResponses/'+id(1)),response);batch.set(doc(db,'climateComments/'+id(2)),comment);return batch.commit();};
   await assertSucceeds(send());await assertSucceeds(send());
+  for(const [group,module]of [['resident','R01'],['team','T01'],['secretaries','A01']])await assertSucceeds(setDoc(doc(db,'climateResponses/'+id(20+module.charCodeAt(0))),{...response,survey_version:'1.1',group,answers:{Q01:4,[module]:5}}));
+  await assertFails(setDoc(doc(db,'climateResponses/'+id(100)),{...response,survey_version:'1.1',group:'team',answers:{Q01:4,R01:5}}));
+  await assertFails(setDoc(doc(db,'climateResponses/'+id(101)),{...response,survey_version:'1.1',group:'a-name'}));
+  await assertFails(setDoc(doc(db,'climateResponses/'+id(102)),{...response,survey_version:'1.1'}));
+  await assertFails(setDoc(doc(db,'climateResponses/'+id(103)),{...response,group:'team'}));
   await assertFails(getDoc(doc(db,'climateResponses/'+id(1))));await assertFails(getDoc(doc(db,'climateComments/'+id(2))));
   await assertFails(setDoc(doc(db,'climateResponses/'+id(1)),{...response,answers:{Q01:5}}));
   for(const change of [{uid:'secret'},{name:'secret'},{email:'secret'},{ip:'secret'},{timestamp:'now'},{survey_cycle:'2025'},{answers:{Q01:'4'}},{answers:{Q01:6}},{answers:{Q01:'NA'}},{answers:{Q01:4,uid:'secret'}},{answers:{Q01:4,R01:4,T01:4}},{answers:{Q01:4,A01:4,T01:4}},{survey_version:'2'}])await assertFails(setDoc(doc(db,'climateResponses/'+id(3)),{...response,...change}));

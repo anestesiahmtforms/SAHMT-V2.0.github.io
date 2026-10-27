@@ -8,6 +8,7 @@ export function commitBody(payload, commentToken) {
   const input = validateSubmission(payload);
   if(!/^[a-f0-9]{32}$/.test(commentToken))throw Error('INVALID_COMMENT_TOKEN');
   const writes = [{update:{name:`${database}/documents/climateResponses/${input.submission_id}`,fields:{survey_cycle:value(input.survey_cycle),survey_version:value(input.survey_version),answers:map(input.answers)}}}];
+  if(input.group)writes[0].update.fields.group=value(input.group);
   if(Object.keys(input.comments).length)writes.push({update:{name:`${database}/documents/climateComments/${commentToken}`,fields:{survey_cycle:value(input.survey_cycle),comments:map(input.comments)}}});
   return {writes};
 }

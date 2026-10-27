@@ -1,4 +1,6 @@
-export const VERSION = '1.0';
+export const VERSION = '1.1';
+export const GROUPS = {resident: 'Residentes', secretaries: 'Secretárias', team: 'Equipe'};
+export const groupForModule = value => ({resident:'resident',administrative:'secretaries',preceptor:'team',clinical:'team'}[value] || 'unspecified');
 export const CYCLE = '2026';
 export const DIMENSIONS = [
   ['Propósito e pertencimento', ['Compreendo os objetivos e prioridades do SAHMT.', 'Sinto orgulho de integrar esta equipe.', 'Percebo respeito às diferentes experiências e gerações.', 'Sinto que minhas contribuições são valorizadas.']],
@@ -21,7 +23,10 @@ export const OPEN = questions('O', ['Qual é o principal ponto forte do SAHMT qu
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const allowedKeys = (value, keys) => isObject(value) && Object.keys(value).every(key => keys.includes(key));
 export function validateSubmission(input) {
-  if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments']) || input.consent !== true || input.survey_version !== VERSION || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
+  if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments', 'group']) || input.consent !== true || !['1.0', VERSION].includes(input.survey_version) || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
+  const group = input.group ?? 'unspecified';
+  if (!['resident','secretaries','team','unspecified'].includes(group) || (input.survey_version === VERSION && !Object.hasOwn(input,'group'))) throw Error('INVALID_GROUP');
+  if (input.survey_version === '1.0' && group !== 'unspecified') throw Error('INVALID_LEGACY_GROUP');
   const ids = [...COMMON, ...Object.values(MODULES).flat()].map(q => q.id);
   if (!allowedKeys(input.answers, ids) || !COMMON.some(q => Number.isInteger(input.answers[q.id]))) throw Error('INVALID_ANSWERS');
   const answers = {};
@@ -30,11 +35,12 @@ export function validateSubmission(input) {
     answers[id] = value;
   }
   if (Object.values(MODULES).filter(qs => qs.some(q => Object.hasOwn(answers, q.id))).length > 1) throw Error('MIXED_MODULES');
+  if (input.survey_version === VERSION) for (const [key,qs] of Object.entries(MODULES)) if (qs.some(q => Object.hasOwn(answers,q.id)) && groupForModule(key) !== group) throw Error('GROUP_MODULE_MISMATCH');
   if (!allowedKeys(input.comments, OPEN.map(q => q.id))) throw Error('INVALID_COMMENTS');
   const comments = {};
   for (const [id, value] of Object.entries(input.comments)) {
     if (typeof value !== 'string' || value.length > 1500) throw Error('INVALID_COMMENT');
     if (value.trim()) comments[id] = value.trim();
   }
-  return {survey_version: VERSION, survey_cycle: CYCLE, submission_id: input.submission_id, answers, comments};
+  return {survey_version: input.survey_version, survey_cycle: CYCLE, submission_id: input.submission_id, answers, comments, ...(Object.hasOwn(input,'group') ? {group} : {})};
 }

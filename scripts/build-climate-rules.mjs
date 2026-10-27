@@ -11,9 +11,15 @@ const block=`
     function climateAnswer(v) { return v == 'NA' || (v is int && v >= 1 && v <= 5); }
     function climateResponse(d) {
       let a = d.get('answers', {});
-      return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers']) &&
+      return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.keys().hasAll(['survey_cycle', 'survey_version', 'answers']) &&
-        d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' && a is map &&
+        d.survey_cycle == '${CYCLE}' && d.survey_version in ['1.0', '${VERSION}'] && a is map &&
+        d.get('group', 'unspecified') in ['resident', 'secretaries', 'team', 'unspecified'] &&
+        (d.survey_version != '1.0' || d.get('group', 'unspecified') == 'unspecified') &&
+        (d.survey_version == '1.0' || (d.keys().hasAll(['group']) &&
+          (!a.keys().hasAny(${strings(MODULES.resident.map(q=>q.id))}) || d.group == 'resident') &&
+          (!a.keys().hasAny(${strings(MODULES.preceptor.map(q=>q.id))}) || d.group == 'team') &&
+          (!a.keys().hasAny(${strings(MODULES.administrative.map(q=>q.id))}) || d.group == 'secretaries'))) &&
         a.keys().hasOnly(${strings(ids)}) &&
         (${COMMON.map(q=>`a.get('${q.id}', 'NA') is int`).join(' || ')}) &&
         ${ids.map(id=>`climateAnswer(a.get('${id}', 'NA'))`).join(' &&\n        ')} &&

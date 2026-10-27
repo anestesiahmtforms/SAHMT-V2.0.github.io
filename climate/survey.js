@@ -1,4 +1,4 @@
-import {COMMON, DIMENSIONS, MODULES, OPEN, VERSION, CYCLE} from '../climate-domain/schema.js';
+import {COMMON, DIMENSIONS, MODULES, OPEN, VERSION, CYCLE, groupForModule} from '../climate-domain/schema.js';
 import './style.css';
 import {sendSubmission} from './transport.js';
 const app = document.querySelector('#app');
@@ -7,7 +7,7 @@ const renderQuestion = q => `<fieldset><legend>${q.id}. ${q.text}</legend><div c
 app.innerHTML = `<header><p class="eyebrow">SAHMT · ENQUETES E CONSULTAS</p><h1>Pesquisa de clima organizacional</h1><p>Ciclo ${CYCLE} · últimos 6 meses · 8–12 minutos</p></header>
 <section class="notice"><h2>Antes de começar</h2><p>Participação voluntária. As respostas não serão utilizadas para avaliação de desempenho. O formulário não solicita nome, e-mail, matrícula ou login. Não inclua dados de pessoas ou pacientes nos comentários.</p><p>Divulgaremos apenas resultados agregados após o encerramento. Grupos pequenos serão protegidos e a equipe administrativa não terá resultados isolados. Comentários precisam de revisão e desidentificação antes de qualquer compartilhamento.</p><p>O serviço de hospedagem e a infraestrutura podem produzir registros técnicos, incluindo IP. O código da pesquisa não os inclui nas respostas, mas não podemos prometer anonimato absoluto. Metadados técnicos de gravação podem permitir que administradores relacionem comentários e respostas. Esta página não usa rastreadores ou armazenamento local de respostas. Ao sair ou recarregar, o rascunho será perdido.</p><p>Este é um instrumento institucional autoral, inspirado em temas de qualidade e segurança; não é um questionário oficial ou validado pela Accreditation Canada.</p></section>
 <form><label class="consent"><input type="checkbox" name="consent" required> Li as informações e concordo em participar voluntariamente.</label>
-<label class="profile">Vínculo funcional (opcional)<select name="module"><option value="none">Prefiro não informar</option><option value="resident">Residente</option><option value="preceptor">Anestesiologista/preceptor</option><option value="clinical">Anestesiologista sem atividade de preceptoria</option><option value="administrative">Equipe administrativa</option></select></label><p>O vínculo seleciona perguntas adicionais; não será salvo como campo de perfil. As perguntas adicionais respondidas ainda podem indicar sua função.</p>
+<label class="profile">Grupo e atividade (opcional)<select name="module"><option value="none">Prefiro não informar</option><option value="resident">Residentes</option><option value="preceptor">Equipe — anestesiologista/preceptor</option><option value="clinical">Equipe — anestesiologista sem preceptoria</option><option value="administrative">Secretárias</option></select></label><p>Será salvo apenas o grupo escolhido: residentes, secretárias ou equipe. A escolha também seleciona perguntas adicionais. Você pode preferir não informar. Como há duas secretárias, seus resultados numéricos não serão divulgados separadamente. Não haverá total de pontuações que permita deduzi-los por subtração.</p>
 <p>Você pode deixar itens em branco ou marcar N/A. Para enviar, responda pelo menos um item comum de 1 a 5.</p><p id="progress" role="status"></p>
 ${DIMENSIONS.map(([label], i) => `<section><h2>${i + 1}. ${label}</h2>${COMMON.slice(i * 4, i * 4 + 4).map(renderQuestion).join('')}</section>`).join('')}
 <section id="module" hidden></section><section><h2>Comentários opcionais</h2><p>Evite nomes, datas exatas, casos clínicos ou detalhes que identifiquem você ou outras pessoas. Não use este formulário para urgências ou notificações assistenciais.</p>${OPEN.map(q => `<label class="open">${q.id}. ${q.text}<textarea name="${q.id}" maxlength="1500" rows="3"></textarea></label>`).join('')}</section>
@@ -41,7 +41,7 @@ form.addEventListener('submit', async event => {
     }
     if (!COMMON.some(q => Number.isInteger(answers[q.id]))) { status.textContent = 'Responda pelo menos um item comum de 1 a 5.'; return; }
     for (const q of OPEN) if (data.get(q.id)?.trim()) comments[q.id] = data.get(q.id).trim();
-    pendingPayload = {survey_version: VERSION, survey_cycle: CYCLE, submission_id: submissionId, consent: true, answers, comments};
+    pendingPayload = {survey_version: VERSION, survey_cycle: CYCLE, submission_id: submissionId, consent: true, answers, comments, group: groupForModule(data.get('module'))};
   }
   sending = true;
   form.querySelectorAll('input,select,textarea,button').forEach(control => { control.disabled = true; });

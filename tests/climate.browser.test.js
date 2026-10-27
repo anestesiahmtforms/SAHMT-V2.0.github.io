@@ -47,7 +47,8 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
       assert.equal(received.length, 2); assert.deepEqual(received[0].data, received[1].data);
       assert.deepEqual(Object.keys(received[0].data), ['writes']);
       const writes=received[0].data.writes;
-      assert.deepEqual(Object.keys(writes[0].update.fields).sort(),['answers','survey_cycle','survey_version']);
+      assert.deepEqual(Object.keys(writes[0].update.fields).sort(),['answers','group','survey_cycle','survey_version']);
+      assert.equal(writes[0].update.fields.group.stringValue,'unspecified');
       assert.deepEqual(writes[0].update.fields.answers.mapValue.fields,{Q01:{integerValue:'4'}});
       assert.notEqual(writes[0].update.name.split('/').at(-1),writes[1].update.name.split('/').at(-1));
       for (const h of ['authorization','cookie','referer']) assert.equal(received[0].headers[h], undefined);

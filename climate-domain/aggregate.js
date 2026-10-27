@@ -1,7 +1,5 @@
-import {COMMON, DIMENSIONS, MODULES, VERSION, CYCLE} from './schema.js';
+import {COMMON, DIMENSIONS, GROUPS, VERSION, CYCLE} from './schema.js';
 export const MIN_GROUP = 5;
-// A single immutable snapshot per closed cycle. No role filters or administrative module.
-// Suppress on the number of PEOPLE with numeric answers, including complementary suppression.
 export function summarize(rows, ids, total) {
   let favorable = 0, denominator = 0;
   for (const id of ids) {
@@ -15,22 +13,21 @@ export function summarize(rows, ids, total) {
 export function aggregate(rows, cycle = CYCLE) {
   if (rows.length < MIN_GROUP) throw Error('INSUFFICIENT_RESPONDENTS');
   const ids = COMMON.map(q => q.id);
-  const moduleRespondents = rows.filter(row => [...MODULES.resident, ...MODULES.preceptor].some(q => Object.hasOwn(row.answers, q.id))).length;
-  const residual = rows.length - moduleRespondents;
-  const releaseModules = residual === 0 || residual >= MIN_GROUP;
   return {
-    survey_cycle: cycle, survey_version: VERSION, submissions: rows.length,
-    participation: {numerator: rows.length, denominator: 60, percent: Math.round(rows.length / 60 * 1000) / 10, uniquePeopleVerified: false},
-    general: summarize(rows, ids, rows.length),
-    dimensions: DIMENSIONS.map(([label], i) => ({label, score: summarize(rows, ids.slice(i * 4, i * 4 + 4), rows.length)})),
-    psychologicalSafety: summarize(rows, ids.slice(12, 16), rows.length),
-    safetyCulture: summarize(rows, [13, 14, 15, 24, 25, 26, 27].map(i => ids[i]), rows.length),
-    contribution: summarize(rows, ['Q30'], rows.length), improvementTrust: summarize(rows, ['Q32'], rows.length),
-    modules: Object.fromEntries(['resident', 'preceptor'].map(key => {
-      const selected = rows.filter(row => MODULES[key].some(q => Object.hasOwn(row.answers, q.id)));
-      // Prevent deduction of a small complementary group from the total.
-      const safe = releaseModules && selected.length >= MIN_GROUP && (rows.length === selected.length || rows.length - selected.length >= MIN_GROUP);
-      return [key, safe ? summarize(selected, MODULES[key].map(q => q.id), selected.length) : null];
-    }))
+    survey_cycle: cycle, survey_version: VERSION,
+    participation: {suppressed:true,uniquePeopleVerified:false},
+    // No pooled scores: total minus the two released groups must not reveal the two secretaries.
+    groups: Object.fromEntries(Object.entries(GROUPS).map(([key,label]) => {
+      const selected = rows.filter(row => row.group === key);
+      if (key === 'secretaries' || selected.length < MIN_GROUP) return [key,{label,suppressed:true,reason:key==='secretaries'?'Não divulgado para preservar o anonimato das duas secretárias.':'Não divulgado: menos de cinco respostas no grupo.'}];
+      return [key,{
+        label,suppressed:false,general:summarize(selected,ids,selected.length),
+        dimensions:DIMENSIONS.map(([label],i)=>({label,score:summarize(selected,ids.slice(i*4,i*4+4),selected.length)})),
+        psychologicalSafety:summarize(selected,ids.slice(12,16),selected.length),
+        safetyCulture:summarize(selected,[13,14,15,24,25,26,27].map(i=>ids[i]),selected.length),
+        contribution:summarize(selected,['Q30'],selected.length),improvementTrust:summarize(selected,['Q32'],selected.length)
+      }];
+    })),
+    methodology:'Resultados separados de residentes, secretárias e equipe. Sem total de pontuações ou cruzamentos. Respostas sem grupo informado, inclusive anteriores à versão 1.1, não são atribuídas a um grupo.'
   };
 }

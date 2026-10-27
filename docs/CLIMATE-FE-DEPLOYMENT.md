@@ -1,5 +1,11 @@
 # Pesquisa de clima — publicação gratuita no FE / FA
 
+## Separação solicitada — versão de coleta 1.1
+
+O painel apresenta somente **Residentes**, **Secretárias** e **Equipe**. Equipe inclui anestesiologistas com e sem preceptoria. O grupo é opcional no formulário e é salvo como enumeração, sem nome, e-mail, UID ou IP; comentários não recebem o campo de grupo. Respostas anteriores sem classificação permanecem sem grupo e não são inferidas automaticamente. Abas antigas da versão 1.0 continuam aceitas sem classificação.
+
+Residentes e equipe exigem pelo menos cinco respostas válidas por item. Secretárias permanecem sempre sem números, pois são apenas duas participantes no universo institucional. Não são publicados escores gerais combinados nem adesão total, impedindo dedução por subtração das pontuações e da participação do grupo pequeno. A supressão vale para o documento agregado persistido, além da apresentação do painel. O relatório anterior não é reclassificado nem sobrescrito; a publicação por ciclo continua imutável.
+
 Instrumento baseado no [Google Doc institucional, versão 1.0](https://docs.google.com/document/d/1dtn8JSzE3QYG4ZZQBAxtRCAKfEBnyJE7z599OBo2sKE/edit). É autoral, não oficial ou validado Qmentum.
 
 ## Endereços e arquitetura
@@ -12,11 +18,11 @@ Instrumento baseado no [Google Doc institucional, versão 1.0](https://docs.goog
 
 O formulário não exige login e não importa Firebase Auth, Analytics ou código de sessão do FA. Envia um commit REST diretamente ao Firestore, com `credentials: omit` e `no-referrer`. As regras Firebase são a validação de segurança, independente do JavaScript. O painel usa autenticação FE separada, persistida somente em memória.
 
-Os 32 itens comuns, 8 dimensões, 3 módulos condicionais de 5 itens e 5 comentários opcionais seguem o documento mestre. Perfil é opcional e não é persistido como campo, mas o módulo escolhido pode indicar a função. Consentimento é necessário na interface; permite-se branco e N/A, com pelo menos um item comum numérico.
+Os 32 itens comuns, 8 dimensões, 3 módulos condicionais de 5 itens e 5 comentários opcionais seguem o documento mestre. O grupo opcional é persistido conforme a separação descrita acima; o módulo escolhido também pode indicar a função. Consentimento é necessário na interface; permite-se branco e N/A, com pelo menos um item comum numérico.
 
 ## Armazenamento e acesso
 
-- `climateResponses/{token}`: somente `survey_cycle`, `survey_version` e `answers`.
+- `climateResponses/{token}`: somente `survey_cycle`, `survey_version`, `answers` e a enumeração opcional `group`.
 - `climateComments/{outroToken}`: somente `survey_cycle` e `comments`.
 - `climateCycles/{ciclo}`: configuração administrativa de abertura/fechamento, sem leitura ou escrita pelo cliente.
 - `climateReports/{ciclo}`: snapshot final agregado, sem escrita cliente.
@@ -36,15 +42,15 @@ Não há promessa de anonimato absoluto. O código não coloca nome, e-mail, UID
 
 A auditoria de 27/10/2026 encontrou o FE sem faturamento, Google habilitado, domínio `outros-48120.web.app` autorizado, sem site anterior publicado, sem sinks externos de logs e sem exclusões configuradas. Os buckets padrão retêm logs gerais por 30 dias e auditoria obrigatória por 400 dias. Isso não prova que todos os serviços deixem de registrar IP. Esses logs não foram apagados nem a retenção foi alterada. Não se consultaram respostas reais na auditoria.
 
-Não há garantia de uma resposta por pessoa nem verificação de elegibilidade: recarregar ou abrir outro navegador permite novo envio. O reenvio na mesma página mantém o mesmo conteúdo. A adesão é estimada por envios/60, pode superar 100% e não representa participantes únicos confirmados. A coleta pública pode sofrer spam e esgotar a cota gratuita compartilhada do Firestore. O plano Spark limita o serviço por quota; não foi vinculada conta de cobrança. Monitorar uso e disponibilidade durante o ciclo.
+Não há garantia de uma resposta por pessoa nem verificação de elegibilidade: recarregar ou abrir outro navegador permite novo envio. O reenvio na mesma página mantém o mesmo conteúdo. A adesão total não é divulgada para proteger a participação de grupos pequenos. A coleta pública pode sofrer spam e esgotar a cota gratuita compartilhada do Firestore. O plano Spark limita o serviço por quota; não foi vinculada conta de cobrança. Monitorar uso e disponibilidade durante o ciclo.
 
 Não publicar comentários literais ou detalhados, módulos administrativos isolados ou resultados individuais. Designar custodiante dos dados brutos, revisão/desidentificação de textos e prazo institucional de retenção/descarte, incluindo cópias e backups. Nenhuma exclusão automática de dados institucionais está configurada.
 
 ## Agregação
 
-Consolidação somente após fechamento, com criação de um snapshot imutável por ciclo. Sem atualização em tempo real ou filtros por função. N/A e branco ficam fora do denominador. Cada item precisa de pelo menos 5 respondentes numéricos; complementos entre 1–4 também suprimem o resultado. Se qualquer item falhar, seu composto/dimensão é suprimido. Os módulos de residentes e preceptores têm proteção de complementos e da diferença para o total. O módulo administrativo nunca é publicado.
+Consolidação somente após fechamento, com criação de um snapshot imutável por ciclo. Sem atualização em tempo real ou cruzamentos. N/A e branco ficam fora do denominador. Cada item precisa de pelo menos 5 respondentes numéricos dentro do grupo; complementos entre 1–4 também suprimem o resultado. Se qualquer item falhar, seu composto/dimensão é suprimido. Os resultados das secretárias e do módulo administrativo nunca são publicados.
 
-O painel mostra adesão estimada, favorabilidade geral e por dimensão, segurança psicológica, cultura de segurança, intenção de contribuição, confiança no ciclo de melhoria, módulos elegíveis e indicadores das ações. Ciclos anteriores publicados permanecem visíveis para comparação. Um novo ciclo exige atualização editorial deliberada de `climate-domain/schema.js` e recompilação das regras e páginas, preservando snapshots antigos.
+O painel mostra favorabilidade e dimensões, segurança psicológica, cultura de segurança, intenção de contribuição e confiança no ciclo de melhoria separadamente para residentes e equipe quando elegíveis; secretárias têm somente o aviso de sigilo. Indicadores administrativos de ações permanecem separados. Não há números gerais combinados. Um novo ciclo exige atualização editorial deliberada de `climate-domain/schema.js` e recompilação das regras e páginas, preservando snapshots antigos.
 
 ## Operação
 
