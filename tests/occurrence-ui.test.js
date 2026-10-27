@@ -65,6 +65,13 @@ test('permission or network failures never create a secondary connection',async(
  }
  assert.match(occurrenceCatalogErrorMessage(Error('OCCURRENCE_PERMISSION_DENIED')),/permissão/);
 });
+
+test('a stalled FC catalogue expires and a new attempt can open without restarting',async()=>{
+ let hang=true;const options={uid:'synthetic',isCurrent:()=>true,timeoutMs:20,repository:{loadCatalog:()=>hang?new Promise(()=>{}):Promise.resolve({catalogs:{ok:[]}})}};
+ await assert.rejects(loadOccurrenceCatalogForSession(options),{code:'deadline-exceeded'});
+ hang=false;assert.deepEqual(await loadOccurrenceCatalogForSession(options),{catalogs:{ok:[]}});
+ assert.match(occurrenceCatalogErrorMessage({code:'deadline-exceeded'}),/novamente no formulário/);
+});
 test('grupos mostram os dez formulários e removem o atalho oncológico',()=>{
   const markup=['A','B','C','D'].map(id=>occurrenceCategoryMarkup(id,{canWrite:true})).join('');
   assert.equal((markup.match(/data-occurrence-form="F\d\d"/g)||[]).length,10);

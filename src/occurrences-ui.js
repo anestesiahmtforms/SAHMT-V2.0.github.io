@@ -1,6 +1,7 @@
 import {OCCURRENCE_GROUPS, getOccurrenceForm, validateOccurrenceValues} from './occurrence-schema.js';
 import {createOccurrenceRepository} from './occurrence-data.js';
 import {enqueueOccurrenceSubmission, listUnsettledOperations} from './outbox.js';
+import {withinDeadline} from './async-deadline.js';
 
 const FORM_ORDER = Object.freeze({A:['F01','F02','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
 const ICONS = Object.freeze({
@@ -66,9 +67,9 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
 const recoverableCatalogErrors = new Set(['OCCURRENCE_SESSION_INVALID', 'OCCURRENCE_PERMISSION_DENIED',
   'OCCURRENCE_CATALOG_PERMISSION_DENIED']);
 
-export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent}={}) {
+export async function loadOccurrenceCatalogForSession({repository,uid,isCurrent,timeoutMs=8000}={}) {
   if(!isCurrent())throw new Error('OCCURRENCE_SESSION_CHANGED');
-  const result=await repository.loadCatalog({uid});
+  const result=await withinDeadline(()=>repository.loadCatalog({uid}),{timeoutMs});
   if(!isCurrent())throw new Error('OCCURRENCE_SESSION_CHANGED');
   return result;
 }
@@ -104,6 +105,7 @@ export function occurrenceQueueFailureMessage(error) {
 }
 
 export function occurrenceCatalogErrorMessage(error) {
+  if(error?.code==='deadline-exceeded')return 'O catálogo não respondeu no prazo. Toque novamente no formulário para tentar de novo ou use VOLTAR.';
   if (error?.message==='OCCURRENCE_PERMISSION_DENIED'||error?.message==='OCCURRENCE_CATALOG_PERMISSION_DENIED')
     return 'Seu perfil não tem permissão para ler o catálogo. Entre novamente no app.';
   if (error?.message==='OCCURRENCE_FC_CONNECTION_UNAVAILABLE'||error?.message==='OCCURRENCE_SESSION_INVALID')
@@ -170,16 +172,26 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     } catch {if(isCurrent())auditRoot.innerHTML='<p class="empty-state">Não foi possível carregar a auditoria autorizada.</p>';}
   };
   const categoryHost=root.querySelector('[data-occurrence-category-host]');
+  const showCategory=groupId=>{
+    categoryHost.innerHTML=occurrenceCategoryMarkup(groupId,{canWrite:access.write});
+    const dialog=categoryHost.querySelector('dialog');
+    categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>{if(saving)return;cancelCatalogLoad(dialog);dialog.close();});
+    dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();else cancelCatalogLoad(dialog);});
+    dialog.addEventListener('close',()=>cancelCatalogLoad(dialog));
+    if(access.write)categoryHost.querySelectorAll('[data-occurrence-form]').forEach(launch=>launch.addEventListener('click',()=>void open(launch.dataset.occurrenceForm)));
+    dialog.showModal();return dialog;
+  };
   const open=async (formId,{direct=false}={})=>{
-    if(!access.write||!isCurrent()||saving||loading)return;
+    if(!isCurrent()||saving||loading)return;
+    if(!access.write){moduleStatus.textContent='Seu perfil permite consultar registros, mas não tem autorização para abrir um novo registro.';return;}
     const form=getOccurrenceForm(formId);if(!form)return;
-    const categoryDialog=categoryHost.querySelector('dialog');
-    const categoryStatus=direct?root.querySelector('.occurrence-module-status'):categoryHost.querySelector('.occurrence-category-status');
+    const categoryDialog=direct?showCategory(form.group):categoryHost.querySelector('dialog');
+    const categoryStatus=categoryHost.querySelector('.occurrence-category-status');
     const loadSequence=++catalogLoadSequence;
-    const currentLoad=()=>loadSequence===catalogLoadSequence&&isCurrent()&&(direct||categoryDialog?.open);
+    const currentLoad=()=>loadSequence===catalogLoadSequence&&isCurrent()&&categoryDialog?.open;
     activeCatalogDialog=categoryDialog;
     loading=true;
-    if(categoryStatus)categoryStatus.textContent='Carregando…';
+    if(categoryStatus)categoryStatus.textContent='Carregando opções do formulário…';
     try {
       await ensureSession();
       const result=await loadOccurrenceCatalogForSession({repository,uid,isCurrent:currentLoad});
@@ -189,6 +201,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     finally {if(loadSequence===catalogLoadSequence){loading=false;activeCatalogDialog=null;}}
     if(!currentLoad())return;
     if(categoryStatus)categoryStatus.textContent='';
+    if(direct)categoryDialog.close();
     host.innerHTML=occurrenceFormMarkup(form,catalogs,displayName);
     const dialog=host.querySelector('dialog'), formElement=host.querySelector('form'), status=host.querySelector('.occurrence-form-status'), saveButton=host.querySelector('[data-occurrence-save]'), cancelButton=host.querySelector('[data-occurrence-cancel]');
     host.querySelectorAll('[data-filter-select]').forEach(input=>input.addEventListener('input',()=>{
@@ -228,13 +241,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(!isCurrent()||saving||loading)return;
     const forms=FORM_ORDER[button.dataset.occurrenceGroup];
     if(forms?.length===1){void open(forms[0],{direct:true});return;}
-    categoryHost.innerHTML=occurrenceCategoryMarkup(button.dataset.occurrenceGroup,{canWrite:access.write});
-    const dialog=categoryHost.querySelector('dialog');
-    categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>{if(saving)return;cancelCatalogLoad(dialog);dialog.close();});
-    dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();else cancelCatalogLoad(dialog);});
-    dialog.addEventListener('close',()=>cancelCatalogLoad(dialog));
-    if(access.write)categoryHost.querySelectorAll('[data-occurrence-form]').forEach(launch=>launch.addEventListener('click',()=>void open(launch.dataset.occurrenceForm)));
-    dialog.showModal();
+    showCategory(button.dataset.occurrenceGroup);
   }));
   void loadRecords();void loadAudit();
   return ()=>{disposed=true;catalogLoadSequence++;loading=false;activeCatalogDialog=null;repository.clear();window.removeEventListener('sahmt-write-queued',onOutboxChange);window.removeEventListener('sahmt-write-synced',onOutboxChange);window.removeEventListener('sahmt-write-rejected',onOutboxChange);root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};

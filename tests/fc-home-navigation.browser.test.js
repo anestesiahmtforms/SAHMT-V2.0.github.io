@@ -99,11 +99,12 @@ test('FC to Home remains usable with delayed reads, rapid reentry and pending lo
    if(i===1)await page.keyboard.press('Escape');else await page.locator('[data-occurrence-group-cancel]').click({timeout:2000});
    await goHome();
   }
-  // Single-form categories keep the page's Home control available while loading.
+  // Single-form categories now show their loading state in a cancellable dialog.
   await page.evaluate(()=>location.hash='#/occurrences');
   await page.waitForSelector('[data-occurrence-group="B"]');
   await page.locator('[data-occurrence-group="B"]').click();
   await page.waitForFunction(()=>window.fcFixture.catalogs.length===6);
+  await page.locator('[data-occurrence-group-cancel]').click({timeout:2000});
   await goHome();
   await page.evaluate(()=>window.fcFixture.catalogs[5]());
   await page.waitForTimeout(100);
