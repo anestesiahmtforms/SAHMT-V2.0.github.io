@@ -33,3 +33,7 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 @media(prefers-reduced-motion:reduce){.management-hub-button{transition:none}}
 
 @media(max-height:580px){.management-hub-header{padding:7px 10px;gap:5px 8px}.management-hub-diamond{width:32px;height:32px}.management-hub-header h2{min-height:30px;font-size:1.05rem}.management-hub-button{padding:4px 8px;font-size:.8rem}.management-hub-medallion{flex-basis:28px;width:28px;height:28px}.management-hub-medallion .management-hub-icon{width:20px;height:20px}.management-hub-arrow{flex-basis:18px;width:18px;height:18px;font-size:1.1rem}.management-hub-footer button{min-height:38px}.management-hub-footer{padding:4px 12px 10px}}
+
+.app-shell .management-hub-header .management-hub-user-row{justify-content:flex-end;flex-wrap:wrap;gap:6px;min-width:0}
+.management-hub-user-row [data-hub-sync]:empty{display:none}
+.app-shell .management-hub-header .sync-status-button:not(.sync-status-button--synced){width:auto;max-width:100%;white-space:normal;overflow-wrap:anywhere;font-size:.62rem;line-height:1.2}
