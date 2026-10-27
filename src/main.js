@@ -1826,7 +1826,7 @@ async function loadOfflineView(target) {
         : item.type === 'eventEdits'
           ? `Evento ${item.resourceId} · versão base ${Number(item.payload.expectedVersion)}`
         : `ID ${item.resourceId}`;
-      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${operationStatus}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${retryInfo}${resolution}</li>`;
+      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${operationStatus}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${retryInfo}${manualConfirmationRequired && item.lastError ? `<small class="sync-error">Última tentativa não confirmada: ${escapeHtml(item.lastError)}${item.lastErrorCode ? ` · ${escapeHtml(item.lastErrorCode)}` : ''}</small>` : ''}${resolution}</li>`;
     }).join('');
     const trainingRows = pendingProgress.map((item) => {
       const percent = item.duration ? Math.min(100, Math.round((item.lastPosition / item.duration) * 100)) : 0;

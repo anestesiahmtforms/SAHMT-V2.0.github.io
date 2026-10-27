@@ -1995,3 +1995,56 @@ test('liberação individual dos módulos é administrada pelo gestor de usuári
   await assertFails(updateDoc(doc(reader, 'users', 'release-reader'), {'permissions.admin': true}));
 });
 
+
+
+test('Eventos: usuário sem administração cria pela escala e confirma reenvio sem ler um documento inexistente', async () => {
+  const uid = 'events-writer-no-admin', day = '2026-10-27';
+  await seedProfiles([accessProfile(uid, {eventsWrite: true}, {sigla: 'AB'})]);
+  await seedEventCatalog();
+  const db = testEnvironment.authenticatedContext(uid).firestore();
+  await testEnvironment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'scheduleDays', day), {
+      id: day, date: day, positions: [{position: 1, sigla: 'AB'}],
+      highlights: {siglas: [], events: []}, version: 1
+    });
+  });
+  const source = await readFile(new URL('../src/data.js', import.meta.url), 'utf8');
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
+  let failEventCommit = false;
+  const bindings = {db, identityDb: db, doc, runTransaction, writeBatch: database => failEventCommit
+    ? {set() {}, commit: async () => {throw Object.assign(new Error('Indisponível no teste'), {code: 'unavailable'});}}
+    : writeBatch(database), serverTimestamp,
+    getDocFromServer, stageOperationalWrite, navigator: {onLine: true}, isOfflineRuntimeForced: () => false,
+    mayUseOfflineCache: () => false, writeSafeCache: async () => {}};
+  // Keep SDK payloads in the same realm as Firestore's plain-object checks.
+  const runtime = new Function(...Object.keys(bindings),
+    section('function buildRecordBatch(', 'export async function createOperationalRecord(') +
+    section('async function sendOperationalRecordInFirestore(', 'async function createScheduledEvent(') +
+    section('async function createScheduledEvent(', 'const flushPromises =') +
+    'return {sendOperationalRecordInFirestore, commitOperationalMutationOnce};')(...Object.values(bindings));
+  const data = {date: day, memberSigla: 'AB', scheduleSigla: 'AB', memberStatus: 'AB', eventType: 'ATRASO',
+    description: '', delayMultiple: 1, substitute: '', shift: '', payer: 'Membro', creditor: 'Equipe', amountToPay: 100, status: 'OPEN'};
+  const requestId = 'scheduled-event-no-admin';
+  await assertFails(getDocFromServer(doc(db, 'events', requestId)));
+  const result = await assertSucceeds(runtime.sendOperationalRecordInFirestore('events', data, {uid, requestId}));
+  assert.equal(result.pendingFirestore, false);
+  const saved = await assertSucceeds(getDocFromServer(doc(db, 'events', requestId)));
+  assert.equal(saved.data().createdByUid, uid);
+  assert.equal(saved.data().version, 1);
+  const repeat = await assertSucceeds(runtime.sendOperationalRecordInFirestore('events', data, {uid, requestId}));
+  assert.equal(repeat.pendingFirestore, false);
+  await assert.rejects(runtime.sendOperationalRecordInFirestore('events', {...data, delayMultiple: 2, amountToPay: 200}, {uid, requestId}), {code: 'stale-version'});
+  assert.equal((await getDocFromServer(doc(db, 'events', requestId))).data().amountToPay, 100);
+  const schedule = await getDocFromServer(doc(db, 'scheduleDays', day));
+  assert.deepEqual(schedule.data().highlights.events, ['EVENTO:AB:AB:' + requestId]);
+  assert.equal(schedule.data().version, 2);
+  const legacyData = {...data, scheduleSigla: ''}, legacyId = 'legacy-event-no-admin';
+  await assertSucceeds(runtime.commitOperationalMutationOnce('events', legacyData, uid, legacyId));
+  await assertSucceeds(runtime.commitOperationalMutationOnce('events', legacyData, uid, legacyId));
+  assert.equal((await getDocFromServer(doc(db, 'events', legacyId))).data().version, 1);
+  failEventCommit = true;
+  await assert.rejects(runtime.commitOperationalMutationOnce('events', legacyData, uid, 'not-confirmed-event'), {code: 'unavailable'});
+  const other = testEnvironment.authenticatedContext('other-events-user').firestore();
+  await seedProfiles([accessProfile('other-events-user', {eventsWrite: true}, {sigla: 'CD'})]);
+  await assertFails(getDocFromServer(doc(other, 'events', requestId)));
+});

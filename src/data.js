@@ -2560,6 +2560,15 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
 }
 
 async function commitOperationalMutationOnce(collectionName, data, uid, requestId) {
+  if (collectionName === 'events') {
+    const batch = writeBatch(db);
+    buildRecordBatch(batch, {collectionName, data, uid, requestId});
+    try {await batch.commit();}
+    catch (error) {
+      if (!await confirmCommittedMutation({collectionName, data, uid, requestId}).catch(() => false)) throw error;
+    }
+    return {id: requestId, pendingFirestore: false};
+  }
   const reference = doc(db, collectionName, requestId);
   return runTransaction(db, async transaction => {
     const existing = await transaction.get(reference);
@@ -2581,14 +2590,9 @@ async function createScheduledEvent(data, {uid, requestId}) {
   const scheduleRef = doc(db, 'scheduleDays', day);
   const marker = `EVENTO:${String(data.scheduleSigla).trim().toUpperCase()}:${String(data.memberSigla || '-').trim().toUpperCase()}:${requestId}`;
   const result = await runTransaction(db, async (transaction) => {
-    const existing = await transaction.get(doc(db, 'events', requestId));
-    if (existing.exists()) {
-      const saved = existing.data();
-      if (saved.clientMutationId !== requestId || saved.createdByUid !== uid || !Object.entries(data).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)))) {
-        throw Object.assign(new Error('O evento remoto mudou. Compare a cópia local antes de reenviar.'), {code: 'stale-version'});
-      }
-      return {id: requestId, pendingFirestore: false, alreadyCommitted: true, schedule: null};
-    }
+    // Event reads are scoped to existing records. A non-admin cannot read a
+    // missing event; create it atomically with the schedule and let the caller
+    // reconcile an already committed request after a rejected duplicate write.
     const snapshot = await transaction.get(scheduleRef);
     if (!snapshot.exists()) {
       buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
@@ -2597,7 +2601,12 @@ async function createScheduledEvent(data, {uid, requestId}) {
     const schedule = snapshot.data();
     const events = Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : [];
     if (events.some((value) => String(value).endsWith(`:${requestId}`))) {
-      throw new Error('Este ID de evento já está destacado na escala.');
+      const existing = await transaction.get(doc(db, 'events', requestId));
+      const saved = existing.exists() ? existing.data() : null;
+      if (!saved || saved.clientMutationId !== requestId || saved.createdByUid !== uid || !Object.entries(data).every(([key, value]) => JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)))) {
+        throw Object.assign(new Error('O evento remoto mudou. Compare a cópia local antes de reenviar.'), {code: 'stale-version'});
+      }
+      return {id: requestId, pendingFirestore: false, alreadyCommitted: true, schedule: null};
     }
     const version = (Number.isInteger(schedule.version) && schedule.version >= 0 ? schedule.version : 0) + 1;
     buildRecordBatch(transaction, {collectionName: 'events', data, uid, requestId});
