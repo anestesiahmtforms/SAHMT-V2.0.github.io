@@ -7,7 +7,7 @@ import {setOfflineRuntimeMode} from '../src/offline-runtime-mode.js';
 const source = readFileSync(new URL('../src/data.js', import.meta.url), 'utf8');
 for (const [name, next, kind, id, data] of [
   ['listLabelStaffSiglas', 'saveLabelStaffSiglas', 'labelStaff', 'all', ['AA', 'BB']],
-  ['listEventMembers', 'listUserProfiles', 'eventMembers', 'all', [{sigla: 'AA', name: 'Pessoa sintética'}]]
+  ['listEventMembers', 'listMemberCategoryAssignments', 'eventMembers', 'all', [{sigla: 'AA', name: 'Pessoa sintética'}]]
 ]) test(`${name} abre a partir do cache do UID sem consultar o backend`, async () => {
   setOfflineRuntimeMode(true);
   try {
