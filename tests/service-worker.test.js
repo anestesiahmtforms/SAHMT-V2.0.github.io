@@ -96,7 +96,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v258');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v259');
 });
 
 test('only the same-origin repair entry activates an installed update without claiming windows',async()=>{
