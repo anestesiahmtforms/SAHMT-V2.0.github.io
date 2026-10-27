@@ -7,7 +7,9 @@ const paths={
  occurrence:'M12 3 2 21h20L12 3ZM12 9v5M12 17v1',
  indicators:'M4 21V11h4v10M10 21V3h4v18M16 21V7h4v14',
  results:'M3 3v18h18M7 15l4-5 4 3 6-8',
- surveys:'M3 3h18v14H9l-6 4V3ZM7 7h10M7 11h6'
+ surveys:'M3 3h18v14H9l-6 4V3ZM7 7h10M7 11h6',
+ climate:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87',
+ wellbeing:'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78M3 12h4l2-4 4 8 2-4h6'
 };
 const icon=kind=>'<svg class="management-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[kind]+'"></path></svg>';
 const panels={
@@ -23,14 +25,17 @@ const panels={
   {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'}
  ]},
  results:{title:'Resultados dos Indicadores',icon:'results',parent:'home',message:'Os resultados dos indicadores serão disponibilizados nesta área.'},
- surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',message:'As enquetes e consultas serão disponibilizadas nesta área.'}
+ surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',items:[
+  {label:'PESQUISAS INSTITUCIONAIS',icon:'records',panel:'institutional',access:'surveys'}
+ ]},
+ institutional:{title:'Pesquisas institucionais',icon:'records',parent:'surveys'}
 };
 
 // This menu reads no database. Each destination retains its existing session,
 // profile and server authorization checks. The FE survey opens without identity transfer.
 export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
- const panelAllowed=name=>name==='home'||access[name]===true;
+ const panelAllowed=name=>name==='home'||access[name==='institutional'?'surveys':name]===true;
  let disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
@@ -44,8 +49,9 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
    const allowed=!item.access||access[item.access]===true;
    return '<button type="button" class="management-hub-button" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+item.label+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
-  if(panel==='surveys'){
-   body.innerHTML='<div class="management-hub-empty"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Os formulários abrem no FE sem transmitir dados da sua sessão.</p>'+(climateEnabled?'<p><a class="primary-button" href="https://outros-48120.web.app/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">PESQUISA DE CLIMA ORGANIZACIONAL</a></p><p><a class="primary-button" href="https://outros-48120.web.app/stress.html" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">AVALIAÇÃO DE ESTRESSE E FADIGA</a></p>':'<p>Aguardando liberação das pesquisas no FE.</p>')+'</div>';
+  if(panel==='institutional'){
+   const surveyCard=(kind,url,title,subtitle)=>'<a class="management-hub-button management-survey-card" href="'+url+'" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></a>';
+   body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
   }
   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});

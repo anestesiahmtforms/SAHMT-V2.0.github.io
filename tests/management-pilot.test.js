@@ -11,12 +11,12 @@ function hub(access={},initialPanel='home',syncStatusElement=null,climateEnabled
  const navigations=[],ctx=vm.createContext({});vm.runInContext(readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'').replace(/^export /gm,''),ctx);ctx.mountManagementHub(root,{access,initialPanel,syncStatusElement,climateEnabled,onExit(){navigations.push('home');},onNavigate:route=>navigations.push(route)});return {dialog,body,handlers,navigations,heading,headingIcon,root,back,syncHost};
 }
 test('FA survey entry opens FE with no session parameters, opener or referrer after release',()=>{
- const released=hub({surveys:true},'surveys',null,true);assert.match(released.body.innerHTML,/href="https:\/\/outros-48120\.web\.app\/"/);assert.match(released.body.innerHTML,/rel="noopener noreferrer" referrerpolicy="no-referrer"/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);
- assert.doesNotMatch(hub({surveys:true},'surveys',null,false).body.innerHTML,/href=/);
+ const released=hub({surveys:true},'institutional',null,true);assert.match(released.body.innerHTML,/href="https:\/\/outros-48120\.web\.app\/"/);assert.match(released.body.innerHTML,/rel="noopener noreferrer" referrerpolicy="no-referrer"/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);
+ assert.doesNotMatch(hub({surveys:true},'institutional',null,false).body.innerHTML,/href=/);
  assert.match(released.body.innerHTML,/href="https:\/\/outros-48120.web.app\/stress.html"/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
 });
 test('common users see all five disabled buttons; deep links cannot open paused subpanels',()=>{
- for(const initialPanel of ['home','records','indicators','results','surveys']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,5);}
+ for(const initialPanel of ['home','records','indicators','results','surveys','institutional']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,5);}
  const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.doesNotMatch(h.body.innerHTML,/ disabled /);
 });
 test('Governança header uses the existing Diamond seal while retaining all five destinations',()=>{
@@ -44,4 +44,15 @@ test('Governance keeps the live synchronization control visible in its modal hea
  assert.equal(h.syncHost.child,syncStatusElement);
  syncStatusElement.innerHTML='<button class="sync-status-button--synced">✓</button>';
  assert.match(h.syncHost.child.innerHTML,/✓/);
+});
+
+test('institutional surveys open from their menu button and return to surveys',()=>{
+ const h=hub({surveys:true},'surveys',null,true);
+ assert.match(h.body.innerHTML,/PESQUISAS INSTITUCIONAIS/);
+ assert.doesNotMatch(h.body.innerHTML,/href=/);
+ h.handlers.click({target:{closest:()=>({disabled:false,dataset:{hubItem:'0'}})}});
+ assert.equal(h.dialog.dataset.panel,'institutional');
+ assert.match(h.body.innerHTML,/stress.html/);
+ h.handlers['back-click']();
+ assert.equal(h.dialog.dataset.panel,'surveys');
 });
