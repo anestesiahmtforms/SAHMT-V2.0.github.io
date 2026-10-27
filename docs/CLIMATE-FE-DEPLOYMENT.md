@@ -1,10 +1,12 @@
 # Pesquisa de clima — publicação gratuita no FE / FA
 
-## Separação solicitada — versão de coleta 1.1
+## Grupo obrigatório — versão de coleta 1.2
 
-O painel apresenta somente **Residentes**, **Secretárias** e **Equipe**. Equipe inclui anestesiologistas com e sem preceptoria. O grupo é opcional no formulário e é salvo como enumeração, sem nome, e-mail, UID ou IP; comentários não recebem o campo de grupo. Respostas anteriores sem classificação permanecem sem grupo e não são inferidas automaticamente. Abas antigas da versão 1.0 continuam aceitas sem classificação.
+O campo **Grupo e atividade** é obrigatório, sem opção de não informar, e apresenta exatamente **Equipe**, **Residentes**, **Secretárias** e **Substitutos**. O painel usa os mesmos quatro grupos. O grupo é salvo como enumeração, sem nome, e-mail, UID ou IP; comentários não recebem o campo de grupo. Respostas antigas sem classificação são preservadas, sem inferir grupo. Novas respostas exigem a versão 1.2 e um dos quatro grupos nas regras Firebase; abas antigas devem ser atualizadas. Reenvios exatamente idênticos de registros antigos já recebidos continuam aceitos, sem alteração de conteúdo.
 
-Residentes e equipe exigem pelo menos cinco respostas válidas por item. Secretárias permanecem sempre sem números, pois são apenas duas participantes no universo institucional. Não são publicados escores gerais combinados nem adesão total, impedindo dedução por subtração das pontuações e da participação do grupo pequeno. A supressão vale para o documento agregado persistido, além da apresentação do painel. O relatório anterior não é reclassificado nem sobrescrito; a publicação por ciclo continua imutável.
+O terceiro parágrafo da apresentação foi retirado por solicitação do usuário. A retirada do texto não muda as limitações técnicas de sigilo documentadas abaixo nem constitui promessa de anonimato absoluto. A opção Equipe mantém as perguntas de preceptoria com orientação de marcar N/A quando não aplicáveis; Substitutos recebe o questionário comum.
+
+Equipe, residentes e substitutos exigem pelo menos cinco respostas válidas por item. Secretárias permanecem sempre sem números, pois são apenas duas participantes no universo institucional. Não são publicados escores gerais combinados nem adesão total, impedindo dedução por subtração das pontuações e da participação do grupo pequeno. A supressão vale para o documento agregado persistido, além da apresentação do painel. O relatório anterior não é reclassificado nem sobrescrito; a publicação por ciclo continua imutável.
 
 Instrumento baseado no [Google Doc institucional, versão 1.0](https://docs.google.com/document/d/1dtn8JSzE3QYG4ZZQBAxtRCAKfEBnyJE7z599OBo2sKE/edit). É autoral, não oficial ou validado Qmentum.
 
@@ -18,11 +20,11 @@ Instrumento baseado no [Google Doc institucional, versão 1.0](https://docs.goog
 
 O formulário não exige login e não importa Firebase Auth, Analytics ou código de sessão do FA. Envia um commit REST diretamente ao Firestore, com `credentials: omit` e `no-referrer`. As regras Firebase são a validação de segurança, independente do JavaScript. O painel usa autenticação FE separada, persistida somente em memória.
 
-Os 32 itens comuns, 8 dimensões, 3 módulos condicionais de 5 itens e 5 comentários opcionais seguem o documento mestre. O grupo opcional é persistido conforme a separação descrita acima; o módulo escolhido também pode indicar a função. Consentimento é necessário na interface; permite-se branco e N/A, com pelo menos um item comum numérico.
+Os 32 itens comuns, 8 dimensões, módulos condicionais e 5 comentários opcionais seguem o documento mestre. O grupo obrigatório é persistido conforme a separação descrita acima; o módulo escolhido também pode indicar a função. Consentimento é necessário na interface; permite-se branco e N/A, com pelo menos um item comum numérico.
 
 ## Armazenamento e acesso
 
-- `climateResponses/{token}`: somente `survey_cycle`, `survey_version`, `answers` e a enumeração opcional `group`.
+- `climateResponses/{token}`: somente `survey_cycle`, `survey_version`, `answers` e a enumeração obrigatória `group` nos novos envios.
 - `climateComments/{outroToken}`: somente `survey_cycle` e `comments`.
 - `climateCycles/{ciclo}`: configuração administrativa de abertura/fechamento, sem leitura ou escrita pelo cliente.
 - `climateReports/{ciclo}`: snapshot final agregado, sem escrita cliente.
@@ -50,7 +52,7 @@ Não publicar comentários literais ou detalhados, módulos administrativos isol
 
 Consolidação somente após fechamento, com criação de um snapshot imutável por ciclo. Sem atualização em tempo real ou cruzamentos. N/A e branco ficam fora do denominador. Cada item precisa de pelo menos 5 respondentes numéricos dentro do grupo; complementos entre 1–4 também suprimem o resultado. Se qualquer item falhar, seu composto/dimensão é suprimido. Os resultados das secretárias e do módulo administrativo nunca são publicados.
 
-O painel mostra favorabilidade e dimensões, segurança psicológica, cultura de segurança, intenção de contribuição e confiança no ciclo de melhoria separadamente para residentes e equipe quando elegíveis; secretárias têm somente o aviso de sigilo. Indicadores administrativos de ações permanecem separados. Não há números gerais combinados. Um novo ciclo exige atualização editorial deliberada de `climate-domain/schema.js` e recompilação das regras e páginas, preservando snapshots antigos.
+O painel mostra favorabilidade e dimensões, segurança psicológica, cultura de segurança, intenção de contribuição e confiança no ciclo de melhoria separadamente para equipe, residentes e substitutos quando elegíveis; secretárias têm somente o aviso de sigilo. Indicadores administrativos de ações permanecem separados. Não há números gerais combinados. Um novo ciclo exige atualização editorial deliberada de `climate-domain/schema.js` e recompilação das regras e páginas, preservando snapshots antigos.
 
 ## Operação
 

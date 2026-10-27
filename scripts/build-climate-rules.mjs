@@ -12,14 +12,13 @@ const block=`
     function climateResponse(d) {
       let a = d.get('answers', {});
       return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
-        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers']) &&
-        d.survey_cycle == '${CYCLE}' && d.survey_version in ['1.0', '${VERSION}'] && a is map &&
-        d.get('group', 'unspecified') in ['resident', 'secretaries', 'team', 'unspecified'] &&
-        (d.survey_version != '1.0' || d.get('group', 'unspecified') == 'unspecified') &&
-        (d.survey_version == '1.0' || (d.keys().hasAll(['group']) &&
+        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
+        d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' && a is map &&
+        d.group in ['resident', 'secretaries', 'team', 'substitute'] &&
+        (
           (!a.keys().hasAny(${strings(MODULES.resident.map(q=>q.id))}) || d.group == 'resident') &&
           (!a.keys().hasAny(${strings(MODULES.preceptor.map(q=>q.id))}) || d.group == 'team') &&
-          (!a.keys().hasAny(${strings(MODULES.administrative.map(q=>q.id))}) || d.group == 'secretaries'))) &&
+          (!a.keys().hasAny(${strings(MODULES.administrative.map(q=>q.id))}) || d.group == 'secretaries')) &&
         a.keys().hasOnly(${strings(ids)}) &&
         (${COMMON.map(q=>`a.get('${q.id}', 'NA') is int`).join(' || ')}) &&
         ${ids.map(id=>`climateAnswer(a.get('${id}', 'NA'))`).join(' &&\n        ')} &&
@@ -38,7 +37,7 @@ const block=`
       allow read, delete: if false;
       allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data);
       // Identical retries only. No answer changes; the page retains both random tokens in memory.
-      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data) && request.resource.data == resource.data;
+      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && request.resource.data == resource.data;
     }
     match /climateComments/{id} {
       allow read, delete: if false;

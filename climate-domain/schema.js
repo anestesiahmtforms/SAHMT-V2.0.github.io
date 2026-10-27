@@ -1,6 +1,6 @@
-export const VERSION = '1.1';
-export const GROUPS = {resident: 'Residentes', secretaries: 'Secretárias', team: 'Equipe'};
-export const groupForModule = value => ({resident:'resident',administrative:'secretaries',preceptor:'team',clinical:'team'}[value] || 'unspecified');
+export const VERSION = '1.2';
+export const GROUPS = {team: 'Equipe', resident: 'Residentes', secretaries: 'Secretárias', substitute: 'Substitutos'};
+export const groupForModule = value => ({team:'team',resident:'resident',administrative:'secretaries',preceptor:'team',clinical:'team',substitute:'substitute'}[value] || 'unspecified');
 export const CYCLE = '2026';
 export const DIMENSIONS = [
   ['Propósito e pertencimento', ['Compreendo os objetivos e prioridades do SAHMT.', 'Sinto orgulho de integrar esta equipe.', 'Percebo respeito às diferentes experiências e gerações.', 'Sinto que minhas contribuições são valorizadas.']],
@@ -20,13 +20,13 @@ export const MODULES = {
   administrative: questions('A', ['Recebo informações suficientes para apoiar o fluxo assistencial.', 'Minhas responsabilidades e prioridades são claras.', 'Sou tratada com respeito pela equipe clínica.', 'Tenho canais adequados para sinalizar problemas operacionais.', 'Mudanças no serviço são comunicadas em tempo adequado.'])
 };
 export const OPEN = questions('O', ['Qual é o principal ponto forte do SAHMT que devemos preservar?', 'Qual mudança teria maior impacto positivo no seu cotidiano?', 'Que situação ou processo merece atenção prioritária para a segurança do paciente?', 'O que poderia melhorar a integração entre diferentes funções e gerações?', 'Há alguma sugestão adicional? Evite nomes e detalhes identificáveis.']);
+export const questionsForSelection = value => MODULES[value] || (value === 'team' ? MODULES.preceptor : []);
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const allowedKeys = (value, keys) => isObject(value) && Object.keys(value).every(key => keys.includes(key));
 export function validateSubmission(input) {
-  if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments', 'group']) || input.consent !== true || !['1.0', VERSION].includes(input.survey_version) || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
-  const group = input.group ?? 'unspecified';
-  if (!['resident','secretaries','team','unspecified'].includes(group) || (input.survey_version === VERSION && !Object.hasOwn(input,'group'))) throw Error('INVALID_GROUP');
-  if (input.survey_version === '1.0' && group !== 'unspecified') throw Error('INVALID_LEGACY_GROUP');
+  if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments', 'group']) || input.consent !== true || input.survey_version !== VERSION || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
+  const group = input.group;
+  if (!Object.hasOwn(GROUPS,group)) throw Error('INVALID_GROUP');
   const ids = [...COMMON, ...Object.values(MODULES).flat()].map(q => q.id);
   if (!allowedKeys(input.answers, ids) || !COMMON.some(q => Number.isInteger(input.answers[q.id]))) throw Error('INVALID_ANSWERS');
   const answers = {};

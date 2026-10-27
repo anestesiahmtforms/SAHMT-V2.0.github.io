@@ -4,7 +4,7 @@ import {COMMON, MODULES, OPEN, DIMENSIONS, validateSubmission, VERSION, CYCLE,gr
 import {aggregate,summarize} from '../climate-domain/aggregate.js';
 import {actionIndicators} from '../climate-domain/actions.js';
 const answers = (value = 4) => Object.fromEntries(COMMON.map(q => [q.id, value]));
-const payload = () => ({survey_version: VERSION, survey_cycle: CYCLE, submission_id: 'a'.repeat(32), consent: true, answers: answers(), comments: {O01: 'Integração'},group:'unspecified'});
+const payload = () => ({survey_version: VERSION, survey_cycle: CYCLE, submission_id: 'a'.repeat(32), consent: true, answers: answers(), comments: {O01: 'Integração'},group:'team'});
 test('action indicators validate aggregate counts and handle zero denominators', () => {
   assert.deepEqual(actionIndicators({due:10,completedOnTime:8,reevaluated:4,effective:3}), {onTime:{numerator:8,denominator:10,percent:80},effectiveness:{numerator:3,denominator:4,percent:75}});
   assert.equal(actionIndicators({due:0,completedOnTime:0,reevaluated:0,effective:0}).onTime.percent,null);
@@ -42,9 +42,10 @@ test('administrative module never published, including inference via complementa
   const result = aggregate(rows); assert.equal(result.groups.secretaries.suppressed,true); assert.equal(result.modules,undefined);
   assert.equal(JSON.stringify(result).includes('A01'), false); assert.equal(JSON.stringify(result).includes('submission_id'), false);
 });
-test('three requested groups: residents and team separate, secretaries and pooled scores never disclosed',()=>{
+test('four requested groups remain separate, secretaries and pooled scores never disclosed',()=>{
  const rows=[...Array.from({length:5},()=>({group:'resident',answers:answers(5)})),...Array.from({length:5},()=>({group:'team',answers:answers(1)})),...Array.from({length:2},()=>({group:'secretaries',answers:answers(3)}))];
- const result=aggregate(rows);assert.deepEqual(Object.keys(result.groups),['resident','secretaries','team']);assert.equal(result.groups.resident.general.favorable,100);assert.equal(result.groups.team.general.favorable,0);assert.equal(result.groups.secretaries.suppressed,true);
+ rows.push(...Array.from({length:5},()=>({group:'substitute',answers:answers(4)})));
+ const result=aggregate(rows);assert.deepEqual(Object.keys(result.groups),['team','resident','secretaries','substitute']);assert.equal(result.groups.resident.general.favorable,100);assert.equal(result.groups.team.general.favorable,0);assert.equal(result.groups.substitute.general.favorable,100);assert.equal(result.groups.secretaries.suppressed,true);
  for(const field of ['general','dimensions','psychologicalSafety','safetyCulture','contribution','improvementTrust','modules'])assert.equal(Object.hasOwn(result,field),false,field);
  assert.equal(Object.hasOwn(result.groups.secretaries,'general'),false);
  rows.push(...Array.from({length:10},()=>({group:'secretaries',answers:answers(5)})));assert.equal(aggregate(rows).groups.secretaries.suppressed,true);
@@ -53,6 +54,7 @@ test('unclassified older responses are never guessed as team and module groups a
  const legacy=Array.from({length:5},()=>({answers:answers(5)}));assert.equal(aggregate(legacy).groups.team.suppressed,true);
  assert.equal(groupForModule('preceptor'),'team');assert.equal(groupForModule('clinical'),'team');assert.equal(groupForModule('resident'),'resident');assert.equal(groupForModule('administrative'),'secretaries');assert.equal(groupForModule('none'),'unspecified');
  assert.throws(()=>validateSubmission({...payload(),group:'team',answers:{Q01:4,R01:4}}));assert.throws(()=>validateSubmission({...payload(),group:'someone'}));
- const old={...payload(),survey_version:'1.0'};delete old.group;assert.equal(validateSubmission(old).group,undefined);
+ const old={...payload(),survey_version:'1.0'};delete old.group;assert.throws(()=>validateSubmission(old));
  assert.throws(()=>validateSubmission({...old,group:'team'}));
+ const missing=payload();delete missing.group;assert.throws(()=>validateSubmission(missing));assert.throws(()=>validateSubmission({...payload(),group:'unspecified'}));assert.equal(validateSubmission({...payload(),group:'substitute'}).group,'substitute');
 });

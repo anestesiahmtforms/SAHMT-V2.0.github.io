@@ -28,6 +28,6 @@ export function aggregate(rows, cycle = CYCLE) {
         contribution:summarize(selected,['Q30'],selected.length),improvementTrust:summarize(selected,['Q32'],selected.length)
       }];
     })),
-    methodology:'Resultados separados de residentes, secretárias e equipe. Sem total de pontuações ou cruzamentos. Respostas sem grupo informado, inclusive anteriores à versão 1.1, não são atribuídas a um grupo.'
+    methodology:'Resultados separados de equipe, residentes, secretárias e substitutos. Sem total de pontuações ou cruzamentos. Respostas antigas sem grupo informado não são atribuídas a um grupo.'
   };
 }

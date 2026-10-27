@@ -3,7 +3,7 @@ export function renderReport(document,data,plan) {
   const section=document.createElement('section'),title=document.createElement('h2');title.textContent=`Ciclo ${data.survey_cycle}`;section.append(title);
   const metric=(host,label,value)=>{const p=document.createElement('p');p.className='metric';const strong=document.createElement('strong');strong.textContent=`${label}: `;p.append(strong,document.createTextNode(value));host.append(p);};
   metric(section,'Adesão','Não divulgada para proteger a participação de grupos pequenos.');
-  for(const [key,label] of [['resident','Residentes'],['secretaries','Secretárias'],['team','Equipe']]) {
+  for(const [key,label] of [['team','Equipe'],['resident','Residentes'],['secretaries','Secretárias'],['substitute','Substitutos']]) {
     const group=data.groups?.[key],card=document.createElement('section'),heading=document.createElement('h3');heading.textContent=label;card.append(heading);card.dataset.resultGroup=key;
     if(key==='secretaries'||!group||group.suppressed){const p=document.createElement('p');p.textContent=key==='secretaries'?'Não divulgado para preservar o anonimato das duas secretárias.':group?.reason||'Este relatório anterior não possui classificação por grupo.';card.append(p);}
     else {

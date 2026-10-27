@@ -35,14 +35,13 @@ service cloud.firestore {
     function climateResponse(d) {
       let a = d.get('answers', {});
       return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
-        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers']) &&
-        d.survey_cycle == '2026' && d.survey_version in ['1.0', '1.1'] && a is map &&
-        d.get('group', 'unspecified') in ['resident', 'secretaries', 'team', 'unspecified'] &&
-        (d.survey_version != '1.0' || d.get('group', 'unspecified') == 'unspecified') &&
-        (d.survey_version == '1.0' || (d.keys().hasAll(['group']) &&
+        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
+        d.survey_cycle == '2026' && d.survey_version == '1.2' && a is map &&
+        d.group in ['resident', 'secretaries', 'team', 'substitute'] &&
+        (
           (!a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) || d.group == 'resident') &&
           (!a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']) || d.group == 'team') &&
-          (!a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05']) || d.group == 'secretaries'))) &&
+          (!a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05']) || d.group == 'secretaries')) &&
         a.keys().hasOnly(['Q01', 'Q02', 'Q03', 'Q04', 'Q05', 'Q06', 'Q07', 'Q08', 'Q09', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'Q16', 'Q17', 'Q18', 'Q19', 'Q20', 'Q21', 'Q22', 'Q23', 'Q24', 'Q25', 'Q26', 'Q27', 'Q28', 'Q29', 'Q30', 'Q31', 'Q32', 'R01', 'R02', 'R03', 'R04', 'R05', 'T01', 'T02', 'T03', 'T04', 'T05', 'A01', 'A02', 'A03', 'A04', 'A05']) &&
         (a.get('Q01', 'NA') is int || a.get('Q02', 'NA') is int || a.get('Q03', 'NA') is int || a.get('Q04', 'NA') is int || a.get('Q05', 'NA') is int || a.get('Q06', 'NA') is int || a.get('Q07', 'NA') is int || a.get('Q08', 'NA') is int || a.get('Q09', 'NA') is int || a.get('Q10', 'NA') is int || a.get('Q11', 'NA') is int || a.get('Q12', 'NA') is int || a.get('Q13', 'NA') is int || a.get('Q14', 'NA') is int || a.get('Q15', 'NA') is int || a.get('Q16', 'NA') is int || a.get('Q17', 'NA') is int || a.get('Q18', 'NA') is int || a.get('Q19', 'NA') is int || a.get('Q20', 'NA') is int || a.get('Q21', 'NA') is int || a.get('Q22', 'NA') is int || a.get('Q23', 'NA') is int || a.get('Q24', 'NA') is int || a.get('Q25', 'NA') is int || a.get('Q26', 'NA') is int || a.get('Q27', 'NA') is int || a.get('Q28', 'NA') is int || a.get('Q29', 'NA') is int || a.get('Q30', 'NA') is int || a.get('Q31', 'NA') is int || a.get('Q32', 'NA') is int) &&
         climateAnswer(a.get('Q01', 'NA')) &&
@@ -109,7 +108,7 @@ service cloud.firestore {
       allow read, delete: if false;
       allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data);
       // Identical retries only. No answer changes; the page retains both random tokens in memory.
-      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data) && request.resource.data == resource.data;
+      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && request.resource.data == resource.data;
     }
     match /climateComments/{id} {
       allow read, delete: if false;

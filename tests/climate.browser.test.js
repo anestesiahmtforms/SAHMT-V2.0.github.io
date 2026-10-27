@@ -33,12 +33,17 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
         await page.screenshot({path: resolve(process.env.CLIMATE_SCREENSHOTS, `pesquisa-${width}.png`)});
       }
       assert.equal(await page.locator('fieldset').count(), 32);
+      assert.deepEqual(await page.locator('[name=module] option:not([disabled])').allTextContents(),['Equipe','Residentes','Secretárias','Substitutos']);
+      assert.equal(await page.locator('[name=module]').getAttribute('required'),'');
+      assert.equal(await page.locator('.notice p').count(),3);
+      assert.doesNotMatch(await page.locator('.notice').innerText(),/O serviço de hospedagem|registros técnicos/);
+      await page.check('[name=consent]');await page.check('[name=Q01][value="4"]');await page.locator('[type=submit]').click();assert.equal(received.length,0);await page.uncheck('[name=consent]');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.selectOption('[name=module]', 'resident'); assert.equal(await page.locator('fieldset').count(), 37);
       await page.check('[name=R01][value="5"]');
-      await page.selectOption('[name=module]', 'preceptor'); assert.equal(await page.locator('[name=R01]').count(), 0);
+      await page.selectOption('[name=module]', 'team'); assert.equal(await page.locator('[name=R01]').count(), 0);
       await page.selectOption('[name=module]', 'administrative'); assert.match(await page.locator('#module').innerText(), /não terá resultados exclusivos/);
-      await page.selectOption('[name=module]', 'none'); assert.equal(await page.locator('fieldset').count(), 32);
+      await page.selectOption('[name=module]', 'substitute'); assert.equal(await page.locator('fieldset').count(), 32);
       await page.check('[name=Q01][value="4"]'); await page.locator('[type=submit]').click(); assert.equal(received.length, 0);
       await page.check('[name=consent]'); await page.fill('[name=O01]', '<script>alert("text only")</script>');
       await page.locator('[type=submit]').click(); await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Não foi possível'));
@@ -48,7 +53,7 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
       assert.deepEqual(Object.keys(received[0].data), ['writes']);
       const writes=received[0].data.writes;
       assert.deepEqual(Object.keys(writes[0].update.fields).sort(),['answers','group','survey_cycle','survey_version']);
-      assert.equal(writes[0].update.fields.group.stringValue,'unspecified');
+      assert.equal(writes[0].update.fields.group.stringValue,'substitute');
       assert.deepEqual(writes[0].update.fields.answers.mapValue.fields,{Q01:{integerValue:'4'}});
       assert.notEqual(writes[0].update.name.split('/').at(-1),writes[1].update.name.split('/').at(-1));
       for (const h of ['authorization','cookie','referer']) assert.equal(received[0].headers[h], undefined);
