@@ -1598,6 +1598,7 @@ async function loadModule(route) {
     return;
   }
   try {
+    const managementCatalogWasLocal = route === 'management' && (session.offline === true || isOfflineRuntimeForced());
     const data = await import('./data.js');
     let items;
     if (route === 'management' && session.profile?.permissions?.qualityManage === true &&
@@ -1695,13 +1696,19 @@ async function loadModule(route) {
       if (!evaluationCurrent()) return;
       cleanupCurrentModule = mountManagementEvaluationAccess(evaluationHost, {uid: requestUid, profile: session.profile, areas: items, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: evaluationCurrent});
       const areaDialog = content.querySelector('#management-area-dialog');
+      const evaluationDialog = evaluationHost.querySelector('.evaluation-governance-dialog');
+      const refreshLocalCatalogAfterClose = () => {
+        if ((managementCatalogWasLocal || items.some(item => item.stale)) && evaluationCurrent() &&
+          !session.offline && !isOfflineRuntimeForced() && !areaDialog?.open && !evaluationDialog?.open) void render();
+      };
+      evaluationDialog?.addEventListener('close', refreshLocalCatalogAfterClose);
       const areaBack=areaDialog?.querySelector?.('.management-area-dialog__footer button');
       if(areaBack){
         areaBack.type='button';areaBack.textContent='VOLTAR';
         areaBack.addEventListener('click',()=>{if(!cleanupDocumentTraining?.goBack?.())areaDialog.close();});
       }
       areaDialog?.addEventListener('cancel',event=>{if(cleanupDocumentTraining?.goBack?.())event.preventDefault();});
-      areaDialog?.addEventListener('close', () => { managementActivityLoad++; history.replaceState(history.state,'','#/management'); });
+      areaDialog?.addEventListener('close', () => { managementActivityLoad++; history.replaceState(history.state,'','#/management'); refreshLocalCatalogAfterClose(); });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
         const button = event.currentTarget;
@@ -5449,9 +5456,13 @@ function sessionChanged(next) {
   if (googleProjectAuthEnabled) queueMicrotask(()=>googleAccessPanel?.refresh());
   if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-session-status', {detail: {status: next.status, code: next.error?.code || '', transportFailure: isFirestoreCacheFallbackError(next.error)}}));
   const wasOffline = session.offline === true;
-  const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true;
   const profileBecameLocal = !session.offline && next.offline === true;
   const profileRevalidated = session.offline === true && next.offline !== true;
+  // A cached management menu needs a server read after profile confirmation.
+  // Keep open group/evaluation dialogs intact; refresh their menu on close.
+  const refreshManagementMenu = profileRevalidated && currentRoute() === 'management' &&
+    !document.querySelector?.('#management-area-dialog[open], .evaluation-governance-dialog[open]');
+  const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true && !refreshManagementMenu;
   const profileValidationChanged = session.validatingProfile !== next.validatingProfile || session.profileFailureCode !== next.profileFailureCode;
   const reconnectReports=profileRevalidated?['events','labels','checklist'].filter(kind=>['offline','error'].includes(liveReports.get?.(kind)?.snapshot().state)):[];
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
@@ -5463,7 +5474,7 @@ function sessionChanged(next) {
     presentationWithoutGeneralReads(session) === presentationWithoutGeneralReads(next) &&
     generalReadPermissions.some((key) => session.profile?.permissions?.[key] !== true && next.profile?.permissions?.[key] === true) &&
     generalReadPermissions.every((key) => session.profile?.permissions?.[key] === next.profile?.permissions?.[key] || next.profile?.permissions?.[key] === true);
-  const preserveCurrentModule = onlyGeneralReadGrant && !['home', 'training', 'notifications'].includes(currentRoute());
+  const preserveCurrentModule = onlyGeneralReadGrant && !refreshManagementMenu && !['home', 'training', 'notifications'].includes(currentRoute());
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (next.status === 'signed-in' && next.offline === false && next.profile?.active === true && next.profile?.access === true) {
@@ -5527,6 +5538,7 @@ function sessionChanged(next) {
   else if (preserveEvaluationModule) {
     cleanupCurrentModule?.revalidate?.(); cleanupCurrentModule?.updateProfile?.(next.profile);
     const identity = document.querySelector?.('.identity-card__user'); if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
+    void updateOutboxStatus();
   }
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
   if (next.status === 'signed-in' && !next.offline && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);

@@ -222,3 +222,26 @@ test('sessionChanged: snapshot idêntico após a concessão permanece sem recons
   assertPreserved(h);
   assert.deepEqual(h.syncs, ['events', 'labels', 'checklist']);
 });
+
+
+for(const grantGeneralReads of [false,true])test(`management cached catalog is refreshed after server confirmation (general read grant: ${grantGeneralReads})`,()=>{
+ const h=harness({route:'management'});
+ h.ctx.session.offline=true;h.ctx.session.validatingProfile=true;h.ctx.navigator.onLine=true;
+ h.ctx.document.querySelector=()=>null;h.ctx.liveReports.get=()=>null;
+ h.ctx.cleanupCurrentModule={canPreserveSession:()=>true,revalidate(){},updateProfile(){}};
+ const next=h.next();next.offline=false;next.validatingProfile=false;
+ if(grantGeneralReads)grantReads(next);
+ h.ctx.sessionChanged(next);
+ assert.deepEqual(h.renders,['management']);
+});
+
+test('management confirmation updates sync status without replacing an open activity draft',()=>{
+ const h=harness({route:'management'});let updates=0;
+ h.ctx.session.offline=true;h.ctx.session.validatingProfile=true;h.ctx.navigator.onLine=true;
+ h.ctx.document.querySelector=selector=>selector.includes('[open]')?{open:true}:null;h.ctx.liveReports.get=()=>null;
+ h.ctx.cleanupCurrentModule={canPreserveSession:()=>true,revalidate(){},updateProfile(){}};
+ h.ctx.updateOutboxStatus=async()=>{updates++;};
+ const next=h.next();next.offline=false;next.validatingProfile=false;
+ h.ctx.sessionChanged(next);
+ assertPreserved(h);assert.equal(updates,1);
+});
