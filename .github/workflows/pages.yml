@@ -34,6 +34,11 @@ jobs:
         run: npm ci
       - name: Install Cloud Functions dependencies
         run: npm ci --prefix functions
+      - name: Validate anonymous climate survey and free FE rules
+        run: |
+          npm run build:climate
+          node --test tests/climate.test.js
+          npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain
       - name: Verify member categories and five-project identity classification
@@ -100,6 +105,7 @@ jobs:
         run: npx firebase emulators:exec --project demo-sahmt-v2 --only auth,firestore,functions "npm --prefix functions test -- --test-concurrency=1"
       - name: Build PWA
         env:
+          VITE_CLIMATE_SURVEY_ENABLED: 'true'
           SAHMT_FB_CUTOVER: 'true'
           VITE_GOOGLE_PROJECT_AUTH_ENABLED: 'true'
           VITE_MANAGEMENT_FA_FIRST_LOGIN_ENABLED: 'false'

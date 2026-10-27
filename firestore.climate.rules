@@ -1,0 +1,122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // MEMBER_CATEGORIES_V1: descriptive membership, never an automatic grant.
+    function memberCategoryActive_() {
+      let p = /databases/$(database)/documents/users/$(request.auth.uid);
+      return request.auth != null && exists(p) && get(p).data.uid == request.auth.uid &&
+        get(p).data.active == true && get(p).data.access == true;
+    }
+    function memberCategoryAdmin_() {
+      let p = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return memberCategoryActive_() && (p.role == 'administrador_app' ||
+        p.get('permissions', {}).get('admin', false) == true || p.get('permissions', {}).get('usersManage', false) == true);
+    }
+    match /userCategories/{id} {
+      allow read: if memberCategoryActive_() && (memberCategoryAdmin_() ||
+        (resource.data.uid == request.auth.uid && request.auth.token.get('email_verified', false) == true &&
+         resource.data.email == request.auth.token.get('email', '').lower()));
+      allow write: if false;
+    }
+    match /userCategoryDefinitions/{id} {
+      allow read: if memberCategoryActive_();
+      allow write: if false;
+    }
+    // END_MEMBER_CATEGORIES_V1
+
+
+    // CLIMATE_FREE_V1: public, schema-validated submission; no raw client reads.
+    function climateOpen() {
+      return exists(/databases/$(database)/documents/climateCycles/2026) &&
+        get(/databases/$(database)/documents/climateCycles/2026).data.status == 'open';
+    }
+    function climateAnswer(v) { return v == 'NA' || (v is int && v >= 1 && v <= 5); }
+    function climateResponse(d) {
+      let a = d.get('answers', {});
+      return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers']) &&
+        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers']) &&
+        d.survey_cycle == '2026' && d.survey_version == '1.0' && a is map &&
+        a.keys().hasOnly(['Q01', 'Q02', 'Q03', 'Q04', 'Q05', 'Q06', 'Q07', 'Q08', 'Q09', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'Q16', 'Q17', 'Q18', 'Q19', 'Q20', 'Q21', 'Q22', 'Q23', 'Q24', 'Q25', 'Q26', 'Q27', 'Q28', 'Q29', 'Q30', 'Q31', 'Q32', 'R01', 'R02', 'R03', 'R04', 'R05', 'T01', 'T02', 'T03', 'T04', 'T05', 'A01', 'A02', 'A03', 'A04', 'A05']) &&
+        (a.get('Q01', 'NA') is int || a.get('Q02', 'NA') is int || a.get('Q03', 'NA') is int || a.get('Q04', 'NA') is int || a.get('Q05', 'NA') is int || a.get('Q06', 'NA') is int || a.get('Q07', 'NA') is int || a.get('Q08', 'NA') is int || a.get('Q09', 'NA') is int || a.get('Q10', 'NA') is int || a.get('Q11', 'NA') is int || a.get('Q12', 'NA') is int || a.get('Q13', 'NA') is int || a.get('Q14', 'NA') is int || a.get('Q15', 'NA') is int || a.get('Q16', 'NA') is int || a.get('Q17', 'NA') is int || a.get('Q18', 'NA') is int || a.get('Q19', 'NA') is int || a.get('Q20', 'NA') is int || a.get('Q21', 'NA') is int || a.get('Q22', 'NA') is int || a.get('Q23', 'NA') is int || a.get('Q24', 'NA') is int || a.get('Q25', 'NA') is int || a.get('Q26', 'NA') is int || a.get('Q27', 'NA') is int || a.get('Q28', 'NA') is int || a.get('Q29', 'NA') is int || a.get('Q30', 'NA') is int || a.get('Q31', 'NA') is int || a.get('Q32', 'NA') is int) &&
+        climateAnswer(a.get('Q01', 'NA')) &&
+        climateAnswer(a.get('Q02', 'NA')) &&
+        climateAnswer(a.get('Q03', 'NA')) &&
+        climateAnswer(a.get('Q04', 'NA')) &&
+        climateAnswer(a.get('Q05', 'NA')) &&
+        climateAnswer(a.get('Q06', 'NA')) &&
+        climateAnswer(a.get('Q07', 'NA')) &&
+        climateAnswer(a.get('Q08', 'NA')) &&
+        climateAnswer(a.get('Q09', 'NA')) &&
+        climateAnswer(a.get('Q10', 'NA')) &&
+        climateAnswer(a.get('Q11', 'NA')) &&
+        climateAnswer(a.get('Q12', 'NA')) &&
+        climateAnswer(a.get('Q13', 'NA')) &&
+        climateAnswer(a.get('Q14', 'NA')) &&
+        climateAnswer(a.get('Q15', 'NA')) &&
+        climateAnswer(a.get('Q16', 'NA')) &&
+        climateAnswer(a.get('Q17', 'NA')) &&
+        climateAnswer(a.get('Q18', 'NA')) &&
+        climateAnswer(a.get('Q19', 'NA')) &&
+        climateAnswer(a.get('Q20', 'NA')) &&
+        climateAnswer(a.get('Q21', 'NA')) &&
+        climateAnswer(a.get('Q22', 'NA')) &&
+        climateAnswer(a.get('Q23', 'NA')) &&
+        climateAnswer(a.get('Q24', 'NA')) &&
+        climateAnswer(a.get('Q25', 'NA')) &&
+        climateAnswer(a.get('Q26', 'NA')) &&
+        climateAnswer(a.get('Q27', 'NA')) &&
+        climateAnswer(a.get('Q28', 'NA')) &&
+        climateAnswer(a.get('Q29', 'NA')) &&
+        climateAnswer(a.get('Q30', 'NA')) &&
+        climateAnswer(a.get('Q31', 'NA')) &&
+        climateAnswer(a.get('Q32', 'NA')) &&
+        climateAnswer(a.get('R01', 'NA')) &&
+        climateAnswer(a.get('R02', 'NA')) &&
+        climateAnswer(a.get('R03', 'NA')) &&
+        climateAnswer(a.get('R04', 'NA')) &&
+        climateAnswer(a.get('R05', 'NA')) &&
+        climateAnswer(a.get('T01', 'NA')) &&
+        climateAnswer(a.get('T02', 'NA')) &&
+        climateAnswer(a.get('T03', 'NA')) &&
+        climateAnswer(a.get('T04', 'NA')) &&
+        climateAnswer(a.get('T05', 'NA')) &&
+        climateAnswer(a.get('A01', 'NA')) &&
+        climateAnswer(a.get('A02', 'NA')) &&
+        climateAnswer(a.get('A03', 'NA')) &&
+        climateAnswer(a.get('A04', 'NA')) &&
+        climateAnswer(a.get('A05', 'NA')) &&
+        !(a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) && a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05'])) &&
+        !(a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) && a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05'])) &&
+        !(a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']) && a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05']));
+    }
+    function climateCommentValue(v) { return v is string && v.size() <= 1500; }
+    function climateComment(d) {
+      let c = d.get('comments', {});
+      return d.keys().hasOnly(['survey_cycle', 'comments']) &&
+        d.keys().hasAll(['survey_cycle', 'comments']) && d.survey_cycle == '2026' &&
+        c is map && c.size() > 0 && c.keys().hasOnly(['O01', 'O02', 'O03', 'O04', 'O05']) &&
+        climateCommentValue(c.get('O01', '')) && climateCommentValue(c.get('O02', '')) && climateCommentValue(c.get('O03', '')) && climateCommentValue(c.get('O04', '')) && climateCommentValue(c.get('O05', ''));
+    }
+    function climateReader() { return request.auth != null && request.auth.token.get('climateReportReader', false) == true; }
+    match /climateResponses/{id} {
+      allow read, delete: if false;
+      allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data);
+      // Identical retries only. No answer changes; the page retains both random tokens in memory.
+      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data) && request.resource.data == resource.data;
+    }
+    match /climateComments/{id} {
+      allow read, delete: if false;
+      allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateComment(request.resource.data);
+      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateComment(request.resource.data) && request.resource.data == resource.data;
+    }
+    match /climateCycles/{id} { allow read, write: if false; }
+    match /climateReports/{id} { allow read: if climateReader(); allow write: if false; }
+    match /climateActionReports/{id} { allow read: if climateReader(); allow write: if false; }
+    // END_CLIMATE_FREE_V1
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

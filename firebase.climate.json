@@ -1,0 +1,49 @@
+{
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.climate.rules"
+    }
+  ],
+  "hosting": {
+    "public": "dist-climate",
+    "ignore": [
+      "firebase.climate.json",
+      "**/.*"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Referrer-Policy",
+            "value": "no-referrer"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self'; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com; frame-src https://outros-48120.firebaseapp.com https://accounts.google.com; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+          }
+        ]
+      }
+    ]
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8088
+    },
+    "hosting": {
+      "port": 5009
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

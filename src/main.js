@@ -31,7 +31,8 @@ import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStat
 import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMaintenanceInputType} from './checklist-maintenance.js';
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
-import {canUseManagementPilot} from './management-pilot.js';
+import {canUseManagementPilot, canUseGovernanceHub} from './management-pilot.js';
+const climateSurveyEnabled = import.meta.env.VITE_CLIMATE_SURVEY_ENABLED === 'true';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
 import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, offlineOperationalCacheId, readOfflineOperationalSnapshot, writeOfflineOperationalSnapshot} from './offline-operational-snapshot.js';
@@ -815,7 +816,7 @@ function moduleCards() {
   return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum'].includes(route)
     && !['training', 'notifications', 'management-hub'].includes(route)
     && (commonModules.includes(route) || permissionFor[route]?.some(can))
-    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseManagementPilot(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
+    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
@@ -1334,13 +1335,13 @@ function showScheduleContacts(contacts, context = {}) {
 
 async function loadModule(route) {
   if(route === 'management-hub'){
-    if(!canUseManagementPilot(session)){navigate('home');return;}
+    if(!canUseGovernanceHub(session)){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
     const {mountManagementHub}=await import('./management-hub.js');
-    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseManagementPilot(session))return;
+    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseGovernanceHub(session))return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',
-      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum')},
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseGovernanceHub(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
   }
@@ -5102,7 +5103,7 @@ async function render() {
   const requestedRoute = currentRoute();
   // A pending profile is not an authorization denial. Keep the requested route
   // in the restricted shell until the profile can grant or deny access.
-  if(!authLimited&&requestedRoute==='management-hub'&&!canUseManagementPilot(session)){
+  if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)){
     notice='Governança está temporariamente indisponível para este perfil.';
     navigate('home');return;
   }

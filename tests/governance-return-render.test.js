@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {parseFragment} from 'parse5';
-import {canUseManagementPilot} from '../src/management-pilot.js';
+import {canUseManagementPilot,canUseGovernanceHub} from '../src/management-pilot.js';
 import {featureEnabledForRoute, DEFAULT_APP_FEATURES} from '../src/feature-flags.js';
 import {shouldRenderHashChange} from '../src/router.js';
 
@@ -68,7 +68,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     updateInformationBanner(){},liveReports:new Map(),reportStates:new Map(),reportPayloads:new Map(),
     labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,
-    loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,deniedOperationalModules:new Set(),notice:'',
+    loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,canUseGovernanceHub,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
     canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:false},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
@@ -120,10 +120,10 @@ test('returning from FB keeps HOME responsive while FA validates the profile',as
   h.ctx.session=authorized();await h.render();
   assert.equal(reads,1,'the selected page loads once FA confirms the profile');
 });
-test('FA still denies a confirmed profile outside the Governance pilot',async()=>{
+test('FA opens Governance for the survey without granting access to pilot modules',async()=>{
   const session=authorized();session.profile.role='anestesiologista';
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
+  assert.equal(h.ctx.location.hash,'#/management-hub');assert.equal(h.mounts.length,1);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();

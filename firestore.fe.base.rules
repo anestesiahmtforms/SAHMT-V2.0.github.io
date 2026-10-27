@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // MEMBER_CATEGORIES_V1: descriptive membership, never an automatic grant.
+    function memberCategoryActive_() {
+      let p = /databases/$(database)/documents/users/$(request.auth.uid);
+      return request.auth != null && exists(p) && get(p).data.uid == request.auth.uid &&
+        get(p).data.active == true && get(p).data.access == true;
+    }
+    function memberCategoryAdmin_() {
+      let p = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return memberCategoryActive_() && (p.role == 'administrador_app' ||
+        p.get('permissions', {}).get('admin', false) == true || p.get('permissions', {}).get('usersManage', false) == true);
+    }
+    match /userCategories/{id} {
+      allow read: if memberCategoryActive_() && (memberCategoryAdmin_() ||
+        (resource.data.uid == request.auth.uid && request.auth.token.get('email_verified', false) == true &&
+         resource.data.email == request.auth.token.get('email', '').lower()));
+      allow write: if false;
+    }
+    match /userCategoryDefinitions/{id} {
+      allow read: if memberCategoryActive_();
+      allow write: if false;
+    }
+    // END_MEMBER_CATEGORIES_V1
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

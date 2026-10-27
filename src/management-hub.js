@@ -27,8 +27,8 @@ const panels={
 };
 
 // This menu reads no database. Each destination retains its existing session,
-// profile and server authorization checks. Future FD/FE areas stay empty.
-export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
+// profile and server authorization checks. The FE survey opens without identity transfer.
+export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
  const panelAllowed=name=>name==='home'||access[name]===true;
  let disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
@@ -44,6 +44,9 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
    const allowed=!item.access||access[item.access]===true;
    return '<button type="button" class="management-hub-button" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+item.label+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
+  if(panel==='surveys'){
+   body.innerHTML='<div class="management-hub-empty"><h3>Pesquisa de Clima Organizacional</h3><p>Participação voluntária. O formulário abre no FE sem transmitir dados da sua sessão.</p>'+(climateEnabled?'<a class="primary-button" href="https://outros-48120.web.app/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">PESQUISA DE CLIMA ORGANIZACIONAL</a>':'<p>Aguardando liberação da pesquisa no FE.</p>')+'</div>';
+  }
   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
  };

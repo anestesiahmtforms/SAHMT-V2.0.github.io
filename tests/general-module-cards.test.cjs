@@ -34,7 +34,8 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   };
   const context = vm.createContext({
     session, appFeatures, secondaryDomainProjects, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
-    deployment:{target:'FA'}, htmlTrainingConfigured:false,
+    deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
+    location:{hash:'#/management-hub'},history:{replaceState(){}},
     currentRoute: () => context.route,
     document: {querySelector: (selector) => selector === '#module-content' && hasContent ? content : null},
     navigate: (target) => navigations.push(target),
@@ -43,6 +44,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     todayInputValue: () => '2026-10-02',
     fakeImport: async (path) => {
       imports.push(path);
+      if (path === './management-hub.js') return {mountManagementHub: (root, options) => { queries.push({name:'mountManagementHub', options}); return () => {}; }};
       if (path === './data.js') return data;
       if (path === './performance-ui.js') return {mountPerformanceModule: () => {queries.push({name:'mountPerformanceModule'}); return () => {};}};
       throw new Error(`Importação inesperada no teste: ${path}`);
@@ -71,13 +73,13 @@ function cardMarkup(h, route) {
 const legacyManagementPermissions = ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage'];
 
 for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) {
-  test(`Governança aparece inativa para ${role}, sem alterar as permissões existentes`, async () => {
+  test(`Governança abre para pesquisa para ${role}, sem alterar as permissões existentes`, async () => {
     for (const permission of legacyManagementPermissions) {
       const session = approved({[permission]: true}, role);
       const before = structuredClone(session);
       const h = harness({session, route: 'management'});
       assert.equal(visibleRoutes(h).includes('management-hub'), true, permission);
-      assert.match(cardMarkup(h, 'management-hub'), /disabled/);
+      assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
       assert.equal(h.context.canOpenRestrictedModule('management'), false);
       await h.ui.loadModule('management');
       assert.deepEqual(h.navigations, ['home'], permission);
@@ -194,7 +196,7 @@ test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Dese
   const before = structuredClone(session);
   const h = harness({session});
   assert.deepEqual(visibleRoutes(h), ['management-hub']);
-  assert.match(cardMarkup(h, 'management-hub'), /disabled/);
+  assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
   assert.equal(h.context.canOpenRestrictedModule('management'), false);
   assert.equal(h.context.canOpenRestrictedModule('training'), false);
   assert.match(h.ui.moduleCards(), /<strong>Governança<\/strong>/);
@@ -263,7 +265,7 @@ test('o acesso comum aos cartões exige sessão aprovada e ambos os indicadores 
 test('o menu Gestão permanece disponível quando os destinos estão desativados', () => {
   const common = harness({session: approved(), appFeatures: {management: false, trainings: false, notifications: false}});
   assert.deepEqual(visibleRoutes(common), ['management-hub']);
-  assert.match(cardMarkup(common, 'management-hub'), /disabled/);
+  assert.doesNotMatch(cardMarkup(common, 'management-hub'), /disabled/);
   assert.equal(common.context.canOpenRestrictedModule('management'), false);
   assert.equal(common.context.canOpenRestrictedModule('training'), false);
   assert.equal(visibleRoutes(common).includes('notifications'), false);
@@ -339,11 +341,11 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
 
 test('pausa administrativa mantém os dois módulos inativos mesmo com permissões individuais', () => {
  const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.match(cardMarkup(h, 'management-hub'), /disabled/);
+ assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
  assert.equal(h.context.canOpenRestrictedModule('management'),false);
  assert.equal(h.context.canOpenRestrictedModule('training'),false);
  const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.match(cardMarkup(p, 'management-hub'), /disabled/);
+ assert.doesNotMatch(cardMarkup(p, 'management-hub'), /disabled/);
  assert.equal(p.context.canOpenRestrictedModule('management'),false);
  assert.equal(p.context.canOpenRestrictedModule('training'),false);
 });
@@ -364,22 +366,25 @@ function individuallyReleased(permissions = {}) {
   return session;
 }
 
-test('Governança habilita só administradores e a conta de teste verificada, sem conceder poderes administrativos',async()=>{
+test('Governança abre a pesquisa para usuários ativos sem conceder acesso aos módulos do piloto',async()=>{
  const pilot=individuallyReleased();
  const h=harness({session:pilot});
  assert.doesNotMatch(cardMarkup(h,'management-hub'),/disabled/);
  for(const permission of ['admin','usersManage','managementManage','trainingsManage'])assert.equal(h.ui.can(permission),false);
  const before=structuredClone(pilot);
- for(const change of [s=>s.user.email='other@example.test',s=>s.user.emailVerified=false,s=>s.profile.email='other@example.test',s=>s.profile.uid='other',s=>s.profile.active=false,s=>s.profile.access=false]){
+ for(const change of [s=>s.profile.active=false,s=>s.profile.access=false,s=>s.status='auth-limited']){
   const session=structuredClone(pilot);change(session);
   const denied=harness({session,route:'management-hub'});
   await denied.ui.loadModule('management-hub');
   assert.deepEqual(denied.imports,[]);assert.deepEqual(denied.navigations,['home']);
-  if(session.profile.active&&session.profile.access)assert.match(cardMarkup(denied,'management-hub'),/disabled/);
  }
  assert.deepEqual(pilot,before);
+ const common=harness({session:approved(),route:'management-hub'});await common.ui.loadModule('management-hub');
+ const menu=common.queries.find(row=>row.name==='mountManagementHub').options;
+ assert.equal(menu.access.surveys,true);
+ for(const area of ['groups','performance','records','results','occurrences','qmentum'])assert.equal(menu.access[area],false,area);
  const direct=renderHarness(approved(),'management-hub');await direct.context.runRender();
- assert.deepEqual(direct.navigations,['home']);assert.deepEqual(direct.loads,[]);assert.deepEqual(direct.shells,[]);
+ assert.deepEqual(direct.navigations,[]);assert.deepEqual(direct.loads,['management-hub']);
 });
 
 test('liberação individual habilita apenas os dois módulos solicitados, sem poderes administrativos', async () => {
