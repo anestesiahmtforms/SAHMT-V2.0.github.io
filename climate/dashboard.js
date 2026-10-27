@@ -34,5 +34,5 @@ onAuthStateChanged(auth, async user => {
     status.textContent = result.empty ? 'Nenhum ciclo publicado.' : 'Relatórios publicados. A coleta em andamento não é exibida.';
   } catch { if (current === generation) status.textContent = 'Acesso não autorizado ou serviço indisponível. Solicite a permissão de leitura de relatórios no FE.'; }
 });
-login.onclick = async () => { try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch { status.textContent = 'Não foi possível entrar no FE.'; } };
+login.onclick = async () => { try { const provider = new GoogleAuthProvider(); provider.setCustomParameters({prompt: 'select_account'}); await signInWithPopup(auth, provider); } catch { status.textContent = 'Não foi possível entrar no FE.'; } };
 logout.onclick = () => signOut(auth);
