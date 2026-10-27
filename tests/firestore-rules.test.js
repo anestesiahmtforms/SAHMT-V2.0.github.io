@@ -205,6 +205,7 @@ function managementDocumentSaver(db, uid) {
     update: (ref, value) => transaction.update(ref, sdkValue(value))
   }));
   const ctx = {db, identityDb:db, managementDatabase:async()=>db, managementProfileCollection:()=> 'users',
+    assertOnlineOperation:()=>{},
     managementProfileData:(_database,snapshot)=>snapshot.exists()?snapshot.data():null,
     authModule: {auth}, doc, getDocFromServer, runTransaction: sdkTransaction, serverTimestamp, crypto: {randomUUID},
     DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks,
@@ -2014,7 +2015,7 @@ test('Eventos: usuário sem administração cria pela escala e confirma reenvio 
   const bindings = {db, identityDb: db, doc, runTransaction, writeBatch: database => failEventCommit
     ? {set() {}, commit: async () => {throw Object.assign(new Error('Indisponível no teste'), {code: 'unavailable'});}}
     : writeBatch(database), serverTimestamp,
-    getDocFromServer, stageOperationalWrite, navigator: {onLine: true}, isOfflineRuntimeForced: () => false,
+    getDocFromServer, stageOperationalWrite, assertOnlineOperation:()=>{}, navigator: {onLine: true}, isOfflineRuntimeForced: () => false,
     mayUseOfflineCache: () => false, writeSafeCache: async () => {}};
   // Keep SDK payloads in the same realm as Firestore's plain-object checks.
   const runtime = new Function(...Object.keys(bindings),
