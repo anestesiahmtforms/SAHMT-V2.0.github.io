@@ -2371,3 +2371,8 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .profile-connection-notice{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
 .profile-connection-notice>span{flex:1 1 240px}.profile-connection-notice button{flex:0 0 auto;min-height:44px;padding:8px 16px}
 .profile-connection-notice small{flex-basis:100%;line-height:1.4}.profile-connection-notice small:empty{display:none}
+
+/* FB sync messages remain readable within the identity card. */
+:is(.app-shell--management,.app-shell--training) .identity-card__user-row{flex-wrap:wrap;row-gap:4px}
+:is(.app-shell--management,.app-shell--training) .identity-card__user-row .sync-pill{flex:0 1 auto;min-width:0;max-width:100%}
+:is(.app-shell--management,.app-shell--training) .identity-card__user-row .sync-status-button:not(.sync-status-button--synced){width:auto;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;font-size:.58rem;line-height:1.15}

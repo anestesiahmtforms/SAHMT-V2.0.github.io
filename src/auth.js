@@ -156,23 +156,27 @@ export function watchSession(onState) {
     // Firestore profile data upgrades this to a normal authorized session.
     const preserve=silent&&lastState?.status==='signed-in'&&lastState.user?.uid===user.uid&&lastState.profile?.active===true&&lastState.profile?.access===true;
     if(!preserve)showAuthLimitedSession(user,emit,true);
+    let profileFinished=false,serverStateReceived=false;
     try {
       if (!navigator.onLine) {
         await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
         scheduleReconnect(user, currentGeneration);
         return;
       }
-      const cached = await withinDeadline(()=>readCachedProfile(user.uid),{timeoutMs:1500,code:'storage-unavailable'}).catch(() => null);
-      if (currentGeneration !== generation || disposed) return;
-      if (!preserve && cached?.uid === user.uid && cached.active === true && cached.access === true) {
-        emit({status: 'signed-in', user, profile: profileForPresentation(cached, user), offline: true, validatingProfile:true});
-      }
-      await onAuthChangedProfile(user, emit, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; }, {signal});
+      // Cached presentation is optional. A slow local read must not delay the
+      // server profile request or overwrite a newer authorization decision.
+      if(!preserve)void withinDeadline(()=>readCachedProfile(user.uid),{timeoutMs:1500,code:'storage-unavailable'}).then(cached=>{
+        if(profileFinished||serverStateReceived||currentGeneration!==generation||disposed)return;
+        if(cached?.uid===user.uid&&cached.active===true&&cached.access===true)
+          emit({status:'signed-in',user,profile:profileForPresentation(cached,user),offline:true,validatingProfile:true});
+      }).catch(()=>{});
+      await onAuthChangedProfile(user, state=>{serverStateReceived=true;emit(state);}, currentGeneration, () => generation, (unsub) => { profileUnsubscribe = unsub; }, {signal});
     } catch (error) {
+      serverStateReceived=true;
       if (currentGeneration !== generation) return;
       if (isFirestoreCacheFallbackError(error)) await showCachedSession(user, emit, () => currentGeneration === generation && !disposed);
       else showAuthLimitedSession(user, emit, false, profileReadFailureCode(error));
-    }
+    } finally {profileFinished=true;}
     scheduleReconnect(user, currentGeneration);
   };
   const loadProfile = (user,options={}) => {
