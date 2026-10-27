@@ -28,3 +28,15 @@ test('failed report identifies the safe error code without displaying raw error 
   assert.equal(node.textContent,'Falha de atualização · deadline-exceeded');
   assert.doesNotMatch(node.textContent,/private response/);
 });
+
+test('a cached profile being checked online is presented as verifying rather than offline or synced',async()=>{
+ const target={innerHTML:'',isConnected:true,querySelector:()=>null};
+ const ctx=vm.createContext({document:{querySelector:()=>target},syncNoticeSequence:0,
+  session:{status:'signed-in',user:{uid:'fixture'},offline:true,validatingProfile:true},pendingSyncBanner:{update(){}},
+  listPendingTrainingProgress:async()=>[],retryableFailedOperationCount:async()=>0,listOperationalDrafts:async()=>[],listUnsettledOperations:async()=>[],
+  operationalBackend:{snapshot:()=>({code:''})},navigator:{onLine:true},isOfflineRuntimeForced:()=>true,
+  escapeHtml:String,updateLabelReportSync(){},bindProfileRetryControl(){}});
+ vm.runInContext(statusCode,ctx);await ctx.updateOutboxStatus();
+ assert.match(target.innerHTML,/VERIFICANDO CONEXÃO/);
+ assert.doesNotMatch(target.innerHTML,/OFFLINE|ONLINE — SINCRONIZADO|sync-status-button--synced/);
+});
