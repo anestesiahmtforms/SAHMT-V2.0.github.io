@@ -120,7 +120,7 @@ test('liberação superseded não pode receber ACK mesmo que o estado coincida n
   const h=harness();await h.send({action:'authorize'});await h.send(release('a',true,now-10));await h.send(release('b',false,now));const reads=h.reads();assert.equal((await h.send({action:'ack',collection:'scheduleReleases',day,requestId:'a'})).body.code,'CHANNEL_CONFIRMATION_CONFLICT');assert.equal(h.reads(),reads);
 });
 test('transação da escala não rebaseia automaticamente liberação antiga após alteração concorrente',async()=>{
-  const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');const begin=source.indexOf('async function applyScheduleSiglaRelease('),end=source.indexOf('async function queueScheduleSiglaRelease(',begin);let callback,writes=0;
+  const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');const begin=source.indexOf('async function applyScheduleSiglaRelease('),end=source.indexOf('function scheduleReleaseRequestId(',begin);let callback,writes=0;
   const context=vm.createContext({Boolean,Number,Date,db:{},doc:()=>({}),serverTimestamp:()=>0,updateScheduleReleaseState:()=>({changed:true,siglas:['AA']}),updateScheduleReleaseTimes:()=>({AA:now}),writeSafeCache:async()=>{},runTransaction:async(_db,work)=>{callback=work;await work({get:async()=>({exists:()=>true,id:day,data:()=>({version:1,highlights:{siglas:[]}})}),update:()=>writes++});return work({get:async()=>({exists:()=>true,id:day,data:()=>({version:2,highlights:{siglas:[]}})}),update:()=>writes++});}});
   vm.runInContext(source.slice(begin,end).replaceAll('import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT','true'),context);
   await assert.rejects(()=>context.applyScheduleSiglaRelease({day,sigla:'AA',marked:true,occurredAt:now,expectedVersion:1},'userA'),{code:'stale-version'});assert.equal(writes,1);assert.equal(typeof callback,'function');
@@ -137,7 +137,7 @@ test('alteração de permissões não reutiliza o cache provisório anterior',as
  let exposed=false;const other=h.make({...local,online:()=>false}),close=other.watch(scope,()=>exposed=true);await new Promise(r=>setImmediate(r));assert.equal(exposed,false);close();
 });
 test('confirmação sem mudança de Liberar também avança a versão que bloqueia operação antiga',async()=>{
- const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8'),begin=source.indexOf('async function applyScheduleSiglaRelease('),end=source.indexOf('async function queueScheduleSiglaRelease(',begin);let patch;
+ const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8'),begin=source.indexOf('async function applyScheduleSiglaRelease('),end=source.indexOf('function scheduleReleaseRequestId(',begin);let patch;
  const context=vm.createContext({Boolean,Number,Date,db:{},doc:()=>({}),serverTimestamp:()=>0,updateScheduleReleaseState:()=>({changed:false,siglas:[]}),updateScheduleReleaseTimes:()=>({}),writeSafeCache:async()=>{},runTransaction:async(_db,work)=>work({get:async()=>({exists:()=>true,id:day,data:()=>({version:1,highlights:{siglas:[]}})}),update:(_ref,value)=>patch=value})});
  vm.runInContext(source.slice(begin,end).replaceAll('import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT','true'),context);await context.applyScheduleSiglaRelease({day,sigla:'AA',marked:false,occurredAt:now,expectedVersion:1},'userA');assert.equal(patch.version,2);
 });
@@ -151,11 +151,14 @@ test('projeção da escala deixa de aplicar provisórios quando a concessão exp
  const client=h.make({now:()=>clock,onSchedule:()=>ready(),documentSource:{visibilityState:'visible',querySelector:id=>id==='#schedule-date'?{value:day}:null,addEventListener(){},removeEventListener(){}}});const close=client.start({configureSharedAdapter(){}});t.after(close);await seen;
  const base={highlights:{siglas:[]}};assert.equal(client.projectSchedule(base,{uid:'userA',day}).sharedProvisional,true);clock+=86400001;assert.equal(client.projectSchedule(base,{uid:'userA',day}),base);
 });
-test('clearLocal da edição de etiqueta não acessa variáveis inexistentes e criação informa commit ao canal',async()=>{
- const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');const extract=(name,next)=>source.slice(source.indexOf('function '+name+'(')-6,source.indexOf(next,source.indexOf('function '+name+'('))).replace(/^.*?async function/,'async function');
- const removed=[],commits=[];const context=vm.createContext({navigator:{onLine:true},crypto,isOfflineRuntimeForced:()=>false,persistOperationalMutation:async options=>{await options.clearLocal();return {};},removeQueuedOperation:async(_uid,id)=>removed.push(id),markProvisionalWriteCommitted:async(...args)=>commits.push(args),mayUseOfflineCache:()=>true});
- const first=source.indexOf('export async function updateLabelRecord('),last=source.indexOf('export async function listLabelHistory(',first);vm.runInContext(source.slice(first,last).replace('export ',''),context);await context.updateLabelRecord('label',{},'userA','Pessoa sintética',1);assert.equal(removed.length,1);assert.equal(commits.length,0);
- const begin=source.indexOf('async function createOperationalRecordInFirestore('),end=source.indexOf('async function sendOperationalRecordInFirestore(',begin);vm.runInContext(source.slice(begin,end),context);await context.createOperationalRecordInFirestore('checklists',{date:day},{uid:'userA',requestId:'new'});assert.equal(commits[0][1],'checklists');assert.equal(commits[0][2],'new');
+test('edições de etiqueta e novos registros recusam operação offline sem enfileirar',async()=>{
+ const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');const context=vm.createContext({navigator:{onLine:false},crypto,
+  assertOnlineOperation:({online=context.navigator.onLine}={})=>{if(!online)throw Object.assign(new Error('online required'),{code:'online-required'});},
+  persistOperationalMutation:()=>assert.fail('Não deve persistir uma fila offline'),removeQueuedOperation:()=>assert.fail('Não deve limpar fila local')});
+ const first=source.indexOf('export async function updateLabelRecord('),last=source.indexOf('export async function listLabelHistory(',first);vm.runInContext(source.slice(first,last).replace('export ',''),context);
+ await assert.rejects(context.updateLabelRecord('label',{},'userA','Pessoa sintética',1),{code:'online-required'});
+ const begin=source.indexOf('export async function createOperationalRecord('),end=source.indexOf('async function sendOperationalRecordInFirestore(',begin);vm.runInContext(source.slice(begin,end).replace('export ',''),context);
+ await assert.rejects(context.createOperationalRecord('checklists',{date:day},{uid:'userA',requestId:'new',forceQueue:true}),{code:'online-required'});
 });
 test('recusa explícita do servidor impede reidratar cache depois de reabrir offline',async()=>{
  const h=clientHarness(),cache=new Map(),local={writeCache:async(uid,kind,id,data)=>cache.set(uid+kind+id,{data}),readCache:async(uid,kind,id)=>cache.get(uid+kind+id)};const client=h.make(local);await client.authorize();h.queue();await client.share();let ready;const seen=new Promise(r=>ready=r),scope={uid:'userA',kind:'checklist',mode:'daily',day};let close=client.watch(scope,rows=>ready(rows));await seen;close();
