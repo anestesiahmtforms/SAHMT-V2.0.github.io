@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {and, doc, getAggregateFromServer, getDoc, getDocFromServer, getDocs, collection, deleteDoc, deleteField, limit, orderBy, or, query, runTransaction, sum, where, setDoc, updateDoc, writeBatch, serverTimestamp, setLogLevel} from 'firebase/firestore';
 import {assertFails, assertSucceeds, initializeTestEnvironment} from '@firebase/rules-unit-testing';
 import {stageOperationalWrite} from '../src/record-write.js';
+import {unconfirmedWrite} from '../src/online-only.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, normalizeDocumentAccessEmail, documentGroupsFromAccess, documentCollectionForWrite} from '../src/document-access.js';
 import {normalizeDriveDocumentUrl} from '../src/drive-document.js';
 
@@ -2015,7 +2016,7 @@ test('Eventos: usuário sem administração cria pela escala e confirma reenvio 
   const bindings = {db, identityDb: db, doc, runTransaction, writeBatch: database => failEventCommit
     ? {set() {}, commit: async () => {throw Object.assign(new Error('Indisponível no teste'), {code: 'unavailable'});}}
     : writeBatch(database), serverTimestamp,
-    getDocFromServer, stageOperationalWrite, assertOnlineOperation:()=>{}, navigator: {onLine: true}, isOfflineRuntimeForced: () => false,
+    getDocFromServer, stageOperationalWrite, assertOnlineOperation:()=>{}, unconfirmedWrite, navigator: {onLine: true}, isOfflineRuntimeForced: () => false,
     mayUseOfflineCache: () => false, writeSafeCache: async () => {}};
   // Keep SDK payloads in the same realm as Firestore's plain-object checks.
   const runtime = new Function(...Object.keys(bindings),
