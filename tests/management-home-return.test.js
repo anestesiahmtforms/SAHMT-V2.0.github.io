@@ -1,9 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
 const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-const start=main.indexOf("  if (!authLimited && ['management','training','occurrences','qmentum'].includes(requestedRoute))");
+const start=main.indexOf("  if (!authLimited && ['occurrences','qmentum'].includes(requestedRoute))");
 const code=main.slice(start,main.indexOf('  if(!authLimited)preloadOperationalDataWhenIdle',start));
 test('Governance module footers return to their immediate parent',()=>{
- for(const requestedRoute of ['management','training','occurrences','qmentum']){
+ for(const requestedRoute of ['occurrences','qmentum']){
   const calls=[],events=new Map(),button={textContent:'Home',removeAttribute(){},addEventListener:(name,fn)=>events.set(name,fn)};
   vm.runInNewContext(code,{authLimited:false,requestedRoute,app:{querySelectorAll:()=>[button]},navigate:(...args)=>calls.push(args)});
   assert.equal(button.textContent,'VOLTAR');events.get('click')();assert.equal(calls[0][0],'management-hub');assert.equal(calls[0][1].panel,['occurrences','qmentum'].includes(requestedRoute)?'records':undefined);
