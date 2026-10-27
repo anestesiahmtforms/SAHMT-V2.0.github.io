@@ -17,11 +17,29 @@ export function requiresSendConfirmation(type) { return CONFIRM_BEFORE_SEND_TYPE
 const MAX_OCCURRENCE_QUEUE_ITEMS_PER_UID = 20;
 const MAX_OCCURRENCE_QUEUE_BYTES = 500_000;
 let dbPromise;
+const localConnections = new Set(), pendingLocalOpens = new Set(), activeLocalReads = new Set();
+let localStorageSuspended = false;
+const storageInterrupted = () => Object.assign(new Error('Leitura local interrompida pela saída da página.'), {code:'storage-aborted'});
+
+// FA and FB share the browser's storage service even though their databases
+// differ. Release handles before a document enters the back/forward cache.
+// Existing writes finish atomically; they are never aborted or replayed here.
+function suspendLocalStorage() {
+  localStorageSuspended = true;
+  dbPromise = null;
+  for (const cancel of [...pendingLocalOpens]) cancel();
+  for (const cancel of [...activeLocalReads]) cancel();
+  for (const db of localConnections) db.close();
+  localConnections.clear();
+}
+globalThis.addEventListener?.('pagehide', suspendLocalStorage);
+globalThis.addEventListener?.('pageshow', () => {localStorageSuspended = false;});
 
 const STORAGE_TIMEOUT_MS = 5000;
 const storageTimeout = () => Object.assign(new Error('O armazenamento local não respondeu. Tente novamente.'), {code:'storage-timeout'});
 
 function openDb() {
+  if (localStorageSuspended) return Promise.reject(storageInterrupted());
   if (dbPromise) return dbPromise;
   let entry;
   entry = new Promise((resolve, reject) => {
@@ -29,9 +47,12 @@ function openDb() {
     const fail = error => {
       if (settled) return;
       settled = true; clearTimeout(timer);
+      pendingLocalOpens.delete(cancel);
       if (dbPromise === entry) dbPromise = null;
       reject(error);
     };
+    const cancel = () => fail(storageInterrupted());
+    pendingLocalOpens.add(cancel);
     const timer = setTimeout(() => fail(storageTimeout()), STORAGE_TIMEOUT_MS);
     let request;
     try { request = indexedDB.open(DB_NAME, DB_VERSION); }
@@ -55,7 +76,9 @@ function openDb() {
       const db = request.result;
       if (settled) {db.close(); return;}
       settled = true; clearTimeout(timer);
-      const retire = () => {if (dbPromise === entry) dbPromise = null;};
+      pendingLocalOpens.delete(cancel);
+      localConnections.add(db);
+      const retire = () => {localConnections.delete(db);if (dbPromise === entry) dbPromise = null;};
       db.onclose = retire;
       db.onversionchange = () => {db.close(); retire();};
       resolve(db);
@@ -73,23 +96,31 @@ function openDb() {
 async function localTransaction(storeNames, mode, action, resultValue) {
   const connection = openDb();
   const db = await connection;
+  if (localStorageSuspended) throw storageInterrupted();
   return new Promise((resolve, reject) => {
     let tx, result, settled = false;
     const finish = (error) => {
       if (settled) return;
       settled = true; clearTimeout(timer);
+      activeLocalReads.delete(cancel);
       if (error) reject(error);
       else {try {resolve(resultValue(result));} catch (error) {reject(error);}}
+    };
+    const cancel = () => {
+      finish(storageInterrupted());
+      try {tx?.abort();} catch {}
     };
     const timer = setTimeout(() => {
       const error = storageTimeout();
       finish(error);
       try {tx?.abort();} catch {}
       if (dbPromise === connection) dbPromise = null;
+      localConnections.delete(db);
       db.close();
     }, STORAGE_TIMEOUT_MS);
     try {
       tx = db.transaction(storeNames, mode);
+      if (mode === 'readonly') activeLocalReads.add(cancel);
       tx.oncomplete = () => finish();
       tx.onerror = tx.onabort = () => finish(tx.error || Object.assign(new Error('Transação local interrompida.'), {code:'storage-aborted'}));
       result = action(tx);
