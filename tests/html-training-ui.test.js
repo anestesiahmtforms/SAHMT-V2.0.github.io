@@ -12,7 +12,7 @@ test('reader isolates untrusted HTML behind a restrictive CSP and preserves its 
   assert.match(html, /form-action 'none'/);
   assert.match(html, /uid-x/);
 });
-test('bounded cache keeps content per account/version and never stores question keys', () => {
+test('training content is not cached locally', () => {
   assert.ok(model, 'training security model must exist');
   const values = new Map();
   const storage = { getItem:k => values.get(k), setItem:(k,v) => values.set(k,v), removeItem:k=>values.delete(k) };
@@ -20,10 +20,8 @@ test('bounded cache keeps content per account/version and never stores question 
   cache.put('u1','t',1,{sections:[{id:'s',title:'Seção',html:'<p>Texto</p>'}],bank:[{correctOptionId:'secret'}]});
   assert.equal(cache.get('u2','t',1), null);
   assert.equal(cache.get('u1','t',2), null);
-  assert.equal(cache.get('u1','t',1).sections[0].title, 'Seção');
-  assert.ok(![...values.values()].join('').includes('secret'));
-  for (let i=0;i<15;i++) cache.put('u1',String(i),1,{sections:[{html:'x'}]});
-  assert.ok(JSON.parse([...values.values()][0]).length <= 8);
+  assert.equal(cache.get('u1','t',1), null);
+  assert.equal(values.size,0);
 });
 test('management affordance is tied to training manager UID or institutional admin', () => {
   assert.ok(model, 'training security model must exist');
@@ -32,14 +30,14 @@ test('management affordance is tied to training manager UID or institutional adm
   assert.equal(model.canManageTraining({}, {uid:'a'}, {role:'administrador_app'}),true);
 });
 
-test('illustrated content persists across cache instances without entering localStorage or crossing accounts',async()=>{
+test('illustrated training content remains server-only and never enters local storage',async()=>{
  const values=new Map(),storage={getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)};
  const first=model.createContentCache(storage,{indexedDB});
  const content={sections:[{id:'s',title:'Figura',html:'<p>'+'x'.repeat(2300000)+'</p>'}],bank:[{correctOptionId:'never-cache'}],revision:3};
  await first.put('illustrated-user','training-large',3,content);
  const second=model.createContentCache(storage,{indexedDB});
- assert.equal((await second.read('illustrated-user','training-large',3)).sections[0].html,content.sections[0].html);
+ assert.equal(await second.read('illustrated-user','training-large',3),null);
  assert.equal(await second.read('another-user','training-large',3),null);
  assert.equal(await second.read('illustrated-user','training-large',4),null);
- assert.equal(JSON.stringify([...values.values()]).includes('never-cache'),false);
+ assert.equal(values.size,0);
 });
