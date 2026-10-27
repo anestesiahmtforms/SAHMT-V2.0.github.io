@@ -1,0 +1,10 @@
+import './style.css';import './stress.css';
+import {renderStressReport} from './stress-report-view.js';
+import {initializeApp} from 'firebase/app';
+import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged,inMemoryPersistence,setPersistence} from 'firebase/auth';
+import {getFirestore,collection,getDocs} from 'firebase/firestore';
+import {GOOGLE_PROJECT_CONFIG} from '../src/google-project-auth-config.js';
+const app=initializeApp(GOOGLE_PROJECT_CONFIG.FE.config,'stress-reports-only'),auth=getAuth(app),db=getFirestore(app);await setPersistence(auth,inMemoryPersistence);
+const status=document.querySelector('#status'),reports=document.querySelector('#reports'),login=document.querySelector('#login'),logout=document.querySelector('#logout');let generation=0;
+onAuthStateChanged(auth,async user=>{const current=++generation;reports.replaceChildren();login.hidden=!!user;logout.hidden=!user;if(!user){status.textContent='Acesso exclusivo à gestão autorizada do FE.';return;}status.textContent='Buscando relatórios agregados…';try{const data=await getDocs(collection(db,'stressReports'));if(current!==generation)return;data.docs.sort((a,b)=>b.id.localeCompare(a.id)).forEach(doc=>reports.append(renderStressReport(document,doc.data())));status.textContent=data.empty?'Nenhum ciclo de estresse e fadiga publicado. A coleta em andamento não é exibida.':'Relatórios disponíveis.';}catch{if(current===generation)status.textContent='Acesso não autorizado ou serviço indisponível.';}});
+login.onclick=async()=>{try{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await signInWithPopup(auth,provider);}catch{status.textContent='Não foi possível entrar no FE.';}};logout.onclick=()=>signOut(auth);

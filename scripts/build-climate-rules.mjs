@@ -1,5 +1,6 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {COMMON,MODULES,OPEN,VERSION,CYCLE} from '../climate-domain/schema.js';
+import {stressRules} from '../stress-domain/rules.js';
 const ids=[...COMMON,...Object.values(MODULES).flat()].map(q=>q.id);
 const strings=values=>'['+values.map(v=>`'${v}'`).join(', ')+']';
 const block=`
@@ -52,4 +53,4 @@ const block=`
 const baseline=await readFile(new URL('../firestore.fe.base.rules',import.meta.url),'utf8');
 const anchor='    match /{document=**}';
 if(!baseline.includes(anchor)||baseline.includes('CLIMATE_FREE_V1'))throw Error('REVIEW_FE_BASELINE');
-await writeFile(new URL('../firestore.climate.rules',import.meta.url),baseline.replace(anchor,()=>block+'\n'+anchor));
+await writeFile(new URL('../firestore.climate.rules',import.meta.url),baseline.replace(anchor,()=>block+'\n'+stressRules()+'\n'+anchor));

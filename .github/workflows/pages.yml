@@ -37,7 +37,7 @@ jobs:
       - name: Validate anonymous climate survey and free FE rules
         run: |
           npm run build:climate
-          node --test tests/climate.test.js tests/climate-report.test.js
+          node --test tests/climate.test.js tests/climate-report.test.js tests/stress.test.js tests/stress-report.test.js
           npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain

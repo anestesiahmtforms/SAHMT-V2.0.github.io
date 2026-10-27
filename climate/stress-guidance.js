@@ -1,0 +1,7 @@
+import './style.css';
+import {BANDS} from '../stress-domain/schema.js';
+import {GUIDANCE,SOURCE_GUIDES,SAFETY_NOTE,LIMITATION} from '../stress-domain/guidance.js';
+const host=document.querySelector('#guidance');
+const heading=document.createElement('h1');heading.textContent='Orientações do SAHMT — todas as faixas';host.append(heading);
+for(const text of [LIMITATION,SAFETY_NOTE,'Os materiais originais abaixo são documentos institucionais de referência. Condutas clínicas, afastamento e encaminhamento a especialistas dependem de avaliação individual; a pontuação não indica automaticamente essas medidas. Os arquivos do Drive podem exigir permissão de acesso.']){const p=document.createElement('p');p.textContent=text;host.append(p);}
+for(const band of BANDS){const section=document.createElement('section'),title=document.createElement('h2'),summary=document.createElement('p'),list=document.createElement('ul'),link=document.createElement('a');title.textContent=`${band.label}: ${band.min}–${band.max} pontos`;summary.textContent=GUIDANCE[band.id].summary;for(const text of GUIDANCE[band.id].actions){const li=document.createElement('li');li.textContent=text;list.append(li);}link.href=SOURCE_GUIDES.find(g=>g.band===band.id).url;link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent='Consultar o documento original fornecido pelo SAHMT (Google Drive)';section.append(title,summary,list,link);host.append(section);}

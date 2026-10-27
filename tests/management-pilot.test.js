@@ -13,6 +13,7 @@ function hub(access={},initialPanel='home',syncStatusElement=null,climateEnabled
 test('FA survey entry opens FE with no session parameters, opener or referrer after release',()=>{
  const released=hub({surveys:true},'surveys',null,true);assert.match(released.body.innerHTML,/href="https:\/\/outros-48120\.web\.app\/"/);assert.match(released.body.innerHTML,/rel="noopener noreferrer" referrerpolicy="no-referrer"/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);
  assert.doesNotMatch(hub({surveys:true},'surveys',null,false).body.innerHTML,/href=/);
+ assert.match(released.body.innerHTML,/href="https:\/\/outros-48120.web.app\/stress.html"/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
 });
 test('common users see all five disabled buttons; deep links cannot open paused subpanels',()=>{
  for(const initialPanel of ['home','records','indicators','results','surveys']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,5);}
