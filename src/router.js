@@ -34,5 +34,8 @@ export async function navigate(route, {panel} = {}) {
 }
 
 export function shouldRenderHashChange(session) {
-  return session?.status === 'signed-in';
+  // The authenticated restricted shell also has navigation controls. render()
+  // keeps data/actions gated until the profile is confirmed; ignoring the hash
+  // here leaves the old page visible after returning from the separate FB app.
+  return ['signed-in', 'auth-limited'].includes(session?.status);
 }

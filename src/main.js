@@ -319,7 +319,7 @@ function updateReportSync(kind) {
   const report = kind === 'checklist' ? payload?.report : payload;
   const incomplete = report?.historyIncomplete || report?.truncated || report?.hasMore || payload?.catalog?.truncated;
   const confirmed = state.confirmed && !report?.localPending && !incomplete;
-  const text = isOfflineRuntimeForced() || state.state === 'offline' ? (report?.stale ? 'Cópia local desatualizada' : 'Sem conexão') : state.state === 'error' ? 'Falha de atualização' : report?.localPending || state.state === 'pending' ? 'Alterações pendentes de envio'
+  const text = isOfflineRuntimeForced() || state.state === 'offline' ? (report?.stale ? 'Cópia local desatualizada' : 'Sem conexão') : state.state === 'error' ? 'Falha de atualização' + (['storage-timeout','storage-blocked','storage-aborted','deadline-exceeded','unavailable','network-request-failed','resource-exhausted','permission-denied','unauthenticated','failed-precondition'].includes(state.error?.code) ? ' · ' + state.error.code : '') : report?.localPending || state.state === 'pending' ? 'Alterações pendentes de envio'
     : confirmed ? 'Confirmado pelo servidor' : incomplete && state.ready ? 'Relatório incompleto · carregar mais' : 'Atualizando';
   const prefix = kind === 'events' ? 'event' : kind === 'labels' ? 'label' : 'checklist';
   const indicator = document.querySelector('#' + prefix + '-report-sync');
@@ -5294,7 +5294,14 @@ async function updateOutboxStatus() {
   try{[pendingProgress,retryableFailures,drafts,unsettled]=await Promise.all([
     listPendingTrainingProgress(uid),
     retryableFailedOperationCount(uid), listOperationalDrafts(uid), listUnsettledOperations(uid)
-  ]);}catch{if(sequence===syncNoticeSequence&&session.user?.uid===uid)pendingSyncBanner.update({uid,unavailable:true});return;}
+  ]);}catch(error){
+    if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
+    pendingSyncBanner.update({uid,unavailable:true});
+    const code=['storage-timeout','storage-blocked','storage-aborted'].includes(error?.code)?error.code:'local-read-failed';
+    target.innerHTML='<button type="button" id="outbox-open" class="sync-status-button">Sincronização não verificada · '+code+'</button>';
+    target.querySelector('#outbox-open')?.addEventListener('click',()=>navigate('offline'));
+    return;
+  }
   if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
   // IDs and counts must come from one snapshot; separate reads race a commit.
   const counts = Object.fromEntries(['queued','failed','conflict','sending'].map(status => [status, unsettled.filter(item => item.status === status).length]));

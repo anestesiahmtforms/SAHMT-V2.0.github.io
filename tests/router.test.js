@@ -27,7 +27,9 @@ test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Es
 test('sessão autenticada offline redesenha a rota ao navegar', () => {
   assert.equal(shouldRenderHashChange({status: 'signed-in', offline: true}), true);
   assert.equal(shouldRenderHashChange({status: 'signed-in', offline: false}), true);
-  assert.equal(shouldRenderHashChange({status: 'auth-limited', offline: true}), false);
+  assert.equal(shouldRenderHashChange({status: 'auth-limited', offline: true}), true);
+  for(const status of ['checking','loading-profile','blocked','signed-out','auth-error'])
+    assert.equal(shouldRenderHashChange({status}), false);
 });
 
 test('voltar aos painéis de Governança usa a rota local sem recarregar FA', () => {

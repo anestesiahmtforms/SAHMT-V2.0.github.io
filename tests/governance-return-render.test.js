@@ -5,10 +5,12 @@ import {readFileSync} from 'node:fs';
 import {parseFragment} from 'parse5';
 import {canUseManagementPilot} from '../src/management-pilot.js';
 import {featureEnabledForRoute, DEFAULT_APP_FEATURES} from '../src/feature-flags.js';
+import {shouldRenderHashChange} from '../src/router.js';
 
 const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export ','');
 const shell=main.slice(main.indexOf('function shellView() {'),main.indexOf('async function loadHome()'));
+const cards=main.slice(main.indexOf('function moduleCards() {'),main.indexOf('function hasOccurrencePermission()'));
 const render=main.slice(main.indexOf('async function render() {'),main.indexOf('async function renderOfflineOperationalView()'));
 const hubLoader=main.slice(main.indexOf('async function loadModule(route) {'),main.indexOf("  if(route === 'qmentum'){",main.indexOf('async function loadModule(route) {')))+"\nloaded.push(route);}";
 
@@ -74,7 +76,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     managementUtilityCards:()=>'',can:()=>false,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
     mountHub:(content,options)=>{mounts.push(options.initialPanel);return ()=>{};}
   });
-  const code=(router+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
+  const code=(router+'\n'+cards+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replace("await import('./management-hub.js')",'await Promise.resolve({mountManagementHub:mountHub})');
   vm.runInContext(code,ctx);
   return {ctx,app,assignments,mounts,loaded,render:()=>ctx.render()};
@@ -102,6 +104,21 @@ test('FA preserves Governance while validating the profile, then mounts it after
   assert.ok(h.app.querySelector('#retry-profile-access'));
   h.ctx.session=authorized();await h.render();
   assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);
+});
+
+test('returning from FB keeps HOME responsive while FA validates the profile',async()=>{
+  const h=harness({target:'FA',route:'management-hub',session:limited()});
+  let reads=0;h.ctx.loadHome=async()=>{reads++;};
+  await h.render();
+  const home=h.app.querySelector('.brand');assert.ok(home);
+  for(const click of home.listeners.click||[])await click();
+  assert.equal(h.ctx.location.hash,'#/home');
+  if(shouldRenderHashChange(h.ctx.session))await h.render();
+  assert.ok(h.app.querySelector('#schedule-content'),'HOME must render even before profile confirmation');
+  assert.equal(reads,0,'restricted navigation cannot read application data');
+  assert.deepEqual(h.mounts,[]);
+  h.ctx.session=authorized();await h.render();
+  assert.equal(reads,1,'the selected page loads once FA confirms the profile');
 });
 test('FA still denies a confirmed profile outside the Governance pilot',async()=>{
   const session=authorized();session.profile.role='anestesiologista';
