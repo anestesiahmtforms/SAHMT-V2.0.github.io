@@ -1,3 +1,4 @@
+import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
 import './styles.css';
 import './performance-ui.css';
 import './catalog-folders.css';
@@ -6,7 +7,6 @@ import {withinDeadline} from './async-deadline.js';
 import './management-cards.css';
 import {managementAreaIcon} from './management-area-icons.js';
 import './training-state.css';
-import {createPendingSyncBanner} from './pending-sync-banner.js';
 import {trainingActivityId, trainingParticipationState, paintTrainingButton} from './training-participation-state.js';
 import {renderCatalogFolders} from './catalog-folders.js';
 import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
@@ -39,7 +39,7 @@ import {mountOfflineOperationalDashboard, offlineOperationalDashboardMarkup, off
 import {bindOfflineOperationalReports} from './offline-report-ui.js';
 import {cacheOfflineScheduleImages, offlineScheduleGalleryMarkup} from './offline-schedule.js';
 import {checklistCacheId, checklistCachedCatalogMatches, operationalReportCacheId} from './offline-report-cache.js';
-import {setOfflineRuntimeMode, isOfflineRuntimeForced, shouldQueueOfflineOperationalWrite} from './offline-runtime-mode.js';
+import {setOfflineRuntimeMode, isOfflineRuntimeForced} from './offline-runtime-mode.js';
 import {isFirestoreCacheFallbackError} from './offline-cache.js';
 import {isOfflineOperationAuthorized} from './offline-outbox-policy.js';
 import {operationalBackend} from './operational-backend.js';
@@ -63,7 +63,13 @@ import {repairAppFiles} from './app-repair.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
-const pendingSyncBanner=createPendingSyncBanner({onOpen:()=>navigate('offline')});
+try {await discardLegacyOfflineData();}
+catch(error){
+  app.innerHTML='<main class="login-gate"><section class="login-card"><h1>Atualização necessária</h1><p>Feche outras abas do SAHMT e reabra para concluir a remoção das pendências antigas.</p><button type="button" id="retry-cleanup">Tentar novamente</button></section></main>';
+  app.querySelector('#retry-cleanup')?.addEventListener('click',()=>location.reload());
+  throw error;
+}
+const pendingSyncBanner={reset(){},update(){},pending(){},confirmed(){}};
 let syncNoticeSequence=0;
 installMaterialViewer(document);
 const STARTUP_BANNER_DURATION_MS = 3000;
@@ -96,7 +102,7 @@ const labels = {
   occurrences: ['REGISTRO DE OCORRÊNCIAS', 'Relato de ocorrências e não conformidades'],
   people: ['Pessoas', 'Contatos e cadastros da equipe'],
   admin: ['Administração', 'Usuários e configurações'],
-  offline: ['Sincronização', 'Ações aguardando confirmação do Firestore']
+  offline: ['Acesso', 'Conexão e acesso aos projetos']
 };
 const userRoles = [
   ['coordenador', 'Coordenador'], ['conselho_diretor', 'Conselho Diretor'], ['gestor', 'Gestor'],
@@ -136,7 +142,7 @@ if (googleProjectAuthEnabled) {
 const deniedOperationalModules = new Set();
 const operationalDrafts = installOperationalDrafts({getSession: () => session, onError: () => {
   const status = document.querySelector('#label-form-status') || document.querySelector('#event-form-status');
-  if (status) status.textContent = 'O armazenamento local não está disponível. Mantenha esta tela aberta para preservar seu preenchimento.';
+  if (status) status.textContent = 'Conecte-se ao servidor antes de registrar.';
 }});
 let outboxRetryTimer = null;
 let outboxRetryAt = 0;
@@ -361,13 +367,7 @@ function checklistSignatureCurrent(scope, fingerprint) {
     Boolean(checklistConferenceRotation(scope)) &&
     can('checklistSign') && scope.day === todayInputValue() && navigator.onLine;
 }
-function checklistLocalConferenceCurrent(scope, fingerprint) {
-  if (!isOfflineRuntimeForced() && navigator.onLine) return false;
-  return reportScopeCurrent(scope) && can('checklistSign') && scope.day === todayInputValue() &&
-    checklistReportContext?.fingerprint === fingerprint && checklistReportContext?.localConferenceComplete === true &&
-    !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
-    !(checklistLocalIntent?.uid === scope.uid && checklistLocalIntent?.day === scope.day);
-}
+function checklistLocalConferenceCurrent() {return false;}
 function checklistConferenceRotation(scope) {
   const state = checklistRotationLive?.key === scope.key ? checklistRotationLive : null;
   const rotation = state?.rotation;
@@ -410,56 +410,7 @@ function updateChecklistResponsibilityUI() {
     if (dialog?.open) dialog.close();
   }
 }
-async function emitCachedOfflineReport(kind, scope, callbacks) {
-  const readDisplayCache = (uid, kind, id, options = {}) => readFreshSafeCache(uid, kind, id, {...options, localOnly:true});
-  const current = () => callbacks.isCurrent?.() !== false && session.status === 'signed-in' && session.user?.uid === scope.uid;
-  if (!current()) return false;
-  if (kind === 'events' || kind === 'labels') {
-    const cacheId = operationalReportCacheId(kind, scope);
-    let cached = cacheId ? await readDisplayCache(scope.uid, kind, cacheId) : null;
-    if (!cached && scope.mode === 'daily') {
-      const legacyId = offlineOperationalCacheId(kind, scope.day, scope);
-      cached = legacyId ? await readDisplayCache(scope.uid, 'offlineOperational', legacyId, kind === 'labels' ? {maxAgeMs: 86400000} : {}) : null;
-    }
-    if (!Array.isArray(cached?.data?.records) || !current()) return false;
-    callbacks.next('report', {data: {...cached.data, records: cached.data.records.map(record => ({...record, stale: true})), stale: true, fromCache: true, hasPendingWrites: false, serverConfirmed: false}, complete: true, fromCache: true, hasPendingWrites: false});
-    return true;
-  }
-  if (kind !== 'checklist') return false;
-  const catalogEntry = await readDisplayCache(scope.uid, 'stations', 'all');
-  if (!Array.isArray(catalogEntry?.data)) return false;
-  const stations = catalogEntry.data.filter(station => scope.mode === 'monthly' || stationIsInDateRange(station, scope.day));
-  const stationIds = stations.map(station => station.id).sort();
-  const cacheId = checklistCacheId(scope);
-  const reportEntry = cacheId ? await readDisplayCache(scope.uid, 'checklists', cacheId) : null;
-  const hasDayRecords = Array.isArray(reportEntry?.data?.records);
-  if (!current() || (!hasDayRecords && scope.mode !== 'daily')) return false;
-  const cachedReport = hasDayRecords ? reportEntry.data : {records: [], priorRecords: [], stationIds: [], truncated: false};
-  const sameCatalog = hasDayRecords && checklistCachedCatalogMatches(cachedReport.stationIds, stationIds);
-  const [schedule, vacations, directory, conference, intent] = await Promise.all([
-    readDisplayCache(scope.uid, 'scheduleDays', scope.day), readDisplayCache(scope.uid, 'vacations', scope.day), readDisplayCache(scope.uid, 'eventMembers', 'all'),
-    readDisplayCache(scope.uid, 'checklistConference', scope.day), readOperationalDraft(scope.uid, 'checklists', 'conference:' + scope.day)
-  ]);
-  if (!current()) return false;
-  if (schedule?.data && Array.isArray(vacations?.data) && Array.isArray(directory?.data)) {
-    const localSchedule = projectPendingSchedule(schedule.data, await listUnsettledOperations(scope.uid), {uid: scope.uid, day: scope.day});
-    if (!current()) return false;
-    const rotation = resolveChecklistRotation({schedule: localSchedule, day: scope.day, vacations: vacations.data, directory: directory.data});
-    if (callbacks.canApplyLocalState?.('rotation') !== false) checklistRotationLive = {key: scope.key, rotation, ready: true, current: false, fromCache: true, stale: true};
-  }
-  if (conference?.data && callbacks.canApplyLocalState?.('conference') !== false) checklistConferenceLive = {...conference.data, key: scope.key, fromCache: true};
-  checklistLocalIntent = intent ? {uid: scope.uid, day: scope.day, signerName: intent.fields.signerName} : null;
-  const catalog = {records: catalogEntry.data.map(station => ({...station, stale: true})), truncated: false, fromCache: true, hasPendingWrites: false, serverConfirmed: false, stale: true};
-  const report = {
-    records: cachedReport.records.map(record => ({...record, stale: true})),
-    priorRecords: sameCatalog ? (cachedReport.priorRecords || []).map(record => ({...record, stale: true})) : [],
-    stationIds, ready: true, confirmed: false, fromCache: true, hasPendingWrites: false,
-    historyIncomplete: !sameCatalog || Boolean(cachedReport.truncated), truncated: Boolean(cachedReport.truncated), recordsUnavailable: !hasDayRecords, stale: true
-  };
-  callbacks.next('catalog', {data: catalog, complete: true, fromCache: true, hasPendingWrites: false});
-  callbacks.next('report', {data: report, complete: true, fromCache: true, hasPendingWrites: false});
-  return true;
-}
+async function emitCachedOfflineReport() {return false;}
 
 async function subscribeLiveReport(kind, scope, callbacks) {
   if (scope.localOnly || isOfflineRuntimeForced() || !navigator.onLine) return subscribeLiveReportUnbounded(kind, scope, callbacks);
@@ -469,7 +420,7 @@ async function subscribeLiveReport(kind, scope, callbacks) {
 async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   if (scope.localOnly || isOfflineRuntimeForced() || !navigator.onLine) {
     if (await emitCachedOfflineReport(kind, scope, callbacks)) return () => {};
-    throw Object.assign(new Error('Não há uma cópia local recente deste período. Conecte-se para atualizar os dados.'), {code: 'unavailable'});
+    throw Object.assign(new Error('Conecte-se ao servidor para consultar este período.'), {code: 'unavailable'});
   }
   // Display cache and Firestore are independent. A suspended IndexedDB read
   // must never consume the server deadline before a listener is even attached.
@@ -485,6 +436,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
     }
   }).catch(() => false);
   callbacks = {...observer, next(key, event) {
+    if(event.fromCache===true||event.hasPendingWrites===true)return;
     if (event.fromCache === false) serverSources.add(key);
     if (event.hasPendingWrites === true) cacheClosed = true;
     // An empty SDK memory cache cannot erase a saved display while the server
@@ -515,7 +467,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   let catalogServerSeen = false, reportServerSeen = false, conferenceServerSeen = scope.mode !== 'daily', rotationServerSeen = scope.mode !== 'daily';
   let writtenCatalog = '', catalogWriteSequence = 0, snapshotExpiry = 0, staticStopped = false;
   const current = () => !stopped && callbacks.isCurrent();
-  const stopStaticReaders = () => { staticStopped = true; if (snapshotExpiry) globalThis.clearTimeout?.(snapshotExpiry); sequence++; reportStop?.(); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
+  const stopStaticReaders = () => { staticStopped = true; if (snapshotExpiry) globalThis.clearTimeout?.(snapshotExpiry); catalogStop?.(); responsibilityStop?.(); displayResponsibilityStop?.(); };
   const stop = () => { stopped = true; cacheClosed = true; stopStaticReaders(); conferenceStop?.(); };
   const stopAfterInitialSnapshot = () => {
     if (current() && !staticStopped && catalogServerSeen && reportServerSeen && conferenceServerSeen && rotationServerSeen) stopStaticReaders();
@@ -572,7 +524,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   if (!current()) return stop;
   try {
     catalogStop = await watchChecklistStations(payload => {
-      if (!current() || staticStopped) return;
+      if (!current() || staticStopped || payload.fromCache === true || payload.hasPendingWrites === true) return;
       const serverConfirmed = payload.fromCache === false && payload.hasPendingWrites === false;
       if (serverConfirmed) catalogServerSeen = true;
       const initialCatalog = cachedSources.get('catalog')?.records || savedCatalog || [];
@@ -1777,237 +1729,8 @@ function canConfirmOfflineOperation(item) {
 }
 
 async function loadOfflineView(target) {
-  const uid = session.user.uid;
-  try {
-    const [counts, unsettled, pendingProgress, drafts] = await Promise.all([
-      operationCounts(uid),
-      listUnsettledOperations(uid),
-      listPendingTrainingProgress(uid), listOperationalDrafts(uid)
-    ]);
-    const labelsByType = {events: 'Evento', eventEdits: 'Edição de evento', labelEdits: 'Edição de etiqueta', labels: 'Etiqueta', checklists: 'Checklist', activities: 'Atividade', scheduleReleases: 'Liberação da escala', occurrences: 'Ocorrência'};
-    const today = todayInputValue();
-    const retryableFailed = unsettled.some((item) => item.status === 'failed' && item.lastErrorCode !== 'invalid-outbox-operation' && !requiresSendConfirmation(item.type));
-    const rows = unsettled.map((item) => {
-      const dateDiffers = isChecklistDateDifferentFromLocalDay(item, today);
-      const versionConflict = item.status === 'conflict' && ['eventEdits', 'labelEdits'].includes(item.type);
-      const invalidLocalOperation = ['invalid-outbox-operation','domain-cutover-review'].includes(item.lastErrorCode);
-      const retryAt = Number(item.nextAttemptAt);
-      const retryScheduled = item.status === 'queued' && Number.isFinite(retryAt) && retryAt > Date.now();
-      const abandonedSend = item.status === 'sending' && Number.isFinite(item.sendClaimedAt)
-        && Date.now() - item.sendClaimedAt >= 120000;
-      const manualConfirmationRequired = requiresSendConfirmation(item.type) &&
-        !Number.isFinite(item.sendConfirmedAt) && (['queued', 'awaiting-confirmation', 'failed'].includes(item.status) || abandonedSend);
-      const operationStatus = item.status === 'conflict'
-        ? 'Conflito para comparar'
-        : item.status === 'sending' && !abandonedSend ? 'Enviando'
-        : abandonedSend ? 'Envio interrompido: confirme novamente'
-        : item.status === 'failed'
-          ? 'Revisar'
-          : item.status === 'awaiting-confirmation'
-            ? 'Aguardando confirmação do envio'
-          : !navigator.onLine
-            ? 'Aguardando conexão'
-            : retryScheduled
-              ? 'Nova tentativa agendada'
-              : 'Aguardando envio';
-      const retryInfo = retryScheduled
-        ? `<small class="record-meta">${item.lastError ? `Falha temporária: ${escapeHtml(item.lastError)} · ` : ''}Nova tentativa automática prevista às ${escapeHtml(new Date(retryAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}))}.</small>`
-        : '';
-      const resolution = manualConfirmationRequired
-        ? `<small>${globalThis.sahmtProvisionalChannelEnabled ? 'Este registro ainda aguarda confirmação definitiva do Firestore; pode estar compartilhado provisoriamente.' : 'Este registro permanece somente neste aparelho e ainda não foi enviado.'}${canConfirmOfflineOperation(item) ? '' : ' O envio será liberado após conexão e validação online do perfil e da permissão.'}</small>${canConfirmOfflineOperation(item) ? `<button class="primary-button" type="button" data-confirm-operation="${escapeHtml(item.requestId)}">Confirmar envio</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
-        : item.status !== 'queued'
-        ? `${dateDiffers
-          ? `<small class="sync-error">A data do Checklist (${escapeHtml(formatRecordDate(item.payload.data.date))}) difere do dia atual exibido neste aparelho. O Firestore autoriza gravação apenas no dia do servidor. Se a verificação pertence a um dia anterior, faça uma nova verificação para hoje${can('checklistWrite') ? '' : ' e peça revisão ao administrador'}.</small>${can('checklistWrite') ? '<button class="secondary-button" type="button" data-open-current-checklist>Abrir Checklist de hoje</button>' : ''}`
-          : versionConflict
-            ? `<small class="sync-error">O registro mudou no Firestore desde a versão ${Number(item.payload.expectedVersion)}. O rascunho local foi preservado para comparação; abra ${item.type === 'labelEdits' ? 'Etiquetas' : 'Eventos'}, atualize o relatório e aplique manualmente suas alterações ao registro atual.</small>`
-            : item.lastError ? `<small class="sync-error">${escapeHtml(item.lastError)}</small>` : ''}${!dateDiffers && !versionConflict && !invalidLocalOperation ? `<button class="secondary-button" type="button" data-retry-operation="${escapeHtml(item.requestId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar esta ação novamente</button>` : ''}<button class="text-button" type="button" data-discard-operation="${escapeHtml(item.requestId)}">Descartar cópia local</button>`
-        : '';
-      const description = item.type === 'scheduleReleases'
-        ? `${item.payload.sigla} · ${formatRecordDate(item.payload.day)}`
-        : item.type === 'eventEdits'
-          ? `Evento ${item.resourceId} · versão base ${Number(item.payload.expectedVersion)}`
-        : `ID ${item.resourceId}`;
-      return `<li><strong>${escapeHtml(labelsByType[item.type] || item.type)} · ${operationStatus}</strong><small>${escapeHtml(formatRecordDate(item.createdAt))} · ${escapeHtml(description)}</small>${retryInfo}${manualConfirmationRequired && item.lastError ? `<small class="sync-error">Última tentativa não confirmada: ${escapeHtml(item.lastError)}${item.lastErrorCode ? ` · ${escapeHtml(item.lastErrorCode)}` : ''}</small>` : ''}${resolution}</li>`;
-    }).join('');
-    const trainingRows = pendingProgress.map((item) => {
-      const percent = item.duration ? Math.min(100, Math.round((item.lastPosition / item.duration) * 100)) : 0;
-      const remote = item.syncConflictRemote;
-      const remoteWatched = (remote?.watchedRanges || []).reduce((total, range) => {
-        const start = Number(range?.start);
-        const end = Number(range?.end);
-        return total + (Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0);
-      }, 0);
-      const remotePercent = remote?.duration ? Math.min(100, Math.round((remoteWatched / remote.duration) * 100)) : 0;
-      const comparison = remote ? `<small class="sync-error">Firestore: ${remotePercent}% (${Math.floor(remote.lastPosition || 0)} s de ${Math.floor(remote.duration || 0)} s). Cópia local: ${percent}% (${Math.floor(item.lastPosition || 0)} s de ${Math.floor(item.duration || 0)} s). As durações diferem; o progresso não foi mesclado.</small>` : '';
-      const retry = item.syncConflict ? '' : `<button class="secondary-button" type="button" data-retry-training="${escapeHtml(item.trainingId)}" ${navigator.onLine ? '' : 'disabled'}>Tentar este progresso novamente</button>`;
-      const error = item.syncError ? `<small class="sync-error">Falha: ${escapeHtml(item.syncError)}${item.syncAttempts ? ` · ${item.syncAttempts} tentativa(s)` : ''}</small>${retry}` : '<small>Aguardando sincronização</small>';
-      return `<li><strong>Treinamento · ${escapeHtml(item.trainingId)}</strong><small>${percent}% concluído · posição ${Math.floor(item.lastPosition || 0)} s</small>${comparison}${error}${item.destinationChanged ? '<small>Cópia da base anterior preservada para conciliação administrativa.</small>' : `<button class="text-button" type="button" data-discard-training="${escapeHtml(item.trainingId)}">Descartar cópia local</button>`}</li>`;
-    }).join('');
-    const failedTrainingCount = pendingProgress.filter((item) => item.syncError).length;
-    target.innerHTML = `<nav class="offline-view-tabs" aria-label="Opções offline"><button type="button" id="offline-tab-sync" aria-pressed="${offlineViewMode === 'sync'}">Sincronização</button><button type="button" id="offline-tab-gallery" aria-pressed="${offlineViewMode === 'gallery'}">Escala/Férias 2026</button></nav><section id="offline-sync-panel"><section class="offline-panel" aria-live="polite"><header class="management-detail-heading"><div><p class="eyebrow">ESTADO DO DISPOSITIVO</p><h3>${navigator.onLine ? 'Conexão disponível' : 'Sem conexão'}</h3></div><button type="button" class="secondary-button" id="offline-refresh">Atualizar</button></header>
-      <p>${counts.awaitingConfirmation ? `${counts.awaitingConfirmation} registro(s) locais aguardam sua confirmação.` : ''}${counts.queued ? `${counts.awaitingConfirmation ? ' ' : ''}${counts.queued} ação(ões) confirmadas aguardando envio ao Firestore.` : !counts.awaitingConfirmation ? 'Nenhuma ação operacional aguardando envio.' : ''}${counts.failed ? ` ${counts.failed} ação(ões) falharam ou precisam de revisão.` : ''}${counts.conflict ? ` ${counts.conflict} edição(ões) têm conflito de versão e aguardam comparação manual.` : ''}${pendingProgress.length ? ` Progresso de ${pendingProgress.length} treinamento(s) ainda não confirmado pelo Firestore${failedTrainingCount ? `; ${failedTrainingCount} com falha` : ''}.` : ''}</p>
-      ${retryableFailed ? `<button class="primary-button" type="button" id="offline-retry" ${navigator.onLine ? '' : 'disabled'}>Tentar sincronizar novamente</button>` : ''}
-      ${unsettled.length ? `<ul class="record-list">${rows}</ul>` : ''}${trainingRows ? `<h4>Progresso de treinamento</h4><ul class="record-list">${trainingRows}</ul>` : ''}${!unsettled.length && !trainingRows ? '<p class="empty-state">As gravações online são confirmadas diretamente pelo Firestore.</p>' : ''}
-      <p class="offline-footnote">Ações pendentes só ficam confirmadas depois que o Firestore aceitar a sincronização. O perfil em cache permite abrir o shell temporariamente; as Rules do Firestore continuam sendo a autorização efetiva.</p></section></section>${offlineScheduleGalleryMarkup(import.meta.env.BASE_URL)}`;
-    const readySection = document.createElement('section'); readySection.className = 'offline-panel';
-    readySection.innerHTML = '<h3>Preparação deste aparelho</h3><p data-offline-readiness role="status">Conferindo somente os dados locais…</p><p data-offline-storage class="record-meta"></p><button class="secondary-button" type="button" data-prepare-offline>Preparar uso offline</button><p class="record-meta">Use o cache em aparelho pessoal ou autorizado. Registros pendentes ficam neste navegador até sua confirmação de envio. Não limpe os dados do site enquanto houver registros pendentes.</p>';
-    target.querySelector('#offline-sync-panel').prepend(readySection);
-    if(googleProjectAuthEnabled){
-      const restore=document.createElement('button');restore.type='button';restore.className='secondary-button';restore.textContent='Restaurar acesso aos módulos';
-      restore.addEventListener('click',()=>googleAccessPanel?.open());readySection.append(restore);
-      if(hasManagementReturn())googleAccessPanel?.open();
-    }
-    if (globalThis.sahmtProvisionalChannelEnabled) {
-      const section=document.createElement('section');section.className='panel shared-channel-recovery';
-      section.innerHTML='<h3>Canal compartilhado provisório</h3><p>Compartilha checagens, registros e liberações com internet. A confirmação definitiva depende do Firestore. A recuperação abaixo restaura somente seus registros, sem enviá-los.</p><label>Data<input type="date" data-channel-recovery-day value="'+todayInputValue()+'"></label><label>Módulo<select data-channel-recovery-kind><option value="checklists">Checklist</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="scheduleReleases">Liberações da escala</option></select></label><button type="button" class="secondary-button" data-channel-recover>Recuperar meus registros provisórios</button><p role="status" data-channel-recovery-status></p>';
-      target.querySelector('#offline-sync-panel').prepend(section);
-      const button=section.querySelector('[data-channel-recover]');
-      button.onclick=async()=>{
-        if(session.user?.uid!==uid||!navigator.onLine)return;button.disabled=true;
-        const status=section.querySelector('[data-channel-recovery-status]');status.textContent='Consultando seus registros provisórios…';
-        try{const result=await globalThis.sahmtRecoverSharedOperations(section.querySelector('[data-channel-recovery-day]').value,section.querySelector('[data-channel-recovery-kind]').value);
-          if(session.user?.uid===uid)status.textContent=result.restored+' registro(s) restaurado(s) na fila local. Revise e confirme o envio em Sincronização.';
-        }catch{if(session.user?.uid===uid)status.textContent='Não foi possível recuperar agora. Os registros do servidor não foram apagados.';}
-        finally{if(button.isConnected&&session.user?.uid===uid)button.disabled=false;}
-      };
-    }
-    const showReadiness = async () => {
-      const state = await inspectOfflineReadiness({uid, day: todayInputValue(), sigla: session.profile?.sigla, isAdmin: can('admin'), canManageLabels: can('labelsManage'), readCache: readFreshSafeCache, assetsReady: await operationalAssetsReady(import.meta.env.BASE_URL)});
-      const storage = await inspectDeviceStorage();
-      if (session.user?.uid !== uid || !readySection.isConnected) return;
-      readySection.querySelector('[data-offline-readiness]').textContent = Object.entries(state.modules).map(([name, value]) => `${{events: 'Eventos', labels: 'Etiquetas', checklist: 'Checklist'}[name]}: ${value.formsReady ? 'formulários preparados' : 'preparação incompleta'}; relatório de hoje ${value.dailyReportReady ? 'disponível' : 'ainda não armazenado'}`).join(' · ');
-      readySection.querySelector('[data-offline-storage]').textContent = `${storage.persistent === true ? 'Armazenamento persistente concedido.' : storage.persistent === false ? 'Armazenamento sujeito à limpeza automática do navegador.' : 'Este navegador não informa a persistência do armazenamento.'}${storage.usageBytes !== null ? ` Uso local estimado: ${(storage.usageBytes / 1048576).toFixed(1)} MB.` : ''}${storage.appleMobile && !storage.standalone ? ' No iPhone/iPad, abra pelo Safari, toque em Compartilhar → Adicionar à Tela de Início e prepare os dados dentro do app instalado.' : ''} O sistema pode remover dados locais; envie as pendências assim que possível.`;
-    };
-    void showReadiness();
-    readySection.querySelector('[data-prepare-offline]').onclick = async event => {
-      const button = event.currentTarget; button.disabled = true;
-      try {
-        await inspectDeviceStorage({requestPersistence: true});
-        if (navigator.onLine && (session.offline || onlineValidationRequired || isOfflineRuntimeForced())) await revalidateOnlineSession();
-        await prepareOfflineEssentials(session.user); preloadStartupReports(session.user, {explicit: true}); await showReadiness();
-      } finally {if (button.isConnected) button.disabled = false;}
-    };
-    const conferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:'));
-    if (conferences.length) {
-      const pending = document.createElement('section'); pending.className = 'offline-panel';
-      pending.innerHTML = '<h3>Conferências locais a revalidar</h3>' + conferences.map(item => `<p>${escapeHtml(formatRecordDate(item.fields.day))} · ${escapeHtml(item.fields.signerName)} — aguardando conferência online${item.fields.day !== todayInputValue() ? ' e revisão administrativa da data anterior' : ''}.</p>`).join('') + '<button class="secondary-button" type="button" data-reopen-checklist>Reabrir Checklist</button>';
-      target.querySelector('#offline-sync-panel').append(pending);
-      pending.querySelector('[data-reopen-checklist]').onclick = () => {checklistReportOpen = true; checklistReportMode = 'daily'; navigate('checklist');};
-    }
-    target.querySelector('#offline-sync-panel').hidden = offlineViewMode !== 'sync';
-    target.querySelector('.offline-schedule-gallery').hidden = offlineViewMode !== 'gallery';
-    target.querySelector('#offline-tab-sync')?.addEventListener('click', () => setOfflineViewMode(target, 'sync'));
-    target.querySelector('#offline-tab-gallery')?.addEventListener('click', () => setOfflineViewMode(target, 'gallery'));
-    target.querySelectorAll('.offline-schedule-nav a').forEach((link) => link.addEventListener('click', (event) => {
-      event.preventDefault();
-      target.querySelector(link.getAttribute('href'))?.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }));
-    target.querySelectorAll('.offline-schedule-image-card img').forEach((image) => image.addEventListener('error', () => {
-      const status = target.querySelector('#offline-schedule-cache-status');
-      if (status) status.textContent = navigator.onLine
-        ? 'Uma imagem não foi carregada. Use “Preparar imagens offline” e tente novamente.'
-        : 'Esta imagem ainda não foi armazenada neste aparelho. Conecte-se e prepare o conjunto offline.';
-    }, {once: true}));
-    target.querySelector('#offline-schedule-prepare')?.addEventListener('click', async (event) => {
-      const button = event.currentTarget;
-      const status = target.querySelector('#offline-schedule-cache-status');
-      if (!navigator.onLine) {
-        if (status) status.textContent = 'Sem conexão. Só estarão disponíveis as imagens abertas ou preparadas anteriormente neste aparelho.';
-        return;
-      }
-      button.disabled = true;
-      if (status) status.textContent = 'Preparando cópia offline…';
-      try {
-        const imageCache = await caches.open('sahmt-v2-offline-schedule-v1');
-        await cacheOfflineScheduleImages({
-          baseUrl: import.meta.env.BASE_URL,
-          fetchImage: async (url) => {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            await imageCache.put(url, response.clone());
-            if (!(await imageCache.match(url))) throw new Error('A imagem não ficou disponível no cache local.');
-          },
-          onStatus: (message) => { if (status?.isConnected) status.textContent = message; }
-        });
-      } catch (error) {
-        if (status?.isConnected) status.textContent = `Não foi possível preparar o cache offline. ${error.message || ''}`;
-      } finally {
-        if (button.isConnected) button.disabled = false;
-      }
-    });
-    const offlineRefresh = target.querySelector('#offline-refresh');
-    if (offlineRefresh && navigator.onLine && (session.offline || onlineValidationRequired)) offlineRefresh.textContent = 'Revalidar acesso e atualizar';
-    offlineRefresh?.addEventListener('click', async () => {
-      if (navigator.onLine && (session.offline || onlineValidationRequired)) await revalidateOnlineSession();
-      if (document.querySelector('#module-content') === target) await loadOfflineView(target);
-    });
-    target.querySelector('#offline-retry')?.addEventListener('click', async (event) => {
-      event.currentTarget.disabled = true;
-      await retryFailedOperations(uid);
-      await syncOutbox();
-      if (document.querySelector('#module-content') === target) await loadOfflineView(target);
-    });
-    target.querySelectorAll('[data-open-current-checklist]').forEach((button) => button.addEventListener('click', () => navigate('checklist')));
-    target.querySelectorAll('[data-confirm-operation]').forEach((button) => button.addEventListener('click', async () => {
-      const operation = unsettled.find(item => item.requestId === button.dataset.confirmOperation);
-      if (!operation || !canConfirmOfflineOperation(operation)) return;
-      button.disabled = true;
-      try {
-        const confirmed = await confirmQueuedOperation(uid, operation.requestId);
-        if (confirmed) {
-          window.dispatchEvent(new CustomEvent('sahmt-write-queued', {detail: {requestId: operation.requestId, type: operation.type}}));
-          await syncOutbox();
-        }
-      } finally {
-        if (document.querySelector('#module-content') === target) await loadOfflineView(target);
-        await updateOutboxStatus();
-      }
-    }));
-    target.querySelectorAll('[data-discard-operation]').forEach((button) => button.addEventListener('click', async () => {
-      if (!window.confirm(globalThis.sahmtProvisionalChannelEnabled ? 'Descartar este registro local e retirar a cópia provisória compartilhada, caso exista? Nenhum registro confirmado do Firestore será apagado.' : 'Esta ação não foi confirmada pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
-      const operation=unsettled.find(item=>item.requestId===button.dataset.discardOperation);
-      if(globalThis.sahmtProvisionalChannelEnabled&&operation){
-        try{const module=await import('./provisional-operational-channel.js');await module.withdrawProvisionalOperation(operation);}
-        catch{window.alert('Não foi possível retirar a cópia compartilhada. Conecte-se e tente novamente; o registro local foi preservado.');return;}
-      }
-      pendingSyncBanner.discarded(uid, button.dataset.discardOperation);
-      await removeQueuedOperation(uid, button.dataset.discardOperation);
-      await loadOfflineView(target);
-      await updateOutboxStatus();
-    }));
-    target.querySelectorAll('[data-retry-training]').forEach((button) => button.addEventListener('click', async () => {
-      button.disabled = true;
-      const {retryTrainingProgress} = await import('./data.js');
-      await retryTrainingProgress(uid, button.dataset.retryTraining);
-      if (document.querySelector('#module-content') === target) await loadOfflineView(target);
-      await updateOutboxStatus();
-    }));
-    target.querySelectorAll('[data-discard-training]').forEach((button) => button.addEventListener('click', async () => {
-      if (!window.confirm('Este progresso ainda não foi confirmado pelo Firestore. Descartar permanentemente a cópia que existe somente neste aparelho?')) return;
-      pendingSyncBanner.discarded(uid, 'training:' + button.dataset.discardTraining);
-      await discardCachedTrainingProgress(uid, button.dataset.discardTraining);
-      await loadOfflineView(target);
-      await updateOutboxStatus();
-    }));
-  } catch (error) {
-    target.innerHTML = `<p class="empty-state">Não foi possível ler as ações locais. ${escapeHtml(error.message || '')}</p>`;
-  }
-}
-
-function setOfflineViewMode(target, mode) {
-  offlineViewMode = mode === 'gallery' ? 'gallery' : 'sync';
-  const syncButton = target.querySelector('#offline-tab-sync');
-  const galleryButton = target.querySelector('#offline-tab-gallery');
-  const syncPanel = target.querySelector('#offline-sync-panel');
-  const gallery = target.querySelector('.offline-schedule-gallery');
-  if (syncPanel) syncPanel.hidden = offlineViewMode !== 'sync';
-  if (gallery) gallery.hidden = offlineViewMode !== 'gallery';
-  syncButton?.setAttribute('aria-pressed', String(offlineViewMode === 'sync'));
-  galleryButton?.setAttribute('aria-pressed', String(offlineViewMode === 'gallery'));
-  if (offlineViewMode === 'gallery' && navigator.onLine) {
-    const status = target.querySelector('#offline-schedule-cache-status');
-    if (status && !status.textContent) status.textContent = 'Toque em “Preparar imagens offline” para guardar as sete imagens neste aparelho.';
-  }
+  target.innerHTML='<section class="panel"><h3>Acesso aos projetos</h3><p>O SAHMT requer conexão com o servidor. Não há armazenamento offline nem envio posterior de registros.</p><button class="secondary-button" type="button" data-google-project-access>Verificar acesso Google</button></section>';
+  target.querySelector('[data-google-project-access]')?.addEventListener('click',()=>googleAccessPanel?.open());
 }
 
 async function loadAdminModule(content) {
@@ -2270,27 +1993,6 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
     const prepareChecklistConfirmation = async () => {
-      if (checklistLocalConferenceCurrent(scope, fingerprint)) {
-        const signerName = session.profile?.displayName || '';
-        if (!signerName) return;
-        content.querySelector('#checklist-preceptor-name').textContent = signerName;
-        const status = content.querySelector('#checklist-signature-status'), preview = content.querySelector('#checklist-signature-preview');
-        status.textContent = 'Esta conferência será preservada neste aparelho. Após reconectar, reabra o relatório e confirme os dados atuais. A pontuação aguarda validação.';
-        preview.innerHTML = '<button class="primary-button" type="button" data-local-conference-confirm>Arsenais ativos conferidos, e situações não conformes encaminhadas</button>';
-        confirmationDialog.showModal();
-        preview.querySelector('[data-local-conference-confirm]').onclick = async event => {
-          if (!checklistLocalConferenceCurrent(scope, fingerprint) || session.profile?.displayName !== signerName) return;
-          event.currentTarget.disabled = true;
-          try {
-            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
-            if (!checklistLocalConferenceCurrent(scope, fingerprint)) return;
-            await saveOperationalDraft(uid, 'checklists', 'conference:' + day, {day, signerName, reportDigest: [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''), confirmedLocallyAt: new Date().toISOString()});
-            if (!reportScopeCurrent(scope)) return;
-            checklistLocalIntent = {uid, day, signerName}; confirmationDialog.close(); updateChecklistResponsibilityUI(); void updateOutboxStatus();
-          } catch {status.textContent = 'Não foi possível preservar a conferência local. Mantenha o relatório aberto e tente novamente.';}
-        };
-        return;
-      }
       if (!canPrepareSignature || !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, fingerprint)) return;
       const signerName = session.profile?.displayName || '';
       content.querySelector('#checklist-preceptor-name').textContent = signerName || 'Nome de perfil indisponível';
@@ -5090,6 +4792,7 @@ async function render() {
     </div></main>`;
     return;
   }
+  if(!navigator.onLine||(['signed-in','auth-limited'].includes(session.status)&&(session.offline||isOfflineRuntimeForced()||onlineValidationRequired))){renderOnlineGate();return;}
   if (session.status === 'checking' || session.status === 'loading-profile') {
     app.innerHTML = `<main class="login-gate"><section class="login-card" role="status" aria-live="polite"><h1>SAHMT</h1><p>Verificando acesso…</p><i class="boot-spinner" aria-hidden="true"></i></section></main>`;
     return;
@@ -5168,168 +4871,23 @@ async function render() {
     if(!current())return;
     if (route !== 'events') await bindModuleForm(route);
     if(!current())return;
-    const draftForm = document.querySelector('form[data-module-form="' + route + '"]');
-    if (draftForm) await operationalDrafts.restore(draftForm);
+    
   }
   if(!current())return;
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
-  if (navigator.onLine && !session.offline) void syncOutbox();
+  void updateOutboxStatus();
 }
 
-async function renderOfflineOperationalView() {
-  const route = currentRoute();
-  const uid = session.user?.uid;
-  const routeKind = {home: 'schedule', checklist: 'checklist', events: 'events', labels: 'labels'}[route];
-  if (!uid) return;
-  const cachedFeatures = await readSafeCache(uid, 'appConfig', 'app').catch(() => null);
-  if (cachedFeatures?.uid === uid && cachedFeatures.data?.features) {
-    appFeatures = normalizeAppFeatures(cachedFeatures.data.features);
-    appFeaturesUid = uid;
-  }
-  const allowed = {
-    schedule: route === 'home' && featureEnabledForRoute('home', appFeatures) && (can('scheduleRead') || can('scheduleWrite')),
-    checklist: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].some(can),
-    checklistWrite: route === 'checklist' && featureEnabledForRoute('checklist', appFeatures) && can('checklistWrite'),
-    events: route === 'events' && featureEnabledForRoute('events', appFeatures) && ['eventsRead', 'eventsWrite'].some(can),
-    eventsWrite: route === 'events' && featureEnabledForRoute('events', appFeatures) && can('eventsWrite'),
-    labels: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && ['labelsRead', 'labelsWrite', 'labelsManage'].some(can),
-    labelsWrite: route === 'labels' && featureEnabledForRoute('labels', appFeatures) && (can('labelsWrite') || can('labelsManage'))
-  };
-  const day = todayInputValue();
-  const access = {sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage')};
-  const snapshot = routeKind && allowed[routeKind]
-    ? await readOfflineOperationalSnapshot({uid, kind: routeKind, day, access, readSafeCache}).catch(() => null)
-    : null;
-  const [stationCache, eventCatalogCache, eventScheduleCache, labelStaffCache] = await Promise.all([
-    routeKind === 'checklist' && allowed.checklist ? readSafeCache(uid, 'stations', 'all').catch(() => null) : null,
-    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'eventCatalogs', 'operational').catch(() => null) : null,
-    route === 'events' && allowed.eventsWrite ? readSafeCache(uid, 'scheduleDays', day).catch(() => null) : null,
-    route === 'labels' && allowed.labelsWrite ? readSafeCache(uid, 'appConfig', 'labelStaff').catch(() => null) : null
-  ]);
-  const host = route === 'home' ? document.querySelector('#schedule-content') : document.querySelector('.module-view.panel');
-  if (!host) return;
-  const snapshots = routeKind ? {[routeKind]: snapshot} : {};
-  const labelStaffSiglas = labelStaffCache?.uid === uid && Array.isArray(labelStaffCache.data?.siglas) ? labelStaffCache.data.siglas : [];
-  loadedLabelStaffSiglas = labelStaffSiglas;
-  const markup = offlineOperationalDashboardMarkup({day, route, snapshots, permissions: allowed,
-    stations: Array.isArray(stationCache?.data) && stationCache.uid === uid ? stationCache.data.filter(station => stationIsValidOn(station, day)) : [],
-    eventCatalog: eventCatalogCache?.uid === uid ? eventCatalogCache.data || {} : {},
-    eventSchedule: eventScheduleCache?.uid === uid ? eventScheduleCache.data || null : null,
-    labelStaffSiglas});
-  document.querySelector('.app-shell')?.classList.add('is-offline-readonly');
-  document.querySelectorAll('.main-content form').forEach(form => form.addEventListener('submit', event => event.preventDefault()));
-  document.querySelectorAll('.main-content input,.main-content select,.main-content textarea,.main-content button:not([data-route])').forEach(control => { control.disabled = true; });
-  host.querySelector?.('.offline-operational-dashboard')?.remove();
-  host.insertAdjacentHTML('beforeend', markup);
-  if (route === 'events' || route === 'labels') {
-    const pendingModuleContent = host.querySelector('#module-content');
-    if (pendingModuleContent) pendingModuleContent.innerHTML = '<p class="empty-state" role="status">Relatórios online indisponíveis neste momento. Use os relatórios offline para consultar somente a cópia salva neste aparelho.</p>';
-  }
-  bindOfflineOperationalForms(route, uid, day);
-  bindOfflineOperationalReports({root: document, kind: route, day, snapshot});
-}
-async function bindOfflineOperationalForms(route, uid, day) {
-  const forms = [...document.querySelectorAll('.offline-write-form[data-offline-write-form]')];
-  for (const form of forms) form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (session.user?.uid !== uid || session.profile?.active !== true || session.profile?.access !== true || !session.profile?.permissions) return;
-    const submit = form.querySelector('[type="submit"]');
-    const status = form.querySelector('[data-offline-write-status]');
-    if (!submit || !status) return;
-    submit.disabled = true;
-    status.textContent = 'Guardando somente neste aparelho…';
-    try {
-      let pendingFirestore = false;
-      if (route === 'events' && form.dataset.offlineWriteForm === 'events') {
-        const values = Object.fromEntries(new FormData(form).entries());
-        const selected = form.elements.memberSigla.selectedOptions[0];
-        const memberSigla = String(values.memberSigla || '').trim().toUpperCase();
-        const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
-        const eventValues = {...values, memberStatus: values.eventType === 'Suporte' ? 'SUPORTE' : (selected?.textContent?.split(' · ')[0] || memberSigla), delayMultiple: values.delayMultiple || '', substitute: values.substitute || '', shift: values.shift || '', amountToPay: values.amountToPay || '0'};
-        validateEventForm(eventValues);
-        const support = values.eventType === 'Suporte';
-        const automaticAmount = eventAmountToPay(values.eventType, values.delayMultiple, values.shift);
-        const record = {date: values.eventDate || day, memberSigla: support ? '' : memberSigla, scheduleSigla: support ? 'SUPORTE' : memberSigla, memberStatus: eventValues.memberStatus, eventType: values.eventType, description: String(values.description || '').trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: String(values.substitute || '').trim(), shift: values.shift || '', payer: values.payer, creditor: values.creditor, amountToPay: automaticAmount == null ? Number(values.amountToPay || 0) : automaticAmount, createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
-        const {createOperationalRecord} = await import('./data.js');
-        const outcome = await createOperationalRecord('events', record, {uid, forceQueue: shouldQueueOfflineOperationalWrite({online: navigator.onLine, sessionOffline: session.offline})});
-        pendingFirestore = outcome.pendingFirestore === true;
-      } else if (route === 'labels' && form.dataset.offlineWriteForm === 'labels') {
-        const values = Object.fromEntries(new FormData(form).entries());
-        const normalizedType = String(values.type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-        const rawAmount = String(values.amount || '').trim().replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.');
-        const amount = rawAmount ? Number(rawAmount) : null;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date || '') || !values.patientName?.trim() || !values.encounterCode?.trim()) throw new Error('Confira data, paciente e número do atendimento.');
-        if (!['particular', 'complementacao', 'convenio', 'consulta pre-anestesica', 'sadt'].includes(normalizedType)) throw new Error('Selecione o tipo de etiqueta.');
-        if (rawAmount && !Number.isFinite(amount)) throw new Error('Informe um valor válido.');
-        const selectedStaffSiglas = [...new Set([...form.elements.staffSiglas.selectedOptions].map(option => option.value.trim().toUpperCase()).filter(Boolean))].sort();
-        const normalizedCreditor = normalizedType === 'consulta pre-anestesica' ? 'Caixa' : values.creditor;
-        if (!['Caixa', 'Plantão', 'Plantão/Caixa'].includes(normalizedCreditor)) throw new Error('Selecione o credor.');
-        if (normalizedCreditor !== 'Caixa' && !selectedStaffSiglas.length) throw new Error('Selecione os plantonistas.');
-        if (selectedStaffSiglas.some(sigla => !loadedLabelStaffSiglas.includes(sigla))) throw new Error('Uma sigla não consta no catálogo local autorizado. Conecte-se para atualizar o catálogo.');
-        if (!['consulta pre-anestesica', 'sadt'].includes(normalizedType) && !(values.procedureCode || '').trim()) throw new Error('Informe o número da cirurgia.');
-        if (normalizedType !== 'consulta pre-anestesica' && !String(values.insurance || '').trim()) throw new Error('Informe o convênio.');
-        const actorName = String(session.profile?.displayName || session.user?.displayName || '').trim().slice(0, 120);
-        const record = {date: values.date, patientName: values.patientName.trim(), procedureCode: String(values.procedureCode || '').trim(), encounterCode: values.encounterCode.trim(), type: values.type, amount, insurance: normalizedType === 'consulta pre-anestesica' ? '' : String(values.insurance || '').trim(), creditor: normalizedCreditor, staffSiglas: normalizedCreditor === 'Caixa' ? [] : selectedStaffSiglas, consultation: normalizedType === 'consulta pre-anestesica', status: 'CONFIRMED', createdByName: actorName, updatedByName: actorName};
-        const {createOperationalRecord} = await import('./data.js');
-        const outcome = await createOperationalRecord('labels', record, {uid, forceQueue: shouldQueueOfflineOperationalWrite({online: navigator.onLine, sessionOffline: session.offline})});
-        pendingFirestore = outcome.pendingFirestore === true;
-      } else if (route === 'checklist' && form.dataset.offlineWriteForm === 'checklists') {
-        const condition = form.elements.condition.value;
-        const outcome = await saveChecklistAnswer(form.dataset.stationId, condition, day, form.elements.occurrence.value, {uid, forceQueue: shouldQueueOfflineOperationalWrite({online: navigator.onLine, sessionOffline: session.offline})});
-        if (!outcome.ok) throw new Error(outcome.message);
-        pendingFirestore = outcome.pendingFirestore === true;
-      }
-      status.textContent = pendingFirestore
-        ? 'Salvo neste aparelho; aguarda confirmação do envio.'
-        : 'Registro salvo e confirmado pelo Firestore.';
-      form.reset();
-      submit.disabled = false;
-      if (form.elements.eventDate) form.elements.eventDate.value = day;
-      if (form.elements.date) form.elements.date.value = day;
-    } catch (error) {
-      status.textContent = error.message || 'Não foi possível salvar neste aparelho.';
-      submit.disabled = false;
-    }
-  });
+function renderOnlineGate() {
+  const checking=Boolean(session.validatingProfile&&navigator.onLine);
+  app.innerHTML=`<main class="login-gate" data-online-gate><section class="login-card" role="status"><h1>${checking?'Verificando conexão':'Conexão necessária'}</h1><p>${checking?'Aguarde a validação do perfil no servidor.':'O SAHMT funciona somente online. Aguarde o restabelecimento da conexão para consultar ou registrar dados.'}</p><p>Nenhum registro será guardado para envio posterior.</p><button type="button" class="primary-button" data-profile-reconnect ${checking||!navigator.onLine?'disabled':''}>Verificar conexão</button></section></main>`;
+  bindProfileRetryControl(app.querySelector('[data-profile-reconnect]'));
 }
 
 async function updateOutboxStatus() {
-  const target = document.querySelector('#outbox-status'),uid=session.user?.uid,sequence=++syncNoticeSequence;
-  if (session.status !== 'signed-in'||!uid){pendingSyncBanner.reset();return;}
-  if (!target) return;
-  let pendingProgress,retryableFailures,drafts,unsettled;
-  try{[pendingProgress,retryableFailures,drafts,unsettled]=await Promise.all([
-    listPendingTrainingProgress(uid),
-    retryableFailedOperationCount(uid), listOperationalDrafts(uid), listUnsettledOperations(uid)
-  ]);}catch(error){
-    if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
-    pendingSyncBanner.update({uid,unavailable:true});
-    const code=['storage-timeout','storage-blocked','storage-aborted'].includes(error?.code)?error.code:'local-read-failed';
-    target.innerHTML='<button type="button" id="outbox-open" class="sync-status-button">Sincronização não verificada · '+code+'</button>';
-    target.querySelector('#outbox-open')?.addEventListener('click',()=>navigate('offline'));
-    return;
-  }
-  if(sequence!==syncNoticeSequence||session.user?.uid!==uid||session.status!=='signed-in'||target.isConnected===false)return;
-  // IDs and counts must come from one snapshot; separate reads race a commit.
-  const counts = Object.fromEntries(['queued','failed','conflict','sending'].map(status => [status, unsettled.filter(item => item.status === status).length]));
-  counts.awaitingConfirmation = unsettled.filter(item => item.status === 'awaiting-confirmation').length;
-  const count = unsettled.length;
-  const pendingConferences = drafts.filter(item => item.module === 'checklists' && item.id.startsWith('conference:'));
-  const pendingIds = [...unsettled.map(item => item.requestId), ...pendingProgress.map(item => 'training:' + item.trainingId), ...pendingConferences.map(item => item.id)];
-  pendingSyncBanner.update({uid,pendingCount:count+pendingProgress.length+pendingConferences.length,pendingIds});
-  const details = [count ? `${count} ação(ões) ${counts.awaitingConfirmation ? 'aguardando confirmação' : counts.conflict ? 'para revisar' : counts.failed ? 'com falha' : 'pendente(s)'}` : '', pendingProgress.length ? `progresso de vídeo pendente (${pendingProgress.length})` : ''].filter(Boolean).join(' · ');
-  const backendUnavailable = Boolean(operationalBackend.snapshot().code);
-  const syncLabel = count || pendingProgress.length || pendingConferences.length ? `PENDENTE DE SINCRONIZAÇÃO · ${details}${pendingConferences.length ? ' · conferência local a revalidar' : ''}` : backendUnavailable ? 'SINCRONIZAÇÃO INDISPONÍVEL' : navigator.onLine && session.validatingProfile ? 'VERIFICANDO CONEXÃO' : !navigator.onLine || isOfflineRuntimeForced() || session.offline ? 'OFFLINE — OPERANDO LOCALMENTE' : 'ONLINE — SINCRONIZADO';
-  const isSynced = syncLabel === 'ONLINE — SINCRONIZADO';
-  target.innerHTML = `<button type="button" id="outbox-open" class="sync-status-button${isSynced ? ' sync-status-button--synced' : ''}" aria-label="${escapeHtml(`${syncLabel} — abrir estado de sincronização`)}">${isSynced ? '<span class="sync-status-icon" aria-hidden="true">✓</span><span class="sr-only">Sincronizado</span>' : escapeHtml(syncLabel)}</button>${retryableFailures ? '<button type="button" id="retry-outbox">Tentar novamente</button>' : ''}`;
-  updateLabelReportSync();
-  target.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
-  bindProfileRetryControl(target.querySelector('#retry-profile-access'));
-  target.querySelector('#retry-outbox')?.addEventListener('click', async () => {
-    await retryFailedOperations(session.user.uid);
-    await syncOutbox();
-  });
+  const target=document.querySelector('#outbox-status');
+  if(target)target.textContent='';
 }
 
 function bindProfileRetryControl(button){
@@ -5345,65 +4903,7 @@ function bindProfileRetryControl(button){
   });
 }
 
-function scheduleOutboxRetry(uid, attemptAt) {
-  if (!uid || !Number.isFinite(attemptAt)) {
-    if (!uid || outboxRetryUid === uid) {
-      clearTimeout(outboxRetryTimer);
-      outboxRetryTimer = null;
-      outboxRetryAt = 0;
-      outboxRetryUid = '';
-    }
-    return;
-  }
-  if (outboxRetryTimer && outboxRetryUid === uid && outboxRetryAt <= attemptAt) return;
-  clearTimeout(outboxRetryTimer);
-  outboxRetryUid = uid;
-  outboxRetryAt = attemptAt;
-  outboxRetryTimer = window.setTimeout(() => {
-    outboxRetryTimer = null;
-    outboxRetryAt = 0;
-    outboxRetryUid = '';
-    if (session.status === 'signed-in' && session.user.uid === uid && navigator.onLine && !session.offline) void syncOutbox();
-  }, Math.max(0, attemptAt - Date.now()));
-}
-
-async function scheduleNextOutboxRetry(uid) {
-  if (!navigator.onLine || isOfflineRuntimeForced() || session.offline) {scheduleOutboxRetry(uid, NaN); return;}
-  try {
-    scheduleOutboxRetry(uid, await nextQueuedAttemptAt(uid));
-  } catch (error) {
-    console.warn('[SAHMT sync] Não foi possível agendar a próxima tentativa:', error.code || error.message);
-  }
-}
-
-async function syncOutbox() {
-  if (!navigator.onLine || isOfflineRuntimeForced() || onlineValidationRequired || session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true) return;
-  const uid = session.user.uid;
-  try {
-    if(globalThis.sahmtRemoteContinuityEnabled===true){
-      const [{confirmRemoteContinuityOperations},{listChannelReceipts}]=await Promise.all([import('./remote-continuity-auto-send.js'),import('./provisional-channel-storage.js')]);
-      await confirmRemoteContinuityOperations({uid,listOperations:listUnsettledOperations,listReceipts:listChannelReceipts,authorize:canConfirmOfflineOperation,
-        isCurrent:()=>session.status==='signed-in'&&session.user.uid===uid&&!session.offline&&!onlineValidationRequired,confirm:confirmQueuedOperation});
-    }
-    const [counts, pendingProgress] = await Promise.all([
-      operationCounts(uid),
-      pendingTrainingProgressCount(uid)
-    ]);
-    if (!counts.queued && !pendingProgress) return;
-    const {flushOutbox, syncPendingTrainingProgress} = await import('./data.js');
-    await flushOutbox(uid, {authorizeOperation: canConfirmOfflineOperation});
-    await syncPendingTrainingProgress(uid);
-    await updateOutboxStatus();
-    if (currentRoute() === 'offline') {
-      const content = document.querySelector('#module-content');
-      if (content) await loadOfflineView(content);
-    }
-  } catch (error) {
-    console.warn('[SAHMT sync] Outbox indisponível:', error.code || error.message);
-  } finally {
-    if (session.status === 'signed-in' && session.user.uid === uid) await scheduleNextOutboxRetry(uid);
-  }
-}
+function scheduleOutboxRetry() {clearTimeout(outboxRetryTimer);outboxRetryTimer=null;}
 
 async function revalidateOnlineSession() {
   if (!navigator.onLine || !['signed-in','auth-limited'].includes(session.status) || !session.user?.uid) return false;
@@ -5417,9 +4917,9 @@ async function revalidateOnlineSession() {
   backendFailureDisplayed = false;
   setOfflineRuntimeMode(false);
   for (const kind of ['events', 'labels', 'checklist']) {const state=liveReports.get(kind)?.snapshot();if(state?.scope?.warm===false&&['offline','error'].includes(state.state))liveReports.refresh(kind, 'profile-revalidated');}
-  void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(session.user?.uid)).catch(() => {});
   void refreshAppFeatures(session.user.uid);
-  void syncOutbox();
+  if(app.querySelector('[data-online-gate]'))void render();
+  
   return true;
 }
 
@@ -5504,28 +5004,21 @@ function sessionChanged(next) {
   }
   session = next;
   connectionRecovery?.sessionChanged();
-  if(next.status==='signed-in'&&userChanged&&globalThis.sahmtRemoteContinuityEnabled===true){
-    const uid=next.user.uid;
-    void import('./remote-continuity.js').then(module=>module.recoverRemoteContinuity(next.user,{isCurrent:()=>session.status==='signed-in'&&session.user.uid===uid})).then(()=>{
-      if(session.status==='signed-in'&&session.user.uid===uid&&!session.offline)void syncOutbox();
-    }).catch(()=>{});
-  }
   if (globalThis.sahmtProvisionalChannelEnabled) window.dispatchEvent(new CustomEvent('sahmt-channel-session'));
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired || backendFailureDisplayed);
   if (profileBecameLocal) {cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false);}
-  if (profileRevalidated && navigator.onLine) {document.querySelector?.('[data-local-profile-notice]')?.remove(); cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);for(const kind of reconnectReports)liveReports.refresh(kind,'profile-online');void syncOutbox();}
+  if (profileRevalidated && navigator.onLine) {document.querySelector?.('[data-local-profile-notice]')?.remove(); cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);for(const kind of reconnectReports)liveReports.refresh(kind,'profile-online');}
   if (next.status === 'signed-in' && !next.offline && (wasOffline || userChanged)) {
     preloadOperationalDataWhenIdle(next.user); preloadStartupReports(next.user);
   }
   if (next.status === 'signed-in' && userChanged) {
-    void import('./operational-sheet-delivery.js').then(m => m.flushOperationalSheetDelivery(next.user.uid)).catch(() => {});
-  }
+    }
   notice = '';
   if (startupBannerActive && next.status === 'signed-in') {
     if (userChanged) preloadStartupReports(next.user);
     preloadOperationalDataWhenIdle(next.user);
     if (navigator.onLine && !next.offline) {
-      void syncOutbox();
+      
       if (userChanged && can('scheduleRead')) {
         const uid = next.user.uid;
         void import('./data-lite.js').then(async ({readSchedule}) => {
@@ -5585,10 +5078,11 @@ const connectionRecovery=createConnectionLifecycle({
   connectionsSuspended=false;
   liveReports.setOnline(true);
   cleanupCurrentModule?.resume?.();
+  if(app.querySelector('[data-online-gate]'))void render();
   const scopes=suspendedReportScopes;suspendedReportScopes=[];
   for(const scope of scopes)if(reportScopeCurrent(scope))liveReports.open(scope.kind,{...scope,localOnly:false},{force:true});
   for(const kind of ['events','labels','checklist']){const state=liveReports.get(kind)?.snapshot();if(state?.scope&&['offline','error'].includes(state.state))liveReports.refresh(kind,'connection-recovered');}
-  void syncOutbox();void updateOutboxStatus();
+  void updateOutboxStatus();
  }
 });
 let connectionsSuspended=false;
@@ -5600,10 +5094,7 @@ window.addEventListener('online', () => {void connectionRecovery.recover('online
 window.addEventListener('pageshow', () => {resumeLocalConnections();void connectionRecovery.recover('pageshow');});
 // Local views must remain usable even when online recovery is unavailable.
 function resumeLocalConnections() {
-  if (document.hidden || !connectionsSuspended || session.status !== 'signed-in') return;
-  cleanupCurrentModule?.resumeLocal?.();
-  liveReports.setOnline(false);
-  for (const scope of suspendedReportScopes) if (reportScopeCurrent(scope)) liveReports.open(scope.kind, {...scope, localOnly:true});
+  if(!navigator.onLine||session.offline)renderOnlineGate();
 }
 // Both events can describe the same departure (including the back/forward cache).
 // Keep the saved scopes until a visible, authorized recovery actually resumes them.
@@ -5631,7 +5122,8 @@ window.addEventListener('offline', () => {
   const checklistScope=liveReports.get('checklist')?.snapshot().scope;
   if(checklistScope){if(!suspendedReportScopes.some(scope=>scope.key===checklistScope.key))suspendedReportScopes.push(checklistScope);closeReportLive('checklist','offline');}
   liveReports.setOnline(false);
-  invalidateChecklistSignature('Sem conexão. Aguarde a reconciliação antes de dar ciência.');
+  invalidateChecklistSignature('Sem conexão. Aguarde o servidor para dar ciência.');
+  void render();
   void updateOutboxStatus();
 });
 document.addEventListener('visibilitychange', () => {
@@ -5654,7 +5146,7 @@ window.addEventListener('sahmt-write-synced', (event) => {
 window.addEventListener('sahmt-write-queued', event => {
   if(session.status==='signed-in'&&(!event.detail?.uid||event.detail.uid===session.user?.uid))pendingSyncBanner.pending(session.user.uid, event.detail?.requestId);
   refreshLivePending();
-  if (navigator.onLine && session.status === 'signed-in' && !session.offline) void syncOutbox();
+
 });
 window.addEventListener('sahmt-write-local-pending', refreshLivePending);
 let backendFailureDisplayed = false;
@@ -5670,7 +5162,8 @@ window.addEventListener('sahmt-backend-status', event => {
   backendFailureDisplayed = true; setOfflineRuntimeMode(true);
   const scopes = ['events', 'labels', 'checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(Boolean);
   for (const scope of scopes) liveReports.refresh(scope.kind, 'backend-unavailable');
-  invalidateChecklistSignature('A validação remota está indisponível; os registros locais foram preservados.');
+  invalidateChecklistSignature('A validação remota está indisponível.');
+  void render();
   void updateOutboxStatus();
 });
 window.addEventListener('sahmt-operational-access-denied', event => {
@@ -5689,38 +5182,17 @@ if (startupBannerActive) window.setTimeout(() => {
   startupBannerActive = false;
   void render();
 }, STARTUP_BANNER_DURATION_MS);
-globalThis.sahmtRemoteContinuityEnabled=import.meta.env.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true';
+globalThis.sahmtRemoteContinuityEnabled=false;
+globalThis.sahmtProvisionalChannelEnabled=false;
 watchSession(sessionChanged);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`, {scope: import.meta.env.BASE_URL}).catch((error) => console.error('[SAHMT PWA] Service Worker', error)));
 }
 
-if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
-  void import('./provisional-operational-channel.js').then(module => {
-    globalThis.sahmtProvisionalChannelEnabled = module.provisionalChannelEnabled();
-    globalThis.sahmtProjectSharedSchedule = module.projectSharedSchedule;
-    globalThis.sahmtRecoverSharedOperations = module.recoverOwnSharedOperations;
-    if(globalThis.sahmtRemoteContinuityEnabled)globalThis.sahmtMirrorConfirmedSource=path=>module.mirrorProvisionalSource(path).catch(()=>false);
-    module.initializeProvisionalChannel({getSession:()=>session,reports:liveReports,onStatus:detail=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail})),onSchedule:()=>window.dispatchEvent(new CustomEvent('sahmt-shared-schedule'))});
-    window.addEventListener('sahmt-shared-schedule',()=>{
-      const dateInput=document.querySelector('#schedule-date')||document.querySelector('#event-schedule-date');
-      dateInput?.dispatchEvent(new Event('sahmt-shared-refresh'));
-    });
-  }).catch(()=>window.dispatchEvent(new CustomEvent('sahmt-channel-status',{detail:{code:'CHANNEL_INITIALIZATION_FAILED'}})));
-}
 
-if(import.meta.env.VITE_OPERATIONAL_CONTINUITY_ENABLED==='true'){
-  window.addEventListener('sahmt-continuity-stored',event=>{
-    if(event.detail?.uid===session.user?.uid)void updateOutboxStatus();
-  });
-  window.addEventListener('sahmt-continuity-ready',event=>{
-    if(event.detail?.uid!==session.user?.uid)return;
-    for(const kind of ['events','labels','checklist'])if(liveReports.get?.(kind)){
-      if(event.detail?.cacheOnly)void liveReports.hydrateCached(kind,emitCachedOfflineReport).catch(()=>{});
-      else liveReports.refresh(kind,'continuity-ready');
-    }
-    void updateOutboxStatus();
-  });
-}
-
+document.addEventListener('submit',event=>{
+  if(session.status!=='signed-in'||session.offline||onlineValidationRequired||!navigator.onLine||isOfflineRuntimeForced()){
+    event.preventDefault();event.stopImmediatePropagation();renderOnlineGate();
+  }
+},true);

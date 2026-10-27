@@ -19,17 +19,5 @@ const client=createRemoteContinuityClient({
   catch{return {};}
  }
 });
-export async function recoverRemoteContinuity(user,options={}){
- if(!enabled)return null;
- const result=await client.bootstrap(user,options);
- if(result&&auth?.currentUser?.uid===user.uid)globalThis.window?.dispatchEvent(new CustomEvent('sahmt-continuity-ready',{detail:{uid:user.uid,restored:result.restored,cacheOnly:options.cacheOnly===true}}));
- if(result?.confirmed>0&&auth?.currentUser?.uid===user.uid)globalThis.window?.dispatchEvent(new CustomEvent('sahmt-channel-confirm'));
- return result;
-}
-export async function recoverContinuityCache(uid,kind,id){
- const user=auth?.currentUser;if(!enabled||user?.uid!==uid||!CONTINUITY_KINDS.includes(kind))return null;
- const date=String(id).match(/\d{4}-\d{2}-\d{2}/)?.[0]||String(id).match(/\d{4}-\d{2}/)?.[0]?.concat('-01');
- await client.bootstrap(user,{...(date?{day:date}:{}),isCurrent:()=>auth?.currentUser?.uid===uid});
- if(auth?.currentUser?.uid!==uid)return null;
- return readSafeCache(uid,kind,id,{localOnly:true});
-}
+export async function recoverRemoteContinuity(){return null;}
+export async function recoverContinuityCache(){return null;}

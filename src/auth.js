@@ -1,5 +1,5 @@
 import {firebaseConfigured} from './firebase-app.js';
-import {cacheProfile, clearUserLocalData, pendingOperationCount, pendingTrainingProgressCount, readCachedProfile} from './outbox.js';
+import {cacheProfile, clearUserLocalData, readCachedProfile} from './outbox.js';
 import {profileForPresentation} from './profile-presentation.js';
 import {deployment} from './deployment-context.js';
 import {rememberManagementReturn,consumeManagementReturn,rememberModuleNavigation} from './module-navigation.js';
@@ -71,39 +71,8 @@ function loadAuthApi() {
   return authApiPromise;
 }
 
-async function showCachedSession(user, onState, isCurrent = () => true) {
-  let profile;
-  try {profile = await withinDeadline(()=>readCachedProfile(user.uid),{timeoutMs:1500,code:'storage-unavailable'});}
-  catch {
-    if (isCurrent()) showAuthLimitedSession(user, onState, false, 'LOCAL_STORAGE_UNAVAILABLE');
-    return;
-  }
-  if (!isCurrent()) return;
-    if (globalThis.navigator?.onLine !== false && profile?.active !== false) {
-      try {
-        const recovered = await withinDeadline(async()=>{
-          const {recoverRemoteContinuity} = await import('./remote-continuity.js');
-          return recoverRemoteContinuity(user, {isCurrent});
-        },{timeoutMs:2500});
-        if (!isCurrent()) return;
-        if (recovered?.profile?.uid === user.uid) {
-          const chosen=profile?.uid===user.uid&&profile.cachedAt>recovered.profileVerifiedAt?profile:recovered.profile;
-          onState({status: 'signed-in', user, profile: profileForPresentation(chosen, user), offline: true, continuity: true});
-          return;
-        }
-      } catch (error) {
-        if (!isCurrent()) return;
-        if (error?.code === 'CONTINUITY_ACCESS_DENIED') {
-          showAuthLimitedSession(user, onState, false, 'CONTINUITY_ACCESS_DENIED');
-          return;
-        }
-      }
-    }
-  if (!profile || profile.uid !== user.uid) {
-    showAuthLimitedSession(user, onState, false, 'LOCAL_PROFILE_UNAVAILABLE');
-    return;
-  }
-  onState({status: profile.active === true && profile.access === true ? 'signed-in' : 'blocked', user, profile: profileForPresentation(profile, user), offline: true});
+async function showCachedSession(user,onState,isCurrent=()=>true) {
+  if(isCurrent())showAuthLimitedSession(user,onState,false,'ONLINE_PROFILE_REQUIRED');
 }
 
 function profileReadFailureCode(error) {
@@ -416,17 +385,7 @@ export async function signOutGlobal() {
   if (!auth) return false;
   const user = auth.currentUser;
   if (user) {
-    const [pendingOperations, pendingTrainingProgress] = await Promise.all([
-      pendingOperationCount(user.uid),
-      pendingTrainingProgressCount(user.uid)
-    ]);
-    const pendingDescriptions = [
-      pendingOperations ? `${pendingOperations} ${pendingOperations === 1 ? 'ação operacional' : 'ações operacionais'}` : '',
-      pendingTrainingProgress ? `progresso de ${pendingTrainingProgress} ${pendingTrainingProgress === 1 ? 'treinamento' : 'treinamentos'}` : ''
-    ].filter(Boolean);
-    const pendingCount = pendingOperations + pendingTrainingProgress;
-    if (pendingCount > 0 && !window.confirm(`Há ${pendingDescriptions.join(' e ')} sem confirmação do Firestore. Sair mantendo os registros neste aparelho? Entre novamente com esta mesma conta para revisar e enviar.`)) return false;
-    await clearUserLocalData(user.uid, {clearOutbox: false});
+    await clearUserLocalData(user.uid);
   }
   return signOutAllFirebaseProjects({signOutPrimary: () => signOut(auth)});
 }

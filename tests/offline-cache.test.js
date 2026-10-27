@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readThroughSafeCache} from '../src/offline-cache.js';
 
-test('online read refreshes the UID-scoped cache and returns current data', async () => {
+test('online read returns server data without persisting it', async () => {
   let cached;
   const uidReads = [];
   const value = await readThroughSafeCache({
@@ -13,22 +13,12 @@ test('online read refreshes the UID-scoped cache and returns current data', asyn
     mayFallback: () => true
   });
   assert.deepEqual(value, [{id: 'new-contact'}]);
-  assert.deepEqual(uidReads, ['uid-a']);
-  assert.equal(cached.data[0].id, 'new-contact');
+  assert.deepEqual(uidReads, []);
+  assert.equal(cached, undefined);
 });
 
-test('offline read uses only the same UID cache and marks array items stale', async () => {
-  const reads = [];
-  const value = await readThroughSafeCache({
-    uid: 'uid-a', kind: 'vacations', id: '2026-09-25',
-    fetchOnline: async () => { throw Object.assign(new Error('offline'), {code: 'unavailable'}); },
-    readCache: async (uid, kind, id) => { reads.push([uid, kind, id]); return {uid, kind, cachedAt: Date.now(), data: [{id: 'v1'}]}; },
-    writeCache: async () => assert.fail('offline read must not write cache'),
-    mayFallback: (error) => error.code === 'unavailable'
-  });
-  assert.deepEqual(reads, [['uid-a', 'vacations', '2026-09-25']]);
-  assert.deepEqual(value, [{id: 'v1', stale: true}]);
-  assert.equal(value.stale, true);
+test('a network failure does not fall back to any device cache',async()=>{
+ let reads=0;await assert.rejects(readThroughSafeCache({uid:'u',kind:'vacations',id:'day',fetchOnline:async()=>{throw Object.assign(Error('offline'),{code:'unavailable'});},readCache:async()=>{reads++;return {data:[]};},mayFallback:()=>true}),{code:'unavailable'});assert.equal(reads,0);
 });
 
 test('offline cache is not used without a UID or for non-connectivity errors', async () => {

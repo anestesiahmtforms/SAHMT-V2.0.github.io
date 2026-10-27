@@ -286,18 +286,16 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
   return {ctx,scope,stations,ids,initial,catalogs,reports,events,writes,reads,stops,conferences,rotations,deadlines,subscribe,emit,revoke:()=>{owned=false;},lastCatalog:()=>events.filter(item=>item.key==='catalog').at(-1)?.event};
 }
 
-test('adapter real Checklist: primeiro cache de memória vazio preserva os 28 arsenais e as respostas do cache seguro',async()=>{
-  const h=catalogAdapterHarness(),close=await h.subscribe();await settle();h.emit();await settle();
-  const catalog=h.lastCatalog();assert.equal(catalog.data.records.length,28);assert.equal(catalog.fromCache,true);assert.equal(catalog.data.serverConfirmed,false);
-  assert.deepEqual(Array.from(h.reports[0].options.stationIds),h.ids);assert.equal(h.reports[0].options.initial.records[0].id,'safe-answer');
-  assert.equal(h.writes.length,0);assert.deepEqual(h.reads.filter(read=>['stations','checklists'].includes(read.type)),[{uid:'user-a',type:'stations',key:'all'},{uid:'user-a',type:'checklists',key:'2026-10-02'}]);close();
+test('adapter real Checklist ignores the initial SDK cache until server data arrives',async()=>{
+ const h=catalogAdapterHarness(),close=await h.subscribe();await settle();h.emit();await settle();
+ assert.equal(h.lastCatalog(),undefined);assert.equal(h.reports.length,0);assert.equal(h.writes.length,0);close();
 });
 
 test('adapter real Checklist: catálogo vazio confirmado no servidor substitui baseline e encerra históricos antigos',async()=>{
   const h=catalogAdapterHarness(),close=await h.subscribe();await settle();h.emit();await settle();
   h.emit([],{fromCache:false,serverConfirmed:true});await settle();
   assert.equal(h.lastCatalog().data.records.length,0);assert.equal(h.lastCatalog().fromCache,false);
-  assert.deepEqual(Array.from(h.reports.at(-1).options.stationIds),[]);assert.ok(h.stops.includes('report:0'));
+  assert.deepEqual(Array.from(h.reports.at(-1).options.stationIds),[]);assert.equal(h.stops.includes('report:0'),false);
   assert.equal(h.writes.length,1);assert.equal(h.writes[0].data.length,0);close();
 });
 
@@ -325,7 +323,7 @@ test('adapter real Checklist: relatório interrompe os listeners depois do snaps
   assert.equal(h.reports.length,1);
   h.reports[0].next({records:[],priorRecords:[],stationIds:h.ids,ready:true,confirmed:true,fromCache:false,hasPendingWrites:false,historyIncomplete:false,truncated:false});
   assert.ok(h.stops.includes('catalog'));
-  assert.ok(h.stops.includes('report:0'));
+  assert.equal(h.stops.includes('report:0'),false);
   close();
 });
 
@@ -335,7 +333,7 @@ test('daily report stops static readers but receives another preceptor until rep
   h.emit(h.stations,{fromCache:false,serverConfirmed:true});await settle();
   h.rotations[0].next({...meta,current:true});h.conferences[0].next({...meta,confirmation:null});
   h.reports[0].next({records:[],priorRecords:[],stationIds:h.ids,...meta,confirmed:true,historyIncomplete:false,truncated:false});
-  assert.ok(h.stops.includes('catalog'));assert.ok(h.stops.includes('report:0'));assert.ok(h.stops.includes('rotation'));
+  assert.ok(h.stops.includes('catalog'));assert.equal(h.stops.includes('report:0'),false);assert.ok(h.stops.includes('rotation'));
   assert.equal(h.stops.includes('conference'),false);
   h.conferences[0].next({...meta,confirmation:{signerName:'Another preceptor',kind:'alternate',validated:false}});
   assert.equal(h.ctx.checklistConferenceLive.confirmation.signerName,'Another preceptor');
@@ -344,16 +342,15 @@ test('daily report stops static readers but receives another preceptor until rep
   assert.equal(h.ctx.checklistConferenceLive.confirmation.signerName,'Another preceptor');
 });
 
-test('catalog change waits for its own report and leaves no replacement arsenal listener alive',async()=>{
+test('confirmed Checklist snapshot stops catalog reads but keeps the report listener live',async()=>{
   const h=catalogAdapterHarness(),close=await h.subscribe();
   const meta={ready:true,fromCache:false,hasPendingWrites:false,error:null};
-  h.emit(h.stations);await settle();
+  h.emit(h.stations,{fromCache:false,serverConfirmed:true});await settle();
   h.rotations[0].next({...meta,current:true});h.conferences[0].next({...meta,confirmation:null});
   h.reports[0].next({records:[],priorRecords:[],stationIds:h.ids,...meta,confirmed:true});
   h.emit(h.stations.slice(1),{fromCache:false,serverConfirmed:true});await settle();
-  assert.equal(h.reports.length,2);assert.equal(h.stops.includes('catalog'),false);
-  h.reports[1].next({records:[],priorRecords:[],stationIds:h.ids.slice(1),...meta,confirmed:true});
-  assert.ok(h.stops.includes('catalog'));assert.ok(h.stops.includes('report:1'));
+  assert.equal(h.reports.length,1);assert.ok(h.stops.includes('catalog'));
+  assert.equal(h.stops.includes('report:0'),false);
   assert.equal(h.stops.includes('conference'),false);close();
 });
 

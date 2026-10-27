@@ -105,7 +105,6 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
  return {open,access,month,year,history,save,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,participate,participations,reviewSuggestion,definition:async version=>{await access();const config=await read('qmentumConfig','current');if(config?.enabled!==true)throw Error('QMENTUM_CONFIG_REQUIRED');return definition(version);}};
 }
 
-export function createDraftStore(storage=globalThis.sessionStorage) {
- const key=({uid,unitId,period})=>{if(!uid||!unitPattern.test(unitId)||!/^\d{4}-\d{2}$/.test(period))throw Error('QMENTUM_DRAFT_SCOPE_INVALID');return `sahmt:qmentum:FC:${uid}:${unitId}:${period}`;};
- return {read:scope=>{try{const value=JSON.parse(storage.getItem(key(scope))||'null');return value&&Date.now()-value.savedAt<86400000?value:null;}catch{return null;}},save:(scope,value)=>storage.setItem(key(scope),JSON.stringify({...value,savedAt:Date.now()})),remove:scope=>storage.removeItem(key(scope))};
+export function createDraftStore() {
+ return {read:()=>null,save:()=>{},remove:()=>{}};
 }

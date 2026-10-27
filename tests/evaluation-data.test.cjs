@@ -7,7 +7,7 @@ function setup({admin = false, managementManage = admin, occurrencesAuditRead = 
   const listeners = [], events = [], errors = [];
   const sdk = {doc: (_db, name, id) => ({name, id}), collection: (_db, name) => ({name}), where: (...args) => ({where: args}), query: (...args) => args, orderBy: (...args) => ({orderBy: args}), limit: count => ({limit: count}), documentId: () => '__name__', startAfter: cursor => ({startAfter: cursor}),
     getDocFromServer: async ref => ref?.name === 'documentAccessEmails'
-      ? (groupReadDenied ? Promise.reject(new Error('permission-denied')) : {exists: () => accessGroups.length > 0, data: () => ({email: 'fixture@example.invalid', active: accessGroups.length > 0, groups: accessGroups})})
+      ? (groupReadDenied ? Promise.reject(new Error('permission-denied')) : {exists: () => accessGroups.length > 0, data: () => ({email: 'test-user-1@example.test', active: accessGroups.length > 0, groups: accessGroups})})
       : ({exists: () => true, data: () => ({active: !revoked, access: true, role: admin ? 'administrador_app' : 'anestesiologista', permissions: {managementManage, occurrencesAuditRead}})}),
     getDocsFromServer: async query => {
       const collection = query.find(item => item?.name)?.name;
@@ -16,7 +16,7 @@ function setup({admin = false, managementManage = admin, occurrencesAuditRead = 
       return {docs: docs.map(item => ({id: item.id, data: () => item}))};
     },
     onSnapshot: (query, options, next, error) => { const item = {query, options, next, error, stops: 0}; listeners.push(item); return () => item.stops++; }};
-  const fakeAuth = {currentUser: {uid: 'fixture-user', getIdTokenResult: async () => ({claims: {email: 'fixture@example.invalid', email_verified: true, firebase: {sign_in_provider: 'google.com'}, ...claims}})}};
+  const fakeAuth = {currentUser: {uid: 'fixture-user', getIdTokenResult: async () => ({claims: {email: 'test-user-1@example.test', email_verified: true, firebase: {sign_in_provider: 'google.com'}, ...claims}})}};
   const context = vm.createContext({fakeDb: {}, fakeSdk: sdk, fakeAuth, URL, console, crypto: {randomUUID: () => 'fixture-request'}, navigator: {onLine: true}});
   vm.runInContext(source, context);
   const watch = options => context.watchEvaluation({actorUid: 'fixture-user', category: 'PERFORMANCE', onData: data => events.push(data), onError: error => errors.push(error), ...options});
@@ -64,7 +64,7 @@ test('pedidos rejeitam identidade/nota forjada, categoria inválida e URLs com c
   const correction = {awardId: 'fixture-award', category: 'PERFORMANCE', expectedAwardVersion: 1, correctedPoints: 0, reason: 'Correção administrativa fictícia'};
   assert.equal(validate('CORRECT_SCORE', correction), correction); assert.throws(() => validate('CORRECT_SCORE', {...correction, category: 'GLOBAL'})); assert.throws(() => validate('CORRECT_SCORE', {...correction, uid: 'other'}));
   const review = {activityId: 'form-fixture', areaId: 'area-fixture', assignmentId: 'assignment-fixture', previousVersion: 1, newVersion: 2, summary: 'Alteração fictícia de conteúdo', components: ['MATERIAL'], materialEvidence: ['https://drive.google.com/file/d/fixture123456/view'], questionEvidence: []};
-  assert.equal(validate('REQUEST_GOVERNANCE', review), review); assert.throws(() => validate('REQUEST_GOVERNANCE', {...review, materialEvidence: ['https://secret:secret@example.invalid/']})); assert.throws(() => validate('REQUEST_GOVERNANCE', {...review, components: ['MATERIAL', 'MATERIAL']}));
+  assert.equal(validate('REQUEST_GOVERNANCE', review), review); assert.throws(() => validate('REQUEST_GOVERNANCE', {...review, materialEvidence: ['https://secret:test-user-2@example.test/']})); assert.throws(() => validate('REQUEST_GOVERNANCE', {...review, components: ['MATERIAL', 'MATERIAL']}));
 });
 
 test('configuração aceita público por grupos conhecidos preservando UIDs legados', () => {
@@ -110,9 +110,9 @@ test('retry usa ID estável e mapa reordenado pelo Firestore sem resetar pedido 
   assert.equal(writes.length, 0);
 });
 
-test('offline conserva rascunho sem criar pedido nem saldo', async () => {
+test('offline recusa envio sem criar pedido nem saldo', async () => {
   const h = setup(); h.context.navigator.onLine = false;
-  await assert.rejects(() => h.context.submitEvaluationRequest('RECONCILE_LINKS', {}, 'fixture-user', {requestId: 'fixture-offline'}), /rascunho foi preservado/);
+  await assert.rejects(() => h.context.submitEvaluationRequest('RECONCILE_LINKS', {}, 'fixture-user', {requestId: 'fixture-offline'}), /Nenhum envio foi agendado/);
   assert.equal(h.listeners.length, 0);
 });
 

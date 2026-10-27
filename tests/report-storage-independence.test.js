@@ -83,17 +83,19 @@ test('a report closed during a local read cannot publish its late cache', async 
   assert.equal(h.paints.length, count);
 });
 
-for (const kind of ['events', 'labels', 'checklist']) test(`${kind}: cached records remain visible until the remote sources are confirmed`, async t => {
+for (const kind of ['events', 'labels', 'checklist']) test(`${kind}: only server-confirmed records become visible`, async t => {
   const h = fixture(kind, {blockDisplay: false, blockSeed: false, automaticServer: false}); t.after(() => h.close());
   await tick(); await tick();
   const records = () => kind === 'checklist' ? h.controller.snapshot().data.report.records : h.controller.snapshot().data.records;
-  assert.equal(records()[0].id, 'cached');
-  if (kind === 'checklist') h.remote.get('catalog')({...h.catalog, records: [], fromCache: true});
-  await tick();
+  assert.equal(h.controller.snapshot().data, null);
+  if (kind === 'checklist') {
+    h.remote.get('catalog')({...h.catalog, records: [], fromCache: true});
+    assert.equal(h.remote.has('report'), false);
+    h.remote.get('catalog')(h.catalog);
+    await tick();
+  }
   h.remote.get('report')({...h.report, records: [], fromCache: true, confirmed: false});
-  assert.equal(records()[0].id, 'cached');
-  if (kind === 'checklist') h.remote.get('catalog')(h.catalog);
-  await tick();
+  assert.equal(h.controller.snapshot().data, null);
   h.remote.get('report')(h.report);
   assert.equal(h.controller.snapshot().state, 'server');
   assert.equal(records()[0].id, 'server');
@@ -103,17 +105,17 @@ test('saved display data never hides SDK pending writes', async t => {
   const h = fixture('events', {blockDisplay: false, automaticServer: false}); t.after(() => h.close());
   await tick();
   h.remote.get('report')({...h.report, fromCache: true, hasPendingWrites: true});
-  assert.equal(h.controller.snapshot().state, 'pending');
+  assert.equal(h.controller.snapshot().state, 'awaiting');
 });
 
 test('late saved display data cannot replace SDK pending writes', async t => {
   const h = fixture('events', {automaticServer: false}); t.after(() => h.close());
   await tick();
   h.remote.get('report')({...h.report, records: [{id: 'pending'}], fromCache: true, hasPendingWrites: true});
-  assert.equal(h.controller.snapshot().state, 'pending');
+  assert.equal(h.controller.snapshot().state, 'awaiting');
   h.storage.resolve(); await tick(); await tick();
-  assert.equal(h.controller.snapshot().state, 'pending');
-  assert.equal(h.controller.snapshot().data.records[0].id, 'pending');
+  assert.equal(h.controller.snapshot().state, 'awaiting');
+  assert.equal(h.controller.snapshot().data, null);
 });
 
 test('late Checklist cache cannot replace live rotation or conference while the catalog is pending', async t => {
@@ -125,7 +127,7 @@ test('late Checklist cache cannot replace live rotation or conference while the 
   assert.equal(h.ctx.checklistConferenceLive.confirmation, null);
   assert.equal(h.ctx.checklistRotationLive.current, true);
   assert.equal(h.ctx.checklistRotationLive.rotation.sigla, 'AA');
-  assert.equal(h.controller.snapshot().data.report.records[0].id, 'cached');
+  assert.equal(h.controller.snapshot().data, null);
   h.remote.get('catalog')(h.catalog); await tick();
   h.remote.get('report')(h.report);
   assert.equal(h.controller.snapshot().state, 'server');

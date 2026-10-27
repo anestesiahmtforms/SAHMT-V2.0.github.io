@@ -9,7 +9,7 @@ async function channelAppCheckHeaders(){
 import {createProvisionalChannelClient as createClient,validChannelEndpoint,provisionalWireOperation} from './provisional-channel-client.js';
 const configuredUrl=import.meta.env?.VITE_OPERATIONAL_CHANNEL_ENDPOINT || '';
 export {validChannelEndpoint,provisionalWireOperation};
-export function provisionalChannelEnabled(){return validChannelEndpoint(configuredUrl);}
+export function provisionalChannelEnabled(){return false;}
 export function createProvisionalChannelClient(options={}) {
   return createClient({endpoint:configuredUrl,authSource:auth,store:{list:listChannelReceipts,update:updateChannelReceipt,remove:removeChannelReceipt},
     realtimeEnabled:import.meta.env?.VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED==='true',
@@ -18,7 +18,7 @@ export function createProvisionalChannelClient(options={}) {
 }
 
 let liveClient;
-export function initializeProvisionalChannel(options){liveClient=createProvisionalChannelClient({...options,getSession:options.getSession});return liveClient.start(options.reports);}
+export function initializeProvisionalChannel(){return ()=>{};}
 export const projectSharedSchedule=(schedule,scope)=>liveClient?.projectSchedule(schedule,scope)||schedule;
 export const recoverOwnSharedOperations=(day,collection)=>liveClient?.recover(day,collection)||Promise.resolve({restored:0});
 export const mirrorProvisionalSource=path=>liveClient?.mirrorSource(path)||Promise.resolve(false);

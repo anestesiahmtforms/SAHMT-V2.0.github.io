@@ -14,7 +14,7 @@ const plain = (value) => structuredClone(value);
 
 function profileInput(overrides = {}) {
   return {
-    uid: 'pessoa-ficticia', email: 'pessoa@example.invalid', displayName: 'Pessoa Fictícia',
+    uid: 'pessoa-ficticia', email: 'test-user-1@example.test', displayName: 'Pessoa Fictícia',
     sigla: 'PF', phone: '000000000', role: 'anestesiologista', active: true, access: true,
     permissions: {}, ...overrides
   };
@@ -28,7 +28,7 @@ function harness({current = null, request = null, readError, commitError, writeE
   let batchCount = 0;
   let commitCount = 0;
   let timestampCount = 0;
-  const context = vm.createContext({
+  const context = vm.createContext({assertOnlineOperation(){},
     db, withGeneralReadPermissions, FIRST_LOGIN_COHORTS,
     doc: (actualDb, collection, id) => {
       assert.equal(actualDb, db);
@@ -195,11 +195,11 @@ test('salvar perfil não aprovado não acrescenta as consultas gerais nem privil
 
 test('normalização de UID, e-mail, nome, sigla, telefone e função é preservada', async () => {
   const h = harness();
-  await h.save(profileInput({uid: ' pessoa-ficticia ', email: ' PESSOA@EXAMPLE.INVALID ', displayName: ' Pessoa Fictícia ',
+  await h.save(profileInput({uid: ' pessoa-ficticia ', email: ' test-user-1@example.test ', displayName: ' Pessoa Fictícia ',
     sigla: ' pf ', phone: ' 000000000 ', role: ' anestesiologista '}), 'admin-ficticio');
   const record = h.writes[0].record;
   assert.equal(record.uid, 'pessoa-ficticia');
-  assert.equal(record.email, 'pessoa@example.invalid');
+  assert.equal(record.email, 'test-user-1@example.test');
   assert.equal(record.displayName, 'Pessoa Fictícia');
   assert.equal(record.sigla, 'PF');
   assert.equal(record.phone, '000000000');

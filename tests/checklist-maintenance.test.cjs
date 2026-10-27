@@ -6,7 +6,7 @@ const source = readFileSync(new URL('../src/data.js', `file:///${__filename.repl
 function harness(initial = {}, options = {}) {
   let stored = structuredClone(initial);
   let writes = 0;
-  const context = {
+  const context = {assertOnlineOperation(){},
     navigator: {onLine: options.online !== false}, crypto: {randomUUID: () => 'new-station'}, db: {},
     serverTimestamp: () => 'SERVER_TIMESTAMP', doc: (_db, collection, id) => ({collection, id}),
     collection: () => ({}), query: () => ({}), where: () => ({}), limit: () => ({}),

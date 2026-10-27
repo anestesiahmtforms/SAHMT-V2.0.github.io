@@ -2,7 +2,7 @@ const OPERATIONAL_COLLECTIONS = new Set(['events', 'labels', 'checklists', 'acti
 const OFFLINE_QUEUED_COLLECTIONS = new Set(['events', 'labels', 'checklists', 'activities']);
 
 export function mayQueueOffline(collectionName) {
-  return OFFLINE_QUEUED_COLLECTIONS.has(collectionName);
+  return false;
 }
 
 export function buildOperationalWrite({collectionName, data, uid, requestId, now}) {

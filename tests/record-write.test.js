@@ -19,11 +19,11 @@ test('batch grava somente o recurso Firestore', () => {
   assert.deepEqual(operations.map((item) => item.ref), ['events/event-1']);
 });
 
-test('outbox local preserva políticas próprias e rejeita coleções desconhecidas', () => {
-  assert.equal(mayQueueOffline('labels'), true);
-  assert.equal(mayQueueOffline('events'), true);
-  assert.equal(mayQueueOffline('checklists'), true);
-  assert.equal(mayQueueOffline('activities'), true);
+test('nenhuma coleção operacional admite fila offline', () => {
+  assert.equal(mayQueueOffline('labels'), false);
+  assert.equal(mayQueueOffline('events'), false);
+  assert.equal(mayQueueOffline('checklists'), false);
+  assert.equal(mayQueueOffline('activities'), false);
   for (const collectionName of ['trainingProgress', 'indicatorMeasurements', 'actionPlans', 'equipment']) {
     assert.equal(mayQueueOffline(collectionName), false, collectionName);
   }

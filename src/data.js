@@ -1,11 +1,13 @@
+import {getFirestore} from 'firebase/firestore/lite';
+import {assertOnlineOperation, unconfirmedWrite} from './online-only.js';
 import {notificationReference} from './notification-domain.js';
-import {managementDataProject, managementDataGeneration, managementDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
+import {managementDataProject, managementDataGeneration, managementDatabase as managementFullDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {buildChecklistQrLookup, buildChecklistStationDayLookup} from './checklist-static.js';
 import {normalizeChecklistStationTitle} from './checklist-display.js';
-import {prepareOperationalSheetDelivery, confirmOperationalSheetDelivery, flushOperationalSheetDelivery} from './operational-sheet-delivery.js';
-import {and, collection, doc, documentId, getAggregateFromServer, getDocFromServer, getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore';
-import {db, db as identityDb} from './firebase.js';
+import {confirmOperationalSheetDelivery} from './operational-sheet-delivery.js';
+import {and, collection, doc, documentId, getAggregate as getAggregateFromServer, getDoc as getDocFromServer, getDocs as getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore/lite';
+import {db, db as identityDb} from './firebase-lite.js';
 import {claimQueuedOperationForSend, requiresSendConfirmation, enqueueOperation, listQueuedOperations, listUnsettledOperations, pendingOperationCount, readFreshSafeCache, readSafeCache, removeQueuedOperation, updateCachedTrainingProgress, updateQueuedOperation, writeSafeCache} from './outbox.js';
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {parseManagementUids} from './management-access.js';
@@ -25,16 +27,7 @@ import {persistOperationalMutation, withOperationalDeadline} from './offline-mut
 import {operationalBackend} from './operational-backend.js';
 import {reconcileConfirmedChecklistOutbox as reconcileChecklistOutboxSnapshot} from './checklist-outbox-reconcile.js';
 
-async function prepareProvisionalWrite(uid,type,requestId,payload) {
-  if (!import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) return;
-  try {const module=await import('./provisional-operational-channel.js');await module.prepareProvisionalOperation(uid,{type,requestId,payload,createdAt:Date.now()});}
-  catch { /* Local operational outbox remains the primary durable copy. */ }
-}
-async function markProvisionalWriteCommitted(uid,type,requestId,payload) {
-  if (!import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) return;
-  try {const module=await import('./provisional-operational-channel.js');await module.markProvisionalCommitted(uid,{type,requestId,payload});}
-  catch { /* A failed receipt never invalidates a successful Firestore commit. */ }
-}
+async function managementDatabase(uid) {return getFirestore((await managementFullDatabase(uid)).app);}
 
 const MAX_PAGE_SIZE = 50;
 const SAFE_CACHE_MODULES = new Set(['management', 'checklist', 'training']);
@@ -49,7 +42,7 @@ const moduleCollections = Object.freeze({
 });
 
 function mayUseOfflineCache(error) {
-  return isFirestoreCacheFallbackError(error);
+  return false;
 }
 
 export async function readSchedule(day, uid) {
@@ -72,24 +65,12 @@ export async function readSchedule(day, uid) {
   }
 }
 
-export async function setScheduleSiglaRelease(day, sigla, marked, {groupSiglas = [], tokenSigla = sigla, uid, currentSiglas = []} = {}) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '') || typeof marked !== 'boolean' || !uid) {
-    throw new Error('Não foi possível identificar a marcação da escala.');
-  }
-  const cachedRelease = import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT ? await readSafeCache(uid, 'scheduleDays', day) : null;
-  const operation = {day, sigla, marked, groupSiglas, tokenSigla, occurredAt: Date.now(),
-    ...(Number.isInteger(cachedRelease?.data?.version) ? {expectedVersion:cachedRelease.data.version} : {})};
-  if (!navigator.onLine || isOfflineRuntimeForced()) return queueScheduleSiglaRelease(operation, {uid, currentSiglas});
-  try {
-    const updated = await withOperationalDeadline(() => applyScheduleSiglaRelease(operation, uid));
-    await markProvisionalWriteCommitted(uid,'scheduleReleases',scheduleReleaseRequestId(uid,operation),operation);
-    await removeQueuedOperation(uid, scheduleReleaseRequestId(uid, operation),{throughOccurredAt:operation.occurredAt});
-    window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: scheduleReleaseRequestId(uid, operation), type: 'scheduleReleaseDirect'}}));
-    return updated;
-  } catch (error) {
-    if (!mayUseOfflineCache(error)) throw error;
-    return queueScheduleSiglaRelease(operation, {uid, currentSiglas});
-  }
+export async function setScheduleSiglaRelease(day,sigla,marked,{groupSiglas=[],tokenSigla=sigla,uid}={}) {
+  assertOnlineOperation();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day||'')||typeof marked!=='boolean'||!uid)throw new Error('Não foi possível identificar a marcação da escala.');
+  const operation={day,sigla,marked,groupSiglas,tokenSigla,occurredAt:Date.now()};
+  try{return await withOperationalDeadline(()=>applyScheduleSiglaRelease(operation,uid));}
+  catch(error){throw unconfirmedWrite(error,scheduleReleaseRequestId(uid,operation));}
 }
 
 async function applyScheduleSiglaRelease(operation, uid) {
@@ -122,27 +103,6 @@ async function applyScheduleSiglaRelease(operation, uid) {
   await writeSafeCache(uid, 'scheduleDays', operation.day, updated).catch(() => {});
   void globalThis.sahmtMirrorConfirmedSource?.('scheduleDays/'+operation.day);
   return updated;
-}
-
-async function queueScheduleSiglaRelease(operation, {uid, currentSiglas = []}) {
-  const result = updateScheduleReleaseState(currentSiglas, operation);
-  const requestId = scheduleReleaseRequestId(uid, operation);
-  if (result.changed) {
-    await enqueueOperation({
-      uid, type: 'scheduleReleases', resourceId: `${operation.day}:${operation.sigla}`, requestId,
-      payload: operation, coalesce: true
-    });
-    await prepareProvisionalWrite(uid,'scheduleReleases',requestId,operation);
-    const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
-    const schedule = cached?.data || {id: operation.day, date: operation.day, positions: [], highlights: {siglas: [], events: []}, version: 0};
-    const releaseTimes = updateScheduleReleaseTimes(schedule.highlights?.releaseTimes, currentSiglas, result.siglas, operation.occurredAt);
-    await writeSafeCache(uid, 'scheduleDays', operation.day, {
-      ...schedule, stale: true, highlights: {...schedule.highlights, siglas: result.siglas, releaseTimes}
-    }).catch(() => {});
-    return {...schedule, stale: true, pendingFirestore: true, highlights: {...schedule.highlights, siglas: result.siglas, releaseTimes}};
-  }
-  const cached = await readSafeCache(uid, 'scheduleDays', operation.day);
-  return cached?.data ? {...cached.data, stale: true, pendingFirestore: false} : {id: operation.day, date: operation.day, stale: true, pendingFirestore: false, highlights: {siglas: result.siglas, events: []}};
 }
 
 function scheduleReleaseRequestId(uid, operation) {
@@ -203,6 +163,7 @@ export async function getManagementArea(areaId) {
 }
 
 export async function saveAppFeatures(input, actorUid) {
+  assertOnlineOperation();
   const featureKeys = Object.keys(DEFAULT_APP_FEATURES);
   if (!actorUid || !input || typeof input !== 'object' || Array.isArray(input) ||
       Object.keys(input).some((key) => !featureKeys.includes(key)) ||
@@ -303,6 +264,7 @@ async function listIdentityNotifications(profile, {pageSize = 100, canManage = f
 }
 
 export async function markNotificationRead(notificationId, uid) {
+  assertOnlineOperation();
   if (!notificationId || !uid) throw new Error('Comunicado ou usuário inválido.');
   const reference=notificationReference(notificationId);
   if(reference.target==='FB'&&managementDataProject!=='FB')throw Error('NOTIFICATION_DESTINATION_DISABLED');
@@ -321,6 +283,7 @@ export async function markNotificationRead(notificationId, uid) {
 }
 
 export async function createNotification(input, uid) {
+  assertOnlineOperation();
   const title = String(input.title || '').trim();
   const message = String(input.message || '').trim();
   const audienceType = String(input.audienceType || 'ALL');
@@ -381,6 +344,7 @@ export async function listLabelStaffSiglas({uid} = {}) {
 }
 
 export async function saveLabelStaffSiglas(values, uid) {
+  assertOnlineOperation();
   const siglas = [...new Set((Array.isArray(values) ? values : String(values || '').split(/[\n,;]+/))
     .map((value) => String(value || '').trim().toUpperCase()).filter(Boolean))].sort();
   if (!uid || siglas.length > 80 || siglas.some((value) => !/^(?:[A-Z]{2}|L2)$/.test(value))) {
@@ -401,6 +365,7 @@ export async function saveLabelStaffSiglas(values, uid) {
 }
 
 export async function saveContact(input, actorUid) {
+  assertOnlineOperation();
   const sigla = String(input.sigla || '').trim().toUpperCase();
   const name = String(input.name || '').trim();
   const whatsAppLink = String(input.whatsAppLink || '').trim();
@@ -440,6 +405,7 @@ export async function saveContact(input, actorUid) {
 }
 
 export async function updateContactRegistrationFields(records, actorUid) {
+  assertOnlineOperation();
   if (!actorUid || !Array.isArray(records) || !records.length || records.length > 200) {
     throw new Error('A importação de contatos está vazia ou excede o limite permitido.');
   }
@@ -537,6 +503,7 @@ export async function listAccessRequests({pageSize = 100} = {}) {
 }
 
 export async function createAccessRequest(user) {
+  assertOnlineOperation();
   const uid = String(user?.uid || '').trim();
   const email = String(user?.email || '').trim().toLowerCase();
   const displayName = String(user?.displayName || email.split('@')[0] || '').trim().slice(0, 120);
@@ -558,6 +525,7 @@ export async function createAccessRequest(user) {
 }
 
 export async function saveUserProfile(input, actorUid) {
+  assertOnlineOperation();
   const uid = String(input.uid || '').trim();
   const email = String(input.email || '').trim().toLowerCase();
   const displayName = String(input.displayName || '').trim();
@@ -604,6 +572,7 @@ export async function saveUserProfile(input, actorUid) {
 }
 
 export async function setFirstLoginCohort(uidInput, cohort) {
+  assertOnlineOperation();
   const uid = String(uidInput || '').trim();
   if (!/^[^\s/]{1,128}$/.test(uid) || !FIRST_LOGIN_COHORTS.includes(cohort)) {
     throw new Error('UID ou classificação de primeiro login inválidos.');
@@ -624,6 +593,7 @@ export async function setFirstLoginCohort(uidInput, cohort) {
 }
 
 export async function ensureManagementAreaCatalog(uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('É necessária uma conexão para preparar o catálogo de Gestão.');
@@ -656,6 +626,7 @@ export async function ensureManagementAreaCatalog(uid) {
 }
 
 export async function updateManagementAreaAssignments(areaId, {managerUids, memberUids, version} = {}, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid || !areaId || !Number.isInteger(version) || version < 0) {
     throw new Error('Atualize a área e confira a sessão antes de alterar responsáveis.');
@@ -715,6 +686,7 @@ export async function getManagementTaskScoringRule() {
 }
 
 export async function saveManagementTaskScoringRule(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const name = String(input.name || '').trim();
   const description = String(input.description || '').trim();
@@ -747,6 +719,7 @@ export async function saveManagementTaskScoringRule(input, uid) {
 }
 
 export async function completeManagementActivity(activityId, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!activityId || activityId.length > 128 || !uid) throw new Error('Não foi possível identificar esta atividade ou sessão.');
   const activityRef = doc(db, 'activities', activityId);
@@ -785,6 +758,7 @@ export async function completeManagementActivity(activityId, uid) {
 }
 
 export async function cancelManagementActivity(activityId, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!activityId || activityId.length > 128 || !uid) throw new Error('Não foi possível identificar esta atividade ou sessão.');
   const activityRef = doc(db, 'activities', activityId);
@@ -881,6 +855,7 @@ export async function listManagementDocuments(managementAreaId, {includeInactive
 }
 
 export async function saveManagementDocument(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const id = String(input.documentId || '').trim() || crypto.randomUUID();
   const managementAreaId = String(input.managementAreaId || '').trim();
@@ -928,6 +903,7 @@ export async function saveManagementDocument(input, uid) {
 }
 
 export async function saveDocumentAccessEmail(input, uid) {
+  assertOnlineOperation();
   const email = normalizeDocumentAccessEmail(input.email);
   const groups = [...new Set(input.groups || [])];
   const active = input.active === true;
@@ -980,6 +956,7 @@ export async function listMaintenanceRecordsForArea(managementAreaId, {pageSize 
 }
 
 export async function saveEquipment(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const tag = String(input.tag || '').trim().toUpperCase();
   const id = String(input.equipmentId || tag).trim();
@@ -1011,6 +988,7 @@ export async function saveEquipment(input, uid) {
 }
 
 export async function setEquipmentActive(equipmentId, active, expectedVersion, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!equipmentId || !uid || typeof active !== 'boolean' || !Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('Equipamento ou versão inválidos.');
   const ref = doc(db, 'equipment', equipmentId);
@@ -1023,6 +1001,7 @@ export async function setEquipmentActive(equipmentId, active, expectedVersion, u
 }
 
 export async function recordEquipmentEvent(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const id = String(input.eventId || '').trim();
   const equipmentId = String(input.equipmentId || '').trim();
@@ -1054,6 +1033,7 @@ export async function recordEquipmentEvent(input, uid) {
 }
 
 export async function createMaintenanceRecord(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const id = String(input.recordId || '').trim();
   const equipmentId = String(input.equipmentId || '').trim();
@@ -1082,6 +1062,7 @@ export async function createMaintenanceRecord(input, uid) {
 }
 
 export async function transitionMaintenanceRecord(recordId, nextStatus, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!recordId || !uid || !['IN_PROGRESS', 'COMPLETED'].includes(nextStatus)) throw new Error('Registro ou estado inválidos.');
   const ref = doc(db, 'maintenanceRecords', recordId);
@@ -1096,6 +1077,7 @@ export async function transitionMaintenanceRecord(recordId, nextStatus, uid) {
 }
 
 export async function transitionManagementActivity(activityId, nextStatus, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!activityId || !uid || nextStatus !== 'IN_PROGRESS') {
     throw new Error('Não foi possível identificar a atividade ou o próximo estado.');
@@ -1146,6 +1128,7 @@ export async function listManagementActivityScoreReviews(managementAreaId, {page
 }
 
 export async function submitManagementActivityScoreReview(activityId, uid, decision, note = '') {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const cleanNote = String(note || '').trim().slice(0, 500);
   if (!activityId || activityId.length > 128 || !uid || !['APPROVE', 'REJECT'].includes(decision) ||
@@ -1187,6 +1170,7 @@ export async function submitManagementActivityScoreReview(activityId, uid, decis
 }
 
 export async function addActivityInteraction(activityId, content, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const cleanContent = String(content || '').trim();
   if (!activityId || !uid || !cleanContent || cleanContent.length > 1000) throw new Error('Escreva um comentário de até 1.000 caracteres.');
@@ -1223,6 +1207,7 @@ export async function listIndicatorMeasurements(indicatorId, {pageSize = 12} = {
 }
 
 export async function createManagementIndicator(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const managementAreaId = String(input.managementAreaId || '').trim();
   const name = String(input.name || '').trim();
@@ -1243,6 +1228,7 @@ export async function createManagementIndicator(input, uid) {
 }
 
 export async function recordIndicatorMeasurement(indicator, input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const period = String(input.period || '').trim();
   const value = Number(input.value);
@@ -1290,6 +1276,7 @@ export async function listManagementActionPlanItems(planIds, {pageSize = 200} = 
 }
 
 export async function createManagementActionPlanItem(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const planId = String(input.planId || '').trim();
   const id = String(input.itemId || '').trim();
@@ -1330,6 +1317,7 @@ export async function createManagementActionPlanItem(input, uid) {
 }
 
 export async function completeManagementActionPlanItem(itemId, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!itemId || !uid) throw new Error('Ação ou usuário inválido.');
   await runTransaction(db, async (transaction) => {
@@ -1343,6 +1331,7 @@ export async function completeManagementActionPlanItem(itemId, uid) {
 }
 
 export async function createManagementActionPlan(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   const managementAreaId = String(input.managementAreaId || '').trim();
   const title = String(input.title || '').trim();
@@ -1363,6 +1352,7 @@ export async function createManagementActionPlan(input, uid) {
 }
 
 export async function transitionManagementActionPlan(planId, nextStatus, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!planId || !uid || !['IN_PROGRESS', 'COMPLETED'].includes(nextStatus)) throw new Error('Plano ou estado inválido.');
   await runTransaction(db, async (transaction) => {
@@ -1472,6 +1462,7 @@ export async function getEventCatalog(uid) {
 }
 
 export async function saveEventCatalog(input, uid) {
+  assertOnlineOperation();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   const {payers, creditors} = validateEventCatalog({
     payers: parseCatalogValues(input.payers, 'Pagadores'),
@@ -1520,6 +1511,7 @@ export async function listEventHistory(eventId, {pageSize = 20} = {}) {
 }
 
 export async function updateEventRecord(eventId, input, uid, expectedVersion, requestId = crypto.randomUUID(), {queueOffline = true} = {}) {
+  assertOnlineOperation();
   if (!eventId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão deste evento não está disponível. Atualize o relatório antes de editar.');
   const ref = doc(db, 'events', eventId);
@@ -1527,14 +1519,6 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
   const updatedByName = String(input.updatedByName || '').trim().slice(0, 120);
   if (typeof updates.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) throw new Error('A data do evento é inválida.');
-  const queueOfflineEdit = async () => {
-    await enqueueOperation({uid, type: 'eventEdits', resourceId: eventId, requestId, payload: {collectionName: 'events', eventId, expectedVersion, data: {...updates, updatedByName}}});
-    return {id: eventId, pendingFirestore: true};
-  };
-  if (isOfflineRuntimeForced() || !navigator.onLine) {
-    if (queueOffline) return queueOfflineEdit();
-    throw Object.assign(new Error('A conexão caiu durante a sincronização desta edição.'), {code: 'unavailable'});
-  }
   let unchanged = false;
   try {
     await runTransaction(db, async (transaction) => {
@@ -1567,8 +1551,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
       if (await confirmCommittedEventEdit(eventId, updates, uid, requestId, expectedVersion + 1)) return {id: eventId, pendingFirestore: false, alreadyCommitted: true};
     } catch {}
     if (!['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code) && navigator.onLine) throw error;
-    if (!queueOffline) throw error;
-    return queueOfflineEdit();
+    throw unconfirmedWrite(error,requestId);
   }
   if(!unchanged)void globalThis.sahmtMirrorConfirmedSource?.('events/'+eventId);
   return {id: eventId, pendingFirestore: false, unchanged};
@@ -1632,16 +1615,12 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
 }
 
 export async function updateLabelRecord(labelId, input, uid, actorName = '', expectedVersion, {queueOffline = true, requestId = crypto.randomUUID()} = {}) {
+  assertOnlineOperation();
   if (!labelId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão desta etiqueta não está disponível. Atualize o relatório antes de editar.');
-  if (queueOffline) return persistOperationalMutation({id: labelId, online: navigator.onLine && !isOfflineRuntimeForced(),
-    saveLocal: () => enqueueOperation({uid, type: 'labelEdits', resourceId: labelId, requestId, payload: {collectionName: 'labels', labelId, data: input, actorName, expectedVersion}}),
-    sendRemote: () => updateLabelRecord(labelId, input, uid, actorName, expectedVersion, {queueOffline: false, requestId}),
-    clearLocal: async () => {await removeQueuedOperation(uid, requestId);if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:'labelEdits'}}));}, recoverable: mayUseOfflineCache,
-    onFailure: async error => {
-      operationalBackend.noteFailure(error, 'labels');
-      if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'A edição não foi confirmada. Compare com a versão atual antes de reenviar.'});
-    }});
+  if(queueOffline)return persistOperationalMutation({id:requestId,online:navigator.onLine&&!isOfflineRuntimeForced(),
+    sendRemote:()=>updateLabelRecord(labelId,input,uid,actorName,expectedVersion,{queueOffline:false,requestId}),
+    onFailure:error=>operationalBackend.noteFailure(error,'labels')});
   const ref = doc(db, 'labels', labelId);
   const fields = ['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
@@ -1744,6 +1723,7 @@ export async function listTrainingCatalogForAdmin({pageSize = 100} = {}) {
 }
 
 export async function saveTrainingCatalogRecord(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar o catálogo de treinamentos.');
@@ -1847,6 +1827,7 @@ export async function listLearningActivityReceipts(uid, activities) {
 }
 
 export async function saveLearningActivity(input, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar as atividades de aprendizagem.');
@@ -1908,6 +1889,7 @@ export async function saveLearningActivity(input, uid) {
 }
 
 export async function acknowledgeLearningActivity(activity, uid) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid || !activity?.id) throw new Error('Não foi possível identificar a atividade ou a sessão.');
   if (activity.completionKind !== 'ACKNOWLEDGEMENT' || !['ONCE', 'ONCE_PER_VERSION'].includes(activity.recurrenceMode)) {
@@ -1934,6 +1916,7 @@ export async function acknowledgeLearningActivity(activity, uid) {
 }
 
 export async function saveChecklistStation(input, uid) {
+  assertOnlineOperation();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar o catálogo do Checklist.');
   const name = String(input.name || '').trim().replace(/\s+/g, ' ');
@@ -2150,6 +2133,7 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
 }
 
 export async function createChecklistSignatureRequest({day, revision, declaration, uid, signerName, signerSigla = '', rotationSigla = null, rotationPosition = null} = {}) {
+  assertOnlineOperation();
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !/^[a-f0-9]{64}$/.test(revision || '') || declaration !== true) {
     throw new Error('Atualize o relatório e confirme a declaração antes de solicitar a validação.');
   }
@@ -2202,6 +2186,7 @@ function mergeWatchedRanges(ranges, duration) {
 function trainingProgressId(uid, trainingId) { return `${uid}_${trainingId}`; }
 
 export async function startTrainingInFirestore(uid, trainingId) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid || !trainingId || trainingId.length > 128) throw new Error('Não foi possível identificar o treinamento ou a sessão.');
   const receiptId = trainingProgressId(uid, trainingId);
@@ -2237,6 +2222,7 @@ export async function startTrainingInFirestore(uid, trainingId) {
 }
 
 export async function completeTrainingInFirestore(uid, trainingId, {ended = false} = {}) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid || !trainingId || trainingId.length > 128) throw new Error('Não foi possível identificar o treinamento ou a sessão.');
   if (ended !== true) throw new Error('O player ainda não sinalizou o encerramento do vídeo.');
@@ -2368,6 +2354,7 @@ export async function listTrainingProgress(uid, {pageSize = 100} = {}) {
 }
 
 export async function saveTrainingProgress(uid, trainingId, {duration, lastPosition, watchedRanges, completionRequested = false} = {}) {
+  assertOnlineOperation();
   const db = await managementDatabase();
   if (!uid || !trainingId) throw new Error('Não foi possível identificar o treinamento desta sessão.');
   duration = Number(duration);
@@ -2397,62 +2384,12 @@ export async function saveTrainingProgress(uid, trainingId, {duration, lastPosit
     return {id, ...old, ...record, startedAt: old?.startedAt || new Date().toISOString(), syncPending: false};
   });
 
-  let saved;
-  try {
-    if (!navigator.onLine) throw Object.assign(new Error('Offline'), {code: 'unavailable'});
-    saved = await commit();
-  } catch (error) {
-    if (!mayUseOfflineCache(error)) throw error;
-    const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
-    const records = cache?.data?.records || [];
-    const old = records.find((item) => item.id === id);
-    saved = {id, uid, trainingId, startedAt: old?.startedAt || new Date().toISOString(), lastPosition, duration, watchedRanges: mergeWatchedRanges([...(old?.watchedRanges || []), ...inputRanges], duration), status: old ? 'IN_PROGRESS' : 'STARTED', updatedAt: new Date().toISOString(), completionRequested: completionRequested || old?.completionRequested === true, syncPending: true};
-  }
-  const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
-  const records = (cache?.data?.records || []).filter((item) => item.id !== id);
-  records.push(saved);
-  await writeSafeCache(uid, 'trainingProgress', 'mine', {records});
-  if(saved.syncPending&&!cache?.data?.records?.some(item=>item.id===id&&item.syncPending)&&typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-local-pending',{detail:{uid,type:'trainingProgress'}}));
-  return saved;
+  try{return await withOperationalDeadline(commit);}
+  catch(error){throw unconfirmedWrite(error,id);}
 }
 
-export async function syncPendingTrainingProgress(uid, {trainingId} = {}) {
-  if (!uid || !navigator.onLine) return 0;
-  const cache = await readSafeCache(uid, 'trainingProgress', 'mine');
-  const pending = (cache?.data?.records || []).filter((item) => item.syncPending && !item.syncError && (!trainingId || item.trainingId === trainingId));
-  let synced = 0;
-  for (const item of pending) {
-    try {
-      const result = await saveTrainingProgress(uid, item.trainingId, item);
-      if (!result.syncPending) synced++;
-      else break;
-      if (item.completionRequested === true && !result.syncPending) {
-        const {startTraining, completeTraining} = await import('./training-start.js');
-        await startTraining(item.trainingId, uid);
-        const completion = await completeTraining(item.trainingId, {ended: true, uid});
-        await updateCachedTrainingProgress(uid, item.trainingId, {
-          status: 'COMPLETED', completedAt: new Date().toISOString(), completionRequested: false,
-          syncPending: false, syncError: '', syncAttempts: item.syncAttempts || 0,
-          completionPointsAwarded: 0, completionPointsPending: completion.pointsPending
-        }, {requirePending: false});
-      }
-      if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId:'training:'+item.trainingId,type:'trainingProgress'}}));
-    } catch (error) {
-      await updateCachedTrainingProgress(uid, item.trainingId, {
-        ...(item.completionRequested === true ? {completionRequested: true, syncPending: true} : {}),
-        syncError: error.code || error.message || 'Falha ao sincronizar',
-        syncAttempts: (item.syncAttempts || 0) + 1,
-        syncFailedAt: new Date().toISOString()
-      }, {requirePending: false});
-    }
-  }
-  return synced;
-}
-
-export async function retryTrainingProgress(uid, trainingId) {
-  await updateCachedTrainingProgress(uid, trainingId, {syncError: '', syncFailedAt: ''});
-  return syncPendingTrainingProgress(uid, {trainingId});
-}
+export async function syncPendingTrainingProgress() {return 0;}
+export async function retryTrainingProgress() {throw new Error('O envio posterior foi desativado.');}
 
 function dateSortValue(value) {
   if (typeof value?.toMillis === 'function') return value.toMillis();
@@ -2487,41 +2424,19 @@ async function confirmCommittedMutation({collectionName, data, uid, requestId}) 
     JSON.stringify(canonicalValue(saved[key])) === JSON.stringify(canonicalValue(value)));
 }
 
-export async function createOperationalRecord(collectionName, data, {uid, requestId = crypto.randomUUID(), forceQueue = false} = {}) {
-  if (forceQueue || !navigator.onLine || isOfflineRuntimeForced()) {
-    return createOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue: true});
-  }
-  await prepareOperationalSheetDelivery(collectionName, requestId, uid);
-  const result = await createOperationalRecordInFirestore(collectionName, data, {uid, requestId});
-  if (!result.pendingFirestore) {
-    await confirmOperationalSheetDelivery(collectionName, requestId, uid);
-    void flushOperationalSheetDelivery(uid);
-  }
+export async function createOperationalRecord(collectionName,data,{uid,requestId=crypto.randomUUID(),forceQueue=false}={}) {
+  assertOnlineOperation({online:!forceQueue&&navigator.onLine});
+  if(!uid)throw new Error('A sessão expirou. Entre novamente.');
+  const result=await persistOperationalMutation({id:requestId,online:true,
+    sendRemote:()=>sendOperationalRecordInFirestore(collectionName,data,{uid,requestId}),
+    onFailure:error=>operationalBackend.noteFailure(error,collectionName)});
+  void confirmOperationalSheetDelivery(collectionName,requestId,uid);
   return result;
-}
-
-async function createOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue = false}) {
-  if (!['events', 'labels', 'checklists'].includes(collectionName)) return sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue});
-  if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  return persistOperationalMutation({id: requestId, online: navigator.onLine && !isOfflineRuntimeForced() && !forceQueue,
-    saveLocal: async () => {const result=await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload: {collectionName, data}});await prepareProvisionalWrite(uid,collectionName,requestId,{collectionName,data});return result;},
-    sendRemote: () => sendOperationalRecordInFirestore(collectionName, data, {uid, requestId}),
-    clearLocal: async () => {await markProvisionalWriteCommitted(uid,collectionName,requestId,{collectionName,data});await removeQueuedOperation(uid,requestId,{committed:true});if(typeof globalThis.CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced',{detail:{uid,requestId,type:collectionName}}));}, recoverable: mayUseOfflineCache,
-    onFailure: async error => {
-      operationalBackend.noteFailure(error, collectionName);
-      if (!mayUseOfflineCache(error)) await updateQueuedOperation(uid, requestId, {status: error.code === 'stale-version' ? 'conflict' : 'failed', lastErrorCode: error.code || 'write-failed', lastError: 'O servidor recusou este registro. Revise a operação antes de reenviar.'});
-    }
-  });
 }
 
 async function sendOperationalRecordInFirestore(collectionName, data, {uid, requestId, forceQueue = false}) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  const payload = {collectionName, data, ...(collectionName === 'activities' ? {dataProject:managementDataProject,dataGeneration:managementDataGeneration} : {})};
-  if (forceQueue || !navigator.onLine || isOfflineRuntimeForced()) {
-    if (!mayQueueOffline(collectionName)) throw new Error('Esta ação precisa de conexão e não pode ser armazenada com segurança neste aparelho.');
-    await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-    return {id: requestId, pendingFirestore: true, awaitingConfirmation: true};
-  }
+  assertOnlineOperation({online:!forceQueue&&navigator.onLine});
   if (collectionName === 'events' && data.scheduleSigla) {
     try {
       return await createScheduledEvent(data, {uid, requestId});
@@ -2531,12 +2446,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
           return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
         }
       } catch {}
-      if (mayUseOfflineCache(error)) {
-        operationalBackend.noteFailure(error, collectionName);
-        if (collectionName === 'activities') await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-        return {id: requestId, pendingFirestore: true};
-      }
-      throw error;
+      throw unconfirmedWrite(error,requestId);
     }
   }
   const targetDb = collectionName === 'activities' ? await managementDatabase(uid) : db;
@@ -2551,11 +2461,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
         return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
       }
     } catch {}
-    if (!mayUseOfflineCache(error)) throw error;
-    operationalBackend.noteFailure(error, collectionName);
-    if (!mayQueueOffline(collectionName)) throw new Error('O Firestore não confirmou a etiqueta. Os dados continuam apenas no formulário e não foram armazenados neste aparelho.');
-    if (collectionName === 'activities') await enqueueOperation({uid, type: collectionName, resourceId: requestId, requestId, payload});
-    return {id: requestId, pendingFirestore: true};
+    throw unconfirmedWrite(error,requestId);
   }
 }
 
@@ -2659,100 +2565,10 @@ function assertQueuedOperationShape(operation, uid) {
   throw invalid();
 }
 
-export async function flushOutbox(uid, {requestId, authorizeOperation} = {}) {
-  if (!uid || !navigator.onLine || isOfflineRuntimeForced()) return {synced: 0, pending: await pendingOperationCount(uid)};
-  return runKeyedTask(flushPromises, uid, async () => {
-    let synced = 0;
-    const queued = await listQueuedOperations(uid);
-    const candidates = requestId ? queued.filter((operation) => operation.requestId === requestId) : queued;
-    const operations = typeof authorizeOperation === 'function' ? candidates.filter(operation => authorizeOperation(operation) === true) : candidates;
-    for (let operation of operations) {
-      if (typeof authorizeOperation === 'function' && authorizeOperation(operation) !== true) break;
-      if (requiresSendConfirmation(operation.type)) {
-        operation = await claimQueuedOperationForSend(uid, operation.requestId);
-        if (!operation) continue;
-      }
-      if (operation.type === 'occurrences') {
-        const [{auth}, {createOccurrenceRepository}] = await Promise.all([import('./firebase-auth.js'), import('./occurrence-data.js')]);
-        const isCurrent = () => auth.currentUser?.uid === uid;
-        const repository = createOccurrenceRepository({db, auth, isCurrent});
-        const result = await syncOccurrenceOperation({operation, uid, repository, isCurrent, outbox: {removeQueuedOperation, updateQueuedOperation}});
-        if (result === 'synced') {synced++; window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, type: 'occurrences'}})); continue;}
-        if (result === 'needs-review') {window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {type: 'occurrences', message: 'Uma ocorrência local precisa de revisão e não foi confirmada.'}})); continue;}
-        if (result === 'queued' || result === 'deferred') break;
-      }
-      try {
-        assertQueuedOperationShape(operation, uid);
-        if (operation.type === 'activities' && (operation.payload.dataProject !== managementDataProject || operation.payload.dataGeneration !== managementDataGeneration))
-          throw Object.assign(new Error('Atividade da base anterior preservada para conciliação. Nenhum envio foi feito.'), {code:'domain-cutover-review'});
-        if (operation.type === 'scheduleReleases') {
-          if (import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT) {
-            if (!Number.isInteger(operation.payload.expectedVersion)) throw Object.assign(new Error('Revise esta liberação antiga na escala atual antes de confirmar.'), {code:'stale-version'});
-            const module=await import('./provisional-operational-channel.js');await module.assertProvisionalReleaseCurrent(uid,operation);
-          }
-          await withOperationalDeadline(()=>applyScheduleSiglaRelease(operation.payload, uid));
-        } else if (operation.type === 'labelEdits') {
-          await withOperationalDeadline(() => updateLabelRecord(operation.payload.labelId, operation.payload.data, uid, operation.payload.actorName, operation.payload.expectedVersion, {queueOffline: false, requestId: operation.requestId}));
-        } else if (operation.type === 'eventEdits') {
-          await updateEventRecord(operation.payload.eventId, operation.payload.data, uid, operation.payload.expectedVersion, operation.requestId, {queueOffline: false});
-        } else if (['events', 'labels', 'checklists'].includes(operation.type) && !(operation.type === 'events' && operation.payload.data.scheduleSigla)) {
-          await withOperationalDeadline(() => commitOperationalMutationOnce(operation.type, operation.payload.data, uid, operation.requestId));
-        } else {
-          const {collectionName, data} = operation.payload;
-          if (collectionName === 'events' && data.scheduleSigla) {
-            await createScheduledEvent(data, {uid, requestId: operation.requestId});
-          } else {
-            const targetDb = collectionName === 'activities' ? await managementDatabase(uid) : db;
-            const batch = writeBatch(targetDb);
-            buildRecordBatch(batch, {collectionName, data, uid, requestId: operation.requestId}, targetDb);
-            await batch.commit();
-          }
-        }
-        await markProvisionalWriteCommitted(uid,operation.type,operation.requestId,operation.payload);
-        await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
-        await removeQueuedOperation(uid, operation.requestId,operation.type==='scheduleReleases'?{expectedPayload:operation.payload}:{committed:true});
-        synced++;
-        void flushOperationalSheetDelivery(uid);
-        window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, type: operation.type}}));
-      } catch (error) {
-        if (!['invalid-outbox-operation','domain-cutover-review'].includes(error.code)) {
-          try {
-            if (operation.type === 'scheduleReleases') throw error;
-            const committed = operation.type === 'eventEdits'
-              ? await confirmCommittedEventEdit(operation.payload.eventId, operation.payload.data, uid, operation.requestId, operation.payload.expectedVersion + 1)
-              : await confirmCommittedMutation({collectionName: operation.payload.collectionName, data: operation.payload.data, uid, requestId: operation.requestId});
-            if (committed) {
-              await markProvisionalWriteCommitted(uid,operation.type,operation.requestId,operation.payload);
-              await confirmOperationalSheetDelivery(operation.type, operation.requestId, uid);
-              await removeQueuedOperation(uid, operation.requestId,{committed:true});
-              synced++;
-              void flushOperationalSheetDelivery(uid);
-              window.dispatchEvent(new CustomEvent('sahmt-write-synced', {detail: {uid, requestId: operation.requestId, replay: true}}));
-              continue;
-            }
-          } catch {}
-        }
-        const attempts = operation.attempts + 1;
-        const conflict = error.code === 'stale-version';
-        const permanent = attempts >= 8 || ['permission-denied', 'unauthenticated', 'invalid-argument', 'failed-precondition', 'invalid-outbox-operation', 'domain-cutover-review'].includes(error.code);
-        const delay = Math.max(error.code === 'resource-exhausted' ? 300000 : 0, Math.min(60 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 10))) * (1 + Math.random() * .25);
-        operationalBackend.noteFailure(error, operation.type);
-        await updateQueuedOperation(uid, operation.requestId, {
-          status: conflict ? 'conflict' : permanent ? 'failed' : requiresSendConfirmation(operation.type) ? 'awaiting-confirmation' : 'queued',
-          attempts,
-          nextAttemptAt: Date.now() + delay,
-          lastError: String(error.message || error).slice(0, 300),
-          lastErrorCode: error.code || ''
-        });
-        if (permanent && error.code !== 'invalid-outbox-operation') window.dispatchEvent(new CustomEvent('sahmt-write-rejected', {detail: {message: 'Uma ação offline foi recusada pelo Firestore. Verifique suas permissões.'}}));
-        if (!navigator.onLine || !permanent) break;
-      }
-    }
-    return {synced, pending: await pendingOperationCount(uid)};
-  });
-}
+export async function flushOutbox() {return 0;}
 
 export async function saveChecklistStationMaintenance(stationId, value, uid) {
+  assertOnlineOperation();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para salvar a manutenção.');
   const maintenance = checklistMaintenanceForWrite(value);
@@ -2770,6 +2586,7 @@ export async function saveChecklistStationMaintenance(stationId, value, uid) {
 }
 
 export async function saveChecklistStationTitle(stationId, value, uid) {
+  assertOnlineOperation();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para salvar o título.');
   const functionLabel = normalizeChecklistStationTitle(value);
