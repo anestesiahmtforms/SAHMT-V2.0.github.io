@@ -58,8 +58,8 @@
     "test:vaccination": "node --test tests/institutional-group.test.js tests/vaccination-domain.test.js tests/vaccination-service.test.js tests/vaccination-worker.test.js tests/professional-documents.test.js tests/professional-drive.test.js tests/document-image.test.js tests/professional-folder-plan.test.js",
     "test:vaccination-browser": "node --test tests/vaccination.browser.test.js",
     "test:vaccination-rules": "firebase emulators:exec --config firebase.vaccination.test.json --project demo-sahmt-vaccination --only firestore --non-interactive \"node --test tests/vaccination.rules.test.js\"",
-    "test:survey-session": "node --test tests/survey-worker.test.js tests/survey-service.test.js tests/survey-session-bridge.test.js tests/institutional-group.test.js",
-    "test:survey-session-browser": "node --test tests/survey-session.browser.test.js"
+    "test:survey-session": "node --test tests/participant-session.test.js tests/survey-worker.test.js tests/survey-service.test.js tests/survey-session-bridge.test.js tests/institutional-group.test.js",
+    "test:survey-session-browser": "node --test tests/participant-session.browser.test.js tests/survey-session.browser.test.js"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

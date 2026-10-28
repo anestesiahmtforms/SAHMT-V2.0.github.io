@@ -1,6 +1,7 @@
 const endpoint='https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/institutional-surveys';
 export async function callInstitutionalSurvey({uid,isCurrent,survey,action,response}) {
   const {auth}=await import('./firebase-auth.js');
+  await auth?.authStateReady();
   const valid=()=>isCurrent()&&auth?.currentUser?.uid===uid&&auth.app?.options?.projectId==='sahmt-17a16';
   if(!valid())throw Error('SURVEY_SESSION_CHANGED');
   const token=await auth.currentUser.getIdToken();

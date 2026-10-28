@@ -31,3 +31,7 @@ Publicar somente após autorizar e aplicar o acesso do servidor, validar os test
 ## Validação
 
 Testes: 20 submissões concorrentes produzem um único par resposta/participação; reenvio não altera respostas; grupos falsificados são substituídos pelo cadastro; conta revogada, vínculo ausente, entrada inválida e ciclo fechado não gravam participação. Regras negam acesso direto a respostas/participação. Ponte valida origem, janela, desafio e descarte ao sair. Navegador local simula duas origens e duas abas usando o mesmo serviço de domínio, sem autenticação Google adicional.
+
+## Compatibilidade com botões de versões anteriores
+
+Um botão antigo pode abrir a pesquisa em aba separada, sem a janela principal. Na origem do FE, a aba é redirecionada para o caminho fixo da pesquisa na origem do app, sem repassar parâmetros. Nessa origem, o SDK aguarda authStateReady e recupera a sessão normal já persistida; a pesquisa chama o mesmo servidor autenticado, com as mesmas regras de participação. Não há novo login Google dentro da pesquisa, nem envio de credenciais pela URL ou para o FE. Aberturas em iframe continuam usando a ponte com origem e janela fixadas. Se a sessão normal não existir nesse navegador, a página oferece acesso ao app para recuperá-la.

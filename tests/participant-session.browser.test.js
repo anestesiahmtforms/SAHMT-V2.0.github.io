@@ -1,0 +1,34 @@
+import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';import {readFile} from 'node:fs/promises';import {resolve,extname} from 'node:path';import {build} from 'vite';import {chromium} from 'playwright';
+import {createSurveyService} from '../worker-training/survey-service.js';import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';import {institutionalAssignmentKey} from '../src/institutional-group.js';
+test('legacy FE new tab redirects and restores the normal persisted FA login without another sign-in',async()=>{
+ const dir=resolve('.local-preview/survey-legacy-browser'),base='/SAHMT-V2.0.github.io/enquetes/';
+ const identity={uid:'synthetic-one',email:'one@example.invalid',emailVerified:true,provider:'google.com'},profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();
+ profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:['EFETIVO']});responses.seed('stressCycles','2026',{status:'open'});
+ const service=createSurveyService({profileStore:profiles,responseStore:responses});
+ function server(){return http.createServer(async(req,res)=>{try{if(req.url==='/setup'){res.setHeader('Content-Type','text/html');res.end('<html><body>Isolated persisted-login fixture</body></html>');return;}let pathname=new URL(req.url,'http://local').pathname;if(pathname.startsWith(base))pathname='/'+pathname.slice(base.length);const file=resolve(dir,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(dir))throw Error();res.setHeader('Content-Type',{'.html':'text/html','.js':'text/javascript','.css':'text/css'}[extname(file)]||'text/plain');res.end(await readFile(file));}catch{res.writeHead(404).end();}});}
+ const app=server(),fe=server();await new Promise(done=>app.listen(0,'127.0.0.1',done));await new Promise(done=>fe.listen(0,'127.0.0.1',done));const appOrigin='http://127.0.0.1:'+app.address().port,feOrigin='http://127.0.0.1:'+fe.address().port;
+ let browser;
+ try{
+  await build({configFile:'vite.climate.config.js',configLoader:'native',logLevel:'silent',build:{outDir:dir},plugins:[{name:'local-legacy-origins-test-only',enforce:'pre',transform(source,id){if(id.endsWith('/src/survey-session-bridge.js'))return source.replace('https://anestesiahmtforms.github.io',appOrigin).replace('https://outros-48120.web.app',feOrigin);}}]});
+  browser=await chromium.launch({headless:true,channel:'msedge'});const context=await browser.newContext(),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const now=Math.floor(Date.now()/1000),claims={aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16',sub:identity.uid,user_id:identity.uid,email:identity.email,email_verified:true,auth_time:now,iat:now,exp:now+3600,firebase:{sign_in_provider:'google.com'}};
+  const token=[Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify(claims)).toString('base64url'),'synthetic-signature'].join('.');let submits=0;
+  await context.route('**/*',async route=>{const request=route.request(),url=request.url();if(url.startsWith(appOrigin)||url.startsWith(feOrigin))return route.continue();
+   if(url.startsWith('https://identitytoolkit.googleapis.com/')&&url.includes('accounts:lookup'))return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({users:[{localId:identity.uid,email:identity.email,emailVerified:true,providerUserInfo:[{providerId:'google.com',rawId:'synthetic-google',email:identity.email}],validSince:String(now)}]})});
+   if(url.includes('/v1/institutional-surveys')){
+    const headers={'Access-Control-Allow-Origin':appOrigin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'POST, OPTIONS'};
+    if(request.method()==='OPTIONS')return route.fulfill({status:204,headers});
+    assert.equal(request.headers().authorization,'Bearer '+token);const {action,input}=request.postDataJSON();if(action==='SUBMIT')submits++;const result=await service.execute(action,input,identity);return route.fulfill({status:200,headers,contentType:'application/json',body:JSON.stringify(result)});
+   }
+   return route.abort();
+  });
+  await page.goto(appOrigin+'/setup');
+  // An isolated context contains only this synthetic Firebase persisted user.
+  // The production code must wait for the actual SDK to restore it.
+  await page.evaluate(async({uid,email,token,expires})=>{const value={uid,email,emailVerified:true,isAnonymous:false,providerData:[{providerId:'google.com',uid:'synthetic-google',email,displayName:null,photoURL:null,phoneNumber:null}],stsTokenManager:{refreshToken:'synthetic-refresh',accessToken:token,expirationTime:expires},apiKey:'AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA',appName:'sahmt-v2'};const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('firebaseLocalStorageDb',1);r.onupgradeneeded=()=>r.result.createObjectStore('firebaseLocalStorage',{keyPath:'fbase_key'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});await new Promise((resolve,reject)=>{const tx=db.transaction('firebaseLocalStorage','readwrite');tx.objectStore('firebaseLocalStorage').put({fbase_key:'firebase:authUser:'+value.apiKey+':sahmt-v2',value});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();},{uid:identity.uid,email:identity.email,token,expires:Date.now()+3600000});
+  await page.goto(feOrigin+'/stress.html?group=substitute&uid=forbidden');await page.waitForURL(appOrigin+base+'stress.html');
+  await page.getByRole('heading',{name:'Você acessou pelo grupo Equipe',exact:true}).waitFor();assert.equal(await page.locator('form').isVisible(),true);assert.equal(context.pages().length,1);assert.equal(await page.getByRole('button',{name:/Google|Entrar/}).count(),0);assert.equal(page.url(),appOrigin+base+'stress.html');
+  await page.check('[name=consent]');await page.locator('input[type=radio][value="1"]').evaluateAll(inputs=>inputs.forEach(input=>{input.checked=true;}));await page.locator('[type=submit]').click();await page.locator('#stress-receipt').filter({hasText:/Resposta recebida/}).waitFor();assert.equal(submits,1);assert.equal((await responses.list('stressResponses')).length,1);
+  await page.reload();await page.getByText('Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.').waitFor();assert.equal(await page.locator('form').isVisible(),false);assert.deepEqual(errors,[]);
+ }finally{await browser?.close();await new Promise(done=>app.close(done));await new Promise(done=>fe.close(done));}
+});

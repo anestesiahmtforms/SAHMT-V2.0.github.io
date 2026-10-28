@@ -1,4 +1,4 @@
-import {requestSurveySession} from '../src/survey-session-bridge.js';
+import {callParticipantSurvey} from './participant-session.js';
 import {validateSubmission} from '../climate-domain/schema.js';
 export const FE_PROJECT = 'outros-48120';
 const database = `projects/${FE_PROJECT}/databases/(default)`;
@@ -13,4 +13,4 @@ export function commitBody(payload, commentToken) {
   if(Object.keys(input.comments).length)writes.push({update:{name:`${database}/documents/climateComments/${commentToken}`,fields:{survey_cycle:value(input.survey_cycle),comments:map(input.comments)}}});
   return {writes};
 }
-export async function sendSubmission(payload,commentToken,signal){return requestSurveySession({action:'SUBMIT',input:{...validateSubmission(payload),consent:true},signal});}
+export async function sendSubmission(payload,commentToken,signal){return callParticipantSurvey({action:'SUBMIT',input:{...validateSubmission(payload),consent:true},signal});}
