@@ -26,7 +26,25 @@ service cloud.firestore {
     // END_MEMBER_CATEGORIES_V1
 
 
-    // CLIMATE_FREE_V1: public, schema-validated submission; no raw client reads.
+    // CLIMATE_FREE_V1: authenticated, registry-classified submissions.
+    function surveyParticipant(d) {
+      let p = /databases/$(database)/documents/userCategories/$(d.category_key);
+      let c = get(p).data;
+      let categories = c.get('memberCategories', []);
+      let affiliations = categories.toSet().intersection(['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].toSet());
+      return request.auth != null && memberCategoryActive_() &&
+        request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.firebase.sign_in_provider == 'google.com' &&
+        d.respondent_uid == request.auth.uid && d.category_key.matches('^[a-f0-9]{64}$') &&
+        c.schemaVersion == 1 && c.identityStatus == 'LINKED' &&
+        c.uid == request.auth.uid && c.email == request.auth.token.email.lower() &&
+        categories is list && categories.size() == categories.toSet().size() &&
+        categories.hasOnly(['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO','ADMINISTRADOR','GESTOR']) &&
+        affiliations.size() == 1 &&
+        ((d.group == 'team' && categories.hasAny(['EFETIVO'])) ||
+         (d.group == 'resident' && categories.hasAny(['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3'])) ||
+         (d.group == 'substitute' && categories.hasAny(['SUBSTITUTO'])));
+    }
     function climateOpen() {
       return exists(/databases/$(database)/documents/climateCycles/2026) &&
         get(/databases/$(database)/documents/climateCycles/2026).data.status == 'open';
@@ -34,8 +52,8 @@ service cloud.firestore {
     function climateAnswer(v) { return v == 'NA' || (v is int && v >= 1 && v <= 5); }
     function climateResponse(d) {
       let a = d.get('answers', {});
-      return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
-        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
+      return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group', 'respondent_uid', 'category_key']) &&
+        d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group', 'respondent_uid', 'category_key']) &&
         d.survey_cycle == '2026' && d.survey_version == '1.3' && a is map &&
         d.group in ['resident', 'team', 'substitute'] &&
         (
@@ -90,22 +108,22 @@ service cloud.firestore {
     function climateCommentValue(v) { return v is string && v.size() <= 1500; }
     function climateComment(d) {
       let c = d.get('comments', {});
-      return d.keys().hasOnly(['survey_cycle', 'comments']) &&
-        d.keys().hasAll(['survey_cycle', 'comments']) && d.survey_cycle == '2026' &&
+      return d.keys().hasOnly(['survey_cycle', 'comments', 'group', 'respondent_uid', 'category_key']) &&
+        d.keys().hasAll(['survey_cycle', 'comments', 'group', 'respondent_uid', 'category_key']) && d.survey_cycle == '2026' &&
         c is map && c.size() > 0 && c.keys().hasOnly(['O01', 'O02', 'O03', 'O04', 'O05']) &&
         climateCommentValue(c.get('O01', '')) && climateCommentValue(c.get('O02', '')) && climateCommentValue(c.get('O03', '')) && climateCommentValue(c.get('O04', '')) && climateCommentValue(c.get('O05', ''));
     }
     function climateReader() { return request.auth != null && request.auth.token.get('climateReportReader', false) == true; }
     match /climateResponses/{id} {
       allow read, delete: if false;
-      allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateResponse(request.resource.data);
+      allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && surveyParticipant(request.resource.data) && climateResponse(request.resource.data);
       // Identical retries only. No answer changes; the page retains both random tokens in memory.
-      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && request.resource.data == resource.data;
+      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && surveyParticipant(request.resource.data) && request.resource.data == resource.data;
     }
     match /climateComments/{id} {
       allow read, delete: if false;
-      allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateComment(request.resource.data);
-      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && climateComment(request.resource.data) && request.resource.data == resource.data;
+      allow create: if id.matches('^[a-f0-9]{32}$') && climateOpen() && surveyParticipant(request.resource.data) && climateComment(request.resource.data);
+      allow update: if id.matches('^[a-f0-9]{32}$') && climateOpen() && surveyParticipant(request.resource.data) && climateComment(request.resource.data) && request.resource.data == resource.data;
     }
     match /climateCycles/{id} { allow read, write: if false; }
     match /climateReports/{id} { allow read: if climateReader(); allow write: if false; }
@@ -117,8 +135,8 @@ service cloud.firestore {
     function stressOpen() { return exists(/databases/$(database)/documents/stressCycles/2026) && get(/databases/$(database)/documents/stressCycles/2026).data.status == 'open'; }
     function stressValid(d) {
       let a = d.get('answers', {});
-      return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating']) &&
-        d.keys().hasAll(['survey_cycle','survey_version','group','answers']) &&
+      return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating','respondent_uid','category_key']) &&
+        d.keys().hasAll(['survey_cycle','survey_version','group','answers','respondent_uid','category_key']) &&
         d.survey_cycle == '2026' && d.survey_version == '1.1' &&
         d.group in ['team','resident','substitute'] && a is map &&
         a.keys().hasOnly(['S01','S02','S03','S04','S05','S06','S07','S08','S09','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20','S21','S22','S23','S24','S25','S26','S27','S28','S29','S30']) && a.size() == 30 &&
@@ -156,8 +174,8 @@ service cloud.firestore {
     }
     match /stressResponses/{id} {
       allow read, delete: if false;
-      allow create: if id.matches('^[a-f0-9]{32}$') && stressOpen() && stressValid(request.resource.data);
-      allow update: if id.matches('^[a-f0-9]{32}$') && stressOpen() && request.resource.data == resource.data;
+      allow create: if id.matches('^[a-f0-9]{32}$') && stressOpen() && surveyParticipant(request.resource.data) && stressValid(request.resource.data);
+      allow update: if id.matches('^[a-f0-9]{32}$') && stressOpen() && surveyParticipant(request.resource.data) && request.resource.data == resource.data;
     }
     match /stressCycles/{id} { allow read, write: if false; }
     match /stressReports/{id} { allow read: if climateReader(); allow write: if false; }

@@ -20,8 +20,9 @@ test('reject identifiers and unexpected data at every payload level', () => {
   assert.throws(() => validateSubmission({...payload(), comments: {email: 'secret'}}));
   assert.deepEqual(validateSubmission(payload()).answers, answers());
 });
-test('validate consent, cycle, token, numeric values, comments and mixed modules', () => {
-  for (const change of [{consent: false}, {survey_cycle: 'bad'}, {survey_version: '2'}, {submission_id: 'uid'}, {answers: {Q01: '4'}}, {answers: {Q01: 6}}, {answers: {Q01: 'NA'}}, {comments: {O01: 'x'.repeat(1501)}}, {answers: {...answers(), R01: 4, T01: 5}}]) assert.throws(() => validateSubmission({...payload(), ...change}));
+test('validate cycle, token, numeric values, comments and mixed modules', () => {
+  for (const change of [{survey_cycle: 'bad'}, {survey_version: '2'}, {submission_id: 'uid'}, {answers: {Q01: '4'}}, {answers: {Q01: 6}}, {answers: {Q01: 'NA'}}, {comments: {O01: 'x'.repeat(1501)}}, {answers: {...answers(), R01: 4, T01: 5}}]) assert.throws(() => validateSubmission({...payload(), ...change}));
+  const noConsent=payload();delete noConsent.consent;assert.equal(validateSubmission(noConsent).group,'team');
   assert.equal(validateSubmission({...payload(),group:'resident', answers: {Q01: 1, Q02: 'NA', R01: 5}, comments: {}}).answers.Q02, 'NA');
 });
 test('favorability excludes NA and blanks and uses actual numeric denominators', () => {

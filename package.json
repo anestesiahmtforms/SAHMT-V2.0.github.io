@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build:climate": "node scripts/build-climate-rules.mjs && node scripts/build-climate.mjs",
-    "test:climate": "node --test tests/climate.test.js tests/climate-report.test.js tests/climate.browser.test.js",
+    "test:climate": "node --test tests/survey-session.test.js tests/institutional-group.test.js tests/climate.test.js tests/climate-report.test.js tests/climate.browser.test.js",
     "test:stress": "node --test tests/stress.test.js tests/stress-report.test.js tests/stress.browser.test.js",
     "test:stress-rules": "firebase emulators:exec --config firebase.climate.test.json --project demo-sahmt-stress --only firestore --non-interactive \"node --test tests/stress.rules.test.js\"",
     "test:climate-rules": "firebase emulators:exec --config firebase.climate.test.json --project demo-sahmt-climate --only firestore --non-interactive \"node --test tests/climate.rules.test.js tests/climate.integration.test.js tests/stress.rules.test.js\"",

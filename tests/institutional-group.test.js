@@ -11,10 +11,10 @@ test('internal affiliation groups exclude role flags and reject ambiguous/missin
  for(const patch of [{uid:'other'},{email:'other@example.invalid'},{identityStatus:'PENDING_ACCOUNT'},{schemaVersion:2},{memberCategories:['ADMINISTRADOR']}])assert.equal(assignedInstitutionalGroup({...assignment,...patch},identity),null);
  assert.equal(await institutionalAssignmentKey(' SYNTHETIC@EXAMPLE.INVALID '),await institutionalAssignmentKey(identity.email));
 });
-test('FE classifier releases only broad group; rejects unverified/provider or missing bindings',async()=>{
+test('FE classifier resolves registry group; rejects unverified/provider or missing bindings',async()=>{
  const readAssignment=async key=>{assert.equal(key,await institutionalAssignmentKey(user.email));return assignment;};
  assert.equal(await resolveParticipantGroup({user,readAssignment}),'team');
  for(const patch of [{emailVerified:false},{uid:'other'},{providerData:[{providerId:'password'}]},{email:'other@example.invalid'}])await assert.rejects(resolveParticipantGroup({user:{...user,...patch},readAssignment:async()=>assignment}));
  await assert.rejects(resolveParticipantGroup({user,readAssignment:async()=>null}));
- const source=await readFile('climate/participant-group.js','utf8');assert.match(source,/inMemoryPersistence/);assert.match(source,/finally \{ await signOut\(auth\); \}/);assert.doesNotMatch(source,/localStorage|sessionStorage|submission_id|answers:/);
+ const source=await readFile('climate/participant-group.js','utf8');assert.match(source,/authStateReady/);assert.doesNotMatch(source,/signInWithPopup|signOut|setPersistence/);
 });

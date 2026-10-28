@@ -38,10 +38,10 @@ jobs:
         run: |
           npm run test:vaccination
           npm run test:vaccination-rules
-      - name: Validate anonymous climate survey and free FE rules
+      - name: Validate authenticated surveys and FE rules
         run: |
           npm run build:climate
-          node --test tests/climate.test.js tests/climate-report.test.js tests/stress.test.js tests/stress-report.test.js
+          node --test tests/survey-session.test.js tests/institutional-group.test.js tests/climate.test.js tests/climate-report.test.js tests/stress.test.js tests/stress-report.test.js
           npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain

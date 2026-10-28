@@ -4,8 +4,8 @@ export function stressRules(){return `
     function stressOpen() { return exists(/databases/$(database)/documents/stressCycles/${CYCLE}) && get(/databases/$(database)/documents/stressCycles/${CYCLE}).data.status == 'open'; }
     function stressValid(d) {
       let a = d.get('answers', {});
-      return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating']) &&
-        d.keys().hasAll(['survey_cycle','survey_version','group','answers']) &&
+      return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating','respondent_uid','category_key']) &&
+        d.keys().hasAll(['survey_cycle','survey_version','group','answers','respondent_uid','category_key']) &&
         d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' &&
         d.group in ['team','resident','substitute'] && a is map &&
         a.keys().hasOnly([${QUESTIONS.map(q=>`'${q.id}'`).join(',')}]) && a.size() == 30 &&
@@ -14,8 +14,8 @@ export function stressRules(){return `
     }
     match /stressResponses/{id} {
       allow read, delete: if false;
-      allow create: if id.matches('^[a-f0-9]{32}$') && stressOpen() && stressValid(request.resource.data);
-      allow update: if id.matches('^[a-f0-9]{32}$') && stressOpen() && request.resource.data == resource.data;
+      allow create: if id.matches('^[a-f0-9]{32}$') && stressOpen() && surveyParticipant(request.resource.data) && stressValid(request.resource.data);
+      allow update: if id.matches('^[a-f0-9]{32}$') && stressOpen() && surveyParticipant(request.resource.data) && request.resource.data == resource.data;
     }
     match /stressCycles/{id} { allow read, write: if false; }
     match /stressReports/{id} { allow read: if climateReader(); allow write: if false; }

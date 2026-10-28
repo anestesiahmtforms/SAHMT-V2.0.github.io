@@ -32,3 +32,9 @@ manifest.icons = manifest.icons.map(icon => ({...icon, src:icon.src.replace(root
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 }
 console.log(faOnly?'FA_ONLY_BUILD_READY':'INDEPENDENT_FA_FB_BUILDS_READY');
+
+// Publish surveys on the app origin so Firebase can restore the existing sessions.
+const surveys=spawnSync(process.execPath,[vite,'build','--config','vite.climate.config.js','--configLoader','native'],{
+  stdio:'inherit',env:{...process.env,SAHMT_SURVEY_BASE:rootBase+'enquetes/',SAHMT_SURVEY_OUT_DIR:'../dist/enquetes'}
+});
+if(surveys.error||surveys.status!==0)process.exit(surveys.status||1);
