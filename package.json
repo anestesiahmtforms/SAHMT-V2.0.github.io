@@ -54,7 +54,10 @@
     "test:html-training": "node --test tests/management-document-back.test.js tests/html-training-service.test.js tests/html-training-runtime.test.js tests/html-training-workerd.test.js tests/html-training-ui.test.js tests/html-training-folders.test.js tests/html-training-organization.test.js tests/html-training-import.test.js tests/html-training-initial-import.test.js tests/html-training-performance.test.js tests/management-html-retirement.test.js tests/rop-audit.test.js",
     "test:html-training-browser": "node --test tests/html-training-ui.browser.test.js",
     "prepare:html-trainings": "node scripts/prepare-html-trainings.mjs",
-    "import:html-trainings": "node scripts/import-html-trainings.mjs"
+    "import:html-trainings": "node scripts/import-html-trainings.mjs",
+    "test:vaccination": "node --test tests/vaccination-domain.test.js tests/vaccination-service.test.js tests/vaccination-worker.test.js tests/professional-documents.test.js tests/professional-drive.test.js tests/document-image.test.js tests/professional-folder-plan.test.js",
+    "test:vaccination-browser": "node --test tests/vaccination.browser.test.js",
+    "test:vaccination-rules": "firebase emulators:exec --config firebase.vaccination.test.json --project demo-sahmt-vaccination --only firestore --non-interactive \"node --test tests/vaccination.rules.test.js\""
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

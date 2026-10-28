@@ -1,0 +1,22 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Demonstração — Histórico vacinal</title><style>body{margin:0;padding:20px;background:#edf2f5;font-family:Arial,sans-serif}#app{max-width:1100px;margin:auto}</style><div id="app"></div><script type="module">
+import {mountVaccination} from '/src/vaccination.js';
+import {buildVaccinationReport} from '/src/vaccination-domain.js';
+const isAdmin=new URL(location.href).searchParams.get('role')==='admin',ready=!new URL(location.href).searchParams.has('driveOff');
+const user={uid:'synthetic-one',email:'one@example.invalid'},profile={uid:user.uid,email:user.email,displayName:'Profissional de demonstração',active:true,access:true,role:isAdmin?'administrador_app':'colaborador',permissions:{}};
+let record=null,valid=true,invalidated=()=>{},uploads=[];
+const client={valid:()=>valid,subscribeInvalidated:fn=>{invalidated=fn;return()=>{};},dispose(){},async api(action,input){
+ if(action==='BOOTSTRAP')return{profile,isAdmin,record:record?.year===input.year?record:null};
+ if(action==='SAVE'){window.lastSaved=structuredClone(input);record={...input,uid:user.uid,email:user.email,displayName:profile.displayName,version:(record?.version||0)+1,updatedAt:Date.now()};return{record};}
+ if(action==='REPORT'){if(window.denyReport)throw Object.assign(Error('Forbidden'),{code:'VAC_FORBIDDEN',status:403});const participants=[{...profile,category:'Equipe'},{uid:'synthetic-two',email:'two@example.invalid',displayName:'Participante de demonstração',category:'Residentes',active:true,access:true}];const records=[record||{uid:user.uid,year:input.year,category:'Equipe',states:{hepatitisB:'UPDATED',tetanus:'PENDING',mmr:'UPDATED',influenza:'UNKNOWN'}}];return{participants,records,report:buildVaccinationReport(participants,records,input.year)};}
+ throw Error('Ação desconhecida');
+ },async documents(action,input){if(action==='LIST_ADMIN'&&new URL(location.href).searchParams.has('documentsDenied'))throw Object.assign(Error('Forbidden'),{code:'DOCUMENT_FORBIDDEN',status:403});if(action==='LIST_ADMIN'&&new URL(location.href).searchParams.has('documentsOff'))throw Error('Indisponível');if(action==='UPLOAD'){const document={id:input.requestId,year:input.year,subject:input.subject,status:'STORED',mimeType:input.mimeType,size:atob(input.dataBase64).length,name:'Comprovante de demonstração',uploadedAt:Date.now()};uploads.push(document);return{document};}return{uploadsEnabled:ready,folderConfigured:true,documents:uploads};}};
+window.invalidate=()=>{valid=false;invalidated();};
+const root=document.querySelector('#app');
+if(new URL(location.href).searchParams.has('entry')){
+ const {mountVaccinationEntry}=await import('/src/vaccination-entry.js');
+ let cleanup;const back=()=>{cleanup?.();root.textContent='Atividades de Gestão de Pessoas preservadas';};
+ root.innerHTML='<p>Atividades existentes</p>';
+ cleanup=mountVaccinationEntry(root,{user,profile,onBack:back,loadModule:async()=>({mountVaccination:(root,args)=>mountVaccination(root,{...args,clientFactory:async()=>client})})});
+ window.entryBack=()=>cleanup.goBack();
+}else mountVaccination(root,{user,profile,clientFactory:async()=>client,onBack(){root.textContent='Gestão de Pessoas';}});
+</script></html>

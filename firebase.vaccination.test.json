@@ -1,0 +1,10 @@
+{
+  "firestore": {"rules": "firestore.independent-fb.rules"},
+  "emulators": {
+    "firestore": {"host": "127.0.0.1", "port": 8289},
+    "ui": {"enabled": false},
+    "hub": {"host": "127.0.0.1", "port": 4439},
+    "logging": {"host": "127.0.0.1", "port": 4539},
+    "singleProjectMode": true
+  }
+}

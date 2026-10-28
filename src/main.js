@@ -1,3 +1,4 @@
+import {mountVaccinationEntry} from './vaccination-entry.js';
 import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
 import './styles.css';
 import './performance-ui.css';
@@ -1661,7 +1662,7 @@ async function loadModule(route) {
         areaBack.addEventListener('click',()=>{if(!cleanupDocumentTraining?.goBack?.())areaDialog.close();});
       }
       areaDialog?.addEventListener('cancel',event=>{if(cleanupDocumentTraining?.goBack?.())event.preventDefault();});
-      areaDialog?.addEventListener('close', () => { managementActivityLoad++; history.replaceState(history.state,'','#/management'); refreshLocalCatalogAfterClose(); });
+      areaDialog?.addEventListener('close', () => { managementActivityLoad++; cleanupDocumentTraining?.(); cleanupDocumentTraining=null; history.replaceState(history.state,'','#/management'); refreshLocalCatalogAfterClose(); });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
         const button = event.currentTarget;
@@ -3460,6 +3461,15 @@ async function loadManagementAreaActivities(area) {
   } catch (error) {
     if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
     detail.innerHTML = `<p class="empty-state">Não foi possível carregar as atividades. ${escapeHtml(error.message || '')}</p>`;
+  }
+
+  if(deployment.target==='FB'&&area.id==='area-gestao-de-pessoas'&&loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid){
+    let previousCleanup=cleanupDocumentTraining;
+    const entryCleanup=mountVaccinationEntry(detail,{user:session.user,profile:session.profile,
+      valid:()=>loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid&&session.status==='signed-in',
+      onOpen:()=>{previousCleanup?.();previousCleanup=null;},onBack:()=>{void loadManagementAreaActivities(area);}});
+    const cleanup=()=>{previousCleanup?.();previousCleanup=null;entryCleanup();};
+    cleanup.goBack=()=>entryCleanup.goBack();cleanupDocumentTraining=cleanup;
   }
 }
 

@@ -34,6 +34,10 @@ jobs:
         run: npm ci
       - name: Install Cloud Functions dependencies
         run: npm ci --prefix functions
+      - name: Validate vaccination and private professional documents
+        run: |
+          npm run test:vaccination
+          npm run test:vaccination-rules
       - name: Validate anonymous climate survey and free FE rules
         run: |
           npm run build:climate

@@ -1,0 +1,13 @@
+# Histórico vacinal e comprovantes — desenho aprovado
+
+Destino: FB → Governança → Grupos de Gestão → Gestão de Pessoas. O usuário autorizou construir e continuar, com decisões de implementação delegadas ao agente. Cada profissional acessa somente o próprio cadastro; somente administradores podem consultar terceiros e indicadores. Gestores de pessoas não recebem esse acesso.
+
+Cadastro por ano (2026–2028), categoria obrigatória Equipe/Residentes/Secretárias/Substitutos, Hepatite B/Antitetânica/Triviral/Influenza, situação autodeclarada, ciência, declaração de responsabilidade e ponderações. Cobertura autodeclarada e participação, geral e por grupo, com denominadores explícitos. Não interpretar autodeclaração como validação de comprovante ou aptidão profissional.
+
+Abordagem escolhida: integração nativa no FB, reaproveitando sessão e serviço Cloudflare existentes; Firestore armazena somente cadastro e referências, Drive armazena arquivos. Um HTML isolado local não atenderia o acesso multiusuário; abrir somente Google Forms não permitiria controlar captura/compressão nem o direcionamento por página desejado pelo usuário. Sem ativar Blaze, Apps Script ou novo faturamento.
+
+Cada página define um contexto fechado de envio. O servidor confere a identidade Google de FB e perfil vigente, resolve a pasta particular pelo UID/e-mail autenticados e um mapa privado já conferido. Contextos: vacinação, cadastro, certificados e documentação profissional. O cliente nunca fornece uma pasta ou outra identidade. Arquivos acessíveis somente no Drive ao administrador; usuário recebe confirmação e lista de seus próprios envios, sem links públicos. Pastas permanecem privadas. Imagens JPEG reduzidas no aparelho, até 1600 pixels, prévia antes do envio; PDFs aceitos até 5 MiB. Nenhum documento de saúde ou token em logs, cache local persistente, URL ou bundle.
+
+A conta proprietária do Drive ainda precisa autorizar uma conexão OAuth apropriada; não reutilizar tokens de CLI como credencial de produção nem inventar uma integração ativa. Preparar o serviço e testes antes de solicitar a autorização. Enquanto indisponível, cadastro funciona e o botão de envio mostra claramente o estado; nenhuma promessa de arquivo salvo sem confirmação de Drive e diário no servidor.
+
+Uploads idempotentes por solicitação e hash. Falha de rede ou reenvio não deve criar cópias. Gravação do cadastro usa versão esperada para impedir sobrescritas. Troca de conta ou fechamento elimina dados e prévias da interface. Usar infraestrutura já existente; atualização de produção e conexão Drive somente após validação e autorização apropriadas.
