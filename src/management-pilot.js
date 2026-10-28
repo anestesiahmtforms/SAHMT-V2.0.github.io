@@ -1,7 +1,7 @@
-// Temporary release for common users. Administrative maintenance keeps its
-// existing authorization; this gate grants no backend role or permission.
+// Governance follows the existing administrator and individually approved account gate.
+// This navigation gate grants no backend role or permission.
 export function canUseGovernanceHub(session) {
-  return session?.status === 'signed-in' && !!session.user?.uid && session.profile?.active === true && session.profile?.access === true;
+  return canUseManagementPilot(session);
 }
 export function canUseManagementPilot(session) {
   const user=session?.user,profile=session?.profile;

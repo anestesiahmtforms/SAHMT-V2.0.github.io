@@ -112,10 +112,10 @@ for(const route of ['management','training','management-hub','labels'])test(`${r
  assert.deepEqual(h.loaded,[]);assert.deepEqual(h.mounts,[]);assert.equal(h.ctx.location.hash,'#/'+route);
  h.ctx.session=authorized();h.ctx.navigator.onLine=false;await h.render();assert.ok(h.app.querySelector('[data-online-gate]'));
 });
-test('FA opens Governance for surveys without granting access to pilot modules',async()=>{
+test('FA blocks Governance for common users before mounting any panel',async()=>{
   const session=authorized();session.profile.role='anestesiologista';
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);
+  assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
-import {canUseManagementPilot} from '../src/management-pilot.js';
+import {canUseManagementPilot,canUseGovernanceHub} from '../src/management-pilot.js';
 const pilot=()=>({status:'signed-in',user:{uid:'synthetic',email:'wx2901@gmail.com',emailVerified:true},profile:{uid:'synthetic',email:'wx2901@gmail.com',active:true,access:true,role:'temporario',permissions:{}}});
 test('pilot requires the verified account, matching profile, and active approved session',()=>{
  assert.equal(canUseManagementPilot(pilot()),true);
@@ -55,4 +55,11 @@ test('institutional surveys open from their menu button and return to surveys',(
  assert.match(h.body.innerHTML,/data-survey-panel="stressForm"/);
  h.handlers['back-click']();
  assert.equal(h.dialog.dataset.panel,'surveys');
+});
+
+test('Governance is disabled for common users and only allows the verified exception or administrators',()=>{
+ for(const role of ['gestor','coordenador','anestesiologista','temporario']){const common=pilot();common.profile.role=role;common.user.email='common@example.invalid';common.profile.email=common.user.email;assert.equal(canUseGovernanceHub(common),false);}
+ assert.equal(canUseGovernanceHub(pilot()),true);
+ for(const change of [s=>s.user.emailVerified=false,s=>s.profile.email='other@example.invalid',s=>s.profile.uid='other',s=>s.profile.access=false]){const current=pilot();change(current);assert.equal(canUseGovernanceHub(current),false);}
+ for(const permissions of [{admin:true},{}]){const admin=pilot();admin.user.email='owner@example.invalid';admin.profile.role=permissions.admin?'anestesiologista':'administrador_app';admin.profile.permissions=permissions;assert.equal(canUseGovernanceHub(admin),true);admin.profile.active=false;assert.equal(canUseGovernanceHub(admin),false);}
 });

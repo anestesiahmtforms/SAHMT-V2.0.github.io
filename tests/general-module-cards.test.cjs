@@ -74,13 +74,13 @@ function cardMarkup(h, route) {
 const legacyManagementPermissions = ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage'];
 
 for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) {
-  test(`Governança abre para pesquisa para ${role}, sem alterar as permissões existentes`, async () => {
+  test(`Governança permanece desativada para ${role}, sem alterar as permissões existentes`, async () => {
     for (const permission of legacyManagementPermissions) {
       const session = approved({[permission]: true}, role);
       const before = structuredClone(session);
       const h = harness({session, route: 'management'});
       assert.equal(visibleRoutes(h).includes('management-hub'), true, permission);
-      assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
+      assert.match(cardMarkup(h, 'management-hub'), /disabled/);
       assert.equal(h.context.canOpenRestrictedModule('management'), false);
       await h.ui.loadModule('management');
       assert.deepEqual(h.navigations, ['home'], permission);
@@ -186,7 +186,7 @@ test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Dese
   const before = structuredClone(session);
   const h = harness({session});
   assert.deepEqual(visibleRoutes(h), ['management-hub']);
-  assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
+  assert.match(cardMarkup(h, 'management-hub'), /disabled/);
   assert.equal(h.context.canOpenRestrictedModule('management'), false);
   assert.equal(h.context.canOpenRestrictedModule('training'), false);
   assert.match(h.ui.moduleCards(), /<strong>Governança<\/strong>/);
@@ -255,7 +255,7 @@ test('o acesso comum aos cartões exige sessão aprovada e ambos os indicadores 
 test('o menu Gestão permanece disponível quando os destinos estão desativados', () => {
   const common = harness({session: approved(), appFeatures: {management: false, trainings: false, notifications: false}});
   assert.deepEqual(visibleRoutes(common), ['management-hub']);
-  assert.doesNotMatch(cardMarkup(common, 'management-hub'), /disabled/);
+  assert.match(cardMarkup(common, 'management-hub'), /disabled/);
   assert.equal(common.context.canOpenRestrictedModule('management'), false);
   assert.equal(common.context.canOpenRestrictedModule('training'), false);
   assert.equal(visibleRoutes(common).includes('notifications'), false);
@@ -331,11 +331,11 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
 
 test('pausa administrativa mantém os dois módulos inativos mesmo com permissões individuais', () => {
  const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
+ assert.match(cardMarkup(h, 'management-hub'), /disabled/);
  assert.equal(h.context.canOpenRestrictedModule('management'),false);
  assert.equal(h.context.canOpenRestrictedModule('training'),false);
  const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.doesNotMatch(cardMarkup(p, 'management-hub'), /disabled/);
+ assert.match(cardMarkup(p, 'management-hub'), /disabled/);
  assert.equal(p.context.canOpenRestrictedModule('management'),false);
  assert.equal(p.context.canOpenRestrictedModule('training'),false);
 });
@@ -356,7 +356,7 @@ function individuallyReleased(permissions = {}) {
   return session;
 }
 
-test('Governança abre a pesquisa para usuários ativos sem conceder acesso aos módulos do piloto',async()=>{
+test('Governança preserva a exceção verificada e bloqueia usuários comuns antes de carregar o menu',async()=>{
  const pilot=individuallyReleased();
  const h=harness({session:pilot});
  assert.doesNotMatch(cardMarkup(h,'management-hub'),/disabled/);
@@ -370,11 +370,9 @@ test('Governança abre a pesquisa para usuários ativos sem conceder acesso aos 
  }
  assert.deepEqual(pilot,before);
  const common=harness({session:approved(),route:'management-hub'});await common.ui.loadModule('management-hub');
- const menu=common.queries.find(row=>row.name==='mountManagementHub').options;
- assert.equal(menu.access.surveys,true);
- for(const area of ['groups','performance','records','results','occurrences','qmentum'])assert.equal(menu.access[area],false,area);
+ assert.deepEqual(common.imports,[]);assert.deepEqual(common.queries,[]);assert.deepEqual(common.navigations,['home']);
  const direct=renderHarness(approved(),'management-hub');await direct.context.runRender();
- assert.deepEqual(direct.navigations,[]);assert.deepEqual(direct.loads,['management-hub']);
+ assert.deepEqual(direct.navigations,['home']);assert.deepEqual(direct.loads,[]);
 });
 
 test('liberação individual habilita apenas os dois módulos solicitados, sem poderes administrativos', async () => {
