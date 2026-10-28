@@ -10,10 +10,10 @@ function hub(access={},initialPanel='home',syncStatusElement=null,climateEnabled
  const syncHost={append(element){this.child=element;}},handlers={},heading={focus(){}},headingIcon={innerHTML:''},body={innerHTML:'',scrollTop:0,addEventListener:(n,fn)=>handlers[n]=fn},back={addEventListener:(n,fn)=>handlers['back-'+n]=fn},dialog={dataset:{},querySelector:s=>s==='[data-hub-sync]'?syncHost:s==='[data-hub-body]'?body:s==='[data-hub-back]'?back:s==='#management-hub-title'?heading:s==='[data-hub-heading-icon]'?headingIcon:{},addEventListener(){},showModal(){}},root={querySelector:()=>dialog};
  const navigations=[],ctx=vm.createContext({});vm.runInContext(readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'').replace(/^export /gm,''),ctx);ctx.mountManagementHub(root,{access,initialPanel,syncStatusElement,climateEnabled,onExit(){navigations.push('home');},onNavigate:route=>navigations.push(route)});return {dialog,body,handlers,navigations,heading,headingIcon,root,back,syncHost};
 }
-test('FA survey entry opens FE with no session parameters, opener or referrer after release',()=>{
- const released=hub({surveys:true},'institutional',null,true);assert.match(released.body.innerHTML,/href="https:\/\/outros-48120\.web\.app\/"/);assert.match(released.body.innerHTML,/rel="noopener noreferrer" referrerpolicy="no-referrer"/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);
+test('FA survey entry shares the app origin without session parameters, opener or referrer',()=>{
+ const released=hub({surveys:true},'institutional',null,true);assert.match(released.body.innerHTML,/href="\/SAHMT-V2\.0\.github\.io\/enquetes\/"/);assert.match(released.body.innerHTML,/rel="noopener noreferrer" referrerpolicy="no-referrer"/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);
  assert.doesNotMatch(hub({surveys:true},'institutional',null,false).body.innerHTML,/href=/);
- assert.match(released.body.innerHTML,/href="https:\/\/outros-48120.web.app\/stress.html"/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
+ assert.match(released.body.innerHTML,/href="\/SAHMT-V2\.0\.github\.io\/enquetes\/stress\.html"/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
 });
 test('common users see all five disabled buttons; deep links cannot open paused subpanels',()=>{
  for(const initialPanel of ['home','records','indicators','results','surveys','institutional']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,5);}
