@@ -33,3 +33,23 @@ test('dosimetry route uses the FB authentication key and stays disabled unless e
  const worker=createTrainingWorker({verifyIdentity:async(header,options)=>{assert.equal(options.apiKey,'fb-key');return identity('one');},buildDosimetryService:()=>({execute:async()=>({record:null})})});const request=()=>new Request('https://worker.test/v1/dosimetry',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json',Authorization:'Bearer synthetic'},body:JSON.stringify({action:'GET_OWN',input:{year:2026}})});
  assert.equal((await worker.fetch(request(),{})).status,503);const result=await worker.fetch(request(),{DOSIMETRY_ENABLED:'true',FB_WEB_API_KEY:'fb-key'});assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');
 });
+
+test('year selection reads only the authenticated year record and rejects a cross-year stored record',async()=>{
+ const {store,service}=fixture();
+ const historical={...record('one'),year:2025,issuedOn:'2026-01-23',values:['0,7',...Array(11).fill('ANR')]};
+ store.seed('occupationalDosimetry','one_2025',historical);
+ assert.equal((await service.execute('GET_OWN',{year:2025},identity('one'))).record.months[0].display,'0,7');
+ assert.equal((await service.execute('GET_OWN',{year:2026},identity('one'))).record.months[0].display,'ANR');
+ assert.equal((await service.execute('GET_OWN',{year:2025},identity('two'))).record,null);
+ for(const year of [2024,2027,'2025',null])await assert.rejects(service.execute('GET_OWN',{year},identity('one')));
+ store.seed('occupationalDosimetry','one_2025',record('one'));
+ await assert.rejects(service.execute('GET_OWN',{year:2025},identity('one')),e=>e.code==='DOSIMETRY_RECORD_UNAVAILABLE');
+});
+
+test('historical imports are idempotent and never overwrite a different year',()=>{
+ const extraction={year:2025,sha256:'a'.repeat(64),fileId:'SYNTHETIC_2025_PDF',folderId:'SYNTHETIC_FOLDER',quantity:'Hp(10)',unit:'mSv',issuedOn:'2026-01-23',extractionMethod:'rendered-pdf-visual-review',rows:[{code:'001',name:sourceName,months:Array(12).fill('ANR'),monitorType:'28',monthsReported:12}]};
+ const input={extraction,pdfFingerprint:'a'.repeat(64),bindings:[{uid:'one',email:identity('one').email,code:'001',sourceName,contactSigla:'XX',matchMethod:'official-contact-name-and-email'}],contacts:[{sigla:'XX',name:sourceName,email:identity('one').email}],profiles:[{uid:'one',email:identity('one').email,active:true,access:true}],existing:[{id:'one_2026',...record('one')}]};
+ const plan=buildDosimetryImportPlan(input);assert.equal(plan.documents[0].path,'occupationalDosimetry/one_2025');assert.equal(plan.documents[0].data.year,2025);assert.equal(plan.summary.changes,1);assert.equal(input.existing[0].year,2026);
+ assert.equal(buildDosimetryImportPlan({...input,existing:[...input.existing,{id:'one_2025',...plan.documents[0].data}]}).summary.changes,0);
+ for(const date of ['2026-02-30','2026-13-01'])assert.throws(()=>validateDosimetryRecord({...record('one'),issuedOn:date}));
+});
