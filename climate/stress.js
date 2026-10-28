@@ -30,7 +30,7 @@ function showResult(result){
  if(result.stressRating!==undefined){const p=document.createElement('p');p.textContent=`Estresse percebido: ${result.stressRating}/10 — medida separada da fadiga.`;resultHost.append(p);}
  const safety=document.createElement('p');safety.className='notice';safety.textContent=SAFETY_NOTE;
  const limits=document.createElement('p');limits.textContent=LIMITATION;
- const link=document.createElement('a');link.href='/stress-orientacoes.html';link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent='Ver todas as orientações e documentos do SAHMT';
+ const link=document.createElement('a');link.href='./stress-orientacoes.html';link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent='Ver todas as orientações e documentos do SAHMT';
  const receipt=document.createElement('p');receipt.id='stress-receipt';receipt.setAttribute('role','status');receipt.setAttribute('aria-live','polite');
  const retry=document.createElement('button');retry.type='button';retry.id='stress-retry';retry.textContent='Tentar enviar novamente';retry.hidden=true;retry.onclick=submitPayload;
  resultHost.append(safety,limits,link,receipt,retry);resultHost.focus();resultHost.scrollIntoView({behavior:'smooth',block:'start'});
