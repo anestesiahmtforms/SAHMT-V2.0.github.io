@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [vars]
+BIOSAFETY_MANUAL_ENABLED = "true"
 DOSIMETRY_ENABLED = "true"
 INSTITUTIONAL_SURVEYS_ENABLED = "true"
 FA_WEB_API_KEY = "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"

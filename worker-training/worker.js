@@ -1,3 +1,4 @@
+import {createBiosafetyManualService} from './biosafety-manual-service.js';
 import {createDosimetryService} from './dosimetry-service.js';
 import {createServiceTokenProvider,verifyTrainingIdentity} from './google-auth.js';
 import {createFirestoreStore} from './firestore.js';
@@ -37,6 +38,7 @@ function vaccinationRuntime(env){
  return runtime.vaccination??=createVaccinationService({store:runtime.store,adminDriveFolderUrl:env.PROFESSIONAL_DRIVE_FOLDER_URL});
 }
 function dosimetryRuntime(env){const runtime=sharedRuntime(env);return runtime.dosimetry??=createDosimetryService({store:runtime.store});}
+function manualRuntime(env){const runtime=sharedRuntime(env);return runtime.manual??=createBiosafetyManualService({store:runtime.store});}
 function surveyRuntime(env){
  const runtime=sharedRuntime(env);
  return runtime.surveys??=createSurveyService({profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
@@ -55,11 +57,12 @@ function documentRuntime(env){
  return runtime.documents;
 }
 const legacyTrainingCodes=new Set(['INSTITUTIONAL_REVIEW_REQUIRED','INVALID_INPUT','PAYLOAD_TOO_LARGE','UNSAFE_CONTENT','ALREADY_REVIEWED','ATTEMPT_LIMIT','AUDIT_IMMUTABLE','AUDIT_INVALID','AUDIT_UNAVAILABLE','BANK_QUESTIONS_REMOVED','CONTENT_UNAVAILABLE','FORBIDDEN','IDEMPOTENCY_CONFLICT','INVALID_ANSWERS','INVALID_MANAGER','NO_SUGGESTION','NOT_FOUND','NOT_PUBLISHED','READ_ORDER','RUN_CONFLICT','SCORE_UNAVAILABLE','SELF_REVIEW','STAGE_CONFLICT','UNAUTHENTICATED','VERSION_CHANGED','VERSION_CONFLICT']);
-export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildDosimetryService=dosimetryRuntime}={}){
+export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime}={}){
  const routes={
   '/v1/training':{prefix:'TRAINING',max:8*1024*1024,flag:'HTML_TRAINING_ENABLED',build:buildService},
   '/v1/vaccination':{prefix:'VAC',max:16*1024,flag:'VACCINATION_ENABLED',build:buildVaccinationService},
   '/v1/professional-documents':{prefix:'DOCUMENT',max:8*1024*1024,build:buildDocumentService},
+  '/v1/biosafety-manual':{prefix:'MANUAL',max:1024,flag:'BIOSAFETY_MANUAL_ENABLED',build:buildManualService},
   '/v1/dosimetry':{prefix:'DOSIMETRY',max:4096,flag:'DOSIMETRY_ENABLED',build:buildDosimetryService},
   '/v1/institutional-surveys':{prefix:'SURVEY',max:32*1024,flag:'INSTITUTIONAL_SURVEYS_ENABLED',build:buildSurveyService,sourceProject:'sahmt-17a16'},
  };
@@ -83,7 +86,7 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
    const result=await route.build(env).execute(body.action,body.input,identity);
    return reply(result,200);
   }catch(error){
-   const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
+   const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY|MANUAL)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
    return reply({code:safe},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);
   }
  }};

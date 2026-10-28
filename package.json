@@ -61,7 +61,9 @@
     "test:survey-session": "node --test tests/participant-session.test.js tests/survey-worker.test.js tests/survey-service.test.js tests/survey-session-bridge.test.js tests/institutional-group.test.js",
     "test:survey-session-browser": "node --test tests/participant-session.browser.test.js tests/survey-session.browser.test.js",
     "test:dosimetry": "node --test tests/dosimetry.test.js",
-    "test:dosimetry-browser": "node --test tests/biosafety.browser.test.js"
+    "test:dosimetry-browser": "node --test tests/biosafety.browser.test.js",
+    "test:biosafety-manual": "node --test tests/biosafety-manual.test.js",
+    "test:biosafety-manual-browser": "node --test tests/biosafety-manual.browser.test.js"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",
