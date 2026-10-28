@@ -12,8 +12,8 @@ test('revoked report access clears previously displayed health data and forbids 
 }));
 test('people-management entry preserves activities and back returns one level',()=>browserRun(async browser=>{
  const page=await browser.newPage();await page.goto(base+'?entry');await page.getByText('Atividades existentes',{exact:true}).waitFor();
- await page.getByRole('button',{name:'MEU HISTÓRICO VACINAL',exact:true}).click();await page.getByLabel('Ciência das orientações',{exact:true}).waitFor();
- assert.equal(await page.evaluate(()=>window.entryBack()),true);await page.getByText('Atividades de Gestão de Pessoas preservadas',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'BIOSSEGURANÇA',exact:true}).click();await page.getByRole('button',{name:'MEU HISTÓRICO VACINAL',exact:true}).click();await page.getByLabel('Ciência das orientações',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.entryBack()),true);await page.getByRole('button',{name:'MEU HISTÓRICO DOSIMETRIA',exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.entryBack()),true);await page.getByText('Atividades de Gestão de Pessoas preservadas',{exact:true}).waitFor();
 }));
 test('record indicators remain visible when document listing is unavailable',()=>browserRun(async browser=>{
  const page=await browser.newPage();await page.goto(base+'?role=admin&documentsOff');await page.getByRole('button',{name:'Painel administrativo',exact:true}).click();
