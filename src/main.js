@@ -4873,6 +4873,7 @@ async function render() {
     const status=document.querySelector('#outbox-status');if(status){status.innerHTML=session.validatingProfile?'<span role="status">Validando perfil…</span>':'<button type="button" id="retry-profile-access">Verificar acesso</button>';bindProfileRetryControl(status.querySelector('#retry-profile-access'));}
     return;
   }
+  void updateOutboxStatus();
   if (currentRoute() === 'home') await loadHome(); else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);
@@ -4886,7 +4887,6 @@ async function render() {
   if(!current())return;
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
   void updateOutboxStatus();
-  void updateOutboxStatus();
 }
 
 function renderOnlineGate() {
@@ -4896,8 +4896,14 @@ function renderOnlineGate() {
 }
 
 async function updateOutboxStatus() {
-  const target=document.querySelector('#outbox-status');
-  if(target)target.textContent='';
+  const target = document.querySelector('#outbox-status');
+  if (!target) return;
+  const online = navigator.onLine && session.status === 'signed-in' && session.offline === false &&
+    !session.validatingProfile && !onlineValidationRequired && !backendFailureDisplayed &&
+    !isOfflineRuntimeForced() && !operationalBackend.snapshot().code && !connectionsSuspended && !document.hidden;
+  target.innerHTML = online
+    ? '<span class="sync-status-button sync-status-button--synced" role="img" aria-label="App online: perfil validado no servidor" title="App online: perfil validado no servidor"><span class="sync-status-icon" aria-hidden="true">✓</span></span>'
+    : '';
 }
 
 function bindProfileRetryControl(button){
@@ -5046,6 +5052,7 @@ function sessionChanged(next) {
   }
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
   if (next.status === 'signed-in' && !next.offline && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
+  void updateOutboxStatus();
 }
 async function refreshAppFeatures(uid, force = false) {
   if (!uid || session.offline || (!force && appFeaturesUid === uid)) return;
@@ -5113,6 +5120,7 @@ function suspendConnections() {
   operationalBackend.interruptReads();
   if(!connectionsSuspended)cleanupCurrentModule?.suspend?.();
   connectionsSuspended=true;
+  void updateOutboxStatus();
   const scopes = ['events', 'labels','checklist'].map(kind => liveReports.get(kind)?.snapshot().scope).filter(scope => scope && !scope.warm);
   for (const scope of scopes) {
     suspendedReportScopes = suspendedReportScopes.filter(saved => saved.kind !== scope.kind);
