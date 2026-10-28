@@ -23,7 +23,7 @@ export const questionsForSelection = value => MODULES[value] || (value === 'team
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const allowedKeys = (value, keys) => isObject(value) && Object.keys(value).every(key => keys.includes(key));
 export function validateSubmission(input) {
-  if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments', 'group']) || input.consent !== true || input.survey_version !== VERSION || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
+  if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments', 'group']) || input.survey_version !== VERSION || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
   const group = input.group;
   if (!Object.hasOwn(GROUPS,group)) throw Error('INVALID_GROUP');
   const ids = [...COMMON, ...Object.values(MODULES).flat()].map(q => q.id);

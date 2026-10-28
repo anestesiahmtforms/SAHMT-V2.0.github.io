@@ -19,9 +19,10 @@ test('missing or invalid answers never become zero, and identifiers/computed sco
  for(const rating of [-1,11,'5',null,1.5])assert.throws(()=>validateSubmission({...payload(),stress_rating:rating}));
  assert.equal(validateSubmission({...payload(),group:'substitute',stress_rating:0}).stress_rating,0);
 });
-test('REST payload contains only allowed survey data, no derived score, identity or optional-rating imputation',()=>{
- const fields=commitBody(payload()).writes[0].update.fields;assert.deepEqual(Object.keys(fields).sort(),['answers','group','survey_cycle','survey_version']);assert.equal(fields.answers.mapValue.fields.S01.integerValue,'5');
- assert.equal(commitBody({...payload(),stress_rating:0}).writes[0].update.fields.stress_rating.integerValue,'0');
+test('REST payload contains only allowed survey data, authenticated identity and no optional-rating imputation',()=>{
+ const participant={uid:'member',categoryKey:'a'.repeat(64)};
+ const fields=commitBody(payload(),participant).writes[0].update.fields;assert.deepEqual(Object.keys(fields).sort(),['answers','category_key','group','respondent_uid','survey_cycle','survey_version']);assert.equal(fields.answers.mapValue.fields.S01.integerValue,'5');
+ assert.equal(commitBody({...payload(),stress_rating:0},participant).writes[0].update.fields.stress_rating.integerValue,'0');
 });
 test('overall + group means use complementary suppression; secretaries never released',()=>{
  const rows=[...Array.from({length:10},()=>({...payload(),answers:answersFor(20),group:'team'})),...Array.from({length:6},()=>({...payload(),answers:answersFor(70),group:'resident'})),...Array.from({length:5},()=>({...payload(),answers:answersFor(90),group:'substitute'})),...Array.from({length:2},()=>({...payload(),answers:answersFor(150),group:'secretaries'}))].map(({submission_id,...r})=>r);

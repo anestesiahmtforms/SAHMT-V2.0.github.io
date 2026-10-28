@@ -32,7 +32,7 @@ const panels={
 };
 
 // This menu reads no database. Each destination retains its existing session,
-// profile and server authorization checks. The FE survey opens without identity transfer.
+// profile and server authorization checks. Surveys reuse same-origin auth sessions.
 export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
  const panelAllowed=name=>name==='home'||access[name==='institutional'?'surveys':name]===true;
@@ -51,7 +51,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(panel==='institutional'){
    const surveyCard=(kind,url,title,subtitle)=>'<a class="management-hub-button management-survey-card" href="'+url+'" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></a>';
-   body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
+   body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Escolha uma pesquisa. Seu acesso e sua categoria são carregados automaticamente.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','/SAHMT-V2.0.github.io/enquetes/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','/SAHMT-V2.0.github.io/enquetes/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
   }
   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
