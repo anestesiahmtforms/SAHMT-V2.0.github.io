@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVaccinationService } from '../worker-training/vaccination-service.js';
+import {createHash} from 'node:crypto';
 import { vaccinationMemoryStore } from './helpers/vaccination-memory-store.js';
 const identity = uid => ({uid,email:`${uid}@example.invalid`,emailVerified:true,provider:'google.com'});
 const input = () => ({year:2026,category:'Equipe',awareness:false,truth:true,states:{hepatitisB:'UNKNOWN',tetanus:'PENDING',mmr:'UPDATED',influenza:'NOT_ADHERED'},declaration:'WILL_UPDATE',notes:'Synthetic fixture',expectedVersion:0});
-function setup(){const store=vaccinationMemoryStore(); for(const uid of ['one','two','admin']) store.seed('users',uid,{uid,email:identity(uid).email,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'medico',category:'Equipe'});return {store,service:createVaccinationService({store,now:()=>1234})};}
+function setup(){const store=vaccinationMemoryStore();for(const uid of ['one','two','admin'])store.seed('userCategories',createHash('sha256').update(identity(uid).email).digest('hex'),{schemaVersion:1,identityStatus:'LINKED',...identity(uid),memberCategories:['EFETIVO']}); for(const uid of ['one','two','admin']) store.seed('users',uid,{uid,email:identity(uid).email,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'medico',category:'Equipe'});return {store,service:createVaccinationService({store,now:()=>1234})};}
 const rejectsCode=(promise,code)=>assert.rejects(promise,error=>error.code===code);
 test('bootstrap and save bind to authenticated profile and never expose another participant',async()=>{
   const {store,service}=setup();await service.execute('SAVE',input(),identity('two'));
@@ -66,4 +67,29 @@ test('corrupt record identity fails closed and action/year contracts are strict'
   await rejectsCode(service.execute('SAVE',input(),identity('one')),'VAC_RECORD_INVALID');
   for(const action of ['BOOTSTRAP','REPORT'])await rejectsCode(service.execute(action,{year:2030},identity('admin')),'VAC_INVALID_INPUT');
   await rejectsCode(service.execute('DELETE',{year:2026},identity('one')),'VAC_INVALID_INPUT');
+});
+
+test('registry wins over submitted/saved groups and missing mappings never fall back to roles',async()=>{
+ const {store,service}=setup(),key=createHash('sha256').update(identity('one').email).digest('hex');
+ const assignment={schemaVersion:1,identityStatus:'LINKED',uid:'one',email:identity('one').email,memberCategories:['RESIDENTE_2','ADMINISTRADOR']};
+ store.seed('userCategories',key,assignment);
+ const saved=await service.execute('SAVE',{...input(),category:'Substitutos'},identity('one'));assert.equal(saved.record.category,'Residentes');
+ assert.equal((await service.execute('BOOTSTRAP',{year:2026},identity('one'))).profile.category,'Residentes');
+ store.seed('userCategories',key,{...assignment,memberCategories:['SUBSTITUTO']});
+ const report=await service.execute('REPORT',{year:2026},identity('admin'));assert.equal(report.participants.find(p=>p.uid==='one').category,'Substitutos');assert.equal(report.report.byGroup.find(g=>g.category==='Substitutos').respondents,1);
+ for(const patch of [{identityStatus:'PENDING_ACCOUNT'},{uid:'two'},{email:identity('two').email},{memberCategories:['ADMINISTRADOR']},{memberCategories:['EFETIVO','SUBSTITUTO']}]){
+  store.seed('userCategories',key,{...assignment,...patch});await rejectsCode(service.execute('SAVE',{...input(),expectedVersion:1},identity('one')),'VAC_CATEGORY_NOT_CONFIGURED');
+ }
+});
+test('transaction detects registry changes before commit',async()=>{
+ const {store,service}=setup(),key=createHash('sha256').update(identity('one').email).digest('hex');
+ store.beforeCommit=async()=>store.seed('userCategories',key,{schemaVersion:1,identityStatus:'LINKED',uid:'one',email:identity('one').email,memberCategories:['SUBSTITUTO']});
+ const result=await service.execute('SAVE',input(),identity('one'));assert.equal(result.record.category,'Substitutos');
+});
+
+test('manual Drive destination is server configured and released only after admin authorization',async()=>{
+ const {store}=setup(),url='https://drive.google.com/drive/folders/SYNTHETIC_DRIVE_FOLDER';
+ const service=createVaccinationService({store,adminDriveFolderUrl:url});assert.equal((await service.execute('BOOTSTRAP',{year:2026},identity('one'))).adminDriveFolderUrl,undefined);
+ await rejectsCode(service.execute('REPORT',{year:2026},identity('one')),'VAC_FORBIDDEN');assert.equal((await service.execute('REPORT',{year:2026},identity('admin'))).adminDriveFolderUrl,url);
+ for(const unsafe of ['https://evil.invalid/folder','javascript:alert(1)','https://drive.google.com.evil.invalid/drive/folders/SYNTHETIC_DRIVE_FOLDER'])assert.equal((await createVaccinationService({store,adminDriveFolderUrl:unsafe}).execute('REPORT',{year:2026},identity('admin'))).adminDriveFolderUrl,undefined);
 });

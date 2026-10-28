@@ -32,7 +32,7 @@ function buildRuntime(env){
 }
 function vaccinationRuntime(env){
  const runtime=sharedRuntime(env);
- return runtime.vaccination??=createVaccinationService({store:runtime.store});
+ return runtime.vaccination??=createVaccinationService({store:runtime.store,adminDriveFolderUrl:env.PROFESSIONAL_DRIVE_FOLDER_URL});
 }
 function documentRuntime(env){
  const runtime=sharedRuntime(env);

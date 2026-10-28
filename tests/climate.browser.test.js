@@ -4,8 +4,9 @@ import http from 'node:http';
 import {readFile, mkdir} from 'node:fs/promises';
 import {extname, resolve} from 'node:path';
 import {chromium} from 'playwright';
-const root = resolve('dist-climate');
+import {surveyTestBuild} from './helpers/survey-test-build.js';
 test('responsive survey: conditional modules, privacy payload, XSS text, retry, consent and thanks', async () => {
+  const root=await surveyTestBuild('climate');
   const server = http.createServer(async (req, res) => {
     const path = new URL(req.url, 'http://localhost').pathname;
     if (path.includes('..')) { res.writeHead(403).end(); return; }
@@ -27,23 +28,20 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
         if (new URL(request.url()).origin !== origin) { await route.abort(); return; }
         await route.continue();
       });
-      await page.goto(origin);
+      if(width===320){await page.goto(origin+'/?testGroup=invalid');await page.getByRole('button',{name:'Continuar com meu cadastro Google'}).click();await page.getByText(/Não foi possível confirmar seu vínculo/).waitFor();assert.equal(await page.locator('form').isVisible(),false);assert.equal(received.length,0);}
+      const assignedGroup=width===390?'resident':width===768?'team':'substitute';
+      await page.goto(origin+'/?testGroup='+assignedGroup);
       if (process.env.CLIMATE_SCREENSHOTS && [390,1440].includes(width)) {
         await mkdir(process.env.CLIMATE_SCREENSHOTS, {recursive:true});
         await page.screenshot({path: resolve(process.env.CLIMATE_SCREENSHOTS, `pesquisa-${width}.png`)});
       }
       assert.equal(await page.locator('fieldset').count(), 32);
-      assert.deepEqual(await page.locator('[name=module] option:not([disabled])').allTextContents(),['Equipe','Residentes','Secretárias','Substitutos']);
-      assert.equal(await page.locator('[name=module]').getAttribute('required'),'');
-      assert.equal(await page.locator('.notice p').count(),3);
-      assert.doesNotMatch(await page.locator('.notice').innerText(),/O serviço de hospedagem|registros técnicos/);
-      await page.check('[name=consent]');await page.check('[name=Q01][value="4"]');await page.locator('[type=submit]').click();assert.equal(received.length,0);await page.uncheck('[name=consent]');
+      assert.equal(await page.locator('[name=module]').count(),0);
+      assert.equal(await page.locator('form').isVisible(),false);
+      assert.match(await page.locator('.notice').innerText(),/registros técnicos/);
+      await page.getByRole('button',{name:'Continuar com meu cadastro Google'}).click();
+      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),assignedGroup==='substitute'?32:37);assert.equal(await page.locator('#module').isVisible(),assignedGroup!=='substitute');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      await page.selectOption('[name=module]', 'resident'); assert.equal(await page.locator('fieldset').count(), 37);
-      await page.check('[name=R01][value="5"]');
-      await page.selectOption('[name=module]', 'team'); assert.equal(await page.locator('[name=R01]').count(), 0);
-      await page.selectOption('[name=module]', 'administrative'); assert.match(await page.locator('#module').innerText(), /não terá resultados exclusivos/);
-      await page.selectOption('[name=module]', 'substitute'); assert.equal(await page.locator('fieldset').count(), 32);
       await page.check('[name=Q01][value="4"]'); await page.locator('[type=submit]').click(); assert.equal(received.length, 0);
       await page.check('[name=consent]'); await page.fill('[name=O01]', '<script>alert("text only")</script>');
       await page.locator('[type=submit]').click(); await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Não foi possível'));
@@ -53,7 +51,7 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
       assert.deepEqual(Object.keys(received[0].data), ['writes']);
       const writes=received[0].data.writes;
       assert.deepEqual(Object.keys(writes[0].update.fields).sort(),['answers','group','survey_cycle','survey_version']);
-      assert.equal(writes[0].update.fields.group.stringValue,'substitute');
+      assert.equal(writes[0].update.fields.group.stringValue,assignedGroup);
       assert.deepEqual(writes[0].update.fields.answers.mapValue.fields,{Q01:{integerValue:'4'}});
       assert.notEqual(writes[0].update.name.split('/').at(-1),writes[1].update.name.split('/').at(-1));
       for (const h of ['authorization','cookie','referer']) assert.equal(received[0].headers[h], undefined);

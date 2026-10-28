@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,createHash} from 'node:crypto';
 import {build} from 'esbuild';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 import {createTrainingWorker} from '../worker-training/worker.js';
@@ -58,6 +58,7 @@ test('service/auth failures expose only safe domain codes and controlled status'
 test('real workerd routes keep own records private, admin reports protected and document lists usable without OAuth',{timeout:60000},async()=>{
   const project='sahmt-gestao-5ae66',root=`projects/${project}/databases/(default)/documents`,data=new Map(),calls=[];
   const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),credentials={project_id:project,client_email:`runtime@${project}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
+  for(const uid of ['one','two','admin'])data.set('userCategories/'+createHash('sha256').update(`${uid}@example.invalid`).digest('hex'),{schemaVersion:1,identityStatus:'LINKED',uid,email:`${uid}@example.invalid`,memberCategories:['EFETIVO']});
   for(const uid of ['one','two','admin'])data.set(`users/${uid}`,{uid,email:`${uid}@example.invalid`,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'colaborador'});
   const token=uid=>{const now=Math.floor(Date.now()/1000);return Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:project,iss:`https://securetoken.google.com/${project}`,sub:uid,email:`${uid}@example.invalid`,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');};
   const bundle=await build({entryPoints:['worker-training/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});

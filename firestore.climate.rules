@@ -36,13 +36,12 @@ service cloud.firestore {
       let a = d.get('answers', {});
       return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
-        d.survey_cycle == '2026' && d.survey_version == '1.2' && a is map &&
-        d.group in ['resident', 'secretaries', 'team', 'substitute'] &&
+        d.survey_cycle == '2026' && d.survey_version == '1.3' && a is map &&
+        d.group in ['resident', 'team', 'substitute'] &&
         (
           (!a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) || d.group == 'resident') &&
-          (!a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']) || d.group == 'team') &&
-          (!a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05']) || d.group == 'secretaries')) &&
-        a.keys().hasOnly(['Q01', 'Q02', 'Q03', 'Q04', 'Q05', 'Q06', 'Q07', 'Q08', 'Q09', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'Q16', 'Q17', 'Q18', 'Q19', 'Q20', 'Q21', 'Q22', 'Q23', 'Q24', 'Q25', 'Q26', 'Q27', 'Q28', 'Q29', 'Q30', 'Q31', 'Q32', 'R01', 'R02', 'R03', 'R04', 'R05', 'T01', 'T02', 'T03', 'T04', 'T05', 'A01', 'A02', 'A03', 'A04', 'A05']) &&
+          (!a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']) || d.group == 'team')) &&
+        a.keys().hasOnly(['Q01', 'Q02', 'Q03', 'Q04', 'Q05', 'Q06', 'Q07', 'Q08', 'Q09', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'Q16', 'Q17', 'Q18', 'Q19', 'Q20', 'Q21', 'Q22', 'Q23', 'Q24', 'Q25', 'Q26', 'Q27', 'Q28', 'Q29', 'Q30', 'Q31', 'Q32', 'R01', 'R02', 'R03', 'R04', 'R05', 'T01', 'T02', 'T03', 'T04', 'T05']) &&
         (a.get('Q01', 'NA') is int || a.get('Q02', 'NA') is int || a.get('Q03', 'NA') is int || a.get('Q04', 'NA') is int || a.get('Q05', 'NA') is int || a.get('Q06', 'NA') is int || a.get('Q07', 'NA') is int || a.get('Q08', 'NA') is int || a.get('Q09', 'NA') is int || a.get('Q10', 'NA') is int || a.get('Q11', 'NA') is int || a.get('Q12', 'NA') is int || a.get('Q13', 'NA') is int || a.get('Q14', 'NA') is int || a.get('Q15', 'NA') is int || a.get('Q16', 'NA') is int || a.get('Q17', 'NA') is int || a.get('Q18', 'NA') is int || a.get('Q19', 'NA') is int || a.get('Q20', 'NA') is int || a.get('Q21', 'NA') is int || a.get('Q22', 'NA') is int || a.get('Q23', 'NA') is int || a.get('Q24', 'NA') is int || a.get('Q25', 'NA') is int || a.get('Q26', 'NA') is int || a.get('Q27', 'NA') is int || a.get('Q28', 'NA') is int || a.get('Q29', 'NA') is int || a.get('Q30', 'NA') is int || a.get('Q31', 'NA') is int || a.get('Q32', 'NA') is int) &&
         climateAnswer(a.get('Q01', 'NA')) &&
         climateAnswer(a.get('Q02', 'NA')) &&
@@ -86,14 +85,7 @@ service cloud.firestore {
         climateAnswer(a.get('T03', 'NA')) &&
         climateAnswer(a.get('T04', 'NA')) &&
         climateAnswer(a.get('T05', 'NA')) &&
-        climateAnswer(a.get('A01', 'NA')) &&
-        climateAnswer(a.get('A02', 'NA')) &&
-        climateAnswer(a.get('A03', 'NA')) &&
-        climateAnswer(a.get('A04', 'NA')) &&
-        climateAnswer(a.get('A05', 'NA')) &&
-        !(a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) && a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05'])) &&
-        !(a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) && a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05'])) &&
-        !(a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']) && a.keys().hasAny(['A01', 'A02', 'A03', 'A04', 'A05']));
+        !(a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) && a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']));
     }
     function climateCommentValue(v) { return v is string && v.size() <= 1500; }
     function climateComment(d) {
@@ -127,8 +119,8 @@ service cloud.firestore {
       let a = d.get('answers', {});
       return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating']) &&
         d.keys().hasAll(['survey_cycle','survey_version','group','answers']) &&
-        d.survey_cycle == '2026' && d.survey_version == '1.0' &&
-        d.group in ['team','resident','secretaries','substitute'] && a is map &&
+        d.survey_cycle == '2026' && d.survey_version == '1.1' &&
+        d.group in ['team','resident','substitute'] && a is map &&
         a.keys().hasOnly(['S01','S02','S03','S04','S05','S06','S07','S08','S09','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20','S21','S22','S23','S24','S25','S26','S27','S28','S29','S30']) && a.size() == 30 &&
         (a.get('S01', -1) is int && a.get('S01', -1) >= 0 && a.get('S01', -1) <= 5) &&
         (a.get('S02', -1) is int && a.get('S02', -1) >= 0 && a.get('S02', -1) <= 5) &&

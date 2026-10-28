@@ -15,15 +15,14 @@ const block=`
       return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' && a is map &&
-        d.group in ['resident', 'secretaries', 'team', 'substitute'] &&
+        d.group in ['resident', 'team', 'substitute'] &&
         (
           (!a.keys().hasAny(${strings(MODULES.resident.map(q=>q.id))}) || d.group == 'resident') &&
-          (!a.keys().hasAny(${strings(MODULES.preceptor.map(q=>q.id))}) || d.group == 'team') &&
-          (!a.keys().hasAny(${strings(MODULES.administrative.map(q=>q.id))}) || d.group == 'secretaries')) &&
+          (!a.keys().hasAny(${strings(MODULES.preceptor.map(q=>q.id))}) || d.group == 'team')) &&
         a.keys().hasOnly(${strings(ids)}) &&
         (${COMMON.map(q=>`a.get('${q.id}', 'NA') is int`).join(' || ')}) &&
         ${ids.map(id=>`climateAnswer(a.get('${id}', 'NA'))`).join(' &&\n        ')} &&
-        ${[['resident','preceptor'],['resident','administrative'],['preceptor','administrative']].map(([a,b])=>`!(a.keys().hasAny(${strings(MODULES[a].map(q=>q.id))}) && a.keys().hasAny(${strings(MODULES[b].map(q=>q.id))}))`).join(' &&\n        ')};
+        ${[['resident','preceptor']].map(([a,b])=>`!(a.keys().hasAny(${strings(MODULES[a].map(q=>q.id))}) && a.keys().hasAny(${strings(MODULES[b].map(q=>q.id))}))`).join(' &&\n        ')};
     }
     function climateCommentValue(v) { return v is string && v.size() <= 1500; }
     function climateComment(d) {

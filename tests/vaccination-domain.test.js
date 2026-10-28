@@ -14,7 +14,7 @@ test('invalid, incomplete and spoofed submissions are rejected', () => {
   for (const patch of [{year:2025},{year:'2026'},{category:'Other'},{awareness:0},{truth:false},{truth:'true'},{states:{}},{states:{...valid().states,extra:'UPDATED'}},{states:{...valid().states,mmr:'INVALID'}},{declaration:'INVALID'},{notes:'x'.repeat(1501)},{notes:123},{expectedVersion:-1},{expectedVersion:1.5},{expectedVersion:Number.MAX_SAFE_INTEGER},{uid:'another'},{email:'another@example.invalid'}]) {
     assert.throws(() => validateVaccinationInput({...valid(),...patch}), error => error.code === 'VAC_INVALID_INPUT');
   }
-  for (const key of Object.keys(valid()).filter(k => k !== 'notes')) { const input = valid(); delete input[key]; assert.throws(() => validateVaccinationInput(input)); }
+  for (const key of Object.keys(valid()).filter(k => !['notes','category'].includes(k))) { const input = valid(); delete input[key]; assert.throws(() => validateVaccinationInput(input)); }
   assert.equal(validateVaccinationInput({...valid(),notes:undefined}).notes,'');
 });
 test('only explicit application administrators qualify', () => {
@@ -23,7 +23,7 @@ test('only explicit application administrators qualify', () => {
   for (const profile of [null,{}, {role:'gestor'}, {permissions:{peopleManage:true}}, {permissions:{admin:'true'}}]) assert.equal(isVaccinationAdmin(profile),false);
 });
 test('reports label registered versus respondents and distinguish unknown from no response', () => {
-  const participants = ['one','two','three'].map(uid => ({uid,email:`${uid}@example.invalid`,active:true,access:true,category:'Equipe'}));
+  const participants = ['one','two','three'].map(uid => ({uid,email:`${uid}@example.invalid`,active:true,access:true,category:'Equipe',memberCategories:['EFETIVO']}));
   participants.push({uid:'inactive',active:false,access:true},{uid:'revoked',active:true,access:false});
   for (let i=1;i<=5;i++) participants.push({uid:`owner${i}`,email:`anestesiahmtforms${i===1?'':i}@gmail.com`,active:true,access:true});
   const records = [{...valid(),uid:'one',states:{...valid().states,hepatitisB:'UPDATED'}},{...valid(),uid:'two',states:{...valid().states,hepatitisB:'PENDING'}},{...valid(),uid:'inactive'},{...valid(),uid:'three',year:2027}];
@@ -36,8 +36,8 @@ test('reports label registered versus respondents and distinguish unknown from n
   assert.equal(report.byGroup.find(g=>g.category==='Equipe').registered,3);
   assert.match(report.denominatorLabels.registered,/cadastrad/i);
 });
-test('report deduplicates identity, ignores outsider/year records and uses saved category for uncategorized profiles', () => {
-  const p={uid:'one',active:true,access:true};
+test('report deduplicates identity, ignores outsider/year records and uses registry classification over saved categories', () => {
+  const p={uid:'one',active:true,access:true,memberCategories:['RESIDENTE_2']};
   const report=buildVaccinationReport([p,p],[{...valid(),uid:'one',category:'Residentes',version:1},{...valid(),uid:'outsider'},{...valid(),uid:'one',category:'Residentes',version:2}],2026);
   assert.equal(report.general.registered,1);assert.equal(report.general.respondents,1);
   assert.equal(report.byGroup.find(g=>g.category==='Residentes').registered,1);

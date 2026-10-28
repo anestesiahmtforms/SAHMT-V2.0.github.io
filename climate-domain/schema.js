@@ -1,6 +1,6 @@
-export const VERSION = '1.2';
-export const GROUPS = {team: 'Equipe', resident: 'Residentes', secretaries: 'Secretárias', substitute: 'Substitutos'};
-export const groupForModule = value => ({team:'team',resident:'resident',administrative:'secretaries',preceptor:'team',clinical:'team',substitute:'substitute'}[value] || 'unspecified');
+export const VERSION = '1.3';
+export const GROUPS = {team: 'Equipe', resident: 'Residentes', substitute: 'Substitutos'};
+export const groupForModule = value => ({team:'team',resident:'resident',preceptor:'team',clinical:'team',substitute:'substitute'}[value] || 'unspecified');
 export const CYCLE = '2026';
 export const DIMENSIONS = [
   ['Propósito e pertencimento', ['Compreendo os objetivos e prioridades do SAHMT.', 'Sinto orgulho de integrar esta equipe.', 'Percebo respeito às diferentes experiências e gerações.', 'Sinto que minhas contribuições são valorizadas.']],
@@ -16,8 +16,7 @@ const questions = (prefix, texts) => texts.map((text, i) => ({id: prefix + Strin
 export const COMMON = questions('Q', DIMENSIONS.flatMap(([, texts]) => texts));
 export const MODULES = {
   resident: questions('R', ['Recebo supervisão compatível com minha etapa de formação.', 'Posso pedir ajuda ao preceptor sem constrangimento.', 'Os feedbacks educacionais são oportunos e respeitosos.', 'Tenho clareza sobre responsabilidades e limites de autonomia.', 'As oportunidades de aprendizagem são distribuídas de forma justa.']),
-  preceptor: questions('T', ['Tenho clareza sobre minhas responsabilidades como preceptor.', 'Disponho de condições para supervisionar com segurança.', 'Há alinhamento entre os preceptores quanto às expectativas educacionais.', 'Recebo apoio para lidar com dificuldades de ensino e supervisão.', 'A atividade de preceptoria é reconhecida pela organização.']),
-  administrative: questions('A', ['Recebo informações suficientes para apoiar o fluxo assistencial.', 'Minhas responsabilidades e prioridades são claras.', 'Sou tratada com respeito pela equipe clínica.', 'Tenho canais adequados para sinalizar problemas operacionais.', 'Mudanças no serviço são comunicadas em tempo adequado.'])
+  preceptor: questions('T', ['Tenho clareza sobre minhas responsabilidades como preceptor.', 'Disponho de condições para supervisionar com segurança.', 'Há alinhamento entre os preceptores quanto às expectativas educacionais.', 'Recebo apoio para lidar com dificuldades de ensino e supervisão.', 'A atividade de preceptoria é reconhecida pela organização.'])
 };
 export const OPEN = questions('O', ['Qual é o principal ponto forte do SAHMT que devemos preservar?', 'Qual mudança teria maior impacto positivo no seu cotidiano?', 'Que situação ou processo merece atenção prioritária para a segurança do paciente?', 'O que poderia melhorar a integração entre diferentes funções e gerações?', 'Há alguma sugestão adicional? Evite nomes e detalhes identificáveis.']);
 export const questionsForSelection = value => MODULES[value] || (value === 'team' ? MODULES.preceptor : []);

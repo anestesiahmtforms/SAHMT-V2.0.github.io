@@ -18,3 +18,15 @@ test('FE denies all raw access and writes; published reports require a dedicated
     }
   } finally { await env.cleanup(); }
 });
+
+test('FE registry lookup is own verified active account only, separate from anonymous answers',async()=>{
+ const env=await initializeTestEnvironment({projectId:'demo-sahmt-classification',firestore:{rules:readFileSync(new URL('../firestore.climate.rules',import.meta.url),'utf8')}});
+ try{
+  await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'users/member'),{uid:'member',active:true,access:true});await setDoc(doc(c.firestore(),'userCategories/synthetic'),{schemaVersion:1,uid:'member',email:'member@example.invalid',identityStatus:'LINKED',memberCategories:['EFETIVO']});});
+  const member=env.authenticatedContext('member',{email:'member@example.invalid',email_verified:true}).firestore();
+  await assertSucceeds(getDoc(doc(member,'userCategories/synthetic')));
+  for(const db of [env.unauthenticatedContext().firestore(),env.authenticatedContext('other',{email:'member@example.invalid',email_verified:true}).firestore(),env.authenticatedContext('member',{email:'member@example.invalid',email_verified:false}).firestore()])await assertFails(getDoc(doc(db,'userCategories/synthetic')));
+  await assertFails(getDoc(doc(member,'users/member')));await assertFails(getDoc(doc(member,'climateResponses/synthetic')));await assertFails(setDoc(doc(member,'userCategories/synthetic'),{uid:'member'}));
+  await env.withSecurityRulesDisabled(async c=>setDoc(doc(c.firestore(),'users/member'),{uid:'member',active:true,access:false}));await assertFails(getDoc(doc(member,'userCategories/synthetic')));
+ }finally{await env.clearFirestore();await env.cleanup();}
+});
