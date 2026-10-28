@@ -5048,7 +5048,6 @@ function sessionChanged(next) {
   else if (preserveEvaluationModule) {
     cleanupCurrentModule?.revalidate?.(); cleanupCurrentModule?.updateProfile?.(next.profile);
     const identity = document.querySelector?.('.identity-card__user'); if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
-    void updateOutboxStatus();
   }
   else for (const kind of ['events', 'labels', 'checklist']) updateReportSync(kind);
   if (next.status === 'signed-in' && !next.offline && (userChanged || appFeaturesUid !== next.user.uid)) void refreshAppFeatures(next.user.uid);
