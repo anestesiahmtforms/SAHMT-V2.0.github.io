@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import { vaccinationMemoryStore } from './helpers/vaccination-memory-store.js';
 const identity = uid => ({uid,email:`${uid}@example.invalid`,emailVerified:true,provider:'google.com'});
 const input = () => ({year:2026,category:'Equipe',awareness:false,truth:true,states:{hepatitisB:'UNKNOWN',tetanus:'PENDING',mmr:'UPDATED',influenza:'NOT_ADHERED'},declaration:'WILL_UPDATE',notes:'Synthetic fixture',expectedVersion:0});
-function setup(){const store=vaccinationMemoryStore();for(const uid of ['one','two','admin'])store.seed('userCategories',createHash('sha256').update(identity(uid).email).digest('hex'),{schemaVersion:1,identityStatus:'LINKED',...identity(uid),memberCategories:['EFETIVO']}); for(const uid of ['one','two','admin']) store.seed('users',uid,{uid,email:identity(uid).email,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'medico',category:'Equipe'});return {store,service:createVaccinationService({store,now:()=>1234})};}
+function setup(){const store=vaccinationMemoryStore();for(const uid of ['one','two','admin'])store.seed('userCategories',createHash('sha256').update(JSON.stringify(identity(uid).email)).digest('hex'),{schemaVersion:1,identityStatus:'LINKED',...identity(uid),memberCategories:['EFETIVO']}); for(const uid of ['one','two','admin']) store.seed('users',uid,{uid,email:identity(uid).email,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'medico',category:'Equipe'});return {store,service:createVaccinationService({store,now:()=>1234})};}
 const rejectsCode=(promise,code)=>assert.rejects(promise,error=>error.code===code);
 test('bootstrap and save bind to authenticated profile and never expose another participant',async()=>{
   const {store,service}=setup();await service.execute('SAVE',input(),identity('two'));
@@ -70,7 +70,7 @@ test('corrupt record identity fails closed and action/year contracts are strict'
 });
 
 test('registry wins over submitted/saved groups and missing mappings never fall back to roles',async()=>{
- const {store,service}=setup(),key=createHash('sha256').update(identity('one').email).digest('hex');
+ const {store,service}=setup(),key=createHash('sha256').update(JSON.stringify(identity('one').email)).digest('hex');
  const assignment={schemaVersion:1,identityStatus:'LINKED',uid:'one',email:identity('one').email,memberCategories:['RESIDENTE_2','ADMINISTRADOR']};
  store.seed('userCategories',key,assignment);
  const saved=await service.execute('SAVE',{...input(),category:'Substitutos'},identity('one'));assert.equal(saved.record.category,'Residentes');
@@ -82,7 +82,7 @@ test('registry wins over submitted/saved groups and missing mappings never fall 
  }
 });
 test('transaction detects registry changes before commit',async()=>{
- const {store,service}=setup(),key=createHash('sha256').update(identity('one').email).digest('hex');
+ const {store,service}=setup(),key=createHash('sha256').update(JSON.stringify(identity('one').email)).digest('hex');
  store.beforeCommit=async()=>store.seed('userCategories',key,{schemaVersion:1,identityStatus:'LINKED',uid:'one',email:identity('one').email,memberCategories:['SUBSTITUTO']});
  const result=await service.execute('SAVE',input(),identity('one'));assert.equal(result.record.category,'Substitutos');
 });

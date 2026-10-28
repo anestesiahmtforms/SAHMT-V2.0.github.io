@@ -11,7 +11,9 @@ export function assignedInstitutionalGroup(assignment, identity) {
   return institutionalGroup(assignment.memberCategories);
 }
 export async function institutionalAssignmentKey(email) {
-  const bytes = new TextEncoder().encode(email.trim().toLowerCase());
+  // Match member-category-plan: document IDs hash the JSON string, including
+  // its quotes, rather than the raw address. Never create alternate aliases.
+  const bytes = new TextEncoder().encode(JSON.stringify(email.trim().toLowerCase()));
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');
 }
 

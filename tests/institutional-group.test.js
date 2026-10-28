@@ -18,3 +18,12 @@ test('FE classifier releases only broad group; rejects unverified/provider or mi
  await assert.rejects(resolveParticipantGroup({user,readAssignment:async()=>null}));
  const source=await readFile('climate/participant-group.js','utf8');assert.doesNotMatch(source,/signInWithPopup|firebase\/auth|GoogleAuthProvider/);assert.doesNotMatch(source,/localStorage|sessionStorage|submission_id|answers:/);
 });
+
+test('lookup key matches documents created by the real category provisioning plan',async()=>{
+ const {planMemberCategoryDocuments}=await import('../scripts/lib/member-category-plan.js');
+ const {MEMBER_CATEGORY_IDS}=await import('../src/member-categories.js');
+ const roster=Object.fromEntries(MEMBER_CATEGORY_IDS.map(id=>[id,id==='EFETIVO'?[identity.email]:[]]));
+ const plan=planMemberCategoryDocuments(roster,{FB:[identity]});
+ const row=plan.projects.FB.documents.find(row=>row.path.startsWith('userCategories/'));
+ assert.equal('userCategories/'+await institutionalAssignmentKey(identity.email),row.path);
+});
