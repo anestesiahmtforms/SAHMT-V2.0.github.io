@@ -96,7 +96,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v270');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v271');
 });
 
 test('only the same-origin repair entry activates an installed update without claiming windows',async()=>{
@@ -217,4 +217,15 @@ test('demonstração não pode substituir o HTML offline da produção',()=>{
  const worker=createWorker();let intercepted=false;
  worker.handlers.get('fetch')({request:{method:'GET',mode:'navigate',url:`https://sahmt.example${BASE}demo.html`},respondWith(){intercepted=true;}});
  assert.equal(intercepted,false);
+});
+
+
+test('survey pages and assets bypass the installed app shell',()=>{
+ const worker=createWorker();
+ for(const path of ['enquetes/','enquetes/stress.html','enquetes/assets/survey.js']){
+  let intercepted=false;
+  worker.handlers.get('fetch')({request:{method:'GET',mode:path.endsWith('.js')?'cors':'navigate',url:'https://sahmt.example'+BASE+path},respondWith(){intercepted=true;}});
+  assert.equal(intercepted,false,path);
+ }
+ assert.equal(worker.fetched.length,0);
 });

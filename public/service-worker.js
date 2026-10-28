@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v270';
+const CACHE = 'sahmt-v2-shell-v271';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -88,7 +88,7 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`) || url.pathname.startsWith(`${BASE}gestao/`) || url.pathname === `${BASE}demo.html`) return;
+  if (!url.pathname.startsWith(BASE) || url.pathname.startsWith(`${BASE}tools/`) || url.pathname.startsWith(`${BASE}gestao/`) || url.pathname.startsWith(`${BASE}enquetes/`) || url.pathname === `${BASE}demo.html`) return;
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       // The installed worker owns a consistent HTML/asset set. New releases install
