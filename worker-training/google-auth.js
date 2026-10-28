@@ -23,14 +23,14 @@ export function createServiceTokenProvider({credentials,fetchImpl=fetch,now=Date
 }
 
 /** accounts:lookup validates the signature against Firebase, then account state is checked on every request. */
-export async function verifyTrainingIdentity(authorization,{apiKey,fetchImpl=fetch,now=Date.now}={}) {
+export async function verifyTrainingIdentity(authorization,{apiKey,projectId=TRAINING_PROJECT,fetchImpl=fetch,now=Date.now}={}) {
  const denied=()=>error('TRAINING_SESSION_INVALID',401);
- if(typeof apiKey!=='string'||!apiKey)throw error('TRAINING_SERVICE_CONFIG_INVALID');
+ if(typeof apiKey!=='string'||!apiKey||![TRAINING_PROJECT,'sahmt-17a16'].includes(projectId))throw error('TRAINING_SERVICE_CONFIG_INVALID');
  if(!/^Bearer [A-Za-z0-9_.-]{50,16000}$/.test(authorization||''))throw denied();
  const token=authorization.slice(7);let claims;
  try{const parts=token.split('.');if(parts.length!==3)throw Error();claims=JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8'));}catch{throw denied();}
  const time=now()/1000;
- if(claims.aud!==TRAINING_PROJECT||claims.iss!==`https://securetoken.google.com/${TRAINING_PROJECT}`||typeof claims.sub!=='string'||!claims.sub||claims.sub.length>128||/[\s/\x00-\x1f]/.test(claims.sub)||!Number.isFinite(claims.exp)||claims.exp<=time||!Number.isFinite(claims.iat)||claims.iat>time+30||!Number.isFinite(claims.auth_time)||claims.auth_time>time+30||claims.email_verified!==true||claims.firebase?.sign_in_provider!=='google.com'||typeof claims.email!=='string'||claims.email.length>254)throw denied();
+ if(claims.aud!==projectId||claims.iss!==`https://securetoken.google.com/${projectId}`||typeof claims.sub!=='string'||!claims.sub||claims.sub.length>128||/[\s/\x00-\x1f]/.test(claims.sub)||!Number.isFinite(claims.exp)||claims.exp<=time||!Number.isFinite(claims.iat)||claims.iat>time+30||!Number.isFinite(claims.auth_time)||claims.auth_time>time+30||claims.email_verified!==true||claims.firebase?.sign_in_provider!=='google.com'||typeof claims.email!=='string'||claims.email.length>254)throw denied();
  let response,data;try{response=await fetchImpl('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key='+encodeURIComponent(apiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:token}),redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(15000)});data=await response.json();}catch{throw error('TRAINING_SESSION_UNAVAILABLE');}
  const user=data.users?.length===1?data.users[0]:null;
  if(!response.ok||!user||user.disabled===true||user.localId!==claims.sub||user.emailVerified!==true||String(user.email).toLowerCase()!==claims.email.toLowerCase()||Number(user.validSince||0)>claims.auth_time)throw denied();

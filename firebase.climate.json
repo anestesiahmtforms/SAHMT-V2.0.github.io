@@ -29,7 +29,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self'; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com; frame-src https://outros-48120.firebaseapp.com https://accounts.google.com; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+            "value": "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self'; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com; frame-src https://outros-48120.firebaseapp.com https://accounts.google.com; img-src 'self' data:; base-uri 'none'; frame-ancestors https://anestesiahmtforms.github.io; form-action 'self'"
           }
         ]
       }

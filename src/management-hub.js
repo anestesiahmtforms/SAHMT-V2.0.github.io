@@ -1,3 +1,4 @@
+import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 
 const paths={
@@ -28,21 +29,24 @@ const panels={
  surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',items:[
   {label:'PESQUISAS INSTITUCIONAIS',icon:'records',panel:'institutional',access:'surveys'}
  ]},
- institutional:{title:'Pesquisas institucionais',icon:'records',parent:'surveys'}
+ institutional:{title:'Pesquisas institucionais',icon:'records',parent:'surveys'},
+ climateForm:{title:'Pesquisa de clima organizacional',icon:'climate',parent:'institutional'},
+ stressForm:{title:'Estresse e fadiga',icon:'wellbeing',parent:'institutional'}
 };
 
-// This menu reads no database. Each destination retains its existing session,
-// profile and server authorization checks. Surveys reuse same-origin auth sessions.
-export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
+// Surveys reuse the authenticated app session; only broad affiliation goes to FE.
+export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
- const panelAllowed=name=>name==='home'||access[name==='institutional'?'surveys':name]===true;
- let disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
+ const panelAllowed=name=>name==='home'||access[['institutional','climateForm','stressForm'].includes(name)?'surveys':name]===true;
+ let cleanupSurvey=()=>{},disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
  dialog.querySelector('[data-hub-user]').textContent=displayName;
  if(syncStatusElement)dialog.querySelector('[data-hub-sync]').append(syncStatusElement);
  const render=()=>{
+  cleanupSurvey();cleanupSurvey=()=>{};
   const spec=panels[panel];dialog.dataset.panel=panel;
+  dialog.querySelector('[data-hub-user]').textContent=['climateForm','stressForm'].includes(panel)?'Participação por grupo':displayName;
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
@@ -50,14 +54,24 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
    return '<button type="button" class="management-hub-button" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+item.label+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(panel==='institutional'){
-   const surveyCard=(kind,url,title,subtitle)=>'<a class="management-hub-button management-survey-card" href="'+url+'" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></a>';
-   body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Escolha uma pesquisa. Seu acesso e sua categoria são carregados automaticamente.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','/SAHMT-V2.0.github.io/enquetes/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','/SAHMT-V2.0.github.io/enquetes/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
+   const surveyCard=(kind,url,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+(kind==='climate'?'climateForm':'stressForm')+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
+  }
+  if(['climateForm','stressForm'].includes(panel)&&climateEnabled&&access.surveys===true){
+   body.innerHTML='<iframe class="management-survey-frame" title="'+spec.title+'" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>';
+   const frame=body.querySelector('iframe');
+   const survey=panel==='climateForm'?'climate':'stress';
+   const formPanel=panel;
+   cleanupSurvey=bindSurveySession(frame,{perform:async(action,response)=>{const result=await performSurvey(survey,action,response);if(!disposed&&panel===formPanel&&action==='BOOTSTRAP'){const label={team:'Equipe',resident:'Residentes',substitute:'Substitutos'}[result?.group];if(label)dialog.querySelector('[data-hub-user]').textContent='Grupo: '+label;}return result;},isCurrent:()=>!disposed&&isSurveySessionCurrent()});
+   frame.src=panel==='climateForm'?'https://outros-48120.web.app/':'https://outros-48120.web.app/stress.html';
   }
   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
  };
  const goBack=()=>{const parent=panels[panel].parent;if(parent){panel=parent;render();}else onExit();};
  const click=event=>{
+  const survey=event.target.closest('[data-survey-panel]');
+  if(survey){if(panel==='institutional'&&climateEnabled&&access.surveys===true&&['climateForm','stressForm'].includes(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}
   const button=event.target.closest('[data-hub-item]');if(!button||button.disabled)return;
   const item=panels[panel].items?.[Number(button.dataset.hubItem)];
   if(!item||item.access&&access[item.access]!==true)return;
@@ -67,5 +81,5 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
  const close=()=>{if(!disposed)onExit();};
  body.addEventListener('click',click);back.addEventListener('click',goBack);dialog.addEventListener('cancel',cancel);dialog.addEventListener('close',close);
  render();if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
- return ()=>{disposed=true;body.removeEventListener('click',click);back.removeEventListener('click',goBack);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',close);if(dialog.open&&typeof dialog.close==='function')dialog.close();root.replaceChildren();};
+ return ()=>{disposed=true;cleanupSurvey();body.removeEventListener('click',click);back.removeEventListener('click',goBack);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',close);if(dialog.open&&typeof dialog.close==='function')dialog.close();root.replaceChildren();};
 }

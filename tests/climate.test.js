@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {COMMON, MODULES, OPEN, DIMENSIONS, validateSubmission, VERSION, CYCLE,groupForModule} from '../climate-domain/schema.js';
-import {aggregate,summarize} from '../climate-domain/aggregate.js';
+import {aggregate as aggregateCurrent,summarize} from '../climate-domain/aggregate.js';
 import {actionIndicators} from '../climate-domain/actions.js';
 const answers = (value = 4) => Object.fromEntries(COMMON.map(q => [q.id, value]));
 const payload = () => ({survey_version: VERSION, survey_cycle: CYCLE, submission_id: 'a'.repeat(32), consent: true, answers: answers(), comments: {O01: 'Integração'},group:'team'});
@@ -20,9 +20,8 @@ test('reject identifiers and unexpected data at every payload level', () => {
   assert.throws(() => validateSubmission({...payload(), comments: {email: 'secret'}}));
   assert.deepEqual(validateSubmission(payload()).answers, answers());
 });
-test('validate cycle, token, numeric values, comments and mixed modules', () => {
-  for (const change of [{survey_cycle: 'bad'}, {survey_version: '2'}, {submission_id: 'uid'}, {answers: {Q01: '4'}}, {answers: {Q01: 6}}, {answers: {Q01: 'NA'}}, {comments: {O01: 'x'.repeat(1501)}}, {answers: {...answers(), R01: 4, T01: 5}}]) assert.throws(() => validateSubmission({...payload(), ...change}));
-  const noConsent=payload();delete noConsent.consent;assert.equal(validateSubmission(noConsent).group,'team');
+test('validate consent, cycle, token, numeric values, comments and mixed modules', () => {
+  for (const change of [{consent: false}, {survey_cycle: 'bad'}, {survey_version: '2'}, {submission_id: 'uid'}, {answers: {Q01: '4'}}, {answers: {Q01: 6}}, {answers: {Q01: 'NA'}}, {comments: {O01: 'x'.repeat(1501)}}, {answers: {...answers(), R01: 4, T01: 5}}]) assert.throws(() => validateSubmission({...payload(), ...change}));
   assert.equal(validateSubmission({...payload(),group:'resident', answers: {Q01: 1, Q02: 'NA', R01: 5}, comments: {}}).answers.Q02, 'NA');
 });
 test('favorability excludes NA and blanks and uses actual numeric denominators', () => {
@@ -59,3 +58,5 @@ test('unclassified older responses are never guessed as team and module groups a
  assert.throws(()=>validateSubmission({...old,group:'team'}));
  const missing=payload();delete missing.group;assert.throws(()=>validateSubmission(missing));assert.throws(()=>validateSubmission({...payload(),group:'unspecified'}));assert.equal(validateSubmission({...payload(),group:'substitute'}).group,'substitute');
 });
+
+function aggregate(rows){return aggregateCurrent(rows.map(r=>({...r,survey_version:r.survey_version||VERSION})));}

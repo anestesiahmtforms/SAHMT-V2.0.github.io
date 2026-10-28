@@ -6,16 +6,16 @@ import {GUIDANCE,SAFETY_NOTE,LIMITATION} from '../stress-domain/guidance.js';
 import {send} from './stress-transport.js';
 const app=document.querySelector('#app');
 app.innerHTML=`<header><p class="eyebrow">SAHMT · SAÚDE E BEM-ESTAR</p><h1>Estresse e fadiga no trabalho</h1><p>Autoavaliação de sinais de fadiga e sobrecarga · últimos 7 dias · 5–8 minutos</p></header>
-<section class="notice"><h2>Antes de responder</h2><p>Considere os últimos 7 dias e escolha a frequência de cada experiência. As 30 respostas são necessárias para calcular a pontuação de 0 a 150. O acesso utiliza a autenticação do app. As respostas ficam vinculadas ao seu cadastro e são classificadas automaticamente na sua categoria para os indicadores.</p><p>${LIMITATION}</p><p>Sua pontuação individual será mostrada nesta página. O resultado e as respostas são organizados por categoria para apresentação dos indicadores.</p></section>
-<section id="participant-gate"></section><form hidden>
+<section class="notice"><h2>Antes de responder</h2><p>Considere os últimos 7 dias e escolha a frequência de cada experiência. As 30 respostas são necessárias para calcular a pontuação de 0 a 150. Seu login normal no app permite obter automaticamente o grupo do cadastro. A pesquisa recebe apenas o grupo; os dados analíticos são armazenados sem nome, e-mail ou UID. O servidor usa a autenticação para impedir um segundo envio.</p><p>${LIMITATION}</p><p>Participação voluntária. Sua pontuação individual será mostrada nesta página; o painel de gestão exibe apenas relatórios agregados após o encerramento, com proteção de grupos pequenos. Dados brutos ficam restritos ao acesso técnico autorizado. A infraestrutura pode gerar registros técnicos e metadados; não há garantia de anonimato absoluto. O rascunho e o resultado não são guardados neste aparelho após sair da página.</p></section>
+<section id="participant-gate"></section><form hidden><label class="consent"><input name="consent" type="checkbox" required> Li as informações e concordo em participar voluntariamente.</label>
 
 <p id="progress" role="status"></p>${DIMENSIONS.map(d=>`<section><h2>${d.label}</h2>${QUESTIONS.filter(q=>q.dimension===d.id).map(q=>`<fieldset><legend>${q.id}. ${q.text}</legend><div class="options">${SCALE.map(([value,label])=>`<label><input type="radio" name="${q.id}" value="${value}" required><span>${value} · ${label}</span></label>`).join('')}</div></fieldset>`).join('')}</section>`).join('')}
 <section><h2>Estresse percebido (opcional)</h2><label>Nos últimos 7 dias, quão intenso foi o estresse relacionado ao trabalho?<select name="stress_rating"><option value="">Prefiro deixar esta pergunta sem resposta</option>${Array.from({length:11},(_,i)=>`<option value="${i}">${i}${i===0?' — nenhum estresse':i===10?' — intensidade máxima':''}</option>`).join('')}</select></label><p>Essa medida de 0 a 10 é apresentada separadamente e não altera a pontuação de fadiga.</p></section>
-<p>Responda uma vez por ciclo. Em caso de falha, tente reenviar nesta mesma página.</p><button type="submit" class="primary">Calcular meu resultado e enviar</button><p id="form-status" role="status"></p></form><section id="result" hidden tabindex="-1"></section>`;
+<p>Pedimos um envio por pessoa neste ciclo. A participação é controlada separadamente por conta, pesquisa e ciclo; reenvios nesta mesma página usam o mesmo código aleatório.</p><button type="submit" class="primary">Calcular meu resultado e enviar</button><p id="form-status" role="status"></p></form><section id="result" hidden tabindex="-1"></section>`;
 const form=app.querySelector('form'),resultHost=app.querySelector('#result'),status=app.querySelector('#form-status');
 const token=[...crypto.getRandomValues(new Uint8Array(16))].map(n=>n.toString(16).padStart(2,'0')).join('');
-let payload=null,sending=false,participantGroup=null,participant=null;
-mountParticipantGate(app.querySelector('#participant-gate'),form,(group,identity)=>{participantGroup=group;participant=identity;});
+let payload=null,sending=false,participantGroup=null;
+mountParticipantGate(app.querySelector('#participant-gate'),form,group=>{participantGroup=group;});
 form.addEventListener('change',()=>{app.querySelector('#progress').textContent=`${QUESTIONS.filter(q=>form.querySelector(`input[name="${q.id}"]:checked`)).length} de 30 itens respondidos.`;});
 function showResult(result){
  const guidance=GUIDANCE[result.band];
@@ -30,16 +30,16 @@ function showResult(result){
  if(result.stressRating!==undefined){const p=document.createElement('p');p.textContent=`Estresse percebido: ${result.stressRating}/10 — medida separada da fadiga.`;resultHost.append(p);}
  const safety=document.createElement('p');safety.className='notice';safety.textContent=SAFETY_NOTE;
  const limits=document.createElement('p');limits.textContent=LIMITATION;
- const link=document.createElement('a');link.href=import.meta.env.BASE_URL+'stress-orientacoes.html';link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent='Ver todas as orientações e documentos do SAHMT';
+ const link=document.createElement('a');link.href='/stress-orientacoes.html';link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';link.textContent='Ver todas as orientações e documentos do SAHMT';
  const receipt=document.createElement('p');receipt.id='stress-receipt';receipt.setAttribute('role','status');receipt.setAttribute('aria-live','polite');
  const retry=document.createElement('button');retry.type='button';retry.id='stress-retry';retry.textContent='Tentar enviar novamente';retry.hidden=true;retry.onclick=submitPayload;
  resultHost.append(safety,limits,link,receipt,retry);resultHost.focus();resultHost.scrollIntoView({behavior:'smooth',block:'start'});
 }
 async function submitPayload(){
  if(sending)return;sending=true;
- const receipt=document.querySelector('#stress-receipt'),retry=document.querySelector('#stress-retry');retry.hidden=true;receipt.textContent='Seu resultado já está disponível. Enviando sua resposta…';
+ const receipt=document.querySelector('#stress-receipt'),retry=document.querySelector('#stress-retry');retry.hidden=true;receipt.textContent='Seu resultado já está disponível. Enviando a resposta sem identificação…';
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
- try{await send(payload,controller.signal,participant);receipt.textContent='Resposta recebida. Guarde suas orientações se desejar; esta página não salva seu resultado no aparelho.';payload=null;}
+ try{const result=await send(payload,controller.signal);receipt.textContent=result?.alreadyResponded?'Sua participação já estava registrada neste ciclo. Este cálculo não substitui a resposta já recebida.':'Resposta recebida. Guarde suas orientações se desejar; esta página não salva seu resultado no aparelho.';payload=null;}
  catch(error){receipt.textContent=error.message==='NOT_ACCEPTED'?'Seu resultado permanece disponível. O envio não foi aceito; o ciclo pode estar fechado.':'Seu resultado permanece disponível. Não foi possível confirmar o envio. Você pode tentar reenviar o mesmo conteúdo sem recarregar a página.';retry.hidden=error.message==='NOT_ACCEPTED';}
  finally{clearTimeout(timer);sending=false;}
 }

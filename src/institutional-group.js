@@ -14,3 +14,9 @@ export async function institutionalAssignmentKey(email) {
   const bytes = new TextEncoder().encode(email.trim().toLowerCase());
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');
 }
+
+export async function resolveAuthenticatedInstitutionalGroup({user,readAssignment}) {
+ if(!user?.uid||!user.email||!user.emailVerified||!user.providerData?.some(p=>p.providerId==='google.com'))throw Error('REGISTRY_UNAVAILABLE');
+ const group=assignedInstitutionalGroup(await readAssignment(await institutionalAssignmentKey(user.email)),{uid:user.uid,email:user.email});
+ if(!group)throw Error('REGISTRY_UNAVAILABLE');return group;
+}

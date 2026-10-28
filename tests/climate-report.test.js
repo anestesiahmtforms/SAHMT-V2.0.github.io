@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {renderReport} from '../climate/report-view.js';
-import {aggregate} from '../climate-domain/aggregate.js';import {COMMON} from '../climate-domain/schema.js';
+import {aggregate as aggregateCurrent} from '../climate-domain/aggregate.js';import {COMMON,VERSION} from '../climate-domain/schema.js';
 class Element{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.ownText='';}set textContent(t){this.ownText=t;}get textContent(){return this.ownText+this.children.map(c=>typeof c==='string'?c:c.textContent).join('');}append(...children){this.children.push(...children);}}
 const document={createElement:tag=>new Element(tag),createTextNode:value=>value};
 test('dashboard renders three active categories and never secretary or pooled scores',()=>{
@@ -13,3 +13,5 @@ test('dashboard renders three active categories and never secretary or pooled sc
 test('older ungrouped snapshots are not displayed as grouped or pooled scores',()=>{
  const view=renderReport(document,{survey_cycle:'old',general:{favorable:777}});assert.doesNotMatch(view.textContent,/777/);assert.match(view.textContent,/não possui classificação por grupo/);
 });
+
+function aggregate(rows){return aggregateCurrent(rows.map(r=>({...r,survey_version:r.survey_version||VERSION})));}

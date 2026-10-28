@@ -6,6 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [vars]
+INSTITUTIONAL_SURVEYS_ENABLED = "true"
+FA_WEB_API_KEY = "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"
 HTML_TRAINING_ENABLED = "true"
 VACCINATION_ENABLED = "true"
 DOCUMENT_UPLOADS_ENABLED = "false"
@@ -14,3 +16,5 @@ FB_WEB_API_KEY = "AIzaSyBYzRB28_ashHrVe7AXsUDvLWc4N2Cj-y8"
 # FB_TRAINING_SERVICE_ACCOUNT_JSON: Worker secret, never in source or client.
 # PROFESSIONAL_DRIVE_OAUTH_JSON: optional owner OAuth Worker secret. Provision
 # only after separate authorization; uploads also require DOCUMENT_UPLOADS_ENABLED.
+
+# Institutional surveys authenticate the existing FA login and store data in FE.

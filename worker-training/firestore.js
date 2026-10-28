@@ -25,9 +25,9 @@ export const encodeFields=object=>Object.fromEntries(Object.entries(object).map(
 export const decodeFields=fields=>Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,decode(value)]));
 
 export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,fetchImpl=fetch}={}) {
- if(projectId!==TRAINING_PROJECT||typeof getAccessToken!=='function')throw fail('TRAINING_STORE_CONFIG_INVALID');
- const root=`https://firestore.googleapis.com/v1/projects/${TRAINING_PROJECT}/databases/(default)/documents`;
- const name=(collection,id)=>{if(!safe(collection)||!safe(id))throw fail('TRAINING_STORE_PATH_INVALID',400);return `projects/${TRAINING_PROJECT}/databases/(default)/documents/${collection}/${id}`;};
+ if(![TRAINING_PROJECT,'outros-48120'].includes(projectId)||typeof getAccessToken!=='function')throw fail('TRAINING_STORE_CONFIG_INVALID');
+ const root=`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+ const name=(collection,id)=>{if(!safe(collection)||!safe(id))throw fail('TRAINING_STORE_PATH_INVALID',400);return `projects/${projectId}/databases/(default)/documents/${collection}/${id}`;};
  async function request(path,body,method=body===undefined?'GET':'POST'){
   const token=await getAccessToken();let response;
   try{response=await fetchImpl(root+path,{method,headers:{Authorization:'Bearer '+token,...(body!==undefined?{'Content-Type':'application/json'}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{}),redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});}catch{throw fail('TRAINING_STORE_UNAVAILABLE');}
