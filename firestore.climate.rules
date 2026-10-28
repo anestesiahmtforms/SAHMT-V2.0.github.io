@@ -133,6 +133,7 @@ service cloud.firestore {
 
     // STRESS_SURVEY_V1: institutional fatigue index, no client reads of individual answers.
     function stressOpen() { return exists(/databases/$(database)/documents/stressCycles/2026) && get(/databases/$(database)/documents/stressCycles/2026).data.status == 'open'; }
+    function stressAnswer(v) { return v is int && v >= 0 && v <= 5; }
     function stressValid(d) {
       let a = d.get('answers', {});
       return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating','respondent_uid','category_key']) &&
@@ -140,36 +141,36 @@ service cloud.firestore {
         d.survey_cycle == '2026' && d.survey_version == '1.1' &&
         d.group in ['team','resident','substitute'] && a is map &&
         a.keys().hasOnly(['S01','S02','S03','S04','S05','S06','S07','S08','S09','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20','S21','S22','S23','S24','S25','S26','S27','S28','S29','S30']) && a.size() == 30 &&
-        (a.get('S01', -1) is int && a.get('S01', -1) >= 0 && a.get('S01', -1) <= 5) &&
-        (a.get('S02', -1) is int && a.get('S02', -1) >= 0 && a.get('S02', -1) <= 5) &&
-        (a.get('S03', -1) is int && a.get('S03', -1) >= 0 && a.get('S03', -1) <= 5) &&
-        (a.get('S04', -1) is int && a.get('S04', -1) >= 0 && a.get('S04', -1) <= 5) &&
-        (a.get('S05', -1) is int && a.get('S05', -1) >= 0 && a.get('S05', -1) <= 5) &&
-        (a.get('S06', -1) is int && a.get('S06', -1) >= 0 && a.get('S06', -1) <= 5) &&
-        (a.get('S07', -1) is int && a.get('S07', -1) >= 0 && a.get('S07', -1) <= 5) &&
-        (a.get('S08', -1) is int && a.get('S08', -1) >= 0 && a.get('S08', -1) <= 5) &&
-        (a.get('S09', -1) is int && a.get('S09', -1) >= 0 && a.get('S09', -1) <= 5) &&
-        (a.get('S10', -1) is int && a.get('S10', -1) >= 0 && a.get('S10', -1) <= 5) &&
-        (a.get('S11', -1) is int && a.get('S11', -1) >= 0 && a.get('S11', -1) <= 5) &&
-        (a.get('S12', -1) is int && a.get('S12', -1) >= 0 && a.get('S12', -1) <= 5) &&
-        (a.get('S13', -1) is int && a.get('S13', -1) >= 0 && a.get('S13', -1) <= 5) &&
-        (a.get('S14', -1) is int && a.get('S14', -1) >= 0 && a.get('S14', -1) <= 5) &&
-        (a.get('S15', -1) is int && a.get('S15', -1) >= 0 && a.get('S15', -1) <= 5) &&
-        (a.get('S16', -1) is int && a.get('S16', -1) >= 0 && a.get('S16', -1) <= 5) &&
-        (a.get('S17', -1) is int && a.get('S17', -1) >= 0 && a.get('S17', -1) <= 5) &&
-        (a.get('S18', -1) is int && a.get('S18', -1) >= 0 && a.get('S18', -1) <= 5) &&
-        (a.get('S19', -1) is int && a.get('S19', -1) >= 0 && a.get('S19', -1) <= 5) &&
-        (a.get('S20', -1) is int && a.get('S20', -1) >= 0 && a.get('S20', -1) <= 5) &&
-        (a.get('S21', -1) is int && a.get('S21', -1) >= 0 && a.get('S21', -1) <= 5) &&
-        (a.get('S22', -1) is int && a.get('S22', -1) >= 0 && a.get('S22', -1) <= 5) &&
-        (a.get('S23', -1) is int && a.get('S23', -1) >= 0 && a.get('S23', -1) <= 5) &&
-        (a.get('S24', -1) is int && a.get('S24', -1) >= 0 && a.get('S24', -1) <= 5) &&
-        (a.get('S25', -1) is int && a.get('S25', -1) >= 0 && a.get('S25', -1) <= 5) &&
-        (a.get('S26', -1) is int && a.get('S26', -1) >= 0 && a.get('S26', -1) <= 5) &&
-        (a.get('S27', -1) is int && a.get('S27', -1) >= 0 && a.get('S27', -1) <= 5) &&
-        (a.get('S28', -1) is int && a.get('S28', -1) >= 0 && a.get('S28', -1) <= 5) &&
-        (a.get('S29', -1) is int && a.get('S29', -1) >= 0 && a.get('S29', -1) <= 5) &&
-        (a.get('S30', -1) is int && a.get('S30', -1) >= 0 && a.get('S30', -1) <= 5) &&
+        stressAnswer(a.get('S01', -1)) &&
+        stressAnswer(a.get('S02', -1)) &&
+        stressAnswer(a.get('S03', -1)) &&
+        stressAnswer(a.get('S04', -1)) &&
+        stressAnswer(a.get('S05', -1)) &&
+        stressAnswer(a.get('S06', -1)) &&
+        stressAnswer(a.get('S07', -1)) &&
+        stressAnswer(a.get('S08', -1)) &&
+        stressAnswer(a.get('S09', -1)) &&
+        stressAnswer(a.get('S10', -1)) &&
+        stressAnswer(a.get('S11', -1)) &&
+        stressAnswer(a.get('S12', -1)) &&
+        stressAnswer(a.get('S13', -1)) &&
+        stressAnswer(a.get('S14', -1)) &&
+        stressAnswer(a.get('S15', -1)) &&
+        stressAnswer(a.get('S16', -1)) &&
+        stressAnswer(a.get('S17', -1)) &&
+        stressAnswer(a.get('S18', -1)) &&
+        stressAnswer(a.get('S19', -1)) &&
+        stressAnswer(a.get('S20', -1)) &&
+        stressAnswer(a.get('S21', -1)) &&
+        stressAnswer(a.get('S22', -1)) &&
+        stressAnswer(a.get('S23', -1)) &&
+        stressAnswer(a.get('S24', -1)) &&
+        stressAnswer(a.get('S25', -1)) &&
+        stressAnswer(a.get('S26', -1)) &&
+        stressAnswer(a.get('S27', -1)) &&
+        stressAnswer(a.get('S28', -1)) &&
+        stressAnswer(a.get('S29', -1)) &&
+        stressAnswer(a.get('S30', -1)) &&
         (!d.keys().hasAny(['stress_rating']) || (d.stress_rating is int && d.stress_rating >= 0 && d.stress_rating <= 10));
     }
     match /stressResponses/{id} {

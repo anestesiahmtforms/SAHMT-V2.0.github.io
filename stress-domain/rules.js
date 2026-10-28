@@ -2,6 +2,7 @@ import {QUESTIONS,VERSION,CYCLE} from './schema.js';
 export function stressRules(){return `
     // STRESS_SURVEY_V1: institutional fatigue index, no client reads of individual answers.
     function stressOpen() { return exists(/databases/$(database)/documents/stressCycles/${CYCLE}) && get(/databases/$(database)/documents/stressCycles/${CYCLE}).data.status == 'open'; }
+    function stressAnswer(v) { return v is int && v >= 0 && v <= 5; }
     function stressValid(d) {
       let a = d.get('answers', {});
       return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating','respondent_uid','category_key']) &&
@@ -9,7 +10,7 @@ export function stressRules(){return `
         d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' &&
         d.group in ['team','resident','substitute'] && a is map &&
         a.keys().hasOnly([${QUESTIONS.map(q=>`'${q.id}'`).join(',')}]) && a.size() == 30 &&
-        ${QUESTIONS.map(q=>`(a.get('${q.id}', -1) is int && a.get('${q.id}', -1) >= 0 && a.get('${q.id}', -1) <= 5)`).join(' &&\n        ')} &&
+        ${QUESTIONS.map(q=>`stressAnswer(a.get('${q.id}', -1))`).join(' &&\n        ')} &&
         (!d.keys().hasAny(['stress_rating']) || (d.stress_rating is int && d.stress_rating >= 0 && d.stress_rating <= 10));
     }
     match /stressResponses/{id} {
