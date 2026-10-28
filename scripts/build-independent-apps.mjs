@@ -1,5 +1,5 @@
 import {spawnSync} from 'node:child_process';
-import {readFile, writeFile} from 'node:fs/promises';
+import {readFile, writeFile, cp} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {dirname, resolve} from 'node:path';
 const require = createRequire(import.meta.url);
@@ -38,3 +38,7 @@ const surveys=spawnSync(process.execPath,[vite,'build','--config','vite.climate.
   stdio:'inherit',env:{...process.env,SAHMT_SURVEY_BASE:rootBase+'enquetes/',SAHMT_SURVEY_OUT_DIR:'../dist/enquetes'}
 });
 if(surveys.error||surveys.status!==0)process.exit(surveys.status||1);
+
+// Legacy installed shells already exclude tools/ from their navigation cache.
+// Keep this entry available without requiring a cache reset or another login.
+await cp(new URL('../dist/enquetes/',import.meta.url),new URL('../dist/tools/enquetes/',import.meta.url),{recursive:true});

@@ -5,9 +5,9 @@ const path='/SAHMT-V2.0.github.io/enquetes/';
 test('legacy standalone FE links go to the fixed app origin, without forwarding query or identity parameters',async()=>{
  for(const origin of [SURVEY_FE_ORIGIN,'https://outros-48120.firebaseapp.com']){
   const location={origin,pathname:'/stress.html',search:'?uid=forbidden&group=team',replace(url){this.redirected=url;}},appWindow={location};appWindow.parent=appWindow;
-  assert.deepEqual(participantAccess(location,false),{mode:'redirect',url:SURVEY_APP_ORIGIN+path+'stress.html'});
+  assert.deepEqual(participantAccess(location,false),{mode:'redirect',url:SURVEY_APP_ORIGIN+'/SAHMT-V2.0.github.io/tools/enquetes/stress.html'});
   await assert.rejects(callParticipantSurvey({action:'BOOTSTRAP'},{appWindow,loadSession:()=>assert.fail('No FA token may be read on the FE origin')}),/NAVIGATING_TO_APP/);
-  assert.equal(location.redirected,SURVEY_APP_ORIGIN+path+'stress.html');assert.ok(!location.redirected.includes('?'));
+  assert.equal(location.redirected,SURVEY_APP_ORIGIN+'/SAHMT-V2.0.github.io/tools/enquetes/stress.html');assert.ok(!location.redirected.includes('?'));
  }
 });
 test('standalone app-origin surveys reuse the current account; embedded FE still uses the origin-pinned bridge',async()=>{

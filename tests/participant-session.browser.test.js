@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';import {readFile} from 'node:fs/promises';import {resolve,extname} from 'node:path';import {build} from 'vite';import {chromium} from 'playwright';
 import {createSurveyService} from '../worker-training/survey-service.js';import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';import {institutionalAssignmentKey} from '../src/institutional-group.js';
 test('legacy FE new tab redirects and restores the normal persisted FA login without another sign-in',async()=>{
- const dir=resolve('.local-preview/survey-legacy-browser'),base='/SAHMT-V2.0.github.io/enquetes/';
+ const dir=resolve('.local-preview/survey-legacy-browser'),base='/SAHMT-V2.0.github.io/tools/enquetes/';
  const identity={uid:'synthetic-one',email:'one@example.invalid',emailVerified:true,provider:'google.com'},profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();
  profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:['EFETIVO']});responses.seed('stressCycles','2026',{status:'open'});
  const service=createSurveyService({profileStore:profiles,responseStore:responses});

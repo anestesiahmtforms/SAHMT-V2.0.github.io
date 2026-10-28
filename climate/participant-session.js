@@ -1,10 +1,11 @@
 import {requestSurveySession,SURVEY_APP_ORIGIN,SURVEY_FE_ORIGIN} from '../src/survey-session-bridge.js';
 const appBase='/SAHMT-V2.0.github.io/';
+const legacyBase=appBase+'tools/enquetes/';
 export function participantAccess(location,embedded){
   const survey=location.pathname.endsWith('/stress.html')?'stress':'climate';
   if(embedded)return {mode:'bridge',survey};
-  if([SURVEY_FE_ORIGIN,'https://outros-48120.firebaseapp.com'].includes(location.origin))return {mode:'redirect',url:SURVEY_APP_ORIGIN+appBase+'enquetes/'+(survey==='stress'?'stress.html':'')};
-  if(location.origin===SURVEY_APP_ORIGIN&&[appBase+'enquetes/',appBase+'enquetes/index.html',appBase+'enquetes/stress.html'].includes(location.pathname))return {mode:'session',survey};
+  if([SURVEY_FE_ORIGIN,'https://outros-48120.firebaseapp.com'].includes(location.origin))return {mode:'redirect',url:SURVEY_APP_ORIGIN+legacyBase+(survey==='stress'?'stress.html':'')};
+  if(location.origin===SURVEY_APP_ORIGIN&&[appBase+'enquetes/',appBase+'enquetes/index.html',appBase+'enquetes/stress.html',legacyBase,legacyBase+'index.html',legacyBase+'stress.html'].includes(location.pathname))return {mode:'session',survey};
   return {mode:'blocked'};
 }
 let standalone;

@@ -35,3 +35,5 @@ Testes: 20 submissões concorrentes produzem um único par resposta/participaç�
 ## Compatibilidade com botões de versões anteriores
 
 Um botão antigo pode abrir a pesquisa em aba separada, sem a janela principal. Na origem do FE, a aba é redirecionada para o caminho fixo da pesquisa na origem do app, sem repassar parâmetros. Nessa origem, o SDK aguarda authStateReady e recupera a sessão normal já persistida; a pesquisa chama o mesmo servidor autenticado, com as mesmas regras de participação. Não há novo login Google dentro da pesquisa, nem envio de credenciais pela URL ou para o FE. Aberturas em iframe continuam usando a ponte com origem e janela fixadas. Se a sessão normal não existir nesse navegador, a página oferece acesso ao app para recuperá-la.
+
+A entrada de compatibilidade usa tools/enquetes, que fica fora do cache de navegação também nas versões antigas do app. O build copia os formulários para esse caminho; os tokens permanecem na origem do app e não entram nos links.
