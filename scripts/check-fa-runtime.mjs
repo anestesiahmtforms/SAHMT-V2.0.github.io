@@ -3,10 +3,12 @@ import {posix,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const retired=new Set(['firebase-project-auth-browser','management-project-auth-auto-connect','management-firebase-app','indicators-firebase-app','management-session-browser','management-lease-access','management-pilot-auth-diagnostics']);
+// Only the shared indicators view and its stylesheet may live outside src/.
+const sharedIndicators=new Set(['indicators-platform/ui.js','indicators-platform/ui.css']);
 const visited=new Set(),pending=['src/main.js'];
 while(pending.length){
  const path=pending.pop();if(visited.has(path))continue;
- if(!path.startsWith('src/')||path.includes('..'))throw Error('FA_RUNTIME_PATH_INVALID');
+ if((!path.startsWith('src/')&&!sharedIndicators.has(path))||path.includes('..'))throw Error('FA_RUNTIME_PATH_INVALID');
  visited.add(path);if(!path.endsWith('.js'))continue;
  const text=await readFile(resolve(root,path),'utf8');
  const imports=[...text.matchAll(/\bfrom\s*['"](\.[^'"]+)['"]|\bimport\s*(?:\(\s*)?['"](\.[^'"]+)['"]/g)];
