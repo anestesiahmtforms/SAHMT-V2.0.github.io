@@ -4,13 +4,15 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as model from '../src/html-training-model.js';
 import {trainingCategories, trainingFolderLevel} from '../src/html-training-folders.js';
+import {renderTrainingDocumentCard} from '../src/html-training-card.js';
 import {installMaterialViewer} from '../src/material-viewer.js';
 import {renderManagementDocumentCard} from '../src/management-document-folders.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function trainings({holdOpen = false} = {}) {
   const listeners = new Map(), calls = [];
-  const root = {isConnected: true, innerHTML: '', classList: {add() {}}, setAttribute() {}, querySelector: () => null, querySelectorAll: () => [], contains: () => true,
+  const classes = new Set();
+  const root = {isConnected: true, innerHTML: '', classList: {add(...names) { names.forEach(name => classes.add(name)); }, remove(...names) { names.forEach(name => classes.delete(name)); }, toggle(name, force) { if(force) classes.add(name); else classes.delete(name); }, contains(name) { return classes.has(name); }}, setAttribute() {}, removeAttribute() {}, querySelector: () => null, querySelectorAll: () => [], contains: () => true,
     addEventListener: (key, value) => listeners.set(key, value), removeEventListener() {}, replaceChildren() { this.innerHTML = ''; }};
   const training = {id: 'one', title: 'Documento sintético', status: 'PUBLISHED', category: 'Protocolos', subcategory: 'Protocolos do SAHMT', version: 1, sectionCount: 1};
   let releaseOpen;
@@ -22,7 +24,7 @@ function trainings({holdOpen = false} = {}) {
     throw Error(action);
   };
   const source = readFileSync(new URL('../src/html-training.js', import.meta.url), 'utf8');
-  const ctx = vm.createContext({...model, h: model.escapeHtml, trainingCategories, trainingFolderLevel, mountTrainingAudit() {}, root, api});
+  const ctx = vm.createContext({...model, h: model.escapeHtml, trainingCategories, trainingFolderLevel, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
   vm.runInContext(source.replace(/^import[^\n]+\n/gm, '').replaceAll('export ', '').replaceAll('import.meta.env', '{}'), ctx);
   const controller = ctx.mountHtmlTrainings(root, {user: {uid: 'one'}, api});
   const click = (action, data = {}) => listeners.get('click')({target: {closest: () => ({dataset: {ht: action, ...data}})}});
@@ -72,6 +74,8 @@ test('returning to the same folder refreshes catalog metadata', async t => {
 
 test('a disposed document controller cannot intercept the area back action', async () => {
   const h = trainings(); await tick(); h.click('folder', {folder: '["Protocolos"]'}); await tick(); h.controller();
+  assert.equal(h.root.classList.contains('html-trainings'), false);
+  assert.equal(h.root.classList.contains('ht-reading'), false);
   assert.equal(typeof h.controller.goBack, 'function');
   assert.equal(h.controller.goBack(), false);
 });
@@ -100,3 +104,4 @@ test('shared viewer returns to the same management document and resets its label
   assert.equal(dialog.open, false); assert.equal(frame.src, 'about:blank'); assert.equal(focus, 1);
   delete trigger.dataset.materialReturn; open(); assert.equal(back.textContent, 'FECHAR');
 });
+
