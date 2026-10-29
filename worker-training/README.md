@@ -47,3 +47,11 @@ O script `scripts/deploy-html-training-service.mjs` faz apenas conferências por
 
 Rascunhos não são visíveis aos participantes. Os materiais publicados respeitam seus grupos de acesso existentes. O banco completo e gabaritos nunca são enviados ao leitor.
 Somente gestor designado e administrador acessam editor e auditorias. A conclusão da auditoria não concede pontos de treinamento.
+
+## Liberação de categorias e subpastas
+
+O código oferece `SET_FOLDER_ACCESS` para administradores ativos em FB. A operação grava `htmlTrainingSettings/folders` com versão otimista e identificação do responsável, sem alterar versões dos treinamentos, participações ou pontuações. Uma categoria desativada bloqueia também seus descendentes. O bloqueio é conferido em LIST e em todas as operações diretas sobre o treinamento, inclusive contra acessos por link e gestores de materiais. Administradores mantêm acesso para gerenciar e reativar.
+
+O frontend mostra um botão Ativar/Desativar abaixo de cada livro apenas quando LIST retorna `canManageFolders: true`. Assim, a interface nova é compatível com a versão anterior do serviço e não oferece um controle sem suporte no servidor.
+
+Para disponibilizar a função em produção é necessário publicar o Worker atualizado na conta existente, com uma sessão Wrangler autenticada: `npx wrangler deploy --config worker-training/wrangler.toml`. Esse deploy reutiliza os secrets existentes; não executar novamente o provisionamento de chaves/IAM.
