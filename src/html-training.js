@@ -53,7 +53,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       onError(training){activityStates.delete(training.id);paint(training,{...htmlTrainingActivityState(training),label:'Atividades ainda não confirmadas'});}});
   }
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
-  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading');root.removeAttribute('aria-busy');root.replaceChildren();};
+  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view');root.removeAttribute('aria-busy');root.replaceChildren();};
   async function call(action,input={},token=revision) {
     if(!current(token))throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
     const result=await api(action,input);
@@ -90,9 +90,12 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
     const folderButton=(path,label,extra='')=>button('folder',label,`data-folder="${h(JSON.stringify(path))}" ${extra}`);
     const crumbs=`<nav class="ht-breadcrumb" aria-label="Caminho das pastas">${folderButton([],'Gestão de documentos','class="ht-secondary"')}${level.path.map((name,index)=>`<span aria-hidden="true">›</span>${index===level.path.length-1?`<span aria-current="page">${h(name)}</span>`:folderButton(level.path.slice(0,index+1),h(name),'class="ht-secondary"')}`).join('')}</nav>`;
-    const folders=level.folders.length?`<div class="ht-folders" aria-label="Pastas">${level.folders.map(folder=>folderButton(folder.path,`<span class="ht-folder-icon" aria-hidden="true"><svg viewBox="0 0 48 40" fill="none"><path d="M3 9a5 5 0 0 1 5-5h11l5 6h16a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V9Z" fill="currentColor"/><path d="M4 17h40" stroke="white" stroke-opacity=".55" stroke-width="2"/></svg></span><span class="ht-folder-copy"><strong>${h(folder.name)}</strong><small>${folder.count} ${folder.count===1?'documento disponível':'documentos disponíveis'}</small></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder"')).join('')}</div>`:'';
-    const documents=visible.length?`<div class="ht-folder-heading"><h3>Documentos</h3><span>${visible.length} ${visible.length===1?'item':'itens'}</span></div><div class="ht-catalog">${visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('')}</div>`:'';
-    return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"'):''}<p class="ht-muted">${folderPath.length?h(folderPath.at(-1)):'Pastas de documentos'}</p></div>`+folders+documents+(!level.folders.length&&!visible.length?'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>':'');
+    const folders=level.folders.map(folder=>folderButton(folder.path,`<span class="ht-folder-icon" aria-hidden="true"><svg viewBox="0 0 48 40" fill="none"><path d="M3 9a5 5 0 0 1 5-5h11l5 6h16a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V9Z" fill="currentColor"/><path d="M4 17h40" stroke="white" stroke-opacity=".55" stroke-width="2"/></svg></span><span class="ht-folder-copy"><strong>${h(folder.name)}</strong><small>${folder.count} ${folder.count===1?'documento disponível':'documentos disponíveis'}</small></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder"')).join('');
+    const documents=visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('');
+    const count=level.folders.length+visible.length;
+    const totals=[level.folders.length?`${level.folders.length} ${level.folders.length===1?'pasta':'pastas'}`:'',visible.length?`${visible.length} ${visible.length===1?'documento':'documentos'}`:''].filter(Boolean).join(' · ');
+    const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}" style="--ht-grid-rows:${Math.ceil(count/2)}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
+    return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"'):''}<p class="ht-muted">${totals||'Pastas de documentos'}</p></div>`+grid;
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
@@ -119,6 +122,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(!alive)return;
     root.classList.add('html-trainings');
     root.classList.toggle('ht-reading',mode==='participant'&&Boolean(content?.sections?.length));
+    root.classList.toggle('ht-catalog-view',mode==='catalog');
     if(mode==='participant'&&active&&state)activityStates.set(active.id,{version:active.version,state});
     root.innerHTML=top()+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
     if(mode==='participant'&&content?.sections?.length){
