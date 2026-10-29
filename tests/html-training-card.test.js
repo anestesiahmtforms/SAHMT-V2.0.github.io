@@ -13,7 +13,7 @@ test('the document title is the only opening button and keeps the authorized tra
 test('drafts cannot be opened and editing remains an independent manager action', () => {
   const html = renderTrainingDocumentCard({...training,status:'DRAFT'},{canManage:true});
   assert.doesNotMatch(html, /data-ht="open"/);
-  assert.match(html, /class="ht-document-folder" disabled/);
+  assert.match(html, /class="ht-document-folder"[^>]* disabled/);
   assert.match(html, /data-ht="edit" data-id="protocol-1"/);
   assert.match(html, /Rascunho · aguardando publicação/);
 });

@@ -1,9 +1,10 @@
 import './html-training.css';
 import { deployment } from './deployment-context.js';
-import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument, createContentCache } from './html-training-model.js';
+import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument } from './html-training-model.js';
 import { mountTrainingAudit } from './html-training-audit.js';
 import {trainingCategories,trainingFolderLevel} from './html-training-folders.js';
 import {renderTrainingDocumentCard} from './html-training-card.js';
+import {htmlTrainingActivityState, loadHtmlTrainingDocument, hydrateHtmlTrainingActivities} from './html-training-activity.js';
 
 const categories = trainingCategories;
 const uuid = () => globalThis.crypto.randomUUID();
@@ -39,10 +40,20 @@ export async function createHtmlTrainingClient(user) {
 export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {}) {
   let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false, operationId=0;
   let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
-  let storage; try { storage=globalThis.localStorage; } catch {}
-  const cache=createContentCache(storage), uid=user?.uid;
+  const uid=user?.uid, activityStates=new Map();
+  let progressGeneration=0;
+  const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
+  function refreshVisibleActivities(){
+    const token=revision,generation=++progressGeneration;
+    const visible=trainingFolderLevel(catalog,folderPath).trainings.filter(t=>t.status==='PUBLISHED');
+    const validProgress=()=>current(token)&&mode==='catalog'&&generation===progressGeneration;
+    const paint=(training,activity)=>{for(const b of root.querySelectorAll('[data-ht="open"]'))if(b.dataset.id===training.id){b.dataset.activityState=activity.color;b.setAttribute('aria-description',activity.label);const status=b.querySelector('.ht-document-status');if(status)status.textContent=activity.label;const icon=b.querySelector('.ht-document-chevron');if(icon)icon.textContent=activity.complete?'✓':'↗';}};
+    void hydrateHtmlTrainingActivities({trainings:visible,isCurrent:validProgress,read:t=>call('OPEN',{trainingId:t.id},token),
+      onResult(training,result){if(result.training.version!==training.version)return;activityStates.set(training.id,{version:training.version,state:result.state});paint(training,activityFor(training));},
+      onError(training){activityStates.delete(training.id);paint(training,{...htmlTrainingActivityState(training),label:'Atividades ainda não confirmadas'});}});
+  }
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
-  const stop = () => {alive=false;revision++;unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading');root.removeAttribute('aria-busy');root.replaceChildren();};
+  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading');root.removeAttribute('aria-busy');root.replaceChildren();};
   async function call(action,input={},token=revision) {
     if(!current(token))throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
     const result=await api(action,input);
@@ -51,8 +62,9 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   }
   function fail(err) {
     if(!alive || err?.code==='STALE_RESPONSE') return;
+    if(mode==='opening'){mode='catalog';active=null;content=null;state=null;}
     if(err?.status===401 || err?.status===403 || ['SESSION_CHANGED','FORBIDDEN','UNAUTHORIZED','ACCESS_DENIED'].includes(err?.code)) {
-      revision++;active=null;content=null;editor=null;questions=[];state=null;catalog=[];mode='denied';
+      revision++;progressGeneration++;activityStates.clear();active=null;content=null;editor=null;questions=[];state=null;catalog=[];mode='denied';
       auditCleanup?.();auditCleanup=null;
     }
     error=err?.code==='VERSION_CHANGED'?'O treinamento foi atualizado. Reabra o item para continuar a versão atual; nenhuma tentativa foi consumida.':err?.code==='VERSION_CONFLICT'?'Outro acesso alterou este registro. Reabra o treinamento para carregar a versão atual antes de salvar.':err?.message || 'O serviço não respondeu. Tente novamente.';
@@ -66,35 +78,38 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   function goBack(){
     if(!current(revision))return false;
     // Leaving a pending read invalidates its response without trapping the modal.
-    if(busy){revision++;operationId++;busy=false;render();return true;}
-    if(mode==='editor'){mode=editorParent;editor=null;error='';render();return true;}
+    if(busy){revision++;operationId++;busy=false;if(mode==='opening'||mode==='participant'){mode='catalog';active=null;state=null;content=null;}render();if(mode==='catalog')refreshVisibleActivities();return true;}
+    if(mode==='editor'){mode=editorParent;editor=null;error='';render();if(mode==='catalog')refreshVisibleActivities();return true;}
     if(mode!=='catalog'&&mode!=='denied'){void perform(loadCatalog);return true;}
-    if(mode==='catalog'&&folderPath.length){folderPath=folderPath.slice(0,-1);render();return true;}
+    if(mode==='catalog'&&folderPath.length){folderPath=folderPath.slice(0,-1);render();refreshVisibleActivities();return true;}
     return false;
   }
   function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy&&b.dataset.ht!=='back';});}
-  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'O envio final confirmado contabiliza uma tentativa. Limite de duas por treinamento.'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;}
+  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'Leitura · Avaliação · Sugestão'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;}
   function catalogue(){
     const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
     const folderButton=(path,label,extra='')=>button('folder',label,`data-folder="${h(JSON.stringify(path))}" ${extra}`);
     const crumbs=`<nav class="ht-breadcrumb" aria-label="Caminho das pastas">${folderButton([],'Gestão de documentos','class="ht-secondary"')}${level.path.map((name,index)=>`<span aria-hidden="true">›</span>${index===level.path.length-1?`<span aria-current="page">${h(name)}</span>`:folderButton(level.path.slice(0,index+1),h(name),'class="ht-secondary"')}`).join('')}</nav>`;
     const folders=level.folders.length?`<div class="ht-folders" aria-label="Pastas">${level.folders.map(folder=>folderButton(folder.path,`<span class="ht-folder-icon" aria-hidden="true"><svg viewBox="0 0 48 40" fill="none"><path d="M3 9a5 5 0 0 1 5-5h11l5 6h16a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V9Z" fill="currentColor"/><path d="M4 17h40" stroke="white" stroke-opacity=".55" stroke-width="2"/></svg></span><span class="ht-folder-copy"><strong>${h(folder.name)}</strong><small>${folder.count} ${folder.count===1?'documento disponível':'documentos disponíveis'}</small></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder"')).join('')}</div>`:'';
-    const documents=visible.length?`<div class="ht-folder-heading"><h3>Documentos</h3><span>${visible.length} ${visible.length===1?'item':'itens'}</span></div><div class="ht-catalog">${visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile)})).join('')}</div>`:'';
+    const documents=visible.length?`<div class="ht-folder-heading"><h3>Documentos</h3><span>${visible.length} ${visible.length===1?'item':'itens'}</span></div><div class="ht-catalog">${visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('')}</div>`:'';
     return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"'):''}<p class="ht-muted">${folderPath.length?h(folderPath.at(-1)):'Pastas de documentos'}</p></div>`+folders+documents+(!level.folders.length&&!visible.length?'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>':'');
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
+  function readingView(){
+    const sections=content?.sections||[],section=sections[readIndex];if(!section)return '';
+    const reading=state?.run?.stage==='READING';
+    return `<section class="ht-panel ht-reader"><div class="ht-reading-head"><div><span class="ht-eyebrow">LEITURA · SEÇÃO ${readIndex+1} DE ${sections.length}</span><h3>${h(section.title||'Conteúdo')}</h3></div></div><iframe class="ht-content-frame" title="Conteúdo protegido do treinamento" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe><div class="ht-actions">${readIndex>0?button('previous','← Seção anterior','class="ht-secondary"'):''}${reading?button('read',readIndex<(state.run.readCount||0)?'Próxima seção →':'Li esta seção e desejo continuar'):readIndex<sections.length-1?button('browse-next','Próxima seção →','class="ht-secondary"'):''}</div></section>`;
+  }
   function participation(){
     const run=state?.run, attempts=state?.attempts?.length||0;
     let view='';
-    if(!run || run.stage==='COMPLETED')view=`<section class="ht-panel"><h3>${attempts?'Resultado registrado':'Prepare-se para começar'}</h3><p>A maior nota é preservada. A ciência vale uma única vez e as sugestões recebem decisão manual de 0 a 2 pontos.</p>${attempts<2?button('begin',attempts?'Iniciar segunda tentativa':'Iniciar leitura'): '<p>As duas tentativas deste treinamento foram concluídas.</p>'}${attempts===1?'<p class="ht-muted">A segunda tentativa repetirá todas as seções, a ciência e as cinco questões.</p>':''}</section>`;
-    else if(run.stage==='READING'){
-      const sections=content?.sections || [],section=sections[readIndex];
-      view=`<section class="ht-panel ht-reader"><div class="ht-reading-head"><div><span class="ht-eyebrow">LEITURA · SEÇÃO ${readIndex+1} DE ${sections.length}</span><h3>${h(section?.title || 'Conteúdo')}</h3></div><span>${run.readCount||0} seções registradas</span></div><iframe class="ht-content-frame" title="Conteúdo protegido do treinamento" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe><p class="ht-muted">Uso institucional identificado. A interface restringe cópia e impressão; não pode impedir capturas de tela do sistema.</p><div class="ht-actions">${readIndex>0?button('previous','← Seção anterior','class="ht-secondary"'):''}${button('read',readIndex<(run.readCount||0)?'Próxima seção →':'Li esta seção e desejo continuar')}</div></section>`;
-    } else if(run.stage==='ACK')view=`<section class="ht-panel"><h3>Ciência da leitura</h3><p>Você percorreu todas as seções. Este registro não comprova compreensão do conteúdo.</p><label class="ht-check"><input type="checkbox" name="ack"> Declaro ciência da leitura integral deste treinamento.</label>${button('ack','Confirmar ciência e ir à avaliação')}</section>`;
+    if(!run || run.stage==='COMPLETED')view=attempts?`<section class="ht-panel"><h3>Resultado registrado</h3><p>A maior nota é preservada. Para a pasta ficar verde, conclua leitura, avaliação e sugestão e alcance a nota máxima.</p>${attempts<2?button('begin','Iniciar segunda tentativa'):'<p>As duas tentativas deste treinamento foram concluídas.</p>'}</section>`:error?`<section class="ht-panel">${button('begin','Retomar registro da leitura')}</section>`:'<p class="ht-muted" role="status">Preparando o registro da leitura…</p>';
+    else if(run.stage==='READING')view='';
+    else if(run.stage==='ACK')view=`<section class="ht-panel"><h3>Ciência da leitura</h3><p>Você percorreu todas as seções. Este registro não comprova compreensão do conteúdo.</p><label class="ht-check"><input type="checkbox" name="ack"> Declaro ciência da leitura integral deste treinamento.</label>${button('ack','Confirmar ciência e ir à avaliação')}</section>`;
     else if(run.stage==='QUIZ')view=`<form class="ht-panel" data-quiz><span class="ht-eyebrow">AVALIAÇÃO · CINCO QUESTÕES</span><h3>Responda antes de continuar</h3>${questions.map((q,i)=>`<fieldset class="ht-question"><legend>${i+1}. ${h(q.stem)} <small>(${h(q.points)} ponto(s))</small></legend>${q.options.map(o=>`<label class="ht-option"><input type="radio" name="${h(q.id)}" value="${h(o.id)}" ${answers[q.id]===o.id?'checked':''} required>${h(o.text)}</label>`).join('')}</fieldset>`).join('')}${button('quiz','Continuar para sugestões')}</form>`;
-    else if(run.stage==='SUGGESTIONS')view=`<section class="ht-panel"><span class="ht-eyebrow">SUGESTÕES · OPCIONAL</span><h3>Como podemos melhorar este material?</h3>${area('suggestion','Sua sugestão',suggestion,'maxlength="6000"')}<p>A sugestão não concede pontos automaticamente. O responsável analisa manualmente uma única concessão por participante.</p>${confirm?`<div class="ht-confirm" role="group" aria-label="Confirmação do envio"><h4>Confirmar o envio da tentativa ${attempts+1} de 2?</h4><p>As cinco respostas serão registradas. Esta confirmação consome uma tentativa.</p>${button('submit','Confirmar e enviar tentativa')}${button('cancel-confirm','Revisar sugestão','class="ht-secondary"')}</div>`:button('confirm','Revisar envio final')}</section>`;
-    return summary()+manageBar()+view;
+    else if(run.stage==='SUGGESTIONS')view=`<section class="ht-panel"><span class="ht-eyebrow">SUGESTÃO · TERCEIRA ATIVIDADE</span><h3>Como podemos melhorar este material?</h3>${area('suggestion','Sua sugestão',suggestion,'maxlength="6000"')}<p>Envie uma sugestão para concluir as três atividades. A pontuação da sugestão depende da análise do responsável.</p>${confirm?`<div class="ht-confirm" role="group" aria-label="Confirmação do envio"><h4>Confirmar o envio da tentativa ${attempts+1} de 2?</h4><p>As cinco respostas serão registradas. Esta confirmação consome uma tentativa.</p>${!suggestion.trim()?'<p>Sem sugestão, a pasta permanecerá amarela.</p>':''}${button('submit','Confirmar e enviar tentativa')}${button('cancel-confirm','Revisar sugestão','class="ht-secondary"')}</div>`:button('confirm','Revisar envio final')}</section>`;
+    return readingView()+view+summary()+manageBar();
   }
   function editorView(){
     const e=editor,t=e.training,admin=isTrainingAdmin(profile);
@@ -103,9 +118,10 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   function render(){
     if(!alive)return;
     root.classList.add('html-trainings');
-    root.classList.toggle('ht-reading',mode==='participant'&&state?.run?.stage==='READING');
-    root.innerHTML=top()+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():'');
-    if(mode==='participant'&&state?.run?.stage==='READING'){
+    root.classList.toggle('ht-reading',mode==='participant'&&Boolean(content?.sections?.length));
+    if(mode==='participant'&&active&&state)activityStates.set(active.id,{version:active.version,state});
+    root.innerHTML=top()+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
+    if(mode==='participant'&&content?.sections?.length){
       const frame=root.querySelector('.ht-content-frame');
       if(frame){frame.addEventListener('load',()=>{
         if(!alive)return;const doc=frame.contentDocument;if(!doc)return;
@@ -116,17 +132,23 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(mode==='editor')root.querySelectorAll('[data-section]').forEach(frame=>{frame.srcdoc=readerDocument(editor.sections[Number(frame.dataset.section)].html,uid,'',true);});
     renderBusy();
   }
-  async function loadCatalog(){revision++;active=null;content=null;editor=null;questions=[];state=null;mode='catalog';error='';notice='';auditCleanup?.();auditCleanup=null;render();const token=revision;const res=await call('LIST',{},token);catalog=res.trainings||[];render();}
+  async function loadCatalog(){revision++;progressGeneration++;active=null;content=null;editor=null;questions=[];state=null;mode='catalog';error='';notice='';auditCleanup?.();auditCleanup=null;render();const token=revision;const res=await call('LIST',{},token);catalog=res.trainings||[];render();refreshVisibleActivities();}
   async function open(id){
-    revision++;const token=revision;error='';notice='';
-    const opened=await call('OPEN',{trainingId:id},token);
-    active=opened.training;state=opened.state;questions=opened.questions||[];answers={...(state?.run?.answers||{})};suggestion='';confirm=false;submitRequest=null, editorParent='catalog';
-    // OPEN always precedes a cache lookup and is revalidated for every new visit.
-    content=await cache.read(uid,id,active.version);
+    revision++;progressGeneration++;const token=revision;error='';notice='';
+    const selected=catalog.find(t=>t.id===id);
+    active=selected||null;content=null;state=null;mode='opening';render();
+    const loaded=await loadHtmlTrainingDocument((action,input)=>call(action,input,token),{trainingId:id,version:selected?.version});
     if(!current(token))return;
-    if(!content){const loaded=await call('CONTENT',{trainingId:id,version:active.version},token);content=loaded;await cache.put(uid,id,active.version,loaded);}
-    if(!current(token))return;
-    readIndex=Math.min(state?.run?.readCount||0,Math.max(0,content.sections.length-1));mode='participant';render();
+    const opened=loaded.opened;
+    active=opened.training;state=opened.state;questions=opened.questions||[];content=loaded.content;
+    answers={...(state?.run?.answers||{})};suggestion='';confirm=false;submitRequest=null;editorParent='catalog';
+    readIndex=state?.run?.stage==='READING'?Math.min(state.run.readCount||0,Math.max(0,content.sections.length-1)):0;
+    mode='participant';render();
+    // Show the authorized text before registering a new read. No attempt is consumed here.
+    if((state?.attempts?.length||0)===0&&(!state?.run||state.run.stage==='COMPLETED')){
+      const begun=await call('BEGIN',{trainingId:id,requestId:uuid()},token);
+      state=begun.state;readIndex=0;render();
+    }
   }
   async function edit(id){revision++;const token=revision;const result=await call('EDIT',{trainingId:id},token);editor={...result,selectedQuestionIds:[...(result.training.selectedQuestionIds||[])]};active=result.training;mode='editor';error='';notice='';render();}
   function collectEditor(){
@@ -139,7 +161,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     e.institutionalReviewConfirmed=form.elements.institutionalReviewConfirmed?.checked===true;
     e.bank.forEach((q,i)=>{q.stem=String(f.get(`stem-${i}`)||'');q.points=Number(f.get(`points-${i}`));q.correctOptionId=String(f.get(`correct-${i}`)||'');q.comment=String(f.get(`comment-${i}`)||'');q.options.forEach((o,j)=>o.text=String(f.get(`option-${i}-${j}`)||''));});
   }
-  async function publish(status){collectEditor();if(editor.selectedQuestionIds.length!==5)throw new Error('Selecione exatamente cinco questões do banco.');const e=editor;const res=await call('PUBLISH',{trainingId:active.id,expectedVersion:e.training.version,training:{...e.training,status},institutionalReviewConfirmed:e.institutionalReviewConfirmed===true,deferInstitutionalReview:isTrainingAdmin(profile)&&!!e.training.source?.pendingReviewPublication&&e.institutionalReviewConfirmed!==true,reviewDeferralReason:e.training.source?.pendingReviewPublication?.reason,sections:e.sections,bank:e.bank,selectedQuestionIds:e.selectedQuestionIds,auditSchema:e.auditSchema});active=res.training;await edit(active.id);notice=status==='DRAFT'?'Rascunho salvo no serviço.':'Treinamento publicado no PWA. Consulte o estado da sincronização com o Drive.';render();}
+  async function publish(status){collectEditor();if(editor.selectedQuestionIds.length!==5)throw new Error('Selecione exatamente cinco questões do banco.');const e=editor;const res=await call('PUBLISH',{trainingId:active.id,expectedVersion:e.training.version,training:{...e.training,status},institutionalReviewConfirmed:e.institutionalReviewConfirmed===true,deferInstitutionalReview:isTrainingAdmin(profile)&&!!e.training.source?.pendingReviewPublication&&e.institutionalReviewConfirmed!==true,reviewDeferralReason:e.training.source?.pendingReviewPublication?.reason,sections:e.sections,bank:e.bank,selectedQuestionIds:e.selectedQuestionIds,auditSchema:e.auditSchema});active=res.training;catalog=catalog.map(t=>t.id===active.id?active:t);activityStates.delete(active.id);await edit(active.id);notice=status==='DRAFT'?'Rascunho salvo no serviço.':'Treinamento publicado no PWA. Consulte o estado da sincronização com o Drive.';render();}
   const click=event=>{
     const b=event.target.closest('[data-ht]');if(!b||!root.contains(b))return;
     const action=b.dataset.ht;
@@ -148,7 +170,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
       if(action==='catalog')return loadCatalog();
-      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;folderPath=path;render();return;}
+      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;folderPath=path;render();refreshVisibleActivities();return;}
       if(action==='open')return open(b.dataset.id);
       if(action==='edit'){editorParent=mode==='participant'?'participant':'catalog';return edit(b.dataset.id);}
       if(action==='audit'){
@@ -157,7 +179,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
         auditCleanup?.();auditCleanup=mountTrainingAudit(root,{training:active,schema:result.auditSchema,api:async(...args)=>{try{return await call(...args);}catch(err){if(err.status===401||err.status===403||err.code==='SESSION_CHANGED')fail(err);throw err;}},isActive:()=>current(revision)});return;
       }
       if(action==='begin'){const res=await call('BEGIN',{trainingId:active.id,requestId:uuid()});state=res.state;readIndex=0;answers={};suggestion='';render();return;}
-      if(action==='previous'){readIndex--;render();return;}
+      if(action==='previous'){readIndex=Math.max(0,readIndex-1);render();return;}
+      if(action==='browse-next'){readIndex=Math.min(content.sections.length-1,readIndex+1);render();return;}
       if(action==='read'){
         if(readIndex<(state.run.readCount||0)){readIndex++;render();return;}
         const res=await call('READ',{trainingId:active.id,runId:state.run.id,index:readIndex});state=res.state;
