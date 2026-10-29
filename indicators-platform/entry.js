@@ -1,2 +1,2 @@
-import {mountIndicatorsPlatform} from './ui.js';import {requestIndicatorFrame} from './bridge.js';
+import {mountIndicatorsPlatform} from './ui.js';import {requestIndicatorFrame} from '../src/indicators-platform-bridge.js';
 const root=document.querySelector('#app');if(window.parent===window){root.innerHTML='<main class="fd-standalone"><h1>Plataforma de Indicadores SAHMT</h1><p>Acesse pelo app para usar sua sessão institucional.</p><a href="https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/management-hub/results">ABRIR NO SAHMT</a></main>';}else mountIndicatorsPlatform(root,{request:requestIndicatorFrame,isCurrent:()=>root.isConnected,onBack:()=>window.parent.postMessage({type:'SAHMT_INDICATORS_BACK_V1'},'https://anestesiahmtforms.github.io')});

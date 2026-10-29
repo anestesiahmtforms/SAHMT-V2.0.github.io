@@ -1,4 +1,4 @@
-import {bindIndicatorFrame} from '../indicators-platform/bridge.js';
+import {bindIndicatorFrame} from './indicators-platform-bridge.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 
