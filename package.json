@@ -51,7 +51,7 @@
     "prepare:provisional-channel": "node scripts/prepare-provisional-channel.mjs",
     "test:channel-realtime": "node --test tests/operational-channel-realtime*.test.js tests/operational-channel-cache-refresh.test.js",
     "test:management-html": "node --test tests/management-html-retirement.test.js tests/rop-audit.test.js",
-    "test:html-training": "node --test tests/management-document-back.test.js tests/html-training-service.test.js tests/html-training-runtime.test.js tests/html-training-workerd.test.js tests/html-training-ui.test.js tests/html-training-folders.test.js tests/html-training-organization.test.js tests/html-training-import.test.js tests/html-training-initial-import.test.js tests/html-training-performance.test.js tests/management-html-retirement.test.js tests/rop-audit.test.js",
+    "test:html-training": "node --test tests/html-training-card.test.js tests/management-document-back.test.js tests/html-training-service.test.js tests/html-training-runtime.test.js tests/html-training-workerd.test.js tests/html-training-ui.test.js tests/html-training-folders.test.js tests/html-training-organization.test.js tests/html-training-import.test.js tests/html-training-initial-import.test.js tests/html-training-performance.test.js tests/management-html-retirement.test.js tests/rop-audit.test.js",
     "test:html-training-browser": "node --test tests/html-training-ui.browser.test.js",
     "prepare:html-trainings": "node scripts/prepare-html-trainings.mjs",
     "import:html-trainings": "node scripts/import-html-trainings.mjs",
@@ -88,3 +88,4 @@
     "wrangler": "^4.149.0"
   }
 }
+
