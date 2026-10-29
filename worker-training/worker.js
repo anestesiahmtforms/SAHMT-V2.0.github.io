@@ -1,3 +1,5 @@
+import {createProfessionalRegistrationService} from './professional-registration-service.js';
+import {createRegistrationDrive} from './registration-drive.js';
 import {createBiosafetyManualService} from './biosafety-manual-service.js';
 import {createDosimetryService} from './dosimetry-service.js';
 import {createServiceTokenProvider,verifyTrainingIdentity} from './google-auth.js';
@@ -39,9 +41,12 @@ function vaccinationRuntime(env){
 }
 function dosimetryRuntime(env){const runtime=sharedRuntime(env);return runtime.dosimetry??=createDosimetryService({store:runtime.store});}
 function manualRuntime(env){const runtime=sharedRuntime(env);return runtime.manual??=createBiosafetyManualService({store:runtime.store});}
+function registrationDriveRuntime(env){const runtime=sharedRuntime(env);if(!runtime.registrationDrive){let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}runtime.registrationDrive=createRegistrationDrive({store:runtime.store,clientConfig:config,encryptionKey:env.REGISTRATION_DRIVE_KEY});}return runtime.registrationDrive;}
+function registrationRuntime(env){const runtime=sharedRuntime(env);return runtime.registration??=createProfessionalRegistrationService({store:runtime.store,drive:registrationDriveRuntime(env)});}
 function surveyRuntime(env){
  const runtime=sharedRuntime(env);
- return runtime.surveys??=createSurveyService({profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
+ let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}
+ return runtime.surveys??=createSurveyService({reportReaderEmail:config?.reportReaderEmail,profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
 }
 function documentRuntime(env){
  const runtime=sharedRuntime(env);
@@ -57,8 +62,10 @@ function documentRuntime(env){
  return runtime.documents;
 }
 const legacyTrainingCodes=new Set(['INSTITUTIONAL_REVIEW_REQUIRED','INVALID_INPUT','PAYLOAD_TOO_LARGE','UNSAFE_CONTENT','ALREADY_REVIEWED','ATTEMPT_LIMIT','AUDIT_IMMUTABLE','AUDIT_INVALID','AUDIT_UNAVAILABLE','BANK_QUESTIONS_REMOVED','CONTENT_UNAVAILABLE','FORBIDDEN','IDEMPOTENCY_CONFLICT','INVALID_ANSWERS','INVALID_MANAGER','NO_SUGGESTION','NOT_FOUND','NOT_PUBLISHED','READ_ORDER','RUN_CONFLICT','SCORE_UNAVAILABLE','SELF_REVIEW','STAGE_CONFLICT','UNAUTHENTICATED','VERSION_CHANGED','VERSION_CONFLICT']);
-export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime}={}){
+export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=registrationDriveRuntime}={}){
  const routes={
+  '/v1/professional-registration':{prefix:'REGISTRATION',max:64*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationService,sourceProject:'sahmt-17a16'},
+  '/v1/registration-drive':{prefix:'REGDRIVE',max:8*1024*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationDrive,sourceProject:'sahmt-17a16'},
   '/v1/training':{prefix:'TRAINING',max:8*1024*1024,flag:'HTML_TRAINING_ENABLED',build:buildService},
   '/v1/vaccination':{prefix:'VAC',max:16*1024,flag:'VACCINATION_ENABLED',build:buildVaccinationService},
   '/v1/professional-documents':{prefix:'DOCUMENT',max:8*1024*1024,build:buildDocumentService},
@@ -74,19 +81,20 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
   const reply=(data,status)=>new Response(JSON.stringify(data),{status,headers});
   if(!allowed)return reply({code:prefix+'_ORIGIN_DENIED'},403);
   if(!route)return reply({code:'TRAINING_ROUTE_UNKNOWN'},404);
-  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...headers,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Max-Age':'600'}});
+  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...headers,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type, X-Requested-With','Access-Control-Max-Age':'600'}});
   if(request.method!=='POST')return reply({code:prefix+'_METHOD_DENIED'},405);
   if(route.flag&&env[route.flag]!=='true')return reply({code:prefix+'_UNAVAILABLE'},503);
   try{
    if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))throw fail(prefix+'_INPUT_INVALID',400);
    const body=await bodyJson(request,route.max,prefix);
    if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).length!==2||!Object.hasOwn(body,'action')||typeof body.action!=='string'||!body.input||Array.isArray(body.input)||typeof body.input!=='object'||!Object.hasOwn(body,'input'))throw fail(prefix+'_INPUT_INVALID',400);
+   if(prefix==='REGDRIVE'&&body.action==='CONNECT'&&request.headers.get('X-Requested-With')!=='SAHMT')throw fail('REGDRIVE_FORBIDDEN',403);
    const identity=await verifyIdentity(request.headers.get('Authorization'),{apiKey:route.sourceProject?env.FA_WEB_API_KEY:env.FB_WEB_API_KEY,...(route.sourceProject?{projectId:route.sourceProject}:{})});
    if(prefix==='DOCUMENT'&&body.action==='UPLOAD'&&env.DOCUMENT_UPLOADS_ENABLED!=='true')throw fail('DOCUMENT_DRIVE_NOT_CONNECTED',503);
    const result=await route.build(env).execute(body.action,body.input,identity);
    return reply(result,200);
   }catch(error){
-   const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY|MANUAL)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
+   const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY|MANUAL|REGISTRATION|REGDRIVE|EPIDEMIOLOGICAL)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
    return reply({code:safe},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);
   }
  }};

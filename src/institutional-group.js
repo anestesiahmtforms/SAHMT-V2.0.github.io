@@ -20,5 +20,8 @@ export async function institutionalAssignmentKey(email) {
 export async function resolveAuthenticatedInstitutionalGroup({user,readAssignment}) {
  if(!user?.uid||!user.email||!user.emailVerified||!user.providerData?.some(p=>p.providerId==='google.com'))throw Error('REGISTRY_UNAVAILABLE');
  const group=assignedInstitutionalGroup(await readAssignment(await institutionalAssignmentKey(user.email)),{uid:user.uid,email:user.email});
- if(!group)throw Error('REGISTRY_UNAVAILABLE');return group;
+ if(!group)throw Error('REGISTRY_UNAVAILABLE');return researchGroup(group);
 }
+
+// Public research cohorts; internal affiliation remains unchanged for other modules.
+export const researchGroup=value=>value==='substitute'?'team':['team','resident'].includes(value)?value:null;

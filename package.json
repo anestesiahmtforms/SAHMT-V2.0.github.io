@@ -63,7 +63,9 @@
     "test:dosimetry": "node --test tests/dosimetry.test.js",
     "test:dosimetry-browser": "node --test tests/biosafety.browser.test.js",
     "test:biosafety-manual": "node --test tests/biosafety-manual.test.js",
-    "test:biosafety-manual-browser": "node --test tests/biosafety-manual.browser.test.js"
+    "test:biosafety-manual-browser": "node --test tests/biosafety-manual.browser.test.js",
+    "test:registration": "node --test tests/registration.test.js tests/registration-drive.test.js",
+    "test:registration-browser": "node --test tests/registration.browser.test.js"
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",

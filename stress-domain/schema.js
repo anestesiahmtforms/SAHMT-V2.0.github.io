@@ -1,6 +1,6 @@
 export const VERSION='1.2';
 export const CYCLE='2026';
-export const GROUPS=Object.freeze({team:'Equipe',resident:'Residentes',substitute:'Substitutos'});
+export const GROUPS=Object.freeze({team:'Equipe',resident:'Residentes'});
 export const SCALE=[[0,'Nunca'],[1,'Quase nunca'],[2,'Raramente'],[3,'Às vezes'],[4,'Muitas vezes'],[5,'Sempre']];
 export const DIMENSIONS=[
  {id:'physical',label:'Fadiga física e recuperação',questions:[

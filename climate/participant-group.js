@@ -5,9 +5,9 @@ export function mountParticipantGate(host,form,onIdentified,{identify=identifyIn
  host.innerHTML='<p role="status" aria-live="polite">Preparando a pesquisa com seu cadastro do app…</p>';
  void (async()=>{
   try {
-   const state=await identify();const group=state?.group;if(!['team','resident','substitute'].includes(group))throw Error('REGISTRY_UNAVAILABLE');
+   const state=await identify();const group=state?.group==='substitute'?'team':state?.group;if(!['team','resident'].includes(group))throw Error('REGISTRY_UNAVAILABLE');
    if(!host.isConnected)return;
-   const label={team:'Equipe',resident:'Residentes',substitute:'Substitutos'}[group];
+   const label={team:'Equipe',resident:'Residentes'}[group];
    host.classList.add('participant-group-notice');
    host.innerHTML='<h2>Você acessou pelo grupo '+label+'</h2><p>Seus dados pessoais não serão exibidos neste ambiente. Os resultados são apresentados apenas de forma agregada por grupo. O controle de participação fica separado das respostas para impedir duplicidades.</p><p role="status" aria-live="polite"></p>';
    if(state.alreadyResponded===true){host.querySelector('[role=status]').textContent='Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.';return;}

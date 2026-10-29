@@ -3,7 +3,7 @@ export function renderReport(document,data,plan) {
   const section=document.createElement('section'),title=document.createElement('h2');title.textContent=`Ciclo ${data.survey_cycle}`;section.append(title);
   const metric=(host,label,value)=>{const p=document.createElement('p');p.className='metric';const strong=document.createElement('strong');strong.textContent=`${label}: `;p.append(strong,document.createTextNode(value));host.append(p);};
   metric(section,'Adesão',data.participation?.uniquePeopleVerified&&!data.participation?.suppressed?data.participation.respondents+' participantes autenticados; uma resposta por conta, pesquisa e ciclo.':'Não divulgada para proteger a participação de grupos pequenos.');
-  for(const [key,label] of [['team','Equipe'],['resident','Residentes'],['substitute','Substitutos']]) {
+  for(const [key,label] of [['team','Equipe'],['resident','Residentes']]) {
     const group=data.groups?.[key],card=document.createElement('section'),heading=document.createElement('h3');heading.textContent=label;card.append(heading);card.dataset.resultGroup=key;
     if(!group||group.suppressed){const p=document.createElement('p');p.textContent=group?.reason||'Este relatório anterior não possui classificação por grupo.';card.append(p);}
     else {
@@ -13,6 +13,6 @@ export function renderReport(document,data,plan) {
   }
   const actionScore=value=>value?.denominator?`${value.percent}% (${value.numerator}/${value.denominator})`:'Sem denominador informado';
   metric(section,'Ações concluídas no prazo',actionScore(plan?.onTime));metric(section,'Ações com efetividade verificada',actionScore(plan?.effectiveness));
-  const note=document.createElement('p');note.textContent='Equipe reúne os anestesiologistas, com e sem preceptoria. N/A e branco não entram nos denominadores. Respostas sem grupo informado não são classificadas. Grupos pequenos permanecem protegidos. Categorias descontinuadas não são exibidas.';section.append(note);
+  const note=document.createElement('p');note.textContent='Equipe reúne os anestesiologistas, com e sem preceptoria, incluindo os substitutos. N/A e branco não entram nos denominadores. Respostas sem grupo informado não são classificadas. Grupos pequenos permanecem protegidos. Categorias descontinuadas não são exibidas.';section.append(note);
   return section;
 }

@@ -11,7 +11,8 @@ export async function callInstitutionalSurvey({uid,isCurrent,survey,action,respo
   if(!result.ok){await result.body?.cancel();throw Error('SURVEY_UNAVAILABLE');}
   const data=await result.json();
   // Reply to the FE frame with this closed shape only; never auth data.
-  if(action==='BOOTSTRAP'&&['team','resident','substitute'].includes(data.group)&&typeof data.alreadyResponded==='boolean')return {group:data.group,alreadyResponded:data.alreadyResponded};
+  if(data.group==='substitute')data.group='team';
+  if(action==='BOOTSTRAP'&&['team','resident'].includes(data.group)&&typeof data.alreadyResponded==='boolean')return {group:data.group,alreadyResponded:data.alreadyResponded};
   if(action==='SUBMIT'&&data.accepted===true&&typeof data.alreadyResponded==='boolean')return {accepted:true,alreadyResponded:data.alreadyResponded};
   throw Error('SURVEY_UNAVAILABLE');
 }

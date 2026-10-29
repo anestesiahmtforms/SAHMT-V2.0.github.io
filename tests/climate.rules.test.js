@@ -12,7 +12,7 @@ test('FE denies all raw access and writes; published reports require a dedicated
     for (const db of [anonymous, user]) { await assertFails(getDoc(doc(db, 'climateReports/2026'))); await assertFails(getDocs(collection(db, 'climateReports'))); await assertFails(getDoc(doc(db, 'climateActionReports/2026'))); }
     await assertSucceeds(getDoc(doc(reader, 'climateReports/2026'))); await assertSucceeds(getDocs(collection(reader, 'climateReports')));
     await assertSucceeds(getDoc(doc(reader, 'climateActionReports/2026')));
-    for (const db of [anonymous, user, reader]) for (const path of ['climateResponses/token', 'climateComments/token', 'climateCycles/2026', 'climateReports/2026', 'climateActionReports/2026']) {
+    for (const db of [anonymous, user, reader]) for (const path of ['epidemiologicalCycles/2026','epidemiologicalResponses/token','epidemiologicalComments/token','epidemiologicalReports/2026','surveyParticipation/member_epidemiological_2026','climateResponses/token', 'climateComments/token', 'climateCycles/2026', 'climateReports/2026', 'climateActionReports/2026']) {
       await assertFails(setDoc(doc(db, path), {uid: 'forbidden'}));
       if (!path.startsWith('climateReports') && !path.startsWith('climateActionReports')) await assertFails(getDoc(doc(db, path)));
     }

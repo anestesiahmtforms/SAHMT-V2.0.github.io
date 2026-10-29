@@ -29,18 +29,18 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
         await route.continue();
       });
       if(width===320){await page.goto(origin+'/?testGroup=invalid');await page.getByText(/Não foi possível confirmar seu grupo/).waitFor();assert.equal(await page.locator('form').isVisible(),false);assert.equal(received.length,0);}
-      const assignedGroup=width===390?'resident':width===768?'team':'substitute';
+      const assignedGroup=width===390?'resident':'team';
       await page.goto(origin+'/?testGroup='+assignedGroup);
       if (process.env.CLIMATE_SCREENSHOTS && [390,1440].includes(width)) {
         await mkdir(process.env.CLIMATE_SCREENSHOTS, {recursive:true});
         await page.screenshot({path: resolve(process.env.CLIMATE_SCREENSHOTS, `pesquisa-${width}.png`)});
       }
-      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),assignedGroup==='substitute'?32:37);
+      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),37);
       assert.equal(await page.locator('[name=module]').count(),0);
 
       assert.match(await page.locator('.notice').innerText(),/registros técnicos/);
       
-      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),assignedGroup==='substitute'?32:37);assert.equal(await page.locator('#module').isVisible(),assignedGroup!=='substitute');
+      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),37);assert.equal(await page.locator('#module').isVisible(),true);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.check('[name=Q01][value="4"]'); await page.locator('[type=submit]').click(); assert.equal(received.length, 0);
       await page.check('[name=consent]'); await page.fill('[name=O01]', '<script>alert("text only")</script>');

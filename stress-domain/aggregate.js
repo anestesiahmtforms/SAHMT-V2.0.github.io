@@ -9,7 +9,7 @@ function opportunities(overall){
  return selected.length?selected:[{dimension:'Prevenção',evidence:'Sem dimensão acima do limiar gerencial de 40% nesta aplicação.',action:'Manter oportunidades de descanso, apoio e comunicação de fadiga; monitorar a evolução sem concluir ausência de risco.',followUp:'Reavaliar no próximo ciclo e ouvir sugestões voluntárias da equipe.'}];
 }
 export function aggregate(rows){
- rows=rows.filter(row=>Object.hasOwn(GROUPS,row.group)&&row.survey_version===VERSION);
+ rows=rows.filter(row=>['team','resident','substitute'].includes(row.group)&&row.survey_version===VERSION).map(row=>({...row,group:row.group==='substitute'?'team':row.group}));
  rows.forEach((row,i)=>validateSubmission({...row,submission_id:i.toString(16).padStart(32,'0')}));
  if(rows.length<MIN_GROUP)throw Error('INSUFFICIENT_RESPONDENTS');
  const counts=Object.fromEntries(Object.keys(GROUPS).map(k=>[k,rows.filter(r=>r.group===k).length])),hidden=new Set(Object.keys(GROUPS).filter(k=>counts[k]<MIN_GROUP));
@@ -18,5 +18,5 @@ export function aggregate(rows){
  const overall=means(rows),groups=Object.fromEntries(Object.entries(GROUPS).map(([key,label])=>[key,hidden.has(key)?{label,suppressed:true,reason:'Não divulgado por proteção de grupos pequenos ou proteção complementar.'}:{label,suppressed:false,...means(rows.filter(r=>r.group===key))}]));
  // Optional-stress contributors need their own protection against differencing.
  if(overall.perceivedStress){const visible=Object.values(groups).reduce((n,g)=>n+(g.perceivedStress?.respondents||0),0),residualRaters=overall.perceivedStress.respondents-visible;if(residualRaters>0&&residualRaters<MIN_GROUP)overall.perceivedStress=null;}
- return {survey_cycle:CYCLE,survey_version:VERSION,uniquePeopleVerified:true,overall,groups,opportunities:opportunities(overall),methodology:'Snapshot único após encerramento. Somente a etapa com controle autenticado de participação entra neste recorte; registros anteriores permanecem preservados fora destes indicadores. Geral e médias por grupo com supressão complementar. Não se publicam contagens por faixa ou percentuais de alta/muito alta, para impedir reconstrução de células pequenas ao cruzar com médias. As faixas e limiares gerenciais são institucionais, não diagnósticos.'};
+ return {survey_cycle:CYCLE,survey_version:VERSION,grouping_version:2,uniquePeopleVerified:true,overall,groups,opportunities:opportunities(overall),methodology:'Snapshot único após encerramento. Residentes e Equipe; substitutos integram Equipe, inclusive nas respostas históricas. Somente a etapa com controle autenticado de participação entra neste recorte; registros anteriores permanecem preservados fora destes indicadores. Geral e médias por grupo com supressão complementar. Não se publicam contagens por faixa ou percentuais de alta/muito alta, para impedir reconstrução de células pequenas ao cruzar com médias. As faixas e limiares gerenciais são institucionais, não diagnósticos.'};
 }

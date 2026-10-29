@@ -15,7 +15,7 @@ const block=`
       return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' && a is map &&
-        d.group in ['resident', 'team', 'substitute'] &&
+        d.group in ['resident', 'team'] &&
         (
           (!a.keys().hasAny(${strings(MODULES.resident.map(q=>q.id))}) || d.group == 'resident') &&
           (!a.keys().hasAny(${strings(MODULES.preceptor.map(q=>q.id))}) || d.group == 'team')) &&
@@ -48,6 +48,10 @@ const block=`
     match /climateReports/{id} { allow read: if climateReader(); allow write: if false; }
     match /climateActionReports/{id} { allow read: if climateReader(); allow write: if false; }
     match /surveyParticipation/{id} { allow read, write: if false; }
+    match /epidemiologicalCycles/{id} { allow read, write: if false; }
+    match /epidemiologicalResponses/{id} { allow read, write: if false; }
+    match /epidemiologicalComments/{id} { allow read, write: if false; }
+    match /epidemiologicalReports/{id} { allow read, write: if false; }
     // END_CLIMATE_FREE_V1
 `;
 const baseline=await readFile(new URL('../firestore.fe.base.rules',import.meta.url),'utf8');

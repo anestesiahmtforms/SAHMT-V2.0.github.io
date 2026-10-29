@@ -37,7 +37,7 @@ service cloud.firestore {
       return d.keys().hasOnly(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.keys().hasAll(['survey_cycle', 'survey_version', 'answers', 'group']) &&
         d.survey_cycle == '2026' && d.survey_version == '1.4' && a is map &&
-        d.group in ['resident', 'team', 'substitute'] &&
+        d.group in ['resident', 'team'] &&
         (
           (!a.keys().hasAny(['R01', 'R02', 'R03', 'R04', 'R05']) || d.group == 'resident') &&
           (!a.keys().hasAny(['T01', 'T02', 'T03', 'T04', 'T05']) || d.group == 'team')) &&
@@ -111,6 +111,10 @@ service cloud.firestore {
     match /climateReports/{id} { allow read: if climateReader(); allow write: if false; }
     match /climateActionReports/{id} { allow read: if climateReader(); allow write: if false; }
     match /surveyParticipation/{id} { allow read, write: if false; }
+    match /epidemiologicalCycles/{id} { allow read, write: if false; }
+    match /epidemiologicalResponses/{id} { allow read, write: if false; }
+    match /epidemiologicalComments/{id} { allow read, write: if false; }
+    match /epidemiologicalReports/{id} { allow read, write: if false; }
     // END_CLIMATE_FREE_V1
 
 
@@ -121,7 +125,7 @@ service cloud.firestore {
       return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating']) &&
         d.keys().hasAll(['survey_cycle','survey_version','group','answers']) &&
         d.survey_cycle == '2026' && d.survey_version == '1.2' &&
-        d.group in ['team','resident','substitute'] && a is map &&
+        d.group in ['team','resident'] && a is map &&
         a.keys().hasOnly(['S01','S02','S03','S04','S05','S06','S07','S08','S09','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20','S21','S22','S23','S24','S25','S26','S27','S28','S29','S30']) && a.size() == 30 &&
         (a.get('S01', -1) is int && a.get('S01', -1) >= 0 && a.get('S01', -1) <= 5) &&
         (a.get('S02', -1) is int && a.get('S02', -1) >= 0 && a.get('S02', -1) <= 5) &&

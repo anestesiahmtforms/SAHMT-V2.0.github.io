@@ -53,3 +53,5 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .app-shell .management-hub-header .sync-status-button:not(.sync-status-button--synced){width:auto;max-width:100%;white-space:normal;overflow-wrap:anywhere;font-size:.62rem;line-height:1.2}
 
 .management-survey-frame{display:block;flex:1 1 auto;min-height:180px;width:100%;height:100%;border:0;border-radius:12px;background:#f1f6f6}.management-hub-dialog[data-panel="climateForm"] .management-hub-body,.management-hub-dialog[data-panel="stressForm"] .management-hub-body{padding:0;overflow:hidden}
+
+.management-hub-dialog[data-panel="surveys"] .management-hub-grid{grid-template-rows:repeat(3,minmax(0,1fr))}.management-hub-dialog[data-panel="professional"] .management-hub-body,.management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}

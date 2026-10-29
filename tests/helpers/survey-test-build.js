@@ -13,7 +13,7 @@ export async function surveyTestBuild(name) {
     if(!id.endsWith('/climate/participant-group.js'))return;
     const start=source.indexOf('export const identifyInstitutionalGroup='),end=source.indexOf('export function mountParticipantGate(',start);
     if(start<0||end<0)throw Error('TEST_REGISTRY_BOUNDARY_MISSING');
-    return source.slice(0,start)+"export async function identifyInstitutionalGroup(){const group=new URL(location.href).searchParams.get('testGroup')||'substitute';if(group==='invalid')throw Error('SYNTHETIC_MISSING');return {group,alreadyResponded:false};}\n"+source.slice(end);
+    return source.slice(0,start)+"export async function identifyInstitutionalGroup(){const group=new URL(location.href).searchParams.get('testGroup')||'team';if(group==='invalid')throw Error('SYNTHETIC_MISSING');return {group,alreadyResponded:false};}\n"+source.slice(end);
   }}]});
   return outDir;
 }

@@ -17,7 +17,7 @@ test('missing or invalid answers never become zero, and identifiers/computed sco
  for(const key of ['uid','name','email','ip','timestamp','score','band'])assert.throws(()=>validateSubmission({...payload(),[key]:'forbidden'}));
  for(const group of ['',undefined,'unspecified','person'])assert.throws(()=>validateSubmission({...payload(),group}));
  for(const rating of [-1,11,'5',null,1.5])assert.throws(()=>validateSubmission({...payload(),stress_rating:rating}));
- assert.equal(validateSubmission({...payload(),group:'substitute',stress_rating:0}).stress_rating,0);
+ assert.equal(validateSubmission({...payload(),group:'team',stress_rating:0}).stress_rating,0);
 });
 test('REST payload contains only allowed survey data, no derived score, identity or optional-rating imputation',()=>{
  const fields=commitBody(payload()).writes[0].update.fields;assert.deepEqual(Object.keys(fields).sort(),['answers','group','survey_cycle','survey_version']);assert.equal(fields.answers.mapValue.fields.S01.integerValue,'5');
@@ -25,7 +25,7 @@ test('REST payload contains only allowed survey data, no derived score, identity
 });
 test('overall + group means use complementary suppression; secretaries never released',()=>{
  const rows=[...Array.from({length:10},()=>({...payload(),answers:answersFor(20),group:'team'})),...Array.from({length:6},()=>({...payload(),answers:answersFor(70),group:'resident'})),...Array.from({length:5},()=>({...payload(),answers:answersFor(90),group:'substitute'})),...Array.from({length:2},()=>({...payload(),answers:answersFor(150),group:'secretaries'}))].map(({submission_id,...r})=>r);
- const result=aggregate(rows);assert.equal(result.overall.respondents,21);assert.equal(result.groups.secretaries,undefined);assert.equal(result.groups.substitute.suppressed,false);assert.equal(result.groups.team.suppressed,false);assert.equal(result.groups.resident.suppressed,false);
+ const result=aggregate(rows);assert.equal(result.overall.respondents,21);assert.equal(result.groups.secretaries,undefined);assert.equal(result.groups.substitute,undefined);assert.equal(result.groups.team.respondents,15);assert.equal(result.groups.team.suppressed,false);assert.equal(result.groups.resident.suppressed,false);
  for(const group of Object.values(result.groups)){assert.equal(Object.hasOwn(group,'histogram'),false);assert.equal(Object.hasOwn(group,'highOrVeryHighPercent'),false);if(group.suppressed)assert.equal(Object.hasOwn(group,'meanScore'),false);}
  assert.throws(()=>aggregate(rows.slice(0,4)));assert.equal(JSON.stringify(result).includes('S01'),false);
 });
@@ -40,8 +40,8 @@ test('optional stress contributors are protected separately; action proposals de
  const result=aggregate(rows);assert.equal(result.overall.perceivedStress.mean,5);assert.equal(result.groups.team.perceivedStress.mean,5);assert.ok(result.opportunities.some(o=>o.dimension===DIMENSIONS[0].label));
 });
 
-test('remaining three groups retain complementary suppression and historical excluded rows do not enter totals',()=>{
+test('two groups merge historical substitutes while retired rows stay excluded',()=>{
  const sample=[...Array.from({length:10},()=>({...payload(),group:'team'})),...Array.from({length:6},()=>({...payload(),group:'resident'})),...Array.from({length:2},()=>({...payload(),group:'substitute'}))];
- const report=aggregate(sample);assert.equal(report.overall.respondents,18);assert.equal(report.groups.substitute.suppressed,true);assert.equal(report.groups.resident.suppressed,true);assert.equal(report.groups.team.suppressed,false);
+ const report=aggregate(sample);assert.equal(report.overall.respondents,18);assert.equal(report.groups.substitute,undefined);assert.equal(report.groups.team.respondents,12);assert.equal(report.groups.resident.suppressed,false);assert.equal(report.groups.team.suppressed,false);
  const withRetired=aggregate([...sample,...Array.from({length:20},()=>({...payload(),group:'secretaries',answers:answersFor(150)}))]);assert.deepEqual(withRetired,report);
 });

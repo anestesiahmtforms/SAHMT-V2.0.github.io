@@ -42,10 +42,10 @@ test('retired administrative questions cannot be submitted or published',()=>{
  const result=aggregate(Array.from({length:5},()=>({group:'team',answers:answers()})));assert.equal(result.modules,undefined);assert.equal(JSON.stringify(result).includes('A01'),false);
 });
 
-test('four requested groups remain separate, secretaries and pooled scores never disclosed',()=>{
+test('two research groups merge historical substitutes and exclude secretaries',()=>{
  const rows=[...Array.from({length:5},()=>({group:'resident',answers:answers(5)})),...Array.from({length:5},()=>({group:'team',answers:answers(1)})),...Array.from({length:2},()=>({group:'secretaries',answers:answers(3)}))];
  rows.push(...Array.from({length:5},()=>({group:'substitute',answers:answers(4)})));
- const result=aggregate(rows);assert.deepEqual(Object.keys(result.groups),['team','resident','substitute']);assert.equal(result.groups.resident.general.favorable,100);assert.equal(result.groups.team.general.favorable,0);assert.equal(result.groups.substitute.general.favorable,100);assert.equal(result.groups.secretaries,undefined);
+ const result=aggregate(rows);assert.deepEqual(Object.keys(result.groups),['team','resident']);assert.equal(result.groups.resident.general.favorable,100);assert.equal(result.groups.team.general.favorable,50);assert.equal(result.groups.substitute,undefined);assert.equal(result.groups.secretaries,undefined);
  for(const field of ['general','dimensions','psychologicalSafety','safetyCulture','contribution','improvementTrust','modules'])assert.equal(Object.hasOwn(result,field),false,field);
  assert.equal(Object.hasOwn(result.groups,'secretaries'),false);
  rows.push(...Array.from({length:10},()=>({group:'secretaries',answers:answers(5)})));assert.equal(aggregate(rows).groups.secretaries,undefined);
@@ -56,7 +56,7 @@ test('unclassified older responses are never guessed as team and module groups a
  assert.throws(()=>validateSubmission({...payload(),group:'team',answers:{Q01:4,R01:4}}));assert.throws(()=>validateSubmission({...payload(),group:'someone'}));
  const old={...payload(),survey_version:'1.0'};delete old.group;assert.throws(()=>validateSubmission(old));
  assert.throws(()=>validateSubmission({...old,group:'team'}));
- const missing=payload();delete missing.group;assert.throws(()=>validateSubmission(missing));assert.throws(()=>validateSubmission({...payload(),group:'unspecified'}));assert.equal(validateSubmission({...payload(),group:'substitute'}).group,'substitute');
+ const missing=payload();delete missing.group;assert.throws(()=>validateSubmission(missing));assert.throws(()=>validateSubmission({...payload(),group:'unspecified'}));assert.throws(()=>validateSubmission({...payload(),group:'substitute'}));
 });
 
 function aggregate(rows){return aggregateCurrent(rows.map(r=>({...r,survey_version:r.survey_version||VERSION})));}

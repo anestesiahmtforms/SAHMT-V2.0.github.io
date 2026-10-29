@@ -1,6 +1,6 @@
 export const VERSION = '1.4';
-export const GROUPS = {team: 'Equipe', resident: 'Residentes', substitute: 'Substitutos'};
-export const groupForModule = value => ({team:'team',resident:'resident',preceptor:'team',clinical:'team',substitute:'substitute'}[value] || 'unspecified');
+export const GROUPS = {team: 'Equipe', resident: 'Residentes'};
+export const groupForModule = value => ({team:'team',resident:'resident',preceptor:'team',clinical:'team',substitute:'team'}[value] || 'unspecified');
 export const CYCLE = '2026';
 export const DIMENSIONS = [
   ['Propósito e pertencimento', ['Compreendo os objetivos e prioridades do SAHMT.', 'Sinto orgulho de integrar esta equipe.', 'Percebo respeito às diferentes experiências e gerações.', 'Sinto que minhas contribuições são valorizadas.']],

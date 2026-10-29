@@ -7,7 +7,7 @@ export function stressRules(){return `
       return d.keys().hasOnly(['survey_cycle','survey_version','group','answers','stress_rating']) &&
         d.keys().hasAll(['survey_cycle','survey_version','group','answers']) &&
         d.survey_cycle == '${CYCLE}' && d.survey_version == '${VERSION}' &&
-        d.group in ['team','resident','substitute'] && a is map &&
+        d.group in ['team','resident'] && a is map &&
         a.keys().hasOnly([${QUESTIONS.map(q=>`'${q.id}'`).join(',')}]) && a.size() == 30 &&
         ${QUESTIONS.map(q=>`(a.get('${q.id}', -1) is int && a.get('${q.id}', -1) >= 0 && a.get('${q.id}', -1) <= 5)`).join(' &&\n        ')} &&
         (!d.keys().hasAny(['stress_rating']) || (d.stress_rating is int && d.stress_rating >= 0 && d.stress_rating <= 10));

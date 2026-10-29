@@ -11,11 +11,11 @@ export function summarize(rows, ids, total) {
   return {numerator: favorable, denominator, favorable: Math.round(1000 * favorable / denominator) / 10};
 }
 export function aggregate(rows, cycle = CYCLE) {
-  rows=rows.filter(row=>Object.hasOwn(GROUPS,row.group)&&row.survey_version===VERSION);
+  rows=rows.filter(row=>['team','resident','substitute'].includes(row.group)&&row.survey_version===VERSION).map(row=>({...row,group:row.group==='substitute'?'team':row.group}));
   if (rows.length < MIN_GROUP) throw Error('INSUFFICIENT_RESPONDENTS');
   const ids = COMMON.map(q => q.id);
   return {
-    survey_cycle: cycle, survey_version: VERSION,
+    survey_cycle: cycle, survey_version: VERSION, grouping_version:2,
     participation: {suppressed:!Object.keys(GROUPS).every(key=>rows.filter(row=>row.group===key).length>=MIN_GROUP),uniquePeopleVerified:true,...(Object.keys(GROUPS).every(key=>rows.filter(row=>row.group===key).length>=MIN_GROUP)?{respondents:rows.length}:{})},
     // No pooled scores: small groups cannot be reconstructed by subtraction.
     groups: Object.fromEntries(Object.entries(GROUPS).map(([key,label]) => {
@@ -29,6 +29,6 @@ export function aggregate(rows, cycle = CYCLE) {
         contribution:summarize(selected,['Q30'],selected.length),improvementTrust:summarize(selected,['Q32'],selected.length)
       }];
     })),
-    methodology:'Resultados separados de equipe, residentes e substitutos. Sem total de pontuações ou cruzamentos. Registros de categorias descontinuadas são excluídos. Este recorte inclui somente a etapa com controle autenticado de participação; registros anteriores permanecem preservados fora destes indicadores.'
+    methodology:'Resultados separados de Equipe e Residentes. Substitutos são incluídos em Equipe, inclusive nas respostas históricas. Sem total de pontuações ou cruzamentos. Registros de categorias descontinuadas são excluídos. Este recorte inclui somente a etapa com controle autenticado de participação; registros anteriores permanecem preservados fora destes indicadores.'
   };
 }
