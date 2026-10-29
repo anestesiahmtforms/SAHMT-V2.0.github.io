@@ -30,4 +30,5 @@ jobs:
         with:
           name: html-training-mobile-preview
           path: .local-preview/html-training-*.png
+          include-hidden-files: true
           if-no-files-found: ignore
