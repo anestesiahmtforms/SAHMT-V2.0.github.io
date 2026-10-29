@@ -59,7 +59,7 @@ jobs:
       - name: Verify Apps Script quota protection
         run: node --test tests/apps-script-service-quota.test.js
       - name: Verify authentication and module navigation lifecycle
-        run: node --test tests/profile-server-reader.test.js tests/auth-server-profile.test.js tests/auth-profile-recovery.test.js tests/watch-session-recovery.test.js tests/connection-lifecycle.test.js tests/connection-main.test.js tests/fc-module-session.test.js tests/app-repair.test.js tests/management-entry-session.test.js tests/module-navigation.test.js tests/startup-banner.test.cjs tests/management-pilot.test.js
+        run: node --test tests/profile-server-reader.test.js tests/auth-server-profile.test.js tests/auth-profile-recovery.test.js tests/watch-session-recovery.test.js tests/connection-lifecycle.test.js tests/connection-main.test.js tests/fc-module-session.test.js tests/app-repair.test.js tests/app-updates.test.js tests/management-entry-session.test.js tests/module-navigation.test.js tests/startup-banner.test.cjs tests/management-pilot.test.js
       - name: Run five-project Google authentication regression
         run: npm run test:google-project-auth
       - name: Verify independent FB data and rules contracts
