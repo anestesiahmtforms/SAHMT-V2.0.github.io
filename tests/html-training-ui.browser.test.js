@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 test('HTML training opens directly with compact personal folders on desktop/mobile',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});
  const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FB'}),'import.meta.env.VITE_HTML_TRAINING_ENDPOINT':'""'},server:{host:'127.0.0.1',port:0}});
- server.middlewares.use('/training-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;padding:20px;background:#f4f7f6;font-family:system-ui}</style><div id="root"></div><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
+ server.middlewares.use('/training-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-family:system-ui}</style><dialog class="management-area-dialog" open aria-label="Área de gestão"><header class="management-area-dialog__header"><h2>ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body"><div class="management-area-detail" id="root"></div></div><footer class="management-area-dialog__footer"><button type="button">VOLTAR</button></footer></dialog><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
   browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
@@ -22,6 +22,11 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
     await page.getByRole('button',{name:/^Segurança\s/}).click();
   };
   await page.getByRole('button',{name:/^Protocolos\s/}).waitFor();
+  const desktopCards=await page.locator('.ht-browser-grid').evaluate(grid=>[...grid.children].map(card=>({width:card.getBoundingClientRect().width,height:card.getBoundingClientRect().height})));
+  assert.equal(desktopCards.length,4);
+  assert.ok(Math.max(...desktopCards.map(card=>card.width))-Math.min(...desktopCards.map(card=>card.width))<2);
+  assert.ok(Math.max(...desktopCards.map(card=>card.height))-Math.min(...desktopCards.map(card=>card.height))<2);
+  await page.screenshot({path:'.local-preview/html-training-uniform-grid-desktop.png',fullPage:true});
   assert.equal(await page.getByRole('button',{name:'Abrir treinamento',exact:true}).count(),0);
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -44,9 +49,24 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.equal(await cards.count(),2);
   const left=await cards.nth(0).boundingBox(),right=await cards.nth(1).boundingBox();
   assert.ok(left&&right&&right.x>left.x&&Math.abs(left.y-right.y)<2,'document folders share one row on mobile');
-  assert.ok(left.height<200&&right.height<200,'document folders remain compact');
+  assert.ok(Math.abs(left.height-right.height)<2&&Math.abs(left.width-right.width)<2,'document folders have uniform dimensions');
+  const layout=await page.locator('.ht-browser-grid').evaluate(grid=>({height:grid.clientHeight,scrollHeight:grid.scrollHeight,bottom:grid.getBoundingClientRect().bottom,last:Math.max(...[...grid.children].map(card=>card.getBoundingClientRect().bottom))}));
+  assert.ok(layout.height>300&&layout.last>=layout.bottom-20,'folders fill the available modal height');
+  assert.ok(layout.scrollHeight<=layout.height+2,'two folders fit inside the fixed modal');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:'.local-preview/html-training-document-folders-mobile.png',fullPage:true});
+  await page.evaluate(()=>window.setCatalogSize(12));
+  await enterFolder();
+  assert.equal(await page.locator('.ht-document-folder').count(),12);
+  const overflow=await page.evaluate(()=>{const grid=document.querySelector('.ht-browser-grid'),dialog=document.querySelector('dialog'),footer=dialog.querySelector('footer'),body=dialog.querySelector('.management-area-dialog__body');return {scrolls:grid.scrollHeight>grid.clientHeight,gridBottom:grid.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,bodyOverflows:body.scrollHeight>body.clientHeight+2,viewportFits:dialog.getBoundingClientRect().bottom<=innerHeight+2,rowGap:grid.children[2].getBoundingClientRect().top-grid.children[0].getBoundingClientRect().bottom};});
+  assert.equal(overflow.scrolls,true,'long catalogues scroll inside the grid');
+  assert.ok(overflow.rowGap>=18,'folder tabs and shadows never touch the previous row');
+  assert.equal(overflow.bodyOverflows,false,'catalogue content never stretches the modal body');
+  assert.equal(overflow.viewportFits,true);
+  assert.ok(overflow.gridBottom<=overflow.footerTop,'the return control remains outside the scrollable grid');
+  await page.screenshot({path:'.local-preview/html-training-uniform-grid-mobile.png',fullPage:true});
+  await page.evaluate(()=>window.setCatalogSize(2));
+  await enterFolder();
   const folder = page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true});
   await folder.focus();
   await page.keyboard.press('Enter');
@@ -71,7 +91,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.getByRole('button',{name:'Iniciar segunda tentativa'}).click();
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='SUBMIT').length),1);
-  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();
+  await page.locator('#root').getByRole('button',{name:'VOLTAR',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-ht="open"][data-id="rop-01"]')?.dataset.activityState==='green');
   await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
@@ -89,7 +109,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.equal(await page.evaluate(()=>window.published.bank.length),6);
   assert.equal(await page.evaluate(()=>window.published.selectedQuestionIds.length),5);
   assert.match(await page.evaluate(()=>window.published.sections[0].html),/Conteúdo alterado pelo gestor/);
-  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
+  await page.locator('#root').getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
   await page.getByRole('button',{name:'Realizar auditoria'}).click();
   await page.getByLabel('Unidade / setor *').fill('SRPA');
   await page.getByRole('button',{name:'Salvar rascunho',exact:true}).click();
