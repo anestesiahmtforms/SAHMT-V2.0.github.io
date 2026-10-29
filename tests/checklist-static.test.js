@@ -57,3 +57,27 @@ test('empty QR is rejected without querying', async () => {
   assert.equal(await resolveChecklistQrStation({stations: [], qrValue: '  ', day: '2026-10-21', readByQr: async () => {lookups++; return [];} }), null);
   assert.equal(lookups, 0);
 });
+
+test('QR containing a URL never becomes an invalid Firestore document ID', () => {
+  const calls = [];
+  const sdk = Object.fromEntries(['collection', 'where', 'query', 'limit', 'or', 'documentId'].map(name => [name, (...args) => {
+    if (name === 'where' && args[0]?.name === 'documentId' && args[2].includes('/')) {
+      throw new Error('Invalid document ID: collection queries require a plain document ID');
+    }
+    calls.push([name, ...args]); return {name, args};
+  }]));
+  const value = 'https://example.invalid/arsenal/qr-ficticio';
+  const result = buildChecklistQrLookup(value, sdk, 'db');
+  assert.equal(result.name, 'query');
+  assert.deepEqual(calls.filter(([name]) => name === 'where'), [['where', 'qrCode', '==', value]]);
+  assert.equal(calls.some(([name]) => name === 'documentId'), false);
+  assert.deepEqual(calls.find(([name]) => name === 'limit'), ['limit', 2]);
+});
+
+test('uncached QR URL resolves by exact registered value without navigating', async () => {
+  const value = 'https://example.invalid/arsenal/qr-ficticio';
+  const linkedStation = {...station, qrCode: value};
+  assert.equal(await resolveChecklistQrStation({
+    qrValue: value, day: '2026-10-29', readByQr: async qr => qr === value ? [linkedStation] : []
+  }), linkedStation);
+});

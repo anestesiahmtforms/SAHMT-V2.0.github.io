@@ -2394,25 +2394,28 @@ async function openChecklistQrScanner(stations, day) {
   };
   const resolveChecklistQr = async (raw) => {
     if (!scannerCurrent()) return;
+    status.textContent = 'QR reconhecido. Validando arsenal e consultando o checklist…';
     let station;
     let latestRecord;
     try {
-      station = await resolveChecklistQrStation({stations, qrValue: raw, day, includeInactive: can('checklistManage'),
+      station = await withinDeadline(() => resolveChecklistQrStation({stations, qrValue: raw, day, includeInactive: can('checklistManage'),
         readByQr: async qr => {
           const {getChecklistStationByQr} = await import('./data.js');
+          if (!scannerCurrent()) return [];
           const match = await getChecklistStationByQr(qr);
           return match ? [match] : [];
-        }});
-      if (station) latestRecord = await readChecklistStationLatestRecord(station.id, day);
+        }}), {timeoutMs: 12000});
+      if (!scannerCurrent()) return null;
+      if (station) latestRecord = await withinDeadline(() => readChecklistStationLatestRecord(station.id, day), {timeoutMs: 12000});
     } catch (error) {
       if (scannerCurrent()) status.textContent = error.code === 'permission-denied'
         ? 'Seu perfil não pode consultar este arsenal.'
         : 'Não foi possível validar o QR agora. Verifique a conexão e tente novamente.';
-      cleanup();
+      if (error.code === 'permission-denied') cleanup();
       return null;
     }
     if (!scannerCurrent()) return null;
-    if (!station) { status.textContent = 'QR lido, mas não cadastrado no catálogo desta data.'; cleanup(); return null; }
+    if (!station) { status.textContent = 'QR lido, mas não cadastrado no catálogo desta data. Aponte para outro QR.'; return null; }
     cleanup();
     if (dialog.open) dialog.close();
     revealChecklistStation(station, day, stations, latestRecord);
@@ -2510,8 +2513,9 @@ async function openChecklistQrScanner(stations, day) {
       if (confirmed) {
         const station = await resolveChecklistQr(confirmed);
         confirmQr('', {reset: true});
-        if (station || !scannerCurrent()) return;
-        timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 100);
+        if (station || !scannerCurrent()) { cleanup(); return; }
+        // Give the user time to read the diagnostic and avoid hammering the server.
+        timer = window.setTimeout(() => { frame = requestAnimationFrame(scan); }, 2000);
         return;
       }
       if (ambiguous) status.textContent = 'Há mais de um QR na moldura. Centralize somente o QR da estação desejada.';

@@ -5,6 +5,7 @@ const {join} = require('node:path');
 const vm = require('node:vm');
 
 const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
+const deadlineHelpers = readFileSync(join(__dirname, '../src/async-deadline.js'), 'utf8').replaceAll('export ', '');
 const qrHelpers = readFileSync(join(__dirname, '../src/checklist-qr.js'), 'utf8').replaceAll('export ', '');
 function extract(start, end) {
   const first = source.indexOf(start), last = source.indexOf(end, first);
@@ -93,7 +94,7 @@ function harness({decoder = true, nativeDetect, capabilities} = {}) {
     readChecklistStationLatestRecord: async () => null,
     revealChecklistStation: (...args) => reveals.push(args)};
   vm.createContext(context);
-  vm.runInContext(`let stopChecklistQrScan = null; let qrDecoderPromise = null;\n${qrHelpers}\n${loaderSource}\n${scannerSource}`, context);
+  vm.runInContext(`let stopChecklistQrScan = null; let qrDecoderPromise = null;\n${qrHelpers}\n${deadlineHelpers}\n${loaderSource}\n${scannerSource}`, context);
   context.decodeQrImageData = image => {decoded.push(image); return decodeValues.length ? decodeValues.shift() : null;};
   const fireTimer = delay => {
     const item = [...timers].find(([, timer]) => timer.delay === delay);
@@ -293,4 +294,65 @@ test('autofoco que não conclui permanece opcional e não impede decodificar o Q
   h.decodeValues.push(station.qrCode, station.qrCode); await h.open();
   await h.nextFrame(); await h.nextScan();
   assert.equal(h.reveals.length, 1); assert.equal(stream.track.stopped, true);
+});
+
+test('QR confirmado fora do catálogo mantém a câmera e permite ler outro QR', async () => {
+  const h = harness();
+  h.context.resolveChecklistQrStation = async ({qrValue}) => qrValue === station.qrCode ? station : null;
+  h.decodeValues.push('desconhecido', 'desconhecido', station.qrCode, station.qrCode);
+  await h.open(); await h.nextFrame(); await h.nextScan();
+  assert.match(h.status.textContent, /não cadastrado/);
+  assert.equal(h.streams[0].track.stopped, false);
+  h.fireTimer(2000); await h.nextFrame(); await h.nextScan();
+  assert.equal(h.reveals.length, 1); assert.equal(h.streams[0].track.stopped, true);
+});
+
+test('falha transitória no catálogo mantém a câmera para nova tentativa', async () => {
+  const h = harness(); let lookups = 0;
+  h.context.resolveChecklistQrStation = async () => {
+    if (++lookups === 1) throw Object.assign(new Error('Temporariamente indisponível'), {code: 'unavailable'});
+    return station;
+  };
+  h.decodeValues.push(...Array(4).fill(station.qrCode));
+  await h.open(); await h.nextFrame(); await h.nextScan();
+  assert.match(h.status.textContent, /conexão/); assert.equal(h.reveals.length, 0);
+  assert.equal(h.streams[0].track.stopped, false);
+  h.fireTimer(2000); await h.nextFrame(); await h.nextScan();
+  assert.equal(h.reveals.length, 1);
+});
+
+test('consulta de histórico travada vence o prazo e resultado tardio não abre checklist', async () => {
+  const h = harness(), gate = deferred();
+  h.context.readChecklistStationLatestRecord = () => gate.promise;
+  h.decodeValues.push(station.qrCode, station.qrCode);
+  await h.open(); await h.nextFrame(); h.fireTimer(100);
+  const reading = h.nextFrame(); await drain();
+  assert.match(h.status.textContent, /validando|consultando/i);
+  h.fireTimer(12000); await reading;
+  assert.equal(h.reveals.length, 0); assert.match(h.status.textContent, /conexão/);
+  gate.resolve({id: 'late-record'}); await drain();
+  assert.equal(h.reveals.length, 0); assert.equal(h.streams[0].track.stopped, false);
+  h.stop();
+});
+
+test('revogar acesso durante consulta do catálogo não inicia consulta do histórico', async () => {
+  const h = harness(), gate = deferred(); let historyReads = 0;
+  h.context.resolveChecklistQrStation = () => gate.promise;
+  h.context.readChecklistStationLatestRecord = async () => {historyReads++; return null;};
+  h.decodeValues.push(station.qrCode, station.qrCode);
+  await h.open(); await h.nextFrame(); h.fireTimer(100);
+  const reading = h.nextFrame(); await drain();
+  h.context.session.user = {uid: 'other-user'}; gate.resolve(station); await reading;
+  assert.equal(historyReads, 0); assert.equal(h.reveals.length, 0);
+  assert.equal(h.streams[0].track.stopped, true);
+});
+
+test('permissão negada na consulta mantém diagnóstico e encerra a câmera', async () => {
+  const h = harness();
+  h.context.resolveChecklistQrStation = async () => {throw Object.assign(new Error('Denied'), {code: 'permission-denied'});};
+  h.decodeValues.push(station.qrCode, station.qrCode);
+  await h.open(); await h.nextFrame(); await h.nextScan();
+  assert.match(h.status.textContent, /perfil/); assert.equal(h.reveals.length, 0);
+  assert.equal(h.streams[0].track.stopped, true);
+  h.close.onclick(); assert.equal(h.dialog.open, false);
 });

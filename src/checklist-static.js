@@ -3,9 +3,12 @@ import {findStationForQr, stationIsInDateRange, stationIsValidOn} from './checkl
 export function buildChecklistQrLookup(qrValue, sdk, db) {
   const value = String(qrValue ?? '').trim();
   if (!value || value.length > 300 || /[\u0000-\u001f\u007f]/u.test(value)) throw new Error('QR do Checklist inválido.');
-  return sdk.query(sdk.collection(db, 'stations'), sdk.or(
-    sdk.where('qrCode', '==', value), sdk.where(sdk.documentId(), '==', value)
-  ), sdk.limit(2));
+  // A QR may contain a registered URL. Collection document IDs cannot contain '/'.
+  const stations = sdk.collection(db, 'stations');
+  const qrFilter = sdk.where('qrCode', '==', value);
+  const filter = value.includes('/') ? qrFilter
+    : sdk.or(qrFilter, sdk.where(sdk.documentId(), '==', value));
+  return sdk.query(stations, filter, sdk.limit(2));
 }
 
 export function buildChecklistStationDayLookup(stationId, day, sdk, db) {
