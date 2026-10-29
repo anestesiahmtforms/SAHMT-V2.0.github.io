@@ -2,10 +2,12 @@ import {spawnSync} from 'node:child_process';
 import {readFile, writeFile, cp} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {dirname, resolve} from 'node:path';
+import {stampShellRelease} from './lib/shell-release.js';
 const require = createRequire(import.meta.url);
 const vite = resolve(dirname(require.resolve('vite/package.json')), 'bin/vite.js');
 const rootBase = '/SAHMT-V2.0.github.io/', fbBase = rootBase + 'gestao/';
 const faOnly=process.argv.includes('--fa-only');
+const shellRelease=Date.now();
 for (const target of faOnly?['FA']:['FA', 'FB']) {
   const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target};
   if (target === 'FB') Object.assign(env, {
@@ -18,6 +20,8 @@ for (const target of faOnly?['FA']:['FA', 'FB']) {
   });
   const result = spawnSync(process.execPath, [vite, 'build'], {stdio:'inherit', env});
   if (result.error || result.status !== 0) process.exit(result.status || 1);
+  const workerPath=new URL(target==='FB'?'../dist/gestao/service-worker.js':'../dist/service-worker.js',import.meta.url);
+  await writeFile(workerPath,stampShellRelease(await readFile(workerPath,'utf8'),shellRelease));
 }
 // FB owns a narrower service-worker scope and a separate cache namespace.
 if(!faOnly){
@@ -42,3 +46,4 @@ if(surveys.error||surveys.status!==0)process.exit(surveys.status||1);
 // Legacy installed shells already exclude tools/ from their navigation cache.
 // Keep this entry available without requiring a cache reset or another login.
 await cp(new URL('../dist/enquetes/',import.meta.url),new URL('../dist/tools/enquetes/',import.meta.url),{recursive:true});
+
