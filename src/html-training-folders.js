@@ -1,6 +1,11 @@
+export const trainingAccessPath=training=>[/^rops/i.test(String(training.category||''))?'ROPs':training.category,...(String(training.subcategory||'').trim()?[String(training.subcategory).trim()]:[])];
+export function trainingPathAllowed(access,path){
+ const disabled=Array.isArray(access?.disabled)?access.disabled:[];
+ return !path.some((_,index)=>disabled.includes(JSON.stringify(path.slice(0,index+1))));
+}
 export const trainingCategories=Object.freeze(['Protocolos','Diretrizes','ROPs','Documentos administrativos']);
 const folderOrder={Protocolos:['Protocolos do SAHMT','Protocolos da Instituição'],ROPs:['Cultura de segurança','Comunicação','Uso de medicamentos','Vida profissional / Força de Trabalho','Controle de Infecção','Avaliação de riscos'],'Documentos administrativos':['Acesso restrito','Acesso geral']};
-const category=item=>String(item.category||'').startsWith('ROPs')?'ROPs':item.category||'Outros documentos';
+const category=item=>trainingAccessPath(item)[0]||'Outros documentos';
 const subcategory=item=>String(item.subcategory||'').trim();
 
 /** Only receives the already authorized catalog. Folder clicks perform no reads. */
