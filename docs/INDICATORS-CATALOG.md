@@ -44,24 +44,24 @@ Fórmulas de referência; metas pendentes dependem de aprovação institucional.
 | Indicador | Unidade | Cálculo | Cadência |
 |---|---|---|---|
 | Registros de ocorrências recebidos | registros | Contagem de notificações recebidas no mês. Não se calcula incidência sem população exposta. | Mensal |
-| Taxa de mudança de técnica anestésica | % | Mudanças de técnica / população elegível definida na origem × 100. | Mensal |
-| Incidência de via aérea difícil identificada no intraoperatório | % | Casos identificados / população elegível definida na origem × 100. | Mensal |
-| Efetividade do protocolo de manejo de intoxicação por anestésicos locais | % | Casos com manejo efetivo / população elegível definida na origem × 100. | Mensal |
-| Incidência de encaminhamento à UTI não planejado por eventos anestésicos | % | Encaminhamentos não planejados por eventos anestésicos / população elegível definida na origem × 100. | Mensal |
-| Incidência de náuseas e vômitos do intraoperatório até a alta anestésica | % | Procedimentos com náuseas ou vômitos / população elegível definida na origem × 100. | Mensal |
-| Incidência de dor aguda do intraoperatório até a alta anestésica | % | Procedimentos com dor aguda / população elegível definida na origem × 100. | Mensal |
-| Efetividade do controle glicêmico perioperatório | % | Pacientes com controle efetivo / população elegível definida na origem × 100. | Mensal |
-| Evento de hipoglicemia perioperatória | % | Procedimentos com hipoglicemia / população elegível definida na origem × 100. | Mensal |
-| Incidência de hipotermia não intencional do intraoperatório até a alta anestésica | % | Procedimentos com hipotermia não intencional / população elegível definida na origem × 100. | Mensal |
-| Incidência de PCR do intraoperatório até a alta anestésica | % | Procedimentos com parada cardiorrespiratória / população elegível definida na origem × 100. | Mensal |
-| Efetividade do protocolo de prevenção de cefaleia pós punção dural | % | 1 − Casos de cefaleia / população elegível definida na origem × 100. | Mensal |
-| Taxa de procedimentos eletivos com consulta pré-anestésica | % | Eletivos com consulta pré-anestésica / população elegível definida na origem × 100. | Mensal |
-| Taxa de estratificação de risco anestésico do serviço | % | Procedimentos com risco estratificado / população elegível definida na origem × 100. | Mensal |
-| Taxa de saídas sem eventos relacionados ao ato anestésico | % | 1 − Procedimentos únicos com pelo menos um evento / população elegível definida na origem × 100. | Mensal |
-| Taxa de mortalidade associada à anestesia em até 48 horas | % | Óbitos atribuídos à anestesia em até 48h / população elegível definida na origem × 100. | Mensal |
-| Taxa de mortalidade associada à anestesia em até 30 dias | % | Óbitos atribuídos à anestesia em até 30 dias / população elegível definida na origem × 100. | Mensal |
-| Taxa de conformidade da profilaxia antimicrobiana cirúrgica | % | Procedimentos com profilaxia conforme / população elegível definida na origem × 100. | Mensal |
-| Efetividade do Protocolo de Cirurgia Segura | % | Procedimentos com protocolo conforme / população elegível definida na origem × 100. | Mensal |
+| Taxa de mudança de técnica anestésica | % | (Mudanças de técnica / população elegível definida na origem) × 100. | Mensal |
+| Incidência de via aérea difícil identificada no intraoperatório | % | (Casos identificados / população elegível definida na origem) × 100. | Mensal |
+| Efetividade do protocolo de manejo de intoxicação por anestésicos locais | % | (Casos com manejo efetivo / população elegível definida na origem) × 100. | Mensal |
+| Incidência de encaminhamento à UTI não planejado por eventos anestésicos | % | (Encaminhamentos não planejados por eventos anestésicos / população elegível definida na origem) × 100. | Mensal |
+| Incidência de náuseas e vômitos do intraoperatório até a alta anestésica | % | (Procedimentos com náuseas ou vômitos / população elegível definida na origem) × 100. | Mensal |
+| Incidência de dor aguda do intraoperatório até a alta anestésica | % | (Procedimentos com dor aguda / população elegível definida na origem) × 100. | Mensal |
+| Efetividade do controle glicêmico perioperatório | % | (Pacientes com controle efetivo / população elegível definida na origem) × 100. | Mensal |
+| Evento de hipoglicemia perioperatória | % | (Procedimentos com hipoglicemia / população elegível definida na origem) × 100. | Mensal |
+| Incidência de hipotermia não intencional do intraoperatório até a alta anestésica | % | (Procedimentos com hipotermia não intencional / população elegível definida na origem) × 100. | Mensal |
+| Incidência de PCR do intraoperatório até a alta anestésica | % | (Procedimentos com parada cardiorrespiratória / população elegível definida na origem) × 100. | Mensal |
+| Efetividade do protocolo de prevenção de cefaleia pós punção dural | % | (1 − (Casos de cefaleia / população elegível definida na origem)) × 100. | Mensal |
+| Taxa de procedimentos eletivos com consulta pré-anestésica | % | (Eletivos com consulta pré-anestésica / população elegível definida na origem) × 100. | Mensal |
+| Taxa de estratificação de risco anestésico do serviço | % | (Procedimentos com risco estratificado / população elegível definida na origem) × 100. | Mensal |
+| Taxa de saídas sem eventos relacionados ao ato anestésico | % | (1 − (Procedimentos únicos com pelo menos um evento / população elegível definida na origem)) × 100. | Mensal |
+| Taxa de mortalidade associada à anestesia em até 48 horas | % | (Óbitos atribuídos à anestesia em até 48h / população elegível definida na origem) × 100. | Mensal |
+| Taxa de mortalidade associada à anestesia em até 30 dias | % | (Óbitos atribuídos à anestesia em até 30 dias / população elegível definida na origem) × 100. | Mensal |
+| Taxa de conformidade da profilaxia antimicrobiana cirúrgica | % | (Procedimentos com profilaxia conforme / população elegível definida na origem) × 100. | Mensal |
+| Efetividade do Protocolo de Cirurgia Segura | % | (Procedimentos com protocolo conforme / população elegível definida na origem) × 100. | Mensal |
 
 ## Pesquisas e bem-estar
 
