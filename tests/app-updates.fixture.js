@@ -4,7 +4,7 @@ import {mountManagementHub} from '../src/management-hub.js';
 
 const registration=Object.assign(new EventTarget(),{waiting:null,installing:null,async update(){window.updateChecks++;}});
 const serviceWorker={controller:{state:'activated'},async register(){return registration;}};
-window.updateChecks=0;window.repairs=[];window.indicatorCalls=[];window.indicatorFailure=false;window.deferIndicators=false;window.apiSignal=null;
+window.repairAccepted=true;window.updateChecks=0;window.repairs=[];window.indicatorCalls=[];window.indicatorFailure=false;window.deferIndicators=false;window.apiSignal=null;
 let cleanup;
 window.openHub=(access=true)=>{
  cleanup?.();
@@ -18,5 +18,5 @@ window.openHub=(access=true)=>{
 window.closeHub=()=>cleanup?.();
 document.querySelector('#open-hub').addEventListener('click',()=>window.openHub());
 window.offerUpdate=()=>{registration.waiting=Object.assign(new EventTarget(),{state:'installed'});registration.dispatchEvent(new Event('updatefound'));};
-window.updates=await installAppUpdatePrompt({base:'/SAHMT-V2.0.github.io/',target:'FA',serviceWorker,repair:options=>{window.repairs.push(options);return true;}});
+window.updates=await installAppUpdatePrompt({base:'/SAHMT-V2.0.github.io/',target:'FA',serviceWorker,repair:options=>{window.repairs.push(options);return window.repairAccepted;}});
 window.fixtureReady=true;
