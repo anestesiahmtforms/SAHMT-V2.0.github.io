@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as model from '../src/html-training-model.js';
-import {trainingCategories, trainingFolderLevel} from '../src/html-training-folders.js';
+import {trainingCategories, trainingFolderLevel, trainingPathAllowed} from '../src/html-training-folders.js';
 import {renderTrainingDocumentCard} from '../src/html-training-card.js';
 import * as activity from '../src/html-training-activity.js';
 import {randomUUID} from 'node:crypto';
@@ -28,7 +28,7 @@ function trainings({holdOpen = false, holdBegin = false, completed = false} = {}
     throw Error(action);
   };
   const source = readFileSync(new URL('../src/html-training.js', import.meta.url), 'utf8');
-  const ctx = vm.createContext({...model, ...activity, crypto:{randomUUID}, h: model.escapeHtml, trainingCategories, trainingFolderLevel, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
+  const ctx = vm.createContext({...model, ...activity, crypto:{randomUUID}, h: model.escapeHtml, trainingCategories, trainingFolderLevel, trainingPathAllowed, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
   vm.runInContext(source.replace(/^import[^\n]+\n/gm, '').replaceAll('export ', '').replaceAll('import.meta.env', '{}'), ctx);
   const controller = ctx.mountHtmlTrainings(root, {user: {uid: 'one'}, api});
   const click = (action, data = {}) => listeners.get('click')({target: {closest: () => ({dataset: {ht: action, ...data}})}});
