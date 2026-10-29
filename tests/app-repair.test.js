@@ -10,6 +10,7 @@ test('stale module recovery preserves route and stops after one automatic attemp
 test('network/profile permission failures are not treated as missing JavaScript',()=>{
  assert.equal(staleModuleFailure(Error('Importing a module script failed.')),true);
  assert.equal(staleModuleFailure(Error('Failed to fetch dynamically imported module: https://example.test/a.js')),true);
+ assert.equal(staleModuleFailure(Error('Unable to preload CSS for https://example.test/training.css')),true);
  assert.equal(staleModuleFailure(Error('Missing or insufficient permissions')),false);
  assert.equal(staleModuleFailure(Error('auth/invalid-credential')),false);
 });
@@ -19,3 +20,4 @@ test('recovery refuses external targets and cannot auto-loop when storage fails'
  assert.equal(repairAppFiles({target:'https://example.com',location}),false);
  assert.equal(repairAppFiles({hash:'javascript:alert(1)',location}),false);assert.deepEqual(urls,[]);
 });
+

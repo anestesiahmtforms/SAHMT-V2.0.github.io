@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v283';
+const CACHE = 'sahmt-v2-shell-v284';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -46,6 +46,7 @@ self.addEventListener('install', (event) => {
       'src/google-project-auth-runtime.js', 'src/google-project-auth-ui.js',
       'src/google-project-auth-google-button.js',
       'src/management-hub.js', 'src/performance-ui.js', 'src/evaluation-data.js', 'src/label-camera.js',
+      'src/html-training.js',
       'src/offline-cache.js', 'src/offline-runtime-mode.js', 'src/offline-report-cache.js', 'src/outbox.js',
       'src/offline-outbox-policy.js', 'src/provisional-operational-channel.js',
       'src/checklist-conference-listener.js', 'src/checklist-responsibility-listener.js', 'src/label-ai.js'
@@ -127,3 +128,4 @@ self.addEventListener('fetch', (event) => {
     });
   })());
 });
+
