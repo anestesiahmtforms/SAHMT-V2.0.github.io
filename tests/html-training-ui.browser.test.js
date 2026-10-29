@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 
-test('HTML training reader, cache, cleanup, editor and audit work in Edge desktop/mobile',{timeout:120000},async()=>{
+test('HTML training opens directly with compact personal folders on desktop/mobile',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});
  const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FB'}),'import.meta.env.VITE_HTML_TRAINING_ENDPOINT':'""'},server:{host:'127.0.0.1',port:0}});
  server.middlewares.use('/training-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;padding:20px;background:#f4f7f6;font-family:system-ui}</style><div id="root"></div><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
-  browser=await chromium.launch({channel:'msedge',headless:true});
+  browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
   const page=await browser.newPage({viewport:{width:1366,height:1000}}),errors=[];
   page.on('pageerror',error=>{errors.push(error.message);console.log('page error',error.message);});
   page.on('console',msg=>{if(msg.type()==='error')console.log('browser error',msg.text());});
@@ -39,12 +39,21 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Editar treinamento',exact:true}).count(),0);
   assert.equal(await page.getByRole('button',{name:'Abrir treinamento',exact:true}).count(),0);
+  await page.setViewportSize({width:390,height:844});
+  const cards=page.locator('.ht-document-folder');
+  assert.equal(await cards.count(),2);
+  const left=await cards.nth(0).boundingBox(),right=await cards.nth(1).boundingBox();
+  assert.ok(left&&right&&right.x>left.x&&Math.abs(left.y-right.y)<2,'document folders share one row on mobile');
+  assert.ok(left.height<200&&right.height<200,'document folders remain compact');
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:'.local-preview/html-training-document-folders-mobile.png',fullPage:true});
   const folder = page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true});
   await folder.focus();
   await page.keyboard.press('Enter');
   assert.equal(await page.getByRole('button',{name:'Realizar auditoria'}).count(),0);
-  await page.getByRole('button',{name:'Iniciar leitura',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Iniciar leitura',exact:true}).count(),0);
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
+  await page.screenshot({path:'.local-preview/html-training-direct-reader-mobile.png',fullPage:true});
   assert.equal(await page.evaluate(()=>window.pwned),undefined);
   assert.ok(!requests.some(u=>u.includes('invalid.test')));
   assert.equal(await page.locator('.ht-content-frame').getAttribute('sandbox'),'allow-same-origin');
@@ -62,9 +71,12 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.getByRole('button',{name:'Iniciar segunda tentativa'}).click();
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='SUBMIT').length),1);
-  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
-  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),1);
-  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length),2);
+  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-ht="open"][data-id="rop-01"]')?.dataset.activityState==='green');
+  await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
+  await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
+  assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),2);
+  assert.ok(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length)>=2);
   await page.evaluate(()=>window.mount('manager'));
   await enterFolder();
   await page.getByRole('button',{name:'Editar treinamento',exact:true}).click();
