@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 test('HTML training opens directly with compact personal folders on desktop/mobile',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});
  const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FB'}),'import.meta.env.VITE_HTML_TRAINING_ENDPOINT':'""'},server:{host:'127.0.0.1',port:0}});
- server.middlewares.use('/training-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-family:system-ui}</style><dialog class="management-area-dialog" aria-label="Área de gestão"><header class="management-area-dialog__header"><h2>ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body"><div class="management-area-detail" id="root"></div></div><footer class="management-area-dialog__footer"><button type="button">VOLTAR</button></footer></dialog><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
+ server.middlewares.use('/training-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-family:system-ui}.source-page{padding:40px;color:#173f57}.source-page article{padding:30px;margin:15px;background:#f6eddd;border:1px solid #ddcba9;border-radius:16px}</style><main class="source-page"><h1>GRUPOS DE GESTÃO</h1><article>Gestão de Pessoas</article><article>Gestão de Documentos</article><article>Gestão da Qualidade</article></main><dialog class="management-area-dialog" aria-label="Área de gestão"><header class="management-area-dialog__header"><h2>ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body"><div class="management-area-detail" id="root"></div></div><footer class="management-area-dialog__footer"><button type="button">VOLTAR</button></footer></dialog><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
   browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
@@ -33,7 +33,9 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
     assert.equal(await page.evaluate(()=>window.trainingBack()),true);
   }
   const banner=await page.locator('dialog').boundingBox();
-  assert.ok(banner.width<=720&&banner.height<650,'navigation uses a compact banner');
+  assert.equal(await page.locator('.management-area-dialog__header').isVisible(),false,'the beige panel is the entire dialog');
+  assert.match(await page.locator('dialog').evaluate(el=>getComputedStyle(el,'::backdrop').backdropFilter),/blur\(9px\)/);
+  assert.ok(banner.width<=660&&banner.height<450,'navigation uses a compact banner');
   assert.ok(Math.abs(banner.y+banner.height/2-500)<2,'desktop banner is vertically centered');
   const desktopCards=await page.locator('.ht-browser-grid').evaluate(grid=>[...grid.children].map(card=>({width:card.getBoundingClientRect().width,height:card.getBoundingClientRect().height})));
   assert.equal(desktopCards.length,4);
@@ -43,8 +45,9 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.equal(await page.getByRole('button',{name:'Abrir treinamento',exact:true}).count(),0);
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.waitForTimeout(200);
   const mobileBanner=await page.locator('dialog').boundingBox();
-  assert.ok(mobileBanner.height<600&&Math.abs(mobileBanner.y+mobileBanner.height/2-422)<2,'mobile banner stays compact and centered');
+  assert.ok(mobileBanner.height<560&&Math.abs(mobileBanner.y+mobileBanner.height/2-422)<2,'mobile banner stays compact and centered');
   await page.screenshot({path:'.local-preview/html-training-folders-mobile.png',fullPage:true});
   await page.setViewportSize({width:320,height:568});
   await page.getByRole('button',{name:'ROPs',exact:true}).click();
@@ -75,7 +78,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.ok(left&&right&&right.x>left.x&&Math.abs(left.y-right.y)<2,'document folders share one row on mobile');
   assert.ok(Math.abs(left.height-right.height)<2&&Math.abs(left.width-right.width)<2,'document folders have uniform dimensions');
   const layout=await page.locator('.ht-browser-grid').evaluate(grid=>({height:grid.clientHeight,scrollHeight:grid.scrollHeight,bottom:grid.getBoundingClientRect().bottom,last:Math.max(...[...grid.children].map(card=>card.getBoundingClientRect().bottom))}));
-  assert.ok(layout.height>300&&layout.last>=layout.bottom-20,'folders fill the available modal height');
+  assert.ok(layout.height<250&&layout.last>=layout.bottom-20,'document list hugs its cards instead of filling the display');
   assert.ok(layout.scrollHeight<=layout.height+2,'two folders fit inside the fixed modal');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:'.local-preview/html-training-document-folders-mobile.png',fullPage:true});
@@ -161,6 +164,26 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:'.local-preview/html-training-ui-mobile.png',fullPage:true});
+  await page.evaluate(()=>window.mount('admin'));
+  const toggle=async label=>page.getByRole('button',{name:'Desativar '+label,exact:true}).click();
+  await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
+  await toggle('Protocolos');
+  await page.waitForFunction(()=>document.querySelector('[data-folder-enabled="false"]'));
+  assert.equal(await page.locator('.ht-head h2').textContent(),'GESTÃO DE DOCUMENTOS','admin control changes access without navigating');
+  await page.evaluate(()=>window.mount());
+  await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Protocolos',exact:true}).isDisabled(),true);
+  await page.evaluate(()=>window.mount('admin'));
+  await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Ativar Protocolos',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('[data-folder-enabled="false"]'));
+  await page.getByRole('button',{name:'ROPs',exact:true}).click();
+
+  await toggle('Cultura de segurança');
+  await page.waitForFunction(()=>document.querySelector('[data-folder-enabled="false"]'));
+  assert.equal(await page.locator('.ht-head h2').textContent(),'ROPs');
+  await page.getByRole('button',{name:'Ativar Cultura de segurança',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('[data-folder-enabled="false"]'));
   await page.evaluate(()=>window.mount());await enterFolder();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).waitFor();
   await page.evaluate(()=>window.denyOpen());await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
   await page.getByText('Acesso revogado para esta conta.',{exact:true}).waitFor();

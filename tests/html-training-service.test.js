@@ -400,3 +400,29 @@ test('audit autosave history remains durable without growing the current draft p
  const earliest=await h.store.get('htmlTrainingAuditHistory','long-audit_v1');
  assert.equal(earliest.context.sector,'Sector 0');assert.equal(earliest.updatedByUid,'manager');
 });
+
+
+test('only administrators change folder access; disabled parents and children block direct reads and managers',async()=>{
+ const h=await setup();
+ await assert.rejects(h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:false,expectedVersion:0}),{code:'FORBIDDEN'});
+ const changed=await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:false,expectedVersion:0},'admin');
+ assert.equal(changed.folderAccess.version,1);
+ assert.equal((await h.exec('LIST')).trainings.length,0);
+ for(const action of ['OPEN','CONTENT','BEGIN'])await assert.rejects(h.exec(action,{trainingId:'rop-one',requestId:'one'}),{code:'FORBIDDEN'});
+ await assert.rejects(h.exec('EDIT',{trainingId:'rop-one'},'manager'),{code:'FORBIDDEN'});
+ assert.equal((await h.exec('LIST',{},'admin')).trainings.length,1);
+ await assert.rejects(h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:0},'admin'),{code:'VERSION_CONFLICT'});
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:1},'admin');
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:false,expectedVersion:2},'admin');
+ assert.equal((await h.exec('LIST')).trainings.length,0);
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:true,expectedVersion:3},'admin');
+ assert.equal((await h.exec('LIST')).trainings.length,1);
+ assert.equal(await h.store.get('htmlTrainingStates','rop-one_participant'),null);
+});
+
+test('folder changes racing an existing reading revoke writes and preserve progress',async()=>{
+ const h=await setup();const begun=await h.exec('BEGIN',{trainingId:'rop-one',requestId:'begin-folder'});
+ h.store.beforeCommit=()=>h.store.seed('htmlTrainingSettings','folders',{version:1,disabled:[JSON.stringify(['ROPs'])]});
+ await assert.rejects(h.exec('READ',{trainingId:'rop-one',runId:begun.state.run.id,index:0}),{code:'FORBIDDEN'});
+ assert.equal((await h.store.get('htmlTrainingStates','rop-one_participant')).run.readCount,0);
+});

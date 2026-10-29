@@ -30,6 +30,7 @@ test('production training bundle authenticates and reads its catalog in workerd'
    if(url.pathname.endsWith(':beginTransaction'))return Response.json({transaction:'runtime-transaction'});
    if(url.pathname.endsWith(':rollback'))return Response.json({});
    if(url.pathname.endsWith('/users/'+uid))return Response.json({name:root+'/users/'+uid,fields:encodeFields({uid,active:true,access:true,role:'administrador_app'})});
+   if(url.pathname.endsWith('/htmlTrainingSettings/folders'))return Response.json({error:{status:'NOT_FOUND'}},{status:404});
    if(url.pathname.includes('/documentAccessEmails/'))return Response.json({error:{status:'NOT_FOUND'}},{status:404});
    if(url.pathname.endsWith(':runQuery'))return Response.json([{document:{name:root+'/htmlTrainings/draft',fields:encodeFields(training)}}]);
    if(url.pathname.endsWith(':batchGet'))return Response.json(body.documents.map(name=>({found:{name,fields:encodeFields(training)}})));
