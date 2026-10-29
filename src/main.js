@@ -2117,9 +2117,10 @@ function revealChecklistStation(station, day, stations, latestRecord = undefined
   showChecklistStationBanner(station, record, day, stations, {fromQr: true});
 }
 
-async function readChecklistStationLatestRecord(stationId, day) {
+async function readChecklistStationLatestRecord(stationId, day, {isCurrent} = {}) {
   const {getLatestChecklistRecordForStation} = await import('./data.js');
-  return getLatestChecklistRecordForStation(stationId, day, {uid: session.user?.uid});
+  if (isCurrent && !isCurrent()) return null;
+  return getLatestChecklistRecordForStation(stationId, day, {uid: session.user?.uid, isCurrent});
 }
 
 function ensureChecklistDailyReportOpen(day) {
@@ -2397,24 +2398,31 @@ async function openChecklistQrScanner(stations, day) {
     status.textContent = 'QR reconhecido. Validando arsenal e consultando o checklist…';
     let station;
     let latestRecord;
+    let validationPending = true;
+    let validationStage = 'catálogo';
+    const readCurrent = () => validationPending && scannerCurrent();
+    const onTimeout = () => { validationPending = false; };
     try {
       station = await withinDeadline(() => resolveChecklistQrStation({stations, qrValue: raw, day, includeInactive: can('checklistManage'),
         readByQr: async qr => {
           const {getChecklistStationByQr} = await import('./data.js');
-          if (!scannerCurrent()) return [];
-          const match = await getChecklistStationByQr(qr);
+          if (!readCurrent()) return [];
+          const match = await getChecklistStationByQr(qr, {isCurrent: readCurrent});
           return match ? [match] : [];
-        }}), {timeoutMs: 12000});
+        }}), {timeoutMs: 12000, onTimeout});
       if (!scannerCurrent()) return null;
-      if (station) latestRecord = await withinDeadline(() => readChecklistStationLatestRecord(station.id, day), {timeoutMs: 12000});
+      if (station) {
+        validationStage = 'histórico';
+        latestRecord = await withinDeadline(() => readChecklistStationLatestRecord(station.id, day, {isCurrent: readCurrent}), {timeoutMs: 20000, onTimeout});
+      }
     } catch (error) {
       if (scannerCurrent()) status.textContent = error.code === 'permission-denied'
         ? 'Seu perfil não pode consultar este arsenal.'
-        : ['failed-precondition', 'checklist-history-incomplete'].includes(error.code)
-        ? 'QR lido. O histórico do arsenal precisa de atualização no servidor. Avise o administrador.'
-        : 'Não foi possível validar o QR agora. Verifique a conexão e tente novamente.';
+        : `QR lido. Não foi possível consultar o ${validationStage}. Verifique a conexão e tente novamente. Código: ${error.code || 'consulta-indisponivel'}.`;
       if (error.code === 'permission-denied') cleanup();
       return null;
+    } finally {
+      validationPending = false;
     }
     if (!scannerCurrent()) return null;
     if (!station) { status.textContent = 'QR lido, mas não cadastrado no catálogo desta data. Aponte para outro QR.'; return null; }

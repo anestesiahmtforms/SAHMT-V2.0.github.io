@@ -322,13 +322,15 @@ test('falha transitória no catálogo mantém a câmera para nova tentativa', as
 });
 
 test('consulta de histórico travada vence o prazo e resultado tardio não abre checklist', async () => {
-  const h = harness(), gate = deferred();
-  h.context.readChecklistStationLatestRecord = () => gate.promise;
+  const h = harness(), gate = deferred(); let readCurrent;
+  h.context.readChecklistStationLatestRecord = (id, day, options) => {readCurrent = options.isCurrent; return gate.promise;};
   h.decodeValues.push(station.qrCode, station.qrCode);
   await h.open(); await h.nextFrame(); h.fireTimer(100);
   const reading = h.nextFrame(); await drain();
   assert.match(h.status.textContent, /validando|consultando/i);
-  h.fireTimer(12000); await reading;
+  assert.equal(readCurrent(), true);
+  h.fireTimer(20000); await reading;
+  assert.equal(readCurrent(), false);
   assert.equal(h.reveals.length, 0); assert.match(h.status.textContent, /conexão/);
   gate.resolve({id: 'late-record'}); await drain();
   assert.equal(h.reveals.length, 0); assert.equal(h.streams[0].track.stopped, false);
@@ -355,4 +357,36 @@ test('permissão negada na consulta mantém diagnóstico e encerra a câmera', a
   assert.match(h.status.textContent, /perfil/); assert.equal(h.reveals.length, 0);
   assert.equal(h.streams[0].track.stopped, true);
   h.close.onclick(); assert.equal(h.dialog.open, false);
+});
+
+test('QR abre banner com histórico acima de 500 mesmo sem índices do catálogo e do histórico', async () => {
+  const {readChecklistQrStation, resolveChecklistQrStation} = await import('../src/checklist-static.js');
+  const {readChecklistStationDay} = await import('../src/checklist-history.js');
+  const h = harness(), queries = [];
+  const sdk = Object.fromEntries(['collection', 'query', 'where', 'orderBy', 'limit', 'startAfter', 'or', 'documentId']
+    .map(name => [name, (...args) => ({name, args})]));
+  const records = Array.from({length: 1205}, (_, i) => ({id: String(i).padStart(4, '0'), stationId: station.id,
+    date: day, condition: i === 1204 ? 'NAO' : 'SIM', occurrence: i === 1204 ? 'Falha fictícia' : '', createdAt: new Date(i)}));
+  sdk.getDocs = async query => {
+    queries.push(query);
+    if (query.args.some(arg => ['where', 'or', 'orderBy'].includes(arg.name))) {
+      throw Object.assign(new Error('The query requires an index.'), {code: 'failed-precondition'});
+    }
+    const rows = query.args[0].args[1] === 'stations' ? [station] : records;
+    const cursor = query.args.find(arg => arg.name === 'startAfter')?.args[0].id;
+    const offset = cursor == null ? 0 : rows.findIndex(row => row.id === cursor) + 1;
+    const count = query.args.find(arg => arg.name === 'limit').args[0];
+    return {docs: rows.slice(offset, offset + count).map(row => ({id: row.id, data: () => row}))};
+  };
+  h.context.resolveChecklistQrStation = options => resolveChecklistQrStation({...options, stations: [],
+    readByQr: async qr => {const match = await readChecklistQrStation(qr, sdk, 'db'); return match ? [match] : [];}});
+  h.context.readChecklistStationLatestRecord = (id, date, options) => readChecklistStationDay(id, date, sdk, 'db', options);
+  h.decodeValues.push(station.qrCode, station.qrCode);
+  await h.open(); await h.nextFrame(); await h.nextScan();
+  assert.equal(h.reveals.length, 1, h.status.textContent);
+  assert.equal(h.reveals[0][3].id, '1204');
+  assert.equal(h.reveals[0][3].condition, 'NAO');
+  assert.equal(h.streams[0].track.stopped, true);
+  assert.equal(h.dialog.open, false);
+  assert.ok(queries.some(query => query.args.some(arg => arg.name === 'startAfter')));
 });

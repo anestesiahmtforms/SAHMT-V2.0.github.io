@@ -3,7 +3,7 @@ import {assertOnlineOperation, unconfirmedWrite} from './online-only.js';
 import {notificationReference} from './notification-domain.js';
 import {managementDataProject, managementDataGeneration, managementDatabase as managementFullDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
-import {buildChecklistQrLookup} from './checklist-static.js';
+import {readChecklistQrStation} from './checklist-static.js';
 import {readChecklistStationDay} from './checklist-history.js';
 import {normalizeChecklistStationTitle} from './checklist-display.js';
 import {confirmOperationalSheetDelivery} from './operational-sheet-delivery.js';
@@ -1675,17 +1675,13 @@ export async function listChecklistStations({pageSize = 200, uid} = {}) {
   }});
 }
 
-export async function getChecklistStationByQr(qrValue) {
-  const lookup = buildChecklistQrLookup(qrValue, {collection, query, where, limit, or, documentId}, db);
-  const result = await getDocsFromServer(lookup);
-  if (result.docs.length !== 1) return null;
-  const document = result.docs[0];
-  return {...document.data(), id: document.id};
+export async function getChecklistStationByQr(qrValue, options = {}) {
+  return readChecklistQrStation(qrValue, {collection, query, where, limit, or, documentId, startAfter, getDocs: getDocsFromServer}, db, options);
 }
 
-export async function getLatestChecklistRecordForStation(stationId, day, {uid} = {}) {
+export async function getLatestChecklistRecordForStation(stationId, day, {uid, isCurrent} = {}) {
   try {
-    return await readChecklistStationDay(stationId, day, {collection, query, where, orderBy, limit, getDocs: getDocsFromServer}, db);
+    return await readChecklistStationDay(stationId, day, {collection, query, where, orderBy, limit, startAfter, getDocs: getDocsFromServer}, db, {isCurrent});
   } catch (error) {
     if (!mayUseOfflineCache(error) || !uid) throw error;
     const [cached, unsettled] = await Promise.all([

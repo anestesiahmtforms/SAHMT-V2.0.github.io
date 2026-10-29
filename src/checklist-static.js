@@ -1,4 +1,5 @@
 import {findStationForQr, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
+import {assertChecklistReadCurrent, readChecklistPages} from './checklist-read.js';
 
 export function buildChecklistQrLookup(qrValue, sdk, db) {
   const value = String(qrValue ?? '').trim();
@@ -17,6 +18,25 @@ export function buildChecklistStationDayLookup(stationId, day, sdk, db) {
   }
   return sdk.query(sdk.collection(db, 'checklists'), sdk.where('stationId', '==', stationId),
     sdk.where('date', '<=', day), sdk.orderBy('date', 'desc'), sdk.orderBy('createdAt', 'desc'), sdk.limit(1));
+}
+
+export async function readChecklistQrStation(qrValue, sdk, db, {isCurrent = () => true} = {}) {
+  const lookup = buildChecklistQrLookup(qrValue, sdk, db);
+  assertChecklistReadCurrent(isCurrent);
+  try {
+    const result = await sdk.getDocs(lookup);
+    assertChecklistReadCurrent(isCurrent);
+    return result.docs.length === 1 ? {...result.docs[0].data(), id: result.docs[0].id} : null;
+  } catch (error) {
+    if (error.code !== 'failed-precondition') throw error;
+    // An unfiltered collection query uses only the built-in document-name index.
+    const value = String(qrValue).trim();
+    const matches = [];
+    await readChecklistPages('stations', [], station => {
+      if (String(station.qrCode ?? '').trim() === value || station.id === value) matches.push(station);
+    }, sdk, db, isCurrent);
+    return matches.length === 1 ? matches[0] : null;
+  }
 }
 
 export async function resolveChecklistQrStation({stations = [], qrValue, day, includeInactive = false, readByQr} = {}) {
