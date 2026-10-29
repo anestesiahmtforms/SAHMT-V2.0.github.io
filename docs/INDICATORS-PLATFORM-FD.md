@@ -2,9 +2,9 @@
 
 ## Escopo e acesso
 
-A plataforma fica em `https://rotinas-8a617.web.app`, incorporada em Governança → Resultados dos Indicadores no PWA existente. Quatro ambientes separados: Grupos de Gestão, Registros e Qualidade Assistencial, Pesquisas e Bem-estar, Operação Assistencial. O acesso existente à Governança foi preservado; esta primeira versão exige administrador ativo em FA e administrador ou permissão de indicadores em FD. Nenhum usuário comum recebeu acesso adicional.
+O painel abre diretamente em Governança → INDICADORES - SAHMT no PWA existente, usando a mesma interface da publicação dedicada `https://rotinas-8a617.web.app`. A abertura no app não depende de iframe ou da disponibilidade desse hosting. Quatro ambientes separados: Grupos de Gestão, Registros e Qualidade Assistencial, Pesquisas e Bem-estar, Operação Assistencial. O acesso existente à Governança foi preservado; esta primeira versão exige administrador ativo em FA e administrador ou permissão de indicadores em FD. Nenhum usuário comum recebeu acesso adicional.
 
-O FD guarda apenas snapshots analíticos, análises mensais, planos trimestrais e auditoria separada. Fontes continuam em seus projetos, sem migração de registros. A sessão Google FA é verificada pelo Firebase e os perfis ativos em FA e FD são conferidos no servidor em cada operação. O iframe não recebe token, nome, e-mail ou UID. Origens e janela de origem são verificadas nos dois sentidos. Respostas usam `no-store`; a interface não cria cópia em armazenamento local.
+O FD guarda apenas snapshots analíticos, análises mensais, planos trimestrais e auditoria separada. Fontes continuam em seus projetos, sem migração de registros. A sessão Google FA é verificada pelo Firebase e os perfis ativos em FA e FD são conferidos no servidor em cada operação. No app, o painel usa a chamada autenticada existente para o serviço dedicado da FD. Na publicação dedicada, o iframe não recebe token, nome, e-mail ou UID; origens e janela de origem são verificadas nos dois sentidos. Respostas usam `no-store`; a interface não cria cópia em armazenamento local.
 
 ## Catálogo e critérios
 

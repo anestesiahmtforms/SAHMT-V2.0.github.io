@@ -24,8 +24,8 @@ test('Governança header uses the existing Diamond seal while retaining all five
 });
 test('Registro de Indicadores opens QMENTUM directly and the old folder link returns to Registros',()=>{
  const h=hub({records:true,qmentum:true},'indicators');assert.equal(h.dialog.dataset.panel,'records');assert.match(h.body.innerHTML,/Registro de Indicadores/);assert.doesNotMatch(h.body.innerHTML,/Indicadores Qmentum/);
- h.handlers.click({target:{closest:selector=>selector==='[data-survey-panel]'?null:({disabled:false,dataset:{hubItem:'1'}})}});assert.deepEqual(h.navigations,['qmentum']);
- const paused=hub({records:true},'records');paused.handlers.click({target:{closest:selector=>selector==='[data-survey-panel]'?null:({disabled:false,dataset:{hubItem:'1'}})}});assert.deepEqual(paused.navigations,[]);
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});assert.deepEqual(h.navigations,['qmentum']);
+ const paused=hub({records:true},'records');paused.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});assert.deepEqual(paused.navigations,[]);
 });
 
 test('Governance HOME exits to the main home; a subpanel returns one level first',()=>{
@@ -39,7 +39,7 @@ test('Governance keeps the live synchronization control visible in its modal hea
  const h=hub({records:true},'home',syncStatusElement);
  assert.equal(h.syncHost.child,syncStatusElement);
  assert.match(h.root.innerHTML,/<header[^>]*>.*identity-card__user-row.*data-hub-sync.*<\/header>/);
- h.handlers.click({target:{closest:selector=>selector==='[data-survey-panel]'?null:({disabled:false,dataset:{hubItem:'2'}})}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'2'}}):null}});
  assert.equal(h.dialog.dataset.panel,'records');
  assert.equal(h.syncHost.child,syncStatusElement);
  syncStatusElement.innerHTML='<button class="sync-status-button--synced">✓</button>';
@@ -50,7 +50,7 @@ test('institutional surveys open from their menu button and return to surveys',(
  const h=hub({surveys:true},'surveys',null,true);
  assert.match(h.body.innerHTML,/PESQUISAS INSTITUCIONAIS/);
  assert.doesNotMatch(h.body.innerHTML,/href=/);
- h.handlers.click({target:{closest:selector=>selector==='[data-survey-panel]'?null:({disabled:false,dataset:{hubItem:'0'}})}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
  assert.equal(h.dialog.dataset.panel,'institutional');
  assert.match(h.body.innerHTML,/data-survey-panel="stressForm"/);
  h.handlers['back-click']();

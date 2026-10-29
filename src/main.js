@@ -61,6 +61,8 @@ import {deployment} from './deployment-context.js';
 const htmlTrainingConfigured = Boolean(import.meta.env.VITE_HTML_TRAINING_ENDPOINT);
 import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {repairAppFiles, staleModuleFailure} from './app-repair.js';
+import {installAppUpdatePrompt} from './app-updates.js';
+import './app-updates.css';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
@@ -5230,7 +5232,8 @@ globalThis.sahmtProvisionalChannelEnabled=false;
 watchSession(sessionChanged);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`, {scope: import.meta.env.BASE_URL}).catch((error) => console.error('[SAHMT PWA] Service Worker', error)));
+  const startUpdates=()=>{void installAppUpdatePrompt({base:import.meta.env.BASE_URL,target:deployment.target}).catch(error=>console.warn('[SAHMT PWA] Atualização indisponível:',error?.message));};
+  if(document.readyState==='complete')startUpdates();else window.addEventListener('load',startUpdates,{once:true});
 }
 
 

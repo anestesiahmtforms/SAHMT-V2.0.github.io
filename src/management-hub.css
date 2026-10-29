@@ -56,4 +56,4 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 
 .management-hub-dialog[data-panel="surveys"] .management-hub-grid{grid-template-rows:repeat(3,minmax(0,1fr))}.management-hub-dialog[data-panel="professional"] .management-hub-body,.management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}
 
-.management-hub-dialog[data-panel="results"] .management-hub-body{padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:0}.indicators-platform-frame{width:100%;flex:1;min-height:55vh;border:0;background:#f3f6f5}
+.management-hub-dialog[data-panel="results"] .management-hub-body{padding:0;overflow:auto;display:block;min-height:0}.management-indicators-host{width:100%;min-width:0;min-height:100%}.management-indicators-host.indicators-platform{max-width:none;min-height:100%;border:0;border-radius:0;padding:clamp(12px,2vw,24px)}
