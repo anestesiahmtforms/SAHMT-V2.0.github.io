@@ -1,3 +1,4 @@
+import {readChecklistStationDay} from '../src/checklist-history.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildChecklistQrLookup, buildChecklistStationDayLookup, resolveChecklistQrStation} from '../src/checklist-static.js';
@@ -80,4 +81,81 @@ test('uncached QR URL resolves by exact registered value without navigating', as
   assert.equal(await resolveChecklistQrStation({
     qrValue: value, day: '2026-10-29', readByQr: async qr => qr === value ? [linkedStation] : []
   }), linkedStation);
+});
+
+function historySdk({records = [], indexed = [], failure} = {}) {
+  const queries = [];
+  const sdk = Object.fromEntries(['collection', 'query', 'where', 'orderBy', 'limit'].map(name =>
+    [name, (...args) => ({name, args})]));
+  const docs = records => records.map(record => ({id: record.id, data: () => record}));
+  sdk.getDocs = async query => {
+    queries.push(query);
+    if (queries.length === 1) {
+      if (failure) throw failure;
+      return {docs: docs(indexed)};
+    }
+    return {docs: docs(records)};
+  };
+  return {sdk, queries};
+}
+const missingIndex = () => Object.assign(new Error('The query requires an index.'), {code: 'failed-precondition'});
+const historyRecord = (id, date, millis, extra = {}) => ({id, stationId: 'sala-1', date,
+  condition: 'NAO', createdAt: {toMillis: () => millis}, ...extra});
+
+test('indexed history returns its one latest record without fallback reads', async () => {
+  const record = historyRecord('latest', '2026-10-29', 10);
+  const h = historySdk({indexed: [record]});
+  assert.deepEqual(await readChecklistStationDay('sala-1', '2026-10-29', h.sdk, 'db'), record);
+  assert.equal(h.queries.length, 1);
+});
+
+test('missing history index recovers exact latest state from selected arsenal only', async () => {
+  const latest = historyRecord('latest-failure', '2026-10-29', 20);
+  const h = historySdk({failure: missingIndex(), records: [
+    historyRecord('future', '2026-10-30', 50),
+    historyRecord('prior', '2026-10-28', 100),
+    historyRecord('earlier-today', '2026-10-29', 10, {condition: 'SIM'}),
+    latest,
+    historyRecord('other-arsenal', '2026-10-29', 200, {stationId: 'sala-2'}),
+    historyRecord('no-timestamp', '2026-10-29', 300, {createdAt: null})
+  ]});
+  assert.deepEqual(await readChecklistStationDay('sala-1', '2026-10-29', h.sdk, 'db'), latest);
+  assert.equal(h.queries.length, 2);
+  assert.deepEqual(h.queries[1], {name: 'query', args: [
+    {name: 'collection', args: ['db', 'checklists']},
+    {name: 'where', args: ['stationId', '==', 'sala-1']}, {name: 'limit', args: [501]}
+  ]});
+});
+
+test('history fallback preserves nanoseconds and descending document-ID tiebreak', async () => {
+  const a = historyRecord('a', '2026-10-29', 10, {createdAt: {toMillis: () => 10, nanoseconds: 10}});
+  const b = historyRecord('b', '2026-10-29', 10, {createdAt: {toMillis: () => 10, nanoseconds: 20}});
+  const c = {...b, id: 'c'};
+  const h = historySdk({failure: missingIndex(), records: [a, c, b]});
+  assert.equal((await readChecklistStationDay('sala-1', '2026-10-29', h.sdk, 'db')).id, 'c');
+});
+
+test('empty indexed or fallback history returns no record, without inventing completion', async () => {
+  for (const failure of [undefined, missingIndex()]) {
+    const h = historySdk({failure});
+    assert.equal(await readChecklistStationDay('sala-1', '2026-10-29', h.sdk, 'db'), null);
+  }
+});
+
+test('history fallback refuses to choose from a truncated collection', async () => {
+  const h = historySdk({failure: missingIndex(), records: Array.from({length: 501}, (_, i) =>
+    historyRecord(String(i), '2026-10-29', i))});
+  await assert.rejects(readChecklistStationDay('sala-1', '2026-10-29', h.sdk, 'db'), {code: 'checklist-history-incomplete'});
+});
+
+test('permission and network failures never trigger history fallback', async () => {
+  for (const failure of [
+    Object.assign(new Error('Denied'), {code: 'permission-denied'}),
+    Object.assign(new Error('Offline'), {code: 'unavailable'}),
+    Object.assign(new Error('Other precondition'), {code: 'failed-precondition'})
+  ]) {
+    const h = historySdk({failure});
+    await assert.rejects(readChecklistStationDay('sala-1', '2026-10-29', h.sdk, 'db'), error => error === failure);
+    assert.equal(h.queries.length, 1);
+  }
 });

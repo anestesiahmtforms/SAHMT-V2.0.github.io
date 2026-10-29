@@ -2410,6 +2410,8 @@ async function openChecklistQrScanner(stations, day) {
     } catch (error) {
       if (scannerCurrent()) status.textContent = error.code === 'permission-denied'
         ? 'Seu perfil não pode consultar este arsenal.'
+        : ['failed-precondition', 'checklist-history-incomplete'].includes(error.code)
+        ? 'QR lido. O histórico do arsenal precisa de atualização no servidor. Avise o administrador.'
         : 'Não foi possível validar o QR agora. Verifique a conexão e tente novamente.';
       if (error.code === 'permission-denied') cleanup();
       return null;

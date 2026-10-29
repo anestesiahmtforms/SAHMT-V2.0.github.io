@@ -3,7 +3,8 @@ import {assertOnlineOperation, unconfirmedWrite} from './online-only.js';
 import {notificationReference} from './notification-domain.js';
 import {managementDataProject, managementDataGeneration, managementDatabase as managementFullDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
-import {buildChecklistQrLookup, buildChecklistStationDayLookup} from './checklist-static.js';
+import {buildChecklistQrLookup} from './checklist-static.js';
+import {readChecklistStationDay} from './checklist-history.js';
 import {normalizeChecklistStationTitle} from './checklist-display.js';
 import {confirmOperationalSheetDelivery} from './operational-sheet-delivery.js';
 import {and, collection, doc, documentId, getAggregate as getAggregateFromServer, getDoc as getDocFromServer, getDocs as getDocsFromServer, limit, orderBy, or, query, runTransaction, serverTimestamp, setDoc, startAfter, sum, Timestamp, updateDoc, where, writeBatch} from 'firebase/firestore/lite';
@@ -1683,12 +1684,8 @@ export async function getChecklistStationByQr(qrValue) {
 }
 
 export async function getLatestChecklistRecordForStation(stationId, day, {uid} = {}) {
-  const lookup = buildChecklistStationDayLookup(stationId, day, {collection, query, where, orderBy, limit}, db);
   try {
-    const result = await getDocsFromServer(lookup);
-    if (!result.docs.length) return null;
-    const document = result.docs[0];
-    return {...document.data(), id: document.id};
+    return await readChecklistStationDay(stationId, day, {collection, query, where, orderBy, limit, getDocs: getDocsFromServer}, db);
   } catch (error) {
     if (!mayUseOfflineCache(error) || !uid) throw error;
     const [cached, unsettled] = await Promise.all([
