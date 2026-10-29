@@ -79,7 +79,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.ok(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length)>=2);
   await page.evaluate(()=>window.mount('manager'));
   await enterFolder();
-  await page.getByRole('button',{name:'Editar treinamento',exact:true}).click();
+  await page.locator('[data-ht="edit"][data-id="rop-01"]').click();
   await page.frameLocator('[data-section="0"]').locator('.material').fill('Conteúdo alterado pelo gestor');
   assert.equal(await page.locator('.ht-bank').count(),6);
   assert.equal(await page.locator('[data-selected]:checked').count(),5);
