@@ -64,3 +64,35 @@
 }
 @media(prefers-reduced-motion:reduce){.html-trainings button.ht-document-folder{transition:none}}
 
+/* The catalogue fills the fixed modal; only its grid scrolls when necessary. */
+.management-area-dialog:has(.ht-catalog-view) .management-area-dialog__body{display:flex;flex-direction:column;overflow:hidden;scrollbar-gutter:auto}
+.management-area-dialog .management-area-detail.ht-catalog-view{display:flex;flex-direction:column;flex:1;min-height:0;height:100%;overflow:hidden;padding:clamp(8px,1.4vw,16px)}
+.ht-catalog-view .ht-head{flex:0 0 auto;gap:8px;margin:0 0 10px;padding:0 0 10px}
+.ht-catalog-view .ht-head .ht-eyebrow{display:none}
+.ht-catalog-view .ht-head h2{font-size:clamp(1.1rem,2.5vw,1.5rem);margin:0}
+.ht-catalog-view .ht-head p{font-size:.8rem;margin:5px 0 0}
+.ht-catalog-view .ht-breadcrumb{flex:0 0 auto;margin-bottom:8px;font-size:.76rem;gap:6px}
+.ht-catalog-view .ht-breadcrumb button{min-height:36px;padding:6px 9px;font-size:.76rem}
+.ht-catalog-view .ht-folder-toolbar{flex:0 0 auto;margin:0 0 4px;gap:8px}
+.management-area-dialog .ht-catalog-view .ht-folder-toolbar>button{display:none}
+.ht-catalog-view .ht-folder-toolbar p{font-size:.74rem}
+.ht-browser-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(var(--ht-grid-rows,1),minmax(min-content,1fr));align-items:stretch;align-content:stretch;gap:clamp(18px,2vw,24px);flex:1;min-height:0;min-width:0;margin:0;padding:12px 4px 8px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.ht-browser-grid>.ht-folder,.ht-browser-grid>.ht-document-card{width:100%;height:100%;min-width:0;min-height:142px;align-self:stretch}
+.html-trainings .ht-browser-grid>button.ht-folder{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:12px;padding:clamp(14px,2vw,24px)}
+.ht-browser-grid .ht-folder-icon{flex:0 0 auto;width:clamp(28px,4vw,48px);height:clamp(28px,4vw,48px)}
+.ht-browser-grid .ht-folder-icon svg{width:100%;height:100%}
+.ht-browser-grid .ht-folder-copy{width:100%;gap:8px}
+.ht-browser-grid .ht-folder-copy strong{font-size:clamp(.85rem,1.6vw,1.1rem);line-height:1.3;overflow-wrap:anywhere}
+.ht-browser-grid .ht-folder-copy small{font-size:clamp(.67rem,1.2vw,.8rem)}
+.ht-browser-grid .ht-folder-arrow{position:absolute;right:14px;top:12px;font-size:1.3rem}
+.ht-browser-grid>.ht-document-card{display:flex;flex-direction:column;padding:0}
+.ht-browser-grid .ht-document-card h3{display:flex;flex:1;min-height:0;width:100%;margin:0;padding-top:0}
+.html-trainings .ht-browser-grid button.ht-document-folder{display:flex;flex-direction:column;flex:1;min-height:138px;height:100%;width:100%}
+.ht-browser-grid .ht-document-face{display:flex;flex-direction:column;flex:1;min-height:126px;width:100%;padding:clamp(12px,1.8vw,20px)}
+.ht-browser-grid .ht-document-title{margin-block:auto;line-height:1.35}
+.ht-browser-grid .ht-document-status{flex:0 0 auto}
+.ht-browser-grid .ht-card-actions{flex:0 0 auto;min-height:36px;margin-top:8px}
+.ht-browser-grid .ht-card-actions button{width:100%}
+.ht-catalog-view>.ht-empty{display:flex;flex:1;flex-direction:column;justify-content:center;margin:12px 0 0}
+@media(max-width:650px){.ht-catalog-view .ht-head p{font-size:.74rem}.ht-browser-grid{gap:22px;padding-inline:2px}.html-trainings .ht-browser-grid>button.ht-folder{padding:14px;gap:10px}.ht-browser-grid .ht-document-face{padding:12px 10px}.ht-browser-grid .ht-document-title{font-size:.88rem}.ht-browser-grid .ht-folder-copy strong{font-size:.86rem}}
+
