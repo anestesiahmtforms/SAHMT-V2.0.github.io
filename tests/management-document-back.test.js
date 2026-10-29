@@ -60,12 +60,14 @@ test('document back preserves its subfolder and traverses only one ancestor per 
   assert.equal(typeof h.controller.goBack, 'function');
   assert.equal(h.controller.goBack(), true);
   await tick();
-  assert.match(h.root.innerHTML, /aria-current="page">Protocolos do SAHMT/);
+  assert.match(h.root.innerHTML, /<h2>PROTOCOLOS<\/h2>/);
+  assert.match(h.root.innerHTML, /data-ht="open" data-id="one"/);
   assert.match(h.root.innerHTML, /Documento sintético/);
   assert.equal(h.controller.goBack(), true);
-  assert.match(h.root.innerHTML, /aria-current="page">Protocolos<\/span>/);
+  assert.match(h.root.innerHTML, /<strong>Protocolos do SAHMT<\/strong>/);
+  assert.doesNotMatch(h.root.innerHTML, /data-ht="open"/);
   assert.equal(h.controller.goBack(), true);
-  assert.doesNotMatch(h.root.innerHTML, /aria-current="page"/);
+  assert.match(h.root.innerHTML, /<h2>Gestão de Documentos<\/h2>/);
   assert.equal(h.controller.goBack(), false);
   assert.deepEqual(h.calls.filter(action=>action!=='OPEN'), ['LIST', 'CONTENT', 'BEGIN', 'LIST']);
 });
@@ -76,7 +78,7 @@ test('back cancels a stalled document open and ignores its late response', async
   h.click('open', {id: 'one'}); await tick();
   assert.equal(h.controller.goBack(), true);
   assert.equal(h.controller.goBack(), true);
-  assert.doesNotMatch(h.root.innerHTML, /aria-current="page"/);
+  assert.match(h.root.innerHTML, /<h2>Gestão de Documentos<\/h2>/);
   h.releaseOpen(); await tick(); await tick();
   assert.doesNotMatch(h.root.innerHTML, /ht-content-frame/);
   assert.equal(h.calls.includes('BEGIN'), false);
@@ -88,7 +90,8 @@ test('returning to the same folder refreshes catalog metadata', async t => {
   h.click('open', {id: 'one'}); await tick(); await tick();
   h.training.title = 'Título publicado atualizado';
   h.controller.goBack(); await tick();
-  assert.match(h.root.innerHTML, /aria-current="page">Protocolos do SAHMT/);
+  assert.match(h.root.innerHTML, /<h2>PROTOCOLOS<\/h2>/);
+  assert.match(h.root.innerHTML, /data-ht="open" data-id="one"/);
   assert.match(h.root.innerHTML, /Título publicado atualizado/);
 });
 
