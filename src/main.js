@@ -60,7 +60,7 @@ import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdmi
 import {deployment} from './deployment-context.js';
 const htmlTrainingConfigured = Boolean(import.meta.env.VITE_HTML_TRAINING_ENDPOINT);
 import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
-import {repairAppFiles} from './app-repair.js';
+import {repairAppFiles, staleModuleFailure} from './app-repair.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
@@ -3072,8 +3072,16 @@ async function loadManagementAreaActivities(area) {
       const {mountHtmlTrainings} = await import('./html-training.js');
       if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
       cleanupDocumentTraining = mountHtmlTrainings(detail, {user:session.user, profile:session.profile});
-    } catch {
-      if (loadId === managementActivityLoad && detail.isConnected && session.user?.uid === requestUid) detail.innerHTML = '<p class="empty-state" role="status">Não foi possível abrir os treinamentos agora. Tente novamente ao retornar à área.</p>';
+    } catch (error) {
+      if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
+      const route = '#/management/area-gestao-de-documentos';
+      if (staleModuleFailure(error) && repairAppFiles({target: deployment.target, hash: route, automatic: true})) {
+        detail.innerHTML = '<p class="loading" role="status">Atualizando os arquivos de Gestão de documentos…</p>';
+        return;
+      }
+      detail.innerHTML = '<div class="empty-state" role="status"><p>Não foi possível carregar Gestão de documentos. Verifique a conexão e tente novamente.</p><button class="secondary-button" type="button" data-retry-document-training>Tentar novamente</button> <button class="secondary-button" type="button" data-repair-document-training>Atualizar arquivos do app</button></div>';
+      detail.querySelector('[data-retry-document-training]')?.addEventListener('click', () => { void loadManagementAreaActivities(area); });
+      detail.querySelector('[data-repair-document-training]')?.addEventListener('click', () => { repairAppFiles({target: deployment.target, hash: route}); });
     }
     return;
   }
