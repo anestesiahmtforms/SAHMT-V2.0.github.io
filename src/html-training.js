@@ -2,7 +2,7 @@ import './html-training.css';
 import { deployment } from './deployment-context.js';
 import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument } from './html-training-model.js';
 import { mountTrainingAudit } from './html-training-audit.js';
-import {trainingCategories,trainingFolderLevel} from './html-training-folders.js';
+import {trainingCategories,trainingFolderLevel,trainingPathAllowed} from './html-training-folders.js';
 import {renderTrainingDocumentCard} from './html-training-card.js';
 import {htmlTrainingActivityState, loadHtmlTrainingDocument, hydrateHtmlTrainingActivities} from './html-training-activity.js';
 
@@ -41,7 +41,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false, operationId=0;
   let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   const uid=user?.uid, activityStates=new Map();
-  let progressGeneration=0;
+  let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false;
+  const accessAdmin=()=>isTrainingAdmin(profile)&&folderControlAvailable;
   const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
   function refreshVisibleActivities(){
     const token=revision,generation=++progressGeneration;
@@ -95,9 +96,17 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   }
   function catalogue(){
     const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
-    const folderButton=(path,label,extra='')=>button('folder',label,`data-folder="${h(JSON.stringify(path))}" ${extra}`);
+    const folderButton=(path,label,extra='')=>{
+      const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!enabled&&!accessAdmin();
+      return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${locked?'disabled aria-disabled="true" data-locked="true"':''} ${accessAdmin()&&path.length?'aria-description="'+(enabled?'Ativado':'Desativado')+' para usuários."':''} ${extra}`);
+    };
     const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
-    const folders=level.folders.map(folder=>folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder ht-navigation-book"')).join('');
+    const folders=level.folders.map(folder=>{
+      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder ht-navigation-book"');
+      if(!accessAdmin())return entry;
+      const enabled=!folderAccess.disabled.includes(JSON.stringify(folder.path));
+      return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}"`)}</div>`;
+    }).join('');
     const documents=visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('');
     const count=level.folders.length+visible.length;
     const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}" style="--ht-grid-rows:${Math.ceil(count/2)}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
@@ -124,6 +133,17 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     const e=editor,t=e.training,admin=isTrainingAdmin(profile);
     return `<form class="ht-editor" data-editor><div class="ht-editor-toolbar"><span class="ht-eyebrow">EDIÇÃO · VERSÃO ${h(t.version)}</span>${button('draft','Salvar rascunho','class="ht-secondary"')}${button('publish','Publicar treinamento')}</div><p class="ht-muted">A publicação usa a versão atual para detectar conflitos. O banco completo é preservado; selecione cinco questões.</p>${t.source?.pendingReviewPublication?'<p class="ht-notice">Publicado por decisão administrativa. A revisão institucional continua pendente e pode ser concluída neste editor.</p>':''}${t.source?.pendingInstitutionalReview?'<label class="ht-check ht-notice"><input name="institutionalReviewConfirmed" type="checkbox"> Conferi as pendências e as referências institucionais deste material para publicação.</label>':''}<div class="ht-form-grid">${field('title','Título',t.title)}<label class="ht-field">Categoria<select name="category">${categories.map(c=>`<option${c===t.category?' selected':''}>${h(c)}</option>`).join('')}</select></label>${field('subcategory','Subcategoria',t.subcategory)}<label class="ht-field">Público<select name="audienceGroup"><option value="GENERAL"${t.audienceGroup==='GENERAL'?' selected':''}>Geral</option><option value="RESTRICTED"${t.audienceGroup==='RESTRICTED'?' selected':''}>Restrito</option></select></label>${admin?field('managerUid','UID do gestor (opcional; vazio mantém com o administrador)',t.managerUid):`<p>Gestor responsável: ${h(t.managerUid || 'Administrador')}</p>`}</div><h3>Conteúdo</h3>${e.sections.map((s,i)=>`<section class="ht-panel">${field(`section-title-${i}`,'Título da seção',s.title)}<div class="ht-format" role="toolbar" aria-label="Formatação da seção ${i+1}">${[['bold','Negrito'],['italic','Itálico'],['insertUnorderedList','Lista'],['formatBlock','Título']].map(([c,l])=>button('format',l,`data-index="${i}" data-command="${c}" class="ht-secondary"`)).join('')}</div><iframe class="ht-edit-frame" title="Editor de conteúdo da seção ${i+1}" data-section="${i}" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></section>`).join('')}${button('add-section','+ Adicionar seção','class="ht-secondary"')}<h3>Banco completo de questões</h3><p>Selecione exatamente cinco. As questões desmarcadas permanecem no banco.</p>${e.bank.map((q,i)=>`<fieldset class="ht-panel ht-bank"><legend>Questão ${i+1}</legend><label class="ht-check"><input type="checkbox" data-selected="${h(q.id)}"${e.selectedQuestionIds.includes(q.id)?' checked':''}> Incluir na avaliação</label>${area(`stem-${i}`,'Enunciado',q.stem)}${field(`points-${i}`,'Pontos',q.points,'number','min="0" max="100" step="0.01"')}${q.options.map((o,j)=>`<div class="ht-bank-option"><label class="ht-check"><input type="radio" name="correct-${i}" value="${h(o.id)}"${q.correctOptionId===o.id?' checked':''}>Correta</label>${field(`option-${i}-${j}`,`Alternativa ${j+1}`,o.text)}</div>`).join('')}${area(`comment-${i}`,'Comentário do gabarito',q.comment)}</fieldset>`).join('')}${button('add-question','+ Adicionar questão ao banco','class="ht-secondary"')}<h3>Sugestões recebidas</h3><p>Concessão manual única, de 0 a 2. Correções administrativas substituem o registro vigente.</p>${(e.suggestions||[]).map((s,i)=>`<section class="ht-panel"><h4>${h(s.uid)}</h4>${(s.attempts||[]).filter(a=>a.suggestion).map(a=>`<blockquote>${h(a.suggestion)}</blockquote>`).join('')||'<p>Sem sugestão registrada.</p>'}${s.suggestionDecision?`<p>Decisão vigente: ${h(s.suggestionDecision.points)} ponto(s) · ${h(s.suggestionDecision.note)}</p>`:''}${s.uid===uid?'<p>A pontuação da própria sugestão não é permitida.</p>':s.suggestionDecision&&!admin?'<p>Decisão registrada. Correções são exclusivas do administrador.</p>':`${field(`review-points-${i}`,'Pontos',s.suggestionDecision?.points??0,'number','min="0" max="2" step="0.5"')}${area(`review-note-${i}`,'Justificativa da decisão',s.suggestionDecision?.note)}${button('review',s.suggestionDecision?'Corrigir decisão':'Registrar decisão',`data-index="${i}" class="ht-secondary"`)}`}</section>`).join('')||'<p>Nenhuma sugestão recebida.</p>'}<p class="ht-muted">Referências no Drive: ${h(t.sync?.status || t.syncStatus || 'estado de sincronização não informado pelo serviço')}. Publicar no PWA não indica sincronização concluída.</p></form>`;
   }
+  function fitFolderLabels(){
+    const labels=[...root.querySelectorAll('.ht-folder-copy strong')];
+    if(labels.length){
+      const dialog=root.closest?.('dialog');
+      if(dialog){const natural=Math.max(...labels.map(label=>{label.style.fontSize='';const range=label.ownerDocument.createRange();range.selectNodeContents(label);return range.getBoundingClientRect().width;}));dialog.style.setProperty('--ht-menu-width',Math.min(620,Math.max(320,2*(natural+40)+24))+'px');}
+      const grid=root.querySelector('.ht-browser-grid');
+      grid?.classList.remove('ht-single-line-grid');
+      grid?.classList.toggle('ht-single-line-grid',labels.some(label=>parseFloat(getComputedStyle(label).fontSize)*label.clientWidth/label.scrollWidth<11));
+      labels.forEach(label=>{label.style.fontSize='';const base=parseFloat(getComputedStyle(label).fontSize);if(label.scrollWidth>label.clientWidth&&label.clientWidth>0)label.style.fontSize=Math.max(11,base*label.clientWidth/label.scrollWidth)+'px';});
+    }
+  }
   function render(){
     if(!alive)return;
     root.classList.add('html-trainings');
@@ -141,9 +161,10 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       });frame.srcdoc=readerDocument(content?.sections?.[readIndex]?.html,uid,new Date().toLocaleDateString('pt-BR'));}
     }
     if(mode==='editor')root.querySelectorAll('[data-section]').forEach(frame=>{frame.srcdoc=readerDocument(editor.sections[Number(frame.dataset.section)].html,uid,'',true);});
+    fitFolderLabels();
     renderBusy();
   }
-  async function loadCatalog(){revision++;progressGeneration++;active=null;content=null;editor=null;questions=[];state=null;mode='catalog';error='';notice='';auditCleanup?.();auditCleanup=null;render();const token=revision;const res=await call('LIST',{},token);catalog=res.trainings||[];render();refreshVisibleActivities();}
+  async function loadCatalog(){revision++;progressGeneration++;active=null;content=null;editor=null;questions=[];state=null;mode='catalog';error='';notice='';auditCleanup?.();auditCleanup=null;render();const token=revision;const res=await call('LIST',{},token);catalog=res.trainings||[];folderAccess=res.folderAccess||{version:0,disabled:[]};folderControlAvailable=res.canManageFolders===true;render();refreshVisibleActivities();}
   async function open(id){
     revision++;progressGeneration++;const token=revision;error='';notice='';
     const selected=catalog.find(t=>t.id===id);
@@ -181,7 +202,14 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
       if(action==='catalog')return loadCatalog();
-      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;folderPath=path;render();refreshVisibleActivities();return;}
+      if(action==='toggle-folder'){
+        if(!accessAdmin())return;
+        const path=JSON.parse(b.dataset.folder),enabled=folderAccess.disabled.includes(JSON.stringify(path));
+        const result=await call('SET_FOLDER_ACCESS',{path,enabled,expectedVersion:folderAccess.version});
+        folderAccess=result.folderAccess;notice=path.at(-1)+(enabled?' ativado':' desativado')+' para usuários.';render();return;
+      }
+
+      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;if(!accessAdmin()&&!trainingPathAllowed(folderAccess,path))return;folderPath=path;render();refreshVisibleActivities();return;}
       if(action==='open')return open(b.dataset.id);
       if(action==='edit'){editorParent=mode==='participant'?'participant':'catalog';return edit(b.dataset.id);}
       if(action==='audit'){
@@ -214,12 +242,13 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       }
     });
   };
+  const resize=globalThis.ResizeObserver?new ResizeObserver(()=>{if(alive)fitFolderLabels();}):null;resize?.observe(root);
   root.addEventListener('click',click);
   const preventSubmit=event=>event.preventDefault();
   root.addEventListener('submit',preventSubmit);
   root.classList.add('html-trainings');root.innerHTML='<p class="ht-notice" role="status">Consultando treinamentos autorizados…</p>';
   (async()=>{try{if(!uid)throw new Error('Entre com sua conta institucional para acessar os treinamentos.');if(!api){const client=await createHtmlTrainingClient(user);if(!alive)return;api=client.api;valid=client.valid;unsubscribe=client.subscribeInvalidated(()=>fail(Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'})));}if(!current(revision))return;await loadCatalog();}catch(err){fail(err);}})();
-  const cleanup = () => {root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
+  const cleanup = () => {resize?.disconnect();root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
   cleanup.goBack=goBack;
   return cleanup;
 }
