@@ -36,9 +36,12 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await enterFolder();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='LIST').length),1);
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),0);
-  await page.getByRole('button',{name:'Abrir treinamento',exact:true}).waitFor();
+  await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Editar treinamento',exact:true}).count(),0);
-  await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Abrir treinamento',exact:true}).count(),0);
+  const folder = page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true});
+  await folder.focus();
+  await page.keyboard.press('Enter');
   assert.equal(await page.getByRole('button',{name:'Realizar auditoria'}).count(),0);
   await page.getByRole('button',{name:'Iniciar leitura',exact:true}).click();
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
@@ -59,7 +62,7 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.getByRole('button',{name:'Iniciar segunda tentativa'}).click();
   await page.frameLocator('.ht-content-frame').getByText('Texto do treinamento.').waitFor();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='SUBMIT').length),1);
-  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='CONTENT').length),1);
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='OPEN').length),2);
   await page.evaluate(()=>window.mount('manager'));
@@ -74,7 +77,7 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   assert.equal(await page.evaluate(()=>window.published.bank.length),6);
   assert.equal(await page.evaluate(()=>window.published.selectedQuestionIds.length),5);
   assert.match(await page.evaluate(()=>window.published.sections[0].html),/Conteúdo alterado pelo gestor/);
-  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
   await page.getByRole('button',{name:'Realizar auditoria'}).click();
   await page.getByLabel('Unidade / setor *').fill('SRPA');
   await page.getByRole('button',{name:'Salvar rascunho',exact:true}).click();
@@ -102,8 +105,8 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:'.local-preview/html-training-ui-mobile.png',fullPage:true});
-  await page.evaluate(()=>window.mount());await enterFolder();await page.getByRole('button',{name:'Abrir treinamento',exact:true}).waitFor();
-  await page.evaluate(()=>window.denyOpen());await page.getByRole('button',{name:'Abrir treinamento',exact:true}).click();
+  await page.evaluate(()=>window.mount());await enterFolder();await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).waitFor();
+  await page.evaluate(()=>window.denyOpen());await page.getByRole('button',{name:'ROP demonstrativa de teste',exact:true}).click();
   await page.getByText('Acesso revogado para esta conta.',{exact:true}).waitFor();
   assert.equal(await page.locator('iframe').count(),0);
   await page.evaluate(()=>window.mountUnavailable());await page.getByText('Treinamentos indisponíveis:',{exact:false}).waitFor();
@@ -112,3 +115,4 @@ test('HTML training reader, cache, cleanup, editor and audit work in Edge deskto
   assert.deepEqual(errors,[]);
  }catch(error){console.log('browser test failure',error);throw error;}finally{await browser?.close();await server.close();}
 });
+
