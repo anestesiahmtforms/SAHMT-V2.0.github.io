@@ -35,9 +35,16 @@ test('Governance opens indicators directly and the update notice works above mob
    await page.getByRole('button',{name:'Depois',exact:true}).click();
    assert.equal(await page.locator('#sahmt-app-update-prompt').isVisible(),false);
    await page.evaluate(()=>window.dispatchEvent(new Event('pageshow')));
+   await page.evaluate(()=>{window.repairAccepted=false;history.replaceState(null,'',location.pathname);});
    await page.getByRole('button',{name:'Atualizar agora',exact:true}).click();
-   assert.deepEqual(await page.evaluate(()=>window.repairs),[{target:'FA',hash:'#/management-hub/results'}]);
-   await page.getByRole('button',{name:'Depois',exact:true}).click();
+   assert.equal(await page.locator('#sahmt-app-update-prompt').isVisible(),true);
+   assert.match(await page.locator('[data-app-update-message]').textContent(),/Não foi possível iniciar/);
+   await page.evaluate(()=>{window.repairAccepted=true;location.hash='#/management-hub/results';});
+   await page.getByRole('button',{name:'Atualizar agora',exact:true}).click();
+   assert.deepEqual(await page.evaluate(()=>window.repairs),[{target:'FA',hash:'#/home'},{target:'FA',hash:'#/management-hub/results'}]);
+   assert.equal(await page.locator('#sahmt-app-update-prompt').isVisible(),false);
+   await page.evaluate(()=>window.dispatchEvent(new Event('pageshow')));
+   assert.equal(await page.locator('#sahmt-app-update-prompt').isVisible(),false,'accepted updates do not reappear on the old page');
    await page.evaluate(()=>window.closeHub());
    assert.equal(await page.getByLabel('Rascunho').inputValue(),'Texto em andamento');
 
