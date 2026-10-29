@@ -1,4 +1,5 @@
 import { documentGroupsFromAccess, normalizeDocumentAccessEmail } from '../src/document-access.js';
+import {trainingPathAllowed,trainingCategories,trainingAccessPath} from '../src/html-training-folders.js';
 import {Buffer} from 'node:buffer';
 import { finalizeRopAudit } from '../src/domain/rop-audit.js';
 import { copy, documentSize, fail, identifier, publication, text, version } from './domain-validation.js';
@@ -6,7 +7,7 @@ import { copy, documentSize, fail, identifier, publication, text, version } from
 const C = Object.freeze({ training: 'htmlTrainings', versions: 'htmlTrainingVersions', content: 'htmlTrainingContent',
   state: 'htmlTrainingStates', score: 'htmlTrainingScores', audits: 'htmlTrainingAudits', sync: 'htmlTrainingSync' });
 const managedActions = new Set(['EDIT', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE']);
-const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE']);
+const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS']);
 const admin = profile => profile.role === 'administrador_app' || profile.permissions?.admin === true;
 const manages = (profile, training, uid) => admin(profile) || training.managerUid === uid;
 const emptyState = (trainingId, uid) => ({ uid, trainingId, attempts: [], bestScore: 0, ackPoints: 0, suggestionDecision: null, version: 0, run: null });
@@ -47,9 +48,12 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     const profile = await tx.get('users', identity.uid);
     if (!profile || profile.active !== true || profile.access !== true || (profile.uid && profile.uid !== identity.uid)) fail('FORBIDDEN', 403);
     const access = await tx.get('documentAccessEmails', identity.email);
-    return { profile, groups: documentGroupsFromAccess(access, identity.email) };
+    const settings=await tx.get('htmlTrainingSettings','folders');
+    return { profile, groups: documentGroupsFromAccess(access, identity.email), folderAccess:{version:settings?.version||0,disabled:settings?.disabled||[]} }; 
   }
   function canRead(auth, training, uid) {
+    const path=trainingAccessPath(training);
+    if(!admin(auth.profile)&&!trainingPathAllowed(auth.folderAccess,path))return false;
     return manages(auth.profile, training, uid) || training.status === 'PUBLISHED' && auth.groups.includes(training.audienceGroup);
   }
   async function getVersion(tx, training) {
@@ -106,6 +110,19 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     const runId = action === 'BEGIN' ? identifier(uuid()) : null;
     return store.transaction(async tx => {
       const auth = await authorize(tx, identity);
+      if(action==='SET_FOLDER_ACCESS'){
+        if(!admin(auth.profile))fail('FORBIDDEN',403);
+        const path=input.path;
+        if(!Array.isArray(path)||path.length<1||path.length>2||!trainingCategories.includes(path[0])||path.some(value=>typeof value!=='string'||!value.trim()||value.length>160)||typeof input.enabled!=='boolean')fail('INVALID_INPUT');
+        version(input.expectedVersion);
+        if(input.expectedVersion!==auth.folderAccess.version)fail('VERSION_CONFLICT',409);
+        const key=JSON.stringify(path),disabled=new Set(auth.folderAccess.disabled);
+        if(input.enabled)disabled.delete(key);else disabled.add(key);
+        const folderAccess={version:auth.folderAccess.version+1,disabled:[...disabled].sort()};
+        documentSize(folderAccess);
+        tx.set('htmlTrainingSettings','folders',{...folderAccess,updatedAt:timestamp,updatedByUid:identity.uid});
+        return {folderAccess};
+      }
       if (action === 'SCORE') {
         const uid = input.subjectUid === undefined ? identity.uid : identifier(input.subjectUid);
         if (uid !== identity.uid && !admin(auth.profile)) fail('FORBIDDEN', 403);
@@ -130,11 +147,12 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         for (const training of await getMany(tx, C.training, candidates.map(candidate => identifier(candidate.id)))) {
           if (training && canRead(auth, training, identity.uid)) trainings.push(publicTraining(training, auth.profile, identity.uid));
         }
-        return { trainings: trainings.sort((a, b) => a.title.localeCompare(b.title)) };
+        return { trainings: trainings.sort((a, b) => a.title.localeCompare(b.title)),folderAccess:auth.folderAccess,canManageFolders:admin(auth.profile) };
       }
       const trainingId = identifier(input.trainingId);
       const training = await tx.get(C.training, trainingId);
 
+      if(training&&!admin(auth.profile)&&!trainingPathAllowed(auth.folderAccess,trainingAccessPath(training)))fail('FORBIDDEN',403);
       if (action === 'PUBLISH') {
         if (!training && !admin(auth.profile) || training && !manages(auth.profile, training, identity.uid)) fail('FORBIDDEN', 403);
         if (publish.training.managerUid === '' && !admin(auth.profile) || input.deferInstitutionalReview === true && !admin(auth.profile)) fail('FORBIDDEN', 403);
