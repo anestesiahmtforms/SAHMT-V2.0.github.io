@@ -11,3 +11,5 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 .local-preview/
+
+dist-indicators/

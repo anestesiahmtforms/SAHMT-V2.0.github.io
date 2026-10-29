@@ -1,0 +1,19 @@
+name = "sahmt-indicators"
+account_id = "1851e9f4cd5f026371beaa2c5a85f1b8"
+main = "worker.js"
+compatibility_date = "2026-10-13"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+INDICATORS_ENABLED = "true"
+FA_WEB_API_KEY = "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"
+
+[triggers]
+crons = ["0 7-10 * * *"]
+
+[observability]
+enabled = false
+
+# INDICATOR_SERVICE_ACCOUNT_JSON is a server secret. No raw source data is stored.
+# One platform per trigger/manual refresh, bounded projected reads, no Blaze.

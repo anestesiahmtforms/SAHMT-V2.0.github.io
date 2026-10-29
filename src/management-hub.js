@@ -1,3 +1,4 @@
+import {bindIndicatorFrame} from '../indicators-platform/bridge.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 
@@ -41,7 +42,7 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
  const panelAllowed=name=>name==='home'||access[['institutional','climateForm','stressForm','professional','epidemiological'].includes(name)?'surveys':name]===true;
  let cleanupSurvey=()=>{},cleanupRegistration=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
@@ -59,6 +60,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
    const allowed=!item.access||access[item.access]===true;
    return '<button type="button" class="management-hub-button" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+item.label+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
+  if(panel==='results'&&access.results===true){body.innerHTML='<iframe class="management-survey-frame indicators-platform-frame" title="Plataforma de Indicadores" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>';const frame=body.querySelector('iframe');cleanupSurvey=bindIndicatorFrame(frame,{perform:performIndicators,onBack:()=>goBack(),isCurrent:()=>!disposed&&panel==='results'&&isSurveySessionCurrent()});frame.src='https://rotinas-8a617.web.app/';}
   if(panel==='institutional'){
    const surveyCard=(kind,url,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+(kind==='climate'?'climateForm':'stressForm')+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';

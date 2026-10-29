@@ -40,6 +40,9 @@ jobs:
           npm run test:dosimetry
           npm run test:biosafety-manual
           npm run test:registration
+          npm run test:indicators-platform
+          npm run build:indicators-platform
+          npm run test:indicators-platform-rules
           npm run test:vaccination-rules
       - name: Validate authenticated survey participation and session bridge
         run: npm run test:survey-session

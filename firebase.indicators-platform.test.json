@@ -1,0 +1,1 @@
+{"firestore":{"rules":"firestore.indicators-platform.rules"},"emulators":{"firestore":{"port":8291},"ui":{"enabled":false},"singleProjectMode":false}}

@@ -65,7 +65,11 @@
     "test:biosafety-manual": "node --test tests/biosafety-manual.test.js",
     "test:biosafety-manual-browser": "node --test tests/biosafety-manual.browser.test.js",
     "test:registration": "node --test tests/registration.test.js tests/registration-drive.test.js",
-    "test:registration-browser": "node --test tests/registration.browser.test.js"
+    "test:registration-browser": "node --test tests/registration.browser.test.js",
+    "test:indicators-platform": "node --test tests/indicators-platform-domain.test.js tests/indicators-platform-service.test.js tests/indicators-platform-bridge.test.js",
+    "test:indicators-platform-browser": "node --test tests/indicators-platform.browser.test.js",
+    "build:indicators-platform": "vite build --config vite.indicators.config.mjs --configLoader native",
+    "test:indicators-platform-rules": "firebase emulators:exec --config firebase.indicators-platform.test.json --project demo-sahmt-fd-indicators --only firestore --non-interactive \"node --test tests/indicators-platform.rules.test.js\""
   },
   "dependencies": {
     "fast-xml-parser": "5.11.2",
