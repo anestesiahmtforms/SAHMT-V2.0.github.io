@@ -36,7 +36,7 @@ export async function installAppUpdatePrompt({base,target,document=globalThis.do
   const prompt=document.createElement('aside');prompt.id='sahmt-app-update-prompt';prompt.className='app-update-prompt';prompt.hidden=true;prompt.setAttribute('role','status');prompt.setAttribute('aria-live','polite');
   prompt.innerHTML='<strong>Nova versão disponível</strong><p data-app-update-message>Uma atualização do SAHMT está pronta. Se estiver preenchendo algo, conclua antes de atualizar.</p><div class="app-update-actions"><button type="button" data-app-update>Atualizar agora</button><button type="button" data-app-update-later>Depois</button></div>';
   const supportsPopover=typeof prompt.showPopover==='function';if(supportsPopover)prompt.setAttribute('popover','manual');
-  let visible=false,lastDialog=null,watcher;
+  let visible=false,lastDialog=null,watcher,updating=false;
   const hide=()=>{visible=false;if(supportsPopover)try{prompt.hidePopover();}catch{}prompt.hidden=true;};
   const place=()=>{
     if(!visible)return;
@@ -46,12 +46,22 @@ export async function installAppUpdatePrompt({base,target,document=globalThis.do
     if(supportsPopover&&(moved||dialog!==lastDialog||!prompt.matches(':popover-open'))){try{prompt.hidePopover();}catch{}try{prompt.showPopover();}catch{}}
     lastDialog=dialog;
   };
-  const show=()=>{visible=true;prompt.hidden=false;place();};
+  const show=()=>{if(updating)return;visible=true;prompt.hidden=false;place();};
   const click=event=>{
     if(event.target.closest('[data-app-update-later]')){watcher?.dismiss();return;}
     if(event.target.closest('[data-app-update]')){
-      const accepted=repair({target,hash:appWindow.location.hash});
-      if(!accepted)prompt.querySelector('[data-app-update-message]').textContent='Conecte-se à internet para atualizar o app.';
+      event.preventDefault();event.stopPropagation();if(updating)return;
+      const requested=appWindow.location.hash;
+      const hash=/^#\/[a-z0-9/-]*$/i.test(requested)&&requested.length<=250?requested:target==='FB'?'#/management':'#/home';
+      updating=true;hide();
+      try{
+        if(!repair({target,hash}))throw Error('UPDATE_NOT_STARTED');
+        watcher?.stop();
+      }catch{
+        updating=false;
+        prompt.querySelector('[data-app-update-message]').textContent='Não foi possível iniciar a atualização. Confira a conexão e tente novamente.';
+        show();
+      }
     }
   };
   prompt.addEventListener('click',click);document.body.append(prompt);
