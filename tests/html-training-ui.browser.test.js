@@ -18,10 +18,19 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/training-fixture`);
   const enterFolder=async()=>{
-    await page.getByRole('button',{name:/^ROPs\s/}).click();
-    await page.getByRole('button',{name:/^Segurança\s/}).click();
+    await page.getByRole('button',{name:'ROPs',exact:true}).click();
+    await page.getByRole('button',{name:'Segurança',exact:true}).click();
   };
-  await page.getByRole('button',{name:/^Protocolos\s/}).waitFor();
+  await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
+  assert.equal(await page.locator('.ht-head h2').textContent(),'Gestão de Documentos');
+  assert.equal(await page.locator('.ht-breadcrumb, .ht-head p, .ht-folder-toolbar p').count(),0);
+  assert.equal(await page.locator('.ht-navigation-book').count(),4);
+  for(const [label,title] of [['Protocolos','PROTOCOLOS'],['Diretrizes','DIRETRIZES'],['ROPs','ROPs'],['Documentos administrativos','Documentos Administrativos']]){
+    await page.getByRole('button',{name:label,exact:true}).click();
+    assert.equal(await page.locator('.ht-head h2').textContent(),title);
+    assert.equal(await page.locator('.ht-head h2').evaluate(el=>getComputedStyle(el).textAlign),'center');
+    assert.equal(await page.evaluate(()=>window.trainingBack()),true);
+  }
   const desktopCards=await page.locator('.ht-browser-grid').evaluate(grid=>[...grid.children].map(card=>({width:card.getBoundingClientRect().width,height:card.getBoundingClientRect().height})));
   assert.equal(desktopCards.length,4);
   assert.ok(Math.max(...desktopCards.map(card=>card.width))-Math.min(...desktopCards.map(card=>card.width))<2);
@@ -34,9 +43,9 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.setViewportSize({width:1366,height:1000});
   await enterFolder();
   assert.equal(await page.evaluate(()=>window.trainingBack()),true);
-  await page.getByRole('button',{name:/^Segurança\s/}).waitFor();
+  await page.getByRole('button',{name:'Segurança',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>window.trainingBack()),true);
-  await page.getByRole('button',{name:/^ROPs\s/}).waitFor();
+  await page.getByRole('button',{name:'ROPs',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>window.trainingBack()),false,'root delegates return to the management area dialog');
   await enterFolder();
   assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='LIST').length),1);
@@ -47,6 +56,8 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.setViewportSize({width:390,height:844});
   const cards=page.locator('.ht-document-folder');
   assert.equal(await cards.count(),2);
+  await page.mouse.move(0,0);
+  await page.waitForTimeout(200);
   const left=await cards.nth(0).boundingBox(),right=await cards.nth(1).boundingBox();
   assert.ok(left&&right&&right.x>left.x&&Math.abs(left.y-right.y)<2,'document folders share one row on mobile');
   assert.ok(Math.abs(left.height-right.height)<2&&Math.abs(left.width-right.width)<2,'document folders have uniform dimensions');

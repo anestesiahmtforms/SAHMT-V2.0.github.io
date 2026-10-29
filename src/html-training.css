@@ -67,14 +67,14 @@
 /* The catalogue fills the fixed modal; only its grid scrolls when necessary. */
 .management-area-dialog:has(.ht-catalog-view) .management-area-dialog__body{display:flex;flex-direction:column;overflow:hidden;scrollbar-gutter:auto}
 .management-area-dialog .management-area-detail.ht-catalog-view{display:flex;flex-direction:column;flex:1;min-height:0;height:100%;overflow:hidden;padding:clamp(8px,1.4vw,16px)}
-.ht-catalog-view .ht-head{flex:0 0 auto;gap:8px;margin:0 0 10px;padding:0 0 10px}
+.ht-catalog-view .ht-head{display:block;flex:0 0 auto;margin:0 0 8px;padding:4px 0 12px;text-align:center}.ht-catalog-view .ht-head>div{width:100%}
 .ht-catalog-view .ht-head .ht-eyebrow{display:none}
-.ht-catalog-view .ht-head h2{font-size:clamp(1.1rem,2.5vw,1.5rem);margin:0}
+.ht-catalog-view .ht-head h2{margin:0;color:#173f57;font-size:clamp(1.5rem,3.5vw,2.25rem);font-weight:900;line-height:1.2;letter-spacing:.025em;text-shadow:0 1px 0 #fff}
 .ht-catalog-view .ht-head p{font-size:.8rem;margin:5px 0 0}
 .ht-catalog-view .ht-breadcrumb{flex:0 0 auto;margin-bottom:8px;font-size:.76rem;gap:6px}
 .ht-catalog-view .ht-breadcrumb button{min-height:36px;padding:6px 9px;font-size:.76rem}
 .ht-catalog-view .ht-folder-toolbar{flex:0 0 auto;margin:0 0 4px;gap:8px}
-.management-area-dialog .ht-catalog-view .ht-folder-toolbar>button{display:none}
+.management-area-dialog .ht-catalog-view .ht-folder-toolbar{display:none}
 .ht-catalog-view .ht-folder-toolbar p{font-size:.74rem}
 .ht-browser-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(var(--ht-grid-rows,1),minmax(min-content,1fr));align-items:stretch;align-content:stretch;gap:clamp(18px,2vw,24px);flex:1;min-height:0;min-width:0;margin:0;padding:12px 4px 8px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .ht-browser-grid>.ht-folder,.ht-browser-grid>.ht-document-card{width:100%;height:100%;min-width:0;min-height:142px;align-self:stretch}
@@ -96,3 +96,19 @@
 .ht-catalog-view>.ht-empty{display:flex;flex:1;flex-direction:column;justify-content:center;margin:12px 0 0}
 @media(max-width:650px){.ht-catalog-view .ht-head p{font-size:.74rem}.ht-browser-grid{gap:22px;padding-inline:2px}.html-trainings .ht-browser-grid>button.ht-folder{padding:14px;gap:10px}.ht-browser-grid .ht-document-face{padding:12px 10px}.ht-browser-grid .ht-document-title{font-size:.88rem}.ht-browser-grid .ht-folder-copy strong{font-size:.86rem}}
 
+/* Navigation books share the spine, paper edges and colors used in Biossegurança. */
+.html-trainings .ht-browser-grid>button.ht-navigation-book{position:relative;isolation:isolate;overflow:visible;align-items:center;justify-content:center;gap:16px;padding:22px 20px 24px 36px;border:1px solid #aec1b6;border-radius:10px 18px 15px 8px;background:linear-gradient(135deg,#fff9e9,#f4f5e8 52%,#e4eee9);color:#173f57;text-align:center;box-shadow:inset 1px 1px 0 #fff,0 7px 0 #d5ded5,0 12px 20px #173f571a;transition:transform .18s ease,box-shadow .18s ease}
+.ht-navigation-book::before{content:'';position:absolute;inset:-1px auto -1px -1px;width:18px;border:1px solid #9fb6ad;border-radius:10px 2px 2px 8px;background:linear-gradient(90deg,#91b1ad,#bfd2c5 70%,#d5dfce);box-shadow:inset 4px 0 5px #ffffff45,3px 0 4px #6a85741a;pointer-events:none}
+.ht-navigation-book::after{content:'';position:absolute;z-index:-1;left:19px;right:4px;bottom:-7px;height:9px;border:1px solid #bac8bb;border-radius:0 0 10px 3px;background:repeating-linear-gradient(0deg,#cbd5c8 0 1px,#fffdf3 1px 3px);pointer-events:none}
+.ht-book-icon{display:grid;place-items:center;flex:0 0 auto;width:clamp(42px,5vw,58px);height:clamp(44px,5vw,58px);padding:8px;border:1px solid #d5d5ae;border-radius:13px;background:linear-gradient(135deg,#fffef5,#e9e6c9);color:#53756e;box-shadow:inset 0 1px 0 #fff,0 3px 7px #617c6514}.ht-book-icon svg{width:100%;height:100%}
+.ht-navigation-book .ht-folder-copy strong{font-size:clamp(.88rem,1.8vw,1.15rem);font-weight:850;line-height:1.35;text-shadow:0 1px 0 #fff}
+.ht-navigation-book .ht-folder-arrow{display:grid;place-items:center;right:10px;top:10px;width:22px;height:22px;border:1px solid #cad7c9;border-radius:50%;background:#ffffffb3;color:#567269;font-size:1.25rem;line-height:1}
+.html-trainings button.ht-navigation-book:focus-visible{outline:3px solid #267b87;outline-offset:4px}
+@media(hover:hover){.html-trainings .ht-browser-grid>button.ht-navigation-book:hover:not(:disabled){filter:none;transform:translateY(-2px);border-color:#8fa99a;box-shadow:inset 1px 1px 0 #fff,0 9px 0 #d0dbce,0 15px 23px #173f5724}}
+.html-trainings .ht-browser-grid>button.ht-navigation-book:active:not(:disabled){transform:translateY(2px)}
+@media(max-width:650px){.html-trainings .ht-browser-grid>button.ht-navigation-book{gap:12px;padding:18px 12px 20px 27px}.ht-navigation-book::before{width:14px}.ht-navigation-book::after{left:15px}.ht-navigation-book .ht-folder-arrow{width:18px;height:18px;right:7px;top:7px;font-size:1.05rem}}
+@media(prefers-reduced-motion:reduce){.html-trainings .ht-browser-grid>button.ht-navigation-book{transition:none}}
+
+/* Keep the fixed back button at the bottom with a single safe-area inset. */
+.management-area-dialog:has(.html-trainings){padding-bottom:0}
+.management-area-dialog:has(.html-trainings) .management-area-dialog__footer{padding-bottom:env(safe-area-inset-bottom,0px)}

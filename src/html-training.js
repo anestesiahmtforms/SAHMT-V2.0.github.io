@@ -85,17 +85,23 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     return false;
   }
   function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy&&b.dataset.ht!=='back';});}
-  function top(){return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${mode==='catalog'?'Gestão de documentos':h(active?.title || 'Treinamentos')}</h2><p>${mode==='catalog'?'Selecione uma pasta para consultar os documentos e realizar os treinamentos.':'Leitura · Avaliação · Sugestão'}</p></div>${mode!=='catalog'&&mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;}
+  function top(){
+    if(mode==='catalog'){
+      const titles={Protocolos:'PROTOCOLOS',Diretrizes:'DIRETRIZES',ROPs:'ROPs','Documentos administrativos':'Documentos Administrativos'};
+      const title=folderPath.length?(titles[folderPath[0]]||folderPath[0]):'Gestão de Documentos';
+      return `<header class="ht-head"><div><h2>${h(title)}</h2></div></header>`;
+    }
+    return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${h(active?.title || 'Treinamentos')}</h2><p>Leitura · Avaliação · Sugestão</p></div>${mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;
+  }
   function catalogue(){
     const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
     const folderButton=(path,label,extra='')=>button('folder',label,`data-folder="${h(JSON.stringify(path))}" ${extra}`);
-    const crumbs=`<nav class="ht-breadcrumb" aria-label="Caminho das pastas">${folderButton([],'Gestão de documentos','class="ht-secondary"')}${level.path.map((name,index)=>`<span aria-hidden="true">›</span>${index===level.path.length-1?`<span aria-current="page">${h(name)}</span>`:folderButton(level.path.slice(0,index+1),h(name),'class="ht-secondary"')}`).join('')}</nav>`;
-    const folders=level.folders.map(folder=>folderButton(folder.path,`<span class="ht-folder-icon" aria-hidden="true"><svg viewBox="0 0 48 40" fill="none"><path d="M3 9a5 5 0 0 1 5-5h11l5 6h16a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V9Z" fill="currentColor"/><path d="M4 17h40" stroke="white" stroke-opacity=".55" stroke-width="2"/></svg></span><span class="ht-folder-copy"><strong>${h(folder.name)}</strong><small>${folder.count} ${folder.count===1?'documento disponível':'documentos disponíveis'}</small></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder"')).join('');
+    const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
+    const folders=level.folders.map(folder=>folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder ht-navigation-book"')).join('');
     const documents=visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('');
     const count=level.folders.length+visible.length;
-    const totals=[level.folders.length?`${level.folders.length} ${level.folders.length===1?'pasta':'pastas'}`:'',visible.length?`${visible.length} ${visible.length===1?'documento':'documentos'}`:''].filter(Boolean).join(' · ');
     const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}" style="--ht-grid-rows:${Math.ceil(count/2)}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
-    return crumbs+`<div class="ht-folder-toolbar">${folderPath.length?folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"'):''}<p class="ht-muted">${totals||'Pastas de documentos'}</p></div>`+grid;
+    return (folderPath.length?`<div class="ht-folder-toolbar">${folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"')}</div>`:'')+grid;
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
