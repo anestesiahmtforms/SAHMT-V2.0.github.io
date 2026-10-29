@@ -21,6 +21,9 @@ const manifest = {
   'node_modules/firebase/app-check/dist/esm/index.esm.js': {src: 'node_modules/firebase/app-check/dist/esm/index.esm.js', file: 'assets/app-check.js', imports: ['assets/shared.js']},
   'src/performance-ui.js': {src: 'src/performance-ui.js', file: 'assets/performance-ui.js', imports: ['assets/shared.js'], dynamicImports: ['optional-pdf']},
   'src/evaluation-data.js': {src: 'src/evaluation-data.js', file: 'assets/evaluation-data.js', imports: ['assets/shared.js']},
+  'src/html-training.js': {src:'src/html-training.js',file:'assets/html-training-12345678.js',css:['assets/html-training-12345678.css'],imports:['training-code'],dynamicImports:['private-training-material']},
+  'training-code': {file:'assets/training-code-12345678.js',imports:[]},
+  'private-training-material': {file:'assets/private-training-material.js',imports:[]},
   'src/label-camera.js': {src: 'src/label-camera.js', file: 'assets/label-camera.js', imports: ['assets/shared.js']},
   'src/label-ai.js': {src: 'src/label-ai.js', file: 'assets/label-ai.js', imports: ['src/firebase-auth.js']},
   'src/firebase-auth.js': {src: 'src/firebase-auth.js', file: 'assets/firebase-auth.js', imports: ['assets/shared.js']},
@@ -96,7 +99,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v283');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v284');
 });
 
 test('only the same-origin repair entry activates an installed update without claiming windows',async()=>{
@@ -212,6 +215,12 @@ test('Desempenho abre offline com adaptadores leves, sem pré-cache de PDF/mater
   assert.equal(worker.entries.has('https://sahmt.example/SAHMT-V2.0.github.io/assets/report-pdf.js'),false);
 });
 
+test('document entry code and its styles stay with the installed release without caching private content',async()=>{
+  const worker=createWorker();let install;worker.handlers.get('install')({waitUntil(value){install=value;}});await install;
+  for(const file of ['html-training-12345678.js','html-training-12345678.css','training-code-12345678.js'])assert.ok(worker.entries.has('https://sahmt.example'+BASE+'assets/'+file));
+  assert.equal(worker.entries.has('https://sahmt.example'+BASE+'assets/private-training-material.js'),false);
+});
+
 
 test('demonstração não pode substituir o HTML offline da produção',()=>{
  const worker=createWorker();let intercepted=false;
@@ -229,3 +238,4 @@ test('survey pages and assets bypass the installed app shell',()=>{
  }
  assert.equal(worker.fetched.length,0);
 });
+
