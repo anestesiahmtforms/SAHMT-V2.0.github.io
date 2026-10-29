@@ -53,7 +53,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       onError(training){activityStates.delete(training.id);paint(training,{...htmlTrainingActivityState(training),label:'Atividades ainda não confirmadas'});}});
   }
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
-  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view');root.removeAttribute('aria-busy');root.replaceChildren();};
+  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view');root.removeAttribute('aria-busy');root.replaceChildren();};
   async function call(action,input={},token=revision) {
     if(!current(token))throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
     const result=await api(action,input);
@@ -88,7 +88,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   function top(){
     if(mode==='catalog'){
       const titles={Protocolos:'PROTOCOLOS',Diretrizes:'DIRETRIZES',ROPs:'ROPs','Documentos administrativos':'Documentos Administrativos'};
-      const title=folderPath.length?(titles[folderPath[0]]||folderPath[0]):'Gestão de Documentos';
+      const title=folderPath.length?(titles[folderPath[0]]||folderPath[0]):'GESTÃO DE DOCUMENTOS';
       return `<header class="ht-head"><div><h2>${h(title)}</h2></div></header>`;
     }
     return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${h(active?.title || 'Treinamentos')}</h2><p>Leitura · Avaliação · Sugestão</p></div>${mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;
@@ -129,6 +129,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     root.classList.add('html-trainings');
     root.classList.toggle('ht-reading',mode==='participant'&&Boolean(content?.sections?.length));
     root.classList.toggle('ht-catalog-view',mode==='catalog');
+    root.classList.toggle('ht-navigation-view',mode==='catalog'&&(folderPath.length<=1||trainingFolderLevel(catalog,folderPath).folders.length>0));
     if(mode==='participant'&&active&&state)activityStates.set(active.id,{version:active.version,state});
     root.innerHTML=top()+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
     if(mode==='participant'&&content?.sections?.length){

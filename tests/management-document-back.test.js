@@ -67,7 +67,7 @@ test('document back preserves its subfolder and traverses only one ancestor per 
   assert.match(h.root.innerHTML, /<strong>Protocolos do SAHMT<\/strong>/);
   assert.doesNotMatch(h.root.innerHTML, /data-ht="open"/);
   assert.equal(h.controller.goBack(), true);
-  assert.match(h.root.innerHTML, /<h2>Gestão de Documentos<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2>GESTÃO DE DOCUMENTOS<\/h2>/);
   assert.equal(h.controller.goBack(), false);
   assert.deepEqual(h.calls.filter(action=>action!=='OPEN'), ['LIST', 'CONTENT', 'BEGIN', 'LIST']);
 });
@@ -78,7 +78,7 @@ test('back cancels a stalled document open and ignores its late response', async
   h.click('open', {id: 'one'}); await tick();
   assert.equal(h.controller.goBack(), true);
   assert.equal(h.controller.goBack(), true);
-  assert.match(h.root.innerHTML, /<h2>Gestão de Documentos<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2>GESTÃO DE DOCUMENTOS<\/h2>/);
   h.releaseOpen(); await tick(); await tick();
   assert.doesNotMatch(h.root.innerHTML, /ht-content-frame/);
   assert.equal(h.calls.includes('BEGIN'), false);
