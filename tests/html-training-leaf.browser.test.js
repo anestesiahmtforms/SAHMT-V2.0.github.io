@@ -28,7 +28,10 @@ test('all final folders fit the banner without scrolling or pagination and keep 
    assert.equal(await page.locator('.ht-document-folder').count(),titles.length,'every document is present on the same screen');
    for(const [width,height] of [[390,844],[320,568],[667,375],[1366,900]]){
     await page.setViewportSize({width,height});
-    await page.waitForFunction(()=>[...document.querySelectorAll('.ht-document-title')].every(label=>label.scrollWidth<=label.clientWidth+1),null,{timeout:5000});
+    await page.waitForFunction(()=>[...document.querySelectorAll('.ht-document-title')].every(label=>label.scrollWidth<=label.clientWidth+1),null,{timeout:5000}).catch(async error=>{
+     console.log('label overflow',JSON.stringify({role,category,subcategory,width,height,labels:await page.locator('.ht-document-title').evaluateAll(labels=>labels.map(label=>({text:label.textContent,width:label.clientWidth,scroll:label.scrollWidth,inline:label.style.fontSize,font:getComputedStyle(label).font,spacing:getComputedStyle(label).letterSpacing,range:(()=>{const range=document.createRange();range.selectNodeContents(label);return range.getBoundingClientRect().width;})()})))}));
+     await page.screenshot({path:'.local-preview/html-training-leaf-failure.png',scale:'css'});throw error;
+    });
     const layout=await page.evaluate(()=>{
      const body=document.querySelector('.management-area-dialog__body'),panel=document.querySelector('.management-document-banner'),footer=panel.querySelector('footer'),rect=panel.getBoundingClientRect();
      return {height:rect.height,center:rect.y+rect.height/2,scrolls:body.scrollHeight>body.clientHeight+1,labels:[...document.querySelectorAll('.ht-document-title')].map(el=>({nowrap:getComputedStyle(el).whiteSpace,overflow:el.scrollWidth>el.clientWidth+1})),cards:[...document.querySelectorAll('.ht-document-folder')].map(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})),footerTop:footer.getBoundingClientRect().top,footerBottom:footer.getBoundingClientRect().bottom};
