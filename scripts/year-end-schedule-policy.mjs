@@ -25,16 +25,23 @@ const [contacts,categories,registrations,previous]=await Promise.all([
   request('outros-48120',fe,'yearEndSchedules/2026-2027/registrations',{list:true}),
   request('outros-48120',fe,'yearEndSchedules/2026-2027/policy/participation')
 ]);
+// Owner-confirmed aliases and exclusions live only in the private FE policy.
+const approvedBindingsByUid=previous?.data.approvedBindingsByUid||{},excludedUids=previous?.data.excludedUids||[];
+if(typeof approvedBindingsByUid!=='object'||Array.isArray(approvedBindingsByUid)||!Array.isArray(excludedUids)||
+  Object.entries(approvedBindingsByUid).some(([uid,sigla])=>!uid||typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla)||excludedUids.includes(uid))||
+  excludedUids.some(uid=>typeof uid!=='string'||!uid)||new Set(excludedUids).size!==excludedUids.length)throw Error('POLICY_OVERRIDES_INVALID');
 const siglasByUid={},siglas=new Set(),unmatched=[];let excluded=0;
 for(const category of categories){
   const {uid}=category.data,email=category.data.email?.trim().toLowerCase();
+  if(excludedUids.includes(uid)){excluded++;continue;}
   const group=assignedInstitutionalGroup(category.data,{uid,email});
   if(group!=='team'){excluded++;continue;}
   if(category.id!==await institutionalAssignmentKey(email))throw Error('CATEGORY_KEY_MISMATCH');
   const profile=await request('outros-48120',fe,'users/'+encodeURIComponent(uid),{fields:['uid','email','active','access']});
   if(profile?.data.active!==true||profile.data.access!==true)continue;
   if(profile.data.uid!==uid||profile.data.email?.trim().toLowerCase()!==email)throw Error('PROFILE_BINDING');
-  const matches=contacts.filter(c=>c.data.active===true&&c.data.email?.trim().toLowerCase()===email);
+  const approvedSigla=approvedBindingsByUid[uid];
+  const matches=contacts.filter(c=>c.data.active===true&&(approvedSigla?c.id===approvedSigla:c.data.email?.trim().toLowerCase()===email));
   if(matches.length===0&&/^anestesiahmtforms[2-5]?@gmail[.]com$/.test(email)){excluded++;continue;}
   if(matches.length===0){unmatched.push({uid,email});continue;}
   if(matches.length!==1)throw Error('CANONICAL_CONTACT_REQUIRED');
@@ -45,7 +52,7 @@ for(const category of categories){
 for(const sigla of YEAR_END_SHIFT_ONLY_SIGLAS)if(!siglas.has(sigla))throw Error('SHIFT_ONLY_MEMBER_MISSING_'+sigla);
 // Never overwrite choices or silently migrate records during policy publication.
 for(const {data} of registrations)if(data.sigla!==siglasByUid[data.uid]||'displayName' in data)throw Error('REGISTRATION_MIGRATION_REQUIRED');
-const policy={schemaVersion:1,cycle:'2026-2027',siglasByUid,source:'FA_CONTACTS_USER_RULE_20261030'};
+const policy={schemaVersion:1,cycle:'2026-2027',siglasByUid,source:'FA_CONTACTS_USER_RULE_20261030',approvedBindingsByUid,excludedUids};
 const summary={eligibleMembers:siglas.size,shiftOnlySiglas:[...YEAR_END_SHIFT_ONLY_SIGLAS],excludedAssignments:excluded,unmatchedTeamAccounts:unmatched.length,existingRegistrations:registrations.length,profileFieldsChanged:0};
 await mkdir('.local-preview',{recursive:true});
 await writeFile('.local-preview/year-end-policy-plan.json',JSON.stringify({policy,previous,summary,unmatched},null,2));

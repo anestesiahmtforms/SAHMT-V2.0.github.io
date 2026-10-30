@@ -27,6 +27,8 @@ As Rules exigem perfil FE ativo e liberado, UID correspondente, conta Google ver
 
 `node scripts/year-end-schedule-policy.mjs` prepara uma prévia privada em `.local-preview`, sem alterar cadastros. Com `--apply`, publica somente o documento de política, usando precondição para evitar sobrescrever mudanças concorrentes. Contas efetivas sem correspondência no catálogo ficam pendentes de identificação da sigla, sem atribuições inventadas. O script exige as quatro dispensas e recusa migração silenciosa de inscrições antigas. Tokens permanecem somente na memória do processo.
 
+Vínculos e exclusões confirmados pelo proprietário são mantidos nos campos privados `approvedBindingsByUid` e `excludedUids` da política FE. A regeneração preserva essas decisões, continua exigindo perfil ativo e vínculo EFETIVO e confere a existência da sigla no catálogo. Não altera e-mails, contatos, categorias ou permissões de outros módulos.
+
 O acesso específico à escala permite que integrantes aprovados entrem em Governança. Os demais painéis conservam a autorização anterior, inclusive a liberação restrita das pesquisas e dos cadastros.
 
 ## Validação e publicação
