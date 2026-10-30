@@ -78,7 +78,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.mouse.move(0,0);
   await page.waitForTimeout(200);
   const left=await cards.nth(0).boundingBox(),right=await cards.nth(1).boundingBox();
-  assert.ok(left&&right&&right.x>left.x&&Math.abs(left.y-right.y)<2,'document folders share one row on mobile');
+  assert.ok(left&&right&&Math.abs(right.x-left.x)<2&&right.y>left.y,'compact documents use full-width rows on mobile');
   assert.ok(Math.abs(left.height-right.height)<2&&Math.abs(left.width-right.width)<2,'document folders have uniform dimensions');
   const layout=await page.locator('.ht-browser-grid').evaluate(grid=>({height:grid.clientHeight,scrollHeight:grid.scrollHeight,bottom:grid.getBoundingClientRect().bottom,last:Math.max(...[...grid.children].map(card=>card.getBoundingClientRect().bottom))}));
   assert.ok(layout.height<250&&layout.last>=layout.bottom-20,'document list hugs its cards instead of filling the display');
@@ -88,9 +88,9 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.evaluate(()=>window.setCatalogSize(12));
   await enterFolder();
   assert.equal(await page.locator('.ht-document-folder').count(),12);
-  const overflow=await page.evaluate(()=>{const grid=document.querySelector('.ht-browser-grid'),panel=document.querySelector('.management-document-banner'),footer=panel.querySelector('footer'),body=panel.querySelector('.management-area-dialog__body');return {scrolls:body.scrollHeight>body.clientHeight,gridBottom:body.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,viewportFits:panel.getBoundingClientRect().bottom<=innerHeight+2,rowGap:grid.children[2].getBoundingClientRect().top-grid.children[0].getBoundingClientRect().bottom};});
-  assert.equal(overflow.scrolls,true,'long catalogues scroll inside the banner body');
-  assert.ok(overflow.rowGap>=18,'folder tabs and shadows never touch the previous row');
+  const overflow=await page.evaluate(()=>{const grid=document.querySelector('.ht-browser-grid'),panel=document.querySelector('.management-document-banner'),footer=panel.querySelector('footer'),body=panel.querySelector('.management-area-dialog__body');return {scrolls:body.scrollHeight>body.clientHeight,gridBottom:body.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,viewportFits:panel.getBoundingClientRect().bottom<=innerHeight+2,rowGap:grid.children[1].getBoundingClientRect().top-grid.children[0].getBoundingClientRect().bottom};});
+  assert.equal(overflow.scrolls,false,'all twelve compact documents fit without scrolling');
+  assert.ok(overflow.rowGap>=3,'compact folder rows remain separated');
 
   assert.equal(overflow.viewportFits,true);
   assert.ok(overflow.gridBottom<=overflow.footerTop,'the return control remains outside the scrollable grid');
