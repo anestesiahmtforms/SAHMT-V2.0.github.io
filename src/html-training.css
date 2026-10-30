@@ -147,4 +147,3 @@
 .ht-catalog-view .ht-browser-grid:has(.ht-document-card){gap:22px}
 .ht-navigation-card{display:grid;grid-template-rows:auto auto;align-content:start;min-height:max-content}.ht-navigation-card>button.ht-navigation-book{display:flex;flex-direction:column;height:auto}
 .ht-catalog-view .ht-browser-grid:has(.ht-navigation-card){grid-auto-rows:minmax(max-content,auto)}
-
