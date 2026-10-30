@@ -17,6 +17,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   const requests=[];page.on('request',r=>requests.push(r.url()));
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/training-fixture`);
+  await page.evaluate(()=>{const shell=document.createElement('div');shell.className='app-shell app-shell--management';document.body.append(shell);shell.append(document.querySelector('dialog'));});
   await page.locator('dialog').evaluate(dialog=>dialog.showModal());
   const enterFolder=async()=>{
     await page.getByRole('button',{name:'ROPs',exact:true}).click();
@@ -194,4 +195,3 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.deepEqual(errors,[]);
  }catch(error){console.log('browser test failure',error);throw error;}finally{await browser?.close();await server.close();}
 });
-

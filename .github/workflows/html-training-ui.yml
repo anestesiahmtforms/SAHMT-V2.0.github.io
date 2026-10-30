@@ -2,10 +2,10 @@ name: HTML training mobile experience
 on:
   pull_request:
     branches: [main]
-    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'indicators-platform/*', 'tests/app-updates*', 'src/styles.css', 'tests/html-training*', 'package*.json', '.github/workflows/html-training-ui.yml']
+    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'indicators-platform/*', 'tests/app-updates*', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
   push:
     branches: [main]
-    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'indicators-platform/*', 'tests/app-updates*', 'src/styles.css', 'tests/html-training*', 'package*.json', '.github/workflows/html-training-ui.yml']
+    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'indicators-platform/*', 'tests/app-updates*', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,8 +23,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: node --test tests/html-training-ui.browser.test.js tests/app-updates.browser.test.js
+      - run: npx playwright install --with-deps chromium webkit
+      - run: node --test tests/html-training-ui.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js
+      - run: node --test tests/document-admin-scroll.browser.test.js
+        env:
+          SAHMT_BROWSER_ENGINE: webkit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
