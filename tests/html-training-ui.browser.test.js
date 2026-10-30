@@ -3,8 +3,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium,webkit} from 'playwright';
+import {createReadingPreview} from '../scripts/preview-reading-control.mjs';
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit';
 const engine=safari?webkit:chromium;
+
+test('complete reading pauses in a background tab and unlocks only after server confirmation',{timeout:90000},async()=>{
+ const {server,store,url}=await createReadingPreview({port:0});let browser;
+ try{
+  browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
+  const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
+  await page.getByRole('button',{name:'ROPs',exact:true}).click();await page.getByRole('button',{name:'Conferência',exact:true}).click();
+  await page.getByRole('button',{name:'Conferência de leitura completa',exact:true}).click();
+  const next=page.getByRole('button',{name:'Li esta seção e desejo continuar',exact:true});await next.waitFor();assert.equal(await next.isEnabled(),false);
+  await page.locator('[data-reading-status]').waitFor();
+  const background=await browser.newPage();await background.goto('about:blank');await background.bringToFront();await background.waitForTimeout(18000);
+  assert.equal(await next.isEnabled(),false,'background time must not complete reading');
+  await background.close();await page.bringToFront();
+  await page.waitForFunction(()=>!document.querySelector('[data-reading-next]')?.disabled,{timeout:40000});
+  assert.match(await page.locator('[data-reading-status]').textContent(),/validada/);
+  assert.equal(await page.frameLocator('.ht-content-frame').locator('details').getAttribute('open'),'');
+  await mkdir('.local-preview',{recursive:true});await page.screenshot({path:`.local-preview/complete-reading-${safari?'webkit':'chromium'}.png`,fullPage:true});
+  await next.click();await page.getByRole('checkbox',{name:/Declaro ciência/}).check();await page.getByRole('button',{name:'Confirmar ciência e ir à avaliação'}).click();
+  await page.getByRole('heading',{name:'Responda antes de continuar'}).waitFor();
+  assert.equal((await store.get('htmlTrainingStates','reading-preview_reader')).run.stage,'QUIZ');assert.equal(await store.get('htmlTrainingScores','reader'),null);assert.deepEqual(errors,[]);
+ }finally{await browser?.close();await server.close();}
+});
 
 test('HTML training opens directly with compact personal folders on desktop/mobile',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});
