@@ -43,7 +43,7 @@ function renderFixture({flush=async()=>{},cleanup=null}={}){
   googleAccessPanel:null,scheduleGridObserver:null,operationalDrafts:{flush},
   session:{status:'signed-in',user:{uid:'one'},profile:{}},liveReports:{get:()=>null},reportStates:new Map(),reportPayloads:new Map(),
   labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
-  cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:cleanup,startupBannerActive:false,
+  cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:cleanup,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive'},
   deployment:{target:'FA',externalManagementEnabled:false},deniedOperationalModules:new Set(),featureEnabledForRoute:()=>true,appFeatures:{},
   shellView:()=> 'HOME',preloadOperationalDataWhenIdle(){},document:{querySelectorAll:()=>[],querySelector:()=>null},
   loadHome:async()=>{},loadModule:async()=>{},updateInformationBanner(){},can:()=>false,updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
