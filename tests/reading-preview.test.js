@@ -6,6 +6,10 @@ test('independent reading preview servers can start together and close without l
  try{
   previews.push(await createReadingPreview({port:0}));previews.push(await createReadingPreview({port:0}));
   assert.notEqual(previews[0].url,previews[1].url);
-  for(const preview of previews)assert.equal((await fetch(preview.url)).status,200);
+  for(const preview of previews){
+   assert.equal((await fetch(preview.url)).status,200);
+   const response=await fetch(new URL('/reading-api',preview.url),{method:'POST',headers:{'Content-Type':'application/json',Origin:new URL(preview.url).origin},body:JSON.stringify({action:'LIST',input:{}})});
+   assert.equal(response.status,200);assert.equal((await response.json()).trainings.length,1);
+  }
  }finally{await Promise.all(previews.map(p=>p.server.close()));}
 });
