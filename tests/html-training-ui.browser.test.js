@@ -194,3 +194,4 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.deepEqual(errors,[]);
  }catch(error){console.log('browser test failure',error);throw error;}finally{await browser?.close();await server.close();}
 });
+
