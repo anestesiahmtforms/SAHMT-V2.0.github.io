@@ -81,4 +81,3 @@ test('management subfolder dialogs center compact content at 90% width and scrol
   }
  }finally{await browser.close();}
 });
-
