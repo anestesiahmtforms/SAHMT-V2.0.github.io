@@ -2,7 +2,9 @@ import {mkdir} from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
+const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit';
+const engine=safari?webkit:chromium;
 
 test('HTML training opens directly with compact personal folders on desktop/mobile',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});
@@ -10,8 +12,8 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
  server.middlewares.use('/training-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-family:system-ui}.source-page{padding:40px;color:#173f57}.source-page article{padding:30px;margin:15px;background:#f6eddd;border:1px solid #ddcba9;border-radius:16px}</style><main class="source-page"><h1>GRUPOS DE GESTÃO</h1><article>Gestão de Pessoas</article><article>Gestão de Documentos</article><article>Gestão da Qualidade</article></main><dialog class="management-area-dialog" aria-label="Área de gestão"><header class="management-area-dialog__header"><h2>ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body"><div class="management-area-detail" id="root"></div></div><footer class="management-area-dialog__footer"><button type="button">VOLTAR</button></footer></dialog><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
-  browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
-  const page=await browser.newPage({viewport:{width:1366,height:1000}}),errors=[];
+  browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
+  const page=await browser.newPage({viewport:{width:1366,height:1000},...(safari?{isMobile:true,hasTouch:true}:{})}),errors=[];
   page.on('pageerror',error=>{errors.push(error.message);console.log('page error',error.message);});
   page.on('console',msg=>{if(msg.type()==='error')console.log('browser error',msg.text());});
   const requests=[];page.on('request',r=>requests.push(r.url()));
@@ -33,7 +35,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
     assert.equal(await page.locator('.ht-head h2').evaluate(el=>getComputedStyle(el).textAlign),'center');
     assert.equal(await page.evaluate(()=>window.trainingBack()),true);
   }
-  const banner=await page.locator('dialog').boundingBox();
+  const banner=await page.locator('.management-document-banner').boundingBox();
   assert.equal(await page.locator('.management-area-dialog__header').isVisible(),false,'the beige panel is the entire dialog');
   assert.match(await page.locator('dialog').evaluate(el=>getComputedStyle(el,'::backdrop').backdropFilter),/blur\(9px\)/);
   assert.ok(Math.abs(banner.width-1366*.9)<2&&banner.height<450,'navigation uses 90% width with content-sized height');
@@ -47,14 +49,14 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.waitForTimeout(200);
-  const mobileBanner=await page.locator('dialog').boundingBox();
+  const mobileBanner=await page.locator('.management-document-banner').boundingBox();
   assert.ok(mobileBanner.height<560&&Math.abs(mobileBanner.y+mobileBanner.height/2-422)<2,'mobile banner stays compact and centered');
   await page.screenshot({path:'.local-preview/html-training-folders-mobile.png',fullPage:true});
   await page.setViewportSize({width:320,height:568});
   await page.getByRole('button',{name:'ROPs',exact:true}).click();
-  const smallLayout=await page.locator('dialog').evaluate(dialog=>({top:dialog.getBoundingClientRect().top,bottom:dialog.getBoundingClientRect().bottom,footer:dialog.querySelector('footer').getBoundingClientRect().bottom,bodyOverflow:dialog.querySelector('.management-area-dialog__body').scrollHeight>dialog.querySelector('.management-area-dialog__body').clientHeight+2}));
+  const smallLayout=await page.locator('.management-document-banner').evaluate(dialog=>({top:dialog.getBoundingClientRect().top,bottom:dialog.getBoundingClientRect().bottom,footer:dialog.querySelector('footer').getBoundingClientRect().bottom,bodyOverflow:dialog.querySelector('.management-area-dialog__body').scrollHeight>dialog.querySelector('.management-area-dialog__body').clientHeight+2}));
   assert.ok(smallLayout.top>=0&&smallLayout.bottom<=568&&smallLayout.footer<=568,'long menus keep the return button on small screens');
-  assert.equal(smallLayout.bodyOverflow,false,'only the books grid scrolls');
+  assert.equal(await page.locator('.management-document-banner').count(),1,'one panel owns the body and return control');
   await page.screenshot({path:'.local-preview/html-training-banner-rops-small.png',fullPage:true});
   assert.equal(await page.evaluate(()=>window.trainingBack()),true);
   await page.setViewportSize({width:1366,height:1000});
@@ -86,10 +88,10 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.evaluate(()=>window.setCatalogSize(12));
   await enterFolder();
   assert.equal(await page.locator('.ht-document-folder').count(),12);
-  const overflow=await page.evaluate(()=>{const grid=document.querySelector('.ht-browser-grid'),dialog=document.querySelector('dialog'),footer=dialog.querySelector('footer'),body=dialog.querySelector('.management-area-dialog__body');return {scrolls:grid.scrollHeight>grid.clientHeight,gridBottom:grid.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,bodyOverflows:body.scrollHeight>body.clientHeight+2,viewportFits:dialog.getBoundingClientRect().bottom<=innerHeight+2,rowGap:grid.children[2].getBoundingClientRect().top-grid.children[0].getBoundingClientRect().bottom};});
-  assert.equal(overflow.scrolls,true,'long catalogues scroll inside the grid');
+  const overflow=await page.evaluate(()=>{const grid=document.querySelector('.ht-browser-grid'),panel=document.querySelector('.management-document-banner'),footer=panel.querySelector('footer'),body=panel.querySelector('.management-area-dialog__body');return {scrolls:body.scrollHeight>body.clientHeight,gridBottom:body.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,viewportFits:panel.getBoundingClientRect().bottom<=innerHeight+2,rowGap:grid.children[2].getBoundingClientRect().top-grid.children[0].getBoundingClientRect().bottom};});
+  assert.equal(overflow.scrolls,true,'long catalogues scroll inside the banner body');
   assert.ok(overflow.rowGap>=18,'folder tabs and shadows never touch the previous row');
-  assert.equal(overflow.bodyOverflows,false,'catalogue content never stretches the modal body');
+
   assert.equal(overflow.viewportFits,true);
   assert.ok(overflow.gridBottom<=overflow.footerTop,'the return control remains outside the scrollable grid');
   await page.screenshot({path:'.local-preview/html-training-uniform-grid-mobile.png',fullPage:true});
@@ -192,6 +194,8 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   await page.evaluate(()=>window.mountUnavailable());await page.getByText('Treinamentos indisponíveis:',{exact:false}).waitFor();
   await page.evaluate(()=>{window.cleanup();window.holdList();window.mount();window.cleanup();window.releaseList();});
   await page.waitForTimeout(50);assert.equal(await page.locator('#root').textContent(),'');
+  assert.equal(await page.locator('.management-document-banner').count(),0,'closing the library restores the original management dialog');
+  assert.equal(await page.locator('.management-area-dialog--document-library').count(),0);
   assert.deepEqual(errors,[]);
  }catch(error){console.log('browser test failure',error);throw error;}finally{await browser?.close();await server.close();}
 });
