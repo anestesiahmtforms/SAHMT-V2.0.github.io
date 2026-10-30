@@ -57,9 +57,19 @@ test('institutional surveys open from their menu button and return to surveys',(
  assert.equal(h.dialog.dataset.panel,'surveys');
 });
 
-test('Governance is disabled for common users and only allows the verified exception or administrators',()=>{
- for(const role of ['gestor','coordenador','anestesiologista','temporario']){const common=pilot();common.profile.role=role;common.user.email='common@example.invalid';common.profile.email=common.user.email;assert.equal(canUseGovernanceHub(common),false);}
+test('approved verified team members enter Governance for the schedule without gaining management access',()=>{
+ for(const role of ['gestor','coordenador','anestesiologista','temporario']){const common=pilot();common.profile.role=role;common.user.email='common@example.invalid';common.profile.email=common.user.email;assert.equal(canUseGovernanceHub(common),true);assert.equal(canUseManagementPilot(common),false);}
  assert.equal(canUseGovernanceHub(pilot()),true);
  for(const change of [s=>s.user.emailVerified=false,s=>s.profile.email='other@example.invalid',s=>s.profile.uid='other',s=>s.profile.access=false]){const current=pilot();change(current);assert.equal(canUseGovernanceHub(current),false);}
  for(const permissions of [{admin:true},{}]){const admin=pilot();admin.user.email='owner@example.invalid';admin.profile.role=permissions.admin?'anestesiologista':'administrador_app';admin.profile.permissions=permissions;assert.equal(canUseGovernanceHub(admin),true);admin.profile.active=false;assert.equal(canUseGovernanceHub(admin),false);}
+});
+
+test('schedule access opens its menu while other survey panels retain their previous gate',()=>{
+ const h=hub({yearEndSchedule:true},'home');
+ assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'4'}}):null}});
+ assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/management-hub-button--festive/);
+ assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
+ assert.equal(h.dialog.dataset.panel,'surveys');
 });

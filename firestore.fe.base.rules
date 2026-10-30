@@ -25,6 +25,62 @@ service cloud.firestore {
     }
     // END_MEMBER_CATEGORIES_V1
 
+    // YEAR_END_SCHEDULE_V1: identified team choices in FE; unrelated surveys stay private.
+    function yearEndMember() {
+      return request.auth != null && request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.firebase.get('sign_in_provider', '') == 'google.com' && memberCategoryActive_();
+    }
+    function yearEndName() {
+      let name = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('displayName', '');
+      return name != '' ? name : request.auth.token.get('name', '');
+    }
+    function yearEndRecord(d, uid) {
+      return d.keys().hasOnly(['uid', 'displayName', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
+        d.keys().hasAll(['uid', 'displayName', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
+        d.uid == uid && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 160 &&
+        d.plantao in ['natal', 'reveillon'] && d.grupo in ['natal', 'reveillon'] &&
+        d.position is int && d.position > 0 && d.position <= 9007199254740991 &&
+        d.createdAt is timestamp && d.updatedAt == request.time;
+    }
+    function yearEndNewPosition(d) {
+      let path = /databases/$(database)/documents/yearEndSchedules/2026-2027/control/order;
+      let counter = getAfter(path).data;
+      return counter.lastParticipantUid == request.auth.uid && counter.updatedAt == request.time &&
+        counter.lastPosition == d.position &&
+        d.position == (exists(path) ? get(path).data.lastPosition + 1 : 1);
+    }
+    function yearEndCounter(d) {
+      let own = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(request.auth.uid);
+      return d.keys().hasOnly(['lastPosition', 'lastParticipantUid', 'updatedAt']) &&
+        d.keys().hasAll(['lastPosition', 'lastParticipantUid', 'updatedAt']) &&
+        d.lastPosition is int && d.lastPosition > 0 && d.lastPosition <= 9007199254740991 &&
+        d.lastParticipantUid == request.auth.uid && d.updatedAt == request.time && !exists(own) &&
+        getAfter(own).data.position == d.lastPosition && getAfter(own).data.uid == request.auth.uid;
+    }
+    match /users/{uid} {
+      allow get: if yearEndMember() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /yearEndSchedules/{cycle}/registrations/{uid} {
+      allow read: if cycle == '2026-2027' && yearEndMember();
+      allow create: if cycle == '2026-2027' && yearEndMember() && request.auth.uid == uid &&
+        yearEndRecord(request.resource.data, uid) && request.resource.data.displayName == yearEndName() &&
+        request.resource.data.createdAt == request.time && yearEndNewPosition(request.resource.data);
+      allow update: if cycle == '2026-2027' && yearEndMember() && request.auth.uid == uid &&
+        yearEndRecord(request.resource.data, uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'updatedAt']);
+      allow delete: if false;
+    }
+    match /yearEndSchedules/{cycle}/control/{id} {
+      allow read: if cycle == '2026-2027' && id == 'order' && yearEndMember();
+      allow create: if cycle == '2026-2027' && id == 'order' && yearEndMember() &&
+        yearEndCounter(request.resource.data) && request.resource.data.lastPosition == 1;
+      allow update: if cycle == '2026-2027' && id == 'order' && yearEndMember() &&
+        yearEndCounter(request.resource.data) && request.resource.data.lastPosition == resource.data.lastPosition + 1;
+      allow delete: if false;
+    }
+    // END_YEAR_END_SCHEDULE_V1
+
     match /{document=**} {
       allow read, write: if false;
     }

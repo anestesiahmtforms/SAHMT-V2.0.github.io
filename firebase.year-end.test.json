@@ -1,0 +1,4 @@
+{
+  "firestore": {"rules": "firestore.climate.rules"},
+  "emulators": {"firestore": {"port": 8090}, "ui": {"enabled": false}, "singleProjectMode": true}
+}

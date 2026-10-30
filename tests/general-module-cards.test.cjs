@@ -6,7 +6,8 @@ const vm = require('node:vm');
 
 const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 const features = readFileSync(join(__dirname, '../src/feature-flags.js'), 'utf8').replace(/\r\n/g, '\n');
-const pilot = readFileSync(join(__dirname, '../src/management-pilot.js'), 'utf8').replace(/^export /gm, '');
+const yearEnd = readFileSync(join(__dirname, '../src/year-end-schedule.js'), 'utf8').replace(/^export /gm, '');
+const pilot = yearEnd + '\n' + readFileSync(join(__dirname, '../src/management-pilot.js'), 'utf8').replace(/^import[^\n]+\n/gm, '').replace(/^export /gm, '');
 const managementPilotOwnerEmail=pilot.match(/===['\"]([^'\"]+@gmail\.com)['\"]/)[1];
 
 function extractFunction(name, {async = false} = {}) {

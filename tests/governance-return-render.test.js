@@ -112,10 +112,16 @@ for(const route of ['management','training','management-hub','labels'])test(`${r
  assert.deepEqual(h.loaded,[]);assert.deepEqual(h.mounts,[]);assert.equal(h.ctx.location.hash,'#/'+route);
  h.ctx.session=authorized();h.ctx.navigator.onLine=false;await h.render();assert.ok(h.app.querySelector('[data-online-gate]'));
 });
-test('FA blocks Governance for common users before mounting any panel',async()=>{
+test('FA blocks Governance for an unverified common user before mounting any panel',async()=>{
   const session=authorized();session.profile.role='anestesiologista';
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
+});
+
+test('FA lets a verified approved team member enter Governance for the year-end schedule',async()=>{
+  const session=authorized();session.profile.role='anestesiologista';session.user.emailVerified=true;session.user.email='team@example.invalid';session.profile.email=session.user.email;
+  const h=harness({target:'FA',route:'management-hub',session});await h.render();
+  assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();

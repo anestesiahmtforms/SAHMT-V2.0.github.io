@@ -46,6 +46,10 @@ jobs:
           npm run test:vaccination-rules
       - name: Validate authenticated survey participation and session bridge
         run: npm run test:survey-session
+      - name: Validate year-end choices, ordering and FE access rules
+        run: |
+          npm run test:year-end
+          npm run test:year-end-rules
       - name: Validate anonymous climate survey and free FE rules
         run: |
           npm run build:climate
