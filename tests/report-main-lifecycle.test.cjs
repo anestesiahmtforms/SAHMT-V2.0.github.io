@@ -42,7 +42,7 @@ async function harness({kind='events',pendingRead}={}) {
     loadDailyChecklist:(stations,day,data,scope)=>paints.push({kind:'checklist',stations,day,data,scope}),
     loadMonthlyChecklist:(stations,data,scope)=>paints.push({kind:'checklist',stations,data,scope}),
     setTimeout:callback=>{const id=++timerId;timers.set(id,callback);return id;},clearTimeout:id=>timers.delete(id),
-    startupBannerActive:false,notice:'',labelManualConfirmation:{},scheduleOutboxRetry(){},preloadStartupReports(){},preloadOperationalDataWhenIdle(){},syncOutbox(){},
+    startupBannerActive:false,yearEndStartup:{setSession(){}},notice:'',labelManualConfirmation:{},scheduleOutboxRetry(){},preloadStartupReports(){},preloadOperationalDataWhenIdle(){},syncOutbox(){},
     revalidateOnlineSession(){},render:async()=>{renders++;}, normalizeAppFeatures:features=>({...features}),mockLite:{readAppFeatures:async()=>({...ctx.appFeatures})},console
   });
   ctx.can=permission=>ctx.session.status==='signed-in'&&ctx.session.profile.active!==false&&ctx.session.profile.access!==false&&ctx.session.profile.permissions?.[permission]===true;

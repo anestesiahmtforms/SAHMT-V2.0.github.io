@@ -36,7 +36,7 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     reportPayloads: new Map(), reportPaintKeys: new Map(), reportStates: new Map(), reportWaiters: new Map(),
     suspendedReportScopes: [], checklistCatalogLive: {}, checklistModuleStations: [], checklistResponsibilityLive: {},
     loadedLabelRecords: [], loadedEventReportRecords: [], eventReportSourceRecords: [], checklistReportContext: {},
-    startupBannerActive: false, labelManualConfirmation: {uid: session.user.uid, status: 'Rascunho'}, notice: '',
+    startupBannerActive: false, yearEndStartup:{setSession(){}}, labelManualConfirmation: {uid: session.user.uid, status: 'Rascunho'}, notice: '',
     scheduleOutboxRetry() {}, preloadStartupReports() {}, preloadOperationalDataWhenIdle() {}, syncOutbox() {},
     settleReportWaiter() {}, onlineValidationRequired: false, backendFailureDisplayed: false,operationalBackend:{snapshot:()=>({code:''})},
     setOfflineRuntimeMode() {},
