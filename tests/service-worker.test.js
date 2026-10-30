@@ -44,6 +44,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
   const names = new Set(['sahmt-v2-shell-v200', 'sahmt-v2-offline-schedule-v1', 'unrelated-cache']);
   const entries = new Map();
   const cacheNames = [];
+  const precacheRequests = [];
   const fetched = [];
   let skipWaitingCalls = 0;
   let claimCalls = 0;
@@ -52,8 +53,10 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 
   const cache = {
     async addAll(urls) {
-      cacheNames.push(...urls);
-      for (const url of urls) {
+      precacheRequests.push(...urls);
+      for (const request of urls) {
+        const url = new URL(normalizeUrl(request)).pathname;
+        cacheNames.push(url);
         const value = url.endsWith('assets-manifest.json') ? manifestResponse : {url};
         entries.set(normalizeUrl(url), value);
       }
@@ -94,8 +97,8 @@ function createWorker({offline = false, navigationOk = true} = {}) {
     fetched.push(request instanceof URL ? request.href : request);
     return {ok: request?.mode === 'navigate' ? navigationOk : true, type: 'basic', clone() { return this; }};
   };
-  vm.runInNewContext(workerSource, {self, caches, URL, fetch, Promise, Set, Math});
-  return {handlers, cacheNames, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
+  vm.runInNewContext(workerSource, {self, caches, URL, Request, fetch, Promise, Set, Math});
+  return {handlers, cacheNames, precacheRequests, entries, fetched, names, deletes: () => deletes, skipWaiting: () => skipWaitingCalls, claim: () => claimCalls};
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
@@ -117,6 +120,7 @@ test('instala o shell atual com os símbolos da Home e os imports estáticos do 
   worker.handlers.get('install')({waitUntil(promise) { install = promise; }});
   await install;
   assert.ok(worker.names.has(currentShellCache));
+  assert.ok(worker.precacheRequests.every(request => request.cache === 'reload'), 'new releases bypass fresh HTTP copies of the old shell');
   assert.ok(worker.cacheNames.includes(`${BASE}vendor/zxing.min.js`));
 
   assert.ok(worker.cacheNames.includes(`${BASE}assets/modules/operacional.jpg`));
