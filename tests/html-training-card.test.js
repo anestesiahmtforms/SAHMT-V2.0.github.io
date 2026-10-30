@@ -23,3 +23,12 @@ test('document titles, IDs and category metadata cannot inject markup or attribu
   assert.match(html, /data-id="x&quot; onclick=&quot;bad\(\)"/);
   assert.match(html, /&lt;img src=x onerror=bad\(\)&gt;/);
 });
+
+test('compact communication labels retain the full official accessible title and authorized ID',()=>{
+  const title='Conciliação medicamentosa nas transições de atendimento: Serviços de assistência aguda (pacientes internados)';
+  const html=renderTrainingDocumentCard({...training,title},{compact:true,canManage:true});
+  assert.match(html,/Conciliação — internação<\/span>/);
+  assert.ok(html.includes(`aria-label="${title}"`));
+  assert.match(html,/data-ht="open" data-id="protocol-1"/);
+  assert.match(html,/data-ht="edit" data-id="protocol-1"/);
+});
