@@ -148,15 +148,14 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     globalThis.cancelAnimationFrame(labelFrame);
     labelFrame=globalThis.requestAnimationFrame(()=>{
       if(!alive||!root.classList.contains('ht-leaf-catalog'))return;
-      const canvas=root.ownerDocument.createElement('canvas'),context=canvas.getContext('2d');
-      if(!context)return;
       for(const label of root.querySelectorAll('.ht-document-title')){
         if(!label.clientWidth)continue;
-        const style=getComputedStyle(label),height=label.closest('button').getBoundingClientRect().height;
+        const height=label.closest('button').getBoundingClientRect().height;
         const base=Math.min(13,Math.max(9,height*.32));
-        context.font=`${style.fontWeight} ${base}px ${style.fontFamily}`;
-        const width=context.measureText(label.textContent).width;
-        label.style.fontSize=Math.max(8,Math.min(base,base*(label.clientWidth-1)/Math.max(1,width)))+'px';
+        label.style.fontSize=base+'px';
+        const range=root.ownerDocument.createRange();range.selectNodeContents(label);
+        const width=range.getBoundingClientRect().width;
+        label.style.fontSize=Math.max(8,Math.min(base,base*(label.clientWidth-2)/Math.max(1,width)))+'px';
       }
     });
   }

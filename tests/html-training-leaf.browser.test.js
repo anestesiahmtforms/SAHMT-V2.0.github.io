@@ -27,7 +27,8 @@ test('all final folders fit the banner without scrolling or pagination and keep 
    if(subcategory)await page.getByRole('button',{name:subcategory,exact:true}).click();
    assert.equal(await page.locator('.ht-document-folder').count(),titles.length,'every document is present on the same screen');
    for(const [width,height] of [[390,844],[320,568],[667,375],[1366,900]]){
-    await page.setViewportSize({width,height});await page.waitForTimeout(100);
+    await page.setViewportSize({width,height});
+    await page.waitForFunction(()=>[...document.querySelectorAll('.ht-document-title')].every(label=>label.scrollWidth<=label.clientWidth+1),null,{timeout:5000});
     const layout=await page.evaluate(()=>{
      const body=document.querySelector('.management-area-dialog__body'),panel=document.querySelector('.management-document-banner'),footer=panel.querySelector('footer'),rect=panel.getBoundingClientRect();
      return {height:rect.height,center:rect.y+rect.height/2,scrolls:body.scrollHeight>body.clientHeight+1,labels:[...document.querySelectorAll('.ht-document-title')].map(el=>({nowrap:getComputedStyle(el).whiteSpace,overflow:el.scrollWidth>el.clientWidth+1})),cards:[...document.querySelectorAll('.ht-document-folder')].map(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})),footerTop:footer.getBoundingClientRect().top,footerBottom:footer.getBoundingClientRect().bottom};
@@ -36,7 +37,7 @@ test('all final folders fit the banner without scrolling or pagination and keep 
     assert.ok(layout.height<=height*.9+2&&Math.abs(layout.center-height/2)<2,'panel stays bounded and centered');
     assert.ok(layout.cards.every(card=>card.top>=0&&card.bottom<=layout.footerTop),'all folders remain above the back button');
     assert.ok(layout.footerBottom<=height,'back button remains on screen');
-    assert.ok(layout.labels.every(label=>label.nowrap==='nowrap'&&!label.overflow),`${category}/${subcategory} labels fit a single line at ${width}`);
+    assert.ok(layout.labels.every(label=>label.nowrap==='nowrap'&&!label.overflow),`${role} ${category}/${subcategory} labels fit a single line at ${width}`);
     assert.equal(await page.locator('[data-ht="document-page"]').count(),0);
     assert.equal(await page.getByRole('button',{name:/^(Anterior|Próxima)$/}).count(),0);
     if(width===390)await page.screenshot({path:`.local-preview/html-training-leaf-${role}-${category}-${subcategory||'lista'}.png`,scale:'css'});
