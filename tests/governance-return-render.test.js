@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {parseFragment} from 'parse5';
-import {canUseManagementPilot,canUseGovernanceHub} from '../src/management-pilot.js';
+import {canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule} from '../src/management-pilot.js';
 import {featureEnabledForRoute, DEFAULT_APP_FEATURES} from '../src/feature-flags.js';
 import {shouldRenderHashChange} from '../src/router.js';
 
@@ -68,7 +68,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     updateInformationBanner(){},liveReports:new Map(),reportStates:new Map(),reportPayloads:new Map(),
     labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,
-    loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,canUseGovernanceHub,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
+    loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
     canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,

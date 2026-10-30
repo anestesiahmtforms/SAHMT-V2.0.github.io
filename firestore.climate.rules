@@ -26,19 +26,34 @@ service cloud.firestore {
     // END_MEMBER_CATEGORIES_V1
 
     // YEAR_END_SCHEDULE_V1: identified team choices in FE; unrelated surveys stay private.
-    function yearEndMember() {
-      return request.auth != null && request.auth.token.get('email_verified', false) == true &&
-        request.auth.token.firebase.get('sign_in_provider', '') == 'google.com' && memberCategoryActive_();
+    function yearEndPolicy() {
+      return get(/databases/$(database)/documents/yearEndSchedules/2026-2027/policy/participation).data;
     }
-    function yearEndName() {
-      let name = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('displayName', '');
-      return name != '' ? name : request.auth.token.get('name', '');
+    function yearEndCategory() {
+      let key = hashing.sha256('"' + request.auth.token.get('email', '').lower() + '"').toHexString().lower();
+      return get(/databases/$(database)/documents/userCategories/$(key)).data;
+    }
+    function yearEndMember() {
+      let category = yearEndCategory();
+      let policy = yearEndPolicy();
+      return request.auth != null && request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.firebase.get('sign_in_provider', '') == 'google.com' && memberCategoryActive_() &&
+        category.schemaVersion == 1 && category.identityStatus == 'LINKED' && category.uid == request.auth.uid &&
+        category.email == request.auth.token.get('email', '').lower() && category.memberCategories is list &&
+        category.memberCategories.hasAll(['EFETIVO']) && category.memberCategories.hasOnly(['EFETIVO', 'ADMINISTRADOR', 'GESTOR']) &&
+        category.memberCategories.size() == category.memberCategories.toSet().size() &&
+        policy.schemaVersion == 1 && policy.cycle == '2026-2027' && policy.siglasByUid is map &&
+        policy.siglasByUid.get(request.auth.uid, '').matches('^([A-Z]{2}|L2)$');
+    }
+    function yearEndSigla() {
+      return yearEndPolicy().siglasByUid[request.auth.uid];
     }
     function yearEndRecord(d, uid) {
-      return d.keys().hasOnly(['uid', 'displayName', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
-        d.keys().hasAll(['uid', 'displayName', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
-        d.uid == uid && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 160 &&
-        d.plantao in ['natal', 'reveillon'] && d.grupo in ['natal', 'reveillon'] &&
+      let sigla = yearEndSigla();
+      return d.keys().hasOnly(['uid', 'sigla', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
+        d.keys().hasAll(['uid', 'sigla', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
+        d.uid == uid && d.sigla == sigla && d.plantao in ['natal', 'reveillon'] &&
+        (sigla in ['FR', 'AD', 'L2', 'LE'] ? d.grupo == null : d.grupo in ['natal', 'reveillon']) &&
         d.position is int && d.position > 0 && d.position <= 9007199254740991 &&
         d.createdAt is timestamp && d.updatedAt == request.time;
     }
@@ -64,11 +79,11 @@ service cloud.firestore {
     match /yearEndSchedules/{cycle}/registrations/{uid} {
       allow read: if cycle == '2026-2027' && yearEndMember();
       allow create: if cycle == '2026-2027' && yearEndMember() && request.auth.uid == uid &&
-        yearEndRecord(request.resource.data, uid) && request.resource.data.displayName == yearEndName() &&
+        yearEndRecord(request.resource.data, uid) &&
         request.resource.data.createdAt == request.time && yearEndNewPosition(request.resource.data);
       allow update: if cycle == '2026-2027' && yearEndMember() && request.auth.uid == uid &&
         yearEndRecord(request.resource.data, uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'updatedAt']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'sigla', 'updatedAt']);
       allow delete: if false;
     }
     match /yearEndSchedules/{cycle}/control/{id} {
@@ -78,6 +93,10 @@ service cloud.firestore {
       allow update: if cycle == '2026-2027' && id == 'order' && yearEndMember() &&
         yearEndCounter(request.resource.data) && request.resource.data.lastPosition == resource.data.lastPosition + 1;
       allow delete: if false;
+    }
+    match /yearEndSchedules/{cycle}/policy/{id} {
+      allow get: if cycle == '2026-2027' && id == 'participation' && yearEndMember();
+      allow list, write: if false;
     }
     // END_YEAR_END_SCHEDULE_V1
 
