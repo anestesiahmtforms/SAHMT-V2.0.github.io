@@ -15,6 +15,7 @@ test('temporary team banner persists until manual close, isolates scheduling, an
   await page.goto(preview.url);await page.locator('.boot-card').waitFor();const original=await page.locator('.boot-card').boundingBox();
   preview.release();await page.locator('.year-end-startup').waitFor();const campaign=await page.locator('.boot-card').boundingBox();
   assert.ok(Math.abs(original.width-campaign.width)<1);assert.ok(Math.abs(original.height-campaign.height)<1,`card heights: ${original.height}, ${campaign.height}`);
+  assert.ok(await page.locator('.year-end-startup-burst').evaluate(title=>parseFloat(getComputedStyle(title).fontSize)>=24),'the title retains the large startup slogan font');
   await page.waitForTimeout(3500);assert.equal(await page.locator('.year-end-startup').count(),1);
   await mkdir('.local-preview',{recursive:true});await page.screenshot({path:`.local-preview/year-end-startup-${safari?'webkit':'chromium'}.png`,fullPage:true});
   await page.getByRole('button',{name:'Fechar banner'}).click();await page.locator('#schedule-date').waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),true);

@@ -336,7 +336,7 @@
 @keyframes boot-particle-burst{0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}8%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}55%{opacity:.9;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(1)}88%,100%{opacity:0;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.3)}}
 @keyframes boot-halo-burst{0%{opacity:0;transform:translate(-50%,-50%) scale(.15)}10%{opacity:.85}65%,100%{opacity:0;transform:translate(-50%,-50%) scale(2.2)}}
 .year-end-startup-close{position:absolute;z-index:3;top:7px;right:7px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:#36586a;font:inherit;font-size:1.8rem;cursor:pointer}
-.year-end-startup-burst{color:#0876a1;animation:year-end-title-burst 1.25s ease-out 3;transform-origin:center}
+.boot-card .year-end-startup-burst{display:block;font:inherit;line-height:inherit;color:#0876a1;animation:year-end-title-burst 1.25s ease-out 3;transform-origin:center}
 .year-end-startup-action{position:relative;z-index:2;min-height:44px;height:44px;margin-block:-8px;padding:8px 12px;font-size:.82rem;font-weight:850}
 .year-end-startup :is(button):focus-visible{outline:3px solid #0876a1;outline-offset:3px}
 @keyframes year-end-title-burst{0%{transform:scale(.55);color:#16803d;filter:blur(2px)}15%{transform:scale(1.12);color:#d74891;filter:blur(0);text-shadow:0 0 18px #ffbf6266}35%{transform:scale(1);color:#0876cf}65%{color:#9150b8}100%{transform:scale(1);color:#0876a1}}
