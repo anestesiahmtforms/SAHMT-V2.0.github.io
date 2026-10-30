@@ -41,6 +41,7 @@ test('administrator can scroll document folders while the return footer stays vi
  }finally{await browser?.close();await server.close();}
 });
 
+
 test('management subfolder dialogs center compact content at 90% width and scroll long content', {timeout:60000},async()=>{
  const css=await readFile('src/styles.css','utf8');
  const browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
