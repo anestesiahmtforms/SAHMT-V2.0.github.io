@@ -11,7 +11,7 @@ const date=value=>{
 const options=(name,items,required=true)=>items.map(o=>`<label class="year-end-option"><input type="radio" name="${name}" value="${o.id}"${required?' required':''}><span><strong>${h(o.label)}</strong><span class="year-end-dates">${h(o.dates)}</span>${o.detail?`<small>${h(o.detail)}</small>`:''}</span><span class="year-end-check" aria-hidden="true">✓</span></label>`).join('');
 
 export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true}={}) {
-  let disposed=false,repository=null,participation=null,stop=()=>{},loadId=0,ready=false,busy=false,dirty=false,own=null,rows=[];
+  let disposed=false,repository=null,participation=null,stop=()=>{},loadId=0,ready=false,busy=false,dirty=false,own=null,rows=[],totals=null;
   const live=()=>!disposed&&isCurrent()&&root.isConnected;
   const form=()=>root.querySelector('form');
   root.classList.add('year-end-host');
@@ -29,33 +29,37 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true}=
     button.textContent=busy?'CONFIRMANDO…':same?'ESCOLHAS REGISTRADAS':own?'ATUALIZAR ESCOLHAS':'CONFIRMAR ESCOLHAS →';
     f.setAttribute('aria-busy',String(busy));
     const groupSummary=participation.requireGroup?label(YEAR_END_GROUPS,chosen.grupo):'Grupo dispensado para '+participation.sigla;
-    root.querySelector('[data-year-end-summary]').textContent=complete?`${label(YEAR_END_SHIFTS,chosen.plantao)} · ${groupSummary}${own?' · Sua posição: '+own.position+'º':''}`:!chosen.plantao?(participation.requireGroup&&!chosen.grupo?'Escolha seu plantão e seu grupo.':'Escolha seu plantão. Obrigatório para participar.'):'Escolha seu grupo de trabalho. Obrigatório para participar.';
+    root.querySelector('[data-year-end-summary]').textContent=complete?`${label(YEAR_END_SHIFTS,chosen.plantao)} · ${groupSummary}`:!chosen.plantao?(participation.requireGroup&&!chosen.grupo?'Escolha seu plantão e seu grupo.':'Escolha seu plantão. Obrigatório para participar.'):'Escolha seu grupo de trabalho. Obrigatório para participar.';
   };
   const paintRows=()=>{
+    for(const element of root.querySelectorAll('[data-year-end-count]'))element.textContent=totals?String(totals[element.dataset.yearEndCount]):'—';
+    if(!participation?.isAdmin)return;
     root.querySelector('[data-year-end-total]').textContent=rows.length+' '+(rows.length===1?'inscrição':'inscrições');
     root.querySelector('[data-year-end-rows]').innerHTML=rows.length?sortYearEndRegistrations(rows).map(r=>`<tr${r.uid===repository?.uid?' class="year-end-own"':''}><td><span class="year-end-position">${h(r.position)}º</span></td><th scope="row">${h(r.sigla||'—')}${r.uid===repository?.uid?'<small class="year-end-you">Você</small>':''}</th><td><span class="year-end-tag year-end-tag--${r.plantao==='natal'?'natal':'reveillon'}">${h(label(YEAR_END_SHIFTS,r.plantao))}</span></td><td>${r.grupo===null?'<span class="year-end-exempt">Dispensado</span>':h(label(YEAR_END_GROUPS,r.grupo))}</td><td>${h(date(r.createdAt))}</td></tr>`).join(''):`<tr><td colspan="5" class="year-end-empty">${ready?'As primeiras escolhas começam aqui. Confirme as suas para entrar na lista.':'Carregando inscrições…'}</td></tr>`;
   };
   const render=()=>{
     root.innerHTML=`<section class="year-end" aria-label="Escolhas para a escala final de ano">
-      <div class="year-end-intro"><span class="year-end-season">NATAL & RÉVEILLON · 2026 / 2027</span><h3>${participation.requireGroup?'Seu plantão. Seu grupo.':'Seu plantão.'}</h3><p>${participation.requireGroup?'Plantão e grupo de trabalho são obrigatórios para a equipe efetiva.':`Para a sigla ${h(participation.sigla)}, somente o plantão é obrigatório. O grupo de trabalho está desativado.`}</p><span class="year-end-connection" data-year-end-connection>Conectando…</span></div>
-      <form data-year-end-form>
+      <div class="year-end-intro"><span class="year-end-season">NATAL & RÉVEILLON · 2026 / 2027</span><h3>${!participation.canParticipate?'As escolhas da equipe.':participation.requireGroup?'Seu plantão. Seu grupo.':'Seu plantão.'}</h3><p>${!participation.canParticipate?'Acompanhe os totais e consulte as marcações da equipe na tabela administrativa.':participation.requireGroup?'Plantão e grupo de trabalho são obrigatórios para a equipe efetiva.':`Para a sigla ${h(participation.sigla)}, somente o plantão é obrigatório. O grupo de trabalho está desativado.`}</p><span class="year-end-connection" data-year-end-connection>Conectando…</span></div>
+      ${participation.canParticipate?`<form data-year-end-form>
         <div class="year-end-fields"><fieldset data-year-end-category="plantao" disabled><legend><span>1</span> Escolho o plantão</legend><p>Obrigatório · selecione apenas um plantão.</p>${options('plantao',YEAR_END_SHIFTS)}</fieldset>
         <fieldset data-year-end-category="grupo"${participation.requireGroup?'':' class="year-end-fieldset--inactive"'} disabled><legend><span>2</span> Escolho o grupo de trabalho</legend><p>${participation.requireGroup?'Obrigatório · selecione apenas um grupo.':`Dispensado para ${h(participation.sigla)} · campo inativo.`}</p>${options('grupo',YEAR_END_GROUPS,participation.requireGroup)}</fieldset></div>
-        <div class="year-end-confirm"><p data-year-end-summary></p><button type="submit" class="primary-button year-end-submit" disabled>CONFIRMAR ESCOLHAS →</button><small>Sua posição é definida na primeira confirmação. Ao atualizar as opções, ela é mantida.</small></div>
-      </form>
+        <div class="year-end-confirm"><p data-year-end-summary></p><button type="submit" class="primary-button year-end-submit" disabled>CONFIRMAR ESCOLHAS →</button><small>Os totais são atualizados na confirmação das escolhas.</small></div>
+      </form>`:''}
       <div class="year-end-feedback" data-year-end-feedback role="status" aria-live="polite"></div><button type="button" class="secondary-button" data-year-end-retry hidden>TENTAR NOVAMENTE</button>
-      <section class="year-end-ranking" aria-labelledby="year-end-ranking-title"><header><div><span class="year-end-section-label">ORDEM DE ESCOLHA</span><h3 id="year-end-ranking-title">Participação da equipe</h3></div><span class="year-end-total" data-year-end-total>0 inscrições</span></header><p>A lista usa as siglas e segue a ordem de confirmação.</p>
+      <section class="year-end-counts" aria-labelledby="year-end-counts-title"><span class="year-end-section-label">PARTICIPAÇÃO DA EQUIPE</span><h3 id="year-end-counts-title">Quantidade de escolhas</h3><p>Totais por opção, atualizados a cada confirmação.</p><div class="year-end-count-groups">${[['Plantões',[['Plantão Natal','plantaoNatal'],['Plantão Réveillon','plantaoReveillon']]],['Grupos de trabalho',[['Grupo Natal','grupoNatal'],['Grupo Réveillon','grupoReveillon']]]].map(([title,items])=>`<article><h4>${h(title)}</h4><dl>${items.map(([text,key])=>`<div><dt>${h(text)}</dt><dd data-year-end-count="${key}">—</dd></div>`).join('')}</dl></article>`).join('')}</div></section>
+      ${participation.isAdmin?`<section class="year-end-ranking" aria-labelledby="year-end-ranking-title"><header><div><span class="year-end-section-label">ACESSO DO ADMINISTRADOR · ORDEM DE ESCOLHA</span><h3 id="year-end-ranking-title">Marcações da equipe</h3></div><span class="year-end-total" data-year-end-total>0 inscrições</span></header><p>Consulta restrita ao administrador. A lista usa as siglas e segue a ordem de confirmação.</p>
       <div class="year-end-table-wrap"><table><caption class="year-end-sr">Siglas da equipe em ordem de confirmação</caption><thead><tr><th scope="col">Posição</th><th scope="col">Sigla</th><th scope="col">Plantão</th><th scope="col">Grupo de trabalho</th><th scope="col">Confirmado em</th></tr></thead><tbody data-year-end-rows></tbody></table></div></section>
+      `:''}
     </section>`;
     hydrate();paintForm();paintRows();
   };
   const failed=error=>{
-    ready=false;rows=[];own=null;dirty=false;participation=null;
+    ready=false;rows=[];totals=null;own=null;dirty=false;participation=null;
     const excluded=error.code==='YEAR_END_INELIGIBLE';
     root.innerHTML=`<section class="year-end year-end-denied" role="alert"><h3>${excluded?'Acesso indisponível':'Não foi possível abrir a escala'}</h3><p>${h(yearEndMessage(error))}</p>${excluded?'':'<button type="button" class="secondary-button" data-year-end-retry>TENTAR NOVAMENTE</button>'}</section>`;
   };
   async function connect() {
-    const ticket=++loadId;stop();stop=()=>{};ready=false;busy=false;dirty=false;rows=[];own=null;participation=null;
+    const ticket=++loadId;stop();stop=()=>{};ready=false;busy=false;dirty=false;rows=[];totals=null;own=null;participation=null;
     root.innerHTML='<p role="status">Conferindo sua participação na equipe…</p>';
     const current=()=>live()&&ticket===loadId;
     try {
@@ -64,7 +68,7 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true}=
       render();
       stop=repository.subscribe(state=>{
         if(!current())return;
-        rows=state.rows;own=rows.find(r=>r.uid===repository.uid)||null;ready=true;
+        rows=participation.isAdmin?state.rows||[]:[];totals=state.totals;own=state.own;ready=true;
         if(!dirty)hydrate();paintForm();paintRows();
         root.querySelector('[data-year-end-connection]').textContent=state.fromCache?'Cópia em cache · reconectando':'Atualização em tempo real';
       },error=>{if(current())failed(error);});
@@ -78,7 +82,7 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true}=
     const input=selection();busy=true;notice('');paintForm();
     try {
       const result=await repository.save(input);if(!live())return;
-      own=result;dirty=false;hydrate();notice(result.updated?`Escolhas atualizadas. Você continua na ${result.position}ª posição.`:`Escolhas confirmadas! Você está na ${result.position}ª posição.`);
+      own=result;dirty=false;hydrate();notice(result.updated?'Escolhas atualizadas.':'Escolhas confirmadas!');
     } catch(error){if(live()){if(['YEAR_END_INELIGIBLE','permission-denied'].includes(error.code))failed(error);else notice(yearEndMessage(error),true);}}
     finally{busy=false;if(live())paintForm();}
   };
