@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
 import {mkdir,readFile} from 'node:fs/promises';
+const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit';
+const engine=safari?webkit:chromium;
+const browserOptions={headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})};
+const pageOptions=safari?{isMobile:true,hasTouch:true,deviceScaleFactor:3}:{};
 
 test('administrator can scroll document folders while the return footer stays visible', {timeout:120000},async()=>{
  const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FB'}),'import.meta.env.VITE_HTML_TRAINING_ENDPOINT':'""'},server:{host:'127.0.0.1',port:0}});
@@ -12,10 +16,11 @@ test('administrator can scroll document folders while the return footer stays vi
  server.middlewares.use('/admin-scroll-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><dialog class="management-area-dialog"><header class="management-area-dialog__header"><h2>Área</h2></header><div class="management-area-dialog__body"><div class="management-area-detail" id="root"></div></div><footer class="management-area-dialog__footer"><button>VOLTAR</button></footer></dialog><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
-  browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
-  const page=await browser.newPage();
+  browser=await engine.launch(browserOptions);
+  const page=await browser.newPage(pageOptions);
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/admin-scroll-fixture`);
+  await page.evaluate(()=>{const shell=document.createElement('div');shell.className='app-shell app-shell--management';document.body.append(shell);shell.append(document.querySelector('dialog'));});
   await page.locator('dialog').evaluate(dialog=>dialog.showModal());
   await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
   await page.locator('.management-area-dialog__body').evaluate((body,html)=>body.insertAdjacentHTML('afterbegin',html),activityForm);
@@ -32,7 +37,9 @@ test('administrator can scroll document folders while the return footer stays vi
    assert.ok(layout.gridBottom<=layout.footerTop+2,'folder grid stays above return footer');
    assert.ok(layout.footerBottom<=height,'return stays inside screen');
    if(layout.contentHeight>layout.gridHeight+2){
-    await page.locator('.ht-browser-grid').hover();await page.mouse.wheel(0,800);await page.waitForTimeout(150);
+    if(safari)await page.locator('.ht-browser-grid').evaluate(el=>el.scrollBy(0,800));
+    else {await page.locator('.ht-browser-grid').hover();await page.mouse.wheel(0,800);}
+    await page.waitForTimeout(150);
     assert.ok(await page.locator('.ht-browser-grid').evaluate(grid=>grid.scrollTop)>0,'wheel scroll reaches administrator folders');
    }
    await mkdir('.local-preview',{recursive:true});await page.screenshot({path:`.local-preview/document-admin-scroll-${width}.png`});
@@ -44,12 +51,12 @@ test('administrator can scroll document folders while the return footer stays vi
 
 test('management subfolder dialogs center compact content at 90% width and scroll long content', {timeout:60000},async()=>{
  const css=await readFile('src/styles.css','utf8');
- const browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
+ const browser=await engine.launch(browserOptions);
  try{
-  const page=await browser.newPage();
+  const page=await browser.newPage(pageOptions);
   await page.route('**/*',route=>route.abort());
   for(const className of ['management-area-dialog','management-document-dialog']){
-   await page.setContent(`<style>${css}</style><dialog class="${className}"><header class="management-area-dialog__header"><h2>Subpasta de Gestão</h2></header><div class="management-area-dialog__body"><button>Documento A</button><button>Documento B</button></div><footer class="management-area-dialog__footer"><button>VOLTAR</button></footer></dialog>`);
+   await page.setContent(`<meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><div class="app-shell app-shell--management"><dialog class="${className}"><header class="management-area-dialog__header"><h2>Subpasta de Gestão</h2></header><div class="management-area-dialog__body"><button>Documento A</button><button>Documento B</button></div><footer class="management-area-dialog__footer"><button>VOLTAR</button></footer></dialog></div>`);
    await page.locator('dialog').evaluate(dialog=>dialog.showModal());
    for(const [width,height] of [[320,568],[390,844],[667,375],[1366,900]]){
     await page.setViewportSize({width,height});
@@ -65,10 +72,13 @@ test('management subfolder dialogs center compact content at 90% width and scrol
    await page.setViewportSize({width:320,height:568});
    const body=page.locator('.management-area-dialog__body');
    assert.ok(await body.evaluate(el=>el.scrollHeight>el.clientHeight),'long content has internal scroll');
-   await body.hover();await page.mouse.wheel(0,600);await page.waitForTimeout(150);
+   if(safari)await body.evaluate(el=>el.scrollBy(0,600));
+   else {await body.hover();await page.mouse.wheel(0,600);}
+   await page.waitForTimeout(150);
    assert.ok(await body.evaluate(el=>el.scrollTop)>0,'long subfolder content scrolls');
    const footer=await page.locator('footer').boundingBox();
    assert.ok(footer.y+footer.height<=568,'return footer stays visible');
   }
  }finally{await browser.close();}
 });
+
