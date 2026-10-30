@@ -4,6 +4,7 @@
 
  
 
+.ht-reading-validation{padding:12px 16px;margin-bottom:12px;border:1px solid #c7dcd7;border-radius:9px;background:#f0f8f4}.ht-reading-validation progress{width:100%;height:10px;accent-color:#176c70}.ht-reading-validation p{margin:6px 0;font-size:.85rem}.ht-reading-validation small{font-size:.76rem;color:#526f74}
 /* Document content is shared by the reader and the folder banner. */
 .html-trainings{width:100%;max-width:none;min-width:0;margin:0;padding:12px 0 20px}
 .management-area-dialog .management-area-detail.html-trainings{width:100%;max-width:none;margin:0;padding:clamp(8px,1.5vw,20px);border:0;border-radius:0}

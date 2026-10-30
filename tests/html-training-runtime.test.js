@@ -6,6 +6,11 @@ import {createFirestoreStore,encodeFields,decodeFields} from '../worker-training
 import {createTrainingWorker} from '../worker-training/worker.js';
 
 const FB='sahmt-gestao-5ae66';
+test('an old client receives an explicit update instruction when complete reading is required',async()=>{
+ const worker=createTrainingWorker({verifyIdentity:async()=>({uid:'reader'}),buildService:()=>({execute:async()=>{throw Object.assign(Error('reading required'),{code:'TRAINING_READING_REQUIRED',status:409});}})});
+ const response=await worker.fetch(new Request('https://training.test/v1/training',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:JSON.stringify({action:'READ',input:{trainingId:'item',runId:'run',index:0}})}),{HTML_TRAINING_ENABLED:'true'});
+ const data=await response.json();assert.equal(response.status,409);assert.equal(data.code,'TRAINING_READING_REQUIRED');assert.match(data.message,/Atualize o aplicativo/);
+});
 const token=(overrides={})=>['header',Buffer.from(JSON.stringify({aud:FB,iss:`https://securetoken.google.com/${FB}`,sub:'user-1',email:'user@example.test',email_verified:true,auth_time:100,iat:100,exp:2000,firebase:{sign_in_provider:'google.com'},...overrides})).toString('base64url'),'signature'].join('.');
 test('identity requires a Firebase-verified FB Google token and checks account revocation',async()=>{
  let reads=0;const fetchImpl=async(url,opts)=>{reads++;assert.match(url,/identitytoolkit.googleapis.com\/v1\/accounts:lookup/);assert.equal(JSON.parse(opts.body).idToken,token());return Response.json({users:[{localId:'user-1',email:'user@example.test',emailVerified:true,validSince:'100'}]});};

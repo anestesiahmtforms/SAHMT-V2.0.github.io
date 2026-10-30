@@ -3,8 +3,42 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium,webkit} from 'playwright';
+import {createReadingPreview} from '../scripts/preview-reading-control.mjs';
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit';
 const engine=safari?webkit:chromium;
+
+test('complete reading pauses while the page is hidden and unlocks only after server confirmation',{timeout:90000},async t=>{
+ let preview,browser,page,closing;
+ const cleanup=()=>closing??=Promise.allSettled([browser?.close(),preview?.server.close()]);
+ t.signal.addEventListener('abort',()=>{void cleanup();},{once:true});
+ try{
+  preview=await createReadingPreview({port:0});const {store,url}=preview;
+  browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
+  page=await browser.newPage({viewport:{width:390,height:844}});page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
+  await page.getByRole('button',{name:'ROPs',exact:true}).click();await page.getByRole('button',{name:'Conferência',exact:true}).click();
+  await page.getByRole('button',{name:'Conferência de leitura completa',exact:true}).click();
+  const next=page.getByRole('button',{name:'Li esta seção e desejo continuar',exact:true});await next.waitFor();assert.equal(await next.isEnabled(),false);
+  await page.locator('[data-reading-status]').waitFor();
+  // Playwright pages are focused/active independently (playwright.dev/docs/pages).
+  // Simulate the browser visibility boundary rather than assuming bringToFront hides another page.
+  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
+  await page.waitForFunction(()=>document.querySelector('[data-reading-status]')?.textContent.includes('pausada'),undefined,{timeout:5000});
+  await page.waitForTimeout(18000);assert.equal(await next.isEnabled(),false,'hidden-page time must not complete reading');
+  await page.evaluate(()=>{delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});
+  await page.locator('.ht-content-frame').scrollIntoViewIfNeeded();
+  await page.waitForFunction(()=>document.querySelector('[data-reading-next]')?.disabled===false,undefined,{timeout:40000});
+  assert.match(await page.locator('[data-reading-status]').textContent(),/validada/);
+  assert.equal(await page.frameLocator('.ht-content-frame').locator('details').getAttribute('open'),'');
+  await mkdir('.local-preview',{recursive:true});await page.screenshot({path:`.local-preview/html-training-complete-reading-${safari?'webkit':'chromium'}.png`,fullPage:true});
+  await next.click();await page.getByRole('checkbox',{name:/Declaro ciência/}).check();await page.getByRole('button',{name:'Confirmar ciência e ir à avaliação'}).click();
+  await page.getByRole('heading',{name:'Responda antes de continuar'}).waitFor();
+  assert.equal((await store.get('htmlTrainingStates','reading-preview_reader')).run.stage,'QUIZ');assert.equal(await store.get('htmlTrainingScores','reader'),null);assert.deepEqual(errors,[]);
+ }catch(error){
+  console.log('Reading validation failure:',error.message,'status:',await page?.locator('[data-reading-status]').textContent({timeout:1000}).catch(()=>''));
+  await mkdir('.local-preview',{recursive:true});await page?.screenshot({path:`.local-preview/html-training-reading-failure-${safari?'webkit':'chromium'}.png`,fullPage:true}).catch(()=>{});throw error;
+ }finally{await cleanup();}
+});
 
 test('HTML training opens directly with compact personal folders on desktop/mobile',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});

@@ -5,6 +5,7 @@ import { mountTrainingAudit } from './html-training-audit.js';
 import {trainingCategories,trainingFolderLevel,trainingPathAllowed} from './html-training-folders.js';
 import {renderTrainingDocumentCard} from './html-training-card.js';
 import {htmlTrainingActivityState, loadHtmlTrainingDocument, hydrateHtmlTrainingActivities} from './html-training-activity.js';
+import {mountReadingTracker} from './html-training-reading.js';
 
 const categories = trainingCategories;
 const uuid = () => globalThis.crypto.randomUUID();
@@ -30,7 +31,7 @@ export async function createHtmlTrainingClient(user) {
       const response = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({action,input}),cache:'no-store',credentials:'omit'});
       if (!valid()) throw Object.assign(new Error('Sua sessão mudou.'),{code:'SESSION_CHANGED'});
       const data = await response.json();
-      if (!response.ok) throw Object.assign(new Error(data.message || 'Não foi possível concluir a operação.'),{code:data.code || data.error?.code,status:response.status});
+      if (!response.ok) throw Object.assign(new Error(data.message || ({TRAINING_READING_REQUIRED:'Atualize o aplicativo e reabra o documento para validar a leitura completa.',TRAINING_READING_INCOMPLETE:'Percorra todos os trechos e aguarde o tempo de leitura antes de continuar.',TRAINING_READING_SESSION_CHANGED:'A leitura foi aberta em outro acesso. Reabra o documento para continuar aqui.',TRAINING_READING_PLAN_UNAVAILABLE:'A validação deste material está sendo preparada. Tente novamente em instantes.'}[data.code]) || 'Não foi possível concluir a operação.'),{code:data.code || data.error?.code,status:response.status});
       return data;
     }
   };
@@ -50,6 +51,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   const uid=user?.uid, activityStates=new Map();
   let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false;
+  let readingPlan=null,readingTracker=null;
+  const stopReading=()=>{readingTracker?.cleanup();readingTracker=null;};
   const accessAdmin=()=>isTrainingAdmin(profile)&&folderControlAvailable;
   const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
   function refreshVisibleActivities(){
@@ -63,7 +66,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       onError(training){activityStates.delete(training.id);paint(training,{...htmlTrainingActivityState(training),label:'Atividades ainda não confirmadas'});}});
   }
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
-  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view','ht-leaf-catalog');root.removeAttribute('aria-busy');root.replaceChildren();if(banner){banner.replaceWith(...banner.childNodes);dialog.classList.remove('management-area-dialog--document-library','management-area-dialog--catalog-banner','management-area-dialog--leaf-banner');}};
+  const stop = () => {stopReading();alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view','ht-leaf-catalog');root.removeAttribute('aria-busy');root.replaceChildren();if(banner){banner.replaceWith(...banner.childNodes);dialog.classList.remove('management-area-dialog--document-library','management-area-dialog--catalog-banner','management-area-dialog--leaf-banner');}};
   async function call(action,input={},token=revision) {
     if(!current(token))throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
     const result=await api(action,input);
@@ -126,7 +129,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   function readingView(){
     const sections=content?.sections||[],section=sections[readIndex];if(!section)return '';
     const reading=state?.run?.stage==='READING';
-    return `<section class="ht-panel ht-reader"><div class="ht-reading-head"><div><span class="ht-eyebrow">LEITURA · SEÇÃO ${readIndex+1} DE ${sections.length}</span><h3>${h(section.title||'Conteúdo')}</h3></div></div><iframe class="ht-content-frame" title="Conteúdo protegido do treinamento" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe><div class="ht-actions">${readIndex>0?button('previous','← Seção anterior','class="ht-secondary"'):''}${reading?button('read',readIndex<(state.run.readCount||0)?'Próxima seção →':'Li esta seção e desejo continuar'):readIndex<sections.length-1?button('browse-next','Próxima seção →','class="ht-secondary"'):''}</div></section>`;
+    const gated=reading&&readingPlan&&readIndex>=(state.run.readCount||0);
+    return `<section class="ht-panel ht-reader"><div class="ht-reading-head"><div><span class="ht-eyebrow">LEITURA · SEÇÃO ${readIndex+1} DE ${sections.length}</span><h3>${h(section.title||'Conteúdo')}</h3></div></div>${gated?'<div class="ht-reading-validation"><progress max="100" value="0" aria-label="Progresso validado da leitura"></progress><p data-reading-status role="status">Preparando a validação da leitura…</p><small>Percorra todo o texto. A contagem pausa ao sair do documento.</small></div>':''}<iframe class="ht-content-frame" title="Conteúdo protegido do treinamento" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe><div class="ht-actions">${readIndex>0?button('previous','← Seção anterior','class="ht-secondary"'):''}${reading?button('read',readIndex<(state.run.readCount||0)?'Próxima seção →':'Li esta seção e desejo continuar',gated?'data-reading-next disabled data-locked="true"':''):readIndex<sections.length-1?button('browse-next','Próxima seção →','class="ht-secondary"'):''}</div></section>`;
   }
   function participation(){
     const run=state?.run, attempts=state?.attempts?.length||0;
@@ -161,6 +165,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   }
   function render(){
     if(!alive)return;
+    stopReading();
     dialog?.classList.toggle('management-area-dialog--catalog-banner',mode==='catalog');
     const level=mode==='catalog'?trainingFolderLevel(catalog,folderPath):null;
     const leaf=Boolean(level&&!level.folders.length&&level.trainings.length);
@@ -178,6 +183,21 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
         if(!alive)return;const doc=frame.contentDocument;if(!doc)return;
         for(const name of ['copy','cut','contextmenu','dragstart','selectstart'])doc.addEventListener(name,e=>e.preventDefault());
         doc.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&['c','x','p','s','a'].includes(e.key.toLowerCase()))e.preventDefault();});
+        if(readingPlan&&state?.run?.stage==='READING'){
+          const token=revision;
+          readingTracker=mountReadingTracker({frame,plan:readingPlan,section:readIndex,runId:state.run.id,
+            call:(action,input)=>call(action,{trainingId:active.id,...input},token),
+            onState(next){if(current(token))state=next;},
+            onUpdate(progress){
+              if(!current(token))return;
+              const bar=root.querySelector('.ht-reading-validation progress'),label=root.querySelector('[data-reading-status]'),next=root.querySelector('[data-reading-next]');
+              if(bar)bar.value=progress.percent;
+              if(label){const seconds=Math.ceil(progress.remainingMs/1000);label.textContent=progress.paused||`Leitura validada: ${progress.percent}% · ${seconds?`tempo restante estimado: ${Math.floor(seconds/60)}min ${String(seconds%60).padStart(2,'0')}s`:'confirmando conclusão…'}`;if(progress.complete)label.textContent='Leitura desta seção validada. Você pode continuar.';}
+              if(next){if(progress.complete)delete next.dataset.locked;else next.dataset.locked='true';next.disabled=busy||!progress.complete;}
+            },
+            onError(err){if(!current(token))return;if(err.status===401||err.status===403){fail(err);return;}const label=root.querySelector('[data-reading-status]');if(label)label.textContent=err.message||'Não foi possível validar a leitura. Reabra o documento para continuar.';}
+          });
+        }
       });frame.srcdoc=readerDocument(content?.sections?.[readIndex]?.html,uid,new Date().toLocaleDateString('pt-BR'));}
     }
     if(mode==='editor')root.querySelectorAll('[data-section]').forEach(frame=>{frame.srcdoc=readerDocument(editor.sections[Number(frame.dataset.section)].html,uid,'',true);});
@@ -192,7 +212,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     const loaded=await loadHtmlTrainingDocument((action,input)=>call(action,input,token),{trainingId:id,version:selected?.version});
     if(!current(token))return;
     const opened=loaded.opened;
-    active=opened.training;state=opened.state;questions=opened.questions||[];content=loaded.content;
+    active=opened.training;state=opened.state;questions=opened.questions||[];content=loaded.content;readingPlan=opened.readingPlan||null;
+    if(readingPlan&&state?.run&&state.run.stage!=='COMPLETED'&&state.run.reading?.hash!==readingPlan.hash){state.run={...state.run,stage:'READING',readCount:0};}
     answers={...(state?.run?.answers||{})};suggestion='';confirm=false;submitRequest=null;editorParent='catalog';
     readIndex=state?.run?.stage==='READING'?Math.min(state.run.readCount||0,Math.max(0,content.sections.length-1)):0;
     mode='participant';render();
@@ -242,6 +263,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       if(action==='browse-next'){readIndex=Math.min(content.sections.length-1,readIndex+1);render();return;}
       if(action==='read'){
         if(readIndex<(state.run.readCount||0)){readIndex++;render();return;}
+        if(readingPlan&&(!readingTracker||!await readingTracker.flush()))throw new Error('Percorra todos os trechos e conclua o tempo de leitura antes de continuar.');
         const res=await call('READ',{trainingId:active.id,runId:state.run.id,index:readIndex});state=res.state;
         if(state.run.stage==='READING')readIndex=Math.min(state.run.readCount,content.sections.length-1);render();return;
       }

@@ -33,7 +33,7 @@ function sharedRuntime(env){
 }
 function buildRuntime(env){
  const runtime=sharedRuntime(env);
- return runtime.training??=createHtmlTrainingService({store:runtime.store,now:Date.now,uuid:()=>crypto.randomUUID()});
+ return runtime.training??=createHtmlTrainingService({store:runtime.store,now:Date.now,uuid:()=>crypto.randomUUID(),readingRequired:env.HTML_TRAINING_READING_REQUIRED==='true'});
 }
 function vaccinationRuntime(env){
  const runtime=sharedRuntime(env);
@@ -95,7 +95,7 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
    return reply(result,200);
   }catch(error){
    const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY|MANUAL|REGISTRATION|REGDRIVE|EPIDEMIOLOGICAL)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
-   return reply({code:safe},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);
+   return reply({code:safe,...(safe==='TRAINING_READING_REQUIRED'?{message:'Atualize o aplicativo e reabra o documento para validar a leitura completa.'}:{})},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);
   }
  }};
 }
