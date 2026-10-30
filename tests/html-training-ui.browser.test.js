@@ -7,7 +7,7 @@ import {createReadingPreview} from '../scripts/preview-reading-control.mjs';
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit';
 const engine=safari?webkit:chromium;
 
-test('complete reading pauses in a background tab and unlocks only after server confirmation',{timeout:90000},async t=>{
+test('complete reading pauses while the page is hidden and unlocks only after server confirmation',{timeout:90000},async t=>{
  let preview,browser,page,closing;
  const cleanup=()=>closing??=Promise.allSettled([browser?.close(),preview?.server.close()]);
  t.signal.addEventListener('abort',()=>{void cleanup();},{once:true});
@@ -20,9 +20,13 @@ test('complete reading pauses in a background tab and unlocks only after server 
   await page.getByRole('button',{name:'Conferência de leitura completa',exact:true}).click();
   const next=page.getByRole('button',{name:'Li esta seção e desejo continuar',exact:true});await next.waitFor();assert.equal(await next.isEnabled(),false);
   await page.locator('[data-reading-status]').waitFor();
-  const background=await browser.newPage();await background.goto('about:blank');await background.bringToFront();await background.waitForTimeout(18000);
-  assert.equal(await next.isEnabled(),false,'background time must not complete reading');
-  await background.close();await page.bringToFront();await page.locator('.ht-content-frame').scrollIntoViewIfNeeded();
+  // Playwright pages are focused/active independently (playwright.dev/docs/pages).
+  // Simulate the browser visibility boundary rather than assuming bringToFront hides another page.
+  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
+  await page.waitForFunction(()=>document.querySelector('[data-reading-status]')?.textContent.includes('pausada'),undefined,{timeout:5000});
+  await page.waitForTimeout(18000);assert.equal(await next.isEnabled(),false,'hidden-page time must not complete reading');
+  await page.evaluate(()=>{delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});
+  await page.locator('.ht-content-frame').scrollIntoViewIfNeeded();
   await page.waitForFunction(()=>document.querySelector('[data-reading-next]')?.disabled===false,undefined,{timeout:40000});
   assert.match(await page.locator('[data-reading-status]').textContent(),/validada/);
   assert.equal(await page.frameLocator('.ht-content-frame').locator('details').getAttribute('open'),'');
