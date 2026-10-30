@@ -60,7 +60,7 @@ test('document back preserves its subfolder and traverses only one ancestor per 
   assert.equal(typeof h.controller.goBack, 'function');
   assert.equal(h.controller.goBack(), true);
   await tick();
-  assert.match(h.root.innerHTML, /<h2>PROTOCOLOS<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2>Protocolos do SAHMT<\/h2>/);
   assert.match(h.root.innerHTML, /data-ht="open" data-id="one"/);
   assert.match(h.root.innerHTML, /Documento sintético/);
   assert.equal(h.controller.goBack(), true);
@@ -90,7 +90,7 @@ test('returning to the same folder refreshes catalog metadata', async t => {
   h.click('open', {id: 'one'}); await tick(); await tick();
   h.training.title = 'Título publicado atualizado';
   h.controller.goBack(); await tick();
-  assert.match(h.root.innerHTML, /<h2>PROTOCOLOS<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2>Protocolos do SAHMT<\/h2>/);
   assert.match(h.root.innerHTML, /data-ht="open" data-id="one"/);
   assert.match(h.root.innerHTML, /Título publicado atualizado/);
 });
