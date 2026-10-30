@@ -65,6 +65,9 @@
 @media(prefers-reduced-motion:reduce){.html-trainings button.ht-document-folder{transition:none}}
 
 /* The catalogue fills the fixed modal; only its grid scrolls when necessary. */
+/* The generic activity editor is not used by the document library. On admin
+   profiles it otherwise consumes the body and collapses the folder viewport. */
+.management-area-dialog__body:has(>.html-trainings)>.quick-form:has(>form[data-module-form="activity"]){display:none}
 .management-area-dialog:has(.ht-catalog-view) .management-area-dialog__body{display:flex;flex-direction:column;overflow:hidden;scrollbar-gutter:auto}
 .management-area-dialog .management-area-detail.ht-catalog-view{display:flex;flex-direction:column;flex:1;min-height:0;height:100%;overflow:hidden;padding:clamp(8px,1.4vw,16px)}
 .ht-catalog-view .ht-head{display:block;flex:0 0 auto;margin:0 0 8px;padding:4px 0 12px;text-align:center}.ht-catalog-view .ht-head>div{width:100%}
@@ -144,3 +147,4 @@
 .ht-catalog-view .ht-browser-grid:has(.ht-document-card){gap:22px}
 .ht-navigation-card{display:grid;grid-template-rows:auto auto;align-content:start;min-height:max-content}.ht-navigation-card>button.ht-navigation-book{display:flex;flex-direction:column;height:auto}
 .ht-catalog-view .ht-browser-grid:has(.ht-navigation-card){grid-auto-rows:minmax(max-content,auto)}
+
