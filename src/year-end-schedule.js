@@ -22,7 +22,12 @@ export function validateYearEndChoices(input,{requireGroup=true}={}) {
 export function yearEndParticipation(policy,uid) {
   const siglas=policy?.siglasByUid;
   if(policy?.schemaVersion!==1||policy.cycle!==YEAR_END_CYCLE||!siglas||typeof siglas!=='object'||Array.isArray(siglas))throw yearEndError('YEAR_END_POLICY_UNAVAILABLE');
-  const sigla=siglas[uid];
+  return yearEndOwnParticipation({schemaVersion:policy.schemaVersion,cycle:policy.cycle,sigla:siglas[uid]});
+}
+
+export function yearEndOwnParticipation(config) {
+  if(config?.schemaVersion!==1||config.cycle!==YEAR_END_CYCLE)throw yearEndError('YEAR_END_POLICY_UNAVAILABLE');
+  const sigla=config.sigla;
   if(typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla))throw yearEndError('YEAR_END_INELIGIBLE');
   return {sigla,requireGroup:!YEAR_END_SHIFT_ONLY_SIGLAS.includes(sigla)};
 }
@@ -39,12 +44,22 @@ export function canUseYearEndSchedule(session) {
 
 export const sortYearEndRegistrations = rows => [...rows].sort((a,b)=>a.position-b.position);
 
+export function yearEndAdministrator(profile,assignment) {
+  const categories=assignment?.memberCategories;
+  return Boolean(profile?.active===true&&profile.access===true&&
+    (profile.role==='administrador_app'||profile.permissions?.admin===true||profile.permissions?.usersManage===true)&&
+    Array.isArray(categories)&&new Set(categories).size===categories.length&&
+    categories.some(id=>['EFETIVO','ADMINISTRADOR'].includes(id))&&
+    categories.every(id=>['EFETIVO','ADMINISTRADOR','GESTOR'].includes(id)));
+}
+
 export function yearEndMessage(error) {
   const code=error?.code||error?.message;
   return ({
     YEAR_END_INVALID_CHOICES:'Confira as escolhas obrigatórias indicadas no formulário.',
     YEAR_END_INELIGIBLE:'A Escala Final de Ano é exclusiva da equipe efetiva. Residentes e substitutos não participam deste módulo.',
     YEAR_END_POLICY_UNAVAILABLE:'A configuração de participação precisa ser conferida pela gestão.',
+    YEAR_END_SUMMARY_UNAVAILABLE:'Os totais estão sendo preparados. Tente novamente em instantes.',
     YEAR_END_SESSION_CHANGED:'Sua sessão mudou. Volte e reabra a escala com a mesma conta do app.',
     YEAR_END_AUTH_REQUIRED:'Seu acesso precisa ser atualizado. Use ATUALIZAR O APP na página inicial e reabra a escala.',
     YEAR_END_FORBIDDEN:'Seu perfil precisa estar ativo e liberado no cadastro institucional.',

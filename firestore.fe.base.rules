@@ -25,7 +25,7 @@ service cloud.firestore {
     }
     // END_MEMBER_CATEGORIES_V1
 
-    // YEAR_END_SCHEDULE_V1: identified team choices in FE; unrelated surveys stay private.
+    // YEAR_END_SCHEDULE_V1: private choices, shared anonymous totals; unrelated surveys stay private.
     function yearEndPolicy() {
       return get(/databases/$(database)/documents/yearEndSchedules/2026-2027/policy/participation).data;
     }
@@ -33,18 +33,28 @@ service cloud.firestore {
       let key = hashing.sha256('"' + request.auth.token.get('email', '').lower() + '"').toHexString().lower();
       return get(/databases/$(database)/documents/userCategories/$(key)).data;
     }
-    function yearEndMember() {
+    function yearEndIdentity() {
       let category = yearEndCategory();
-      let policy = yearEndPolicy();
       return request.auth != null && request.auth.token.get('email_verified', false) == true &&
         request.auth.token.firebase.get('sign_in_provider', '') == 'google.com' && memberCategoryActive_() &&
         category.schemaVersion == 1 && category.identityStatus == 'LINKED' && category.uid == request.auth.uid &&
         category.email == request.auth.token.get('email', '').lower() && category.memberCategories is list &&
-        category.memberCategories.hasAll(['EFETIVO']) && category.memberCategories.hasOnly(['EFETIVO', 'ADMINISTRADOR', 'GESTOR']) &&
-        category.memberCategories.size() == category.memberCategories.toSet().size() &&
+        category.memberCategories.hasAny(['EFETIVO', 'ADMINISTRADOR']) && category.memberCategories.hasOnly(['EFETIVO', 'ADMINISTRADOR', 'GESTOR']) &&
+        category.memberCategories.size() == category.memberCategories.toSet().size();
+    }
+    function yearEndMember() {
+      let category = yearEndCategory();
+      let policy = yearEndPolicy();
+      return yearEndIdentity() && category.memberCategories.hasAll(['EFETIVO']) &&
         policy.schemaVersion == 1 && policy.cycle == '2026-2027' && policy.siglasByUid is map &&
+        !policy.get('excludedUids', []).hasAny([request.auth.uid]) &&
         policy.siglasByUid.get(request.auth.uid, '').matches('^([A-Z]{2}|L2)$');
     }
+    function yearEndAdmin() {
+      return yearEndIdentity() && memberCategoryAdmin_() && !yearEndPolicy().get('excludedUids', []).hasAny([request.auth.uid]);
+    }
+    function yearEndReader() { return yearEndMember() || yearEndAdmin(); }
+    function yearEndWritesReady() { return yearEndPolicy().get('summaryVersion', 0) == 1; }
     function yearEndSigla() {
       return yearEndPolicy().siglasByUid[request.auth.uid];
     }
@@ -57,45 +67,68 @@ service cloud.firestore {
         d.position is int && d.position > 0 && d.position <= 9007199254740991 &&
         d.createdAt is timestamp && d.updatedAt == request.time;
     }
-    function yearEndNewPosition(d) {
-      let path = /databases/$(database)/documents/yearEndSchedules/2026-2027/control/order;
-      let counter = getAfter(path).data;
-      return counter.lastParticipantUid == request.auth.uid && counter.updatedAt == request.time &&
-        counter.lastPosition == d.position &&
-        d.position == (exists(path) ? get(path).data.lastPosition + 1 : 1);
+    function yearEndCount(value) { return value is int && value >= 0 && value <= 9007199254740991; }
+    function yearEndTotals(d) {
+      return d.keys().hasOnly(['plantaoNatal', 'plantaoReveillon', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
+        d.keys().hasAll(['plantaoNatal', 'plantaoReveillon', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
+        yearEndCount(d.plantaoNatal) && yearEndCount(d.plantaoReveillon) && yearEndCount(d.grupoNatal) && yearEndCount(d.grupoReveillon) && yearEndCount(d.totalRegistrations) &&
+        d.plantaoNatal + d.plantaoReveillon == d.totalRegistrations && d.grupoNatal + d.grupoReveillon <= d.totalRegistrations && d.updatedAt == request.time;
     }
-    function yearEndCounter(d) {
+    function yearEndDelta(before, after, field, option) {
+      return (after.get(field, null) == option ? 1 : 0) - (before.get(field, null) == option ? 1 : 0);
+    }
+    function yearEndTotalsChange(before, after, previous, next, added) {
+      return yearEndTotals(after) && after.totalRegistrations == before.totalRegistrations + added &&
+        after.plantaoNatal == before.plantaoNatal + yearEndDelta(previous, next, 'plantao', 'natal') &&
+        after.plantaoReveillon == before.plantaoReveillon + yearEndDelta(previous, next, 'plantao', 'reveillon') &&
+        after.grupoNatal == before.grupoNatal + yearEndDelta(previous, next, 'grupo', 'natal') &&
+        after.grupoReveillon == before.grupoReveillon + yearEndDelta(previous, next, 'grupo', 'reveillon');
+    }
+    function yearEndPairedTotals(previous, next, added) {
+      let path = /databases/$(database)/documents/yearEndSchedules/2026-2027/summary/totals;
+      return exists(path) && yearEndTotalsChange(get(path).data, getAfter(path).data, previous, next, added);
+    }
+    function yearEndPairedRegistration(before, after) {
       let own = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(request.auth.uid);
-      return d.keys().hasOnly(['lastPosition', 'lastParticipantUid', 'updatedAt']) &&
-        d.keys().hasAll(['lastPosition', 'lastParticipantUid', 'updatedAt']) &&
-        d.lastPosition is int && d.lastPosition > 0 && d.lastPosition <= 9007199254740991 &&
-        d.lastParticipantUid == request.auth.uid && d.updatedAt == request.time && !exists(own) &&
-        getAfter(own).data.position == d.lastPosition && getAfter(own).data.uid == request.auth.uid;
+      let present = exists(own);
+      let previous = present ? get(own).data : {};
+      let next = getAfter(own).data;
+      return yearEndRecord(next, request.auth.uid) &&
+        yearEndTotalsChange(before, after, previous, next, present ? 0 : 1);
     }
     match /users/{uid} {
-      allow get: if yearEndMember() && request.auth.uid == uid;
+      allow get: if yearEndReader() && request.auth.uid == uid;
       allow list, write: if false;
     }
     match /yearEndSchedules/{cycle}/registrations/{uid} {
-      allow read: if cycle == '2026-2027' && yearEndMember();
-      allow create: if cycle == '2026-2027' && yearEndMember() && request.auth.uid == uid &&
+      allow get: if cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));
+      allow list: if cycle == '2026-2027' && yearEndAdmin();
+      allow create: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
         yearEndRecord(request.resource.data, uid) &&
-        request.resource.data.createdAt == request.time && yearEndNewPosition(request.resource.data);
-      allow update: if cycle == '2026-2027' && yearEndMember() && request.auth.uid == uid &&
+        request.resource.data.createdAt == request.time && yearEndPairedTotals({}, request.resource.data, 1) &&
+        request.resource.data.position == getAfter(/databases/$(database)/documents/yearEndSchedules/2026-2027/summary/totals).data.totalRegistrations;
+      allow update: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
         yearEndRecord(request.resource.data, uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'sigla', 'updatedAt']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'sigla', 'updatedAt']) &&
+        yearEndPairedTotals(resource.data, request.resource.data, 0);
       allow delete: if false;
     }
     match /yearEndSchedules/{cycle}/control/{id} {
-      allow read: if cycle == '2026-2027' && id == 'order' && yearEndMember();
-      allow create: if cycle == '2026-2027' && id == 'order' && yearEndMember() &&
-        yearEndCounter(request.resource.data) && request.resource.data.lastPosition == 1;
-      allow update: if cycle == '2026-2027' && id == 'order' && yearEndMember() &&
-        yearEndCounter(request.resource.data) && request.resource.data.lastPosition == resource.data.lastPosition + 1;
-      allow delete: if false;
+      allow get: if cycle == '2026-2027' && id == 'order' && yearEndAdmin();
+      allow list, write: if false;
+    }
+    match /yearEndSchedules/{cycle}/summary/{id} {
+      allow get: if cycle == '2026-2027' && id == 'totals' && yearEndReader();
+      allow list, create, delete: if false;
+      allow update: if cycle == '2026-2027' && id == 'totals' && yearEndMember() && yearEndWritesReady() &&
+        yearEndPairedRegistration(resource.data, request.resource.data);
     }
     match /yearEndSchedules/{cycle}/policy/{id} {
-      allow get: if cycle == '2026-2027' && id == 'participation' && yearEndMember();
+      allow get: if cycle == '2026-2027' && id == 'participation' && yearEndAdmin();
+      allow list, write: if false;
+    }
+    match /yearEndSchedules/{cycle}/participation/{uid} {
+      allow get: if cycle == '2026-2027' && request.auth.uid == uid && yearEndReader();
       allow list, write: if false;
     }
     // END_YEAR_END_SCHEDULE_V1
