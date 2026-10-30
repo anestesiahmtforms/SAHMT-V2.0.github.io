@@ -3,11 +3,13 @@ import {trainingPathAllowed,trainingCategories,trainingAccessPath} from '../src/
 import {Buffer} from 'node:buffer';
 import { finalizeRopAudit } from '../src/domain/rop-audit.js';
 import { copy, documentSize, fail, identifier, publication, text, version } from './domain-validation.js';
+import {buildReadingPlan} from './reading-plan.js';
+import {startReading,readingProgress,assertReadingComplete} from './reading-state.js';
 
 const C = Object.freeze({ training: 'htmlTrainings', versions: 'htmlTrainingVersions', content: 'htmlTrainingContent',
   state: 'htmlTrainingStates', score: 'htmlTrainingScores', audits: 'htmlTrainingAudits', sync: 'htmlTrainingSync' });
 const managedActions = new Set(['EDIT', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE']);
-const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS']);
+const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS','READING_START','READING_PROGRESS']);
 const admin = profile => profile.role === 'administrador_app' || profile.permissions?.admin === true;
 const manages = (profile, training, uid) => admin(profile) || training.managerUid === uid;
 const emptyState = (trainingId, uid) => ({ uid, trainingId, attempts: [], bestScore: 0, ackPoints: 0, suggestionDecision: null, version: 0, run: null });
@@ -41,7 +43,7 @@ function checkedIdentity(identity) {
  * Trusted, storage-independent domain service. transaction callbacks may retry;
  * they perform no external side effects and create all writes atomically.
  */
-export function createHtmlTrainingService({ store, now = Date.now, uuid = () => globalThis.crypto.randomUUID() } = {}) {
+export function createHtmlTrainingService({ store, now = Date.now, uuid = () => globalThis.crypto.randomUUID(), readingRequired = false } = {}) {
   if (!store || !['get', 'list', 'transaction'].every(method => typeof store[method] === 'function')) throw new TypeError('TRAINING_STORE_REQUIRED');
 
   async function authorize(tx, identity) {
@@ -60,6 +62,12 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     const snapshot = await tx.get(C.versions, `${training.id}_v${training.version}`);
     if (!snapshot) fail('CONTENT_UNAVAILABLE', 503);
     return snapshot;
+  }
+  async function getReadingPlan(tx,training){
+    const snapshot=await getVersion(tx,training);
+    const plan=snapshot.readingPlan||await tx.get('htmlTrainingReadingPlans',`${training.id}_v${training.version}`);
+    if(!plan||plan.schemaVersion!==1||!Array.isArray(plan.blocks)||typeof plan.hash!=='string')fail('TRAINING_READING_PLAN_UNAVAILABLE',503);
+    return plan;
   }
   async function sectionsFor(tx, training, snapshot) {
     let sections = [];
@@ -185,6 +193,7 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         if(training?.initialImportSha256)metadata.initialImportSha256=training.initialImportSha256;
         const parts=contentParts(publish.sections);
         const snapshot = { id, trainingId, version: nextVersion, ...publish.privateVersion,
+          ...(readingRequired?{readingPlan:buildReadingPlan(publish.sections)}:{}),
           training: copy(metadata), sectionCount: publish.sections.length, chunkCount: parts.length, contentEncoding:'JSON_UTF8_CHUNKS_V1',
           createdAt: timestamp, createdByUid: identity.uid, previousVersion: publish.expectedVersion };
         documentSize(snapshot);
@@ -278,7 +287,7 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
 
       if (action === 'OPEN') {
         const snapshot = await getVersion(tx, training);
-        return { training: publicTraining(training, auth.profile, uid), questions: participantQuestions(snapshot), state: publicState(state, training) };
+        return { training: publicTraining(training, auth.profile, uid), questions: participantQuestions(snapshot), state: publicState(state, training),...(readingRequired?{readingPlan:await getReadingPlan(tx,training)}:{}) };
       }
       if (action === 'CONTENT') {
         version(input.version);
@@ -310,6 +319,20 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
       if (!state.run || state.run.id !== submittedRunId) fail('RUN_CONFLICT', 409);
       if (state.run.trainingVersion !== training.version) fail('VERSION_CHANGED', 409);
       const run = state.run;
+
+      if(readingRequired){
+        const plan=await getReadingPlan(tx,training);
+        if(action==='READING_START'){
+          if(run.stage==='COMPLETED')fail('STAGE_CONFLICT',409);
+          startReading(run,plan,input,timestamp);saveState(tx,state,timestamp);return {state};
+        }
+        if(action==='READING_PROGRESS'){
+          if(run.stage!=='READING')fail('STAGE_CONFLICT',409);
+          if(readingProgress(run,plan,input,timestamp))saveState(tx,state,timestamp);
+          return {state};
+        }
+        assertReadingComplete(run,plan,action==='READ'?input.index:undefined);
+      }else if(action==='READING_START'||action==='READING_PROGRESS')fail('TRAINING_READING_NOT_ENABLED',409);
 
       if (action === 'READ') {
         if (!Number.isSafeInteger(input.index) || input.index < 0 || input.index >= training.sectionCount) fail('INVALID_INPUT');

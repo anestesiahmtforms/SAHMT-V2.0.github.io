@@ -33,7 +33,7 @@ function sharedRuntime(env){
 }
 function buildRuntime(env){
  const runtime=sharedRuntime(env);
- return runtime.training??=createHtmlTrainingService({store:runtime.store,now:Date.now,uuid:()=>crypto.randomUUID()});
+ return runtime.training??=createHtmlTrainingService({store:runtime.store,now:Date.now,uuid:()=>crypto.randomUUID(),readingRequired:env.HTML_TRAINING_READING_REQUIRED==='true'});
 }
 function vaccinationRuntime(env){
  const runtime=sharedRuntime(env);
