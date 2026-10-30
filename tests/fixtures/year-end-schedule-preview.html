@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prévia local · Escala Final de Ano · Dados sintéticos</title>
+<style>body{background:#102d46;margin:0}#preview-tools{padding:8px 12px;color:white;font:12px system-ui}#preview-tools select{font:inherit;max-width:220px}#preview-tools label{display:inline}</style>
+<div id="preview-tools">PRÉVIA LOCAL · DADOS SINTÉTICOS <label>Conta de exemplo <select id="preview-user"><option value="four">Pessoa de exemplo 04</option><option value="one">Pessoa de exemplo 01</option><option value="two">Pessoa de exemplo 02</option></select></label></div><div id="app"></div>
+<script type="module">
+import '/src/styles.css';
+import {mountManagementHub} from '/src/management-hub.js';
+import {validateYearEndChoices} from '/src/year-end-schedule.js';
+const rows=[{uid:'one',displayName:'Pessoa de exemplo 01',plantao:'natal',grupo:'reveillon',position:1,createdAt:1793361600000},{uid:'two',displayName:'Pessoa de exemplo 02',plantao:'reveillon',grupo:'natal',position:2,createdAt:1793361660000},{uid:'three',displayName:'Pessoa de exemplo 03',plantao:'natal',grupo:'natal',position:3,createdAt:1793361720000}],listeners=new Set();
+let generation=0,dispose=()=>{};
+const params=new URL(location.href).searchParams;
+function mount(){
+  dispose();const ticket=++generation,uid=document.querySelector('#preview-user').value;
+  const name={four:'04',one:'01',two:'02'}[uid];
+  dispose=mountManagementHub(document.querySelector('#app'),{initialPanel:params.has('direct')?'yearEnd':'surveys',displayName:'PRÉVIA · Pessoa de exemplo '+name,access:{surveys:true,yearEndSchedule:true},isSurveySessionCurrent:()=>ticket===generation,onExit:()=>dispose(),
+    createYearEndRepository:async current=>({uid,open:async()=>{if(params.has('late'))await new Promise(r=>setTimeout(r,1500));return {displayName:'Pessoa de exemplo '+name};},subscribe:cb=>{const notify=()=>cb({rows:structuredClone(rows),fromCache:false});listeners.add(notify);notify();return()=>listeners.delete(notify);},save:async input=>{validateYearEndChoices(input);await new Promise(r=>setTimeout(r,180));if(params.has('save-error'))throw Object.assign(Error('unavailable'),{code:'unavailable'});if(!current())throw Error('YEAR_END_SESSION_CHANGED');let row=rows.find(r=>r.uid===uid),updated=Boolean(row);if(row)Object.assign(row,input);else{row={uid,displayName:'Pessoa de exemplo '+name,...input,position:rows.length+1,createdAt:Date.now()};rows.push(row);}for(const notify of listeners)notify();return {...row,updated};}})
+  });
+}
+document.querySelector('#preview-user').addEventListener('change',mount);mount();
+</script></html>
