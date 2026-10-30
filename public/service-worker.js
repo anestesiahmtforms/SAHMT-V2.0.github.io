@@ -17,7 +17,8 @@ const PRECACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await cache.addAll(PRECACHE);
+    // A new worker must not install a still-fresh HTTP copy of the previous HTML/manifest.
+    await cache.addAll(PRECACHE.map(path => new Request(new URL(path, self.location.origin), {cache: 'reload'})));
     const manifestResponse = await cache.match(`${BASE}assets-manifest.json`);
     if (!manifestResponse) throw new Error('Manifest Vite ausente no cache do shell.');
     const manifest = await manifestResponse.json();
