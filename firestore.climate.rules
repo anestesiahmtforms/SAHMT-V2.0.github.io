@@ -72,7 +72,37 @@ service cloud.firestore {
       return d.keys().hasOnly(['plantaoNatal', 'plantaoReveillon', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
         d.keys().hasAll(['plantaoNatal', 'plantaoReveillon', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
         yearEndCount(d.plantaoNatal) && yearEndCount(d.plantaoReveillon) && yearEndCount(d.grupoNatal) && yearEndCount(d.grupoReveillon) && yearEndCount(d.totalRegistrations) &&
-        d.plantaoNatal + d.plantaoRevei…499 tokens truncated…t: if cycle == '2026-2027' && yearEndAdmin();
+        d.plantaoNatal + d.plantaoReveillon == d.totalRegistrations && d.grupoNatal + d.grupoReveillon <= d.totalRegistrations && d.updatedAt == request.time;
+    }
+    function yearEndDelta(before, after, field, option) {
+      return (after.get(field, null) == option ? 1 : 0) - (before.get(field, null) == option ? 1 : 0);
+    }
+    function yearEndTotalsChange(before, after, previous, next, added) {
+      return yearEndTotals(after) && after.totalRegistrations == before.totalRegistrations + added &&
+        after.plantaoNatal == before.plantaoNatal + yearEndDelta(previous, next, 'plantao', 'natal') &&
+        after.plantaoReveillon == before.plantaoReveillon + yearEndDelta(previous, next, 'plantao', 'reveillon') &&
+        after.grupoNatal == before.grupoNatal + yearEndDelta(previous, next, 'grupo', 'natal') &&
+        after.grupoReveillon == before.grupoReveillon + yearEndDelta(previous, next, 'grupo', 'reveillon');
+    }
+    function yearEndPairedTotals(previous, next, added) {
+      let path = /databases/$(database)/documents/yearEndSchedules/2026-2027/summary/totals;
+      return exists(path) && yearEndTotalsChange(get(path).data, getAfter(path).data, previous, next, added);
+    }
+    function yearEndPairedRegistration(before, after) {
+      let own = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(request.auth.uid);
+      let present = exists(own);
+      let previous = present ? get(own).data : {};
+      let next = getAfter(own).data;
+      return yearEndRecord(next, request.auth.uid) &&
+        yearEndTotalsChange(before, after, previous, next, present ? 0 : 1);
+    }
+    match /users/{uid} {
+      allow get: if yearEndReader() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /yearEndSchedules/{cycle}/registrations/{uid} {
+      allow get: if cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));
+      allow list: if cycle == '2026-2027' && yearEndAdmin();
       allow create: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
         yearEndRecord(request.resource.data, uid) &&
         request.resource.data.createdAt == request.time && yearEndPairedTotals({}, request.resource.data, 1) &&
