@@ -117,10 +117,10 @@
 .management-area-dialog:has(.html-trainings) .management-area-dialog__footer{padding-bottom:env(safe-area-inset-bottom,0px)}
 
 /* The beige dialog itself hugs each catalogue; the source page stays behind it. */
-.management-area-dialog:has(.ht-catalog-view){inset:12px;width:max-content;max-width:calc(100vw - 24px);height:fit-content;max-height:calc(100dvh - 24px);margin:auto;padding:16px;grid-template-rows:minmax(0,1fr) auto;gap:8px;border:1px solid #ddcba9;border-radius:18px;background:#f6eddd;box-shadow:0 20px 70px #001b3570}
+.management-area-dialog:has(.ht-catalog-view){inset:5dvh 5vw;width:90vw;max-width:90vw;height:fit-content;max-height:90dvh;margin:auto;padding:16px;grid-template-rows:minmax(0,1fr) auto;gap:8px;border:1px solid #ddcba9;border-radius:18px;background:#f6eddd;box-shadow:0 20px 70px #001b3570}
 .management-area-dialog:has(.ht-catalog-view)::backdrop{background:#041c3099;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
 .management-area-dialog:has(.ht-catalog-view)>.management-area-dialog__header{display:none}
-.management-area-dialog:has(.ht-catalog-view)>.management-area-dialog__body{width:min(var(--ht-menu-width,360px),calc(100vw - 58px));background:transparent;min-height:0}
+.management-area-dialog:has(.ht-catalog-view)>.management-area-dialog__body{width:100%;background:transparent;min-height:0}
 .management-area-dialog .management-area-detail.ht-catalog-view{height:auto;min-height:0;max-height:100%;padding:0;background:transparent!important}
 .ht-catalog-view .ht-head{margin:0 0 8px;padding:0 0 10px;background:transparent!important}.ht-catalog-view .ht-head h2{font-size:clamp(1.1rem,3vw,1.4rem)}
 .ht-catalog-view .ht-browser-grid{flex:0 1 auto;grid-template-rows:none;grid-auto-rows:auto;align-content:start;gap:16px;padding:6px 4px 12px}
@@ -130,7 +130,7 @@
 .management-area-dialog:has(.ht-catalog-view) .management-area-dialog__footer{padding:8px 0 0;background:transparent;border-color:#ddcba9}
 .management-area-dialog:has(.ht-catalog-view) .management-area-dialog__footer button{min-height:44px;margin:0}
 .ht-catalog-view>.ht-empty{width:100%;margin:0;padding:22px 12px}
-@media(max-width:360px){.management-area-dialog:has(.ht-catalog-view){padding:12px}.management-area-dialog:has(.ht-catalog-view)>.management-area-dialog__body{width:calc(100vw - 50px)}.html-trainings.ht-catalog-view :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{padding-left:21px;padding-right:7px}.ht-catalog-view .ht-folder-copy strong{font-size:.78rem}.ht-catalog-view .ht-browser-grid{gap:14px}}
+@media(max-width:360px){.management-area-dialog:has(.ht-catalog-view){padding:12px}.html-trainings.ht-catalog-view :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{padding-left:21px;padding-right:7px}.ht-catalog-view .ht-folder-copy strong{font-size:.78rem}.ht-catalog-view .ht-browser-grid{gap:14px}}
 
 .ht-folder-copy strong{white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;max-width:100%;overflow-wrap:normal;word-break:normal}.ht-folder-copy strong::-webkit-scrollbar{display:none}
 .html-trainings button.ht-navigation-book{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}

@@ -41,3 +41,34 @@ test('administrator can scroll document folders while the return footer stays vi
  }finally{await browser?.close();await server.close();}
 });
 
+
+test('management subfolder dialogs center compact content at 90% width and scroll long content', {timeout:60000},async()=>{
+ const css=await readFile('src/styles.css','utf8');
+ const browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
+ try{
+  const page=await browser.newPage();
+  await page.route('**/*',route=>route.abort());
+  for(const className of ['management-area-dialog','management-document-dialog']){
+   await page.setContent(`<style>${css}</style><dialog class="${className}"><header class="management-area-dialog__header"><h2>Subpasta de Gestão</h2></header><div class="management-area-dialog__body"><button>Documento A</button><button>Documento B</button></div><footer class="management-area-dialog__footer"><button>VOLTAR</button></footer></dialog>`);
+   await page.locator('dialog').evaluate(dialog=>dialog.showModal());
+   for(const [width,height] of [[320,568],[390,844],[667,375],[1366,900]]){
+    await page.setViewportSize({width,height});
+    const box=await page.locator('dialog').boundingBox();
+    assert.ok(Math.abs(box.width-width*.9)<2,'dialog occupies 90% of viewport width');
+    assert.ok(Math.abs(box.x+box.width/2-width/2)<2&&Math.abs(box.y+box.height/2-height/2)<2,'dialog centers on both axes');
+    assert.ok(box.height<height*.7,'short content does not expand vertically');
+    assert.ok(box.y>0&&box.y+box.height<height,'space stays outside the compact dialog');
+   }
+   await page.setViewportSize({width:390,height:844});
+   await page.screenshot({path:`.local-preview/${className}-centered-mobile.png`});
+   await page.locator('.management-area-dialog__body').evaluate(body=>{body.innerHTML=Array.from({length:25},(_,i)=>`<p>Documento de teste ${i+1}</p>`).join('');});
+   await page.setViewportSize({width:320,height:568});
+   const body=page.locator('.management-area-dialog__body');
+   assert.ok(await body.evaluate(el=>el.scrollHeight>el.clientHeight),'long content has internal scroll');
+   await body.hover();await page.mouse.wheel(0,600);await page.waitForTimeout(150);
+   assert.ok(await body.evaluate(el=>el.scrollTop)>0,'long subfolder content scrolls');
+   const footer=await page.locator('footer').boundingBox();
+   assert.ok(footer.y+footer.height<=568,'return footer stays visible');
+  }
+ }finally{await browser.close();}
+});
