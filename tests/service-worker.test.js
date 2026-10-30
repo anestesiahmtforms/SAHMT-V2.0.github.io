@@ -102,7 +102,7 @@ function createWorker({offline = false, navigationOk = true} = {}) {
 }
 
 test('publica uma nova versão do shell ao trocar chunks do PWA', () => {
-  assert.equal(currentShellCache, 'sahmt-v2-shell-v284');
+  assert.equal(currentShellCache, 'sahmt-v2-shell-v285');
 });
 
 test('only the same-origin repair entry activates an installed update without claiming windows',async()=>{
@@ -242,4 +242,3 @@ test('survey pages and assets bypass the installed app shell',()=>{
  }
  assert.equal(worker.fetched.length,0);
 });
-

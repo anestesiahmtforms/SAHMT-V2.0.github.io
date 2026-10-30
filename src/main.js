@@ -26,6 +26,7 @@ import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {formatScheduleReleaseTime} from './schedule-release.js';
+import {openChecklistCamera} from './checklist-camera.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {resolveChecklistQrStation} from './checklist-static.js';
 import {checklistArsenalFunction, checklistArsenalButtonLabel, sortChecklistStationsForDisplay, canEditChecklistStationTitle} from './checklist-display.js';
@@ -1066,7 +1067,7 @@ function shellView() {
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card"><button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline && route !== 'home' && route !== 'events' ? `<div class="notice profile-connection-notice" data-local-profile-notice role="status"><span>${session.validatingProfile ? 'Confirmando a conexão com o servidor… Sua sessão Firebase está ativa.' : 'Sua sessão Firebase está ativa. Usando o perfil local enquanto a conexão com o servidor é restabelecida.'}</span><button type="button" class="secondary-button" data-profile-reconnect ${session.validatingProfile ? 'disabled' : ''}>${session.validatingProfile ? 'Verificando…' : 'Reconectar'}</button><small data-profile-retry-message></small></div>` : ''}${session.status === 'auth-limited' && !session.validatingProfile && session.profileFailureCode ? `<p class="notice" data-profile-diagnostic role="status">Diagnóstico: <strong>${escapeHtml(session.profileFailureCode)}</strong>. ${session.profileFailureCode === 'LOCAL_PROFILE_UNAVAILABLE' ? 'Este aparelho não tem uma cópia local válida do perfil. Será necessária uma validação online quando o Firestore estiver disponível.' : session.profileFailureCode === 'LOCAL_STORAGE_UNAVAILABLE' ? 'O armazenamento local do navegador está indisponível.' : 'A validação online do perfil não foi concluída.'}</p>` : ''}${view}</main>
-    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
+    <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><div class="checklist-qr-tools"><div class="checklist-qr-zoom" role="group" aria-label="Ampliação do QR"><button type="button" data-checklist-qr-zoom="1" aria-pressed="false">1×</button><button type="button" data-checklist-qr-zoom="2" aria-pressed="true">2×</button></div><button id="checklist-qr-camera-switch" type="button" hidden disabled>Trocar câmera</button></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
     <footer class="app-footer">By Francisco Tadeu da Mota Albuquerque</footer>
@@ -2350,11 +2351,13 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   }
 }
 
-async function openChecklistQrScanner(stations, day) {
+async function openChecklistQrScanner(stations, day, {deviceId = '', zoom = 2} = {}) {
   const dialog = document.querySelector('#checklist-qr-dialog');
   const video = document.querySelector('#checklist-qr-video');
   const status = document.querySelector('#checklist-qr-status');
   const focus = document.querySelector('#checklist-qr-focus');
+  const cameraSwitch = document.querySelector('#checklist-qr-camera-switch');
+  const zoomButtons = [...(document.querySelectorAll?.('[data-checklist-qr-zoom]') || [])];
   if (!dialog || !video || !status || !focus) return;
   stopChecklistQrScanner();
   const scannerUid = session.user?.uid;
@@ -2371,6 +2374,8 @@ async function openChecklistQrScanner(stations, day) {
     cancelAnimationFrame(frame);
     clearTimeout(timer);
     dialog.removeEventListener('close', handleClose);
+    if (cameraSwitch) cameraSwitch.disabled = true;
+    zoomButtons.forEach(button => { button.disabled = true; });
     stream?.getTracks().forEach((track) => track.stop());
     if (stream && video.srcObject === stream) {
       video.pause();
@@ -2435,6 +2440,19 @@ async function openChecklistQrScanner(stations, day) {
     return station;
   };
   const confirmQr = createChecklistQrConfirmation({maxGapMs: 5000});
+  let zoomValue = zoom === 1 ? 1 : 2;
+  const setZoom = value => {
+    zoomValue = value === 1 ? 1 : 2;
+    video.style.setProperty('--checklist-qr-zoom', String(zoomValue));
+    zoomButtons.forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.checklistQrZoom) === zoomValue)));
+    confirmQr('', {reset: true});
+  };
+  setZoom(zoomValue);
+  zoomButtons.forEach(button => {
+    button.disabled = true;
+    button.onclick = () => { if (scannerCurrent()) setZoom(Number(button.dataset.checklistQrZoom)); };
+  });
+  if (cameraSwitch) { cameraSwitch.hidden = true; cameraSwitch.disabled = true; }
   const captureGuide = (maxSize = 640) => {
     if (!context || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
     const crop = checklistQrCrop({videoWidth: video.videoWidth, videoHeight: video.videoHeight,
@@ -2461,7 +2479,9 @@ async function openChecklistQrScanner(stations, day) {
   // Load the Safari decoder while the camera permission/stream is opening.
   const decoderReady = loadQrDecoder().then(() => null, (error) => error);
   try {
-    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}, width: {ideal: 1920}, height: {ideal: 1080}}, audio: false});
+    const camera = await openChecklistCamera({mediaDevices: navigator.mediaDevices, isCurrent: scannerCurrent, deviceId});
+    if (!camera) { cleanup(); return; }
+    stream = camera.stream;
     if (!scannerCurrent()) { stream.getTracks().forEach((track) => track.stop()); stream = null; return; }
     video.srcObject = stream;
     video.muted = true;
@@ -2470,6 +2490,17 @@ async function openChecklistQrScanner(stations, day) {
     focus.hidden = false;
     await video.play();
     if (!scannerCurrent()) { cleanup(); return; }
+    zoomButtons.forEach(button => { button.disabled = false; });
+    if (cameraSwitch) {
+      cameraSwitch.hidden = camera.cameras.length < 2;
+      cameraSwitch.disabled = camera.cameras.length < 2;
+      cameraSwitch.onclick = () => {
+        if (!scannerCurrent()) return;
+        const index = camera.cameras.findIndex(item => item.deviceId === camera.deviceId);
+        const next = camera.cameras[(index + 1) % camera.cameras.length];
+        if (next) void openChecklistQrScanner(stations, day, {deviceId: next.deviceId, zoom: zoomValue});
+      };
+    }
     // Autofocus is optional; device capability errors must not disable decoding.
     try {
       const cameraTrack = stream.getVideoTracks()[0];
@@ -2487,7 +2518,7 @@ async function openChecklistQrScanner(stations, day) {
       if (!scannerCurrent()) { cleanup(); return; }
       if (decoderError) throw decoderError;
     }
-    status.textContent = 'Centralize o QR e mantenha a câmera estável.';
+    status.textContent = 'Mantenha cerca de 20–30 cm do QR. Use 2× para ampliar sem aproximar o celular.';
     let detecting = false;
     const scan = async () => {
       if (!scannerCurrent()) { cleanup(); return; }

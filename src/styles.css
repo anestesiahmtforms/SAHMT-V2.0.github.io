@@ -2374,6 +2374,19 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .profile-connection-notice>span{flex:1 1 240px}.profile-connection-notice button{flex:0 0 auto;min-height:44px;padding:8px 16px}
 .profile-connection-notice small{flex-basis:100%;line-height:1.4}.profile-connection-notice small:empty{display:none}
 
+/* Keep zoom in the preview geometry so the decoder samples exactly the visible guide. */
+#checklist-qr-dialog video{transform:translateX(-50%) scale(var(--checklist-qr-zoom,2));transform-origin:center center}
+#checklist-qr-dialog>.checklist-qr-container{grid-template-rows:minmax(0,1fr) auto auto 32px;height:calc(clamp(170px,32dvh,280px) + 153px)}
+#checklist-qr-dialog .checklist-qr-tools{grid-column:1;grid-row:2;display:flex;justify-content:center;align-items:center;gap:10px;min-width:0}
+#checklist-qr-dialog .checklist-qr-zoom{display:flex;gap:6px}
+#checklist-qr-dialog .checklist-qr-tools button{min-width:48px;min-height:44px;padding:7px 12px;border:1px solid #8ba8b9;border-radius:10px;background:#fff;color:#173957;font:700 .82rem/1.2 system-ui;cursor:pointer}
+#checklist-qr-dialog .checklist-qr-tools button[aria-pressed="true"]{border-color:#075e86;background:#075e86;color:#fff}
+#checklist-qr-dialog .checklist-qr-tools button:disabled{opacity:.55;cursor:default}
+#checklist-qr-dialog .checklist-qr-tools button[hidden]{display:none}
+#checklist-qr-dialog .checklist-qr-container>#checklist-qr-status{grid-row:3;max-height:5.2em;overflow:auto}
+#checklist-qr-dialog .checklist-qr-container>#checklist-qr-close{grid-row:4}
+@media(orientation:landscape) and (max-height:550px){#checklist-qr-dialog>.checklist-qr-container{height:calc(54dvh + 145px)}}
+
 /* FB sync messages remain readable within the identity card. */
 :is(.app-shell--management,.app-shell--training) .identity-card__user-row{flex-wrap:wrap;row-gap:4px}
 :is(.app-shell--management,.app-shell--training) .identity-card__user-row .sync-pill{flex:0 1 auto;min-width:0;max-width:100%}

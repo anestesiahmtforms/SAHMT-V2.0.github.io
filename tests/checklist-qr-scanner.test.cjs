@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
 const deadlineHelpers = readFileSync(join(__dirname, '../src/async-deadline.js'), 'utf8').replaceAll('export ', '');
 const qrHelpers = readFileSync(join(__dirname, '../src/checklist-qr.js'), 'utf8').replaceAll('export ', '');
+const cameraHelpers = readFileSync(join(__dirname, '../src/checklist-camera.js'), 'utf8').replaceAll('export ', '');
 function extract(start, end) {
   const first = source.indexOf(start), last = source.indexOf(end, first);
   assert.ok(first >= 0 && last > first, `Trecho de produção ausente: ${start}`);
@@ -21,11 +22,12 @@ const deferred = () => {
   const promise = new Promise((yes, no) => {resolve = yes; reject = no;});
   return {promise, resolve, reject};
 };
-const drain = async () => {for (let index = 0; index < 10; index++) await Promise.resolve();};
+const drain = async () => {for (let index = 0; index < 30; index++) await Promise.resolve();};
 const decoderApi = () => ({BinaryBitmap: class {}, HybridBinarizer: class {}, RGBLuminanceSource: class {}, QRCodeReader: class {}});
 
 class Element {
-  constructor() {this.listeners = new Map(); this.hidden = false; this.textContent = ''; this.isConnected = true;}
+  constructor() {this.listeners = new Map(); this.hidden = false; this.textContent = ''; this.isConnected = true; this.dataset = {}; this.attributes = {}; this.styleValues = {}; this.style = {setProperty: (name, value) => {this.styleValues[name] = value;}};}
+  setAttribute(name, value) {this.attributes[name] = value;}
   addEventListener(name, listener, options = {}) {
     const listeners = this.listeners.get(name) || new Map(); listeners.set(listener, options); this.listeners.set(name, listeners);
   }
@@ -53,11 +55,17 @@ function harness({decoder = true, nativeDetect, capabilities} = {}) {
   // close is a queued browser event: it dispatches the listeners present when the event runs.
   dialog.close = () => {if (dialog.open) {dialog.open = false; closeEvents.push(() => dialog.fire('close'));}};
   const video = new Element(), focus = new Element(), status = new Element(), close = new Element();
+  const zoomButtons = [1, 2].map(value => {const button = new Element(); button.dataset.checklistQrZoom = String(value); return button;});
+  const cameraSwitch = new Element();
+  video.getBoundingClientRect = () => {
+    const zoom = Number(video.styleValues['--checklist-qr-zoom'] || 1);
+    return {left: 40 - 100 * (zoom - 1), top: 80 - 100 * (zoom - 1), width: 200 * zoom, height: 200 * zoom};
+  };
   status.hidden = true; video.hidden = true; focus.hidden = true;
   Object.assign(video, {videoWidth: 1080, videoHeight: 1920, readyState: 4, srcObject: null, paused: true, pauseCount: 0});
   video.play = () => {video.paused = false; return playQueue.length ? playQueue.shift() : Promise.resolve();};
   video.pause = () => {video.paused = true; video.pauseCount++;};
-  const nodes = {'#checklist-qr-dialog': dialog, '#checklist-qr-video': video, '#checklist-qr-focus': focus, '#checklist-qr-status': status, '#checklist-qr-close': close};
+  const nodes = {'#checklist-qr-dialog': dialog, '#checklist-qr-video': video, '#checklist-qr-focus': focus, '#checklist-qr-status': status, '#checklist-qr-close': close, '#checklist-qr-camera-switch': cameraSwitch};
   const createStream = () => {
     const track = {stopped: false, stopCount: 0, stop() {this.stopped = true; this.stopCount++;},
       getCapabilities: capabilities || (() => ({})), applyConstraints: async () => {}};
@@ -66,6 +74,7 @@ function harness({decoder = true, nativeDetect, capabilities} = {}) {
   };
   const document = {
     querySelector: selector => nodes[selector] || null,
+    querySelectorAll: selector => selector === '[data-checklist-qr-zoom]' ? zoomButtons : [],
     createElement: tag => {
       if (tag === 'script') {const script = {removed: false, remove() {this.removed = true;}}; return script;}
       assert.equal(tag, 'canvas');
@@ -94,7 +103,7 @@ function harness({decoder = true, nativeDetect, capabilities} = {}) {
     readChecklistStationLatestRecord: async () => null,
     revealChecklistStation: (...args) => reveals.push(args)};
   vm.createContext(context);
-  vm.runInContext(`let stopChecklistQrScan = null; let qrDecoderPromise = null;\n${qrHelpers}\n${deadlineHelpers}\n${loaderSource}\n${scannerSource}`, context);
+  vm.runInContext(`let stopChecklistQrScan = null; let qrDecoderPromise = null;\n${qrHelpers}\n${cameraHelpers}\n${deadlineHelpers}\n${loaderSource}\n${scannerSource}`, context);
   context.decodeQrImageData = image => {decoded.push(image); return decodeValues.length ? decodeValues.shift() : null;};
   const fireTimer = delay => {
     const item = [...timers].find(([, timer]) => timer.delay === delay);
@@ -104,7 +113,7 @@ function harness({decoder = true, nativeDetect, capabilities} = {}) {
     const item = frames.entries().next().value;
     assert.ok(item, 'Quadro de leitura esperado'); frames.delete(item[0]); return item[1]();
   };
-  return {context, nodes, dialog, video, focus, status, close, streams, scripts, reveals, draws, decoded, timers, frames,
+  return {context, nodes, dialog, video, focus, status, close, zoomButtons, cameraSwitch, streams, scripts, reveals, draws, decoded, timers, frames,
     mediaQueue, playQueue, decodeValues, createStream, fireTimer, nextFrame,
     open: () => context.openChecklistQrScanner([station], day), stop: () => context.stopChecklistQrScanner(),
     flushClose: () => {while (closeEvents.length) closeEvents.shift()();},
@@ -278,7 +287,7 @@ test('scanner confirma duas capturas iguais em aparelho que demora dois segundos
 });
 
 test('leitura rápida usa 640px e preserva tentativa de 1280px quando o QR exige resolução maior', async () => {
-  const h = harness(); h.video.videoWidth = h.video.videoHeight = 1920;
+  const h = harness(); h.video.videoWidth = h.video.videoHeight = 3840;
   h.decodeValues.push(null, station.qrCode, null, station.qrCode); await h.open();
   await h.nextFrame();
   assert.deepEqual(h.decoded.map(image => image.width), [640, 1280]);
@@ -389,4 +398,36 @@ test('QR abre banner com histórico acima de 500 mesmo sem índices do catálogo
   assert.equal(h.streams[0].track.stopped, true);
   assert.equal(h.dialog.open, false);
   assert.ok(queries.some(query => query.args.some(arg => arg.name === 'startAfter')));
+});
+
+test('zoom 2× preserves source pixels at a distance and changing zoom resets confirmation', async () => {
+  const h = harness(); h.decodeValues.push(station.qrCode, station.qrCode, station.qrCode);
+  await h.open();
+  assert.equal(h.zoomButtons[1].attributes['aria-pressed'], 'true');
+  await h.nextFrame(); assert.equal(h.decoded[0].width, 540); assert.equal(h.reveals.length, 0);
+  h.zoomButtons[0].onclick();
+  assert.equal(h.zoomButtons[0].attributes['aria-pressed'], 'true');
+  await h.nextScan(); assert.equal(h.decoded[1].width, 640); assert.equal(h.reveals.length, 0);
+  await h.nextScan(); assert.equal(h.reveals.length, 1);
+  assert.equal(h.zoomButtons.every(button => button.disabled), true);
+});
+
+test('manual lens switch stops the previous stream and keeps zoom and close-event isolation', async () => {
+  const h = harness();
+  h.context.navigator.mediaDevices.enumerateDevices = async () => [
+    {kind: 'videoinput', deviceId: 'main', label: 'Back Camera'},
+    {kind: 'videoinput', deviceId: 'ultra', label: 'Back Ultra Wide Camera'}
+  ];
+  const requested = [];
+  h.context.navigator.mediaDevices.getUserMedia = async constraints => {
+    const stream = h.createStream(), id = constraints.video.deviceId?.exact || 'main';
+    stream.track.getSettings = () => ({deviceId: id}); requested.push(id); return stream;
+  };
+  await h.open(); const first = h.video.srcObject;
+  assert.equal(h.cameraSwitch.hidden, false); h.zoomButtons[0].onclick(); h.cameraSwitch.onclick(); await drain();
+  h.flushClose();
+  assert.deepEqual(requested, ['main', 'ultra']); assert.equal(first.track.stopped, true);
+  assert.equal(h.dialog.open, true); assert.equal(h.video.srcObject.track.stopped, false);
+  assert.equal(h.video.styleValues['--checklist-qr-zoom'], '1');
+  h.stop(); assert.equal(h.streams.every(stream => stream.track.stopped), true);
 });

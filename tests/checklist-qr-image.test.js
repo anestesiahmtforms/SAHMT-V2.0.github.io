@@ -182,3 +182,30 @@ test('confirmação configurada para câmera lenta aceita duas capturas iguais a
   time += 5001;
   assert.equal(slow(syntheticQrValue), null);
 });
+
+test('zoom 2× maps the visible guide to native pixels and reads a small mildly softened QR', () => {
+  const value = '100170017', patch = syntheticQrImage({value, scale: 3});
+  const softened = new Uint8ClampedArray(patch.data);
+  for (let y = 1; y < patch.height - 1; y++) for (let x = 1; x < patch.width - 1; x++) {
+    const pixel = (y * patch.width + x) * 4;
+    const intensity = (patch.data[pixel] * 4 + patch.data[pixel - 4] + patch.data[pixel + 4] +
+      patch.data[pixel - patch.width * 4] + patch.data[pixel + patch.width * 4]) / 8;
+    softened[pixel] = softened[pixel + 1] = softened[pixel + 2] = intensity;
+  }
+  for (const [videoWidth, videoHeight] of [[1080, 1920], [1920, 1080]]) {
+    const frame = new Uint8ClampedArray(videoWidth * videoHeight * 4).fill(255);
+    const left = Math.floor((videoWidth - patch.width) / 2), top = Math.floor((videoHeight - patch.height) / 2);
+    for (let y = 0; y < patch.height; y++) {
+      frame.set(softened.subarray(y * patch.width * 4, (y + 1) * patch.width * 4), ((top + y) * videoWidth + left) * 4);
+    }
+    const crop = checklistQrCrop({videoWidth, videoHeight,
+      videoRect: {left: -10, top: 8, width: 400, height: 400},
+      focusRect: {left: 90, top: 108, width: 200, height: 200}});
+    assert.equal(crop.width, 540); assert.equal(crop.height, 540);
+    const pixels = new Uint8ClampedArray(crop.width * crop.height * 4);
+    for (let y = 0; y < crop.height; y++) pixels.set(frame.subarray(
+      ((crop.y + y) * videoWidth + crop.x) * 4,
+      ((crop.y + y) * videoWidth + crop.x + crop.width) * 4), y * crop.width * 4);
+    assert.equal(decodeQrImageData({width: crop.width, height: crop.height, data: pixels}, realZXing), value);
+  }
+});
