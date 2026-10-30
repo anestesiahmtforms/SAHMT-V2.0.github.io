@@ -35,7 +35,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   const banner=await page.locator('dialog').boundingBox();
   assert.equal(await page.locator('.management-area-dialog__header').isVisible(),false,'the beige panel is the entire dialog');
   assert.match(await page.locator('dialog').evaluate(el=>getComputedStyle(el,'::backdrop').backdropFilter),/blur\(9px\)/);
-  assert.ok(banner.width<=660&&banner.height<450,'navigation uses a compact banner');
+  assert.ok(Math.abs(banner.width-1366*.9)<2&&banner.height<450,'navigation uses 90% width with content-sized height');
   assert.ok(Math.abs(banner.y+banner.height/2-500)<2,'desktop banner is vertically centered');
   const desktopCards=await page.locator('.ht-browser-grid').evaluate(grid=>[...grid.children].map(card=>({width:card.getBoundingClientRect().width,height:card.getBoundingClientRect().height})));
   assert.equal(desktopCards.length,4);
@@ -194,4 +194,3 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.deepEqual(errors,[]);
  }catch(error){console.log('browser test failure',error);throw error;}finally{await browser?.close();await server.close();}
 });
-
