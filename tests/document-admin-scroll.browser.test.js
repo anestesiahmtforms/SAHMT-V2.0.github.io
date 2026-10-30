@@ -20,27 +20,41 @@ test('administrator can scroll document folders while the return footer stays vi
   const page=await browser.newPage(pageOptions);
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/admin-scroll-fixture`);
-  await page.evaluate(()=>{const shell=document.createElement('div');shell.className='app-shell app-shell--management';document.body.append(shell);shell.append(document.querySelector('dialog'));});
+  await page.evaluate(()=>{const shell=document.createElement('div');shell.className='app-shell app-shell--management';shell.innerHTML='<header class="topbar">SAHMT</header><main class="main-content"><section class="module-view panel module-view--management"><div class="management-menu-scroll"><div id="module-content" class="module-content"></div></div><button class="management-home-button">VOLTAR</button></section></main><footer class="app-footer">SAHMT</footer>';document.body.append(shell);shell.querySelector('#module-content').append(document.querySelector('dialog'));});
   await page.locator('dialog').evaluate(dialog=>dialog.showModal());
   await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
+  await page.setViewportSize({width:390,height:844});
+  const participant=await page.locator('.management-document-banner').boundingBox();
+  assert.ok(participant.height<560&&Math.abs(participant.y+participant.height/2-422)<2,'participant sees a compact central panel');
   await page.locator('.management-area-dialog__body').evaluate((body,html)=>body.insertAdjacentHTML('afterbegin',html),activityForm);
   await page.evaluate(()=>{window.mount('admin');});
   await page.getByRole('button',{name:'Desativar Protocolos',exact:true}).waitFor();
+  assert.equal(await page.locator('.management-document-banner').count(),1,'remount never nests banner panels');
+  const admin=await page.locator('.management-document-banner').boundingBox();
+  assert.ok(Math.abs(admin.height-participant.height)<40,'admin controls do not add a new row or stretch the banner');
+  const legacy=await page.addStyleTag({content:'.app-shell dialog{inset:5dvh 5vw!important;width:90vw!important;height:90dvh!important;max-width:90vw!important;max-height:90dvh!important;margin:0!important;overflow:auto!important}'});
+  const insideLegacy=await page.locator('.management-document-banner').boundingBox();
+  assert.ok(Math.abs(insideLegacy.height-admin.height)<2&&Math.abs(insideLegacy.y+insideLegacy.height/2-422)<2,'visible banner stays compact even when an outer dialog is forced to 90% height');
+  await legacy.evaluate(style=>style.remove());
+  await mkdir('.local-preview',{recursive:true});
+  await page.screenshot({path:'.local-preview/document-admin-central-banner.png'});
   for(const [width,height] of [[320,568],[390,844],[667,375],[1366,768]]){
    await page.setViewportSize({width,height});
    assert.ok(await page.locator('.ht-browser-grid').evaluate(grid=>grid.clientHeight)>40,'administrator activity form must not collapse the folder viewport');
    await page.getByRole('button',{name:'ROPs',exact:true}).click();
    await page.getByRole('button',{name:'Desativar Cultura de segurança',exact:true}).waitFor();
-   const layout=await page.locator('.ht-browser-grid').evaluate(grid=>{const dialog=grid.closest('dialog'),footer=dialog.querySelector('footer');return {gridHeight:grid.clientHeight,contentHeight:grid.scrollHeight,gridBottom:grid.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,footerBottom:footer.getBoundingClientRect().bottom};});
+   const layout=await page.locator('.management-area-dialog__body').evaluate(body=>{const panel=body.closest('.management-document-banner'),footer=panel.querySelector('footer'),rect=panel.getBoundingClientRect();return {gridHeight:body.clientHeight,contentHeight:body.scrollHeight,gridBottom:body.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,footerBottom:footer.getBoundingClientRect().bottom,panelTop:rect.top,panelBottom:rect.bottom,panelCenter:rect.y+rect.height/2,panelWidth:rect.width};});
 
    assert.ok(layout.gridHeight>40,'grid retains a usable viewport');
    assert.ok(layout.gridBottom<=layout.footerTop+2,'folder grid stays above return footer');
    assert.ok(layout.footerBottom<=height,'return stays inside screen');
+   assert.ok(layout.panelTop>=0&&layout.panelBottom<=height&&Math.abs(layout.panelCenter-height/2)<2,'panel stays inside and centered in the viewport');
+   assert.ok(Math.abs(layout.panelWidth-width*.9)<2,'panel retains 90% of viewport width');
    if(layout.contentHeight>layout.gridHeight+2){
-    if(safari)await page.locator('.ht-browser-grid').evaluate(el=>el.scrollBy(0,800));
-    else {await page.locator('.ht-browser-grid').hover();await page.mouse.wheel(0,800);}
+    if(safari)await page.locator('.management-area-dialog__body').evaluate(el=>el.scrollBy(0,800));
+    else {await page.locator('.management-area-dialog__body').hover();await page.mouse.wheel(0,800);}
     await page.waitForTimeout(150);
-    assert.ok(await page.locator('.ht-browser-grid').evaluate(grid=>grid.scrollTop)>0,'wheel scroll reaches administrator folders');
+    assert.ok(await page.locator('.management-area-dialog__body').evaluate(body=>body.scrollTop)>0,'internal scroll reaches administrator folders');
    }
    await mkdir('.local-preview',{recursive:true});await page.screenshot({path:`.local-preview/document-admin-scroll-${width}.png`});
    await page.evaluate(()=>window.trainingBack());

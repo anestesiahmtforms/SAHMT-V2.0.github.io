@@ -4,9 +4,8 @@
 
  
 
-/* HTML documents use the complete app container, including the FB dialog. */
+/* Document content is shared by the reader and the folder banner. */
 .html-trainings{width:100%;max-width:none;min-width:0;margin:0;padding:12px 0 20px}
-.management-area-dialog:has(.html-trainings){inset:0;width:100%;max-width:none;height:100%;max-height:none;margin:0;border-radius:0;padding:env(safe-area-inset-top,0px) max(8px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(8px,env(safe-area-inset-left,0px))}
 .management-area-dialog .management-area-detail.html-trainings{width:100%;max-width:none;margin:0;padding:clamp(8px,1.5vw,20px);border:0;border-radius:0}
 .ht-reading .ht-head{margin-bottom:12px;padding-bottom:12px}
 .ht-reading .ht-reader{width:100%;margin:0;padding:clamp(8px,1.5vw,20px)}
@@ -64,12 +63,7 @@
 }
 @media(prefers-reduced-motion:reduce){.html-trainings button.ht-document-folder{transition:none}}
 
-/* The catalogue fills the fixed modal; only its grid scrolls when necessary. */
-/* The generic activity editor is not used by the document library. On admin
-   profiles it otherwise consumes the body and collapses the folder viewport. */
-.management-area-dialog__body:has(>.html-trainings)>.quick-form:has(>form[data-module-form="activity"]){display:none}
-.management-area-dialog:has(.ht-catalog-view) .management-area-dialog__body{display:flex;flex-direction:column;overflow:hidden;scrollbar-gutter:auto}
-.management-area-dialog .management-area-detail.ht-catalog-view{display:flex;flex-direction:column;flex:1;min-height:0;height:100%;overflow:hidden;padding:clamp(8px,1.4vw,16px)}
+/* Catalogue artwork uses natural rows inside the banner scroll area. */
 .ht-catalog-view .ht-head{display:block;flex:0 0 auto;margin:0 0 8px;padding:4px 0 12px;text-align:center}.ht-catalog-view .ht-head>div{width:100%}
 .ht-catalog-view .ht-head .ht-eyebrow{display:none}
 .ht-catalog-view .ht-head h2{margin:0;color:#173f57;font-size:clamp(1.5rem,3.5vw,2.25rem);font-weight:900;line-height:1.2;letter-spacing:.025em;text-shadow:0 1px 0 #fff}
@@ -112,38 +106,46 @@
 @media(max-width:650px){.html-trainings :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{gap:12px;padding:18px 12px 20px 27px}.ht-navigation-book::before{width:14px}.ht-navigation-book::after{left:15px}.ht-navigation-book .ht-folder-arrow{width:18px;height:18px;right:7px;top:7px;font-size:1.05rem}}
 @media(prefers-reduced-motion:reduce){.html-trainings :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{transition:none}}
 
-/* Keep the fixed back button at the bottom with a single safe-area inset. */
-.management-area-dialog:has(.html-trainings){padding-bottom:0}
-.management-area-dialog:has(.html-trainings) .management-area-dialog__footer{padding-bottom:env(safe-area-inset-bottom,0px)}
 
-/* The beige dialog itself hugs each catalogue; the source page stays behind it. */
-.management-area-dialog:has(.ht-catalog-view){inset:5dvh 5vw;width:90vw;max-width:90vw;height:fit-content;max-height:90dvh;margin:auto;padding:16px;grid-template-rows:minmax(0,1fr) auto;gap:8px;border:1px solid #ddcba9;border-radius:18px;background:#f6eddd;box-shadow:0 20px 70px #001b3570}
-.management-area-dialog:has(.ht-catalog-view)::backdrop{background:#041c3099;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
-.management-area-dialog:has(.ht-catalog-view)>.management-area-dialog__header{display:none}
-.management-area-dialog:has(.ht-catalog-view)>.management-area-dialog__body{width:100%;background:transparent;min-height:0}
-.management-area-dialog .management-area-detail.ht-catalog-view{height:auto;min-height:0;max-height:100%;padding:0;background:transparent!important}
 .ht-catalog-view .ht-head{margin:0 0 8px;padding:0 0 10px;background:transparent!important}.ht-catalog-view .ht-head h2{font-size:clamp(1.1rem,3vw,1.4rem)}
 .ht-catalog-view .ht-browser-grid{flex:0 1 auto;grid-template-rows:none;grid-auto-rows:auto;align-content:start;gap:16px;padding:6px 4px 12px}
 .ht-catalog-view .ht-browser-grid>.ht-folder,.ht-catalog-view .ht-browser-grid>.ht-document-card{height:auto;min-height:0}
 .html-trainings.ht-catalog-view :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{min-height:98px;gap:7px;padding:12px 12px 14px 25px}
 .ht-catalog-view .ht-book-icon{width:32px;height:32px;padding:5px;border-radius:9px}.ht-catalog-view .ht-folder-copy strong{font-size:.85rem;line-height:1.3}
-.management-area-dialog:has(.ht-catalog-view) .management-area-dialog__footer{padding:8px 0 0;background:transparent;border-color:#ddcba9}
-.management-area-dialog:has(.ht-catalog-view) .management-area-dialog__footer button{min-height:44px;margin:0}
 .ht-catalog-view>.ht-empty{width:100%;margin:0;padding:22px 12px}
-@media(max-width:360px){.management-area-dialog:has(.ht-catalog-view){padding:12px}.html-trainings.ht-catalog-view :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{padding-left:21px;padding-right:7px}.ht-catalog-view .ht-folder-copy strong{font-size:.78rem}.ht-catalog-view .ht-browser-grid{gap:14px}}
+@media(max-width:360px){.html-trainings.ht-catalog-view :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{padding-left:21px;padding-right:7px}.ht-catalog-view .ht-folder-copy strong{font-size:.78rem}.ht-catalog-view .ht-browser-grid{gap:14px}}
 
-.ht-folder-copy strong{white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;max-width:100%;overflow-wrap:normal;word-break:normal}.ht-folder-copy strong::-webkit-scrollbar{display:none}
+.ht-folder-copy strong{white-space:normal;max-width:100%;overflow-wrap:anywhere;word-break:normal}.ht-folder-copy strong::-webkit-scrollbar{display:none}
 .html-trainings button.ht-navigation-book{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .html-trainings button.ht-navigation-book[data-folder-enabled="false"]{filter:grayscale(.8);opacity:.62}
 .ht-navigation-book[data-folder-enabled="false"] .ht-folder-arrow{color:#9c3030;border-color:#bf7b73;background:#fff0ea}
 .ht-navigation-book[data-folder-enabled="true"] .ht-folder-arrow{color:#287957}
 
-.ht-navigation-card{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}.ht-navigation-card>button.ht-navigation-book{flex:1;width:100%}.html-trainings .ht-access-toggle{width:100%;min-height:44px;margin:0;padding:8px 10px;font-size:.8rem;white-space:nowrap}
 
-.ht-catalog-view .ht-browser-grid.ht-single-line-grid{grid-template-columns:minmax(0,1fr)}
-.html-trainings.ht-catalog-view .ht-single-line-grid :is(.ht-navigation-card,button.ht-navigation-book){min-width:0}
-.html-trainings.ht-catalog-view .ht-single-line-grid button.ht-navigation-book{flex-direction:row;min-height:64px;text-align:left;justify-content:flex-start;padding:10px 28px 12px 24px}
-.ht-single-line-grid .ht-book-icon{flex-shrink:0}.ht-single-line-grid .ht-folder-copy{flex:1;min-width:0}
 .ht-catalog-view .ht-browser-grid:has(.ht-document-card){gap:22px}
-.ht-navigation-card{display:grid;grid-template-rows:auto auto;align-content:start;min-height:max-content}.ht-navigation-card>button.ht-navigation-book{display:flex;flex-direction:column;height:auto}
-.ht-catalog-view .ht-browser-grid:has(.ht-navigation-card){grid-auto-rows:minmax(max-content,auto)}
+
+/* The native dialog is the overlay; this separate panel owns its natural height.
+   No percentage heights, expanding grid rows, or label resize observer are needed. */
+.management-area-dialog.management-area-dialog--document-library{position:fixed;inset:0;box-sizing:border-box;width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:hidden}
+.management-area-dialog.management-area-dialog--document-library[open]{display:flex;align-items:center;justify-content:center;gap:0}
+.management-area-dialog--document-library::backdrop{background:#041c3099;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
+.management-document-banner{box-sizing:border-box;display:flex;flex-direction:column;flex:0 1 auto;gap:8px;width:90vw;max-width:90vw;height:auto;max-height:90dvh;min-height:0;padding:16px;border:1px solid #ddcba9;border-radius:18px;background:#f6eddd;box-shadow:0 20px 70px #001b3570;overflow:hidden}
+.management-document-banner>.management-area-dialog__header{flex:0 0 auto}
+.management-area-dialog--catalog-banner .management-area-dialog__header{display:none}
+.management-document-banner>.management-area-dialog__body{display:block;flex:0 1 auto;min-width:0;min-height:0;width:100%;height:auto;margin:0;overflow:auto;scrollbar-gutter:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:transparent}
+.management-document-banner>.management-area-dialog__body>.quick-form{display:none}
+.management-document-banner .management-area-detail.html-trainings{display:block;flex:none;height:auto;min-height:0;max-height:none;margin:0;padding:0;border:0;border-radius:0;background:transparent}
+.management-document-banner .ht-catalog-view .ht-browser-grid{display:grid;flex:none;height:auto;min-height:0;max-height:none;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:auto;align-items:start;align-content:start;overflow:visible}
+.management-document-banner .ht-catalog-view .ht-browser-grid>*{height:auto;min-height:0;align-self:start}
+.management-document-banner .ht-navigation-card{display:flex;flex-direction:row;align-items:center;gap:10px;min-width:0;min-height:0}
+.management-document-banner .ht-navigation-card>button.ht-navigation-book{flex:1 1 0;width:auto;height:auto;min-width:0;min-height:98px}
+.management-document-banner .html-trainings .ht-access-toggle{flex:0 0 76px;width:76px;min-height:44px;margin:0;padding:8px 4px;font-size:.75rem;white-space:normal}
+.management-document-banner>.management-area-dialog__footer{flex:0 0 auto;margin:0;padding:8px 0 0;border-color:#ddcba9;background:transparent}
+.management-document-banner .management-area-dialog__footer button{min-height:44px;margin:0}
+@media(max-width:650px){
+ .management-document-banner .ht-catalog-view .ht-browser-grid:not(.ht-catalog){grid-template-columns:minmax(0,1fr)}
+ .management-document-banner .html-trainings :is(.ht-browser-grid,.ht-navigation-card)>button.ht-navigation-book{flex-direction:row;min-height:64px;text-align:left;justify-content:flex-start;padding:10px 28px 12px 24px}
+ .management-document-banner .ht-book-icon{flex-shrink:0}
+ .management-document-banner .ht-folder-copy{flex:1;min-width:0}
+}
+@media(max-width:360px){.management-document-banner{padding:12px}.management-document-banner .html-trainings .ht-access-toggle{flex-basis:64px;width:64px}}
