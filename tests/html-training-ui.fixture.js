@@ -6,8 +6,9 @@ const training={id:'rop-01',title:'ROP demonstrativa de teste',category:'ROPs - 
 const sections=[{id:'s1',title:'Primeira seção',html:'<h2>Leitura segura</h2><p>Texto do treinamento.</p><script>parent.pwned=true</script><img src="https://invalid.test/pixel" onerror="parent.pwned=true">'},{id:'s2',title:'Segunda seção',html:'<p>Fim da leitura.</p>'}];
 const schema={id:'audit1',trainingId:'rop-01',version:1,title:training.title,tests:[{code:'T1',text:'Registro está presente?'}],checks:[{code:'A1',text:'Requisito associado'},{code:'V1',text:'Foi encontrado erro?'}]};
 let state={uid:'participant',trainingId:training.id,version:0,attempts:[],bestScore:0,ackPoints:0,run:null},auditRecords=[],holdList=false,releaseList,denyOpen=false;
+let customCatalog=null;
 let catalogSize=2,folderAccess={version:0,disabled:[]};
-const catalogRows=()=>Array.from({length:catalogSize},(_,i)=>({...training,id:`rop-${String(i+1).padStart(2,'0')}`,title:i===0?training.title:i===1?'Outro documento de teste':`Documento institucional de teste ${i+1}`}));
+const catalogRows=()=>customCatalog||Array.from({length:catalogSize},(_,i)=>({...training,id:`rop-${String(i+1).padStart(2,'0')}`,title:i===0?training.title:i===1?'Outro documento de teste':`Documento institucional de teste ${i+1}`}));
 window.calls=[];window.published=null;
 const copy=v=>JSON.parse(JSON.stringify(v));
 async function api(action,input){
@@ -34,5 +35,6 @@ window.mount=(role='participant')=>{cleanup?.();state.uid=role;const profile=rol
 window.cleanup=()=>cleanup?.();window.holdList=()=>holdList=true;window.releaseList=()=>{holdList=false;releaseList?.();};
 window.mountUnavailable=()=>{cleanup?.();cleanup=mountHtmlTrainings(root,{user:{uid:'participant'}});};
 window.denyOpen=()=>denyOpen=true;
-window.setCatalogSize=count=>{catalogSize=count;window.mount();};
+window.setCatalogSize=count=>{customCatalog=null;catalogSize=count;window.mount();};
+window.setCatalog=(rows,role='participant')=>{customCatalog=rows.map(row=>({...training,...row}));window.mount(role);};
 window.mount();

@@ -54,7 +54,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
   function refreshVisibleActivities(){
     const token=revision,generation=++progressGeneration;
-    const visible=trainingFolderLevel(catalog,folderPath).trainings.filter(t=>t.status==='PUBLISHED');
+    const level=trainingFolderLevel(catalog,folderPath);
+    const visible=level.trainings.filter(t=>t.status==='PUBLISHED');
     const validProgress=()=>current(token)&&mode==='catalog'&&generation===progressGeneration;
     const paint=(training,activity)=>{for(const b of root.querySelectorAll('[data-ht="open"]'))if(b.dataset.id===training.id){b.dataset.activityState=activity.color;b.setAttribute('aria-description',activity.label);const status=b.querySelector('.ht-document-status');if(status)status.textContent=activity.label;const icon=b.querySelector('.ht-document-chevron');if(icon)icon.textContent=activity.complete?'✓':'↗';}};
     void hydrateHtmlTrainingActivities({trainings:visible,isCurrent:validProgress,read:t=>call('OPEN',{trainingId:t.id},token),
@@ -62,7 +63,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       onError(training){activityStates.delete(training.id);paint(training,{...htmlTrainingActivityState(training),label:'Atividades ainda não confirmadas'});}});
   }
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
-  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view');root.removeAttribute('aria-busy');root.replaceChildren();if(banner){banner.replaceWith(...banner.childNodes);dialog.classList.remove('management-area-dialog--document-library','management-area-dialog--catalog-banner');}};
+  const stop = () => {alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view','ht-leaf-catalog');root.removeAttribute('aria-busy');root.replaceChildren();if(banner){banner.replaceWith(...banner.childNodes);dialog.classList.remove('management-area-dialog--document-library','management-area-dialog--catalog-banner','management-area-dialog--leaf-banner');}};
   async function call(action,input={},token=revision) {
     if(!current(token))throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
     const result=await api(action,input);
@@ -97,13 +98,13 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   function top(){
     if(mode==='catalog'){
       const titles={Protocolos:'PROTOCOLOS',Diretrizes:'DIRETRIZES',ROPs:'ROPs','Documentos administrativos':'Documentos Administrativos'};
-      const title=folderPath.length?(titles[folderPath[0]]||folderPath[0]):'GESTÃO DE DOCUMENTOS';
+      const title=folderPath.length>1?folderPath.at(-1):folderPath.length?(titles[folderPath[0]]||folderPath[0]):'GESTÃO DE DOCUMENTOS';
       return `<header class="ht-head"><div><h2>${h(title)}</h2></div></header>`;
     }
     return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${h(active?.title || 'Treinamentos')}</h2><p>Leitura · Avaliação · Sugestão</p></div>${mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;
   }
   function catalogue(){
-    const level=trainingFolderLevel(catalog,folderPath),visible=level.trainings;
+    const level=trainingFolderLevel(catalog,folderPath),leaf=level.folders.length===0&&level.trainings.length>0,visible=level.trainings;
     const folderButton=(path,label,extra='')=>{
       const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!enabled&&!accessAdmin();
       return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${locked?'disabled aria-disabled="true" data-locked="true"':''} ${accessAdmin()&&path.length?'aria-description="'+(enabled?'Ativado':'Desativado')+' para usuários."':''} ${extra}`);
@@ -115,9 +116,9 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       const enabled=!folderAccess.disabled.includes(JSON.stringify(folder.path));
       return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}"`)}</div>`;
     }).join('');
-    const documents=visible.map(t=>renderTrainingDocumentCard(t,{canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('');
+    const documents=visible.map(t=>renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('');
     const count=level.folders.length+visible.length;
-    const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}" style="--ht-grid-rows:${Math.ceil(count/2)}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
+    const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}${leaf?' ht-compact-documents':''}" style="--ht-grid-rows:${Math.ceil(count/2)};--ht-document-count:${Math.max(1,visible.length)};--ht-document-rows:${Math.max(1,Math.ceil(visible.length/2))}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
     return (folderPath.length?`<div class="ht-folder-toolbar">${folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"')}</div>`:'')+grid;
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
@@ -141,9 +142,31 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     const e=editor,t=e.training,admin=isTrainingAdmin(profile);
     return `<form class="ht-editor" data-editor><div class="ht-editor-toolbar"><span class="ht-eyebrow">EDIÇÃO · VERSÃO ${h(t.version)}</span>${button('draft','Salvar rascunho','class="ht-secondary"')}${button('publish','Publicar treinamento')}</div><p class="ht-muted">A publicação usa a versão atual para detectar conflitos. O banco completo é preservado; selecione cinco questões.</p>${t.source?.pendingReviewPublication?'<p class="ht-notice">Publicado por decisão administrativa. A revisão institucional continua pendente e pode ser concluída neste editor.</p>':''}${t.source?.pendingInstitutionalReview?'<label class="ht-check ht-notice"><input name="institutionalReviewConfirmed" type="checkbox"> Conferi as pendências e as referências institucionais deste material para publicação.</label>':''}<div class="ht-form-grid">${field('title','Título',t.title)}<label class="ht-field">Categoria<select name="category">${categories.map(c=>`<option${c===t.category?' selected':''}>${h(c)}</option>`).join('')}</select></label>${field('subcategory','Subcategoria',t.subcategory)}<label class="ht-field">Público<select name="audienceGroup"><option value="GENERAL"${t.audienceGroup==='GENERAL'?' selected':''}>Geral</option><option value="RESTRICTED"${t.audienceGroup==='RESTRICTED'?' selected':''}>Restrito</option></select></label>${admin?field('managerUid','UID do gestor (opcional; vazio mantém com o administrador)',t.managerUid):`<p>Gestor responsável: ${h(t.managerUid || 'Administrador')}</p>`}</div><h3>Conteúdo</h3>${e.sections.map((s,i)=>`<section class="ht-panel">${field(`section-title-${i}`,'Título da seção',s.title)}<div class="ht-format" role="toolbar" aria-label="Formatação da seção ${i+1}">${[['bold','Negrito'],['italic','Itálico'],['insertUnorderedList','Lista'],['formatBlock','Título']].map(([c,l])=>button('format',l,`data-index="${i}" data-command="${c}" class="ht-secondary"`)).join('')}</div><iframe class="ht-edit-frame" title="Editor de conteúdo da seção ${i+1}" data-section="${i}" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></section>`).join('')}${button('add-section','+ Adicionar seção','class="ht-secondary"')}<h3>Banco completo de questões</h3><p>Selecione exatamente cinco. As questões desmarcadas permanecem no banco.</p>${e.bank.map((q,i)=>`<fieldset class="ht-panel ht-bank"><legend>Questão ${i+1}</legend><label class="ht-check"><input type="checkbox" data-selected="${h(q.id)}"${e.selectedQuestionIds.includes(q.id)?' checked':''}> Incluir na avaliação</label>${area(`stem-${i}`,'Enunciado',q.stem)}${field(`points-${i}`,'Pontos',q.points,'number','min="0" max="100" step="0.01"')}${q.options.map((o,j)=>`<div class="ht-bank-option"><label class="ht-check"><input type="radio" name="correct-${i}" value="${h(o.id)}"${q.correctOptionId===o.id?' checked':''}>Correta</label>${field(`option-${i}-${j}`,`Alternativa ${j+1}`,o.text)}</div>`).join('')}${area(`comment-${i}`,'Comentário do gabarito',q.comment)}</fieldset>`).join('')}${button('add-question','+ Adicionar questão ao banco','class="ht-secondary"')}<h3>Sugestões recebidas</h3><p>Concessão manual única, de 0 a 2. Correções administrativas substituem o registro vigente.</p>${(e.suggestions||[]).map((s,i)=>`<section class="ht-panel"><h4>${h(s.uid)}</h4>${(s.attempts||[]).filter(a=>a.suggestion).map(a=>`<blockquote>${h(a.suggestion)}</blockquote>`).join('')||'<p>Sem sugestão registrada.</p>'}${s.suggestionDecision?`<p>Decisão vigente: ${h(s.suggestionDecision.points)} ponto(s) · ${h(s.suggestionDecision.note)}</p>`:''}${s.uid===uid?'<p>A pontuação da própria sugestão não é permitida.</p>':s.suggestionDecision&&!admin?'<p>Decisão registrada. Correções são exclusivas do administrador.</p>':`${field(`review-points-${i}`,'Pontos',s.suggestionDecision?.points??0,'number','min="0" max="2" step="0.5"')}${area(`review-note-${i}`,'Justificativa da decisão',s.suggestionDecision?.note)}${button('review',s.suggestionDecision?'Corrigir decisão':'Registrar decisão',`data-index="${i}" class="ht-secondary"`)}`}</section>`).join('')||'<p>Nenhuma sugestão recebida.</p>'}<p class="ht-muted">Referências no Drive: ${h(t.sync?.status || t.syncStatus || 'estado de sincronização não informado pelo serviço')}. Publicar no PWA não indica sincronização concluída.</p></form>`;
   }
+  let labelFrame;
+  function scheduleCompactLabels(){
+    if(!globalThis.requestAnimationFrame)return;
+    globalThis.cancelAnimationFrame(labelFrame);
+    labelFrame=globalThis.requestAnimationFrame(()=>{
+      if(!alive||!root.classList.contains('ht-leaf-catalog'))return;
+      const canvas=root.ownerDocument.createElement('canvas'),context=canvas.getContext('2d');
+      if(!context)return;
+      for(const label of root.querySelectorAll('.ht-document-title')){
+        if(!label.clientWidth)continue;
+        const style=getComputedStyle(label),height=label.closest('button').getBoundingClientRect().height;
+        const base=Math.min(13,Math.max(9,height*.32));
+        context.font=`${style.fontWeight} ${base}px ${style.fontFamily}`;
+        const width=context.measureText(label.textContent).width;
+        label.style.fontSize=Math.max(8,Math.min(base,base*(label.clientWidth-1)/Math.max(1,width)))+'px';
+      }
+    });
+  }
   function render(){
     if(!alive)return;
     dialog?.classList.toggle('management-area-dialog--catalog-banner',mode==='catalog');
+    const level=mode==='catalog'?trainingFolderLevel(catalog,folderPath):null;
+    const leaf=Boolean(level&&!level.folders.length&&level.trainings.length);
+    root.classList.toggle('ht-leaf-catalog',leaf);
+    dialog?.classList.toggle('management-area-dialog--leaf-banner',leaf);
     root.classList.add('html-trainings');
     root.classList.toggle('ht-reading',mode==='participant'&&Boolean(content?.sections?.length));
     root.classList.toggle('ht-catalog-view',mode==='catalog');
@@ -160,6 +183,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     }
     if(mode==='editor')root.querySelectorAll('[data-section]').forEach(frame=>{frame.srcdoc=readerDocument(editor.sections[Number(frame.dataset.section)].html,uid,'',true);});
     renderBusy();
+    scheduleCompactLabels();
   }
   async function loadCatalog(){revision++;progressGeneration++;active=null;content=null;editor=null;questions=[];state=null;mode='catalog';error='';notice='';auditCleanup?.();auditCleanup=null;render();const token=revision;const res=await call('LIST',{},token);catalog=res.trainings||[];folderAccess=res.folderAccess||{version:0,disabled:[]};folderControlAvailable=res.canManageFolders===true;render();refreshVisibleActivities();}
   async function open(id){
@@ -242,9 +266,13 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   root.addEventListener('click',click);
   const preventSubmit=event=>event.preventDefault();
   root.addEventListener('submit',preventSubmit);
+  const resize=()=>{if(alive&&mode==='catalog')scheduleCompactLabels();};
+  globalThis.addEventListener?.('resize',resize);
+  globalThis.visualViewport?.addEventListener('resize',resize);
+  root.ownerDocument?.fonts?.ready.then(()=>{if(alive)scheduleCompactLabels();});
   root.classList.add('html-trainings');root.innerHTML='<p class="ht-notice" role="status">Consultando treinamentos autorizados…</p>';
   (async()=>{try{if(!uid)throw new Error('Entre com sua conta institucional para acessar os treinamentos.');if(!api){const client=await createHtmlTrainingClient(user);if(!alive)return;api=client.api;valid=client.valid;unsubscribe=client.subscribeInvalidated(()=>fail(Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'})));}if(!current(revision))return;await loadCatalog();}catch(err){fail(err);}})();
-  const cleanup = () => {root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
+  const cleanup = () => {globalThis.cancelAnimationFrame?.(labelFrame);globalThis.removeEventListener?.('resize',resize);globalThis.visualViewport?.removeEventListener('resize',resize);root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
   cleanup.goBack=goBack;
   return cleanup;
 }

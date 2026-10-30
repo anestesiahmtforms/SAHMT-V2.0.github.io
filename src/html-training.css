@@ -149,3 +149,30 @@
  .management-document-banner .ht-folder-copy{flex:1;min-width:0}
 }
 @media(max-width:360px){.management-document-banner{padding:12px}.management-document-banner .html-trainings .ht-access-toggle{flex-basis:64px;width:64px}}
+
+/* Final document folders fit together in one stationary banner. */
+.management-area-dialog--leaf-banner .management-area-dialog__body{overflow:hidden}
+.management-document-banner .ht-leaf-catalog .ht-browser-grid.ht-compact-documents{--ht-row-height:clamp(16px,calc((90dvh - 180px) / var(--ht-document-count) - 4px),44px);grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:var(--ht-row-height);gap:4px;padding:4px 2px 6px;overflow:hidden}
+.management-document-banner .ht-leaf-catalog .ht-head{margin:0 0 8px;padding:0 0 8px}
+.management-document-banner .ht-leaf-catalog .ht-head h2{font-size:clamp(12px,3.5vw,16px);white-space:nowrap;line-height:1.2}
+.management-document-banner .ht-compact-documents>.ht-document-card{display:flex;flex-direction:row;align-items:stretch;gap:6px;min-height:0;height:var(--ht-row-height);padding:0}
+.management-document-banner .ht-compact-documents .ht-document-card h3{display:block;flex:1;min-width:0;min-height:0;margin:0;padding:0}
+.management-document-banner .html-trainings .ht-compact-documents button.ht-document-folder{display:block;box-sizing:border-box;width:100%;height:var(--ht-row-height);min-height:0;margin:0;padding:0;border-radius:6px;overflow:hidden;box-shadow:0 2px 0 var(--folder-deep)}
+.management-document-banner .ht-compact-documents .ht-document-folder::before,.management-document-banner .ht-compact-documents .ht-document-paper{display:none}
+.management-document-banner .ht-compact-documents .ht-document-face{display:flex;justify-content:center;min-height:0;height:100%;margin:0;padding:2px 22px 2px 10px;border-radius:6px;gap:0;overflow:hidden}
+.management-document-banner .ht-compact-documents .ht-document-title{display:block;flex:none;width:100%;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;font-size:clamp(9px,calc(var(--ht-row-height) * .32),13px)}
+.management-document-banner .ht-compact-documents .ht-document-face .ht-eyebrow,.management-document-banner .ht-compact-documents .ht-document-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+.management-document-banner .ht-compact-documents .ht-document-chevron{right:7px;bottom:auto;top:50%;transform:translateY(-50%);font-size:12px;line-height:1}
+.management-document-banner .ht-compact-documents .ht-card-actions{display:flex;flex:0 0 var(--ht-row-height);min-width:0;min-height:0;margin:0;padding:0}
+.management-document-banner .ht-compact-documents .ht-card-actions button{display:grid;place-items:center;width:var(--ht-row-height);height:var(--ht-row-height);min-height:0;margin:0;padding:3px;border-radius:6px;font-size:11px}
+.management-document-banner .ht-compact-documents .ht-card-actions svg{width:min(18px,100%);height:min(18px,100%)}
+@media(hover:hover){.management-document-banner .html-trainings .ht-compact-documents button.ht-document-folder:hover{transform:none;box-shadow:0 2px 0 var(--folder-deep)}}
+
+@media(max-height:500px){
+ .management-area-dialog--leaf-banner .management-document-banner{padding:10px;gap:4px}
+ .management-document-banner .ht-leaf-catalog .ht-browser-grid.ht-compact-documents{--ht-row-height:clamp(12px,calc((90dvh - 130px) / var(--ht-document-rows) - 4px),40px);grid-template-columns:repeat(2,minmax(0,1fr))}
+ .management-document-banner .ht-leaf-catalog .ht-head{margin-bottom:4px;padding-bottom:4px}
+ .management-document-banner .ht-leaf-catalog .ht-head h2{font-size:12px}
+ .management-area-dialog--leaf-banner .management-area-dialog__footer{padding-top:4px}
+ .management-area-dialog--leaf-banner .management-area-dialog__footer button{min-height:32px;padding:5px 10px}
+}
