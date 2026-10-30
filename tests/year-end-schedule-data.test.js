@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createYearEndScheduleRepository} from '../src/year-end-schedule-data.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
+import {createHash} from 'node:crypto';
 const base='yearEndSchedules/2026-2027';
 function fixture(){
   const store=vaccinationMemoryStore(),project={options:{projectId:'outros-48120'}};let now=0;
@@ -10,7 +11,15 @@ function fixture(){
   const api={doc:(db,...parts)=>parts.join('/'),collection:(db,...parts)=>parts.join('/'),serverTimestamp:()=>++now,
     getDocFromServer:async ref=>snapshot(await store.get(...split(ref))),
     runTransaction:(db,fn)=>store.transaction(async tx=>{const reads=new Map();return fn({get:async ref=>{const data=await tx.get(...split(ref));reads.set(ref,data);return snapshot(data);},set:(ref,value)=>tx.set(...split(ref),value),update:(ref,patch)=>tx.set(...split(ref),{...reads.get(ref),...patch})});})};
-  const repository=uid=>{store.seed('users',uid,{uid,active:true,access:true,displayName:'Pessoa '+uid});const auth={app:project,currentUser:{uid}};return {auth,repo:createYearEndScheduleRepository({db:{app:project},auth,uid,firestore:api,watchAuth:()=>()=>{}})};};
+  const siglasByUid={};
+  const repository=(uid,sigla='AB',memberCategories=['EFETIVO'])=>{
+    const email=uid+'@example.invalid',key=createHash('sha256').update(JSON.stringify(email)).digest('hex');
+    store.seed('users',uid,{uid,email,active:true,access:true,displayName:'Nome que não deve ser publicado',sigla:''});
+    store.seed('userCategories',key,{schemaVersion:1,identityStatus:'LINKED',uid,email,memberCategories});
+    siglasByUid[uid]=sigla;store.seed(base+'/policy','participation',{schemaVersion:1,cycle:'2026-2027',siglasByUid});
+    const auth={app:project,currentUser:{uid,email}};
+    return {auth,key,repo:createYearEndScheduleRepository({db:{app:project},auth,uid,firestore:api,watchAuth:()=>()=>{}})};
+  };
   return {store,api,repository,project};
 }
 test('simultaneous team confirmations allocate contiguous unique positions atomically',async()=>{
@@ -19,6 +28,30 @@ test('simultaneous team confirmations allocate contiguous unique positions atomi
   assert.deepEqual(results.map(r=>r.position).sort((a,b)=>a-b),Array.from({length:20},(_,i)=>i+1));
   assert.equal((await f.store.list(base+'/registrations')).length,20);
   assert.equal((await f.store.get(base+'/control','order')).lastPosition,20);
+  assert.ok(results.every(r=>r.sigla==='AB'&&!('displayName' in r)));
+});
+
+test('the four authoritative exceptions submit only a mandatory shift; profile sigla cannot grant exemption',async()=>{
+  for(const sigla of ['FR','AD','L2','LE']){
+    const f=fixture(),{repo}=f.repository('one',sigla);
+    assert.deepEqual(await repo.open(),{sigla,requireGroup:false});
+    await assert.rejects(repo.save({plantao:'natal',grupo:'natal'}));
+    await assert.rejects(repo.save({plantao:null,grupo:null}));
+    const result=await repo.save({plantao:'reveillon',grupo:null});
+    assert.equal(result.sigla,sigla);assert.equal(result.grupo,null);
+  }
+  const f=fixture(),{repo}=f.repository('one');
+  f.store.seed('users','one',{uid:'one',email:'one@example.invalid',active:true,access:true,sigla:'FR'});
+  await assert.rejects(repo.save({plantao:'natal',grupo:null}));
+});
+
+test('residents and substitutes are denied before records are loaded even with administrator category',async()=>{
+  for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){
+    const f=fixture(),{repo}=f.repository('one','AB',[category,'ADMINISTRADOR']);
+    await assert.rejects(repo.open(),{code:'YEAR_END_INELIGIBLE'});
+    await assert.rejects(repo.save({plantao:'natal',grupo:'natal'}),{code:'YEAR_END_INELIGIBLE'});
+    assert.equal((await f.store.list(base+'/registrations')).length,0);
+  }
 });
 test('duplicate submission and later updates keep one UID, original position and creation time',async()=>{
   const f=fixture(),{repo}=f.repository('one');

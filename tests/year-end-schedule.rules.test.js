@@ -5,9 +5,13 @@ import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/ru
 import {doc,collection,getDoc,getDocs,setDoc,updateDoc,deleteDoc,runTransaction,writeBatch,serverTimestamp,query,orderBy,setLogLevel} from 'firebase/firestore';
 import * as firestore from 'firebase/firestore';
 import {writeYearEndChoices} from '../src/year-end-schedule-transaction.js';
+import {createHash} from 'node:crypto';
 
 let env;setLogLevel('silent');
 const base='yearEndSchedules/2026-2027',stamp=()=>serverTimestamp();
+const siglas={one:'AB',two:'CD',three:'EF',four:'GH',five:'IJ',six:'KL',inactive:'ZZ',fr:'FR',ad:'AD',l2:'L2',le:'LE',resident1:'AA',resident2:'BB',resident3:'CC',substitute:'DD'};
+const assignment=(uid,categories=['EFETIVO'])=>({schemaVersion:1,identityStatus:'LINKED',uid,email:uid+'@example.invalid',memberCategories:categories});
+const categoryKey=uid=>createHash('sha256').update(JSON.stringify(uid+'@example.invalid')).digest('hex');
 const context=(uid,claims={})=>env.authenticatedContext(uid,{email:uid+'@example.invalid',email_verified:true,name:'Pessoa '+uid,firebase:{sign_in_provider:'google.com'},...claims}).firestore();
 before(async()=>{
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST,'Execute exclusivamente pelo emulador Firestore.');
@@ -16,9 +20,17 @@ before(async()=>{
 after(async()=>env?.cleanup());
 beforeEach(async()=>{
   await env.clearFirestore();
-  await env.withSecurityRulesDisabled(async c=>{for(const uid of ['one','two','three','four','five','six','inactive'])await setDoc(doc(c.firestore(),'users',uid),{uid,displayName:'Pessoa '+uid,active:uid!=='inactive',access:true});});
+  await env.withSecurityRulesDisabled(async c=>{
+    const db=c.firestore();
+    for(const uid of Object.keys(siglas)){
+      await setDoc(doc(db,'users',uid),{uid,email:uid+'@example.invalid',displayName:'Pessoa '+uid,sigla:'',active:uid!=='inactive',access:true,role:uid.startsWith('resident')||uid==='substitute'?'administrador_app':'temporario'});
+      const categories=uid.startsWith('resident')?['RESIDENTE_'+uid.at(-1),'ADMINISTRADOR']:uid==='substitute'?['SUBSTITUTO','ADMINISTRADOR']:['EFETIVO'];
+      await setDoc(doc(db,'userCategories',categoryKey(uid)),assignment(uid,categories));
+    }
+    await setDoc(doc(db,base+'/policy/participation'),{schemaVersion:1,cycle:'2026-2027',siglasByUid:siglas});
+  });
 });
-const record=(uid,position,patch={})=>({uid,displayName:'Pessoa '+uid,plantao:'natal',grupo:'reveillon',position,createdAt:stamp(),updatedAt:stamp(),...patch});
+const record=(uid,position,patch={})=>({uid,sigla:siglas[uid],plantao:'natal',grupo:'reveillon',position,createdAt:stamp(),updatedAt:stamp(),...patch});
 async function confirm(db,uid,patch={}) {
   return runTransaction(db,async tx=>{
     const own=doc(db,base+'/registrations/'+uid),counter=doc(db,base+'/control/order');
@@ -30,15 +42,15 @@ async function confirm(db,uid,patch={}) {
 }
 test('six simultaneous confirmations commit unique positions and a single counter',async()=>{
   const users=['one','two','three','four','five','six'];
-  const results=await Promise.allSettled(users.map((uid,i)=>{const db=context(uid);return writeYearEndChoices({api:firestore,db,ownRef:doc(db,base+'/registrations/'+uid),counterRef:doc(db,base+'/control/order'),uid,displayName:'Pessoa '+uid,choices:{plantao:i%2?'natal':'reveillon',grupo:i%3?'natal':'reveillon'},ensure(){}});}));
+  const results=await Promise.allSettled(users.map((uid,i)=>{const db=context(uid);return writeYearEndChoices({api:firestore,db,ownRef:doc(db,base+'/registrations/'+uid),counterRef:doc(db,base+'/control/order'),uid,sigla:siglas[uid],choices:{plantao:i%2?'natal':'reveillon',grupo:i%3?'natal':'reveillon'},ensure(){}});}));
   assert.deepEqual(results.filter(r=>r.status==='rejected').map(r=>r.reason.message),[]);
   assert.deepEqual(results.map(r=>r.value.position).sort((a,b)=>a-b),[1,2,3,4,5,6]);
   const db=context('one'),rows=await getDocs(query(collection(db,base+'/registrations'),orderBy('position','asc')));
   assert.deepEqual(rows.docs.map(r=>r.data().position),[1,2,3,4,5,6]);
   assert.equal((await getDoc(doc(db,base+'/control/order'))).data().lastPosition,6);
 });
-test('invalid combinations, extra fields, spoofed name and client timestamps are rejected atomically',async()=>{
-  for(const patch of [{plantao:['natal','reveillon']},{grupo:['natal','reveillon']},{grupo:'both'},{email:'forbidden'},{displayName:'Outra pessoa'},{createdAt:new Date(0)},{uid:'two'}]){
+test('invalid combinations, missing mandatory choices, names and spoofed siglas are rejected atomically',async()=>{
+  for(const patch of [{plantao:['natal','reveillon']},{plantao:null},{grupo:null},{grupo:['natal','reveillon']},{grupo:'both'},{email:'forbidden'},{displayName:'Outra pessoa'},{sigla:'FR'},{createdAt:new Date(0)},{uid:'two'}]){
     await assertFails(confirm(context('one'),'one',patch));
     assert.equal((await getDoc(doc(context('one'),base+'/control/order'))).exists(),false);
     assert.equal((await getDocs(collection(context('one'),base+'/registrations'))).size,0);
@@ -60,10 +72,36 @@ test('counter-only writes, unpaired registrations, skipped positions and arbitra
   const batch=writeBatch(db);batch.set(counter,{lastPosition:4,lastParticipantUid:'one',updatedAt:stamp()});batch.set(doc(db,base+'/registrations/one'),record('one',4));await assertFails(batch.commit());
   await assertFails(setDoc(doc(db,'yearEndSchedules/2027-2028/registrations/one'),record('one',1)));
 });
-test('only approved verified Google members can read the team list or write their own choices',async()=>{
-  for(const db of [env.unauthenticatedContext().firestore(),context('unknown'),context('inactive'),context('one',{email_verified:false}),context('one',{firebase:{sign_in_provider:'password'}})]){
+test('only approved verified effective-team Google members can read the team list or write their choices',async()=>{
+  for(const db of [env.unauthenticatedContext().firestore(),context('unknown'),context('inactive'),context('resident1'),context('resident2'),context('resident3'),context('substitute'),context('one',{email:'two@example.invalid'}),context('one',{email_verified:false}),context('one',{firebase:{sign_in_provider:'password'}})]){
     await assertFails(getDocs(collection(db,base+'/registrations')));await assertFails(confirm(db,'one'));
   }
   const db=context('one');await assertSucceeds(getDoc(doc(db,'users/one')));await assertFails(getDoc(doc(db,'users/two')));await assertFails(getDocs(collection(db,'users')));
   for(const path of ['climateResponses/private','stressResponses/private','climateCycles/2026','epidemiologicalResponses/private'])await assertFails(getDoc(doc(db,path)));
+});
+
+test('FR AD L2 LE require a shift and forbid any group; policy and profile spoofing cannot grant exemption',async()=>{
+  for(const uid of ['fr','ad','l2','le']){
+    const db=context(uid);
+    await assertFails(confirm(db,uid));
+    await assertFails(confirm(db,uid,{plantao:null,grupo:null}));
+    await assertSucceeds(confirm(db,uid,{grupo:null}));
+    assert.equal((await getDoc(doc(db,base+'/registrations/'+uid))).data().grupo,null);
+    await assertFails(confirm(db,uid,{grupo:'natal'}));
+    await assertSucceeds(confirm(db,uid,{grupo:null}));
+  }
+  const db=context('one');
+  await assertFails(updateDoc(doc(db,base+'/policy/participation'),{'siglasByUid.one':'FR'}));
+  await assertFails(updateDoc(doc(db,'users/one'),{sigla:'FR'}));
+  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users/one'),{sigla:'FR'}));
+  await assertFails(confirm(db,'one',{sigla:'FR',grupo:null}));
+  await assertSucceeds(confirm(db,'one'));
+});
+
+test('revoking effective membership immediately removes access while other FE data stays private',async()=>{
+  const db=context('one');await assertSucceeds(confirm(db,'one'));
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'userCategories',categoryKey('one')),assignment('one',['SUBSTITUTO'])));
+  await assertFails(getDocs(collection(db,base+'/registrations')));
+  await assertFails(getDoc(doc(db,base+'/policy/participation')));
+  await assertFails(confirm(db,'one'));
 });

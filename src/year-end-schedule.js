@@ -1,6 +1,7 @@
 export const YEAR_END_CYCLE = '2026-2027';
 export const YEAR_END_PROJECT = 'outros-48120';
 export const YEAR_END_COLLECTION = 'yearEndSchedules';
+export const YEAR_END_SHIFT_ONLY_SIGLAS = Object.freeze(['FR','AD','L2','LE']);
 export const YEAR_END_SHIFTS = Object.freeze([
   {id:'natal',label:'Plantão Natal',dates:'24 e 25/12/2026'},
   {id:'reveillon',label:'Plantão Réveillon',dates:'31/12/2026 e 01/01/2027'}
@@ -11,15 +12,25 @@ export const YEAR_END_GROUPS = Object.freeze([
 ]);
 export const yearEndError = code => Object.assign(Error(code),{code});
 
-export function validateYearEndChoices(input) {
+export function validateYearEndChoices(input,{requireGroup=true}={}) {
   if (!input || Array.isArray(input) || typeof input !== 'object' ||
       Object.keys(input).length !== 2 || !YEAR_END_SHIFTS.some(o=>o.id===input.plantao) ||
-      !YEAR_END_GROUPS.some(o=>o.id===input.grupo)) throw yearEndError('YEAR_END_INVALID_CHOICES');
+      (requireGroup?!YEAR_END_GROUPS.some(o=>o.id===input.grupo):input.grupo!==null)) throw yearEndError('YEAR_END_INVALID_CHOICES');
   return {plantao:input.plantao,grupo:input.grupo};
+}
+
+export function yearEndParticipation(policy,uid) {
+  const siglas=policy?.siglasByUid;
+  if(policy?.schemaVersion!==1||policy.cycle!==YEAR_END_CYCLE||!siglas||typeof siglas!=='object'||Array.isArray(siglas))throw yearEndError('YEAR_END_POLICY_UNAVAILABLE');
+  const sigla=siglas[uid];
+  if(typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla))throw yearEndError('YEAR_END_INELIGIBLE');
+  return {sigla,requireGroup:!YEAR_END_SHIFT_ONLY_SIGLAS.includes(sigla)};
 }
 
 export function canUseYearEndSchedule(session) {
   const user=session?.user,profile=session?.profile;
+  const blocked=['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'];
+  if(profile?.memberCategories?.some?.(id=>blocked.includes(id))||/resident|substitut/i.test(profile?.role||''))return false;
   return Boolean(session?.status==='signed-in' && user?.uid && user.emailVerified===true &&
     profile?.uid===user.uid && profile.active===true && profile.access===true &&
     typeof user.email==='string' && user.email.trim() &&
@@ -31,11 +42,12 @@ export const sortYearEndRegistrations = rows => [...rows].sort((a,b)=>a.position
 export function yearEndMessage(error) {
   const code=error?.code||error?.message;
   return ({
-    YEAR_END_INVALID_CHOICES:'Escolha um plantão e um grupo de trabalho.',
+    YEAR_END_INVALID_CHOICES:'Confira as escolhas obrigatórias indicadas no formulário.',
+    YEAR_END_INELIGIBLE:'A Escala Final de Ano é exclusiva da equipe efetiva. Residentes e substitutos não participam deste módulo.',
+    YEAR_END_POLICY_UNAVAILABLE:'A configuração de participação precisa ser conferida pela gestão.',
     YEAR_END_SESSION_CHANGED:'Sua sessão mudou. Volte e reabra a escala com a mesma conta do app.',
     YEAR_END_AUTH_REQUIRED:'Seu acesso precisa ser atualizado. Use ATUALIZAR O APP na página inicial e reabra a escala.',
     YEAR_END_FORBIDDEN:'Seu perfil precisa estar ativo e liberado no cadastro institucional.',
-    YEAR_END_PROFILE_NAME:'Seu nome precisa estar preenchido no cadastro institucional.',
     YEAR_END_CORRUPT_ORDER:'A ordem de inscrições precisa ser conferida pela gestão.',
     'permission-denied':'O acesso à escala precisa ser liberado pela administração.',
     unavailable:'Não foi possível conectar. Confira a internet e tente novamente.',
