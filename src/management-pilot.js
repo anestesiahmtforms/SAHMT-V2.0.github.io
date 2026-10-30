@@ -1,9 +1,8 @@
 import {canUseYearEndSchedule} from './year-end-schedule.js';
 export {canUseYearEndSchedule};
-// Team members can enter the hub for the year-end schedule. Each other panel
-// keeps its own existing authorization; this gate grants no backend permission.
+// The temporary schedule entry has its own route and grants no hub access.
 export function canUseGovernanceHub(session) {
-  return canUseManagementPilot(session) || canUseYearEndSchedule(session);
+  return canUseManagementPilot(session);
 }
 export function canUseManagementPilot(session) {
   const user=session?.user,profile=session?.profile;

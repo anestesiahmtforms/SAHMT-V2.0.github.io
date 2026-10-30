@@ -44,6 +44,12 @@ export function canUseYearEndSchedule(session) {
 
 export const sortYearEndRegistrations = rows => [...rows].sort((a,b)=>a.position-b.position);
 
+export function confirmedYearEndRegistration(record,{uid,sigla,requireGroup}={}) {
+  if(!uid||record?.uid!==uid||record.sigla!==sigla||!Number.isSafeInteger(record.position)||record.position<1)return false;
+  try{validateYearEndChoices({plantao:record.plantao,grupo:record.grupo},{requireGroup});return true;}
+  catch{return false;}
+}
+
 export function yearEndAdministrator(profile,assignment) {
   const categories=assignment?.memberCategories;
   return Boolean(profile?.active===true&&profile.access===true&&

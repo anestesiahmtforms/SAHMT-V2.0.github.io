@@ -18,14 +18,14 @@ function fixture(){
   api.query=ref=>({query:ref});api.orderBy=()=>null;
   api.onSnapshot=(ref,options,callback,error)=>{const listener={ref,callback,error,stopped:false};subscriptions.push(listener);return()=>{listener.stopped=true;};};
   const siglasByUid={};
-  const repository=(uid,sigla='AB',memberCategories=['EFETIVO'],profile={})=>{
+  const repository=(uid,sigla='AB',memberCategories=['EFETIVO'],profile={},options={})=>{
     const email=uid+'@example.invalid',key=createHash('sha256').update(JSON.stringify(email)).digest('hex');
     store.seed('users',uid,{uid,email,active:true,access:true,displayName:'Nome que não deve ser publicado',sigla:'',...profile});
     store.seed('userCategories',key,{schemaVersion:1,identityStatus:'LINKED',uid,email,memberCategories});
     if(sigla)siglasByUid[uid]=sigla;store.seed(base+'/policy','participation',{schemaVersion:1,cycle:'2026-2027',summaryVersion:1,siglasByUid});
     if(sigla)store.seed(base+'/participation',uid,{schemaVersion:1,cycle:'2026-2027',sigla});
     const auth={app:project,currentUser:{uid,email}};
-    return {auth,key,repo:createYearEndScheduleRepository({db:{app:project},auth,uid,firestore:api,watchAuth:()=>()=>{}})};
+    return {auth,key,repo:createYearEndScheduleRepository({db:{app:project},auth,uid,firestore:api,watchAuth:()=>()=>{},...options})};
   };
   return {store,api,repository,project,subscriptions,reads};
 }
@@ -101,6 +101,22 @@ test('ordinary participants subscribe only to anonymous totals and their own doc
   for(const s of f.subscriptions)s.callback({exists:()=>s.ref.endsWith('totals'),data:()=>({...emptyYearEndTotals(),lastParticipantUid:'must never escape'}),metadata:{hasPendingWrites:false,fromCache:false}});
   assert.equal(changes.length,1);assert.ok(!('rows' in changes[0]));assert.ok(!('lastParticipantUid' in changes[0].totals));assert.equal(changes[0].own,null);
   stop();assert.ok(f.subscriptions.every(s=>s.stopped));
+});
+
+test('startup reads the authenticated own registration directly from the server',async()=>{
+ const f=fixture(),{repo,auth}=f.repository('one');await repo.open();assert.equal(await repo.readOwn(),null);
+ const result=await repo.save({plantao:'natal',grupo:'reveillon'});
+ const own=await repo.readOwn();assert.equal(own.uid,'one');assert.equal(own.position,result.position);
+ assert.equal(f.reads.at(-1),base+'/registrations/one');assert.ok(!f.reads.includes(base+'/registrations'));
+ auth.currentUser={uid:'other'};await assert.rejects(repo.readOwn(),{code:'YEAR_END_SESSION_CHANGED'});
+});
+
+test('participant-only entry never loads administrator rows or accepts an administrator without team participation',async()=>{
+ const f=fixture(),{repo}=f.repository('one','AB',['EFETIVO','ADMINISTRADOR'],{role:'administrador_app'},{participantOnly:true});
+ assert.deepEqual(await repo.open(),{sigla:'AB',requireGroup:true,canParticipate:true,isAdmin:false});repo.subscribe(()=>{},assert.fail);
+ assert.deepEqual(f.subscriptions.map(s=>s.ref),[base+'/summary/totals',base+'/registrations/one']);
+ const admin=fixture().repository('admin',null,['ADMINISTRADOR'],{role:'administrador_app'},{participantOnly:true});
+ await assert.rejects(admin.repo.open(),{code:'YEAR_END_INELIGIBLE'});
 });
 
 test('administrators may view details without being enrolled as a participant; role alone does not bypass excluded affiliation',async()=>{
