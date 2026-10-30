@@ -10,7 +10,7 @@ const date=value=>{
 };
 const options=(name,items,required=true)=>items.map(o=>`<label class="year-end-option"><input type="radio" name="${name}" value="${o.id}"${required?' required':''}><span><strong>${h(o.label)}</strong><span class="year-end-dates">${h(o.dates)}</span>${o.detail?`<small>${h(o.detail)}</small>`:''}</span><span class="year-end-check" aria-hidden="true">✓</span></label>`).join('');
 
-export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true}={}) {
+export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,onConfirmed=()=>{}}={}) {
   let disposed=false,repository=null,participation=null,stop=()=>{},loadId=0,ready=false,busy=false,dirty=false,own=null,rows=[],totals=null;
   const live=()=>!disposed&&isCurrent()&&root.isConnected;
   const form=()=>root.querySelector('form');
@@ -83,6 +83,7 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true}=
     try {
       const result=await repository.save(input);if(!live())return;
       own=result;dirty=false;hydrate();notice(result.updated?'Escolhas atualizadas.':'Escolhas confirmadas!');
+      onConfirmed(result,participation);
     } catch(error){if(live()){if(['YEAR_END_INELIGIBLE','permission-denied'].includes(error.code))failed(error);else notice(yearEndMessage(error),true);}}
     finally{busy=false;if(live())paintForm();}
   };

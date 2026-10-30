@@ -2,10 +2,10 @@ name: HTML training mobile experience
 on:
   pull_request:
     branches: [main]
-    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
+    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'src/year-end*', 'tests/year-end*', 'tests/helpers/year-end-startup-preview.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
   push:
     branches: [main]
-    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
+    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'src/year-end*', 'tests/year-end*', 'tests/helpers/year-end-startup-preview.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,8 +24,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
-      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js tests/app-update-release.browser.test.js
-      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-update-release.browser.test.js
+      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js tests/app-update-release.browser.test.js tests/year-end-startup.browser.test.js
+      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-update-release.browser.test.js tests/year-end-startup.browser.test.js
         env:
           SAHMT_BROWSER_ENGINE: webkit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -35,5 +35,6 @@ jobs:
           path: |
             .local-preview/html-training-*.png
             .local-preview/app-updates-*.png
+            .local-preview/year-end-startup-*.png
           include-hidden-files: true
           if-no-files-found: ignore

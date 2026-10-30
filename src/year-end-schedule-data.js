@@ -5,7 +5,7 @@ import {readYearEndTotals} from './year-end-schedule-totals.js';
 import {writeYearEndChoices} from './year-end-schedule-transaction.js';
 import {institutionalAssignmentKey,assignedInstitutionalGroup} from './institutional-group.js';
 
-export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,firestore=sdk,watchAuth=onAuthStateChanged}={}) {
+export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,participantOnly=false,firestore=sdk,watchAuth=onAuthStateChanged}={}) {
   const api=firestore;
   const ensure=()=>{
     if(db?.app?.options?.projectId!==YEAR_END_PROJECT || auth?.app?.options?.projectId!==YEAR_END_PROJECT)
@@ -34,7 +34,7 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
       group==='team'?api.getDocFromServer(participationRef):Promise.resolve(null),api.getDocFromServer(totalsRef)]);ensure();
     const p=snapshot.exists()?snapshot.data():null;
     if(p?.uid!==uid || p.active!==true || p.access!==true || p.email?.trim().toLowerCase()!==email)throw yearEndError('YEAR_END_FORBIDDEN');
-    const isAdmin=yearEndAdministrator(p,category);
+    const isAdmin=!participantOnly&&yearEndAdministrator(p,category);
     let participation=null;
     if(group==='team')try{participation=yearEndOwnParticipation(projection?.exists()?projection.data():null);}catch(error){if(!isAdmin)throw error;}
     if(!isAdmin&&!participation)throw yearEndError('YEAR_END_INELIGIBLE');
@@ -46,6 +46,12 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
   return {
     uid,
     open:profile,
+    async readOwn() {
+      ensure();if(!access)await profile();ensure();
+      if(!access.canParticipate)throw yearEndError('YEAR_END_INELIGIBLE');
+      const snapshot=await api.getDocFromServer(ownRef);ensure();
+      return snapshot.exists()?snapshot.data():null;
+    },
     subscribe(onChange,onError) {
       ensure();if(!access)throw yearEndError('YEAR_END_FORBIDDEN');
       let stopped=false,stopAuth=()=>{};const stops=[],states=new Map();

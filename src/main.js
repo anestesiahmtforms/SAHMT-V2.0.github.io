@@ -34,6 +34,7 @@ import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMai
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canUseManagementPilot, canUseGovernanceHub, canUseYearEndSchedule} from './management-pilot.js';
+import {createYearEndStartup,yearEndStartupMarkup,YEAR_END_STARTUP_ENABLED} from './year-end-startup.js';
 const climateSurveyEnabled = import.meta.env.VITE_CLIMATE_SURVEY_ENABLED === 'true';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
@@ -99,6 +100,7 @@ const labels = {
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
   management: ['Governança', 'Áreas, atividades e indicadores'],
   'management-hub': ['Governança', 'Áreas de governança'],
+  'year-end-schedule': ['ESCALA FINAL DE ANO', 'Confirme suas escolhas de plantão e grupo de trabalho.'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
@@ -129,6 +131,21 @@ const userPermissions = [
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
+const yearEndStartup=createYearEndStartup({enabled:deployment.target==='FA'&&YEAR_END_STARTUP_ENABLED,
+  onChange:()=>{if(currentRoute()!=='year-end-schedule'||!document.querySelector('.year-end-host'))void render();},
+  readStatus:({uid,isCurrent})=>{
+    let expired=false;
+    const current=()=>!expired&&isCurrent()&&session.status==='signed-in'&&session.user?.uid===uid;
+    return withinDeadline(async()=>{
+      const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');
+      if(!current())throw Error('YEAR_END_SESSION_CHANGED');
+      const repository=await openYearEndScheduleRepository({uid,isCurrent:current,participantOnly:true});
+      const participation=await repository.open();
+      const own=await repository.readOwn();
+      return {participation,own};
+    },{timeoutMs:10000,code:'YEAR_END_STARTUP_TIMEOUT',onTimeout:()=>{expired=true;}});
+  }
+});
 let notice = '';
 let googleAccessPanel;
 if (googleProjectAuthEnabled) {
@@ -1290,6 +1307,17 @@ function showScheduleContacts(contacts, context = {}) {
 }
 
 async function loadModule(route) {
+  if(route==='year-end-schedule'){
+    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
+    const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.user?.uid===uid&&canUseYearEndSchedule(session);
+    if(!current()){navigate('home');return;}
+    const [{mountYearEndSchedule},{openYearEndScheduleRepository}]=await Promise.all([import('./year-end-schedule-ui.js'),import('./year-end-schedule-firebase.js')]);
+    if(!current())return;
+    cleanupCurrentModule=mountYearEndSchedule(content,{isCurrent:current,
+      createRepository:isCurrent=>openYearEndScheduleRepository({uid,isCurrent,participantOnly:true}),
+      onConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);}});
+    return;
+  }
   if(route === 'management-hub'){
     if(!canUseGovernanceHub(session)){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
@@ -4847,7 +4875,17 @@ async function render() {
     try {void Promise.resolve(cleanup()).catch(()=>console.warn('[SAHMT] Encerramento do módulo pendente; navegação mantida.'));}
     catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
-  if (startupBannerActive) {
+  if(yearEndStartup.visible){
+    if(app.querySelector('.year-end-startup'))return;
+    app.innerHTML=yearEndStartupMarkup(import.meta.env.BASE_URL);
+    app.querySelector('[data-year-end-dismiss]').addEventListener('click',()=>{yearEndStartup.dismiss();startupBannerActive=false;void render();});
+    app.querySelector('[data-year-end-open]').addEventListener('click',()=>{
+      yearEndStartup.dismiss();startupBannerActive=false;
+      if(currentRoute()==='year-end-schedule')void render();else void navigate('year-end-schedule');
+    });
+    return;
+  }
+  if (startupBannerActive || yearEndStartup.status==='checking') {
     if (app.querySelector('.boot-screen')) return;
     app.innerHTML = `<main class="boot-screen" role="status" aria-live="polite"><div class="boot-card">
       <img src="${import.meta.env.BASE_URL}assets/icon-192.png" width="76" height="76" alt="SAHMT">
@@ -4874,6 +4912,9 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if(!authLimited&&requestedRoute==='year-end-schedule'&&!canUseYearEndSchedule(session)){
+    navigate('home');return;
+  }
   // A pending profile is not an authorization denial. Keep the requested route
   // in the restricted shell until the profile can grant or deny access.
   if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)){
@@ -5079,6 +5120,7 @@ function sessionChanged(next) {
     appFeaturesUid = '';
   }
   session = next;
+  yearEndStartup.setSession(next);
   connectionRecovery?.sessionChanged();
   if (globalThis.sahmtProvisionalChannelEnabled) window.dispatchEvent(new CustomEvent('sahmt-channel-session'));
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired || backendFailureDisplayed);
