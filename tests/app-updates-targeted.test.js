@@ -43,6 +43,11 @@ test('account changes invalidate late device writes and retries remain possible 
   const c=createTargetedAppUpdates({...f.options,record:async()=>{if(++attempts===1)throw Error('offline');}});
   c.setSession(session('b',request()));await flush();c.setSession(session('b',request()));await flush();assert.equal(attempts,2);
 });
+test('restricted storage keeps the mandatory manual gate without automatic reload loops',()=>{
+  for(const storage of [null,{getItem(){throw Error('denied');}},{getItem(){return null;},setItem(){throw Error('quota');}}]){
+    const f=fixture();const c=createTargetedAppUpdates({...f.options,storage});c.setSession(session('member',request()));assert.equal(c.blocked,true);assert.equal(f.gates.at(-1).automatic,false);
+  }
+});
 test('device identity persists separately from authentication; iPhone, iPad and Android are identified',()=>{
   const store=new Map(),storage={getItem:key=>store.get(key),setItem:(key,value)=>store.set(key,value)};
   assert.equal(installationId(storage),installationId(storage));

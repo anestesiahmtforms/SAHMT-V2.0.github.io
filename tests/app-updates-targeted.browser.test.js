@@ -52,6 +52,8 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
         const iphone=await open(100,'iOS');await iphone.evaluate(()=>window.openSession('member'));await iphone.locator('.required-app-update[open]').waitFor();await iphone.waitForFunction(()=>window.savedDevice);
         await admin.locator('[data-panel-refresh]').click();await admin.getByText('Pendente',{exact:true}).waitFor();assert.equal(await admin.getByText('Confirmado',{exact:true}).count(),1);
         await admin.screenshot({path:'.local-preview/app-updates-targeted-'+engine.name()+'-'+target+'.png',fullPage:true});
+        await iphone.goto(origin+'/targeted-fixture?'+new URLSearchParams({target,release:200}));await iphone.waitForFunction(()=>window.targetedReady);await iphone.evaluate(()=>window.openSession('member'));await iphone.waitForFunction(()=>window.savedDevice?.confirmedRequestId);
+        await admin.locator('[data-panel-refresh]').click();await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] strong')].filter(node=>node.textContent==='Confirmado').length===2);
         // Individual retry changes only this user's requirement; the other request is retained.
         const other=requests.get(target+':other').id;
         await admin.locator('[data-panel-user="member"]').click();await admin.locator('[data-request-update]:enabled').waitFor();await admin.locator('[data-request-update]').click();await admin.waitForFunction(()=>window.individualRequests===1);

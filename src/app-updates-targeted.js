@@ -1,6 +1,7 @@
 import {repairAppFiles} from './app-repair.js';
 
 export const loadedAppRelease = Number(import.meta.env?.VITE_APP_RELEASE || 0);
+function browserStorage(name) {try {return globalThis[name];} catch {return null;}}
 export function updateRequest(value, target) {
   return value && /^[a-zA-Z0-9_-]{16,80}$/.test(value.id || '') && value.target === target &&
     Number.isSafeInteger(value.minimumRelease) && value.minimumRelease > 0 ? value : null;
@@ -52,9 +53,11 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
       const key = 'sahmt-required-update:' + uid + ':' + deviceId + ':' + request.id;
       let automatic = false;
       try {
-        const prior = Number(storage?.getItem(key));
-        automatic = !retries.has(key) && (!prior || now() - prior > 900000);
-        retries.add(key); storage?.setItem(key, String(now()));
+        if (!storage) throw Error('APP_UPDATE_STORAGE_UNAVAILABLE');
+        const prior = Number(storage.getItem(key));
+        if (!retries.has(key) && (!prior || now() - prior > 900000)) {
+          storage.setItem(key, String(now())); retries.add(key); automatic = true;
+        }
       } catch { /* A manual retry remains available with restricted storage. */ }
       enforce({request, automatic, retry});
     }
@@ -71,7 +74,7 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
 }
 
 export function installTargetedAppUpdates({target, release = loadedAppRelease, document = globalThis.document,
-  storage = globalThis.sessionStorage, localStorage = globalThis.localStorage,
+  storage = browserStorage('sessionStorage'), localStorage = browserStorage('localStorage'),
   services = () => import('./app-updates-targeted-firebase.js'), signOut = () => {}, repair = repairAppFiles}) {
   let dialog = null;
   const close = () => {dialog?.close(); dialog?.remove(); dialog = null;};

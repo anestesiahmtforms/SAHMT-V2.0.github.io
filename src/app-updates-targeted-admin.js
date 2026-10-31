@@ -90,7 +90,7 @@ export async function openAllAppUpdates({actorUid, target, isCurrent, root = doc
         if (current()) status.textContent = (error.sent || 0) + ' de ' + (error.total || users.length) + ' solicitações confirmadas. A operação não terminou; confira a conexão. As solicitações já confirmadas permanecem ativas.';
       } finally {sending = false; if (current()) {button.disabled = completed; dialog.querySelector('[data-all-close]').disabled = false;} else close();}
     };
-  } catch {if (current()) status.textContent = 'Não foi possível conferir todos os usuários ou a versão. Feche e tente novamente.';}
+  } catch {if (current()) status.textContent = 'Não foi possível conferir todos os usuários ou a versão. Feche e tente novamente.'; else close();}
   return close;
 }
 
@@ -141,6 +141,6 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
   dialog.addEventListener('cancel', event => {event.preventDefault(); close();});
   root.body.append(dialog); dialog.showModal();
   try {users = await data.listAppUpdateUsers(actorUid); await render();}
-  catch {if (current()) status.textContent = 'Não foi possível consultar os usuários. Feche e tente novamente.';}
+  catch {if (current()) status.textContent = 'Não foi possível consultar os usuários. Feche e tente novamente.'; else close();}
   return close;
 }
