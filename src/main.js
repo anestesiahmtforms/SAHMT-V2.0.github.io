@@ -4916,6 +4916,25 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if(!authLimited&&requestedRoute==='app-updates-control'){
+    const actorUid=session.user?.uid;
+    const authorized=()=>session.status==='signed-in'&&Boolean(actorUid)&&session.user?.uid===actorUid&&
+      session.profile?.active===true&&session.profile?.access===true&&!session.offline&&!session.validatingProfile&&can('admin');
+    if(!authorized()){navigate('home');return;}
+    if(deployment.target!=='FA'){navigate('app-updates-control');return;}
+    // Principal app receipts belong to FA even when the entry button is in FB.
+    app.innerHTML='<main class="main-content"><p role="status">Abrindo o controle de atualizações do app principal…</p><button type="button" class="secondary-button" data-control-return>VOLTAR PARA GESTÃO</button></main>';
+    const isCurrent=()=>current()&&authorized();
+    const exit=()=>isCurrent()?navigate('management'):undefined;
+    document.querySelector('[data-control-return]')?.addEventListener('click',exit);
+    try{
+      const {openAppUpdatePanel}=await import('./app-updates-targeted-admin.js');
+      if(!isCurrent())return;
+      const cleanup=await openAppUpdatePanel({actorUid,target:'FA',isCurrent,onExit:exit});
+      if(isCurrent())cleanupUserInspection=cleanup;else cleanup();
+    }catch{if(isCurrent())app.querySelector('[role="status"]').textContent='Não foi possível abrir o controle de atualizações. Volte para Gestão e tente novamente.';}
+    return;
+  }
   if(!authLimited&&requestedRoute==='year-end-schedule'&&!canUseYearEndSchedule(session)){
     navigate('home');return;
   }
@@ -5293,13 +5312,9 @@ void render();
 globalThis.sahmtRemoteContinuityEnabled=false;
 globalThis.sahmtProvisionalChannelEnabled=false;
 document.addEventListener('click',async event=>{
-  if(!event.target.closest?.('[data-app-update-panel]')||session.status!=='signed-in'||session.offline||!can('admin')||currentRoute()!=='management')return;
-  const actorUid=session.user.uid;
-  cleanupUserInspection?.();cleanupUserInspection=null;
-  try{
-    const {openAppUpdatePanel}=await import('./app-updates-targeted-admin.js');
-    cleanupUserInspection=await openAppUpdatePanel({actorUid,target:deployment.target,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===actorUid&&can('admin')&&currentRoute()==='management'});
-  }catch{notice='Não foi possível abrir o painel de atualizações.';await render();}
+  if(!event.target.closest?.('[data-app-update-panel]')||session.status!=='signed-in'||session.offline||session.validatingProfile||
+    session.profile?.active!==true||session.profile?.access!==true||!can('admin')||currentRoute()!=='management')return;
+  await navigate('app-updates-control');
 });
 const targetedAppUpdates=installTargetedAppUpdates({target:deployment.target,signOut:signOutGlobal});
 watchSession(next=>{const blocked=targetedAppUpdates.blocked;targetedAppUpdates.setSession(next);sessionChanged(next);if(blocked&&!targetedAppUpdates.blocked)void render();});

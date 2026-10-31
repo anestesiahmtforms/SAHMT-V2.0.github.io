@@ -4,13 +4,17 @@ import {createRequire} from 'node:module';
 import {dirname, resolve} from 'node:path';
 import {stampShellRelease} from './lib/shell-release.js';
 import {APP_VERSION} from '../src/app-version.js';
+import {validateAppPublication} from './lib/app-publication.js';
 const require = createRequire(import.meta.url);
 const vite = resolve(dirname(require.resolve('vite/package.json')), 'bin/vite.js');
 const rootBase = '/SAHMT-V2.0.github.io/', fbBase = rootBase + 'gestao/';
 const faOnly=process.argv.includes('--fa-only');
-const shellRelease=Date.now();
+const publication=process.env.SAHMT_PUBLICATION_FILE?validateAppPublication(JSON.parse(await readFile(process.env.SAHMT_PUBLICATION_FILE,'utf8'))):null;
+if(process.env.CI==='true'&&process.env.GITHUB_REF==='refs/heads/main'&&['push','workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME)&&!publication)throw Error('APP_PUBLICATION_PLAN_REQUIRED');
+if(publication&&process.env.GITHUB_SHA&&publication.sourceRevision!==process.env.GITHUB_SHA)throw Error('APP_PUBLICATION_SOURCE_MISMATCH');
+const shellRelease=publication?.release||Date.now(),appVersion=publication?.appVersion||APP_VERSION;
 for (const target of faOnly?['FA']:['FA', 'FB']) {
-  const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target, VITE_APP_RELEASE:String(shellRelease)};
+  const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target, VITE_APP_RELEASE:String(shellRelease),VITE_APP_VERSION:appVersion};
   if (target === 'FB') Object.assign(env, {
     VITE_MANAGEMENT_FIREBASE_ENABLED:'false', VITE_INDICATORS_FIREBASE_ENABLED:'false',
     VITE_FIREBASE_PROJECT_AUTH_ENABLED:'false', VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED:'false',
@@ -40,7 +44,7 @@ console.log(faOnly?'FA_ONLY_BUILD_READY':'INDEPENDENT_FA_FB_BUILDS_READY');
 // Outside the installed shell's cache: administrators select the published
 // release, while device receipts use the independently embedded JS release.
 await writeFile(new URL('../dist/tools/app-release.json',import.meta.url),JSON.stringify({
-  schema:1,appVersion:APP_VERSION,targets:faOnly?{FA:shellRelease}:{FA:shellRelease,FB:shellRelease}
+  schema:1,appVersion,...(publication?{sourceRevision:publication.sourceRevision}:{}),targets:faOnly?{FA:shellRelease}:{FA:shellRelease,FB:shellRelease}
 }));
 
 // Publish surveys on the app origin so Firebase can restore the existing sessions.

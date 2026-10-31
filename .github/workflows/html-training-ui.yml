@@ -24,8 +24,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
-      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/year-end-startup.browser.test.js
-      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/year-end-startup.browser.test.js
+      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/app-updates-control.browser.test.js tests/year-end-startup.browser.test.js
+      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/app-updates-control.browser.test.js tests/year-end-startup.browser.test.js
         env:
           SAHMT_BROWSER_ENGINE: webkit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

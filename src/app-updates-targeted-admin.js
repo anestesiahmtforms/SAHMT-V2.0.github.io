@@ -97,7 +97,7 @@ export async function openAllAppUpdates({actorUid, target, isCurrent, root = doc
   return close;
 }
 
-export async function openAppUpdatePanel({actorUid, target, isCurrent, root = document, services, readRelease = latestAppRelease}) {
+export async function openAppUpdatePanel({actorUid, target, isCurrent, root = document, services, readRelease = latestAppRelease, onExit = () => {}}) {
   const data = services || await import('./app-updates-targeted-firebase.js');
   if (!isCurrent()) return () => {};
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates app-updates-command';
@@ -106,7 +106,8 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
   let closed = false, child = () => {}, users = [], page = 0, sequence = 0,deviceStops=[];
   const current = () => !closed && isCurrent();
   const stopDevices=()=>{for(const stop of deviceStops.splice(0))stop();};
-  const close = () => {closed = true; sequence++;stopDevices(); child(); dialog.close(); dialog.remove();};
+  const close = () => {if(closed)return;closed = true; sequence++;stopDevices(); child(); dialog.close(); dialog.remove();};
+  const exit = () => {const notify=current();close();if(notify)return onExit();};
   const status = dialog.querySelector('[data-panel-status]'), list = dialog.querySelector('[data-panel-list]');
   const filtered = () => {const text = dialog.querySelector('[data-update-search]').value.trim().toLocaleLowerCase('pt-BR'); return users.filter(user => [user.displayName,user.email,user.sigla].join(' ').toLocaleLowerCase('pt-BR').includes(text));};
   const render = async () => {
@@ -146,8 +147,8 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
   dialog.querySelector('[data-panel-previous]').onclick = () => {page = Math.max(0,page - 1); void render();};
   dialog.querySelector('[data-panel-next]').onclick = () => {page++; void render();};
   dialog.querySelector('[data-panel-refresh]').onclick = () => {void render();};
-  dialog.querySelector('[data-panel-close]').onclick = close;
-  dialog.addEventListener('cancel', event => {event.preventDefault(); close();});
+  dialog.querySelector('[data-panel-close]').onclick = exit;
+  dialog.addEventListener('cancel', event => {event.preventDefault(); exit();});
   root.body.append(dialog); dialog.showModal();
   try {users = await data.listAppUpdateUsers(actorUid); await render();}
   catch {if (current()) status.textContent = 'Não foi possível consultar os usuários. Feche e tente novamente.'; else close();}

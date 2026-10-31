@@ -27,7 +27,7 @@ test('a second device remains pending when the first device loads the requested 
   const a=fixture(200,'device-a'),b=fixture(100,'device-b');
   a.controller.setSession(session('member',request())); b.controller.setSession(session('member',request()));await flush();
   assert.equal(deviceUpdateState(a.records[0],request()),'Confirmado');
-  assert.equal(a.records[0].appVersion,APP_VERSION);assert.equal(APP_VERSION,'V2.2');
+  assert.equal(a.records[0].appVersion,APP_VERSION);assert.match(APP_VERSION,/^V\d+\.\d+$/);
   assert.equal(deviceVersionLabel({appVersion:'V2.10'}),'V2.10');assert.equal(deviceVersionLabel({}), 'Versão não informada');
   assert.equal(deviceUpdateState(b.records[0],request()),'Pendente');
   assert.equal(b.controller.blocked,true);assert.equal(a.controller.blocked,false);
