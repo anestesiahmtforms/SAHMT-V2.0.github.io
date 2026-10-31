@@ -34,7 +34,7 @@ import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMai
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canUseManagementPilot, canUseGovernanceHub, canUseYearEndSchedule} from './management-pilot.js';
-import {createYearEndStartup,yearEndStartupMarkup,YEAR_END_STARTUP_ENABLED} from './year-end-startup.js';
+import {createYearEndStartup,installYearEndFloatingBanner,YEAR_END_STARTUP_ENABLED} from './year-end-startup.js';
 const climateSurveyEnabled = import.meta.env.VITE_CLIMATE_SURVEY_ENABLED === 'true';
 import {canManageManagementDocuments} from './document-access.js';
 import {checklistDayMode, checklistConferenceReadiness, resolveChecklistDayRecord, summarizeChecklistDay, summarizeChecklistMonth} from './checklist-date.js';
@@ -79,7 +79,6 @@ catch(error){
 const pendingSyncBanner={reset(){},update(){},pending(){},confirmed(){}};
 let syncNoticeSequence=0;
 installMaterialViewer(document);
-const STARTUP_BANNER_DURATION_MS = 3000;
 let startupBannerActive = firebaseConfigured && !consumeModuleNavigation();
 const startupReports = createStartupReportCache();
 
@@ -134,7 +133,7 @@ const userPermissions = [
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
 const yearEndStartup=createYearEndStartup({enabled:deployment.target==='FA'&&YEAR_END_STARTUP_ENABLED,
-  onChange:()=>{if(currentRoute()!=='year-end-schedule'||!document.querySelector('.year-end-host'))void render();},
+  onChange:()=>yearEndFloating?.update(),
   readStatus:({uid,isCurrent})=>{
     let expired=false;
     const current=()=>!expired&&isCurrent()&&session.status==='signed-in'&&session.user?.uid===uid;
@@ -147,6 +146,10 @@ const yearEndStartup=createYearEndStartup({enabled:deployment.target==='FA'&&YEA
       return {participation,own};
     },{timeoutMs:10000,code:'YEAR_END_STARTUP_TIMEOUT',onTimeout:()=>{expired=true;}});
   }
+});
+const yearEndFloating=installYearEndFloatingBanner({controller:yearEndStartup,baseUrl:import.meta.env.BASE_URL,
+  canShow:()=>session.status==='signed-in'&&!session.offline&&!session.validatingProfile&&!startupBannerActive&&currentRoute()!=='year-end-schedule'&&!document.querySelector('.year-end-host,.required-app-update[open]'),
+  onOpen:()=>{if(currentRoute()!=='year-end-schedule')void navigate('year-end-schedule');}
 });
 let notice = '';
 let googleAccessPanel;
@@ -1328,6 +1331,7 @@ async function loadModule(route) {
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseGovernanceHub(session))return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+      onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),survey,action,response});},
       performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),action,input,signal});},
@@ -4897,36 +4901,12 @@ async function render() {
     catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
   if(document.querySelector('.required-app-update[open]'))return;
-  if(yearEndStartup.visible){
-    if(app.querySelector('.year-end-startup'))return;
-    app.innerHTML=yearEndStartupMarkup(import.meta.env.BASE_URL);
-    app.querySelector('[data-year-end-dismiss]').addEventListener('click',()=>{yearEndStartup.dismiss();startupBannerActive=false;void render();});
-    app.querySelector('[data-year-end-open]').addEventListener('click',()=>{
-      yearEndStartup.dismiss();startupBannerActive=false;
-      if(currentRoute()==='year-end-schedule')void render();else void navigate('year-end-schedule');
-    });
-    return;
-  }
-  if (startupBannerActive || yearEndStartup.status==='checking') {
-    if (app.querySelector('.boot-screen')) return;
-    app.innerHTML = `<main class="boot-screen" role="status" aria-live="polite"><div class="boot-card">
-      <img src="${import.meta.env.BASE_URL}assets/icon-192.png" width="76" height="76" alt="SAHMT">
-      <strong>SAHMT</strong><span class="boot-slogan" aria-label="Gestão responsável! Gestão eficiente! Gestão na palma da mão!"><span class="boot-slogan__phrase" aria-hidden="true">Gestão responsável!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão eficiente!</span><span class="boot-slogan__phrase" aria-hidden="true">Gestão na palma da mão!</span></span>
-      <span class="boot-particles" aria-hidden="true">${[
-        [-118, 0, '0s', '#46d98b'], [118, 0, '0s', '#43a5ff'], [0, -85, '0s', '#ffc857'], [0, 85, '0s', '#ff7a59'],
-        [-95, -62, '.02s', '#b88cff'], [95, 62, '.02s', '#5ee7d2'], [-95, 62, '.02s', '#ffd166'], [95, -62, '.02s', '#ff8fb3'],
-        [-48, -90, '.04s', '#7ce38b'], [48, 90, '.04s', '#70b7ff'], [-48, 90, '.04s', '#ffb347'], [48, -90, '.04s', '#d59bff'],
-        [-112, -32, '.06s', '#46d98b'], [112, 32, '.06s', '#43a5ff'], [-112, 32, '.06s', '#ffc857'], [112, -32, '.06s', '#ff7a59']
-      ].map(([x, y, delay, color]) => `<i class="boot-particle" style="--x:${x}px;--y:${y}px;--d:${delay};--c:${color}"></i>`).join('')}</span>
-      <i class="boot-spinner" aria-hidden="true"></i>
-    </div></main>`;
+  if (startupBannerActive || session.status==='checking' || session.status==='loading-profile') {
+    if (app.querySelector('.startup-logo')) return;
+    app.innerHTML = '<main class="boot-screen startup-logo" role="status" aria-label="Autenticando usuário"><img src="'+import.meta.env.BASE_URL+'assets/icon-192.png" width="112" height="112" alt="SAHMT"></main>';
     return;
   }
   if(!navigator.onLine||(['signed-in','auth-limited'].includes(session.status)&&(session.offline||isOfflineRuntimeForced()||onlineValidationRequired))){renderOnlineGate();return;}
-  if (session.status === 'checking' || session.status === 'loading-profile') {
-    app.innerHTML = `<main class="login-gate"><section class="login-card" role="status" aria-live="polite"><h1>SAHMT</h1><p>Verificando acesso…</p><i class="boot-spinner" aria-hidden="true"></i></section></main>`;
-    return;
-  }
   const authLimited=session.status==='auth-limited';
   if (session.status !== 'signed-in' && !authLimited) {
     app.innerHTML = loginView();
@@ -5141,6 +5121,7 @@ function sessionChanged(next) {
     appFeatures = {...DEFAULT_APP_FEATURES};
     appFeaturesUid = '';
   }
+  startupBannerActive=['checking','loading-profile'].includes(next.status)||(['signed-in','auth-limited'].includes(next.status)&&next.validatingProfile===true);
   session = next;
   yearEndStartup.setSession(next);
   connectionRecovery?.sessionChanged();
@@ -5154,19 +5135,6 @@ function sessionChanged(next) {
   if (next.status === 'signed-in' && userChanged) {
     }
   notice = '';
-  if (startupBannerActive && next.status === 'signed-in') {
-    if (userChanged) preloadStartupReports(next.user);
-    preloadOperationalDataWhenIdle(next.user);
-    if (navigator.onLine && !next.offline) {
-      
-      if (userChanged && can('scheduleRead')) {
-        const uid = next.user.uid;
-        void import('./data-lite.js').then(async ({readSchedule}) => {
-          if (session.status === 'signed-in' && session.user.uid === uid) await readSchedule(todayInputValue(), uid);
-        }).catch((error) => console.warn('[SAHMT] Escala inicial será carregada na tela:', error.code || error.message));
-      }
-    }
-  }
   const connectionChanged = profileBecameLocal || profileRevalidated || profileValidationChanged;
   if ((!unchangedPresentation || connectionChanged) && !preserveCurrentModule && !preserveEvaluationModule) void render();
   else if (preserveEvaluationModule) {
@@ -5319,10 +5287,7 @@ window.addEventListener('sahmt-write-rejected', (event) => {
   if (!['events', 'labels', 'checklist'].includes(currentRoute())) void render();
 });
 void render();
-if (startupBannerActive) window.setTimeout(() => {
-  startupBannerActive = false;
-  void render();
-}, STARTUP_BANNER_DURATION_MS);
+
 globalThis.sahmtRemoteContinuityEnabled=false;
 globalThis.sahmtProvisionalChannelEnabled=false;
 document.addEventListener('click',async event=>{

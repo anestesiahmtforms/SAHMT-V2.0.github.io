@@ -40,3 +40,10 @@ test('a late response for another account cannot hide or revive the current acco
  assert.equal(requests[0].isCurrent(),false);requests[0].resolve({participation,own:record('one')});await flush();assert.equal(banner.visible,true);
  banner.setSession({status:'signed-out'});assert.equal(banner.visible,false);
 });
+
+test('cached profile waits for online validation without losing a manual dismissal in the same opening',async()=>{
+ let reads=0;const banner=createYearEndStartup({readStatus:async()=>{reads++;return {participation,own:null};}});
+ banner.setSession({...session('one'),offline:true,validatingProfile:true});await flush();assert.equal(reads,0);
+ banner.setSession(session('one'));await flush();assert.equal(reads,1);assert.equal(banner.visible,true);
+ banner.dismiss();banner.setSession({status:'auth-limited',user:{uid:'one'}});banner.setSession(session('one'));await flush();assert.equal(banner.visible,false);
+});
