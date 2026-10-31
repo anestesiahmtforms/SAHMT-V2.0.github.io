@@ -1,11 +1,86 @@
-.management-hub-dialog[data-panel="yearEnd"],.management-hub-dialog[data-panel="yearEnd"] .management-hub-content-panel{overflow:clip}
-.management-hub-dialog[data-panel="yearEnd"] .management-hub-body{display:block;overflow:auto;padding:18px;overscroll-behavior:contain}
-.year-end-counts{margin-top:28px;padding-top:22px;border-top:1px solid #dbd2bd}.year-end-counts h3{margin:6px 0;font-size:1.12rem}.year-end-counts>p{font-size:.75rem;color:#647785;line-height:1.5}.year-end-count-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.year-end-count-groups article{min-width:0;padding:16px;border:1px solid #d8caa7;border-radius:14px;background:#fffdf8}.year-end-count-groups h4{margin:0 0 12px;font-size:.85rem}.year-end-count-groups dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.year-end-count-groups dl>div{min-width:0;border:1px solid #e8d7bf;border-radius:11px;padding:13px 10px;background:#fff4ed}.year-end-count-groups dl>div+div{background:#fcf6e3}.year-end-count-groups dt{font-size:.72rem;line-height:1.5;color:#71494b;font-weight:750}.year-end-count-groups dd{margin:8px 0 0;font-size:2rem;line-height:1.1;font-weight:900;color:#8e2932;font-variant-numeric:tabular-nums}.year-end-count-groups dl>div+div dd{color:#82601d}@media(max-width:580px){.year-end-count-groups{grid-template-columns:minmax(0,1fr)}.year-end-count-groups article{padding:14px}}
-.year-end-fieldset--inactive{background:#edf0ee!important;border-style:dashed!important}.year-end-fieldset--inactive>p,.year-end-exempt{color:#6c685b;font-weight:750}.year-end-fieldset--inactive .year-end-option{background:#f5f6f4;filter:grayscale(1)}.year-end-denied{padding:24px 12px;line-height:1.7}.year-end-denied h3{font-size:1.2rem}.year-end-denied p{font-size:.9rem}
-.year-end,.year-end *{box-sizing:border-box}.year-end{width:100%;min-width:0;color:#173b53;font:inherit}.year-end-intro{position:relative;padding:4px 0 22px}.year-end-season{display:block;font-size:.68rem;font-weight:900;letter-spacing:.12em;color:#9b2e36}.year-end-intro h3{margin:9px 0 7px;font-size:clamp(1.4rem,4.5vw,1.9rem);letter-spacing:-.035em;line-height:1.15}.year-end-intro p{margin:0 0 12px;color:#526c7b;font-size:.87rem;line-height:1.6}.year-end-connection{display:inline-flex;align-items:center;gap:6px;color:#46634e;font-size:.71rem}.year-end-connection::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
-.year-end-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.year-end fieldset{min-width:0;margin:0;padding:16px 12px 12px;border:1px solid #d8caa7;border-radius:17px;background:#fffdf8}.year-end legend{padding:0 5px;font-size:.9rem;font-weight:900}.year-end legend span{display:inline-grid;place-items:center;width:23px;height:23px;margin-right:4px;border-radius:7px;background:#8e2932;color:#fff2d0;font-size:.75rem}.year-end fieldset>p{margin:0 0 13px;font-size:.73rem;color:#5d7280}.year-end-option{position:relative;display:flex;align-items:flex-start;gap:9px;min-height:100px;margin:0 0 10px;padding:15px 10px;border:1px solid #d8e0df;border-radius:12px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s}.year-end-option:last-child{margin-bottom:0}.year-end-option>input{flex:0 0 auto;width:17px;height:17px;min-height:0;padding:0;margin:0;accent-color:#9e333c}.year-end-option>span:nth-child(2){display:block;min-width:0}.year-end-option strong{display:block;padding-right:10px;font-size:.88rem;line-height:1.3}.year-end-dates{display:block;margin-top:7px;font-size:.76rem;line-height:1.5}.year-end-option small{display:block;margin-top:4px;font-size:.7rem;line-height:1.45;color:#63737a}.year-end-option:has(input:checked){border-color:#b27735;background:linear-gradient(145deg,#fff8e7,#fff0e7);box-shadow:inset 0 0 0 1px #b2773533}.year-end-option:has(input:focus-visible){outline:3px solid #226b9a;outline-offset:3px}.year-end-check{display:none;position:absolute;top:8px;right:9px;color:#99333a;font-size:.78rem;font-weight:900}.year-end-option:has(input:checked) .year-end-check{display:block}.year-end fieldset:disabled .year-end-option{cursor:default;opacity:.7}
-.year-end-confirm{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;margin-top:17px;padding:16px;border:1px solid #decba4;border-radius:14px;background:#f7f1e4}.year-end-confirm>p{margin:0;font-size:.8rem;line-height:1.5;font-weight:750}.year-end-submit{margin:0!important;padding:12px 17px!important;min-height:44px;border:1px solid #d5b368!important;border-radius:10px!important;background:linear-gradient(145deg,#ac3942,#7a202b)!important;box-shadow:0 3px 0 #591c25!important;color:#fff5db!important;font-size:.72rem!important;letter-spacing:.03em;font-weight:900;cursor:pointer}.year-end-submit:disabled{opacity:.5;cursor:default}.year-end-confirm>small{grid-column:1/-1;font-size:.68rem;line-height:1.5;color:#6a6559}.year-end-feedback{font-size:.8rem;line-height:1.5;color:#296440}.year-end-feedback:not(:empty){padding:12px;margin-top:12px;border:1px solid #b9d6c1;border-radius:10px;background:#eef7ef}.year-end-feedback--error:not(:empty){color:#922831;border-color:#ecc8cb;background:#fff1f1}.year-end-ranking{margin-top:28px;padding-top:22px;border-top:1px solid #dbd2bd}.year-end-ranking>header{display:flex;align-items:center;justify-content:space-between;gap:10px}.year-end-section-label{font-size:.62rem;font-weight:900;letter-spacing:.1em;color:#886f3b}.year-end-ranking h3{margin:5px 0;font-size:1.12rem;letter-spacing:-.02em}.year-end-ranking>p{margin:5px 0 14px;color:#647785;font-size:.73rem}.year-end-total{flex-shrink:0;padding:7px 10px;border:1px solid #ded5bd;border-radius:20px;background:#fffcf4;font-size:.67rem;color:#675530}.year-end-table-wrap{width:100%;overflow:auto;border:1px solid #d6dedf;border-radius:12px;background:#fff}.year-end table{width:100%;border-collapse:collapse;font-size:.72rem;line-height:1.5;text-align:left}.year-end th,.year-end td{padding:13px 11px;white-space:nowrap;border-bottom:1px solid #e7ebeb}.year-end thead th{background:#eaf0f1;color:#536c7b;font-size:.64rem;font-weight:800}.year-end tbody th{white-space:normal;min-width:120px;max-width:190px;overflow-wrap:anywhere}.year-end tbody tr:last-child>*{border-bottom:0}.year-end-position{display:inline-grid;place-items:center;min-width:29px;min-height:29px;border:1px solid #d9c99f;border-radius:9px;background:#fcf6e6;color:#785623;font-weight:900}.year-end-own{background:#fffbef}.year-end-you{display:block;font-size:.62rem;color:#9b303b;font-weight:700}.year-end-tag{display:inline-block;padding:4px 7px;border-radius:6px;background:#f8e9e8;color:#92343b;font-size:.65rem}.year-end-tag--reveillon{background:#f7efd8;color:#776024}.year-end-empty{white-space:normal!important;text-align:center;padding:28px 18px!important;color:#687f8b}.year-end-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-@media(max-width:580px){.management-hub-dialog[data-panel="yearEnd"] .management-hub-body{padding:15px 10px}.year-end-fields{grid-template-columns:minmax(0,1fr);gap:18px}.year-end-option{min-height:82px;padding:14px}.year-end fieldset{padding:14px 10px 10px}.year-end-confirm{grid-template-columns:1fr;padding:14px}.year-end-confirm .year-end-submit{width:100%}.year-end-intro{padding-bottom:20px}.year-end-ranking h3{font-size:1rem}.year-end th,.year-end td{padding:12px 9px}}
+body:has(.year-end-dialog[open]){overflow:hidden;overscroll-behavior:none}
+.year-end-entry{min-height:100dvh;background:#0d3257}
+.year-end-dialog{position:fixed;inset:8px;box-sizing:border-box;width:min(96vw,820px);height:fit-content;max-width:none;max-height:calc(100dvh - 16px);margin:auto;padding:0;border:0;background:transparent;color:#173b53;overflow:hidden}
+.year-end-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:4px}
+.year-end-dialog::backdrop{background:#07243beF;backdrop-filter:blur(4px)}
+.year-end-dialog__header{position:relative;display:grid;place-items:center;min-height:44px;padding:4px 44px;background:transparent}
+.year-end-dialog__header h2{margin:0;color:#fff;text-align:center;font:900 clamp(1rem,3.8vw,1.4rem)/1.15 system-ui,sans-serif;letter-spacing:.015em}
+.year-end-dialog__close{position:absolute;inset:0 0 auto auto;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;box-shadow:none;color:#fff;font:400 1.8rem/1 system-ui;cursor:pointer}
+.year-end-dialog__close:focus-visible{outline:2px solid #fff;outline-offset:-4px}
+.year-end-dialog__body{min-height:0;padding:10px 12px 12px;border:1px solid #e7d7af;border-radius:18px;background:linear-gradient(145deg,#fffdf6,#e6edf0);overflow:hidden}
+.year-end-dialog:has(.year-end--administrator){height:min(94dvh,860px)}
+.year-end-dialog:has(.year-end--administrator) .year-end-dialog__body{display:flex;flex-direction:column}
+.year-end,.year-end *{box-sizing:border-box}
+.year-end{width:100%;min-width:0;min-height:0;color:#173b53;font:inherit}
+.year-end--administrator{flex:1;display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;min-height:0}
+.year-end--administrator:not(:has(form)){grid-template-rows:minmax(0,1fr)}
+.year-end form{margin:0;min-width:0}
+.year-end-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}
+.year-end fieldset{min-width:0;margin:0;padding:8px;border:1px solid #d8caa7;border-radius:12px;background:#fffdf8}
+.year-end legend{width:100%;min-height:2.4em;padding:0 2px;color:#173b53;text-align:center;font-size:clamp(.66rem,2.8vw,.82rem);font-weight:900;line-height:1.2;letter-spacing:0}
+.year-end-option{position:relative;display:grid;grid-template-columns:14px minmax(0,1fr);align-items:center;gap:6px;min-height:72px;margin:0 0 6px;padding:8px 6px;border:1px solid #d8e0df;border-radius:9px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s}
+.year-end-option:last-child{margin-bottom:0}
+.year-end-option>input{width:14px;height:14px;min-height:0;margin:0;padding:0;accent-color:#9e333d}
+.year-end-option__content{display:block;min-width:0}
+.year-end-option strong{display:flex;align-items:center;gap:4px;margin:0;color:#173b53;font-size:clamp(.72rem,2.9vw,.86rem);font-weight:850;line-height:1.15}
+.year-end-option__name{font:inherit;line-height:inherit}
+.year-end-option-icon{display:block;flex:0 0 auto;width:22px;height:22px}
+.year-end-dates{display:block;margin-top:4px;color:#173b53;font-size:clamp(.63rem,2.6vw,.75rem);line-height:1.2;letter-spacing:0}
+.year-end-option small{display:block;margin-top:2px;color:#596e77;font-size:clamp(.6rem,2.4vw,.69rem);line-height:1.2}
+.year-end-option:has(input:checked){border-color:#b27735;background:linear-gradient(145deg,#fff8e7,#fff0e7);box-shadow:inset 0 0 0 1px #b2773533}
+.year-end-option:has(input:focus-visible){outline:3px solid #226b9a;outline-offset:2px}
+.year-end-check{display:none;position:absolute;top:2px;right:4px;color:#99333a;font-size:.65rem;font-weight:900}
+.year-end-option:has(input:checked) .year-end-check{display:block}
+.year-end fieldset:disabled .year-end-option{cursor:default;opacity:.65}
+.year-end-fieldset--inactive{background:#edf0ee!important;border-style:dashed!important}
+.year-end-fieldset--inactive .year-end-option{background:#f5f6f4;filter:grayscale(1)}
+.year-end-confirm{display:grid;gap:4px;margin-top:6px;padding:0}
+.year-end-submit{width:100%;min-height:42px!important;margin:0!important;padding:9px 12px!important;border:1px solid #d5b368!important;border-radius:9px!important;background:linear-gradient(145deg,#ac3942,#7a202b)!important;box-shadow:0 2px 0 #591c25!important;color:#fff5db!important;font-size:.76rem!important;letter-spacing:.02em;font-weight:900;cursor:pointer}
+.year-end-submit:disabled{opacity:.5;cursor:default}
+.year-end-feedback{min-height:16px;margin:0;color:#296440;text-align:center;font-size:.7rem;line-height:1.25}
+.year-end-feedback--error{color:#922831}
+.year-end-admin{min-height:0;padding-top:8px;border-top:1px solid #dbd2bd;overflow:auto;overscroll-behavior:contain}
+.year-end-counts h3,.year-end-ranking h3{margin:4px 0;font-size:1rem;line-height:1.2}
+.year-end-counts>p,.year-end-ranking>p{margin:5px 0 10px;font-size:.72rem;line-height:1.4;color:#647785}
+.year-end-count-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.year-end-count-groups article{min-width:0;padding:10px;border:1px solid #d8caa7;border-radius:10px;background:#fffdf8}
+.year-end-count-groups h4{margin:0 0 8px;font-size:.78rem}
+.year-end-count-groups dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0}
+.year-end-count-groups dl>div{min-width:0;padding:8px;border:1px solid #e8d7bf;border-radius:8px;background:#fff4ed}
+.year-end-count-groups dt{font-size:.65rem;line-height:1.3;font-weight:750;color:#71494b}
+.year-end-count-groups dd{margin:5px 0 0;font-size:1.5rem;line-height:1;font-weight:900;color:#8e2932;font-variant-numeric:tabular-nums}
+.year-end-ranking{margin-top:14px;padding-top:10px;border-top:1px solid #dbd2bd}
+.year-end-ranking>header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.year-end-section-label{font-size:.58rem;font-weight:900;letter-spacing:.06em;color:#886f3b}
+.year-end-total{flex-shrink:0;padding:6px 8px;border:1px solid #ded5bd;border-radius:20px;background:#fffcf4;font-size:.65rem;color:#675530}
+.year-end-table-wrap{width:100%;overflow:auto;border:1px solid #d6dedf;border-radius:9px;background:#fff}
+.year-end table{width:100%;border-collapse:collapse;font-size:.7rem;line-height:1.4;text-align:left}
+.year-end th,.year-end td{padding:10px 8px;white-space:nowrap;border-bottom:1px solid #e7ebeb}
+.year-end thead th{background:#eaf0f1;color:#536c7b;font-size:.62rem;font-weight:800}
+.year-end tbody th{white-space:normal;min-width:80px;max-width:150px;overflow-wrap:anywhere}
+.year-end tbody tr:last-child>*{border-bottom:0}
+.year-end-position{display:inline-grid;place-items:center;min-width:26px;min-height:26px;border:1px solid #d9c99f;border-radius:7px;background:#fcf6e6;color:#785623;font-weight:900}
+.year-end-own{background:#fffbef}
+.year-end-you{display:block;font-size:.6rem;color:#9b303b;font-weight:700}
+.year-end-tag{display:inline-block;padding:4px 6px;border-radius:6px;background:#f8e9e8;color:#92343b;font-size:.63rem}
+.year-end-tag--reveillon{background:#f7efd8;color:#776024}
+.year-end-tag--carnaval{background:#f2e6fa;color:#6f329c}
+.year-end-empty{white-space:normal!important;text-align:center;padding:18px!important;color:#687f8b}
+.year-end-exempt{color:#6c685b;font-weight:750}
+.year-end-denied{padding:12px;line-height:1.5}
+.year-end-denied h3{margin:0 0 8px;font-size:1rem}
+.year-end-denied p{font-size:.85rem}
+.year-end-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.management-hub-dialog[data-panel="yearEnd"][open]{gap:4px;height:min(94dvh,860px);max-height:calc(100dvh - 16px)}
+.management-hub-dialog[data-panel="yearEnd"] .management-hub-header{display:block;min-height:44px;padding:10px 40px;border:0;border-radius:0;background:transparent;box-shadow:none}
+.management-hub-dialog[data-panel="yearEnd"] .management-hub-header h2{margin:0;color:#fff;text-align:center;text-transform:uppercase;font-size:clamp(1rem,3.8vw,1.4rem);line-height:1.15}
+.management-hub-dialog[data-panel="yearEnd"] [data-hub-heading-icon],.management-hub-dialog[data-panel="yearEnd"] .management-hub-user-row{display:none}
+.management-hub-dialog[data-panel="yearEnd"] .management-hub-body{display:flex;min-height:0;padding:10px 12px;overflow:hidden}
+.management-hub-dialog[data-panel="yearEnd"] .management-hub-content-panel{border-radius:18px}
+@media(max-width:580px){.year-end-count-groups{grid-template-columns:minmax(0,1fr)}}
+@media(max-height:450px){
+ .year-end-dialog[open]{gap:2px}.year-end-dialog__header{min-height:36px;padding-top:2px;padding-bottom:2px}.year-end-dialog__header h2{font-size:1rem}.year-end-dialog__close{height:36px;min-height:36px}
+ .year-end-dialog__body{padding:6px 8px 8px}.year-end fieldset{padding:6px}.year-end legend{min-height:1.2em;font-size:.7rem}.year-end-option{min-height:48px;margin-bottom:4px;padding:5px}.year-end-option strong{font-size:.74rem}.year-end-dates{margin-top:2px;font-size:.65rem}.year-end-option small{font-size:.6rem;line-height:1.1}.year-end-option-icon{width:19px;height:19px}.year-end-confirm{margin-top:4px;gap:2px}.year-end-feedback{min-height:12px;font-size:.63rem}.year-end-submit{min-height:36px!important;padding:7px 10px!important}
+}
+@media(max-height:360px){.year-end-option{min-height:44px;padding:4px}.year-end legend{font-size:.65rem}.year-end-option strong{font-size:.7rem}.year-end-dates{font-size:.61rem}.year-end-option small{font-size:.57rem}.year-end-option-icon{width:18px;height:18px}.year-end-dialog__header{min-height:32px}.year-end--administrator{gap:4px}.year-end-admin{padding-top:4px}}
 @media(prefers-reduced-motion:reduce){.year-end-option{transition:none}}
-
-.year-end-tag--carnaval{color:#6f329c;background:#f2e6fa;border-color:#d8b4ec}
