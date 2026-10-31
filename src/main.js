@@ -65,6 +65,8 @@ import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,reme
 import {repairAppFiles, staleModuleFailure} from './app-repair.js';
 import {installAppUpdatePrompt} from './app-updates.js';
 import './app-updates.css';
+import {installTargetedAppUpdates} from './app-updates-targeted.js';
+import './app-updates-targeted.css';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
@@ -806,7 +808,7 @@ function managementUtilityCards() {
   return [['people', 'peopleManage'], ['admin', 'usersManage'], ['notifications', 'admin']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route]) => {
     const [title, subtitle] = labels[route];
     return `<button class="module-card" data-route="${route}">${managementAreaIcon({id:'utility-'+route})}<span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
-  }).join('');
+  }).join('')+(can('admin')?'<button type="button" class="module-card" data-app-update-panel>'+managementAreaIcon({id:'utility-admin'})+'<span><strong>CONTROLE DE ATUALIZAÇÕES</strong><small>Todos os usuários, individual e confirmações por aparelho</small></span><span class="arrow" aria-hidden="true">›</span></button>':'');
 }
 
 function can(permission) {
@@ -1806,7 +1808,7 @@ async function loadAdminModule(content) {
       const cohortControl = firstLoginCohortAdminUiEnabled && can('admin') ? `<div class="first-login-cohort-controls"><label>Primeiro login<select data-first-login-cohort="${escapeHtml(profile.uid)}" ${protectedCohort ? 'disabled' : ''}>${FIRST_LOGIN_COHORTS.map((value) => `<option value="${value}" ${cohort === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>${protectedCohort ? '<small>Classificação protegida; não pode ser reclassificada por este painel.</small>' : `<button type="button" class="secondary-button" data-save-first-login-cohort="${escapeHtml(profile.uid)}">Salvar classificação</button>`}<small data-first-login-cohort-status="${escapeHtml(profile.uid)}">A classificação não altera função, permissões, atividade ou acesso.</small></div>` : '';
       const cohortSummary = firstLoginCohortAdminUiEnabled && can('admin') ? `<small>Primeiro login: ${cohort}${profile.firstLoginCohort ? '' : ' · não classificado'}</small>` : '';
       const membershipSummary=memberCategoryLabels(profile.memberCategories).join(' · ')||'Sem classificação';
-      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button>` : ''}${cohortControl}</article>`;
+      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button><button class="secondary-button" type="button" data-user-app-updates="${escapeHtml(profile.uid)}">Atualização do aparelho</button>` : ''}${cohortControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
     content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
@@ -1819,6 +1821,7 @@ async function loadAdminModule(content) {
           <div class="admin-user-actions"><button class="primary-button" type="submit">Salvar perfil</button><button class="secondary-button" id="cancel-user-edit" type="button" hidden>Cancelar edição</button></div><p id="admin-user-status" class="record-meta" role="status" aria-live="polite"></p>
         </form>
       </section></details>
+      ${can('admin') ? '<section class="admin-user-list"><h3>Atualização dos aparelhos</h3><p>Exija a versão atual para todos com acesso ativo ou use “Atualização do aparelho” no perfil de uma pessoa. Cada aparelho confirma separadamente.</p><button type="button" class="primary-button" data-all-app-updates>ATUALIZAR TODOS OS USUÁRIOS</button></section>' : ''}
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Perfis V2</h3><label>Filtrar perfis<input id="admin-user-search" type="search" placeholder="Nome, sigla, e-mail, UID ou categoria"></label></div><p class="record-meta">Exibindo até 200 perfis, ordenados por nome. Para remover acesso, desative o perfil; o registro não é apagado.</p>${entries || '<p class="empty-state">Nenhum perfil provisionado foi encontrado.</p>'}</section>`;
     const featureForm = content.querySelector('#app-feature-form');
     featureForm?.addEventListener('submit', async (event) => {
@@ -1850,6 +1853,23 @@ async function loadAdminModule(content) {
         cleanupUserInspection=await openAdministrativeUserInspection({actorUid,subjectUid:button.dataset.inspectUser,permissionLabels:Object.fromEntries(userPermissions),isCurrent:()=>currentRoute()==='admin'&&session.user?.uid===actorUid&&can('admin')});
       }catch{notice='Não foi possível abrir a consulta administrativa. Confira sua autorização.';await render();}
       finally{button.disabled=false;}
+    }));
+    content.querySelector('[data-all-app-updates]')?.addEventListener('click',async()=>{
+      const actorUid=session.user?.uid;if(!can('admin')||!actorUid)return;
+      cleanupUserInspection?.();cleanupUserInspection=null;
+      try{
+        const {openAllAppUpdates}=await import('./app-updates-targeted-admin.js');
+        cleanupUserInspection=await openAllAppUpdates({actorUid,target:deployment.target,isCurrent:()=>currentRoute()==='admin'&&session.user?.uid===actorUid&&can('admin')});
+      }catch{notice='Não foi possível abrir a atualização para todos.';await render();}
+    });
+    content.querySelectorAll('[data-user-app-updates]').forEach(button=>button.addEventListener('click',async()=>{
+      const actorUid=session.user?.uid;if(!can('admin')||!actorUid)return;
+      const profile=profiles.find(row=>row.uid===button.dataset.userAppUpdates);if(!profile)return;
+      cleanupUserInspection?.();cleanupUserInspection=null;
+      try{
+        const {openUserAppUpdates}=await import('./app-updates-targeted-admin.js');
+        cleanupUserInspection=await openUserAppUpdates({actorUid,profile,target:deployment.target,isCurrent:()=>currentRoute()==='admin'&&session.user?.uid===actorUid&&can('admin')});
+      }catch{notice='Não foi possível abrir o controle de atualização.';await render();}
     }));
     const form = content.querySelector('#admin-user-form');
     const status = content.querySelector('#admin-user-status');
@@ -4876,6 +4896,7 @@ async function render() {
     try {void Promise.resolve(cleanup()).catch(()=>console.warn('[SAHMT] Encerramento do módulo pendente; navegação mantida.'));}
     catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
+  if(document.querySelector('.required-app-update[open]'))return;
   if(yearEndStartup.visible){
     if(app.querySelector('.year-end-startup'))return;
     app.innerHTML=yearEndStartupMarkup(import.meta.env.BASE_URL);
@@ -5304,7 +5325,17 @@ if (startupBannerActive) window.setTimeout(() => {
 }, STARTUP_BANNER_DURATION_MS);
 globalThis.sahmtRemoteContinuityEnabled=false;
 globalThis.sahmtProvisionalChannelEnabled=false;
-watchSession(sessionChanged);
+document.addEventListener('click',async event=>{
+  if(!event.target.closest?.('[data-app-update-panel]')||session.status!=='signed-in'||session.offline||!can('admin')||currentRoute()!=='management')return;
+  const actorUid=session.user.uid;
+  cleanupUserInspection?.();cleanupUserInspection=null;
+  try{
+    const {openAppUpdatePanel}=await import('./app-updates-targeted-admin.js');
+    cleanupUserInspection=await openAppUpdatePanel({actorUid,target:deployment.target,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===actorUid&&can('admin')&&currentRoute()==='management'});
+  }catch{notice='Não foi possível abrir o painel de atualizações.';await render();}
+});
+const targetedAppUpdates=installTargetedAppUpdates({target:deployment.target,signOut:signOutGlobal});
+watchSession(next=>{const blocked=targetedAppUpdates.blocked;targetedAppUpdates.setSession(next);sessionChanged(next);if(blocked&&!targetedAppUpdates.blocked)void render();});
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const startUpdates=()=>{void installAppUpdatePrompt({base:import.meta.env.BASE_URL,target:deployment.target}).catch(error=>console.warn('[SAHMT PWA] Atualização indisponível:',error?.message));};

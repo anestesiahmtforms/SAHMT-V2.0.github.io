@@ -244,6 +244,42 @@ service cloud.firestore {
     }
 
 
+
+    // BEGIN_TARGETED_APP_UPDATES_V2
+    match /users/{uid} {
+      function validAppUpdateRequest_() {
+        let r = request.resource.data.appUpdateRequest;
+        return r == null || (r is map &&
+          r.keys().hasAll(['id', 'target', 'minimumRelease', 'requestedByUid', 'requestedAt']) &&
+          r.keys().hasOnly(['id', 'target', 'minimumRelease', 'requestedByUid', 'requestedAt']) &&
+          r.id is string && r.id.matches('^[a-zA-Z0-9_-]{16,80}$') && r.target == 'FB' &&
+          r.minimumRelease is int && r.minimumRelease > 0 && r.minimumRelease <= 9007199254740991 &&
+          r.requestedByUid == request.auth.uid && r.requestedAt == request.time);
+      }
+      allow update: if isAdmin() && request.resource.data.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appUpdateRequest']) &&
+        request.resource.data.keys().hasAny(['appUpdateRequest']) && validAppUpdateRequest_();
+      match /appInstallations/{installation} {
+        function validAppInstallation_() {
+          let d = request.resource.data;
+          let r = get(/databases/$(database)/documents/users/$(uid)).data.get('appUpdateRequest', null);
+          return d.keys().hasAll(['uid', 'deviceId', 'target', 'platform', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
+            d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'displayMode', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
+            d.uid == uid && d.deviceId is string && d.deviceId.matches('^[a-f0-9-]{36}$') &&
+            installation == d.deviceId + '_FB' && d.target == 'FB' &&
+            (!d.keys().hasAny(['displayMode']) || d.displayMode in ['standalone', 'browser']) &&
+            d.platform in ['Android', 'iOS', 'Windows', 'macOS', 'Outro'] &&
+            d.loadedRelease is int && d.loadedRelease > 0 && d.loadedRelease <= 9007199254740991 &&
+            d.lastSeenAt == request.time && d.confirmedRequestId is string &&
+            (d.confirmedRequestId == '' || (r != null && d.confirmedRequestId == r.id && d.loadedRelease >= r.minimumRelease));
+        }
+        allow read: if activeUser() && (request.auth.uid == uid || isAdmin());
+        allow create, update: if activeUser() && request.auth.uid == uid && validAppInstallation_();
+        allow delete: if false;
+      }
+    }
+    // END_TARGETED_APP_UPDATES_V2
+
     match /users/{uid} {
       function validNotificationRead(data, uid, notificationId) {
         let noticePath = /databases/$(database)/documents/notifications/$(notificationId);
@@ -255,7 +291,7 @@ service cloud.firestore {
       }
       function validUserProfile(data, uid) {
         return data.keys().hasAll(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
-          data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt']) &&
+          data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'active', 'access', 'role', 'permissions', 'createdAt', 'updatedAt', 'appUpdateRequest']) &&
           data.uid == uid && data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
           data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
           data.sigla is string && data.sigla.size() <= 20 && data.phone is string && data.phone.size() <= 40 &&
@@ -270,11 +306,12 @@ service cloud.firestore {
       }
       function mayManageUser(uid) {
         return request.auth.uid != uid && can('usersManage') && validUserProfile(request.resource.data, uid) &&
-          (!hasUserManagementPrivilege(request.resource.data) || isAdmin());
+          (!hasUserManagementPrivilege(request.resource.data) || isAdmin()) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['appUpdateRequest']);
       }
 
       allow read: if signedIn() && (request.auth.uid == uid || can('usersManage'));
-      allow create: if can('usersManage') && validUserProfile(request.resource.data, uid) &&
+      allow create: if can('usersManage') && validUserProfile(request.resource.data, uid) && !request.resource.data.keys().hasAny(['appUpdateRequest']) &&
         (!hasUserManagementPrivilege(request.resource.data) || isAdmin());
       allow update: if mayManageUser(uid) || (activeUser() && request.auth.uid == uid && request.resource.data.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'updatedAt']));

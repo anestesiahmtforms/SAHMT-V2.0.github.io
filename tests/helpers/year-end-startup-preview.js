@@ -6,6 +6,7 @@ export async function createYearEndStartupPreview(){
  const base='/SAHMT-V2.0.github.io/',records=new Map(),held=[];
  let hold=true,failSave=true;
  const stubs={
+  'app-updates-targeted-firebase.js':'export async function recordAppInstallation(){}',
   'firebase-app.js':'export const firebaseConfigured=true,app=null,appCheckReady=Promise.resolve(null);',
   'auth.js':`const uid=new URL(location.href).searchParams.get('account')||'team';
    const user={uid,email:uid+'@example.invalid',emailVerified:true,displayName:'Pessoa de conferência',providerData:[{providerId:'google.com'}]};

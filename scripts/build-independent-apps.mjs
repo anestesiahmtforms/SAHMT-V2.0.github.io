@@ -9,7 +9,7 @@ const rootBase = '/SAHMT-V2.0.github.io/', fbBase = rootBase + 'gestao/';
 const faOnly=process.argv.includes('--fa-only');
 const shellRelease=Date.now();
 for (const target of faOnly?['FA']:['FA', 'FB']) {
-  const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target};
+  const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target, VITE_APP_RELEASE:String(shellRelease)};
   if (target === 'FB') Object.assign(env, {
     VITE_MANAGEMENT_FIREBASE_ENABLED:'false', VITE_INDICATORS_FIREBASE_ENABLED:'false',
     VITE_FIREBASE_PROJECT_AUTH_ENABLED:'false', VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED:'false',
@@ -36,6 +36,11 @@ manifest.icons = manifest.icons.map(icon => ({...icon, src:icon.src.replace(root
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 }
 console.log(faOnly?'FA_ONLY_BUILD_READY':'INDEPENDENT_FA_FB_BUILDS_READY');
+// Outside the installed shell's cache: administrators select the published
+// release, while device receipts use the independently embedded JS release.
+await writeFile(new URL('../dist/tools/app-release.json',import.meta.url),JSON.stringify({
+  schema:1,targets:faOnly?{FA:shellRelease}:{FA:shellRelease,FB:shellRelease}
+}));
 
 // Publish surveys on the app origin so Firebase can restore the existing sessions.
 const surveys=spawnSync(process.execPath,[vite,'build','--config','vite.climate.config.js','--configLoader','native'],{

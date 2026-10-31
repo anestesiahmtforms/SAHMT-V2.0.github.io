@@ -558,6 +558,7 @@ export async function saveUserProfile(input, actorUid) {
   };
   if (!current.exists()) record.firstLoginCohort = 'REVIEW';
   else if (currentCohort !== undefined) record.firstLoginCohort = currentCohort;
+  if (current.exists() && current.data().appUpdateRequest !== undefined) record.appUpdateRequest = current.data().appUpdateRequest;
   const requestRef = doc(db, 'accessRequests', uid);
   const accessRequest = await getDocFromServer(requestRef);
   if (accessRequest.exists() && accessRequest.data().status === 'PENDING') {

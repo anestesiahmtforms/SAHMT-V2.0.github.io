@@ -5,7 +5,7 @@ test('stale module recovery preserves route and stops after one automatic attemp
  const map=new Map(),urls=[],storage={getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v)},location={assign:u=>urls.push(u)};
  const options={target:'FB',hash:'#/management/area-gestao-de-documentos',automatic:true,storage,location,now:1000};
  assert.equal(repairAppFiles(options),true);assert.equal(repairAppFiles({...options,now:1100}),false);
- const url=new URL(urls[0],'https://example.test');assert.equal(url.pathname,'/SAHMT-V2.0.github.io/tools/refresh-app.html');assert.equal(url.searchParams.get('route'),options.hash);
+ const url=new URL(urls[0],'https://example.test');assert.equal(url.pathname,'/SAHMT-V2.0.github.io/gestao/tools/refresh-app.html');assert.equal(url.searchParams.get('route'),options.hash);
 });
 test('network/profile permission failures are not treated as missing JavaScript',()=>{
  assert.equal(staleModuleFailure(Error('Importing a module script failed.')),true);
