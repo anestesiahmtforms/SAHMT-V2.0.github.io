@@ -2,6 +2,13 @@ import {repairAppFiles} from './app-repair.js';
 
 export const loadedAppRelease = Number(import.meta.env?.VITE_APP_RELEASE || 0);
 function browserStorage(name) {try {return globalThis[name];} catch {return null;}}
+export function newAppUpdateId(crypto = globalThis.crypto) {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
+}
 export function updateRequest(value, target) {
   return value && /^[a-zA-Z0-9_-]{16,80}$/.test(value.id || '') && value.target === target &&
     Number.isSafeInteger(value.minimumRelease) && value.minimumRelease > 0 ? value : null;
@@ -11,8 +18,8 @@ export function installationId(storage, crypto = globalThis.crypto) {
   try {
     const saved = storage.getItem(key);
     if (/^[a-f0-9-]{36}$/.test(saved || '')) return saved;
-    const id = crypto.randomUUID(); storage.setItem(key, id); return id;
-  } catch { return crypto.randomUUID(); }
+    const id = newAppUpdateId(crypto); storage.setItem(key, id); return id;
+  } catch { return newAppUpdateId(crypto); }
 }
 export function devicePlatform(navigator = globalThis.navigator) {
   const ua = navigator?.userAgent || '';

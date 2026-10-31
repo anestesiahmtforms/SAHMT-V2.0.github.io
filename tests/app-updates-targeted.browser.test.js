@@ -30,6 +30,7 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
       try {
         const open=async(release,platform)=>{
           const context=await browser.newContext({viewport:{width:390,height:844},userAgent:platform==='Android'?'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',isMobile:true,hasTouch:true});contexts.push(context);
+          if(platform==='iOS')await context.addInitScript(()=>{Object.defineProperty(Crypto.prototype,'randomUUID',{value:undefined,configurable:true});});
           const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
           await page.goto(origin+'/targeted-fixture?'+new URLSearchParams({target,release}));await page.waitForFunction(()=>window.targetedReady);return page;
         };

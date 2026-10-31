@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createTargetedAppUpdates, deviceUpdateState, devicePlatform, installationId, recoveryUrl, updateRequest} from '../src/app-updates-targeted.js';
+import {createTargetedAppUpdates, deviceUpdateState, devicePlatform, installationId, recoveryUrl, updateRequest, newAppUpdateId} from '../src/app-updates-targeted.js';
 import {requestUpdatesForUsers} from '../src/app-updates-targeted-batch.js';
 import {addAppUpdateRules} from '../scripts/lib/app-update-rules.js';
 const request = (id = 'request-1234567890123456') => ({id,target:'FA',minimumRelease:200});
@@ -54,6 +54,9 @@ test('device identity persists separately from authentication; iPhone, iPad and 
   assert.equal(devicePlatform({userAgent:'iPhone'}),'iOS');assert.equal(devicePlatform({userAgent:'Macintosh',maxTouchPoints:5}),'iOS');assert.equal(devicePlatform({userAgent:'Android'}),'Android');
   assert.match(recoveryUrl('FB','https://example.invalid'),/target=FB/);
   assert.equal(updateRequest({...request(),minimumRelease:NaN},'FA'),null);
+  const olderCrypto={getRandomValues:values=>crypto.getRandomValues(values)};
+  assert.match(newAppUpdateId(olderCrypto),/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+  assert.match(installationId(null,olderCrypto),/^[a-f0-9-]{36}$/);
 });
 test('all users includes every active page, deduplicates accounts and reports partial failure accurately',async()=>{
   const users=Array.from({length:405},(_,i)=>({uid:'u'+i,active:true,access:true}));

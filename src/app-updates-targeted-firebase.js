@@ -2,6 +2,7 @@ import {doc, collection, getDocFromServer, getDocsFromServer, setDoc, updateDoc,
 import {db} from './firebase.js';
 import {auth} from './firebase-auth.js';
 import {deployment} from './deployment-context.js';
+import {newAppUpdateId} from './app-updates-targeted.js';
 
 function actor(uid) {
   if (!uid || auth?.currentUser?.uid !== uid) throw Error('APP_UPDATE_SESSION_CHANGED');
@@ -26,7 +27,7 @@ export async function requestUserAppUpdate(actorUid, uid, minimumRelease) {
   actor(actorUid);
   if (!Number.isSafeInteger(minimumRelease) || minimumRelease <= 0) throw Error('APP_UPDATE_RELEASE_INVALID');
   await updateDoc(doc(db, 'users', uid), {appUpdateRequest: {
-    id: crypto.randomUUID(), target: deployment.target, minimumRelease,
+    id: newAppUpdateId(), target: deployment.target, minimumRelease,
     requestedByUid: actorUid, requestedAt: serverTimestamp()
   }});
 }
@@ -47,7 +48,7 @@ export async function listAppUpdateUsers(actorUid) {
 export async function sendAppUpdateBatch(actorUid, uids, minimumRelease) {
   actor(actorUid);
   if (uids.length > 200 || !Number.isSafeInteger(minimumRelease) || minimumRelease <= 0) throw Error('APP_UPDATE_BATCH_INVALID');
-  const batch = writeBatch(db), id = crypto.randomUUID();
+  const batch = writeBatch(db), id = newAppUpdateId();
   for (const uid of uids) batch.update(doc(db, 'users', uid), {appUpdateRequest: {
     id, target: deployment.target, minimumRelease, requestedByUid: actorUid, requestedAt: serverTimestamp()
   }});
