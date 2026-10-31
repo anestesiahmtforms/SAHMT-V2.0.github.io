@@ -335,6 +335,12 @@
 @keyframes sahmt-slogan-in{0%{opacity:0;transform:scale(.55);filter:blur(3px)}12%{opacity:1;transform:scale(1.1);filter:blur(0)}24%,88%{opacity:1;transform:scale(1);filter:blur(0)}100%{opacity:0;transform:scale(1.02)}}
 @keyframes boot-particle-burst{0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}8%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}55%{opacity:.9;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(1)}88%,100%{opacity:0;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.3)}}
 @keyframes boot-halo-burst{0%{opacity:0;transform:translate(-50%,-50%) scale(.15)}10%{opacity:.85}65%,100%{opacity:0;transform:translate(-50%,-50%) scale(2.2)}}
+.startup-logo img{width:112px;height:112px;object-fit:contain;border-radius:24px}
+.year-end-floating{position:fixed;inset:auto;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:19990;width:max-content;max-width:calc(100vw - 28px);max-height:calc(100dvh - 28px);margin:0;padding:0;border:0;background:transparent;color:#0d3257;overflow:auto;overscroll-behavior:contain;box-shadow:0 18px 60px #001b3566;border-radius:24px;font-family:system-ui,sans-serif}
+.year-end-floating[hidden]{display:none}
+.year-end-floating::backdrop{background:transparent;pointer-events:none}
+.year-end-floating .boot-card{width:min(calc(100vw - 28px),330px);max-width:100%;box-sizing:border-box}
+.year-end-floating .boot-card img{width:76px;height:76px}
 .year-end-startup-close{position:absolute;z-index:3;top:7px;right:7px;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:#36586a;font:inherit;font-size:1.8rem;cursor:pointer}
 .boot-card .year-end-startup-burst{display:block;font:inherit;line-height:inherit;color:#0876a1;animation:year-end-title-burst 1.25s ease-out 3;transform-origin:center}
 .year-end-startup-action{position:relative;z-index:2;min-height:44px;height:44px;margin-block:-8px;padding:8px 12px;font-size:.82rem;font-weight:850}
