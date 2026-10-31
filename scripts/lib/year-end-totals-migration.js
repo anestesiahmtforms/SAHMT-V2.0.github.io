@@ -17,6 +17,7 @@ export async function readYearEndTotalsSource(request,transaction){
 export function prepareYearEndTotals(source){
   const {policy,summary,counter,records}=source;
   if(policy?.data.schemaVersion!==1||policy.data.cycle!=='2026-2027')throw Error('POLICY_REQUIRED');
+  if(policy.data.summaryVersion===0&&policy.data.resetId)throw Error('YEAR_END_RESET_REQUIRES_ACTIVATION');
   let totals=emptyYearEndTotals();const positions=new Set();
   for(const {name,data} of records){
     const uid=name.split('/').at(-1),participation=yearEndParticipation(policy.data,uid);
@@ -25,7 +26,7 @@ export function prepareYearEndTotals(source){
     totals=changeYearEndTotals(totals,null,data);
   }
   if(records.length&&Math.max(...positions)!==records.length)throw Error('NONCONTIGUOUS_POSITIONS');
-  const active=policy.data.summaryVersion===1;
+  const active=[1,2].includes(policy.data.summaryVersion);
   if(!active&&((counter&&counter.data.lastPosition!==records.length)||(!counter&&records.length)))throw Error('LEGACY_COUNTER_REVIEW_REQUIRED');
   if(active&&(!summary||JSON.stringify(readYearEndTotals(summary.data))!==JSON.stringify(totals)))throw Error('ACTIVE_SUMMARY_MISMATCH');
   return {registrations:records.length,totals,alreadyActive:active,choicesChanged:0};

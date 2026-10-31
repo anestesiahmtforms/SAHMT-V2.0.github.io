@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "test:year-end": "node --test tests/year-end-schedule.test.js tests/year-end-schedule-data.test.js tests/year-end-schedule-migration.test.js tests/year-end-startup.test.js",
+    "test:year-end": "node --test tests/year-end-schedule.test.js tests/year-end-schedule-data.test.js tests/year-end-schedule-migration.test.js tests/year-end-startup.test.js tests/year-end-carnival-reset.test.js",
     "test:year-end-rules": "node scripts/build-climate-rules.mjs && firebase emulators:exec --config firebase.year-end.test.json --project demo-sahmt-year-end --only firestore --non-interactive \"node --test tests/year-end-schedule.rules.test.js\"",
     "build:climate": "node scripts/build-climate-rules.mjs && node scripts/build-climate.mjs",
     "test:climate": "node --test tests/climate.test.js tests/climate-report.test.js tests/climate.browser.test.js",

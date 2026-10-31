@@ -32,7 +32,7 @@ beforeEach(async()=>{
       await setDoc(doc(db,'userCategories',categoryKey(uid)),assignment(uid,categories));
       if(siglas[uid])await setDoc(doc(db,base+'/participation/'+uid),{schemaVersion:1,cycle:'2026-2027',sigla:siglas[uid]});
     }
-    await setDoc(doc(db,base+'/policy/participation'),{schemaVersion:1,cycle:'2026-2027',summaryVersion:1,siglasByUid:siglas,excludedUids:['excluded']});
+    await setDoc(doc(db,base+'/policy/participation'),{schemaVersion:1,cycle:'2026-2027',summaryVersion:2,siglasByUid:siglas,excludedUids:['excluded']});
     await setDoc(totalsRef(db),{...emptyYearEndTotals(),updatedAt:stamp()});
   });
 });
@@ -42,7 +42,7 @@ async function confirm(db,uid,patch={},summaryPatch={}) {
     const prior=await tx.get(ownRef(db,uid)),summary=await tx.get(totalsRef(db));
     const previous=prior.exists()?prior.data():null,totals=summary.exists()?readYearEndTotals(summary.data()):emptyYearEndTotals();
     const choices={plantao:previous?'reveillon':'natal',grupo:previous?'natal':'reveillon',...patch};
-    const safeChoices={plantao:['natal','reveillon'].includes(choices.plantao)?choices.plantao:'natal',grupo:choices.grupo===null||['natal','reveillon'].includes(choices.grupo)?choices.grupo:'natal'};
+    const safeChoices={plantao:['natal','reveillon','carnaval'].includes(choices.plantao)?choices.plantao:'natal',grupo:choices.grupo===null||['natal','reveillon'].includes(choices.grupo)?choices.grupo:'natal'};
     const next=changeYearEndTotals(totals,previous,safeChoices);
     tx.set(totalsRef(db),{...next,updatedAt:stamp(),...summaryPatch});
     if(previous)tx.update(ownRef(db,uid),{plantao:choices.plantao,grupo:choices.grupo,updatedAt:stamp(),...patch});
@@ -59,9 +59,9 @@ test('simultaneous confirmations keep unique positions and correct anonymous tot
   assert.deepEqual(results.map(r=>r.value.position).sort((a,b)=>a-b),[1,2,3,4,5,6]);
   const rows=await getDocs(query(collection(context('admin'),base+'/registrations'),orderBy('position','asc')));
   assert.deepEqual(rows.docs.map(r=>r.data().position),[1,2,3,4,5,6]);
-  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('one')))).data()),{plantaoNatal:3,plantaoReveillon:3,grupoNatal:4,grupoReveillon:2,totalRegistrations:6});
+  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('one')))).data()),{plantaoNatal:3,plantaoReveillon:3,plantaoCarnaval:0,grupoNatal:4,grupoReveillon:2,totalRegistrations:6});
   await Promise.all(users.map(uid=>save(uid,{plantao:'natal',grupo:'reveillon'})));
-  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('one')))).data()),{plantaoNatal:6,plantaoReveillon:0,grupoNatal:0,grupoReveillon:6,totalRegistrations:6});
+  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('one')))).data()),{plantaoNatal:6,plantaoReveillon:0,plantaoCarnaval:0,grupoNatal:0,grupoReveillon:6,totalRegistrations:6});
 });
 
 test('participants read their own choice and four totals; only administrators read other records or any list',async()=>{
@@ -76,7 +76,7 @@ test('participants read their own choice and four totals; only administrators re
   await assertSucceeds(getDoc(ownRef(admin,'one')));
   await assertSucceeds(getDocs(collection(context('two'),base+'/registrations')));
   const totals=(await assertSucceeds(getDoc(totalsRef(one)))).data();
-  assert.deepEqual(Object.keys(totals).sort(),['grupoNatal','grupoReveillon','plantaoNatal','plantaoReveillon','totalRegistrations','updatedAt'].sort());
+  assert.deepEqual(Object.keys(totals).sort(),['grupoNatal','grupoReveillon','plantaoNatal','plantaoReveillon','plantaoCarnaval','totalRegistrations','updatedAt'].sort());
   await assertFails(confirm(admin,'admin',{sigla:'ZZ'})); // administrative viewer is not an enrolled participant
   await assertFails(updateDoc(ownRef(admin,'one'),{grupo:'natal',updatedAt:stamp()}));
 });
@@ -95,12 +95,29 @@ test('invalid combinations, missing choices, names and spoofed siglas are reject
   }
 });
 
+test('Carnival is a third shift only; its counter moves atomically and the existing group rules still apply',async()=>{
+ await assertFails(confirm(context('one'),'one',{plantao:'carnaval',grupo:null}));
+ await assertFails(confirm(context('one'),'one',{plantao:'carnaval',grupo:'carnaval'}));
+ await assertSucceeds(save('one',{plantao:'carnaval',grupo:'natal'}));
+ await assertSucceeds(save('fr',{plantao:'carnaval',grupo:null}));
+ let totals=readYearEndTotals((await getDoc(totalsRef(context('one')))).data());assert.equal(totals.plantaoCarnaval,2);assert.equal(totals.grupoNatal,1);assert.equal(totals.totalRegistrations,2);
+ await assertSucceeds(save('one',{plantao:'natal',grupo:'reveillon'}));totals=readYearEndTotals((await getDoc(totalsRef(context('one')))).data());assert.equal(totals.plantaoCarnaval,1);assert.equal(totals.plantaoNatal,1);assert.equal(totals.totalRegistrations,2);
+ assert.equal((await getDoc(ownRef(context('one'),'one'))).data().position,1);
+});
+
+test('the previous client schema cannot submit after the Carnival reset',async()=>{
+ const db=context('one');
+ await assertFails(runTransaction(db,async tx=>{const summary=await tx.get(totalsRef(db)),next=changeYearEndTotals(summary.data(),null,{plantao:'natal',grupo:'reveillon'});delete next.plantaoCarnaval;tx.set(totalsRef(db),{...next,updatedAt:stamp()});tx.set(ownRef(db,'one'),record('one',1));}));
+ await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),base+'/policy/participation'),{summaryVersion:1}));
+ await assertFails(confirm(db,'one'));assert.equal((await getDoc(ownRef(db,'one'))).exists(),false);
+});
+
 test('updating choices moves counts atomically and preserves position and creation time',async()=>{
   const db=context('one');await assertSucceeds(confirm(db,'one'));
   const ref=ownRef(db,'one'),first=(await getDoc(ref)).data();
   await assertSucceeds(confirm(db,'one'));
   const changed=(await getDoc(ref)).data();assert.equal(changed.position,1);assert.ok(changed.createdAt.isEqual(first.createdAt));
-  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(db))).data()),{plantaoNatal:0,plantaoReveillon:1,grupoNatal:1,grupoReveillon:0,totalRegistrations:1});
+  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(db))).data()),{plantaoNatal:0,plantaoReveillon:1,plantaoCarnaval:0,grupoNatal:1,grupoReveillon:0,totalRegistrations:1});
   await assertFails(updateDoc(ref,{plantao:'natal',updatedAt:stamp()}));
   for(const patch of [{position:2},{displayName:'Outro nome'},{createdAt:stamp()},{uid:'two'}])await assertFails(confirm(db,'one',patch));
   await assertFails(deleteDoc(ref));
@@ -123,7 +140,7 @@ test('FR AD L2 LE contribute only to shift counts and cannot select a group',asy
     await assertFails(confirm(db,uid,{grupo:'natal'}));
     await assertSucceeds(confirm(db,uid,{grupo:null}));
   }
-  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('one')))).data()),{plantaoNatal:0,plantaoReveillon:4,grupoNatal:0,grupoReveillon:0,totalRegistrations:4});
+  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('one')))).data()),{plantaoNatal:0,plantaoReveillon:4,plantaoCarnaval:0,grupoNatal:0,grupoReveillon:0,totalRegistrations:4});
   await assertFails(updateDoc(doc(context('one'),base+'/policy/participation'),{'siglasByUid.one':'FR'}));
   await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users/one'),{sigla:'FR'}));
   await assertFails(confirm(context('one'),'one',{sigla:'FR',grupo:null}));

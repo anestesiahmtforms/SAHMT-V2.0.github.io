@@ -54,7 +54,7 @@ service cloud.firestore {
       return yearEndIdentity() && memberCategoryAdmin_() && !yearEndPolicy().get('excludedUids', []).hasAny([request.auth.uid]);
     }
     function yearEndReader() { return yearEndMember() || yearEndAdmin(); }
-    function yearEndWritesReady() { return yearEndPolicy().get('summaryVersion', 0) == 1; }
+    function yearEndWritesReady() { return yearEndPolicy().get('summaryVersion', 0) == 2; }
     function yearEndSigla() {
       return yearEndPolicy().siglasByUid[request.auth.uid];
     }
@@ -62,17 +62,17 @@ service cloud.firestore {
       let sigla = yearEndSigla();
       return d.keys().hasOnly(['uid', 'sigla', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
         d.keys().hasAll(['uid', 'sigla', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
-        d.uid == uid && d.sigla == sigla && d.plantao in ['natal', 'reveillon'] &&
+        d.uid == uid && d.sigla == sigla && d.plantao in ['natal', 'reveillon', 'carnaval'] &&
         (sigla in ['FR', 'AD', 'L2', 'LE'] ? d.grupo == null : d.grupo in ['natal', 'reveillon']) &&
         d.position is int && d.position > 0 && d.position <= 9007199254740991 &&
         d.createdAt is timestamp && d.updatedAt == request.time;
     }
     function yearEndCount(value) { return value is int && value >= 0 && value <= 9007199254740991; }
     function yearEndTotals(d) {
-      return d.keys().hasOnly(['plantaoNatal', 'plantaoReveillon', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
-        d.keys().hasAll(['plantaoNatal', 'plantaoReveillon', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
-        yearEndCount(d.plantaoNatal) && yearEndCount(d.plantaoReveillon) && yearEndCount(d.grupoNatal) && yearEndCount(d.grupoReveillon) && yearEndCount(d.totalRegistrations) &&
-        d.plantaoNatal + d.plantaoReveillon == d.totalRegistrations && d.grupoNatal + d.grupoReveillon <= d.totalRegistrations && d.updatedAt == request.time;
+      return d.keys().hasOnly(['plantaoNatal', 'plantaoReveillon', 'plantaoCarnaval', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
+        d.keys().hasAll(['plantaoNatal', 'plantaoReveillon', 'plantaoCarnaval', 'grupoNatal', 'grupoReveillon', 'totalRegistrations', 'updatedAt']) &&
+        yearEndCount(d.plantaoNatal) && yearEndCount(d.plantaoReveillon) && yearEndCount(d.plantaoCarnaval) && yearEndCount(d.grupoNatal) && yearEndCount(d.grupoReveillon) && yearEndCount(d.totalRegistrations) &&
+        d.plantaoNatal + d.plantaoReveillon + d.plantaoCarnaval == d.totalRegistrations && d.grupoNatal + d.grupoReveillon <= d.totalRegistrations && d.updatedAt == request.time;
     }
     function yearEndDelta(before, after, field, option) {
       return (after.get(field, null) == option ? 1 : 0) - (before.get(field, null) == option ? 1 : 0);
@@ -81,6 +81,7 @@ service cloud.firestore {
       return yearEndTotals(after) && after.totalRegistrations == before.totalRegistrations + added &&
         after.plantaoNatal == before.plantaoNatal + yearEndDelta(previous, next, 'plantao', 'natal') &&
         after.plantaoReveillon == before.plantaoReveillon + yearEndDelta(previous, next, 'plantao', 'reveillon') &&
+        after.plantaoCarnaval == before.plantaoCarnaval + yearEndDelta(previous, next, 'plantao', 'carnaval') &&
         after.grupoNatal == before.grupoNatal + yearEndDelta(previous, next, 'grupo', 'natal') &&
         after.grupoReveillon == before.grupoReveillon + yearEndDelta(previous, next, 'grupo', 'reveillon');
     }

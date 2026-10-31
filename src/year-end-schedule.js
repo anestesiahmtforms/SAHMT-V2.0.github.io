@@ -1,10 +1,12 @@
 export const YEAR_END_CYCLE = '2026-2027';
 export const YEAR_END_PROJECT = 'outros-48120';
 export const YEAR_END_COLLECTION = 'yearEndSchedules';
+export const YEAR_END_SUMMARY_VERSION = 2;
 export const YEAR_END_SHIFT_ONLY_SIGLAS = Object.freeze(['FR','AD','L2','LE']);
 export const YEAR_END_SHIFTS = Object.freeze([
   {id:'natal',label:'Plantão Natal',dates:'24 e 25/12/2026'},
-  {id:'reveillon',label:'Plantão Réveillon',dates:'31/12/2026 e 01/01/2027'}
+  {id:'reveillon',label:'Plantão Réveillon',dates:'31/12/2026 e 01/01/2027'},
+  {id:'carnaval',label:'Plantão Carnaval',dates:'06, 07, 08 e 09/02/2027'}
 ]);
 export const YEAR_END_GROUPS = Object.freeze([
   {id:'natal',label:'Grupo Natal',dates:'26 a 29/12/2026',detail:'Até 13h30 do dia 29/12'},
