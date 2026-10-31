@@ -4,7 +4,7 @@ body:has(.year-end-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .year-end-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:2px}
 .year-end-dialog::backdrop{background:#07243beF;backdrop-filter:blur(4px)}
 .year-end-dialog__header{position:relative;display:grid;place-items:center;min-height:44px;padding:4px 44px;background:transparent}
-.year-end-dialog__header h2{margin:0;color:#fff;text-align:center;font:900 clamp(1rem,3.8vw,1.4rem)/1.15 system-ui,sans-serif;letter-spacing:.015em}
+.year-end-dialog__header h2{margin:0;color:#fff;text-align:center;font:900 clamp(1rem,3.8vw,1.4rem)/1.15 system-ui,sans-serif;letter-spacing:.015em;outline:none}
 .year-end-dialog__close{position:absolute;inset:0 0 auto auto;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;box-shadow:none;color:#fff;font:400 1.8rem/1 system-ui;cursor:pointer}
 .year-end-dialog__close:focus-visible{outline:2px solid #fff;outline-offset:-4px}
 .year-end-dialog__body{min-height:0;padding:6px 12px 12px;border:1px solid #e7d7af;border-radius:18px;background:linear-gradient(145deg,#fffdf6,#e6edf0);overflow:hidden}
