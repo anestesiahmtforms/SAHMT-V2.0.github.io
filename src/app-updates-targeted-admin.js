@@ -1,4 +1,4 @@
-import {deviceUpdateState, recoveryUrl, updateRequest} from './app-updates-targeted.js';
+import {deviceUpdateState, recoveryUrl, updateRequest, deviceInstallationLabel} from './app-updates-targeted.js';
 import {requestUpdatesForUsers} from './app-updates-targeted-batch.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -36,7 +36,7 @@ export async function openUserAppUpdates({actorUid, profile, target, isCurrent,
     dialog.querySelector('[data-request-state]').textContent = request ? 'Exigência ativa · versão mínima ' + request.minimumRelease : 'Nenhuma exigência ativa para esta pessoa.';
     dialog.querySelector('[data-device-list]').innerHTML = snapshot.devices.filter(device => device.target === target).map(device => {
       const date = device.lastSeenAt?.toDate?.();
-      return `<article class="app-device-row"><strong>${escape(device.platform)} · ${escape(device.deviceId.slice(0, 8))}</strong><span>Versão ${escape(device.loadedRelease)} · ${request ? deviceUpdateState(device, request) : 'Sem exigência'}</span><small>Última conexão: ${date ? escape(date.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})) : 'aguardando confirmação'}</small></article>`;
+      return `<article class="app-device-row"><strong>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</strong><span>Versão ${escape(device.loadedRelease)} · ${request ? deviceUpdateState(device, request) : 'Sem exigência'}</span><small>Última conexão: ${date ? escape(date.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})) : 'aguardando confirmação'}</small></article>`;
     }).join('') || '<p>Nenhum aparelho confirmou conexão com este controle. Use o link de recuperação no aparelho antigo.</p>';
     status.textContent = 'Consulta confirmada no servidor.';
   };
@@ -127,7 +127,7 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
         const host = [...list.querySelectorAll('[data-user-devices]')].find(node => node.dataset.userDevices === user.uid);
         if (!snapshot) {host.textContent = 'Consulta indisponível. Nenhuma confirmação presumida.'; return;}
         const request = updateRequest(snapshot.request, target), devices = snapshot.devices.filter(device => device.target === target);
-        host.innerHTML = `<p>${request ? 'Exigência ativa' : 'Sem exigência ativa'}</p>` + (devices.map(device => `<div class="app-device-row"><span>${escape(device.platform)} · ${escape(device.deviceId.slice(0,8))}</span><strong>${request ? deviceUpdateState(device, request) : 'Versão ' + escape(device.loadedRelease)}</strong><small>Versão aberta: ${escape(device.loadedRelease)}</small></div>`).join('') || '<p>Nenhum aparelho confirmado neste controle.</p>');
+        host.innerHTML = `<p>${request ? 'Exigência ativa' : 'Sem exigência ativa'}</p>` + (devices.map(device => `<div class="app-device-row"><span>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0,8))}</span><strong>${request ? deviceUpdateState(device, request) : 'Versão ' + escape(device.loadedRelease)}</strong><small>Versão aberta: ${escape(device.loadedRelease)}</small></div>`).join('') || '<p>Nenhum aparelho confirmado neste controle.</p>');
       }));
     }
     if (current() && ticket === sequence) status.textContent = rows.length + ' usuário(s) · página ' + (page + 1) + '. Consulta concluída.';

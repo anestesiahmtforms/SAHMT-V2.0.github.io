@@ -13,13 +13,19 @@ export function updateRequest(value, target) {
   return value && /^[a-zA-Z0-9_-]{16,80}$/.test(value.id || '') && value.target === target &&
     Number.isSafeInteger(value.minimumRelease) && value.minimumRelease > 0 ? value : null;
 }
-export function installationId(storage, crypto = globalThis.crypto) {
-  const key = 'sahmt-app-installation-v1';
+export function installationId(storage, crypto = globalThis.crypto, displayMode = 'browser') {
+  const key = 'sahmt-app-installation-v1:' + displayMode;
   try {
     const saved = storage.getItem(key);
     if (/^[a-f0-9-]{36}$/.test(saved || '')) return saved;
     const id = newAppUpdateId(crypto); storage.setItem(key, id); return id;
   } catch { return newAppUpdateId(crypto); }
+}
+export function appDisplayMode(navigator = globalThis.navigator, matchMedia = globalThis.matchMedia) {
+  return navigator?.standalone === true || matchMedia?.call(globalThis, '(display-mode: standalone)').matches === true ? 'standalone' : 'browser';
+}
+export function deviceInstallationLabel(device) {
+  return device.displayMode === 'standalone' ? (device.platform === 'iOS' ? 'App da Tela de Início' : 'App instalado') : device.displayMode === 'browser' ? 'Navegador' : 'Modo não informado';
 }
 export function devicePlatform(navigator = globalThis.navigator) {
   const ua = navigator?.userAgent || '';
@@ -37,7 +43,7 @@ export function deviceUpdateState(device, request) {
 // The first server-confirmed profile of this document is the startup boundary.
 // Later profile changes never interrupt a form already being filled in.
 export function createTargetedAppUpdates({target, release = loadedAppRelease, deviceId,
-  platform = devicePlatform(), record, enforce, storage, now = Date.now, onFailure = () => {}, repair = repairAppFiles}) {
+  platform = devicePlatform(), displayMode = appDisplayMode(), record, enforce, storage, now = Date.now, onFailure = () => {}, repair = repairAppFiles}) {
   let uid = '', opened = false, written = '', generation = 0, active = null;
   const retries = new Set();
   const retry = () => {
@@ -75,17 +81,18 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
     const owner = uid, token = generation;
     Promise.resolve().then(() => {
       if (token !== generation) return;
-      return record({uid: owner, deviceId, target, platform, loadedRelease: release, confirmedRequestId});
+      return record({uid: owner, deviceId, target, platform, displayMode, loadedRelease: release, confirmedRequestId});
     }).catch(error => {if (token === generation) {written = ''; onFailure(error);}});
   }};
 }
 
 export function installTargetedAppUpdates({target, release = loadedAppRelease, document = globalThis.document,
   storage = browserStorage('sessionStorage'), localStorage = browserStorage('localStorage'),
+  displayMode = appDisplayMode(),
   services = () => import('./app-updates-targeted-firebase.js'), signOut = () => {}, repair = repairAppFiles}) {
   let dialog = null;
   const close = () => {dialog?.close(); dialog?.remove(); dialog = null;};
-  return createTargetedAppUpdates({target, release, deviceId: installationId(localStorage), storage, repair,
+  return createTargetedAppUpdates({target, release, deviceId: installationId(localStorage, globalThis.crypto, displayMode), displayMode, storage, repair,
     record: async value => (await services()).recordAppInstallation(value),
     enforce(value) {
       close(); if (!value) return;

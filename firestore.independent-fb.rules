@@ -245,7 +245,7 @@ service cloud.firestore {
 
 
 
-    // BEGIN_TARGETED_APP_UPDATES_V1
+    // BEGIN_TARGETED_APP_UPDATES_V2
     match /users/{uid} {
       function validAppUpdateRequest_() {
         let r = request.resource.data.appUpdateRequest;
@@ -264,9 +264,10 @@ service cloud.firestore {
           let d = request.resource.data;
           let r = get(/databases/$(database)/documents/users/$(uid)).data.get('appUpdateRequest', null);
           return d.keys().hasAll(['uid', 'deviceId', 'target', 'platform', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
-            d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
+            d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'displayMode', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
             d.uid == uid && d.deviceId is string && d.deviceId.matches('^[a-f0-9-]{36}$') &&
             installation == d.deviceId + '_FB' && d.target == 'FB' &&
+            (!d.keys().hasAny(['displayMode']) || d.displayMode in ['standalone', 'browser']) &&
             d.platform in ['Android', 'iOS', 'Windows', 'macOS', 'Outro'] &&
             d.loadedRelease is int && d.loadedRelease > 0 && d.loadedRelease <= 9007199254740991 &&
             d.lastSeenAt == request.time && d.confirmedRequestId is string &&
@@ -277,7 +278,7 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
-    // END_TARGETED_APP_UPDATES_V1
+    // END_TARGETED_APP_UPDATES_V2
 
     match /users/{uid} {
       function validNotificationRead(data, uid, notificationId) {

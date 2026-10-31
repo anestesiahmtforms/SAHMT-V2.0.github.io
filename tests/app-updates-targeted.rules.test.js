@@ -21,13 +21,13 @@ for (const [file,target] of [['firestore.rules','FA'],['firestore.independent-fb
     await assertSucceeds(getDoc(doc(db('member'),'users','member')));
   });
   const deviceId='12345678-1234-1234-1234-123456789012';
-  const receipt=(uid='member',extra={})=>({uid,deviceId,target,platform:'Android',loadedRelease:200,confirmedRequestId:'requirement-123456789012',lastSeenAt:serverTimestamp(),...extra});
+  const receipt=(uid='member',extra={})=>({uid,deviceId,target,platform:'Android',displayMode:'standalone',loadedRelease:200,confirmedRequestId:'requirement-123456789012',lastSeenAt:serverTimestamp(),...extra});
   const path=uid=>['users',uid,'appInstallations',deviceId+'_'+target];
   await t.test('each owner writes only their installation; receipts require the correct request and version',async()=>{
     await assertSucceeds(setDoc(doc(db('member'),...path('member')),receipt()));
     await assertFails(setDoc(doc(db('other'),...path('member')),receipt()));
     await assertFails(setDoc(doc(db('admin'),...path('member')),receipt()));
-    for(const change of [{loadedRelease:100},{confirmedRequestId:'another-request-id'}, {uid:'other'}, {lastSeenAt:Timestamp.fromMillis(1)}, {extra:'bad'}])await assertFails(setDoc(doc(db('member'),...path('member')),receipt('member',change)));
+    for(const change of [{loadedRelease:100},{confirmedRequestId:'another-request-id'}, {uid:'other'}, {displayMode:'invented'}, {lastSeenAt:Timestamp.fromMillis(1)}, {extra:'bad'}])await assertFails(setDoc(doc(db('member'),...path('member')),receipt('member',change)));
     await assertSucceeds(setDoc(doc(db('member'),...path('member')),receipt('member',{loadedRelease:100,confirmedRequestId:''})));
     await assertSucceeds(getDocs(collection(db('admin'),'users','member','appInstallations')));
     await assertFails(getDocs(collection(db('other'),'users','member','appInstallations')));

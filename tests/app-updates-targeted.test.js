@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createTargetedAppUpdates, deviceUpdateState, devicePlatform, installationId, recoveryUrl, updateRequest, newAppUpdateId} from '../src/app-updates-targeted.js';
+import {createTargetedAppUpdates, deviceUpdateState, devicePlatform, installationId, recoveryUrl, updateRequest, newAppUpdateId, appDisplayMode, deviceInstallationLabel} from '../src/app-updates-targeted.js';
 import {requestUpdatesForUsers} from '../src/app-updates-targeted-batch.js';
 import {addAppUpdateRules} from '../scripts/lib/app-update-rules.js';
 const request = (id = 'request-1234567890123456') => ({id,target:'FA',minimumRelease:200});
@@ -51,6 +51,13 @@ test('restricted storage keeps the mandatory manual gate without automatic reloa
 test('device identity persists separately from authentication; iPhone, iPad and Android are identified',()=>{
   const store=new Map(),storage={getItem:key=>store.get(key),setItem:(key,value)=>store.set(key,value)};
   assert.equal(installationId(storage),installationId(storage));
+  assert.notEqual(installationId(storage),installationId(storage,undefined,'standalone'));
+  assert.equal(appDisplayMode({standalone:true}), 'standalone');
+  assert.equal(appDisplayMode({},()=>({matches:true})), 'standalone');
+  assert.equal(appDisplayMode({},()=>({matches:false})), 'browser');
+  assert.equal(deviceInstallationLabel({platform:'iOS',displayMode:'standalone'}),'App da Tela de Início');
+  assert.equal(deviceInstallationLabel({platform:'Android',displayMode:'standalone'}),'App instalado');
+  assert.equal(deviceInstallationLabel({platform:'iOS',displayMode:'browser'}),'Navegador');
   assert.equal(devicePlatform({userAgent:'iPhone'}),'iOS');assert.equal(devicePlatform({userAgent:'Macintosh',maxTouchPoints:5}),'iOS');assert.equal(devicePlatform({userAgent:'Android'}),'Android');
   assert.match(recoveryUrl('FB','https://example.invalid'),/target=FB/);
   assert.equal(updateRequest({...request(),minimumRelease:NaN},'FA'),null);

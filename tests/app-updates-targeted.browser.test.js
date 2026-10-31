@@ -28,9 +28,10 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
     for(const target of ['FA','FB']) {
       const contexts=[];const errors=[];
       try {
-        const open=async(release,platform)=>{
+        const open=async(release,platform,standalone=true)=>{
           const context=await browser.newContext({viewport:{width:390,height:844},userAgent:platform==='Android'?'Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',isMobile:true,hasTouch:true});contexts.push(context);
           if(platform==='iOS')await context.addInitScript(()=>{Object.defineProperty(Crypto.prototype,'randomUUID',{value:undefined,configurable:true});});
+          await context.addInitScript(value=>{Object.defineProperty(navigator,'standalone',{value,configurable:true});},standalone);
           const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
           await page.goto(origin+'/targeted-fixture?'+new URLSearchParams({target,release}));await page.waitForFunction(()=>window.targetedReady);return page;
         };
@@ -52,9 +53,14 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
         assert.equal(await old.evaluate(()=>localStorage.getItem('auth-fixture')),'preserved');
         const iphone=await open(100,'iOS');await iphone.evaluate(()=>window.openSession('member'));await iphone.locator('.required-app-update[open]').waitFor();await iphone.waitForFunction(()=>window.savedDevice);
         await admin.locator('[data-panel-refresh]').click();await admin.getByText('Pendente',{exact:true}).waitFor();assert.equal(await admin.getByText('Confirmado',{exact:true}).count(),1);
+        assert.match(await admin.locator('[data-panel-list]').innerText(),/App da Tela de Início/);
+        const safari=await open(200,'iOS',false);await safari.evaluate(()=>window.openSession('member'));await safari.waitForFunction(()=>window.savedDevice?.confirmedRequestId);
+        await admin.locator('[data-panel-refresh]').click();await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] strong')].filter(node=>node.textContent==='Confirmado').length===2);
+        assert.equal(await admin.getByText('Pendente',{exact:true}).count(),1,'Safari confirmation cannot confirm the Home Screen app');
+        assert.match(await admin.locator('[data-panel-list]').innerText(),/Navegador/);
         await admin.screenshot({path:'.local-preview/app-updates-targeted-'+engine.name()+'-'+target+'.png',fullPage:true});
         await iphone.goto(origin+'/targeted-fixture?'+new URLSearchParams({target,release:200}));await iphone.waitForFunction(()=>window.targetedReady);await iphone.evaluate(()=>window.openSession('member'));await iphone.waitForFunction(()=>window.savedDevice?.confirmedRequestId);
-        await admin.locator('[data-panel-refresh]').click();await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] strong')].filter(node=>node.textContent==='Confirmado').length===2);
+        await admin.locator('[data-panel-refresh]').click();await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] strong')].filter(node=>node.textContent==='Confirmado').length===3);
         // Individual retry changes only this user's requirement; the other request is retained.
         const other=requests.get(target+':other').id;
         await admin.locator('[data-panel-user="member"]').click();await admin.locator('[data-request-update]:enabled').waitFor();await admin.locator('[data-request-update]').click();await admin.waitForFunction(()=>window.individualRequests===1);

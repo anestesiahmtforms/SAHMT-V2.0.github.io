@@ -2,11 +2,18 @@
 // No data migration and no change to access to other business collections.
 export function addAppUpdateRules(source, target) {
   if (!['FA', 'FB'].includes(target)) throw Error('APP_UPDATE_RULE_TARGET');
-  if (source.includes('// BEGIN_TARGETED_APP_UPDATES_V1')) return source;
+  if (source.includes('// BEGIN_TARGETED_APP_UPDATES_V2')) return source;
   const replace = (from, to) => {
     if (source.split(from).length !== 2) throw Error('APP_UPDATE_RULE_ANCHOR');
     source = source.replace(from, () => to);
   };
+  if (source.includes('// BEGIN_TARGETED_APP_UPDATES_V1')) {
+    replace("d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt'])", "d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'displayMode', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt'])");
+    replace("d.platform in ['Android', 'iOS', 'Windows', 'macOS', 'Outro'] &&", "(!d.keys().hasAny(['displayMode']) || d.displayMode in ['standalone', 'browser']) &&\n            d.platform in ['Android', 'iOS', 'Windows', 'macOS', 'Outro'] &&");
+    replace('// BEGIN_TARGETED_APP_UPDATES_V1', '// BEGIN_TARGETED_APP_UPDATES_V2');
+    replace('// END_TARGETED_APP_UPDATES_V1', '// END_TARGETED_APP_UPDATES_V2');
+    return source;
+  }
   if (source.includes('function firstLoginCohortDefaultOnCreate')) {
     replace("'updatedAt', 'firstLoginCohort'])", "'updatedAt', 'firstLoginCohort', 'appUpdateRequest'])");
     replace("!request.resource.data.diff(resource.data).affectedKeys().hasAny(['firstLoginCohort']);",
@@ -22,7 +29,7 @@ export function addAppUpdateRules(source, target) {
       "allow create: if can('usersManage') && validUserProfile(request.resource.data, uid) && !request.resource.data.keys().hasAny(['appUpdateRequest']) &&");
   }
   const block = `
-    // BEGIN_TARGETED_APP_UPDATES_V1
+    // BEGIN_TARGETED_APP_UPDATES_V2
     match /users/{uid} {
       function validAppUpdateRequest_() {
         let r = request.resource.data.appUpdateRequest;
@@ -41,9 +48,10 @@ export function addAppUpdateRules(source, target) {
           let d = request.resource.data;
           let r = get(/databases/$(database)/documents/users/$(uid)).data.get('appUpdateRequest', null);
           return d.keys().hasAll(['uid', 'deviceId', 'target', 'platform', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
-            d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
+            d.keys().hasOnly(['uid', 'deviceId', 'target', 'platform', 'displayMode', 'loadedRelease', 'confirmedRequestId', 'lastSeenAt']) &&
             d.uid == uid && d.deviceId is string && d.deviceId.matches('^[a-f0-9-]{36}$') &&
             installation == d.deviceId + '_${target}' && d.target == '${target}' &&
+            (!d.keys().hasAny(['displayMode']) || d.displayMode in ['standalone', 'browser']) &&
             d.platform in ['Android', 'iOS', 'Windows', 'macOS', 'Outro'] &&
             d.loadedRelease is int && d.loadedRelease > 0 && d.loadedRelease <= 9007199254740991 &&
             d.lastSeenAt == request.time && d.confirmedRequestId is string &&
@@ -54,7 +62,7 @@ export function addAppUpdateRules(source, target) {
         allow delete: if false;
       }
     }
-    // END_TARGETED_APP_UPDATES_V1
+    // END_TARGETED_APP_UPDATES_V2
 `;
   replace('    match /users/{uid} {', block + '\n    match /users/{uid} {');
   return source;
