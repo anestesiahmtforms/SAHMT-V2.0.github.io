@@ -17,7 +17,7 @@ test('accepted update replaces HTTP-cached old HTML and styles in both installed
   const path=new URL(req.url,'http://local').pathname;
   const base=path.startsWith(root+'gestao/')?root+'gestao/':root;
   res.setHeader('Cache-Control','max-age=600');
-  if(path===root+'tools/refresh-app.html'){
+  if(path===root+'tools/refresh-app.html'||path===root+'gestao/tools/refresh-app.html'){
    res.setHeader('Content-Type','text/html');res.end(repair);
   }else if(path===base+'service-worker.js'){
    let worker=source.replace(/const CACHE = '[^']+';/,`const CACHE = 'sahmt-v2-shell-v${release}';`);
@@ -65,7 +65,7 @@ test('accepted update replaces HTTP-cached old HTML and styles in both installed
     await draft.evaluate(()=>{localStorage.setItem('update-regression','preserved');const input=document.createElement('textarea');input.id='draft';input.value='Texto em andamento';document.body.append(input);});
     await page.goto(origin+base);assert.equal(await page.locator('body').getAttribute('data-release'),'1');
     release=2;
-    await page.goto(origin+root+'tools/refresh-app.html?'+new URLSearchParams({target,route:'#/management'}));
+    await page.goto(origin+base+'tools/refresh-app.html?'+new URLSearchParams({target,route:'#/management'}));
     await page.waitForURL(url=>url.pathname===base&&url.hash==='#/management',{timeout:70000});
     assert.equal(await page.locator('body').getAttribute('data-release'),'2','accepted update must load the new HTML');
     const installed=await page.evaluate(async()=>{

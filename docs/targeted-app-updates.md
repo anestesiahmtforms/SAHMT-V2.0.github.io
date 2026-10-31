@@ -8,7 +8,7 @@ O pedido fica no perfil autenticado, `users/{uid}.appUpdateRequest`. Somente adm
 
 Na primeira validação online do perfil após abrir o documento, uma versão insuficiente impede continuar e tenta a recuperação. O mesmo pedido não gera um ciclo automático de recargas; existe tentativa manual. Pedidos recebidos depois dessa abertura não interrompem formulários. A recuperação atualiza o shell sem apagar autenticação, IndexedDB ou dados locais, nem recarregar outras abas.
 
-Um app antigo que ainda não conhece este controle precisa receber o código uma primeira vez. O painel individual fornece o link de recuperação, que deve ser aberto no aparelho e navegador do app; em seguida, reabre-se o app instalado. Aparelho fechado/offline não confirma atualização. Ausência de recibo aparece como pendência/ausência de aparelho conhecido, nunca como sucesso.
+Um app antigo que ainda não conhece este controle precisa receber o código uma primeira vez. O painel individual fornece o link de recuperação. No iPhone instalado, deve-se preferir “Atualizar agora” ou a recuperação dentro do próprio app: o Safari tem armazenamento separado. A navegação de recuperação permanece no escopo FA ou FB para preservar a instalação em uso. Aparelho fechado/offline não confirma atualização. Ausência de recibo aparece como pendência/ausência de aparelho conhecido, nunca como sucesso.
 
 FA e FB têm controles e recibos próprios, vinculados aos respectivos perfis e regras. O botão se refere ao app em que o administrador está. A publicação incorpora a mesma versão do shell ao código e gera `tools/app-release.json` fora do cache do PWA. Enquetes e arquivos de treinamento mantêm seus fluxos existentes.
 

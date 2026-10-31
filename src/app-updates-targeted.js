@@ -27,7 +27,7 @@ export function devicePlatform(navigator = globalThis.navigator) {
     /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : 'Outro';
 }
 export function recoveryUrl(target, origin = globalThis.location.origin) {
-  return origin + '/SAHMT-V2.0.github.io/tools/refresh-app.html?' +
+  return origin + '/SAHMT-V2.0.github.io/' + (target === 'FB' ? 'gestao/' : '') + 'tools/refresh-app.html?' +
     new URLSearchParams({target, route: target === 'FB' ? '#/management' : '#/home'});
 }
 export function deviceUpdateState(device, request) {

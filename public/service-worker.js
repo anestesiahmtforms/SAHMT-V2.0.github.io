@@ -82,7 +82,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', event => {
   if(event.data?.type!=='SAHMT_ACTIVATE_REPAIRED_APP')return;
   let source;try{source=new URL(event.source?.url);}catch{return;}
-  if(source.origin!==self.location.origin||source.pathname!=='/SAHMT-V2.0.github.io'+'/tools/refresh-app.html')return;
+  const repairPaths=['/SAHMT-V2.0.github.io'+'/tools/refresh-app.html','/SAHMT-V2.0.github.io'+'/gestao/tools/refresh-app.html'];
+  if(source.origin!==self.location.origin||!repairPaths.includes(source.pathname))return;
   event.waitUntil(self.skipWaiting());
 });
 
