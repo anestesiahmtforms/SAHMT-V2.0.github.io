@@ -34,7 +34,7 @@ for (const [file,target] of [['firestore.rules','FA'],['firestore.independent-fb
     await assertFails(getDocs(collection(db('manager'),'users','member','appInstallations')));
   });
   await t.test('global command writes separate user requirements without changing permissions and cancellation preserves devices',async()=>{
-    const batch=writeBatch(db('admin'));for(const uid of ['member','other'])batch.update(doc(db('admin'),'users',uid),{appUpdateRequest:requirement()});await assertSucceeds(batch.commit());
+    const adminDb=db('admin'),batch=writeBatch(adminDb);for(const uid of ['member','other'])batch.update(doc(adminDb,'users',uid),{appUpdateRequest:requirement()});await assertSucceeds(batch.commit());
     await assertSucceeds(updateDoc(doc(db('admin'),'users','member'),{appUpdateRequest:null}));
     assert.equal((await getDoc(doc(db('member'),'users','member'))).data().access,true);
     await assertSucceeds(getDoc(doc(db('admin'),...path('member'))));
