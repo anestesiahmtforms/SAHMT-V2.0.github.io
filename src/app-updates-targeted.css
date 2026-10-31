@@ -1,0 +1,10 @@
+.required-app-update,.admin-app-updates{box-sizing:border-box;width:min(94vw,680px);max-height:90dvh;border:0;border-radius:20px;background:#fffaf0;color:#173b50;padding:24px;box-shadow:0 18px 60px #0006;overflow:auto}
+.required-app-update::backdrop,.admin-app-updates::backdrop{background:#092638db}
+.required-app-update{width:min(94vw,480px);text-align:center}
+.required-app-update button{display:block;width:100%;margin-top:14px}
+.admin-app-updates h2{font-size:1.2rem}
+.admin-app-updates input{box-sizing:border-box;width:100%;font-size:14px}
+.admin-app-updates footer{margin-top:20px}
+.app-device-row{display:grid;gap:5px;border-top:1px solid #173b5033;padding:12px 0;overflow-wrap:anywhere}
+.app-update-user{display:grid;gap:8px;border:1px solid #173b5033;border-radius:14px;padding:14px;margin:14px 0;overflow-wrap:anywhere}
+.app-updates-command{width:min(94vw,840px)}
