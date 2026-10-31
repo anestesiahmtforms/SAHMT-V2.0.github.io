@@ -10,6 +10,7 @@ const services={
   recordAppInstallation:async value=>{await api('record',{value});window.savedDevice=value;},
   listAppUpdateUsers:()=>api('users'),
   readUserAppUpdates:(_,uid)=>api('read',{uid}),
+  watchAppInstallations:(_,uid,onData,onError)=>{let stopped=false,running=false;window.fixtureSubscriptions=(window.fixtureSubscriptions||0)+1;const read=async()=>{if(stopped||running)return;running=true;try{const result=await api('read',{uid});if(!stopped)onData(result.devices);}catch(error){if(!stopped)onError(error);}finally{running=false;}};const timer=setInterval(read,120);void read();return()=>{if(stopped)return;stopped=true;clearInterval(timer);window.fixtureSubscriptions--;};},
   requestUserAppUpdate:async(_,uid,minimumRelease)=>{await api('request',{uids:[uid],minimumRelease});window.individualRequests=(window.individualRequests||0)+1;},
   cancelUserAppUpdate:(_,uid)=>api('cancel',{uid}),
   sendAppUpdateBatch:(_,uids,minimumRelease)=>api('request',{uids,minimumRelease})

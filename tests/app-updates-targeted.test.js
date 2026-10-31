@@ -5,6 +5,8 @@ import {createTargetedAppUpdates, deviceUpdateState, devicePlatform, installatio
 import {requestUpdatesForUsers} from '../src/app-updates-targeted-batch.js';
 import {addAppUpdateRules} from '../scripts/lib/app-update-rules.js';
 import {APP_VERSION,deviceVersionLabel} from '../src/app-version.js';
+import {devicePublishedState} from '../src/app-updates-targeted.js';
+import {updateUsersWithContactSiglas} from '../src/app-updates-targeted-identity.js';
 const request = (id = 'request-1234567890123456') => ({id,target:'FA',minimumRelease:200});
 const session = (uid = 'member', r = null, extra = {}) => ({status:'signed-in',user:{uid},profile:{uid,appUpdateRequest:r},offline:false,...extra});
 function fixture(release = 100, deviceId = 'device-a', storage = new Map()) {
@@ -25,11 +27,18 @@ test('a second device remains pending when the first device loads the requested 
   const a=fixture(200,'device-a'),b=fixture(100,'device-b');
   a.controller.setSession(session('member',request())); b.controller.setSession(session('member',request()));await flush();
   assert.equal(deviceUpdateState(a.records[0],request()),'Confirmado');
-  assert.equal(a.records[0].appVersion,APP_VERSION);assert.equal(APP_VERSION,'V2.1');
+  assert.equal(a.records[0].appVersion,APP_VERSION);assert.equal(APP_VERSION,'V2.2');
   assert.equal(deviceVersionLabel({appVersion:'V2.10'}),'V2.10');assert.equal(deviceVersionLabel({}), 'Versão não informada');
   assert.equal(deviceUpdateState(b.records[0],request()),'Pendente');
   assert.equal(b.controller.blocked,true);assert.equal(a.controller.blocked,false);
   assert.equal(deviceUpdateState(a.records[0],request('new-request-123456789')),'Pendente');
+});
+test('recorded versions remain visible without a campaign and missing profile siglas come from matching contacts',()=>{
+ const user={uid:'test',email:'one@example.invalid',sigla:'',active:true,access:true,permissions:{admin:false}};
+ const rows=updateUsersWithContactSiglas([user],[{email:'one@example.invalid',sigla:'RL',active:true}]);
+ assert.equal(rows[0].sigla,'RL');assert.equal(user.sigla,'');assert.deepEqual(rows[0].permissions,user.permissions);
+ assert.equal(devicePublishedState({loadedRelease:200},200),'Atualizado');assert.equal(devicePublishedState({loadedRelease:100},200),'Há versão mais recente');
+ assert.equal(updateUsersWithContactSiglas([user],[{email:user.email,sigla:'RL'},{email:user.email,sigla:'ZZ'}])[0].sigla,'');
 });
 test('a new request never reloads a form in the current session; reopening enforces it without a loop',async()=>{
   const storage=new Map(),f=fixture(100,'same',storage);

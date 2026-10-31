@@ -1,4 +1,4 @@
-import {deviceUpdateState, recoveryUrl, updateRequest, deviceInstallationLabel} from './app-updates-targeted.js';
+import {deviceUpdateState, recoveryUrl, updateRequest, deviceInstallationLabel, devicePublishedState} from './app-updates-targeted.js';
 import {requestUpdatesForUsers} from './app-updates-targeted-batch.js';
 import {deviceVersionLabel} from './app-version.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,8 +17,8 @@ export async function openUserAppUpdates({actorUid, profile, target, isCurrent,
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates';
   dialog.setAttribute('aria-labelledby', 'admin-app-updates-title');
   dialog.innerHTML = `<header><h2 id="admin-app-updates-title">ATUALIZAÇÃO POR APARELHO</h2><p>${escape(profile.displayName || profile.email || profile.uid)}</p></header><section><p>A exigência vale somente para esta pessoa neste app (${escape(target)}), na próxima abertura. Cada aparelho confirma separadamente. Um formulário em uso continua aberto.</p><p data-request-state></p><div class="admin-user-actions"><button type="button" class="primary-button" data-request-update>EXIGIR VERSÃO ATUAL</button><button type="button" class="secondary-button" data-cancel-update>CANCELAR EXIGÊNCIA</button></div><p data-admin-update-status role="status" aria-live="polite"></p><h3>Aparelhos conhecidos</h3><p>Confirmação informa a versão realmente aberta neste navegador. Aparelhos sem este controle só aparecem depois da primeira conexão atualizada. Um aparelho confirmado não confirma os demais.</p><div data-device-list></div><button type="button" class="secondary-button" data-refresh-devices>CONFERIR CONFIRMAÇÕES</button><h3>Primeira atualização de um Android antigo</h3><p>Se o aparelho ficou preso na versão antiga, abra este link nele uma vez, no navegador usado pelo app. Depois, reabra o app instalado. A sessão e os dados salvos são preservados. No iPhone instalado, prefira “Atualizar agora” ou a opção de reparar dentro do próprio app: o Safari pode manter uma instalação separada.</p><label>Link de recuperação<input readonly data-recovery-link value="${escape(recoveryUrl(target))}"></label><button type="button" class="secondary-button" data-copy-recovery>COPIAR LINK</button></section><footer><button type="button" class="secondary-button" data-close-updates>VOLTAR</button></footer>`;
-  let closed = false, busy = false, loadId = 0;
-  const close = () => {closed = true; loadId++; dialog.close(); dialog.remove();};
+  let closed = false, busy = false, loadId = 0,stopDevices=()=>{};
+  const close = () => {closed = true; loadId++;stopDevices(); dialog.close(); dialog.remove();};
   const current = () => !closed && isCurrent();
   const status = dialog.querySelector('[data-admin-update-status]');
   const buttons = [...dialog.querySelectorAll('[data-request-update],[data-cancel-update],[data-refresh-devices]')];
@@ -31,14 +31,16 @@ export async function openUserAppUpdates({actorUid, profile, target, isCurrent,
     finally {busy = false; if (current()) buttons.forEach(button => {button.disabled = false;}); else if (!closed) close();}
   };
   const refresh = async () => {
-    const sequence = ++loadId, snapshot = await data.readUserAppUpdates(actorUid, profile.uid);
-    if (!current() || sequence !== loadId) return;
+    const sequence = ++loadId;
+    const [snapshot,publishedRelease]=await Promise.all([data.readUserAppUpdates(actorUid,profile.uid),readRelease(target).catch(()=>null)]);
+    if (!current()) {close(); return;} if (sequence !== loadId) return;
     const request = updateRequest(snapshot.request, target);
     dialog.querySelector('[data-request-state]').textContent = request ? 'Exigência ativa · versão mínima ' + request.minimumRelease : 'Nenhuma exigência ativa para esta pessoa.';
-    dialog.querySelector('[data-device-list]').innerHTML = snapshot.devices.filter(device => device.target === target).map(device => {
+    const paintDevices=devices=>{if(!current()){close();return;}if(sequence!==loadId)return;dialog.querySelector('[data-device-list]').innerHTML = devices.filter(device => device.target === target).map(device => {
       const date = device.lastSeenAt?.toDate?.();
-      return `<article class="app-device-row"><strong>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</strong><span>${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)} · ${request ? deviceUpdateState(device, request) : 'Sem exigência'}</span><small>Última conexão: ${date ? escape(date.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})) : 'aguardando confirmação'}</small></article>`;
-    }).join('') || '<p>Nenhum aparelho confirmou conexão com este controle. Use o link de recuperação no aparelho antigo.</p>';
+      return `<article class="app-device-row"><strong>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</strong><span>${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)} · ${escape(devicePublishedState(device,publishedRelease))}</span>${request ? `<small>Solicitação: ${deviceUpdateState(device,request)}</small>` : '<small>Versão recebida registrada, mesmo sem exigência ativa.</small>'}<small>Última conexão: ${date ? escape(date.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})) : 'aguardando confirmação'}</small></article>`;
+    }).join('') || '<p>Nenhum aparelho confirmou conexão com este controle. Use o link de recuperação no aparelho antigo.</p>';};
+    paintDevices(snapshot.devices);stopDevices();stopDevices=data.watchAppInstallations?.(actorUid,profile.uid,paintDevices,()=>{if(current())status.textContent='Acompanhamento interrompido. Use CONFERIR CONFIRMAÇÕES para tentar novamente.';else close();})||(()=>{});
     status.textContent = 'Consulta confirmada no servidor.';
   };
   dialog.querySelector('[data-request-update]').onclick = () => run(async () => {
@@ -101,14 +103,17 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates app-updates-command';
   dialog.setAttribute('aria-labelledby', 'app-updates-command-title');
   dialog.innerHTML = '<header><h2 id="app-updates-command-title">CONTROLE DE ATUALIZAÇÕES</h2><p>iPhone e Android · confirmação por usuário e aparelho</p></header><section><button type="button" class="primary-button" data-panel-all>ATUALIZAR TODOS OS USUÁRIOS</button><p>Todos considera os usuários com acesso ativo neste app. Para um caso específico, use o botão no nome da pessoa. Aparelhos antigos precisam abrir o link de recuperação uma primeira vez.</p><label>Buscar usuário<input type="search" data-update-search placeholder="Nome, sigla ou e-mail"></label><p data-panel-status role="status" aria-live="polite">Carregando usuários…</p><div data-panel-list></div><div class="admin-user-actions"><button type="button" class="secondary-button" data-panel-previous>ANTERIORES</button><button type="button" class="secondary-button" data-panel-next>PRÓXIMOS</button><button type="button" class="secondary-button" data-panel-refresh>CONFERIR CONFIRMAÇÕES</button></div></section><footer><button type="button" class="secondary-button" data-panel-close>VOLTAR</button></footer>';
-  let closed = false, child = () => {}, users = [], page = 0, sequence = 0;
+  let closed = false, child = () => {}, users = [], page = 0, sequence = 0,deviceStops=[];
   const current = () => !closed && isCurrent();
-  const close = () => {closed = true; sequence++; child(); dialog.close(); dialog.remove();};
+  const stopDevices=()=>{for(const stop of deviceStops.splice(0))stop();};
+  const close = () => {closed = true; sequence++;stopDevices(); child(); dialog.close(); dialog.remove();};
   const status = dialog.querySelector('[data-panel-status]'), list = dialog.querySelector('[data-panel-list]');
   const filtered = () => {const text = dialog.querySelector('[data-update-search]').value.trim().toLocaleLowerCase('pt-BR'); return users.filter(user => [user.displayName,user.email,user.sigla].join(' ').toLocaleLowerCase('pt-BR').includes(text));};
   const render = async () => {
     if (!current()) {close(); return;}
+    stopDevices();
     const ticket = ++sequence, rows = filtered(), visible = rows.slice(page * 20, (page + 1) * 20);
+    const publishedRelease=await readRelease(target).catch(()=>null);if(!current()){close();return;}if(ticket!==sequence)return;
     dialog.querySelector('[data-panel-previous]').disabled = page === 0;
     dialog.querySelector('[data-panel-next]').disabled = (page + 1) * 20 >= rows.length;
     status.textContent = rows.length + ' usuário(s) · página ' + (page + 1) + '. Conferindo aparelhos…';
@@ -120,18 +125,21 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
     };});
     // Bounded reads for the visible page; every row is a server-confirmed query.
     for (let offset = 0; offset < visible.length; offset += 4) {
-      if (!current() || ticket !== sequence) return;
+      if (!current()) {close(); return;} if (ticket !== sequence) return;
       await Promise.all(visible.slice(offset, offset + 4).map(async user => {
         let snapshot;
         try {snapshot = await data.readUserAppUpdates(actorUid, user.uid);} catch {}
-        if (!current() || ticket !== sequence) return;
+        if (!current()) {close(); return;} if (ticket !== sequence) return;
         const host = [...list.querySelectorAll('[data-user-devices]')].find(node => node.dataset.userDevices === user.uid);
         if (!snapshot) {host.textContent = 'Consulta indisponível. Nenhuma confirmação presumida.'; return;}
-        const request = updateRequest(snapshot.request, target), devices = snapshot.devices.filter(device => device.target === target);
-        host.innerHTML = `<p>${request ? 'Exigência ativa' : 'Sem exigência ativa'}</p>` + (devices.map(device => `<div class="app-device-row"><span>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0,8))}</span><strong>${request ? deviceUpdateState(device, request) : escape(deviceVersionLabel(device))}</strong><small>Versão aberta: ${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)}</small></div>`).join('') || '<p>Nenhum aparelho confirmado neste controle.</p>');
+        const request = updateRequest(snapshot.request, target);
+        const paintDevices=rows=>{if(!current()){close();return;}if(ticket!==sequence)return;const devices=rows.filter(device=>device.target===target);
+        host.innerHTML = `<p>${request ? 'Exigência ativa' : 'Sem exigência ativa'}</p>` + (devices.map(device => `<div class="app-device-row"><span>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0,8))}</span><strong>${escape(devicePublishedState(device,publishedRelease))}</strong>${request ? `<span>Solicitação: <b data-device-request-state>${deviceUpdateState(device,request)}</b></span>` : ''}<small>Versão recebida: ${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)}</small></div>`).join('') || '<p>Nenhum aparelho confirmado neste controle.</p>');};
+        paintDevices(snapshot.devices);
+        const stop=data.watchAppInstallations?.(actorUid,user.uid,paintDevices,()=>{if(!current()){close();return;}if(ticket===sequence)host.textContent='Acompanhamento indisponível. Use CONFERIR CONFIRMAÇÕES.';});if(stop)deviceStops.push(stop);
       }));
     }
-    if (current() && ticket === sequence) status.textContent = rows.length + ' usuário(s) · página ' + (page + 1) + '. Consulta concluída.';
+    if (!current()) {close(); return;} if (ticket === sequence) status.textContent = rows.length + ' usuário(s) · página ' + (page + 1) + '. Consulta concluída.';
   };
   dialog.querySelector('[data-panel-all]').onclick = async () => {if (!current()) return; child(); child = await openAllAppUpdates({actorUid,target,root,services:data,readRelease,isCurrent:current}); if (!current()) child();};
   dialog.querySelector('[data-update-search]').oninput = () => {page = 0; void render();};

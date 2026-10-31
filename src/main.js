@@ -139,19 +139,18 @@ const yearEndStartup=createYearEndStartup({enabled:deployment.target==='FA'&&YEA
     let expired=false;
     const current=()=>!expired&&isCurrent()&&session.status==='signed-in'&&session.user?.uid===uid;
     return withinDeadline(async()=>{
-      const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');
+      const {readYearEndBannerStatus}=await import('./year-end-status-client.js');
       if(!current())throw Error('YEAR_END_SESSION_CHANGED');
-      const repository=await openYearEndScheduleRepository({uid,isCurrent:current,participantOnly:true});
-      const participation=await repository.open();
-      const own=await repository.readOwn();
-      return {participation,own};
-    },{timeoutMs:10000,code:'YEAR_END_STARTUP_TIMEOUT',onTimeout:()=>{expired=true;}});
+      return readYearEndBannerStatus({uid,isCurrent:current});
+    },{timeoutMs:30000,code:'YEAR_END_STARTUP_TIMEOUT',onTimeout:()=>{expired=true;}});
   }
 });
 const yearEndFloating=installYearEndFloatingBanner({controller:yearEndStartup,baseUrl:import.meta.env.BASE_URL,
   canShow:()=>session.status==='signed-in'&&!session.offline&&!session.validatingProfile&&!startupBannerActive&&currentRoute()!=='year-end-schedule'&&!document.querySelector('.year-end-host,.required-app-update[open]'),
   onOpen:()=>{if(currentRoute()!=='year-end-schedule')void navigate('year-end-schedule');}
 });
+window.addEventListener('online',()=>yearEndStartup.retry());
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')yearEndStartup.retry();});
 let notice = '';
 let googleAccessPanel;
 if (googleProjectAuthEnabled) {
@@ -1322,6 +1321,7 @@ async function loadModule(route) {
     if(!current())return;
     cleanupCurrentModule=mountYearEndScheduleDialog(content,{isCurrent:current,onExit:()=>navigate('home'),
       createRepository:isCurrent=>openYearEndScheduleRepository({uid,isCurrent}),
+      connectAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);}});
     return;
   }
@@ -1332,6 +1332,7 @@ async function loadModule(route) {
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseGovernanceHub(session))return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+      connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),survey,action,response});},
