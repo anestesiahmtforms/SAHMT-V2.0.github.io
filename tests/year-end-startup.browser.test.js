@@ -16,7 +16,7 @@ async function compactLayout(page){
  });
  assert.ok(metrics.overflow.every(m=>m.height<=1&&m.width<=1),JSON.stringify(metrics));
  assert.ok(metrics.controls.every(r=>r.top>=0&&r.bottom<=metrics.viewport.height&&r.left>=0&&r.right<=metrics.viewport.width),JSON.stringify(metrics));
- assert.ok(Math.abs((metrics.title.left+metrics.title.right)/2-metrics.viewport.width/2)<1);
+ assert.ok(Math.abs((metrics.title.left+metrics.title.right)/2-metrics.viewport.width/2)<1,JSON.stringify(metrics));
  assert.equal(metrics.titleColor,'rgb(255, 255, 255)');assert.ok(metrics.gap<=28,`title/form gap: ${metrics.gap}`);
  assert.doesNotMatch(metrics.text,/SAHMT|Atualização em tempo real|Obrigatório|Dispensado para|Escolhas registradas|Os totais são/);
  assert.equal(await page.locator('.year-end-dialog [data-year-end-admin]').count(),0);
