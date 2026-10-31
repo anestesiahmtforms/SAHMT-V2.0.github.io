@@ -49,3 +49,11 @@ test('migration tracks a missing legacy counter and retries a concurrent first r
   assert.equal(decodeFields(f.docs.get(base+'/summary/totals').fields).totalRegistrations,1);
   assert.ok(f.calls.some(c=>c.path.startsWith('/'+base+'/control/order?transaction=')));
 });
+
+test('legacy migration never downgrades an active Carnival revision or reopens a paused reset',async()=>{
+ const f=fixture(false);f.put(base+'/policy/participation',{schemaVersion:1,cycle:'2026-2027',siglasByUid:{one:'AB'},summaryVersion:2,resetId:'carnaval-2027-v2'});
+ f.put(base+'/summary/totals',{plantaoNatal:0,plantaoReveillon:0,plantaoCarnaval:0,grupoNatal:0,grupoReveillon:0,totalRegistrations:0});
+ await migrateYearEndTotals({request:f.request,projectId,apply:true});assert.equal(decodeFields(f.docs.get(base+'/policy/participation').fields).summaryVersion,2);assert.equal(f.calls.filter(c=>c.path===':commit').length,0);
+ f.put(base+'/policy/participation',{schemaVersion:1,cycle:'2026-2027',siglasByUid:{one:'AB'},summaryVersion:0,resetId:'carnaval-2027-v2'});
+ await assert.rejects(migrateYearEndTotals({request:f.request,projectId,apply:true}),/RESET_REQUIRES_ACTIVATION/);
+});

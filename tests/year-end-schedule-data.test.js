@@ -34,7 +34,7 @@ test('simultaneous team confirmations allocate contiguous unique positions atomi
   const results=await Promise.all(users.map(({repo},i)=>repo.save({plantao:i%2?'natal':'reveillon',grupo:i%3?'natal':'reveillon'})));
   assert.deepEqual(results.map(r=>r.position).sort((a,b)=>a-b),Array.from({length:20},(_,i)=>i+1));
   assert.equal((await f.store.list(base+'/registrations')).length,20);
-  assert.deepEqual(Object.fromEntries(Object.entries(await f.store.get(base+'/summary','totals')).filter(([k])=>k!=='updatedAt')),{plantaoNatal:10,plantaoReveillon:10,grupoNatal:13,grupoReveillon:7,totalRegistrations:20});
+  assert.deepEqual(Object.fromEntries(Object.entries(await f.store.get(base+'/summary','totals')).filter(([k])=>k!=='updatedAt')),{plantaoNatal:10,plantaoReveillon:10,plantaoCarnaval:0,grupoNatal:13,grupoReveillon:7,totalRegistrations:20});
   assert.ok(results.every(r=>r.sigla==='AB'&&!('displayName' in r)));
 });
 
@@ -50,6 +50,15 @@ test('the four authoritative exceptions submit only a mandatory shift; profile s
   const f=fixture(),{repo}=f.repository('one');
   f.store.seed('users','one',{uid:'one',email:'one@example.invalid',active:true,access:true,sigla:'FR'});
   await assert.rejects(repo.save({plantao:'natal',grupo:null}));
+});
+
+test('Carnival has its own shift counter and retains the required Natal or Reveillon group',async()=>{
+ const f=fixture(),{repo}=f.repository('one');
+ await assert.rejects(repo.save({plantao:'carnaval',grupo:null}));await assert.rejects(repo.save({plantao:'carnaval',grupo:'carnaval'}));
+ const first=await repo.save({plantao:'carnaval',grupo:'natal'});assert.equal(first.position,1);
+ let totals=await f.store.get(base+'/summary','totals');assert.equal(totals.plantaoCarnaval,1);assert.equal(totals.grupoNatal,1);assert.equal(totals.totalRegistrations,1);
+ await repo.save({plantao:'reveillon',grupo:'reveillon'});totals=await f.store.get(base+'/summary','totals');assert.equal(totals.plantaoCarnaval,0);assert.equal(totals.plantaoReveillon,1);assert.equal(totals.grupoNatal,0);
+ const exempt=f.repository('exempt','FR');const record=await exempt.repo.save({plantao:'carnaval',grupo:null});assert.equal(record.position,2);assert.equal(record.grupo,null);
 });
 
 test('residents and substitutes are denied before records are loaded even with administrator category',async()=>{
@@ -86,7 +95,7 @@ test('broken counters fail without partial inscriptions or counter repair by the
 test('permission errors retry only after a confirmed advancement of the shared counter',async()=>{
   for(const advanced of [false,true]) {
     const f=fixture(),{repo}=f.repository('one'),original=f.api.runTransaction;let calls=0;
-    f.api.runTransaction=(db,fn)=>{calls++;if(calls===1){return original(db,async tx=>{await fn(tx);if(advanced)f.store.seed(base+'/summary','totals',{plantaoNatal:0,plantaoReveillon:1,grupoNatal:0,grupoReveillon:1,totalRegistrations:1});throw Object.assign(Error('permission-denied'),{code:'permission-denied'});});}return original(db,fn);};
+    f.api.runTransaction=(db,fn)=>{calls++;if(calls===1){return original(db,async tx=>{await fn(tx);if(advanced)f.store.seed(base+'/summary','totals',{plantaoNatal:0,plantaoReveillon:1,plantaoCarnaval:0,grupoNatal:0,grupoReveillon:1,totalRegistrations:1});throw Object.assign(Error('permission-denied'),{code:'permission-denied'});});}return original(db,fn);};
     if(advanced){const result=await repo.save({plantao:'natal',grupo:'natal'});assert.equal(result.position,2);assert.equal(calls,2);}
     else{await assert.rejects(repo.save({plantao:'natal',grupo:'natal'}));assert.equal(calls,1);}
   }
