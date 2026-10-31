@@ -3,6 +3,7 @@ import {readFile, writeFile, cp} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {dirname, resolve} from 'node:path';
 import {stampShellRelease} from './lib/shell-release.js';
+import {APP_VERSION} from '../src/app-version.js';
 const require = createRequire(import.meta.url);
 const vite = resolve(dirname(require.resolve('vite/package.json')), 'bin/vite.js');
 const rootBase = '/SAHMT-V2.0.github.io/', fbBase = rootBase + 'gestao/';
@@ -39,7 +40,7 @@ console.log(faOnly?'FA_ONLY_BUILD_READY':'INDEPENDENT_FA_FB_BUILDS_READY');
 // Outside the installed shell's cache: administrators select the published
 // release, while device receipts use the independently embedded JS release.
 await writeFile(new URL('../dist/tools/app-release.json',import.meta.url),JSON.stringify({
-  schema:1,targets:faOnly?{FA:shellRelease}:{FA:shellRelease,FB:shellRelease}
+  schema:1,appVersion:APP_VERSION,targets:faOnly?{FA:shellRelease}:{FA:shellRelease,FB:shellRelease}
 }));
 
 // Publish surveys on the app origin so Firebase can restore the existing sessions.

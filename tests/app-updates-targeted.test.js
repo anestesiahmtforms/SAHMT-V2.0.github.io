@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createTargetedAppUpdates, deviceUpdateState, devicePlatform, installationId, recoveryUrl, updateRequest, newAppUpdateId, appDisplayMode, deviceInstallationLabel} from '../src/app-updates-targeted.js';
 import {requestUpdatesForUsers} from '../src/app-updates-targeted-batch.js';
 import {addAppUpdateRules} from '../scripts/lib/app-update-rules.js';
+import {APP_VERSION,deviceVersionLabel} from '../src/app-version.js';
 const request = (id = 'request-1234567890123456') => ({id,target:'FA',minimumRelease:200});
 const session = (uid = 'member', r = null, extra = {}) => ({status:'signed-in',user:{uid},profile:{uid,appUpdateRequest:r},offline:false,...extra});
 function fixture(release = 100, deviceId = 'device-a', storage = new Map()) {
@@ -24,6 +25,8 @@ test('a second device remains pending when the first device loads the requested 
   const a=fixture(200,'device-a'),b=fixture(100,'device-b');
   a.controller.setSession(session('member',request())); b.controller.setSession(session('member',request()));await flush();
   assert.equal(deviceUpdateState(a.records[0],request()),'Confirmado');
+  assert.equal(a.records[0].appVersion,APP_VERSION);assert.equal(APP_VERSION,'V2.1');
+  assert.equal(deviceVersionLabel({appVersion:'V2.10'}),'V2.10');assert.equal(deviceVersionLabel({}), 'Versão não informada');
   assert.equal(deviceUpdateState(b.records[0],request()),'Pendente');
   assert.equal(b.controller.blocked,true);assert.equal(a.controller.blocked,false);
   assert.equal(deviceUpdateState(a.records[0],request('new-request-123456789')),'Pendente');

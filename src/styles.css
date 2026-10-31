@@ -2403,3 +2403,7 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 :is(.app-shell--management,.app-shell--training) .identity-card__user-row{flex-wrap:wrap;row-gap:4px}
 :is(.app-shell--management,.app-shell--training) .identity-card__user-row .sync-pill{flex:0 1 auto;min-width:0;max-width:100%}
 :is(.app-shell--management,.app-shell--training) .identity-card__user-row .sync-status-button:not(.sync-status-button--synced){width:auto;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;font-size:.58rem;line-height:1.15}
+
+.app-shell--home .identity-card{position:relative}
+.app-version{position:absolute;top:5px;right:10px;padding:2px 7px;border:1px solid #fff;border-radius:7px;background:#143254;color:#fff;font-size:.68rem;font-weight:900;letter-spacing:.03em;line-height:1.3;white-space:nowrap}
+.app-shell--home .identity-card__user-row{padding-top:17px}

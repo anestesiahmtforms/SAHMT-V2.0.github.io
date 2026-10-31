@@ -1,4 +1,5 @@
 import {repairAppFiles} from './app-repair.js';
+import {APP_VERSION} from './app-version.js';
 
 export const loadedAppRelease = Number(import.meta.env?.VITE_APP_RELEASE || 0);
 function browserStorage(name) {try {return globalThis[name];} catch {return null;}}
@@ -81,7 +82,7 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
     const owner = uid, token = generation;
     Promise.resolve().then(() => {
       if (token !== generation) return;
-      return record({uid: owner, deviceId, target, platform, displayMode, loadedRelease: release, confirmedRequestId});
+      return record({uid: owner, deviceId, target, platform, displayMode, appVersion: APP_VERSION, loadedRelease: release, confirmedRequestId});
     }).catch(error => {if (token === generation) {written = ''; onFailure(error);}});
   }};
 }
