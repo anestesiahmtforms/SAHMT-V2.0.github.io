@@ -59,7 +59,7 @@ jobs:
         run: npm run test:domain
       - name: Verify targeted updates and device confirmation security
         run: |
-          node --test tests/app-updates-targeted.test.js
+          node --test tests/app-updates-targeted.test.js tests/app-updates-admin-lifecycle.test.js
           npx firebase emulators:exec --project demo-sahmt-v2 --only firestore "node --test tests/app-updates-targeted.rules.test.js"
       - name: Verify member categories and five-project identity classification
         run: node --test tests/member-categories.test.js

@@ -36,6 +36,9 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
           await page.goto(origin+'/targeted-fixture?'+new URLSearchParams({target,release}));await page.waitForFunction(()=>window.targetedReady);return page;
         };
         const admin=await open(200,'Android');await admin.locator('#open-command').click();await admin.getByText('Pessoa de teste',{exact:true}).waitFor();
+        const early=await open(200,'Android');await early.evaluate(()=>window.openSession('member'));await early.waitForFunction(()=>window.savedDevice);
+        await admin.getByText('Atualizado',{exact:true}).waitFor();assert.match(await admin.locator('[data-panel-list]').innerText(),/Sem exigência ativa/);assert.match(await admin.locator('[data-panel-list]').innerText(),/Versão recebida: V2.2/);
+        const earlyId=await early.evaluate(()=>window.savedDevice.deviceId);await early.close();devices.delete(target+':member:'+earlyId);await admin.getByText('Atualizado',{exact:true}).waitFor({state:'detached'});
         await admin.locator('[data-panel-all]').click();await admin.locator('[data-all-send]:enabled').waitFor();
         assert.match(await admin.locator('[data-all-preview]').innerText(),/2 usuário/);
         await admin.locator('[data-all-send]').click();await admin.waitForFunction(()=>document.querySelector('[data-all-status]')?.textContent.includes('Exigência registrada para 2'));
@@ -55,16 +58,17 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
         await admin.locator('[data-panel-refresh]').click();await admin.getByText('Pendente',{exact:true}).waitFor();assert.equal(await admin.getByText('Confirmado',{exact:true}).count(),1);
         assert.match(await admin.locator('[data-panel-list]').innerText(),/App da Tela de Início/);
         const safari=await open(200,'iOS',false);await safari.evaluate(()=>window.openSession('member'));await safari.waitForFunction(()=>window.savedDevice?.confirmedRequestId);
-        await admin.locator('[data-panel-refresh]').click();await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] strong')].filter(node=>node.textContent==='Confirmado').length===2);
+        await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] [data-device-request-state]')].filter(node=>node.textContent==='Confirmado').length===2);
         assert.equal(await admin.getByText('Pendente',{exact:true}).count(),1,'Safari confirmation cannot confirm the Home Screen app');
         assert.match(await admin.locator('[data-panel-list]').innerText(),/Navegador/);
         await admin.screenshot({path:'.local-preview/app-updates-targeted-'+engine.name()+'-'+target+'.png',fullPage:true});
         await iphone.goto(origin+'/targeted-fixture?'+new URLSearchParams({target,release:200}));await iphone.waitForFunction(()=>window.targetedReady);await iphone.evaluate(()=>window.openSession('member'));await iphone.waitForFunction(()=>window.savedDevice?.confirmedRequestId);
-        await admin.locator('[data-panel-refresh]').click();await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] strong')].filter(node=>node.textContent==='Confirmado').length===3);
+        await admin.waitForFunction(()=>[...document.querySelectorAll('[data-panel-list] [data-device-request-state]')].filter(node=>node.textContent==='Confirmado').length===3);
         // Individual retry changes only this user's requirement; the other request is retained.
         const other=requests.get(target+':other').id;
         await admin.locator('[data-panel-user="member"]').click();await admin.locator('[data-request-update]:enabled').waitFor();await admin.locator('[data-request-update]').click();await admin.waitForFunction(()=>window.individualRequests===1);
         assert.equal(requests.get(target+':other').id,other);
+        await admin.locator('[data-close-updates]').click();await admin.locator('[data-panel-close]').click();await admin.waitForFunction(()=>window.fixtureSubscriptions===0);
         assert.ok(await admin.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
       } finally {for(const context of contexts)await context.close();}
     }

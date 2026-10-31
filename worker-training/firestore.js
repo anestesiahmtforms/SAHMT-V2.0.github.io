@@ -78,5 +78,10 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
   }
   throw fail('TRAINING_STORE_CONFLICT',409);
  }
- return {get,getMany,list,transaction};
+ async function getYearEndRecord(kind,uid){
+  if(projectId!=='outros-48120'||!['participation','registrations'].includes(kind)||!safe(uid))throw fail('TRAINING_STORE_PATH_INVALID',400);
+  const data=await request('/yearEndSchedules/2026-2027/'+kind+'/'+encodeURIComponent(uid));
+  return data?decodeFields(data.fields||{}):null;
+ }
+ return {get,getMany,list,transaction,getYearEndRecord};
 }

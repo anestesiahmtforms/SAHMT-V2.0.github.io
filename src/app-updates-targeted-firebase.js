@@ -1,8 +1,9 @@
-import {doc, collection, getDocFromServer, getDocsFromServer, setDoc, updateDoc, serverTimestamp, query, orderBy, documentId, limit, startAfter, writeBatch} from 'firebase/firestore';
+import {doc, collection, getDocFromServer, getDocsFromServer, setDoc, updateDoc, serverTimestamp, query, orderBy, documentId, limit, startAfter, writeBatch, onSnapshot} from 'firebase/firestore';
 import {db} from './firebase.js';
 import {auth} from './firebase-auth.js';
 import {deployment} from './deployment-context.js';
 import {newAppUpdateId} from './app-updates-targeted.js';
+import {updateUsersWithContactSiglas} from './app-updates-targeted-identity.js';
 
 function actor(uid) {
   if (!uid || auth?.currentUser?.uid !== uid) throw Error('APP_UPDATE_SESSION_CHANGED');
@@ -23,6 +24,14 @@ export async function readUserAppUpdates(actorUid, uid) {
   actor(actorUid);
   return {request: profile.data()?.appUpdateRequest || null, devices: devices.docs.map(item => item.data())};
 }
+export function watchAppInstallations(actorUid,uid,onData,onError){
+  actor(actorUid);
+  return onSnapshot(collection(db,'users',uid,'appInstallations'),{includeMetadataChanges:true},snapshot=>{
+    try{actor(actorUid);}catch(error){onError(error);return;}
+    if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites)return;
+    onData(snapshot.docs.map(item=>item.data()));
+  },onError);
+}
 export async function requestUserAppUpdate(actorUid, uid, minimumRelease) {
   actor(actorUid);
   if (!Number.isSafeInteger(minimumRelease) || minimumRelease <= 0) throw Error('APP_UPDATE_RELEASE_INVALID');
@@ -37,13 +46,18 @@ export async function cancelUserAppUpdate(actorUid, uid) {
 }
 export async function listAppUpdateUsers(actorUid) {
   actor(actorUid);
-  const users = []; let cursor = null;
-  do {
-    const page = await getDocsFromServer(query(collection(db, 'users'), orderBy(documentId()), ...(cursor ? [startAfter(cursor)] : []), limit(200)));
-    actor(actorUid); users.push(...page.docs.map(item => ({...item.data(), uid: item.id})));
-    cursor = page.size === 200 ? page.docs.at(-1) : null;
-  } while (cursor);
-  return users.filter(user => user.active === true && user.access === true);
+  const readAll=async root=>{
+    const rows=[];let cursor=null;
+    do{
+      const page=await getDocsFromServer(query(collection(db,root),orderBy(documentId()),...(cursor?[startAfter(cursor)]:[]),limit(200)));
+      actor(actorUid);rows.push(...page.docs.map(item=>({...item.data(),...(root==='users'?{uid:item.id}:{})})));
+      cursor=page.size===200?page.docs.at(-1):null;
+    }while(cursor);
+    return rows;
+  };
+  const [users,contacts]=await Promise.all([readAll('users'),deployment.target==='FA'?readAll('contacts').catch(()=>[]):Promise.resolve([])]);
+  actor(actorUid);
+  return updateUsersWithContactSiglas(users.filter(user=>user.active===true&&user.access===true),contacts);
 }
 export async function sendAppUpdateBatch(actorUid, uids, minimumRelease) {
   actor(actorUid);

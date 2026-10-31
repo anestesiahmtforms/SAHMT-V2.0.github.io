@@ -5,6 +5,20 @@ import {chromium,webkit} from 'playwright';
 import {createYearEndStartupPreview} from './helpers/year-end-startup-preview.js';
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit',engine=safari?webkit:chromium;
 
+test('banner recovers from a failed read without FE login; connecting the form keeps Governance restricted',{timeout:60000},async()=>{
+ const preview=await createYearEndStartupPreview({statusFailures:1,requireSecondaryConnect:true});let browser;
+ try{
+  preview.release();browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();page.setDefaultTimeout(12000);
+  const origin=new URL(preview.url).origin;await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+  await page.goto(preview.url);await page.locator('#schedule-date').waitFor();assert.equal(await page.evaluate(()=>window.fixtureFeReady),false);
+  await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();await page.getByRole('button',{name:'CONECTAR ESCALA COM GOOGLE',exact:true}).waitFor();
+  assert.equal(await page.locator('.year-end-startup:visible').count(),0);await page.getByRole('button',{name:'CONECTAR ESCALA COM GOOGLE',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-year-end-form] fieldset')?.disabled===false);assert.equal(await page.evaluate(()=>window.fixtureFeReady),true);
+  await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.locator('.year-end-startup:visible').waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),true);
+  await page.evaluate(()=>location.hash='#/management-hub/surveys');await page.waitForFunction(()=>location.hash==='#/home');assert.equal(await page.locator('.management-hub-dialog').count(),0);
+ }finally{await browser?.close();await preview.close();}
+});
+
 async function compactLayout(page){
  await page.waitForFunction(()=>document.querySelector('[data-year-end-form] fieldset')?.disabled===false);
  const metrics=await page.evaluate(()=>{
@@ -38,7 +52,7 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.equal(await page.locator('.startup-logo img').count(),1);assert.equal((await page.locator('.startup-logo').textContent()).trim(),'');
   assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   preview.releaseAuthentication();await page.locator('#schedule-date').waitFor();
-  assert.equal(await page.locator('[data-app-version]').textContent(),'V2.1');
+  assert.equal(await page.locator('[data-app-version]').textContent(),'V2.2');
   const versionLayout=await page.evaluate(()=>{
     const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {top:r.top,bottom:r.bottom,right:r.right,left:r.left};};
     return {badge:rect('[data-app-version]'),header:rect('.identity-card'),name:rect('.identity-card__user-row')};

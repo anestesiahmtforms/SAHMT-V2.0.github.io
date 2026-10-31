@@ -11,7 +11,7 @@ const date=value=>{
 };
 const options=(name,items,required=true)=>items.map(o=>`<label class="year-end-option"><input type="radio" name="${name}" value="${o.id}"${required?' required':''}><span class="year-end-option__content"><strong>${yearEndOptionIcon(o.id)}<span class="year-end-option__name">${h(o.label)}</span></strong><span class="year-end-dates">${h(o.dates)}</span>${o.detail?`<small>${h(o.detail)}</small>`:''}</span><span class="year-end-check" aria-hidden="true">✓</span></label>`).join('');
 
-export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,onConfirmed=()=>{}}={}) {
+export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,onConfirmed=()=>{},connectAccess=null}={}) {
   let disposed=false,repository=null,participation=null,stop=()=>{},loadId=0,ready=false,busy=false,dirty=false,own=null,rows=[],totals=null;
   const live=()=>!disposed&&isCurrent()&&root.isConnected;
   const form=()=>root.querySelector('form');
@@ -54,7 +54,7 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
   const failed=error=>{
     ready=false;rows=[];totals=null;own=null;dirty=false;participation=null;
     const excluded=error.code==='YEAR_END_INELIGIBLE';
-    root.innerHTML=`<section class="year-end year-end-denied" role="alert"><h3>${excluded?'Acesso indisponível':'Não foi possível abrir a escala'}</h3><p>${h(yearEndMessage(error))}</p>${excluded?'':'<button type="button" class="secondary-button" data-year-end-retry>TENTAR NOVAMENTE</button>'}</section>`;
+    root.innerHTML=`<section class="year-end year-end-denied" role="alert"><h3>${excluded?'Acesso indisponível':'Não foi possível abrir a escala'}</h3><p>${h(yearEndMessage(error))}</p>${error.code==='YEAR_END_AUTH_REQUIRED'&&typeof connectAccess==='function'?'<button type="button" class="primary-button" data-year-end-connect>CONECTAR ESCALA COM GOOGLE</button>':''}${excluded?'':'<button type="button" class="secondary-button" data-year-end-retry>TENTAR NOVAMENTE</button>'}</section>`;
   };
   async function connect() {
     const ticket=++loadId;stop();stop=()=>{};ready=false;busy=false;dirty=false;rows=[];totals=null;own=null;participation=null;
@@ -84,7 +84,14 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
     } catch(error){if(live()){if(['YEAR_END_INELIGIBLE','permission-denied'].includes(error.code))failed(error);else notice(yearEndMessage(error),true);}}
     finally{busy=false;if(live())paintForm();}
   };
-  const click=event=>{if(event.target.closest('[data-year-end-retry]'))void connect();};
+  const click=event=>{
+    if(event.target.closest('[data-year-end-retry]'))void connect();
+    const button=event.target.closest('[data-year-end-connect]');
+    if(button&&typeof connectAccess==='function'){
+      button.disabled=true;
+      void Promise.resolve().then(()=>connectAccess()).then(()=>{if(live())void connect();},()=>{if(live()){button.disabled=false;root.querySelector('.year-end-denied p').textContent='Não foi possível conectar. Tente novamente com a mesma conta Google do app.';}});
+    }
+  };
   root.addEventListener('change',change);root.addEventListener('submit',submit);root.addEventListener('click',click);void connect();
   return ()=>{disposed=true;loadId++;stop();rows=[];own=null;root.removeEventListener('change',change);root.removeEventListener('submit',submit);root.removeEventListener('click',click);root.replaceChildren();root.classList.remove('year-end-host');};
 }

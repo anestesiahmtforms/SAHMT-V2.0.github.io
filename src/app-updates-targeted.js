@@ -40,6 +40,11 @@ export function recoveryUrl(target, origin = globalThis.location.origin) {
 export function deviceUpdateState(device, request) {
   return request && device.confirmedRequestId === request.id && device.loadedRelease >= request.minimumRelease ? 'Confirmado' : 'Pendente';
 }
+export function devicePublishedState(device, publishedRelease) {
+  if(!Number.isSafeInteger(device.loadedRelease)||device.loadedRelease<=0)return 'Versão não confirmada';
+  if(!Number.isSafeInteger(publishedRelease)||publishedRelease<=0)return 'Versão registrada';
+  return device.loadedRelease>=publishedRelease?'Atualizado':'Há versão mais recente';
+}
 
 // The first server-confirmed profile of this document is the startup boundary.
 // Later profile changes never interrupt a form already being filled in.

@@ -3,28 +3,40 @@ import {canUseYearEndSchedule,confirmedYearEndRegistration} from './year-end-sch
 // Temporary campaign for the current cycle. Completion stays in the existing
 // server registration; dismissing the card only affects this app opening.
 export const YEAR_END_STARTUP_ENABLED=true;
-export function createYearEndStartup({enabled=YEAR_END_STARTUP_ENABLED,readStatus,onChange=()=>{}}={}) {
-  let uid='',generation=0,status='inactive',reading=false;
+export function createYearEndStartup({enabled=YEAR_END_STARTUP_ENABLED,readStatus,onChange=()=>{},
+  setTimer=setTimeout,clearTimer=clearTimeout,retryDelays=[1200,5000,15000]}={}) {
+  let uid='',generation=0,status='inactive',reading=false,canRead=false,timer=null,attempt=0;
   const dismissed=new Set();
+  const clearRetry=()=>{if(timer!==null)clearTimer(timer);timer=null;};
+  const read=()=>{
+    if(!uid||!canRead||reading||dismissed.has(uid))return;
+    clearRetry();const account=uid,ticket=generation;reading=true;status='checking';
+    const current=()=>ticket===generation&&uid===account;
+    void Promise.resolve().then(()=>readStatus({uid:account,isCurrent:current})).then(({participation,own,completed})=>{
+      if(!current())return;
+      reading=false;status=participation?.canParticipate===true?(completed===true||confirmedYearEndRegistration(own,{...participation,uid})?'complete':'pending'):'inactive';
+      onChange();
+    },()=>{
+      if(!current())return;
+      reading=false;status='unavailable';onChange();
+      if(canRead&&!dismissed.has(uid)&&attempt<retryDelays.length){timer=setTimer(()=>{timer=null;if(current())read();},retryDelays[attempt++]);timer?.unref?.();}
+    });
+  };
   const controller={
     get status(){return status;},
     get visible(){return status==='pending'&&!dismissed.has(uid);},
     setSession(session) {
       const next=enabled&&canUseYearEndSchedule(session)?session.user.uid:'';
-      if(next!==uid){uid=next;++generation;reading=false;status=uid?'checking':'inactive';onChange();}
-      if(!uid||session.offline||session.validatingProfile||reading||status!=='checking')return;
-      const ticket=generation;reading=true;
-      const current=()=>ticket===generation&&uid===next;
-      void Promise.resolve().then(()=>readStatus({uid:next,isCurrent:current})).then(({participation,own})=>{
-        if(!current())return;
-        status=participation?.canParticipate===true?(confirmedYearEndRegistration(own,{...participation,uid})?'complete':'pending'):'inactive';
-        onChange();
-      },()=>{if(current()){status='unavailable';onChange();}});
+      if(next!==uid){clearRetry();uid=next;++generation;reading=false;attempt=0;status=uid?'checking':'inactive';onChange();}
+      canRead=!!uid&&!session.offline&&!session.validatingProfile;
+      if(canRead&&status==='checking'&&!reading)read();
+      else if(canRead&&status==='unavailable'&&!reading&&timer===null)read();
     },
-    dismiss(){if(uid)dismissed.add(uid);onChange();},
+    retry(){if(status==='unavailable'&&canRead&&!reading){attempt=0;read();}},
+    dismiss(){if(uid)dismissed.add(uid);clearRetry();onChange();},
     confirm(account,record,participation) {
       if(account!==uid||!confirmedYearEndRegistration(record,{...participation,uid}))return false;
-      ++generation;status='complete';onChange();return true;
+      clearRetry();++generation;reading=false;status='complete';onChange();return true;
     }
   };
   return controller;

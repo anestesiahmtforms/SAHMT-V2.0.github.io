@@ -47,3 +47,11 @@ test('cached profile waits for online validation without losing a manual dismiss
  banner.setSession(session('one'));await flush();assert.equal(reads,1);assert.equal(banner.visible,true);
  banner.dismiss();banner.setSession({status:'auth-limited',user:{uid:'one'}});banner.setSession(session('one'));await flush();assert.equal(banner.visible,false);
 });
+
+test('a transient failed check retries and reveals the pending reminder; stale retries stop after account change',async()=>{
+ const timers=[];let attempts=0;
+ const banner=createYearEndStartup({setTimer:fn=>{timers.push(fn);return fn;},clearTimer:fn=>{const i=timers.indexOf(fn);if(i>=0)timers.splice(i,1);},readStatus:async()=>{if(++attempts===1)throw Error('network');return {participation:{canParticipate:true},completed:false};}});
+ banner.setSession(session('one'));await flush();assert.equal(banner.status,'unavailable');assert.equal(timers.length,1);
+ timers.shift()();await flush();assert.equal(banner.visible,true);
+ const complete=createYearEndStartup({readStatus:async()=>({participation:{canParticipate:true},completed:true})});complete.setSession(session('one'));await flush();assert.equal(complete.visible,false);assert.equal(complete.status,'complete');
+});

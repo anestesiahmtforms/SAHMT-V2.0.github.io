@@ -2,20 +2,23 @@ import {createServer} from 'vite';
 import {validateYearEndChoices} from '../../src/year-end-schedule.js';
 import {emptyYearEndTotals,changeYearEndTotals} from '../../src/year-end-schedule-totals.js';
 
-export async function createYearEndStartupPreview({holdAuthentication=false}={}){
+export async function createYearEndStartupPreview({holdAuthentication=false,statusFailures=0,requireSecondaryConnect=false}={}){
  const base='/SAHMT-V2.0.github.io/',records=new Map(),held=[];
  let hold=true,failSave=true,authHeld=holdAuthentication;const authWaiters=[];
  const stubs={
   'app-updates-targeted-firebase.js':'export async function recordAppInstallation(){}',
   'firebase-app.js':'export const firebaseConfigured=true,app=null,appCheckReady=Promise.resolve(null);',
+  'year-end-status-client.js':`export async function readYearEndBannerStatus({uid,isCurrent}){const r=await fetch('${base}__year-end-fixture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,action:'banner'})});const data=await r.json();if(!r.ok)throw Object.assign(Error(data.code),{code:data.code});if(!isCurrent())throw Error('YEAR_END_SESSION_CHANGED');return {participation:{canParticipate:data.eligible},completed:data.completed};}`,
   'auth.js':`const uid=new URL(location.href).searchParams.get('account')||'team';
+   window.fixtureFeReady=${!requireSecondaryConnect};
    const user={uid,email:uid+'@example.invalid',emailVerified:true,displayName:'Pessoa de conferência',providerData:[{providerId:'google.com'}]};
    export function watchSession(fn){fn({status:'checking'});void fetch('${base}__auth-fixture').then(()=>fn({status:'signed-in',user,offline:false,profile:{uid,email:user.email,displayName:user.displayName,active:true,access:true,role:uid==='admin'?'administrador_app':uid==='resident'?'residente':uid==='substitute'?'substituto':'anestesiologista',permissions:{scheduleRead:true}}}));return()=>{};}
-   export async function retryAuthenticatedProfile(){}export async function signInGoogle(){}export async function signOutGlobal(){return true;}`,
+   export async function retryAuthenticatedProfile(){}export async function signInGoogle(){window.fixtureFeReady=true;}export async function signOutGlobal(){return true;}`,
   'data-lite.js':'export async function readAppFeatures(){return {};}export async function readSchedule(){return null;}export async function listActiveContacts(){return [];}export async function listVacationsForDate(){return [];}',
   'data.js':'export async function syncQueuedOperations(){return {};}export async function listUnsentChecklistTransfers(){return [];}export async function flushOperationalSheetDelivery(){}export async function listModuleRecords(){return [];}export async function getAppFeatures(){return {};}',
   'google-project-auth-runtime.js':'export async function maintainGoogleProjectSessions(){return {status:"ready"};}',
   'year-end-schedule-firebase.js':`export async function openYearEndScheduleRepository({uid,isCurrent,participantOnly}){
+   if(!window.fixtureFeReady)throw Object.assign(Error('YEAR_END_AUTH_REQUIRED'),{code:'YEAR_END_AUTH_REQUIRED'});
    let access;
    const api=async(action,input)=>{if(!isCurrent())throw Error('YEAR_END_SESSION_CHANGED');const r=await fetch('${base}__year-end-fixture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,action,input})});const result=await r.json();if(!r.ok)throw Object.assign(Error(result.code),{code:result.code});if(!isCurrent())throw Error('YEAR_END_SESSION_CHANGED');return result;};
    return {uid,open:async()=>{const p=await api('open');access={...p,isAdmin:!participantOnly&&p.isAdmin};return access;},readOwn:()=>api('read'),subscribe(callback,onError){let active=true;Promise.all([api('read'),api('totals'),access.isAdmin?api('rows'):Promise.resolve([])]).then(([own,totals,rows])=>{if(active)callback({own,totals,rows,fromCache:false});},e=>{if(active)onError(e);});return()=>{active=false;};},save:input=>api('save',input)};
@@ -32,7 +35,8 @@ export async function createYearEndStartupPreview({holdAuthentication=false}={})
    const participation={sigla:uid==='shift-only'?'FR':uid==='admin'?'ZZ':'AB',requireGroup:uid!=='shift-only',canParticipate:true,isAdmin:uid==='admin'};
    if(!['team','shift-only','admin'].includes(uid))throw Object.assign(Error('YEAR_END_INELIGIBLE'),{code:'YEAR_END_INELIGIBLE'});
    let value;
-   if(action==='open')value=participation;
+   if(action==='banner'){if(statusFailures>0){statusFailures--;throw Error('unavailable');}if(hold)await new Promise(resolve=>held.push(resolve));value={eligible:true,completed:Boolean(records.get(uid))};}
+   else if(action==='open')value=participation;
    else if(action==='read'){if(hold)await new Promise(resolve=>held.push(resolve));value=records.get(uid)||null;}
    else if(action==='totals')value=[...records.values()].reduce((totals,row)=>changeYearEndTotals(totals,null,row),emptyYearEndTotals());
    else if(action==='rows'){if(uid!=='admin')throw Error('permission-denied');value=[...records.values()];}

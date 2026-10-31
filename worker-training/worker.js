@@ -10,6 +10,7 @@ import {createProfessionalDocumentService} from './professional-documents.js';
 import {createDriveClient} from './drive.js';
 import {Buffer} from 'node:buffer';
 import {createSurveyService} from './survey-service.js';
+import {createYearEndStatusService} from './year-end-status-service.js';
 
 const origins=['https://anestesiahmtforms.github.io'];
 const fail=(code,status)=>Object.assign(new Error(code),{code,status});
@@ -48,6 +49,10 @@ function surveyRuntime(env){
  let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}
  return runtime.surveys??=createSurveyService({reportReaderEmail:config?.reportReaderEmail,profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
 }
+function yearEndStatusRuntime(env){
+ const runtime=sharedRuntime(env);
+ return runtime.yearEndStatus??=createYearEndStatusService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
+}
 function documentRuntime(env){
  const runtime=sharedRuntime(env);
  if(!runtime.documents){
@@ -62,7 +67,7 @@ function documentRuntime(env){
  return runtime.documents;
 }
 const legacyTrainingCodes=new Set(['INSTITUTIONAL_REVIEW_REQUIRED','INVALID_INPUT','PAYLOAD_TOO_LARGE','UNSAFE_CONTENT','ALREADY_REVIEWED','ATTEMPT_LIMIT','AUDIT_IMMUTABLE','AUDIT_INVALID','AUDIT_UNAVAILABLE','BANK_QUESTIONS_REMOVED','CONTENT_UNAVAILABLE','FORBIDDEN','IDEMPOTENCY_CONFLICT','INVALID_ANSWERS','INVALID_MANAGER','NO_SUGGESTION','NOT_FOUND','NOT_PUBLISHED','READ_ORDER','RUN_CONFLICT','SCORE_UNAVAILABLE','SELF_REVIEW','STAGE_CONFLICT','UNAUTHENTICATED','VERSION_CHANGED','VERSION_CONFLICT']);
-export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=registrationDriveRuntime}={}){
+export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildYearEndStatusService=yearEndStatusRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=registrationDriveRuntime}={}){
  const routes={
   '/v1/professional-registration':{prefix:'REGISTRATION',max:64*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationService,sourceProject:'sahmt-17a16'},
   '/v1/registration-drive':{prefix:'REGDRIVE',max:8*1024*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationDrive,sourceProject:'sahmt-17a16'},
@@ -72,6 +77,7 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
   '/v1/biosafety-manual':{prefix:'MANUAL',max:1024,flag:'BIOSAFETY_MANUAL_ENABLED',build:buildManualService},
   '/v1/dosimetry':{prefix:'DOSIMETRY',max:4096,flag:'DOSIMETRY_ENABLED',build:buildDosimetryService},
   '/v1/institutional-surveys':{prefix:'SURVEY',max:32*1024,flag:'INSTITUTIONAL_SURVEYS_ENABLED',build:buildSurveyService,sourceProject:'sahmt-17a16'},
+  '/v1/year-end-status':{prefix:'YEAR_END',max:1024,flag:'INSTITUTIONAL_SURVEYS_ENABLED',build:buildYearEndStatusService,sourceProject:'sahmt-17a16'},
  };
  return {async fetch(request,env={},context){
   const route=routes[new URL(request.url).pathname],prefix=route?.prefix||'TRAINING';
@@ -94,7 +100,7 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
    const result=await route.build(env).execute(body.action,body.input,identity);
    return reply(result,200);
   }catch(error){
-   const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY|MANUAL|REGISTRATION|REGDRIVE|EPIDEMIOLOGICAL)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
+   const safe=typeof error?.code==='string'&&(/^(?:TRAINING|VAC|DOCUMENT|SURVEY|DOSIMETRY|MANUAL|REGISTRATION|REGDRIVE|EPIDEMIOLOGICAL|YEAR_END)_[A-Z0-9_]{1,90}$/.test(error.code)||(prefix==='TRAINING'&&legacyTrainingCodes.has(error.code)))?error.code:prefix+'_UNAVAILABLE';
    return reply({code:safe,...(safe==='TRAINING_READING_REQUIRED'?{message:'Atualize o aplicativo e reabra o documento para validar a leitura completa.'}:{})},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);
   }
  }};
