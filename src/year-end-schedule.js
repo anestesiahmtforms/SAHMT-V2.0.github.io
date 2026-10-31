@@ -10,7 +10,7 @@ export const YEAR_END_SHIFTS = Object.freeze([
 ]);
 export const YEAR_END_GROUPS = Object.freeze([
   {id:'natal',label:'Grupo Natal',dates:'26 a 29/12/2026',detail:'Até 13h30 do dia 29/12'},
-  {id:'reveillon',label:'Grupo Réveillon',dates:'29/12/2026, após 13h30',detail:'E nos dias 02 e 03/01/2027'}
+  {id:'reveillon',label:'Grupo Réveillon',dates:'29/12/2026, após 13h30',detail:'30/12/2026 · E nos dias 02 e 03/01/2027'}
 ]);
 export const yearEndError = code => Object.assign(Error(code),{code});
 

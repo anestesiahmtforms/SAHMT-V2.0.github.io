@@ -24,7 +24,7 @@ test('the approved FE project and exact dates preserve the midday handover and n
   assert.deepEqual(YEAR_END_GROUPS.map(s=>s.id),['natal','reveillon']);
   assert.equal(YEAR_END_GROUPS[0].detail,'Até 13h30 do dia 29/12');
   assert.equal(YEAR_END_GROUPS[1].dates,'29/12/2026, após 13h30');
-  assert.equal(YEAR_END_GROUPS[1].detail,'E nos dias 02 e 03/01/2027');
+  assert.equal(YEAR_END_GROUPS[1].detail,'30/12/2026 · E nos dias 02 e 03/01/2027');
 });
 test('team eligibility requires the server-approved matching profile and verified account',()=>{
   const session={status:'signed-in',user:{uid:'one',email:'one@example.invalid',emailVerified:true},profile:{uid:'one',email:'one@example.invalid',active:true,access:true}};
