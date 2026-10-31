@@ -1063,6 +1063,7 @@ function actionForm(route) {
 
 function shellView() {
   const route = currentRoute();
+  if(route==='year-end-schedule'&&session.status==='signed-in')return '<main class="year-end-entry" id="module-content"><p role="status">Preparando a escala…</p></main>';
   const profile = session.profile;
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<div class="checklist-visual-frame"><figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure></div>` : '';
@@ -1311,10 +1312,10 @@ async function loadModule(route) {
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.user?.uid===uid&&canUseYearEndSchedule(session);
     if(!current()){navigate('home');return;}
-    const [{mountYearEndSchedule},{openYearEndScheduleRepository}]=await Promise.all([import('./year-end-schedule-ui.js'),import('./year-end-schedule-firebase.js')]);
+    const [{mountYearEndScheduleDialog},{openYearEndScheduleRepository}]=await Promise.all([import('./year-end-schedule-dialog.js'),import('./year-end-schedule-firebase.js')]);
     if(!current())return;
-    cleanupCurrentModule=mountYearEndSchedule(content,{isCurrent:current,
-      createRepository:isCurrent=>openYearEndScheduleRepository({uid,isCurrent,participantOnly:true}),
+    cleanupCurrentModule=mountYearEndScheduleDialog(content,{isCurrent:current,onExit:()=>navigate('home'),
+      createRepository:isCurrent=>openYearEndScheduleRepository({uid,isCurrent}),
       onConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);}});
     return;
   }
