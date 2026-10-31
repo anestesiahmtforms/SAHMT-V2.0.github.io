@@ -2,10 +2,10 @@ name: HTML training mobile experience
 on:
   pull_request:
     branches: [main]
-    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'src/year-end*', 'tests/year-end*', 'tests/helpers/year-end-startup-preview.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
+    paths: ['src/html-training*', 'src/app-updates*', 'src/app-version.js', 'src/management-hub*', 'src/main.js', 'src/year-end*', 'tests/year-end*', 'tests/helpers/year-end-startup-preview.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
   push:
     branches: [main]
-    paths: ['src/html-training*', 'src/app-updates*', 'src/management-hub*', 'src/main.js', 'src/year-end*', 'tests/year-end*', 'tests/helpers/year-end-startup-preview.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
+    paths: ['src/html-training*', 'src/app-updates*', 'src/app-version.js', 'src/management-hub*', 'src/main.js', 'src/year-end*', 'tests/year-end*', 'tests/helpers/year-end-startup-preview.js', 'indicators-platform/*', 'tests/app-updates*', 'tests/app-update-release*', 'public/service-worker.js', 'public/tools/refresh-app.html', 'src/styles.css', 'tests/html-training*', 'tests/document-admin-scroll*', 'package*.json', '.github/workflows/html-training-ui.yml']
   workflow_dispatch:
 permissions:
   contents: read

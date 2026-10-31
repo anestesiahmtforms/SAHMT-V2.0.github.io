@@ -38,6 +38,13 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.equal(await page.locator('.startup-logo img').count(),1);assert.equal((await page.locator('.startup-logo').textContent()).trim(),'');
   assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   preview.releaseAuthentication();await page.locator('#schedule-date').waitFor();
+  assert.equal(await page.locator('[data-app-version]').textContent(),'V2.1');
+  const versionLayout=await page.evaluate(()=>{
+    const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {top:r.top,bottom:r.bottom,right:r.right,left:r.left};};
+    return {badge:rect('[data-app-version]'),header:rect('.identity-card'),name:rect('.identity-card__user-row')};
+  });
+  assert.ok(versionLayout.badge.top>=versionLayout.header.top&&versionLayout.badge.right<=versionLayout.header.right&&versionLayout.header.right-versionLayout.badge.right<20);
+  assert.ok(versionLayout.badge.bottom<=versionLayout.name.bottom&&versionLayout.badge.top<versionLayout.name.top);
   assert.equal(await page.locator('.startup-logo').count(),0,'authentication closes the logo without a timed animation');
   assert.equal(await page.locator('.year-end-startup').isVisible(),false,'the Home opens before the campaign read finishes');
   await page.evaluate(()=>{window.initialSchedule=document.querySelector('#schedule-date');});
