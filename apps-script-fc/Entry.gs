@@ -21,7 +21,10 @@ function doPost(event) {
 }
 
 function doGet() {
-  return ospJson_({code: 'FC_INTEGRATION_STATUS', station: 'FC', enabled: fcRuntimeCode_() === null});
+  return ospJson_({code: 'FC_INTEGRATION_STATUS', station: 'FC', enabled: fcRuntimeCode_() === null,
+    performanceEnabled: sahmtV2Properties_().getProperty('FC_PERFORMANCE_ENABLED') === 'true', performanceMode: 'FC_ONLY',
+    executorVerified: String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase() === SAHMT_FC_EXECUTOR_EMAIL,
+    scriptVerified: sahmtV2Properties_().getProperty('FC_EXPECTED_SCRIPT_ID') === ScriptApp.getScriptId()});
 }
 
 function fcPrintOcrMetadata_(name) {

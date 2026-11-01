@@ -24,8 +24,42 @@ function fcDrivePreparationRequest_(path, method, data) {
     headers: {Authorization: 'Bearer ' + ScriptApp.getOAuthToken()}};
   if (data !== undefined) { options.contentType = 'application/json'; options.payload = JSON.stringify(data); }
   const response = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files' + (path[0] === '?' ? '' : '/') + path, options);
-  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw Error('FC_DRIVE_PREPARATION_UNAVAILABLE');
+  const status = response.getResponseCode();
+  if (status < 200 || status >= 300) {
+    const reasons = {appNotAuthorizedToFile: 'APP_NOT_AUTHORIZED_TO_FILE', insufficientFilePermissions: 'INSUFFICIENT_FILE_PERMISSIONS',
+      insufficientPermissions: 'INSUFFICIENT_PERMISSIONS', notFound: 'NOT_FOUND', accessNotConfigured: 'API_NOT_CONFIGURED',
+      rateLimitExceeded: 'RATE_LIMIT_EXCEEDED', userRateLimitExceeded: 'USER_RATE_LIMIT_EXCEEDED', authError: 'AUTH_ERROR'};
+    let reason = 'UNSPECIFIED';
+    try {
+      const errors = JSON.parse(response.getContentText()).error.errors || [];
+      for (let i = 0; i < errors.length; i++) if (Object.prototype.hasOwnProperty.call(reasons, errors[i].reason)) { reason = reasons[errors[i].reason]; break; }
+    } catch (_) {}
+    console.log(JSON.stringify({code: 'FC_DRIVE_PREPARATION_HTTP_FAILURE', httpStatus: status, reason: reason,
+      operation: path[0] === '?' ? 'LIST' : /\/copy\?/.test(path) ? 'COPY' : 'READ_METADATA'}));
+    throw Error('FC_DRIVE_PREPARATION_HTTP_' + status + '_' + reason);
+  }
   try { return JSON.parse(response.getContentText()); } catch (_) { throw Error('FC_DRIVE_PREPARATION_UNAVAILABLE'); }
+}
+
+// Read-only probe for runtime authorization; no copies, moves or settings.
+function diagnosticarPreparacaoFcV1() {
+  const email = function (user) { return String(user && user.getEmail() || '').trim().toLowerCase(); };
+  const id = ScriptApp.getScriptId();
+  if (email(Session.getEffectiveUser()) !== SAHMT_FC_EXECUTOR_EMAIL || email(Session.getActiveUser()) !== SAHMT_FC_EXECUTOR_EMAIL ||
+      email(DriveApp.getFileById(id).getOwner()) !== SAHMT_FC_EXECUTOR_EMAIL) throw Error('FC_INSTALL_OWNER_REQUIRED');
+  const plan = fcPreparationBootstrap_(); fcValidateImagePreparationPlan_(plan, id);
+  const required = ['https://www.googleapis.com/auth/drive'];
+  const info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, required), authorized = info.getAuthorizedScopes() || [];
+  const scopes = {code: 'FC_DRIVE_RUNTIME_AUTH', driveScopeGranted: authorized.indexOf(required[0]) >= 0,
+    authorizationRequired: info.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED};
+  console.log(JSON.stringify(scopes));
+  const image = plan.images[0];
+  const file = fcDrivePreparationRequest_(image.stagingId + '?fields=' + encodeURIComponent('id,mimeType,size,md5Checksum,parents'));
+  const verified = file.mimeType === 'image/png' && Number(file.size) === image.size && file.md5Checksum === image.md5Checksum &&
+    (file.parents || []).includes(plan.stagingFolderId);
+  const result = {code: verified ? 'FC_DRIVE_RUNTIME_READ_READY' : 'FC_DRIVE_STAGING_CHANGED',
+    driveScopeGranted: scopes.driveScopeGranted, copiesCreated: 0, filesMoved: 0, firestoreWrites: 0};
+  console.log(JSON.stringify(result)); return result;
 }
 
 function organizarRecursosFcV1() {

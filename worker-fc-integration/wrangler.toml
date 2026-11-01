@@ -4,7 +4,7 @@ main = "worker.js"
 account_id = "57b8b02c577b6f61e96a61ce44142d2e"
 compatibility_date = "2026-10-10"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = false
+workers_dev = true
 preview_urls = false
 
 [[durable_objects.bindings]]
@@ -19,5 +19,6 @@ new_sqlite_classes = ["FcIntegrationAdmissionState"]
 FC_INTEGRATION_ENABLED = "false"
 QMENTUM_WRITE_ENABLED = "false"
 OCCURRENCE_SCORING_ENABLED = "false"
-# No URL or secret is fabricated here. Set the verified dedicated Apps Script URL
-# and per-pair HMAC secrets only in the destination service after live checks.
+FC_MODULE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbypyEIHiUM7Ouh1NT9djsnTPWbPiyPHv-BiEYZdyoKcqrgOEwiQFUq2i3O03DzddnjdDg/exec"
+# Dedicated backend verified disabled, deployed by the FC owner. HMAC secrets
+# are server-side secret bindings and must never be added to this file.

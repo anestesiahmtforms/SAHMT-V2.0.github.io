@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 const code=(await Promise.all(['Entry','Setup','PrepareDrive'].map(name=>readFile(new URL('../apps-script-fc/'+name+'.gs',import.meta.url),'utf8')))).join('\n');
 const email='anestesiahmtforms3@gmail.com',scriptId='synthetic_fc_script_identifier_2026',folderId='synthetic_private_ocr_folder_2026';
 function fixture({effective=email,active=email,owner=email,enabled=true,storedId=scriptId,
@@ -11,6 +12,7 @@ function fixture({effective=email,active=email,owner=email,enabled=true,storedId
  const props={getProperty:k=>values.get(k)||null,setProperties:object=>{writes.push(object);for(const [k,v]of Object.entries(object))values.set(k,v);}};
  const context={console:{log:value=>logs.push(value)},
   PropertiesService:{getScriptProperties:()=>props},sahmtV2Properties_:()=>props,ospJson_:value=>value,
+  sha256Hex_:value=>createHash('sha256').update(value).digest('hex'),
   Session:{getEffectiveUser:()=>({getEmail:()=>effective}),getActiveUser:()=>({getEmail:()=>active})},
   ScriptApp:{getScriptId:()=>scriptId,getProjectTriggers:()=>[]},
   LockService:{getScriptLock:()=>({tryLock:()=>{locks.attempts++;return true;},releaseLock:()=>{locks.releases++;}})},
@@ -46,6 +48,10 @@ test('FC Apps Script rejects a different script ID even with the expected execut
 test('FC GET status has no installation action or secret disclosure',()=>{
  const f=fixture();const result=f.context.doGet({parameter:{action:'install'}});assert.equal(result.code,'FC_INTEGRATION_STATUS');assert.equal(f.writes.length,0);assert.doesNotMatch(JSON.stringify(result),/secret|token|@gmail/);
 });
+test('FC GET proves the executor and configured script while keeping business routes disabled',()=>{
+ const disabled=fixture({enabled:false});const status=disabled.context.doGet();assert.equal(status.enabled,false);assert.equal(status.executorVerified,true);assert.equal(status.scriptVerified,true);
+ const wrong=fixture({enabled:false,effective:'other@gmail.com',storedId:'different_script_2026'}).context.doGet();assert.equal(wrong.executorVerified,false);assert.equal(wrong.scriptVerified,false);
+});
 test('FC installation requires an interactive owner identity before writing properties',()=>{
  for(const settings of [{active:''},{active:'other@gmail.com'},{effective:'other@gmail.com'},{owner:'other@gmail.com'}]){
   const f=fixture({...settings,enabled:false});assert.throws(()=>f.context.prepararIntegracaoFcV1(),/FC_INSTALL_OWNER_REQUIRED/);assert.equal(f.writes.length,0);
@@ -58,6 +64,13 @@ test('FC installation sets private configuration with every business route disab
  assert.equal(f.values.get('SAHMT_V2_EVALUATION_ALLOWED_EMAILS'),email);assert.equal(f.values.get('SAHMT_OPERATIONAL_PUSH_HMAC_SECRET'),'O'.repeat(43));
  assert.equal(f.values.get('SAHMT_V2_OCCURRENCE_SCORING_HMAC_SECRET'),'C'.repeat(43));assert.equal(f.values.get('FC_OCR_TEMP_FOLDER_ID'),folderId);
  assert.doesNotMatch(JSON.stringify([result,f.logs]),new RegExp('O{43}|C{43}'));
+ assert.equal(result.configurationVerified,true);
+ assert.equal(result.secretFingerprints.operational,createHash('sha256').update('O'.repeat(43)).digest('hex'));
+});
+test('FC installation checks properties after writing before reporting readiness',()=>{
+ const f=fixture({enabled:false});f.context.sahmtV2Properties_().setProperties=()=>{};
+ assert.throws(()=>f.context.prepararIntegracaoFcV1(),/FC_INSTALL_READBACK_FAILED/);
+ assert.equal(f.logs.length,0);
 });
 test('FC installation refuses to overwrite an existing secret or enabled environment',()=>{
  const conflict=fixture({enabled:false});conflict.values.set('SAHMT_OPERATIONAL_PUSH_HMAC_SECRET','X'.repeat(43));assert.throws(()=>conflict.context.prepararIntegracaoFcV1(),/FC_INSTALL_CONFLICT/);assert.equal(conflict.writes.length,0);
@@ -144,4 +157,19 @@ test('FC owner preparation releases its exclusive lock after success and failure
  const success=drivePreparationFixture();success.context.organizarRecursosFcV1();assert.deepEqual(success.locks,{attempts:1,releases:1});
  const failure=drivePreparationFixture();failure.files.get(failure.plan.images.at(-1).stagingId).md5Checksum='b'.repeat(32);
  assert.throws(()=>failure.context.organizarRecursosFcV1(),/FC_DRIVE_STAGING_CHANGED/);assert.deepEqual(failure.locks,{attempts:1,releases:1});
+});
+test('FC Drive failures expose only HTTP status and an approved reason, without raw response or tokens',()=>{
+ const f=fixture();const privateText='synthetic-confidential-response-and-token';
+ f.context.UrlFetchApp.fetch=()=>({getResponseCode:()=>403,getContentText:()=>JSON.stringify({error:{message:privateText,errors:[{reason:'appNotAuthorizedToFile'}]}})});
+ assert.throws(()=>f.context.fcDrivePreparationRequest_('synthetic_staged_file_2026?fields=id'),/FC_DRIVE_PREPARATION_HTTP_403_APP_NOT_AUTHORIZED_TO_FILE/);
+ assert.equal(JSON.parse(f.logs[0]).reason,'APP_NOT_AUTHORIZED_TO_FILE');assert.doesNotMatch(f.logs.join('\n'),new RegExp(privateText+'|synthetic-owner-token|synthetic_staged_file_2026'));
+ const unknown=fixture();unknown.context.UrlFetchApp.fetch=()=>({getResponseCode:()=>500,getContentText:()=>JSON.stringify({error:{errors:[{reason:privateText}]}})});
+ assert.throws(()=>unknown.context.fcDrivePreparationRequest_('synthetic_staged_file_2026?fields=id'),/FC_DRIVE_PREPARATION_HTTP_500_UNSPECIFIED/);
+ assert.doesNotMatch(unknown.logs.join('\n'),new RegExp(privateText));
+});
+test('FC diagnostic reads one staged fingerprint and scope status without copying or moving files',()=>{
+ const f=drivePreparationFixture();f.context.ScriptApp.AuthMode={FULL:'FULL'};f.context.ScriptApp.AuthorizationStatus={REQUIRED:'REQUIRED'};
+ f.context.ScriptApp.getAuthorizationInfo=()=>({getAuthorizedScopes:()=>['https://www.googleapis.com/auth/drive'],getAuthorizationStatus:()=> 'NOT_REQUIRED'});
+ const result=f.context.diagnosticarPreparacaoFcV1();assert.equal(result.code,'FC_DRIVE_RUNTIME_READ_READY');assert.equal(result.driveScopeGranted,true);
+ assert.deepEqual(f.counts(),{copies:0,moves:0});assert.equal(f.reports.length,0);
 });

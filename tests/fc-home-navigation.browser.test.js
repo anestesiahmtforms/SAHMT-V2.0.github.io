@@ -23,7 +23,9 @@ test('FC to Home remains usable with delayed reads, rapid reentry and pending lo
     year:()=>new Promise(resolve=>request.year=()=>resolve([])),history:async()=>[],definition:async()=>initialDefinitions()
    };}`,
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>[],listAudit:async()=>[],loadCatalog:()=>new Promise(resolve=>(window.fcFixture.catalogs??=[]).push(()=>resolve({catalogs:{}})))};}`,
-  'offline-form-drafts.js':`export function installOperationalDrafts(){return {flush:()=>new Promise(()=>{}),restore:async()=>false};}`
+  'offline-form-drafts.js':`export function installOperationalDrafts(){return {flush:()=>new Promise(()=>{}),restore:async()=>false};}`,
+  'fc-performance-data.js':`export const fcPerformanceEnabled=true;export {fcPerformancePresentation} from './fc-performance-data.js?real';
+    window.fcPerformanceFixture={requests:[],stopped:0};export function createFcPerformanceRepository(){return {watch(callbacks){window.fcPerformanceFixture.requests.push(callbacks);return()=>window.fcPerformanceFixture.stopped++;}};}`
  };
  const server=await createServer({configFile:false,base,cacheDir:'.local-preview/vite-fc-home-navigation',
   define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FA',externalManagementEnabled:false}),'import.meta.env.VITE_GOOGLE_PROJECT_AUTH_ENABLED':JSON.stringify('false')},
@@ -45,6 +47,7 @@ test('FC to Home remains usable with delayed reads, rapid reentry and pending lo
   await page.evaluate(()=>window.fcFixture.requests[1].open());
   await page.waitForFunction(()=>window.fcFixture.requests[1].year);
   await page.evaluate(()=>window.fcFixture.requests[1].year());
+  await page.getByRole('button',{name:'INDICADORES OBRIGATÓRIOS QMENTUM',exact:true}).click();
   await page.waitForSelector('[data-qm-indicator="QM01"]');
   // An older opening finishes after reentry. It must not seize the new page's cleanup.
   await page.evaluate(()=>window.fcFixture.requests[0].open());
@@ -119,6 +122,18 @@ test('FC to Home remains usable with delayed reads, rapid reentry and pending lo
   await page.waitForSelector('[data-occurrence-dialog-host] dialog[open]');
   await page.locator('[data-occurrence-cancel]').click();
   await page.locator('[data-occurrence-group-cancel]').click();
+  await goHome();
+  await page.evaluate(()=>location.hash='#/fc-performance');
+  await page.waitForFunction(()=>window.fcPerformanceFixture.requests.length===1);
+  await goHome();
+  assert.equal(await page.evaluate(()=>window.fcPerformanceFixture.stopped),1);
+  await page.evaluate(()=>{const snapshot={uid:'fc-navigation-fixture',runtime:{enabled:true,mode:'FC_ONLY',release:'fc-performance-exclusive-v1',performanceDirty:false,performanceRevision:1},summary:{uid:'fc-navigation-fixture',status:'CONFIRMED',performanceTotal:2,performanceRevision:1},reference:{performanceStatus:'CONFIRMED',performanceRevision:1,maxPerformance:4,eligibleCount:2,allZero:false},ledger:[{modality:'OCCURRENCE',points:2,createdAt:new Date('2026-11-02T12:00:00Z')}]};window.fcPerformanceFixture.snapshot=snapshot;window.fcPerformanceFixture.requests[0].onData(snapshot);});
+  assert.equal(await page.locator('.fc-performance').count(),0);
+  await page.evaluate(()=>location.hash='#/fc-performance');
+  await page.waitForFunction(()=>window.fcPerformanceFixture.requests.length===2);
+  await page.evaluate(()=>window.fcPerformanceFixture.requests[1].onData(window.fcPerformanceFixture.snapshot));
+  await page.waitForSelector('.fc-performance-summary');assert.match(await page.locator('.fc-performance-summary').innerText(),/50%/);
+  for(const width of [320,390,1440]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:'.local-preview/fc-performance-'+width+'.png'});}
   await goHome();
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();await server.close();}

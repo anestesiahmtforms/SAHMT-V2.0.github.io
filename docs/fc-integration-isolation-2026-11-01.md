@@ -8,16 +8,18 @@ Estado: migração em andamento, sem troca em produção. Responsável por FC in
 | --- | --- | --- |
 | Código comum PWA | `anestesiahmtforms/SAHMT-V2.0.github.io`, revisão inicial `5bd3b44` | Clonado; branch local `codex/fc-integration-isolation` |
 | Apps Script central | `1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD` | Identificado no Drive e editor; não modificado |
-| Apps Script FC | `1rwJgnVjEmCoSfXlhIA-SNaCFOINIl_-O73CVn9D_aIBM60tI_qZnUtrI` | Criado por FC; 22 arquivos de preparação enviados e verificados; sem implantação pública ou segredos |
+| Apps Script FC | `1rwJgnVjEmCoSfXlhIA-SNaCFOINIl_-O73CVn9D_aIBM60tI_qZnUtrI` | Criado por FC e organizado na pasta restrita; 23 arquivos de preparação verificados; segredos próprios somente no servidor; sem implantação pública |
 | Gateway histórico | `16Xhs_5KkWRt8xCxqH8cFrxEHSaeAs3A16WQA1o78FdUnxQsJG3QLICB4` | Encontrado no Drive; autenticação secundária do Worker central está desativada |
 | Firebase FC | `indicadores---sahmt`, banco `(default)` | Confirmado no código comum e destinos dos relays; acesso administrativo atual não validado |
 | Cloudflare central | `1851e9f4cd5f026371beaa2c5a85f1b8` | Consulta autenticada da sessão local Wrangler bem-sucedida |
-| Cloudflare FC | `57b8b02c577b6f61e96a61ce44142d2e` | Sessão FC própria confirmada; Worker específico criado, desativado e sem URLs públicas |
+| Cloudflare FC | `57b8b02c577b6f61e96a61ce44142d2e` | Worker específico público, com todas as operações desativadas; nove probes HTTP aprovados |
 | Drive destino FC | `1HKohx4MezyQC4tW2gim11ar_7OfmFtPc` | Propriedade FC confirmada; subpasta restrita criada e 20 cópias de entrada preparadas |
 
 O link do painel Cloudflare identifica a conta e não é endpoint público da integração. O 403 não demonstra que a conta inexiste. Não criar outra conta como tentativa de corrigir a autorização.
 
-Atualização: o perfil `sahmt-fc-isolation` confirmou a identidade `anestesiahmtforms3@gmail.com` e a conta FC existente. A captura do usuário em Workers plans mostra **Free, $0, Current plan**; o usuário também confirmou o plano gratuito. Nenhuma alteração de plano ou cobrança foi executada. Com inventário prévio vazio, foi criado `sahmt-fc-integration`, versão `80d0c9f1-2ae2-4481-bc4e-91407c4b82b8`, com todas as flags `false`, Workers.dev e previews desativados e zero agendamentos. O namespace SQLite próprio é `0db752efd43943838b3af89e0eabeafc`. O readback da API confirmou esse estado. A URL pública da integração ainda está pendente de configuração/validação; não se apresenta um endereço privado/desativado como integração operacional.
+Atualização: o perfil `sahmt-fc-isolation` confirmou a identidade `anestesiahmtforms3@gmail.com` e a conta FC existente. A captura do usuário em Workers plans mostra **Free, $0, Current plan**; o usuário também confirmou o plano gratuito. Nenhuma alteração de plano ou cobrança foi executada. Com inventário prévio vazio, foi criado `sahmt-fc-integration`. A versão atual é `6d988179-8254-446b-8832-a7da78b9b468`, no endereço verificado `https://sahmt-fc-integration.anestesiahmtforms3.workers.dev`. As três flags permanecem `false`, previews desativados e zero agendamentos. O namespace SQLite próprio `0db752efd43943838b3af89e0eabeafc` e os dois secret bindings foram preservados. Nove verificações HTTP confirmaram bloqueios, CORS e negação de rotas. A URL pública está preparada; a operação integrada ainda não foi ativada.
+
+Apps Script FC: implantação versão 1 `AKfycbypyEIHiUM7Ouh1NT9djsnTPWbPiyPHv-BiEYZdyoKcqrgOEwiQFUq2i3O03DzddnjdDg`, URL `https://script.google.com/macros/s/AKfycbypyEIHiUM7Ouh1NT9djsnTPWbPiyPHv-BiEYZdyoKcqrgOEwiQFUq2i3O03DzddnjdDg/exec`. GET real confirmou `enabled=false`, `executorVerified=true` e `scriptVerified=true`, com execução USER_DEPLOYING pela conta FC. A instalação das propriedades foi conferida e os literais dos segredos foram retirados do código. Nenhuma referência ou encaminhamento PWA foi alterado.
 
 O inventário autenticado central identificou `sahmt-auth-broker`, `sahmt-auth-pilot`, `sahmt-html-training`, `sahmt-indicators`, `sahmt-label-ai` e `sahmt-operational-channel`. O broker usa Durable Object para admissão e não tem cron. Outras estações dependem desses recursos: preservá-los.
 
@@ -84,13 +86,13 @@ O limite diário de requisições do [Workers Free é por conta](https://develop
 
 | Origem | Finalidade | Inventário | Destino |
 | --- | --- | --- | --- |
-| `1wKCX9ZHPgZ3FPmHU_N12dNbAQ97BeelA` | Imagens de procedimentos/técnicas QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Pasta FC `1GVmQD2T2ITlSDqtS-KsrHs0_QorJk_xK`, cópias finais pendentes |
-| `1-wPMVdon2pCjjariPqYZ6tsweinaf3bA` | Imagens de números de indicadores QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Pasta FC `1rpKUFmZ1sNZ1w31305kx48jW1WbEqSuI`, cópias finais pendentes |
+| `1wKCX9ZHPgZ3FPmHU_N12dNbAQ97BeelA` | Imagens de procedimentos/técnicas QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Pasta FC `1GVmQD2T2ITlSDqtS-KsrHs0_QorJk_xK`, 10 cópias finais FC verificadas |
+| `1-wPMVdon2pCjjariPqYZ6tsweinaf3bA` | Imagens de números de indicadores QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Pasta FC `1rpKUFmZ1sNZ1w31305kx48jW1WbEqSuI`, 10 cópias finais FC verificadas |
 | `1sL1NPK-CkZHmWJO_39MLajU-VpJIOZ74` | Pasta central APP SAHMT-V2.0 | Contém scripts, cadastro, relatórios e escalas compartilhados | Não mover integralmente |
 
-Os 20 IDs, URLs, pais, proprietários e permissões originais estão no inventário JSON. As 20 cópias de entrada, dentro de FC, estão registradas em `drive-copy-staging.json`, com tamanho, checksum e propriedade FA verificados. A propriedade das cópias finais ainda precisa ser FC: a localização na pasta FC não comprova essa transferência. A função manual `organizarRecursosFcV1` cria cópias nativas pela conta proprietária FC, com trava exclusiva, conferência integral antes das mutações, retomada por appProperties e relatório sem segredos. Os originais e as cópias de entrada permanecem preservados.
+Os 20 IDs, URLs, pais, proprietários e permissões originais estão no inventário JSON. O mapa `drive-copy-staging.json` registra os IDs originais, de entrada e finais. A execução real `organizarRecursosFcV1` criou as cópias nativas pela conta FC, com trava exclusiva, fingerprints e retomada por appProperties. Relatório `1zIBhSsfF-TJP9kBsFmylGs-vnDLQv9R2`, seguido de readback administrativo independente, confirmou as 20 propriedades FC, pastas e checksums. Originais e cópias de entrada permanecem preservados. As referências de produção continuam antigas.
 
-O novo projeto precisa ser organizado na subpasta restrita `1hc8nHWMXAUbyU3TsmD_5TzBdJdNa5I5A`; a pasta principal mantém seu compartilhamento preexistente por link. OCR usará `1NbyfmHaAJs95fdaEvJw7uljcmcyYwZcS`. A instalação confere ACL completa, inclusive compartilhamentos nominais e grupos, antes de configurar o destino temporário.
+O novo projeto foi organizado e verificado na subpasta restrita `1hc8nHWMXAUbyU3TsmD_5TzBdJdNa5I5A`; a pasta principal mantém seu compartilhamento preexistente por link. OCR usará `1NbyfmHaAJs95fdaEvJw7uljcmcyYwZcS`. A instalação confere ACL completa, inclusive compartilhamentos nominais e grupos, antes de configurar o destino temporário.
 
 A referência conhecida é `qmentumUnits/{unitId}/printConfig/current.folders.{TECHNIQUES,INDICATORS}`. Antes de alterar, capturar valor e `updateTime`, provar que os novos arquivos atendem à conta executora e registrar o par antigo/novo. Outros campos de proveniência de imagens e configurações de OCR devem ser descobertos no snapshot real. Não fazer substituição global de strings no Firestore.
 
@@ -113,13 +115,13 @@ Rollback exige publicação da configuração anterior e atualização do shell 
 ## Evidências e pendências
 
 - Consulta real Cloudflare central e FC concluída; Worker FC criado desativado, com readback registrado e plano Free confirmado.
-- Inventário real de 20 arquivos Drive concluído; 20 cópias de entrada dentro de FC verificadas. Cópias finais FC e atualização de referências pendentes.
+- Inventário real de 20 arquivos Drive concluído; 20 cópias de entrada e 20 cópias finais com propriedade FC verificadas. Atualização de referências pendente.
 - A tentativa inicial de criação pelo Drive conectado como FA foi negada. Após OAuth FC, propriedade/permissões foram confirmadas e as pastas de destino foram criadas.
 - Seis verificações HTTP reais no Worker central aprovadas: três rotas recusam chamadas sem autenticação, duas recusam origem indevida e preflight autorizado responde. Não houve tentativa de escrita de negócio.
 - Quarenta testes locais existentes de sessão Google, clientes de imagens e ponte de Ocorrências passaram na linha de base. São evidência de contratos locais, não de migração integrada.
 - O controle do navegador continua indisponível com `Local browser use is disabled in Work settings`. Sessões Cloudflare/Google obtidas pelos fluxos oficiais de autorização; execução inicial pela dona ainda depende da interação do usuário.
-- 34 testes locais atuais de preparação/routing/isolamento passaram. Pacote FC de preparação enviado com readback confirmado, sem segredos e sem publicação. Esses resultados não comprovam operação integrada.
-- Pendentes: execução/propriedade runtime FC; propriedades/gatilhos centrais reais; acesso ao ledger FA/FB; cópias finais e referências; compatibilidade com clientes antigos; ativação pública; testes PWA reais e das outras estações; consumo e rollback integrado.
+- 38 testes locais atuais de preparação/routing/isolamento passaram; nove probes HTTP reais no Worker FC público também. Propriedades e fingerprints confirmados pela dona; literais dos segredos retirados do código. A implantação Apps Script FC comprovou executor e script, mantendo flags false. Esses resultados não comprovam operação integrada.
+- Pendentes: instalação e identidade da implantação pública FC; propriedades/gatilhos centrais reais; acesso ao ledger FA/FB; referências; compatibilidade com clientes antigos; testes PWA reais e das outras estações; consumo e rollback integrado.
 
 ## Repetição nas demais estações
 

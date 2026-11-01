@@ -47,7 +47,7 @@ function prepararIntegracaoFcV1() {
   if (triggers.length) throw Error('FC_INSTALL_UNEXPECTED_TRIGGERS');
   const values = {
     FC_INTEGRATION_ENABLED: 'false', FC_EXPECTED_SCRIPT_ID: scriptId, FC_OCR_TEMP_FOLDER_ID: config.ocrFolderId,
-    QMENTUM_WRITE_ENABLED: 'false', SAHMT_V2_OCCURRENCE_SCORING_ENABLED: 'false',
+    QMENTUM_WRITE_ENABLED: 'false', SAHMT_V2_OCCURRENCE_SCORING_ENABLED: 'false', FC_PERFORMANCE_ENABLED: 'false', QMENTUM_QUARTERLY_ENABLED: 'false',
     SAHMT_V2_EVALUATION_ALLOWED_EMAILS: SAHMT_FC_EXECUTOR_EMAIL,
     SAHMT_OPERATIONAL_PUSH_HMAC_SECRET: config.operationalSecret,
     SAHMT_V2_OCCURRENCE_SCORING_HMAC_SECRET: config.occurrenceSecret,
@@ -58,7 +58,11 @@ function prepararIntegracaoFcV1() {
     if (existing !== null && existing !== values[key]) throw Error('FC_INSTALL_CONFLICT');
   });
   props.setProperties(values, false);
+  Object.keys(values).forEach(function (key) {
+    if (props.getProperty(key) !== values[key]) throw Error('FC_INSTALL_READBACK_FAILED');
+  });
   const result = {code: 'FC_INTEGRATION_PREPARED', station: 'FC', executor: SAHMT_FC_EXECUTOR_EMAIL,
-    scriptId: scriptId, triggers: triggers.length, enabled: false, businessWrites: 0};
+    scriptId: scriptId, triggers: triggers.length, enabled: false, businessWrites: 0, configurationVerified: true,
+    secretFingerprints: {operational: sha256Hex_(config.operationalSecret), occurrence: sha256Hex_(config.occurrenceSecret)}};
   console.log(JSON.stringify(result)); return result;
 }
