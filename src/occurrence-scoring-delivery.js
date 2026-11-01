@@ -1,3 +1,4 @@
+import {fcIntegrationEndpoint} from './fc-integration-config.js';
 export async function notifyOccurrenceScore({id, uid, auth, isCurrent = () => true, enabled = false, endpoint, allowedOrigin, fetchImpl = globalThis.fetch}) {
   if (!enabled) return {code:'OCCURRENCE_SCORING_DISABLED'};
   let url;try{url=new URL(endpoint);}catch{return {code:'OCCURRENCE_SCORE_CONFIG_INVALID'};}
@@ -15,8 +16,11 @@ export async function notifyOccurrenceScore({id, uid, auth, isCurrent = () => tr
     return {code:response.ok?'OCCURRENCE_SCORE_NOTIFICATION_SENT':'OCCURRENCE_SCORE_PENDING'};
   }catch{return {code:'OCCURRENCE_SCORE_PENDING'};}finally{clearTimeout(timer);}
 }
-export async function notifyConfiguredOccurrenceScore(options) {
-  const env=import.meta.env||{},origin=env.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN;
-  return notifyOccurrenceScore({...options,enabled:env.VITE_OCCURRENCE_SCORING_ENABLED==='true',allowedOrigin:origin,
-    endpoint:origin?origin+'/v1/evaluation/occurrence':''});
+export async function notifyConfiguredOccurrenceScore(options,{env=import.meta.env||{}}={}) {
+  if(env.VITE_OCCURRENCE_SCORING_ENABLED!=='true')return {code:'OCCURRENCE_SCORING_DISABLED'};
+  const origin=env.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN;
+  let endpoint,allowedOrigin;
+  try{endpoint=fcIntegrationEndpoint('/v1/evaluation/occurrence',{env,fallback:origin?origin+'/v1/evaluation/occurrence':''});allowedOrigin=new URL(endpoint).origin;}
+  catch{return {code:'OCCURRENCE_SCORE_CONFIG_INVALID'};}
+  return notifyOccurrenceScore({...options,enabled:true,allowedOrigin,endpoint});
 }

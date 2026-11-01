@@ -13,3 +13,6 @@ ui-debug.log
 .local-preview/
 
 dist-indicators/
+
+# Local migration bundles; source lives in worker-fc-integration/.
+/fc-isolation/

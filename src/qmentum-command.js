@@ -1,8 +1,8 @@
 import {qmentumCanonical} from './qmentum-write.js';
-export function createQmentumCommandSender({db,auth,uid,ensure,firestore:api,endpoint,fetchImpl=globalThis.fetch}={}){
- const configured=endpoint||import.meta.env?.VITE_OPERATIONAL_SHEETS_ENDPOINT;
+import {fcIntegrationEndpoint} from './fc-integration-config.js';
+export function createQmentumCommandSender({db,auth,uid,ensure,firestore:api,endpoint,integrationEnv=import.meta.env||{},fetchImpl=globalThis.fetch}={}){
  return async(operation,payload)=>{
-  ensure();let url;try{url=new URL(configured);if(url.protocol!=='https:'||url.username||url.password)throw Error();url.pathname='/v1/qmentum/write';url.search='';url.hash='';}catch{throw Error('QMENTUM_WRITE_CONFIG_REQUIRED');}
+  ensure();let url;try{const configured=endpoint||fcIntegrationEndpoint('/v1/qmentum/write',{env:integrationEnv,fallback:integrationEnv.VITE_OPERATIONAL_SHEETS_ENDPOINT});url=new URL(configured);if(url.protocol!=='https:'||url.username||url.password)throw Error();url.pathname='/v1/qmentum/write';url.search='';url.hash='';}catch{throw Error('QMENTUM_WRITE_CONFIG_REQUIRED');}
   const canonical=qmentumCanonical({operation,payload});if(new TextEncoder().encode(canonical).length>180000)throw Error('QMENTUM_DOCUMENT_TOO_LARGE');
   const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical)))].map(x=>x.toString(16).padStart(2,'0')).join('');ensure();
   const id=uid+'_'+hash,target=api.doc(db,'qmentumWriteRequests',id);
