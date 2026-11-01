@@ -1,0 +1,24 @@
+# FC Worker created after authenticated inventory confirmed no existing Worker.
+name = "sahmt-fc-integration"
+main = "worker.js"
+account_id = "57b8b02c577b6f61e96a61ce44142d2e"
+compatibility_date = "2026-10-10"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "FC_ADMISSION"
+class_name = "FcIntegrationAdmissionState"
+
+[[migrations]]
+tag = "fc-v1"
+new_sqlite_classes = ["FcIntegrationAdmissionState"]
+
+[vars]
+FC_INTEGRATION_ENABLED = "false"
+QMENTUM_WRITE_ENABLED = "false"
+OCCURRENCE_SCORING_ENABLED = "false"
+FC_MODULE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbypyEIHiUM7Ouh1NT9djsnTPWbPiyPHv-BiEYZdyoKcqrgOEwiQFUq2i3O03DzddnjdDg/exec"
+# Dedicated backend verified disabled, deployed by the FC owner. HMAC secrets
+# are server-side secret bindings and must never be added to this file.

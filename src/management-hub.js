@@ -26,7 +26,8 @@ const panels={
  ]},
  records:{title:'Registros',icon:'records',parent:'home',items:[
   {label:'Registros de Ocorrências',icon:'occurrence',route:'occurrences',access:'occurrences'},
-  {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'}
+  {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'},
+  {label:'Desempenho FC',icon:'performance',route:'fc-performance',access:'fcPerformance'}
  ]},
  results:{title:'INDICADORES - SAHMT',icon:'results',parent:'home',message:'Os indicadores consolidados do SAHMT serão exibidos nesta área.'},
  surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',items:[

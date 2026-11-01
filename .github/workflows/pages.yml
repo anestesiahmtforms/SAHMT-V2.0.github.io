@@ -96,7 +96,7 @@ jobs:
         run: |
           node --test tests/qmentum-fc-migration-verification.test.js tests/fc-source-retirement-rules.test.js
           npm run build:fc-module-rules
-          npx firebase emulators:exec --config firebase.fc.test.json --project demo-sahmt-fc-modules --only firestore --non-interactive "node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/fc-occurrence.rules.test.js"
+          npx firebase emulators:exec --config firebase.fc.test.json --project demo-sahmt-fc-modules --only firestore --non-interactive "node --test --test-force-exit --test-concurrency=1 tests/qmentum.rules.test.js tests/fc-occurrence.rules.test.js tests/fc-performance.rules.test.js"
       - name: Run training repetition and continuation regression
         run: node --test tests/training-participation-state.test.js tests/forms-evaluation.test.js
       - name: Validate HTML training, privacy, scoring and ROP audits
@@ -104,7 +104,7 @@ jobs:
       - name: Run management migration local tests
         run: npm run test:management
       - name: Verify FC module deployment targeting
-        run: node --test tests/fc-module-deployment.test.js
+        run: node --test tests/fc-module-deployment.test.js tests/fc-integration-isolation.test.js tests/fc-apps-script.test.js tests/fc-performance-backend.test.js tests/fc-performance-data.test.js tests/fc-performance-jobs.test.js tests/fc-performance-ui.test.js tests/fc-performance-rules-builder.test.js tests/fc-performance-activation.test.js
       - name: Run FA consolidation safety tests
         run: node scripts/test-fa-consolidation.mjs
       - name: Run unified FA Occurrences unit tests
@@ -152,6 +152,9 @@ jobs:
           VITE_HTML_TRAINING_ENDPOINT: ${{ vars.VITE_HTML_TRAINING_ENDPOINT || 'https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/training' }}
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
+          VITE_FC_INTEGRATION_ENABLED: ${{ vars.VITE_FC_INTEGRATION_ENABLED || 'false' }}
+          VITE_FC_PERFORMANCE_ENABLED: ${{ vars.VITE_FC_PERFORMANCE_ENABLED || 'true' }}
+          VITE_FC_INTEGRATION_ORIGIN: ${{ vars.VITE_FC_INTEGRATION_ORIGIN }}
           VITE_OPERATIONAL_CHANNEL_ENDPOINT: ${{ vars.VITE_OPERATIONAL_CHANNEL_ENDPOINT }}
           VITE_OPERATIONAL_CONTINUITY_ENABLED: ${{ vars.VITE_OPERATIONAL_CONTINUITY_ENABLED }}
           VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED: ${{ vars.VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED || 'true' }}
