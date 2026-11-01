@@ -42,3 +42,5 @@ html:has(.app-shell--qmentum),body:has(.app-shell--qmentum){overflow:hidden;over
 @media(max-width:420px){.qm-tools button{min-width:75px}.qm-controls label{min-width:90px}.qm-dialog__header,.qm-dialog__body,.qm-dialog__footer{padding:11px}.qm-grid{grid-template-columns:1fr}.app-shell--qmentum .brand img{width:32px;height:32px}.qm-dialog{width:calc(100vw - 12px);max-width:calc(100vw - 12px)}}
 @media(prefers-reduced-motion:reduce){.qm-indicator:active{transform:none}}
 @media(max-width:600px){.qm-tools>button{display:none}.qm-tools-menu{display:block;min-height:42px;width:100%;padding:7px 10px;border-radius:10px;border:1px solid #b9ccd5;background:#e6eef2;color:var(--ink);font:inherit;font-weight:800;font-size:16px}.qm-controls label{font-size:.72rem}.app-shell--qmentum .topbar{padding-inline:10px}.app-shell--qmentum .identity-card__user-row{margin:0}.qm-module-status{font-size:.72rem}}
+
+.qm-entry-actions{display:flex;gap:6px;flex-wrap:wrap}.qm-entry-actions button{flex:1;min-width:0;font-size:.8rem;padding:7px 10px;white-space:normal;line-height:1.3}

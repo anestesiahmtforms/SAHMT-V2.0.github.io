@@ -8,6 +8,20 @@ const engine=process.env.QMENTUM_BROWSER==='webkit'?webkit:chromium;
 const launchOptions=process.env.QMENTUM_BROWSER_CHANNEL?{channel:process.env.QMENTUM_BROWSER_CHANNEL,headless:true}:{headless:true};
 const viewports=[['mobile',390,844],['tablet',768,1024],['desktop',1440,1000],['compact',320,568]];
 
+test('legacy manual state and manager print entry keep the selected month in one dialog',async()=>{
+ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false}});let browser;
+ try{
+  await server.listen();const origin='http://127.0.0.1:'+server.httpServer.address().port,base=origin+server.config.base;browser=await engine.launch(launchOptions);const page=await browser.newPage({viewport:{width:390,height:844}});
+  await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());await fixture(page,base,{withPrints:true,legacy:true});
+  await page.getByRole('button',{name:'Entrada manual',exact:true}).click();assert.equal(await page.locator('select[data-state="anestheticProcedures"]').inputValue(),'MISSING');assert.equal(await page.locator('[data-count="anestheticProcedures"]').inputValue(),'');await page.locator('[data-qm-close]').click();
+  await page.locator('#qm-date').fill('2026-08');await page.locator('#qm-date').dispatchEvent('change');await page.waitForFunction(()=>document.querySelector('.qm-module-status')?.textContent.includes('Agosto'));
+  await page.getByRole('button',{name:'Entrada por prints',exact:true}).click();assert.equal(await page.locator('dialog[open]').count(),1);assert.match(await page.locator('[data-print-scope]').innerText(),/2026-08/);
+  await page.getByRole('button',{name:'Usar Drive',exact:true}).click();await page.getByRole('button',{name:'Sincronizar alterações',exact:true}).click();await page.waitForFunction(()=>window.monthly.printCalls.length===1);assert.deepEqual(await page.evaluate(()=>window.monthly.printCalls[0]),{unitId:'synthetic-a',year:2026});
+  await page.locator('[data-qm-close]').click();assert.equal(await page.locator('dialog[open]').count(),0);assert.equal(await page.locator('#qm-date').inputValue(),'2026-08');
+  await fixture(page,base,{role:'collector',withPrints:true});assert.equal(await page.getByRole('button',{name:'Entrada por prints',exact:true}).count(),0);
+ }finally{await browser?.close();await server.close();}
+});
+
 async function fixture(page,base,options={}) {
  await page.goto(base+'tests/fixtures/qmentum-runtime.html');
  await page.evaluate(async({base,options})=>{

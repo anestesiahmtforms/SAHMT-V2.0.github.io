@@ -1,5 +1,6 @@
 import {buildManagementAuthRuntime,MANAGEMENT_RUNTIME_DEFAULTS} from './runtime.js';
 import {relayQmentumWrite} from './qmentum-write-relay.js';
+import {relayQmentumPrints} from './qmentum-print-relay.js';
 import {relayOperationalSheet} from './operational-sheet-relay.js';
 import {relayOccurrenceScore} from './occurrence-score-relay.js';
 import {createManagementBrokerHttp} from '../scripts/lib/management-broker-http.js';
@@ -57,6 +58,11 @@ export function createManagementAuthWorker({buildRuntime,buildOperationalRuntime
         if(origin==='https://anestesiahmtforms.github.io')Object.assign(headers,{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type'});
         if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
         return Response.json({code:'READING_RETIRED'},{status:410,headers});
+      }
+      if (new URL(request.url).pathname === '/v1/qmentum/prints') {
+        if(env?.QMENTUM_WRITE_ENABLED!=='true'||request.method!=='POST')return relayQmentumPrints(request,env||{});
+        try {const runtime=await operationalFor(env);if(runtime.maxRequestMs<55000)return relayQmentumPrints(request,env);return await relayQmentumPrints(request,env,{admitRequest:runtime.admitRequest});}
+        catch{return relayQmentumPrints(request,env);}
       }
       if (new URL(request.url).pathname === '/v1/qmentum/write') {
         if(env?.QMENTUM_WRITE_ENABLED!=='true'||request.method!=='POST')return relayQmentumWrite(request,env||{});

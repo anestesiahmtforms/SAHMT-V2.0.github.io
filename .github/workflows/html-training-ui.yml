@@ -24,8 +24,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
-      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/app-updates-control.browser.test.js tests/year-end-startup.browser.test.js tests/qmentum-runtime.browser.test.js tests/qmentum-monthly-home.browser.test.js
-      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/app-updates-control.browser.test.js tests/year-end-startup.browser.test.js tests/qmentum-runtime.browser.test.js tests/qmentum-monthly-home.browser.test.js
+      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-updates.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/app-updates-control.browser.test.js tests/year-end-startup.browser.test.js tests/qmentum-runtime.browser.test.js tests/qmentum-monthly-home.browser.test.js tests/qmentum-print-ui.browser.test.js
+      - run: node --test tests/html-training-ui.browser.test.js tests/html-training-leaf.browser.test.js tests/document-admin-scroll.browser.test.js tests/app-update-release.browser.test.js tests/app-updates-targeted.browser.test.js tests/app-updates-control.browser.test.js tests/year-end-startup.browser.test.js tests/qmentum-runtime.browser.test.js tests/qmentum-monthly-home.browser.test.js tests/qmentum-print-ui.browser.test.js
         env:
           SAHMT_BROWSER_ENGINE: webkit
           QMENTUM_BROWSER: webkit

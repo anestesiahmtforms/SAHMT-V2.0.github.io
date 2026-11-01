@@ -23,8 +23,8 @@ export function latestRecordedMonth(rows){
 export function monthlyOverviewRows(input){
  const counts=input?.counts||{},totals=input?.counts?productionTotals(input.counts):{anestheticTotal:null,legacyBlocks:null};
  return sourceFields.map(([key,label])=>{
-  const derived=key in totals,value=derived?totals[key]:counts[key],state=count(value)?'value':input?.notApplicable?.includes(key)?'not-applicable':'missing';
-  return {key,label,value:state==='value'?value:null,state,origin:derived?'DERIVED':['MANUAL','IMPORTED'].includes(input?.origins?.[key])?input.origins[key]:'UNINFORMED'};
+  const sourceKey=key==='anestheticTotal'&&count(counts.anestheticProcedures)?'anestheticProcedures':key,derived=key in totals&&sourceKey===key,value=key in totals?totals[key]:counts[key],state=count(value)?'value':input?.notApplicable?.includes(sourceKey)?'not-applicable':'missing';
+  return {key,label,value:state==='value'?value:null,state,origin:derived?'DERIVED':['MANUAL','IMPORTED'].includes(input?.origins?.[sourceKey])?input.origins[sourceKey]:'UNINFORMED'};
  });
 }
 export function renderMonthlyOverview(record,{year,month}){
