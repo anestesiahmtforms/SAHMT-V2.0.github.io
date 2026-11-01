@@ -1,10 +1,12 @@
 import './qmentum-ui.css';
+import './qmentum-monthly-bars.css';
 import {QMENTUM_INDICATORS,COUNT_KEYS,FIELD_LABELS,PRODUCTION,emptyInputs,getIndicator} from './qmentum-catalog.js';
 import {calculateMonth,monthlySeries,productionTotals,aggregateResults,periodKey,percent,RESULT_LABELS} from './qmentum-engine.js';
 import {createDraftStore} from './qmentum-data.js';
 import {escapeQ as e,MONTHS,monthlyChart,performanceChart,resultCard,exportQmentumCsv} from './qmentum-charts.js';
 import {analysisFor} from './qmentum-references.js';
 import {quarterFacts,sameAnalysisFacts} from './qmentum-quarterly.js';
+import {renderMonthlyOverview} from './qmentum-overview.js';
 
 const clone=x=>structuredClone(x);
 const FULL_MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -23,7 +25,7 @@ const button=(id,label)=>`<button type="button" class="secondary-button" data-qm
 
 /** UI accepts an injected repository for local, synthetic browser checks. Production passes FC only. */
 export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=>true,drafts=createDraftStore()}={}) {
- let disposed=false,busy=false,sequence=0,modal=null,opener=null,listScroll=0,mode=null,inputs=emptyInputs(),dirty=false,rows=[],record=null,defs=null;
+ let disposed=false,busy=false,sequence=0,modal=null,opener=null,listScroll=0,indicatorOpener=null,mode=null,backAction=null,calendarSelected=false,inputs=emptyInputs(),dirty=false,rows=[],record=null,defs=null;
  const context=await repo.open();if(!isCurrent())return ()=>{};
  if(!context.units.length)throw Error('QMENTUM_PERMISSION_DENIED');
  const today=new Date(),localToday=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
@@ -36,16 +38,19 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
  const notice=text=>{const node=root.querySelector('.qm-module-status');if(node)node.textContent=text;};
  const status=text=>{const node=modal?.querySelector('.qm-status');if(node)node.textContent=text;else notice(text);};
  const remember=()=>{if(dirty)try{drafts.save(scope(),{inputs,baseVersion:record?.version||0,referenceDate:date});}catch{status('Não foi possível guardar o rascunho local. Mantenha esta janela aberta e salve no FC.');return false;}return true;};
- const selectDate=value=>{date=value;root.querySelector('#qm-date').value=value;if(record?.status!=='CLOSED'&&value!==(record?.referenceDate||null)){dirty=true;remember();}};
+ const selectDate=value=>{date=value;if(record?.status!=='CLOSED'&&value!==(record?.referenceDate||null)){dirty=true;remember();}};
  const run=async task=>{if(busy||!current())return;busy=true;const frozen=[...root.querySelectorAll('input,select,button'),...(modal?.querySelectorAll('input,select,textarea,button')||[])].map(node=>[node,node.disabled]);frozen.forEach(([node])=>node.disabled=true);try{await task();}catch(error){if(current())status(message(error));}finally{busy=false;frozen.forEach(([node,disabled])=>{if(node.isConnected)node.disabled=disabled;});}};
  const result=()=>calculateMonth(inputs,defs,{inputVersion:record?.version||0,calculatedAt:record?.updatedAt?.toDate?.().toISOString()||null});
- const paintCards=()=>{const grid=root.querySelector('.qm-grid'),scroll=grid.scrollTop;grid.innerHTML=QMENTUM_INDICATORS.map(d=>`<button class="qm-indicator" data-qm-indicator="${d.id}" type="button"><span class="qm-indicator__code">${d.id}</span><span class="qm-indicator__name">${e(d.name)}</span><span class="qm-indicator__result">${resultCard(record?.results?.[d.id])}</span></button>`).join('');grid.scrollTop=scroll;};
- root.innerHTML=`<section class="qm-module" aria-label="Indicadores QMENTUM"><div class="qm-controls"><label>Unidade<select id="qm-unit">${context.units.map(u=>`<option value="${e(u.unitId)}">${e(u.name)}</option>`).join('')}</select></label><label>DATA / COMPETÊNCIA<input id="qm-date" type="date" min="1900-01-01" max="2200-12-31" value="${date}"></label></div><nav class="qm-tools" aria-label="Ferramentas QMENTUM"><select class="qm-tools-menu" aria-label="Ações do módulo"><option value="">Entrada, painel e ferramentas…</option><option value="entry">Entrada mensal</option><option value="dashboard">Painel / exportar</option><option value="history">Histórico</option>${manager?'<option value="import">Importar XLSX</option><option value="config">Definições / metas</option>':''}</select>${button('entry','Entrada mensal')}${button('dashboard','Painel / exportar')}${button('history','Histórico')}${manager?button('import','Importar XLSX')+button('config','Definições / metas'):''}</nav><p class="qm-module-status" role="status" aria-live="polite"></p><div class="qm-grid" aria-label="18 indicadores"></div></section>`;
+ const paintCards=()=>{const grid=modal?.querySelector('.qm-grid');if(!grid)return;const scroll=grid.scrollTop;grid.innerHTML=QMENTUM_INDICATORS.map(d=>`<button class="qm-indicator" data-qm-indicator="${d.id}" type="button"><span class="qm-indicator__code">${d.id}</span><span class="qm-indicator__name">${e(d.name)}</span><span class="qm-indicator__result">${resultCard(record?.results?.[d.id])}</span></button>`).join('');grid.scrollTop=scroll;};
+ const paintOverview=()=>{root.querySelector('[data-qm-home-overview]').innerHTML=renderMonthlyOverview(dirty?{...record,inputs}:record,{year,month});root.querySelector('[data-qm-draft]').hidden=!dirty;};
+ const tools=()=>`<nav class="qm-tools" aria-label="Ferramentas QMENTUM"><select class="qm-tools-menu" aria-label="Ações do módulo"><option value="">Entrada, painel e ferramentas…</option><option value="entry">Entrada mensal</option><option value="dashboard">Painel / exportar</option><option value="history">Histórico</option>${manager?'<option value="import">Importar XLSX</option><option value="config">Definições / metas</option>':''}</select>${button('entry','Entrada mensal')}${button('dashboard','Painel / exportar')}${button('history','Histórico')}${manager?button('import','Importar XLSX')+button('config','Definições / metas'):''}</nav>`;
+ root.innerHTML=`<section class="qm-module" aria-label="Registro de indicadores"><div class="qm-controls"><label>Unidade<select id="qm-unit">${context.units.map(u=>`<option value="${e(u.unitId)}">${e(u.name)}</option>`).join('')}</select></label><label>MÊS<input id="qm-date" type="month" min="1900-01" max="2200-12" value="${periodKey(year,month)}"></label></div><p class="qm-module-status" role="status" aria-live="polite"></p><div class="qm-overview-scroll"><p class="qm-notice" data-qm-draft hidden>Rascunho nesta janela. Salve no FC para confirmar as alterações.</p><div data-qm-home-overview></div></div><div class="qm-home-actions">${manager?button('entry','Entrada manual'):''}${button('indicators','INDICADORES OBRIGATÓRIOS QMENTUM')}</div></section>`;
  const knownDefinitions=new Map([[context.definitions.version,context.definitions]]);
  const load=async(selection={})=>{
-  const nextUnit=selection.unitId??unitId,nextYear=selection.year??year,nextMonth=selection.month??month;
+  const nextUnit=selection.unitId??unitId;let nextYear=selection.year??year,nextMonth=selection.month??month;
   const ticket=++sequence;notice('Carregando competência no FC…');
   try {
+   if(selection.latest&&repo.latest){const latest=await repo.latest(nextUnit);if(!current()||ticket!==sequence)return false;nextYear=latest?.year??today.getFullYear();nextMonth=latest?.month??today.getMonth()+1;}
    const data=await repo.year(nextUnit,nextYear);if(!current()||ticket!==sequence)return false;
    const versions=new Map(knownDefinitions);
    for(const r of data)if(!versions.has(r.definitionVersion))versions.set(r.definitionVersion,await repo.definition(r.definitionVersion));
@@ -58,20 +63,30 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
    if(draft){if(draft.baseVersion===(nextRecord?.version||0)&&nextRecord?.status!=='CLOSED'){nextInputs=draft.inputs;nextDate=draft.referenceDate;nextDirty=true;}else conflict=true;}
    unitId=nextUnit;year=nextYear;month=nextMonth;rows=nextRows;record=nextRecord;defs=nextDefs;inputs=nextInputs;dirty=nextDirty;date=nextDate;
    for(const [version,value] of versions)knownDefinitions.set(version,value);
-   root.querySelector('#qm-unit').value=unitId;root.querySelector('#qm-date').value=date;paintCards();
+   root.querySelector('#qm-unit').value=unitId;root.querySelector('#qm-date').value=periodKey(year,month);paintOverview();paintCards();
    notice(conflict?'Existe rascunho de outra versão. Consulte Histórico para reconciliá-lo; ele não substituiu os dados atuais.':unitLabel()+' · '+competenceLabel()+' · '+(record?.status||'Sem registro')+' · '+(dirty?'Rascunho local recuperado; ainda não salvo no FC.':'Dados do FC carregados.'));
    return true;
   } catch(error) {
-   if(current()&&ticket===sequence){root.querySelector('#qm-unit').value=unitId;root.querySelector('#qm-date').value=date;const control=modal?.querySelector('[data-date]');if(control)control.value=date;}
+   if(current()&&ticket===sequence){root.querySelector('#qm-unit').value=unitId;root.querySelector('#qm-date').value=periodKey(year,month);const control=modal?.querySelector('[data-date]');if(control)control.value=date;}
    throw error;
   }
  };
 
- const close=()=>{if(busy){status('Aguarde a conclusão da operação.');return;}if(!remember())return;modal?.close();modal?.remove();modal=null;mode=null;const target=opener?.isConnected?opener:root.querySelector(`[data-qm-indicator="${opener?.dataset.qmIndicator}"]`);target?.focus({preventScroll:true});root.querySelector('.qm-grid').scrollTop=listScroll;};
- const show=(title,body)=>{
-  if(modal)modal.remove();modal=document.createElement('dialog');modal.className='qm-dialog';modal.setAttribute('aria-labelledby','qm-dialog-title');
+ const dismiss=()=>{modal?.close();modal?.remove();modal=null;mode=null;backAction=null;paintOverview();const target=opener?.isConnected?opener:root.querySelector('[data-qm-action="indicators"]');target?.focus({preventScroll:true});};
+ const close=()=>{if(busy){status('Aguarde a conclusão da operação.');return;}if(!remember())return;(backAction||dismiss)();};
+ const show=(title,body,{back=null,selection=false}={})=>{
+  modal?.close();modal?.remove();modal=document.createElement('dialog');modal.className='qm-dialog'+(selection?' qm-dialog--selection':'');modal.setAttribute('aria-labelledby','qm-dialog-title');
+  backAction=back||(mode==='entry'||mode==='indicators'?dismiss:()=>renderIndicators(true));
   modal.innerHTML=`<header class="qm-dialog__header"><h3 id="qm-dialog-title" tabindex="-1">${e(title)}</h3><small>${e(unitLabel())} · ${competenceLabel()} · ${record?.status||'Rascunho'} · Definição v${defs.version}</small></header><div class="qm-dialog__body">${body}<p class="qm-status" role="status" aria-live="polite"></p></div><footer class="qm-dialog__footer"><button type="button" class="secondary-button" data-qm-close>VOLTAR</button></footer>`;
   document.body.append(modal);modal.querySelector('[data-qm-close]').onclick=close;modal.addEventListener('cancel',ev=>{ev.preventDefault();close();});modal.showModal();modal.querySelector('h3').focus();
+ };
+ const openTool=action=>{switch(action){case 'entry':return renderEntry();case 'dashboard':return dashboard();case 'history':return history();case 'config':if(manager)return config();break;case 'import':if(manager)return importer();break;}};
+ const renderIndicators=(restore=false)=>{
+  mode='indicators';show('INDICADORES OBRIGATÓRIOS QMENTUM',`${tools()}<div class="qm-grid" aria-label="18 indicadores"></div>`,{selection:true});paintCards();
+  modal.querySelector('.qm-grid').scrollTop=listScroll;
+  modal.addEventListener('click',ev=>{const target=ev.target.closest('button');if(!target)return;if(target.dataset.qmIndicator){indicatorOpener=target.dataset.qmIndicator;listScroll=modal.querySelector('.qm-grid').scrollTop;run(()=>renderIndicator(indicatorOpener));}else if(target.dataset.qmAction)run(()=>openTool(target.dataset.qmAction));});
+  modal.querySelector('.qm-tools-menu').onchange=ev=>{const action=ev.target.value;ev.target.value='';run(()=>openTool(action));};
+  if(restore&&indicatorOpener)modal.querySelector(`[data-qm-indicator="${indicatorOpener}"]`)?.focus({preventScroll:true});
  };
  const field=key=>`<label class="qm-field">${e(FIELD_LABELS[key])}<select data-state="${key}" ${record?.status==='CLOSED'?'disabled':''} aria-label="Estado de ${e(FIELD_LABELS[key])}"><option value="VALUE" ${inputs.counts[key]!==null?'selected':''}>Informado (inclusive zero)</option><option value="MISSING" ${inputs.counts[key]===null&&!inputs.notApplicable.includes(key)?'selected':''}>Não informado</option><option value="NA" ${inputs.notApplicable.includes(key)?'selected':''}>Não aplicável</option></select><input type="number" min="0" max="10000000" step="1" inputmode="numeric" data-count="${key}" value="${inputs.counts[key]??''}" ${record?.status==='CLOSED'||inputs.notApplicable.includes(key)?'disabled':''}><small>Origem: ${e(inputs.origins[key])}</small></label>`;
  const check=(key,label)=>`<label class="qm-checkbox"><input type="checkbox" data-confirm="${key}" ${inputs[key]?'checked':''} ${record?.status==='CLOSED'?'disabled':''}>${label}</label>`;
@@ -107,13 +122,13 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
   }
   modal.querySelector('[data-qm-action="review-analysis"]')?.addEventListener('click',()=>run(async()=>{const reason=window.prompt('Justificativa da revisão (mínimo 8 caracteres):');if(reason===null)return;await repo.requestAnalysisReview({unitId,analysisId:latest.id,signature:latest.signature,reason});status('Revisão enviada para validação no servidor. Ainda não marcada como revisada.');}));
   modal.querySelector('[data-quarter]').onchange=update;modal.querySelector('[data-quarter-year]').onchange=update;
-  modal.querySelector('[data-qm-action="back-indicator"]').onclick=()=>renderIndicator(id);
-  modal.querySelector('[data-qm-close]').onclick=()=>renderIndicator(id);
+  backAction=()=>renderIndicator(id);
+  modal.querySelector('[data-qm-action="back-indicator"]').onclick=close;
  };
  const renderIndicator=id=>{
   mode=id;const d=getIndicator(id),r=result()[id],series=monthlySeries(rows,id,year),previous=rows.find(x=>x.month===month-1)?.results[id],analysis=analysisFor(r,previous);
   const keys=[d.numerator,d.denominator,...(['QM15','QM16'].includes(id)?[id==='QM15'?'followed48':'followed30',id==='QM15'?'pending48':'pending30']:[])];
-  show(`${id} · ${d.name}`,`${editing(keys)}${id==='QM14'?check('uniqueEventProceduresConfirmed','Confirmei que o numerador conta procedimentos únicos, não episódios de eventos.'):''}${['QM15','QM16'].includes(id)?check(id==='QM15'?'attribution48':'attribution30','Atribuição à anestesia validada e coorte identificada pela competência do procedimento.'):''}${saveActions()}<div class="qm-result">${resultCard(r)}</div>${monthlyChart(series,{target:r.targetValidated?r.target:null})}${performanceChart(r,previous)}<section class="qm-analysis" aria-label="Análise automática">${analysis.paragraphs.map(p=>`<p>${e(p)}</p>`).join('')}</section>${button('quarterly','ANÁLISE CRÍTICA TRIMESTRAL E PLANO DE MELHORIA')}<details><summary>Memória de cálculo e legado</summary><p>${e(d.numeratorLabel)} / ${e(FIELD_LABELS[d.denominator])}. Regra: ${e(d.rule==='complement'?'1 − N/D':'N/D')}. ${e(d.source)}</p><p>Legado: ${percent(inputs.legacyRates[id]?.value)}. Recalculado: ${percent(r.ratio)}. Estado: ${e(RESULT_LABELS[r.status])}.</p><p>Critério: ${e(defs.items[id].criterion||'Validação institucional pendente')}.</p></details>`);bindEditor();modal.querySelector('[data-qm-action="quarterly"]').onclick=()=>run(()=>quarterly(id));
+  show(`${id} · ${d.name}`,`<div class="qm-result">${resultCard(r)}</div>${monthlyChart(series,{target:r.targetValidated?r.target:null})}${performanceChart(r,previous)}<section class="qm-analysis" aria-label="Análise automática">${analysis.paragraphs.map(p=>`<p>${e(p)}</p>`).join('')}</section>${button('quarterly','ANÁLISE CRÍTICA TRIMESTRAL E PLANO DE MELHORIA')}${editing(keys)}${id==='QM14'?check('uniqueEventProceduresConfirmed','Confirmei que o numerador conta procedimentos únicos, não episódios de eventos.'):''}${['QM15','QM16'].includes(id)?check(id==='QM15'?'attribution48':'attribution30','Atribuição à anestesia validada e coorte identificada pela competência do procedimento.'):''}${saveActions()}<details><summary>Memória de cálculo e legado</summary><p>${e(d.numeratorLabel)} / ${e(FIELD_LABELS[d.denominator])}. Regra: ${e(d.rule==='complement'?'1 − N/D':'N/D')}. ${e(d.source)}</p><p>Legado: ${percent(inputs.legacyRates[id]?.value)}. Recalculado: ${percent(r.ratio)}. Estado: ${e(RESULT_LABELS[r.status])}.</p><p>Critério: ${e(defs.items[id].criterion||'Validação institucional pendente')}.</p></details>`);bindEditor();modal.querySelector('[data-qm-action="quarterly"]').onclick=()=>run(()=>quarterly(id));
  };
  const renderEntry=()=>{mode='entry';const totals=productionTotals(inputs.counts);show('Entrada mensal e fechamento',`${editing(COUNT_KEYS)}${check('techniqueUniverseConfirmed','Universo das categorias anestésicas conferido (técnicas podem se sobrepor).')}${check('uniqueEventProceduresConfirmed','Eventos: procedimentos únicos confirmados.')}${check('attribution48','Coorte de 48h e atribuição validadas.')}${check('attribution30','Coorte de 30 dias e atribuição validadas.')}<p>Total anestésico legado: ${totals.anestheticTotal??'pendente'}; bloqueios legados (sem raquianestesia): ${totals.legacyBlocks??'pendente'}. Estas somas não certificam pacientes únicos.</p>${saveActions()}<details><summary>Condições para fechamento</summary><p>Todos os 18 indicadores precisam estar calculados com definição aprovada ou não aplicáveis. Taxas apenas informadas, inconsistências e seguimento pendente bloqueiam o fechamento. Dados ficam imutáveis até reabertura por gestor com motivo.</p></details>`);bindEditor();};
  const refreshModal=()=>{if(getIndicator(mode))renderIndicator(mode);else if(mode==='entry')renderEntry();};
@@ -129,7 +144,7 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
    else if(node.dataset.confirm)inputs[node.dataset.confirm]=node.checked;else if(node.matches('[data-comment]'))inputs.comment=node.value;else return;
    dirty=true;remember();status('Rascunho local. Salve no FC para atualizar gráficos e histórico.');
   });
-  modal.querySelector('[data-date]').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value)return;if(!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){selectDate(value);return;}if(await load({year:y,month:m})){selectDate(value);refreshModal();}});
+  modal.querySelector('[data-date]').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value)return;if(!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){calendarSelected=true;selectDate(value);return;}if(await load({year:y,month:m})){calendarSelected=true;selectDate(value);refreshModal();}});
   modal.querySelectorAll('[data-qm-action]').forEach(node=>node.onclick=()=>run(async()=>{const action=node.dataset.qmAction;if(action==='save')return persist();if(['review','close'].includes(action))return persist(action.toUpperCase());if(['reopen','rebase'].includes(action)){const reason=window.prompt('Justificativa obrigatória (mínimo 8 caracteres):');if(reason!==null)await persist(action.toUpperCase(),reason);}}));
  };
  const history=async()=>{mode='history';const versions=await repo.history(unitId,year,month);if(!current())return;const draft=drafts.read(scope());show('Histórico de versões',`<p>Últimas 30 versões imutáveis. Cada gravação mantém entradas, fontes, resultados e definição utilizada.</p>${draft?'<p class="qm-notice">Há rascunho local. Exporte-o antes de descartar ou reconciliar.</p>'+button('draft','Baixar rascunho')+button('discard','Descartar rascunho local'):''}${versions.map(v=>`<details><summary>Versão ${v.version} · ${e(v.status)} · ${e(v.action)}</summary><p>Definição ${v.definitionVersion}; referência ${e(v.referenceDate)}; ${e(v.reason||'Sem motivo adicional')}. ${e(v.inputs.comment)}</p><p>Autor autenticado registrado na auditoria. Importação: ${v.importHash?'sim':'não'}.</p><table><thead><tr><th>Indicador</th><th>N/D</th><th>Recalculado</th><th>Legado</th></tr></thead><tbody>${QMENTUM_INDICATORS.map(d=>`<tr><td>${d.id}</td><td>${v.results[d.id].N??'—'}/${v.results[d.id].D??'—'}</td><td>${percent(v.results[d.id].ratio)}</td><td>${percent(v.inputs.legacyRates[d.id]?.value)}</td></tr>`).join('')}</tbody></table></details>`).join('')||'<p>Nenhum registro nesta competência.</p>'}`);modal.querySelector('[data-qm-action="draft"]')?.addEventListener('click',()=>download('qmentum-rascunho.json',JSON.stringify(draft,null,2),'application/json'));modal.querySelector('[data-qm-action="discard"]')?.addEventListener('click',()=>run(async()=>{drafts.remove(scope());dirty=false;await load();await history();}));};
@@ -152,11 +167,10 @@ export async function mountQmentumModule(root,{repository:repo,uid,isCurrent=()=
    }
   }));
  };
- root.addEventListener('click',ev=>{const target=ev.target.closest('button');if(!target)return;opener=target;listScroll=root.querySelector('.qm-grid').scrollTop;run(async()=>{if(target.dataset.qmIndicator)return renderIndicator(target.dataset.qmIndicator);switch(target.dataset.qmAction){case 'entry':return renderEntry();case 'dashboard':return dashboard();case 'history':return history();case 'config':return config();case 'import':return importer();}});});
- root.querySelector('#qm-date').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value||!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){selectDate(value);return;}if(await load({year:y,month:m}))selectDate(value);});
- root.querySelector('#qm-unit').onchange=ev=>run(async()=>{if(!remember())return;await load({unitId:ev.target.value});});
- root.querySelector('.qm-tools-menu').onchange=ev=>{const action=ev.target.value;ev.target.value='';opener=ev.target;listScroll=root.querySelector('.qm-grid').scrollTop;run(async()=>{switch(action){case 'entry':return renderEntry();case 'dashboard':return dashboard();case 'history':return history();case 'config':return config();case 'import':return importer();}});};
- await load();
+ root.addEventListener('click',ev=>{const target=ev.target.closest('button');if(!target)return;opener=target;run(()=>{if(target.dataset.qmAction==='indicators')return renderIndicators();if(target.dataset.qmAction==='entry'&&manager)return renderEntry();});});
+ root.querySelector('#qm-date').onchange=ev=>run(async()=>{const value=ev.target.value;if(!value||!remember())return;const [y,m]=value.split('-').map(Number);periodKey(y,m);if(y===year&&m===month){calendarSelected=true;return;}if(await load({year:y,month:m}))calendarSelected=true;});
+ root.querySelector('#qm-unit').onchange=ev=>run(async()=>{if(!remember())return;await load({unitId:ev.target.value,latest:!calendarSelected});});
+ await load({latest:true});
  const unload=ev=>{if(dirty&&!remember()){ev.preventDefault();ev.returnValue='';}};window.addEventListener('beforeunload',unload);
  return ()=>{remember();disposed=true;sequence++;modal?.close();modal?.remove();window.removeEventListener('beforeunload',unload);};
 }

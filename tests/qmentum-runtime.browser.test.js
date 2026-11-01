@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
-import {chromium} from 'playwright';
+import {chromium,webkit} from 'playwright';
 
 test('failed unit, period and definition loads preserve the prior scope and draft',async()=>{
  const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false}});
  let browser;
  try {
   await server.listen();const origin='http://127.0.0.1:'+server.httpServer.address().port,base=server.config.base;
-  browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage();
+  const engine=process.env.QMENTUM_BROWSER==='webkit'?webkit:chromium;
+  browser=await engine.launch({headless:true,...(process.env.QMENTUM_BROWSER_CHANNEL?{channel:process.env.QMENTUM_BROWSER_CHANNEL}:{})});const page=await browser.newPage();
   await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   await page.goto(origin+base+'tests/fixtures/qmentum-runtime.html');
   await page.evaluate(async base=>{
@@ -26,15 +27,18 @@ test('failed unit, period and definition loads preserve the prior scope and draf
    const drafts={read:s=>structuredClone(state.drafts.get(key(s))||null),save:(s,value)=>state.drafts.set(key(s),structuredClone(value)),remove:s=>state.drafts.delete(key(s))};
    window.runtime=state;window.runtime.cleanup=await mountQmentumModule(document.querySelector('#root'),{repository:repo,uid:'synthetic-runtime',drafts});
   },base);
-  await page.locator('[data-qm-indicator="QM01"]').click();
+  const openIndicator=async()=>{if(!await page.locator('.qm-grid').count())await page.getByRole('button',{name:'INDICADORES OBRIGATÓRIOS QMENTUM',exact:true}).click();await page.locator('[data-qm-indicator="QM01"]').click();};
+  await openIndicator();
+  const originalDate=await page.locator('[data-date]').inputValue();
   await page.locator('[data-count="techniqueChanges"]').fill('7');
   await page.locator('[data-qm-close]').click();
-  const originalDate=await page.locator('#qm-date').inputValue();
+  await page.locator('[data-qm-close]').click();
+  const originalMonth=await page.locator('#qm-date').inputValue();
   await page.evaluate(()=>window.runtime.failedUnit='unit-b');
   await page.locator('#qm-unit').selectOption('unit-b');
   await page.waitForFunction(()=>document.querySelector('.qm-module-status').textContent.includes('Não foi possível'));
   assert.equal(await page.locator('#qm-unit').inputValue(),'unit-a');
-  await page.locator('[data-qm-indicator="QM01"]').click();
+  await openIndicator();
   assert.equal(await page.locator('[data-count="techniqueChanges"]').inputValue(),'7');
   await page.locator('[data-qm-action="save"]').click();
   await page.waitForFunction(()=>window.runtime.writes.length===1&&!document.querySelector('[data-qm-action="save"]').disabled);
@@ -46,11 +50,12 @@ test('failed unit, period and definition loads preserve the prior scope and draf
   assert.equal(await page.locator('[data-date]').inputValue(),originalDate);
   assert.equal(await page.locator('[data-count="techniqueChanges"]').inputValue(),'9');
   await page.locator('[data-qm-close]').click();
+  await page.locator('[data-qm-close]').click();
   await page.evaluate(()=>{window.runtime.failedYear=null;window.runtime.failedDefinition=true;});
-  await page.locator('#qm-date').fill(nextYear+'-02-10');await page.locator('#qm-date').dispatchEvent('change');
+  await page.locator('#qm-date').fill(nextYear+'-02');await page.locator('#qm-date').dispatchEvent('change');
   await page.waitForFunction(()=>document.querySelector('.qm-module-status').textContent.includes('Não foi possível'));
-  assert.equal(await page.locator('#qm-date').inputValue(),originalDate);
-  await page.locator('[data-qm-indicator="QM01"]').click();
+  assert.equal(await page.locator('#qm-date').inputValue(),originalMonth);
+  await openIndicator();
   assert.equal(await page.locator('[data-count="techniqueChanges"]').inputValue(),'9');
   const draft=await page.evaluate(()=>[...window.runtime.drafts].map(([key,value])=>({key,count:value.inputs.counts.techniqueChanges})));
   assert.deepEqual(draft,[{key:'synthetic-runtime:unit-a:'+originalDate.slice(0,7),count:9}]);

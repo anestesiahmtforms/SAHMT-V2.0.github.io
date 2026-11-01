@@ -1,0 +1,64 @@
+.qm-monthly-chart .qm-monthly-bars{
+ display:grid;
+ gap:12px;
+ margin:16px 0;
+ padding:0;
+ list-style:none;
+}
+.qm-monthly-chart .qm-monthly-row{
+ display:grid;
+ grid-template-columns:2.5rem minmax(0,1fr) minmax(5.9rem,max-content);
+ align-items:center;
+ column-gap:12px;
+ row-gap:3px;
+ min-width:0;
+}
+.qm-monthly-chart .qm-monthly-month,
+.qm-monthly-chart .qm-monthly-value{
+ font-size:1rem;
+ line-height:1.4;
+ font-variant-numeric:tabular-nums;
+}
+.qm-monthly-chart .qm-monthly-month{font-weight:700}
+.qm-monthly-chart .qm-monthly-value{text-align:right;white-space:nowrap}
+.qm-monthly-chart .qm-monthly-rail{
+ position:relative;
+ display:block;
+ height:14px;
+ min-width:0;
+ border-radius:4px;
+ background:#e6eef1;
+}
+.qm-monthly-chart .qm-monthly-rail--empty{background:transparent;border-bottom:1px dashed #a7b9c3;border-radius:0}
+.qm-monthly-chart .qm-monthly-fill{
+ display:block;
+ height:100%;
+ border-radius:4px;
+ background:#0b7563;
+}
+.qm-monthly-chart .qm-monthly-row--unreviewed .qm-monthly-fill{background:#a36912}
+.qm-monthly-chart .qm-monthly-target-marker{
+ position:absolute;
+ top:-3px;
+ bottom:-3px;
+ border-left:2px dashed #75500f;
+ transform:translateX(-1px);
+}
+.qm-monthly-chart .qm-monthly-state{
+ grid-column:2 / -1;
+ font-size:.875rem;
+ line-height:1.4;
+ color:#415c6b;
+ overflow-wrap:anywhere;
+}
+.qm-monthly-chart .qm-monthly-target{font-weight:700;color:#75500f;margin:6px 0}
+.qm-monthly-chart .qm-monthly-legend{font-size:.875rem;line-height:1.5;color:#415c6b}
+.qm-monthly-chart .qm-monthly-table-scroll{max-width:100%;overflow-x:auto;margin-top:10px}
+.qm-monthly-chart .qm-monthly-table-scroll:focus-visible{outline:2px solid #127a80;outline-offset:2px}
+.qm-monthly-chart .qm-monthly-table-scroll table{min-width:650px}
+@media(max-width:420px){
+ .qm-monthly-chart .qm-monthly-row{grid-template-columns:2rem minmax(0,1fr) minmax(5.3rem,max-content);column-gap:8px}
+ .qm-monthly-chart .qm-monthly-month,
+ .qm-monthly-chart .qm-monthly-value{font-size:.9375rem}
+ .qm-monthly-chart .qm-monthly-state{grid-column:1 / -1}
+}

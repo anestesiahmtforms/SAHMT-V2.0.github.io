@@ -3,6 +3,7 @@ import {FIREBASE_PROJECTS} from './firebase-projects.js';
 import {calculateMonth,periodKey,validateDefinitions,validateInputs} from './qmentum-engine.js';
 import {createQmentumCommandSender} from './qmentum-command.js';
 import {participationId,validateParticipation} from './qmentum-participation.js';
+import {latestRecordedMonth} from './qmentum-overview.js';
 const unitPattern=/^[A-Za-z0-9_-]{1,80}$/;
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const canonical=value=>value&&typeof value==='object'?Array.isArray(value)?'['+value.map(canonical).join(',')+']':'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}':JSON.stringify(value);
@@ -49,6 +50,18 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
   await access(unitId);periodKey(year,1);
   const response=await api.getDocsFromServer(api.query(api.collection(db,'qmentumUnits',unitId,'months'),api.where('year','==',year),api.orderBy('month','asc'),api.limit(12)));
   ensure();return materialize(response.docs.map(d=>({...d.data(),id:d.id})));
+ };
+ const latest=async unitId=>{
+  await access(unitId);let cursor=null;
+  // The existing unit capacity is 120 months. Keep every query within FC's
+  // twelve-document list limit and skip empty drafts instead of selecting them.
+  for(let page=0;page<10;page++){
+   ensure();const response=await api.getDocsFromServer(api.query(api.collection(db,'qmentumUnits',unitId,'months'),api.orderBy('period','desc'),...(cursor?[api.startAfter(cursor)]:[]),api.limit(12)));ensure();
+   const last=latestRecordedMonth(response.docs.map(doc=>({...doc.data(),id:doc.id})));
+   if(last)return {year:last.year,month:last.month,period:last.period};
+   if(response.docs.length<12)return null;cursor=response.docs.at(-1);
+  }
+  return null;
  };
  const history=async(unitId,year,month)=>{
   await access(unitId);
@@ -102,7 +115,7 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
   const id=participationId(participation.analysisId,participation.actorUid,'SUGGESTION'),target=ref('qmentumParticipationReviews',id);
   await api.runTransaction(db,async tx=>{if((await tx.get(target)).exists())return;ensure();tx.set(target,{participationId:id,unitId,actorUid:uid,decision,reason:reason.trim(),status:'PENDING',createdAt:api.serverTimestamp()});});ensure();
  };
- return {open,access,month,year,history,save,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,participate,participations,reviewSuggestion,definition:async version=>{await access();const config=await read('qmentumConfig','current');if(config?.enabled!==true)throw Error('QMENTUM_CONFIG_REQUIRED');return definition(version);}};
+ return {open,access,month,year,latest,history,save,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,participate,participations,reviewSuggestion,definition:async version=>{await access();const config=await read('qmentumConfig','current');if(config?.enabled!==true)throw Error('QMENTUM_CONFIG_REQUIRED');return definition(version);}};
 }
 
 export function createDraftStore() {
