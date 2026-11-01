@@ -17,7 +17,7 @@ function moduleFixture(){
   ui:{mountQmentumModule:async(root,options)=>{const done=deferred();mounts.push({root,options,done});return done.promise;}}
  });
  let code=moduleCode;
- for(const [file,name] of [['fc-module-firebase','fc'],['fc-module-session','gate'],['qmentum-data','data'],['qmentum-ui','ui']])code=code.replace(`import('./${file}.js')`,name);
+ for(const [file,name] of [['fc-module-firebase','fc'],['fc-module-session','gate'],['qmentum-data','data'],['qmentum-ui','ui']])code=code.replaceAll(`import('./${file}.js')`,name);
  vm.runInContext(code.replaceAll('import.meta','importMeta'),ctx);
  return {ctx,mounts,load:()=>ctx.loadModule('qmentum')};
 }
