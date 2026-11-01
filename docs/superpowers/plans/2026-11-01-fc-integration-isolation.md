@@ -39,14 +39,14 @@
 
 **Interfaces:** `fcIntegrationEndpoint(path, {env, fallback})` resolves only the three fixed FC routes; unset/false feature flag preserves the existing fallback. `createFcIntegrationWorker({fetchImpl})` returns the dedicated fetch handler and reuses the existing relays and admission state.
 
-- [ ] Write and observe failing tests for routing/rollback, malformed origin, non-FC paths and fallback prevention.
-- [ ] Implement minimal code; keep new production flags disabled.
-- [ ] Exercise actual clients and relays with controlled external HTTP/DO boundaries, including mismatched Firebase context and no upstream forwarding on denial.
-- [ ] Run relevant existing auth, CORS, HMAC, replay, QMENTUM and service-worker suites; record exact results.
+- [x] Write and observe failing tests for routing/rollback, malformed origin, non-FC paths and fallback prevention.
+- [x] Implement minimal code; keep new production flags disabled.
+- [x] Exercise actual clients and relays with controlled external HTTP/DO boundaries, including mismatched Firebase context and no upstream forwarding on denial.
+- [x] Run relevant existing auth, CORS, HMAC, replay, QMENTUM and service-worker suites; record exact results.
 
 ## Task 3: Prepare real FC services and resources
 
-- [ ] Verify destination account and reuse an adequate existing Worker; validate plan and consumption.
+- [x] Verify destination account and plan; inspect existing Workers and prepare dedicated Worker disabled. Integrated consumption monitoring remains pending.
 - [ ] Export current Apps Script source/configuration, resolve all FC dependencies, create dedicated project and verify real executor/trigger owner.
 - [ ] Set per-pair server secrets, check current authorization and deploy inactive destination services.
 - [ ] Copy necessary Drive resources into FC with verified permissions/ownership; complete old/new mapping.
@@ -60,3 +60,5 @@
 - [ ] Activate only FC; transition exclusive FC cron without overlapping processing; monitor and verify rollback feasibility.
 
 Task 3 depends on destination write/authentication access and protected live export. Do not fabricate project IDs, deployed URLs or migration mappings while that access is missing.
+
+Current task 3: live Apps Script export completed (79 files, deployed versions 45/54/55); FC project created by the confirmed FC account and 22 preparation files uploaded with readback. Secrets, public deployments and triggers remain absent. Twenty native staging copies in FC were verified; final owner copies and script organization await the manual owner function. Reference cutover must first prove both executor access and rollback for old PWA clients. FC metadata reads work; ledger FA/FB marker reads still return 403 for the FC operator.

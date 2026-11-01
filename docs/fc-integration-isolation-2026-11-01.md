@@ -8,13 +8,16 @@ Estado: migração em andamento, sem troca em produção. Responsável por FC in
 | --- | --- | --- |
 | Código comum PWA | `anestesiahmtforms/SAHMT-V2.0.github.io`, revisão inicial `5bd3b44` | Clonado; branch local `codex/fc-integration-isolation` |
 | Apps Script central | `1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD` | Identificado no Drive e editor; não modificado |
+| Apps Script FC | `1rwJgnVjEmCoSfXlhIA-SNaCFOINIl_-O73CVn9D_aIBM60tI_qZnUtrI` | Criado por FC; 22 arquivos de preparação enviados e verificados; sem implantação pública ou segredos |
 | Gateway histórico | `16Xhs_5KkWRt8xCxqH8cFrxEHSaeAs3A16WQA1o78FdUnxQsJG3QLICB4` | Encontrado no Drive; autenticação secundária do Worker central está desativada |
 | Firebase FC | `indicadores---sahmt`, banco `(default)` | Confirmado no código comum e destinos dos relays; acesso administrativo atual não validado |
 | Cloudflare central | `1851e9f4cd5f026371beaa2c5a85f1b8` | Consulta autenticada da sessão local Wrangler bem-sucedida |
-| Cloudflare FC | `57b8b02c577b6f61e96a61ce44142d2e` | API retorna 403 na sessão existente; inventário FC ainda não obtido |
-| Drive destino FC | `1HKohx4MezyQC4tW2gim11ar_7OfmFtPc` | Leitura liberada após novo compartilhamento; criação de pasta negada: 403 `insufficientParentPermissions` |
+| Cloudflare FC | `57b8b02c577b6f61e96a61ce44142d2e` | Sessão FC própria confirmada; Worker específico criado, desativado e sem URLs públicas |
+| Drive destino FC | `1HKohx4MezyQC4tW2gim11ar_7OfmFtPc` | Propriedade FC confirmada; subpasta restrita criada e 20 cópias de entrada preparadas |
 
 O link do painel Cloudflare identifica a conta e não é endpoint público da integração. O 403 não demonstra que a conta inexiste. Não criar outra conta como tentativa de corrigir a autorização.
+
+Atualização: o perfil `sahmt-fc-isolation` confirmou a identidade `anestesiahmtforms3@gmail.com` e a conta FC existente. A captura do usuário em Workers plans mostra **Free, $0, Current plan**; o usuário também confirmou o plano gratuito. Nenhuma alteração de plano ou cobrança foi executada. Com inventário prévio vazio, foi criado `sahmt-fc-integration`, versão `80d0c9f1-2ae2-4481-bc4e-91407c4b82b8`, com todas as flags `false`, Workers.dev e previews desativados e zero agendamentos. O namespace SQLite próprio é `0db752efd43943838b3af89e0eabeafc`. O readback da API confirmou esse estado. A URL pública da integração ainda está pendente de configuração/validação; não se apresenta um endereço privado/desativado como integração operacional.
 
 O inventário autenticado central identificou `sahmt-auth-broker`, `sahmt-auth-pilot`, `sahmt-html-training`, `sahmt-indicators`, `sahmt-label-ai` e `sahmt-operational-channel`. O broker usa Durable Object para admissão e não tem cron. Outras estações dependem desses recursos: preservá-los.
 
@@ -71,23 +74,29 @@ A proposta reutiliza os relays e as regras de negócio existentes. Não altera A
 | Recepção HTTP | `OperationalSheetPush.gs` contém o `doPost` compartilhado | Extrair receptor FC com apenas quatro ações atuais; não copiar rota operacional FA |
 | PWA | `qmentum-command.js`, `qmentum-print-client.js`, `occurrence-scoring-delivery.js` | Configurar endereço FC separado das planilhas operacionais FA |
 
-O editor remoto mostrou arquivos adicionais ausentes no diretório `apps-script-v2` deste checkout (por exemplo `QmentumPrintOperator.gs`). O pacote Apps Script final deve partir de uma exportação atual do projeto e de suas versões/propriedades, sem sobrescrever produção a partir de uma cópia incompleta do repositório.
+O checkout local não era a fonte completa. A exportação real confirmou 79 arquivos na revisão atual e quatro implantações; foram protegidos os conteúdos publicados das versões 45, 54 e 55. O Worker central aponta para a versão 55. O pacote FC foi derivado dessa versão, com 107 declarações na análise conservadora de dependências dos três handlers, e recebeu entrada/configuração/preparação específicas. O inventário de propriedades e gatilhos reais ainda está pendente; não sobrescrever produção a partir do checkout.
 
 O Apps Script exibiu registros `QMENTUM_PRINT_READ_CHECK` com status 429 e `SAHMT_URLFETCH_DAILY_QUOTA`. `ServiceQuota.gs` conserva uma pausa por usuário após reconhecer a exceção de cota. O registro é do guard; o evento original da exceção e o consumo agregado ainda precisam ser consultados nas execuções. As [cotas Apps Script são por usuário](https://developers.google.com/apps-script/guides/services/quotas): outro projeto executado pelo mesmo usuário não separa a cota diária de URL Fetch. A implantação e os gatilhos FC precisam executar efetivamente pela conta FC.
 
-O limite diário de requisições do [Workers Free é por conta](https://developers.cloudflare.com/workers/platform/limits/). Workers separados na mesma conta não isolam esse limite. O plano e o consumo da conta FC ainda não foram lidos; nenhuma contratação, upgrade ou recurso pago foi habilitado. A admissão existente usa SQLite Durable Objects, [disponíveis também no Workers Free](https://developers.cloudflare.com/durable-objects/platform/pricing/); ainda é necessário verificar as cotas aplicáveis na conta de destino.
+O limite diário de requisições do [Workers Free é por conta](https://developers.cloudflare.com/workers/platform/limits/). Workers separados na mesma conta não isolam esse limite. O plano FC foi confirmado como Free/$0 por captura do painel e resposta do usuário; nenhuma contratação, upgrade ou recurso pago foi habilitado. A API de assinaturas permanece inacessível pelos escopos OAuth atuais. A admissão usa SQLite Durable Objects, [disponíveis também no Workers Free](https://developers.cloudflare.com/durable-objects/platform/pricing/); o consumo deve ser acompanhado durante a validação integrada.
 
 ## Migração Drive identificada
 
 | Origem | Finalidade | Inventário | Destino |
 | --- | --- | --- | --- |
-| `1wKCX9ZHPgZ3FPmHU_N12dNbAQ97BeelA` | Imagens de procedimentos/técnicas QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Ainda não criado |
-| `1-wPMVdon2pCjjariPqYZ6tsweinaf3bA` | Imagens de números de indicadores QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Ainda não criado |
+| `1wKCX9ZHPgZ3FPmHU_N12dNbAQ97BeelA` | Imagens de procedimentos/técnicas QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Pasta FC `1GVmQD2T2ITlSDqtS-KsrHs0_QorJk_xK`, cópias finais pendentes |
+| `1-wPMVdon2pCjjariPqYZ6tsweinaf3bA` | Imagens de números de indicadores QMENTUM | 10 PNG; propriedade de FA; permissões inspecionadas individualmente | Pasta FC `1rpKUFmZ1sNZ1w31305kx48jW1WbEqSuI`, cópias finais pendentes |
 | `1sL1NPK-CkZHmWJO_39MLajU-VpJIOZ74` | Pasta central APP SAHMT-V2.0 | Contém scripts, cadastro, relatórios e escalas compartilhados | Não mover integralmente |
 
-Os 20 IDs, URLs, pais, proprietários e permissões das imagens estão no inventário JSON. Exclusividade FC ainda não foi comprovada: estratégia inicial é copiar e preservar os originais. Não há IDs de destino inventados: os campos estão `null`, estado `NOT_COPIED`.
+Os 20 IDs, URLs, pais, proprietários e permissões originais estão no inventário JSON. As 20 cópias de entrada, dentro de FC, estão registradas em `drive-copy-staging.json`, com tamanho, checksum e propriedade FA verificados. A propriedade das cópias finais ainda precisa ser FC: a localização na pasta FC não comprova essa transferência. A função manual `organizarRecursosFcV1` cria cópias nativas pela conta proprietária FC, com trava exclusiva, conferência integral antes das mutações, retomada por appProperties e relatório sem segredos. Os originais e as cópias de entrada permanecem preservados.
+
+O novo projeto precisa ser organizado na subpasta restrita `1hc8nHWMXAUbyU3TsmD_5TzBdJdNa5I5A`; a pasta principal mantém seu compartilhamento preexistente por link. OCR usará `1NbyfmHaAJs95fdaEvJw7uljcmcyYwZcS`. A instalação confere ACL completa, inclusive compartilhamentos nominais e grupos, antes de configurar o destino temporário.
 
 A referência conhecida é `qmentumUnits/{unitId}/printConfig/current.folders.{TECHNIQUES,INDICATORS}`. Antes de alterar, capturar valor e `updateTime`, provar que os novos arquivos atendem à conta executora e registrar o par antigo/novo. Outros campos de proveniência de imagens e configurações de OCR devem ser descobertos no snapshot real. Não fazer substituição global de strings no Firestore.
+
+Leitura administrativa FC confirmou uma unidade `sahmt` e as duas referências antigas no documento `printConfig/current`; nenhuma referência foi atualizada. O marcador `occurrenceRuntime/independentV1` está ACTIVE. A conta FC recebeu 403 ao consultar os marcadores de pontuação nos projetos FA/FB; os acessos necessários e o roteamento ativo do ledger precisam ser confirmados antes da validação integrada.
+
+A troca dessas referências é global para clientes novos e antigos. Antes do corte, resolver e testar o acesso do executor central às cópias FC durante a janela de clientes antigos; hoje os diretórios finais são privados de FC. A reversão precisa preservar acesso a arquivos para ambos os executores enquanto versões do PWA ainda apontarem a endereços diferentes. Não aplicar o patch de referências antes dessa compatibilidade e do rollback serem demonstrados.
 
 ## Ativação e reversão
 
@@ -103,13 +112,14 @@ Rollback exige publicação da configuração anterior e atualização do shell 
 
 ## Evidências e pendências
 
-- Consulta real Cloudflare central concluída; destino negado por autorização.
-- Inventário real de 20 arquivos Drive concluído; nenhuma cópia/movimentação realizada.
-- Pasta FC legível; tentativa de criar pasta de preparação negada com 403; nenhum recurso criado nessa tentativa.
+- Consulta real Cloudflare central e FC concluída; Worker FC criado desativado, com readback registrado e plano Free confirmado.
+- Inventário real de 20 arquivos Drive concluído; 20 cópias de entrada dentro de FC verificadas. Cópias finais FC e atualização de referências pendentes.
+- A tentativa inicial de criação pelo Drive conectado como FA foi negada. Após OAuth FC, propriedade/permissões foram confirmadas e as pastas de destino foram criadas.
 - Seis verificações HTTP reais no Worker central aprovadas: três rotas recusam chamadas sem autenticação, duas recusam origem indevida e preflight autorizado responde. Não houve tentativa de escrita de negócio.
 - Quarenta testes locais existentes de sessão Google, clientes de imagens e ponte de Ocorrências passaram na linha de base. São evidência de contratos locais, não de migração integrada.
-- Login do navegador foi oferecido ao usuário e o painel FC foi aberto pelo app, mas o controle continua indisponível com `Local browser use is disabled in Work settings`. Não há leitura confirmada da sessão FC.
-- Pendentes: inventário completo do destino; identidade/permissões do executor Apps Script FC; propriedades/gatilhos reais; Firestore FC; cópias e referências; publicação; testes PWA de ponta a ponta; outras quatro estações; consumo e rollback integrado.
+- O controle do navegador continua indisponível com `Local browser use is disabled in Work settings`. Sessões Cloudflare/Google obtidas pelos fluxos oficiais de autorização; execução inicial pela dona ainda depende da interação do usuário.
+- 34 testes locais atuais de preparação/routing/isolamento passaram. Pacote FC de preparação enviado com readback confirmado, sem segredos e sem publicação. Esses resultados não comprovam operação integrada.
+- Pendentes: execução/propriedade runtime FC; propriedades/gatilhos centrais reais; acesso ao ledger FA/FB; cópias finais e referências; compatibilidade com clientes antigos; ativação pública; testes PWA reais e das outras estações; consumo e rollback integrado.
 
 ## Repetição nas demais estações
 

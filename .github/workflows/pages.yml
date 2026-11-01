@@ -104,7 +104,7 @@ jobs:
       - name: Run management migration local tests
         run: npm run test:management
       - name: Verify FC module deployment targeting
-        run: node --test tests/fc-module-deployment.test.js tests/fc-integration-isolation.test.js
+        run: node --test tests/fc-module-deployment.test.js tests/fc-integration-isolation.test.js tests/fc-apps-script.test.js
       - name: Run FA consolidation safety tests
         run: node scripts/test-fa-consolidation.mjs
       - name: Run unified FA Occurrences unit tests

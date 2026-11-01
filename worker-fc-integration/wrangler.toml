@@ -1,10 +1,11 @@
-# Proposed name only: inspect and reuse an existing FC Worker before deploying.
+# FC Worker created after authenticated inventory confirmed no existing Worker.
 name = "sahmt-fc-integration"
 main = "worker.js"
 account_id = "57b8b02c577b6f61e96a61ce44142d2e"
 compatibility_date = "2026-10-10"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
+preview_urls = false
 
 [[durable_objects.bindings]]
 name = "FC_ADMISSION"
