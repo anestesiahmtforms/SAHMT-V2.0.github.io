@@ -39,14 +39,14 @@ export async function relayQmentumPrints(request,env,{fetchImpl=fetch,now=Date.n
   let claims;try{claims=JSON.parse(Buffer.from(authorization.slice(7).split('.')[1],'base64url').toString('utf8'));}catch{return reply('QMENTUM_PRINT_SESSION_INVALID',401,origin);}
   if(claims.aud!==FC||claims.iss!=='https://securetoken.google.com/'+FC||!/^[A-Za-z0-9_-]{1,128}$/.test(claims.sub||''))return reply('QMENTUM_PRINT_SESSION_INVALID',401,origin);
   const name='projects/'+FC+'/databases/(default)/documents/qmentumAccess/'+claims.sub;
-  const proof=await fetchImpl('https://firestore.googleapis.com/v1/'+name,{method:'GET',headers:{Authorization:authorization},redirect:'error',cache:'no-store',signal:controller.signal});
+  const proof=await fetchImpl('https://firestore.googleapis.com/v1/'+name,{method:'GET',headers:{Authorization:authorization},redirect:'manual',cache:'no-store',signal:controller.signal});
   if(proof.status!==200){await proof.body?.cancel().catch(()=>{});return reply('QMENTUM_PRINT_PERMISSION_DENIED',[401,403,404].includes(proof.status)?403:503,origin);}
   const grant=await limited(proof,8000,controller.signal);if(grant.name!==name||grant.fields?.uid?.stringValue!==claims.sub||grant.fields?.role?.stringValue!=='manager'||grant.fields?.active?.booleanValue!==true||!grant.fields?.units?.arrayValue?.values?.some(v=>v.stringValue===input.unitId))return reply('QMENTUM_PRINT_PERMISSION_DENIED',403,origin);
   const issuedAt=now(),nonce=randomBytes(16).toString('hex'),payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-qmentum-prints',uid:claims.sub,nonce,issuedAt,expiresAt:issuedAt+60000,request:input})).toString('base64url');
   started=true;let response=await fetchImpl(url+'?action=qmentum-prints-v1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload,mac:mac(payload,key)}),redirect:'manual',signal:controller.signal});
   if([302,303].includes(response.status)){
    const redirect=new URL(response.headers.get('Location'));if(redirect.protocol!=='https:'||redirect.hostname!=='script.googleusercontent.com'||redirect.pathname!=='/macros/echo'||redirect.port||redirect.username||redirect.password||redirect.hash||!redirect.searchParams.get('user_content_key')||redirect.href.length>8192||[...redirect.searchParams.keys()].some(k=>!['user_content_key','lib'].includes(k))||new Set(redirect.searchParams.keys()).size!==[...redirect.searchParams.keys()].length)throw Error('REDIRECT');
-   await response.body?.cancel().catch(()=>{});response=await fetchImpl(redirect.href,{method:'GET',redirect:'error',signal:controller.signal});
+   await response.body?.cancel().catch(()=>{});response=await fetchImpl(redirect.href,{method:'GET',redirect:'manual',signal:controller.signal});
   }
   if(response.status!==200)throw Error('HTTP');const envelope=await limited(response,512000,controller.signal);
   if(typeof envelope.payload!=='string'||envelope.payload.length>450000||!/^[A-Za-z0-9_-]+$/.test(envelope.payload)||! /^[a-f0-9]{64}$/.test(envelope.mac||'')||!timingSafeEqual(Buffer.from(envelope.mac,'hex'),Buffer.from(mac(envelope.payload,key),'hex')))throw Error('MAC');
@@ -54,3 +54,4 @@ export async function relayQmentumPrints(request,env,{fetchImpl=fetch,now=Date.n
   const expected={SCAN:'QMENTUM_PRINT_SCAN',PREVIEW:'QMENTUM_PRINT_PREVIEW',APPLY:'QMENTUM_PRINT_APPLIED'}[input.operation];return reply(answer.code,answer.code===expected?200:409,origin,answer.result);
  }catch{return reply('QMENTUM_PRINT_UNAVAILABLE',503,origin);}finally{clearTimeout(timer);if(!controller.signal.aborted&&(!started||finished)&&admission?.allowed===true)await admission.release().catch(()=>{});}
 }
+import {Buffer} from 'node:buffer';
