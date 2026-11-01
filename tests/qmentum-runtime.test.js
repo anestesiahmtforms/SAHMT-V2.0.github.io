@@ -13,12 +13,12 @@ function fixture() {
   ['qmentumDefinitions/1',definitions]
  ]);
  const auth={app,currentUser:{uid,getIdTokenResult:async()=>({claims:{aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:uid}})}};
- const state={beforeRead:null,rows:[],current:true,commands:[]};
+ const state={beforeRead:null,beforeDocs:null,rows:[],pages:null,queries:[],current:true,commands:[]};
  const snapshot=path=>({exists:()=>docs.has(path),data:()=>structuredClone(docs.get(path))});
  const firestore={
   doc:(_db,...path)=>path.join('/'),collection:(_db,...path)=>path.join('/'),query:(path,...filters)=>({path,filters}),where:(...args)=>args,orderBy:(...args)=>args,limit:n=>n,
   getDocFromServer:async path=>{reads.push(path);await state.beforeRead?.(path);return snapshot(path);},
-  getDocsFromServer:async()=>({docs:state.rows.map(row=>({id:row.period,data:()=>structuredClone(row)}))}),
+  getDocsFromServer:async query=>{state.queries.push(query);await state.beforeDocs?.(query);const rows=state.pages?.length?state.pages.shift():state.rows;return {docs:rows.map(row=>({id:row.period,data:()=>structuredClone(row)}))};},startAfter:snapshot=>['after',snapshot.id],
   serverTimestamp:()=>({syntheticTimestamp:true}),
   runTransaction:async(_db,callback)=>callback({get:async path=>{transactionReads.push(path);return snapshot(path);},set:()=>{},update:()=>{}})
  };
@@ -80,4 +80,25 @@ test('saving sends only source inputs for fresh trusted validation, never cached
  assert.equal(f.state.commands[0].operation,'SAVE_MONTH');
  assert.equal('results' in f.state.commands[0].payload,false);assert.equal('definitions' in f.state.commands[0].payload,false);
  assert.equal('uid' in f.state.commands[0].payload,false);assert.equal(f.reads.filter(path=>path==='users/'+f.uid).length,2);
+});
+
+const monthlyRecord=(period,hasData=false)=>{const [year,month]=period.split('-').map(Number),inputs=emptyInputs();if(hasData)inputs.counts.general=0;return {year,month,period,inputs,definitionVersion:1,version:1};};
+test('latest recorded FC month ignores empty newer drafts and uses bounded read-only queries',async()=>{
+ const f=fixture();f.state.rows=[monthlyRecord('2027-01'),monthlyRecord('2026-07'),monthlyRecord('2026-06',true)];
+ assert.deepEqual(await f.repo.latest('unit-a'),{year:2026,month:6,period:'2026-06'});
+ assert.equal(f.state.queries.length,1);assert.ok(f.state.queries[0].filters.some(value=>value===12));
+ assert.ok(f.state.queries[0].filters.some(value=>Array.isArray(value)&&value[0]==='period'&&value[1]==='desc'));
+ assert.equal(f.state.commands.length,0);assert.equal(f.transactionReads.length,0);
+ f.state.rows=[monthlyRecord('2027-01')];assert.equal(await f.repo.latest('unit-a'),null);
+});
+test('latest FC lookup pages through empty future records without widening the list limit',async()=>{
+ const f=fixture();f.state.pages=[Array.from({length:12},(_,i)=>monthlyRecord('2027-'+String(12-i).padStart(2,'0'))),[monthlyRecord('2026-06',true)]];
+ assert.equal((await f.repo.latest('unit-a')).period,'2026-06');assert.equal(f.state.queries.length,2);
+ assert.ok(f.state.queries.every(query=>query.filters.some(value=>value===12)));
+ assert.deepEqual(f.state.queries[1].filters.find(value=>Array.isArray(value)&&value[0]==='after'),['after','2027-01']);
+});
+test('latest FC lookup never returns results after a session change or from another project',async()=>{
+ const f=fixture();f.state.rows=[monthlyRecord('2026-06',true)];f.state.beforeDocs=()=>{f.auth.currentUser=null;};
+ await assert.rejects(f.repo.latest('unit-a'),/QMENTUM_SESSION_CHANGED/);
+ const other=fixture();other.auth.app.options.projectId='sahmt-17a16';await assert.rejects(other.repo.latest('unit-a'),/QMENTUM_FC_REQUIRED/);assert.equal(other.state.queries.length,0);
 });

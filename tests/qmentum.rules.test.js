@@ -2,7 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {before,after,beforeEach,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,writeBatch,serverTimestamp,updateDoc,deleteDoc,collection,query,where,limit,getDocs} from 'firebase/firestore';
+import {doc,setDoc,getDoc,writeBatch,serverTimestamp,updateDoc,deleteDoc,collection,query,where,limit,getDocs,orderBy} from 'firebase/firestore';
 import {initialDefinitions,emptyInputs} from '../src/qmentum-catalog.js';
 import {calculateMonth} from '../src/qmentum-engine.js';
 import * as sdk from 'firebase/firestore';
@@ -91,6 +91,20 @@ test('revisão humana é somente pedido pendente autorizado para a mesma unidade
 test('browser cannot write authoritative months, history, definitions or configuration',async()=>{
  const db=dbFor('manager');
  for(const path of ['qmentumUnits/unit-a/months/2026-01','qmentumUnits/unit-a/months/2026-01/history/1','qmentumDefinitions/2','qmentumConfig/current'])await assertFails(setDoc(doc(db,path),{admin:true,results:{QM01:{ratio:1}}}));
+});
+
+test('latest monthly FC lookup stays bounded to the authorized unit and preserves missing versus zero',async()=>{
+ await env.withSecurityRulesDisabled(async context=>{const db=context.firestore(),filled=emptyInputs();filled.counts.general=0;await Promise.all([
+  setDoc(doc(db,'qmentumUnits/unit-a/months/2026-06'),{period:'2026-06',year:2026,month:6,inputs:filled}),
+  setDoc(doc(db,'qmentumUnits/unit-a/months/2026-07'),{period:'2026-07',year:2026,month:7,inputs:emptyInputs()})
+ ]);});
+ assert.deepEqual(await repository('manager').latest('unit-a'),{period:'2026-06',year:2026,month:6});
+ assert.deepEqual(await repository('collector').latest('unit-a'),{period:'2026-06',year:2026,month:6});
+ const db=dbFor('manager'),months=collection(db,'qmentumUnits/unit-a/months');
+ await assertFails(getDocs(query(months,orderBy('period','desc'),limit(13))));
+ await assertFails(getDocs(query(collection(db,'qmentumUnits/other/months'),orderBy('period','desc'),limit(12))));
+ await env.withSecurityRulesDisabled(context=>updateDoc(doc(context.firestore(),'qmentumConfig/current'),{enabled:false}));
+ await assert.rejects(repository('manager').latest('unit-a'));
 });
 test('write commands require own UID, valid grant, enabled unit and immutable pending envelope',async()=>{
  const db=dbFor('collector'),hash='a'.repeat(64),id='collector_'+hash;
