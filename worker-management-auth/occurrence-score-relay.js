@@ -30,7 +30,7 @@ export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date
   const input=await limited(request,512,controller.signal);
   if(!input||Object.keys(input).join(',')!=='id'||!/^[A-Fa-f0-9-]{36}$/.test(input.id||''))return result('OCCURRENCE_SCORE_INPUT_INVALID',400,origin);
   const name=`projects/${FC}/databases/(default)/documents/occurrenceScoreClaims/${input.id}`;
-  const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=uid&mask.fieldPaths=sourceId',{method:'GET',headers:{Authorization:authorization},redirect:'error',signal:controller.signal,cache:'no-store'});
+  const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=uid&mask.fieldPaths=sourceId',{method:'GET',headers:{Authorization:authorization},redirect:'manual',signal:controller.signal,cache:'no-store'});
   if(read.status!==200){await read.body?.cancel().catch(()=>{});return result('OCCURRENCE_SCORE_CLAIM_UNAVAILABLE',[401,403,404].includes(read.status)?read.status:503,origin);}
   const doc=await limited(read,4096,controller.signal),claims=JSON.parse(Buffer.from(authorization.slice(7).split('.')[1],'base64url').toString('utf8'));
   if(doc.name!==name||doc.fields?.sourceId?.stringValue!==input.id||claims.aud!==FC||claims.iss!==`https://securetoken.google.com/${FC}`||
@@ -42,7 +42,7 @@ export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date
    const redirect=new URL(reply.headers.get('Location'));
    if(redirect.protocol!=='https:'||redirect.hostname!=='script.googleusercontent.com'||redirect.port||redirect.username||redirect.password||redirect.hash||redirect.pathname!=='/macros/echo'||!redirect.searchParams.get('user_content_key')||
     [...redirect.searchParams.keys()].some(k=>!['user_content_key','lib'].includes(k))||new Set(redirect.searchParams.keys()).size!==[...redirect.searchParams.keys()].length||redirect.href.length>8192)throw Error('REDIRECT');
-   await reply.body?.cancel().catch(()=>{});reply=await fetchImpl(redirect.href,{method:'GET',redirect:'error',signal:controller.signal});
+   await reply.body?.cancel().catch(()=>{});reply=await fetchImpl(redirect.href,{method:'GET',redirect:'manual',signal:controller.signal});
   }
   if(reply.status!==200)throw Error('HTTP');const envelope=await limited(reply,4096,controller.signal);
   if(typeof envelope.payload!=='string'||envelope.payload.length>2048||!/^[A-Za-z0-9_-]+$/.test(envelope.payload)||typeof envelope.mac!=='string'||!/^[a-f0-9]{64}$/.test(envelope.mac)||!timingSafeEqual(Buffer.from(envelope.mac,'hex'),Buffer.from(mac(envelope.payload,key),'hex')))throw Error('MAC');
@@ -57,3 +57,4 @@ export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date
   if(!controller.signal.aborted&&(!remoteStarted||remoteFinished)&&admission?.allowed===true&&typeof admission.release==='function')await admission.release().catch(()=>{});
  }
 }
+import {Buffer} from 'node:buffer';

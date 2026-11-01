@@ -30,7 +30,7 @@ export async function relayQmentumWrite(request,env,{fetchImpl=fetch,now=Date.no
   const input=await limited(request,512,controller.signal);
   if(!input||Object.keys(input).join(',')!=='id'||!/^[A-Za-z0-9_-]{1,128}_[a-f0-9]{64}$/.test(input.id||''))return result('QMENTUM_WRITE_INPUT_INVALID',400,origin);
   const name=`projects/${FC}/databases/(default)/documents/qmentumWriteRequests/${input.id}`;
-  const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=actorUid&mask.fieldPaths=payloadHash',{method:'GET',headers:{Authorization:authorization},redirect:'error',signal:controller.signal,cache:'no-store'});
+  const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=actorUid&mask.fieldPaths=payloadHash',{method:'GET',headers:{Authorization:authorization},redirect:'manual',signal:controller.signal,cache:'no-store'});
   if(read.status!==200){await read.body?.cancel().catch(()=>{});return result('QMENTUM_WRITE_CLAIM_UNAVAILABLE',[401,403,404].includes(read.status)?read.status:503,origin);}
   const doc=await limited(read,4096,controller.signal),claims=JSON.parse(Buffer.from(authorization.slice(7).split('.')[1],'base64url').toString('utf8'));
   if(doc.name!==name||doc.fields?.payloadHash?.stringValue!==input.id.slice(-64)||claims.aud!==FC||claims.iss!==`https://securetoken.google.com/${FC}`||
@@ -42,7 +42,7 @@ export async function relayQmentumWrite(request,env,{fetchImpl=fetch,now=Date.no
    const redirect=new URL(reply.headers.get('Location'));
    if(redirect.protocol!=='https:'||redirect.hostname!=='script.googleusercontent.com'||redirect.port||redirect.username||redirect.password||redirect.hash||redirect.pathname!=='/macros/echo'||!redirect.searchParams.get('user_content_key')||
     [...redirect.searchParams.keys()].some(k=>!['user_content_key','lib'].includes(k))||new Set(redirect.searchParams.keys()).size!==[...redirect.searchParams.keys()].length||redirect.href.length>8192)throw Error('REDIRECT');
-   await reply.body?.cancel().catch(()=>{});reply=await fetchImpl(redirect.href,{method:'GET',redirect:'error',signal:controller.signal});
+   await reply.body?.cancel().catch(()=>{});reply=await fetchImpl(redirect.href,{method:'GET',redirect:'manual',signal:controller.signal});
   }
   if(reply.status!==200)throw Error('HTTP');const envelope=await limited(reply,4096,controller.signal);
   if(typeof envelope.payload!=='string'||envelope.payload.length>2048||!/^[A-Za-z0-9_-]+$/.test(envelope.payload)||typeof envelope.mac!=='string'||!/^[a-f0-9]{64}$/.test(envelope.mac)||!timingSafeEqual(Buffer.from(envelope.mac,'hex'),Buffer.from(mac(envelope.payload,key),'hex')))throw Error('MAC');
@@ -58,3 +58,4 @@ export async function relayQmentumWrite(request,env,{fetchImpl=fetch,now=Date.no
   if(!controller.signal.aborted&&(!remoteStarted||remoteFinished)&&admission?.allowed===true&&typeof admission.release==='function')await admission.release().catch(()=>{});
  }
 }
+import {Buffer} from 'node:buffer';
