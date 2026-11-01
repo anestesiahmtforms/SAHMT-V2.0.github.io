@@ -1,6 +1,13 @@
 # Isolamento operacional de FC — diagnóstico e preparação
 
-Estado: migração em andamento, sem troca em produção. Responsável por FC informado pelo usuário: `anestesiahmtforms3@gmail.com`. Data: 01/11/2026, America/Sao_Paulo.
+Este documento conserva o diagnóstico inicial. O estado atual e o corte restante
+estão em [Serviços FC e prints privados](fc-service-cutover-2026-11-01.md).
+O Desempenho FC exclusivo já foi publicado e confirmado pelo usuário. A decisão
+posterior é manter as cópias privadas de FC e encaminhar clientes antigos ao
+executor FC, sem compartilhar as cópias com FA ou gestão. As hipóteses iniciais
+de ledger compartilhado e acesso do executor central abaixo foram substituídas.
+
+Responsável FC: `anestesiahmtforms3@gmail.com`. Data: 01/11/2026, America/Sao_Paulo.
 
 ## Recursos verificados
 

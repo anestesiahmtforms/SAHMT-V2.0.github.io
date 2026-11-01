@@ -104,7 +104,7 @@ jobs:
       - name: Run management migration local tests
         run: npm run test:management
       - name: Verify FC module deployment targeting
-        run: node --test tests/fc-module-deployment.test.js tests/fc-integration-isolation.test.js tests/fc-apps-script.test.js tests/fc-performance-backend.test.js tests/fc-performance-data.test.js tests/fc-performance-jobs.test.js tests/fc-performance-ui.test.js tests/fc-performance-rules-builder.test.js tests/fc-performance-activation.test.js
+        run: node --test tests/fc-module-deployment.test.js tests/fc-integration-isolation.test.js tests/fc-compat-forward.test.js tests/fc-apps-script.test.js tests/fc-performance-backend.test.js tests/fc-performance-data.test.js tests/fc-performance-jobs.test.js tests/fc-performance-ui.test.js tests/fc-performance-rules-builder.test.js tests/fc-performance-activation.test.js
       - name: Run FA consolidation safety tests
         run: node scripts/test-fa-consolidation.mjs
       - name: Run unified FA Occurrences unit tests
@@ -152,9 +152,9 @@ jobs:
           VITE_HTML_TRAINING_ENDPOINT: ${{ vars.VITE_HTML_TRAINING_ENDPOINT || 'https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/training' }}
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
-          VITE_FC_INTEGRATION_ENABLED: ${{ vars.VITE_FC_INTEGRATION_ENABLED || 'false' }}
+          VITE_FC_INTEGRATION_ENABLED: ${{ vars.VITE_FC_INTEGRATION_ENABLED || 'true' }}
           VITE_FC_PERFORMANCE_ENABLED: ${{ vars.VITE_FC_PERFORMANCE_ENABLED || 'true' }}
-          VITE_FC_INTEGRATION_ORIGIN: ${{ vars.VITE_FC_INTEGRATION_ORIGIN }}
+          VITE_FC_INTEGRATION_ORIGIN: ${{ vars.VITE_FC_INTEGRATION_ORIGIN || 'https://sahmt-fc-integration.anestesiahmtforms3.workers.dev' }}
           VITE_OPERATIONAL_CHANNEL_ENDPOINT: ${{ vars.VITE_OPERATIONAL_CHANNEL_ENDPOINT }}
           VITE_OPERATIONAL_CONTINUITY_ENABLED: ${{ vars.VITE_OPERATIONAL_CONTINUITY_ENABLED }}
           VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED: ${{ vars.VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED || 'true' }}

@@ -16,9 +16,10 @@ tag = "fc-v1"
 new_sqlite_classes = ["FcIntegrationAdmissionState"]
 
 [vars]
-FC_INTEGRATION_ENABLED = "false"
-QMENTUM_WRITE_ENABLED = "false"
-OCCURRENCE_SCORING_ENABLED = "false"
+FC_INTEGRATION_ENABLED = "true"
+QMENTUM_WRITE_ENABLED = "true"
+OCCURRENCE_SCORING_ENABLED = "true"
 FC_MODULE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbypyEIHiUM7Ouh1NT9djsnTPWbPiyPHv-BiEYZdyoKcqrgOEwiQFUq2i3O03DzddnjdDg/exec"
-# Dedicated backend verified disabled, deployed by the FC owner. HMAC secrets
+# Target configuration for the reviewed service cutover. The existing backend
+# and exclusive performance scheduler execute as the FC owner. HMAC secrets
 # are server-side secret bindings and must never be added to this file.
