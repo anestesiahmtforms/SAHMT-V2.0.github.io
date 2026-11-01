@@ -75,11 +75,15 @@ de negócio do Firestore.
 
 ## Reversão coordenada
 
-Bloquear prints no wrapper, drenar, restaurar somente os dois campos originais
-com leitura/precondição novas e só então restaurar o módulo central anterior.
-Republicar a configuração anterior do PWA. Clientes ainda apontando diretamente
-para FC precisam ser atualizados antes de desligar esse serviço; uma reversão
-do frontend não reescreve bundles já instalados.
+Republicar primeiro a configuração anterior do PWA, mantendo o serviço FC,
+a ponte central e as referências FC durante a atualização dos aparelhos.
+Confirmar que os clientes ativos voltaram ao endereço central antes de bloquear
+prints, drenar e restaurar os dois campos originais com precondição nova. Só
+então restaurar o módulo central anterior. A conta FC não lê os originais FA:
+um aparelho ainda preso ao endereço FC precisará atualizar o shell para voltar
+a usar os prints. Uma reversão do frontend não reescreve bundles já instalados;
+o rollback completo pode exigir essa janela de atualização. Não desligar o
+serviço FC antes dessa conferência.
 
 Se falhar apenas o wrapper, preferir corrigi-lo mantendo FC saudável. Preservar
 créditos, recibos e gravações legítimas. Não reativar pontuação FC em FB, apagar
