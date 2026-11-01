@@ -2,7 +2,7 @@
 export const QMENTUM_SCHEMA = 1;
 export const QMENTUM_ENGINE = 'qmentum-1';
 export const QMENTUM_TITLE = 'INDICADORES OBRIGATÓRIOS QMENTUM';
-export const PRODUCTION = Object.freeze({general:'Anestesia geral',sedation:'Sedação',regional:'Regional',spinal:'Raquianestesia',epidural:'Peridural',local:'Local',support:'Suporte anestésico',surgical:'Procedimentos cirúrgicos',diabetes:'Diabéticos/hiperglicêmicos',toxicity:'Intoxicações por anestésicos locais',eventEpisodes:'Total de episódios de eventos',eventProcedures:'Procedimentos únicos com pelo menos um evento'});
+export const PRODUCTION = Object.freeze({general:'Anestesia geral',sedation:'Sedação',regional:'Regional',spinal:'Raquianestesia',epidural:'Peridural',local:'Local',support:'Suporte anestésico',anestheticProcedures:'Procedimentos anestésicos',surgical:'Procedimentos cirúrgicos',diabetes:'Diabéticos/hiperglicêmicos',toxicity:'Intoxicações por anestésicos locais',eventEpisodes:'Total de episódios de eventos',eventProcedures:'Procedimentos únicos com pelo menos um evento'});
 const rows = [
  ['QM01','Taxa de mudança de técnica anestésica','techniqueChanges','Mudanças de técnica','surgical','ratio','lower',false,'TAXA !D18 = D4/ANESTESIAS!D20'],
  ['QM02','Incidência de via aérea difícil identificada no intraoperatório','difficultAirway','Casos identificados','general','ratio','lower',false,'TAXA !D19 = D5/ANESTESIAS!D11'],

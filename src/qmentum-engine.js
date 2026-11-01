@@ -2,8 +2,9 @@ import {QMENTUM_ENGINE,QMENTUM_IDS,QMENTUM_INDICATORS,COUNT_KEYS,getIndicator} f
 export const RESULT_LABELS={VALID:'Calculado com definição aprovada',PROVISIONAL:'Definição pendente',PENDING:'Dados pendentes',NOT_APPLICABLE:'Não aplicável / sem casos elegíveis',INCONSISTENT:'Inconsistência',FOLLOWUP_PENDING:'Seguimento pendente',INFORMED:'Taxa informada (sem contagens)'};
 export function validateInputs(input) {
  if(!input||!input.counts||!input.origins||!input.informedRates||!input.legacyRates||!Array.isArray(input.notApplicable))throw Error('QMENTUM_INPUT_INVALID');
- for(const map of [input.counts,input.origins])if(Object.keys(map).sort().join()!==[...COUNT_KEYS].sort().join())throw Error('QMENTUM_FIELDS_INVALID');
- for(const key of COUNT_KEYS)if(input.counts[key]!==null&&(!Number.isSafeInteger(input.counts[key])||input.counts[key]<0||input.counts[key]>10000000))throw Error('QMENTUM_COUNT_INVALID');
+ const keys=Object.prototype.hasOwnProperty.call(input.counts,'anestheticProcedures')?COUNT_KEYS:COUNT_KEYS.filter(key=>key!=='anestheticProcedures'),expectedKeys=[...keys].sort().join();
+ for(const map of [input.counts,input.origins])if(Object.keys(map).sort().join()!==expectedKeys)throw Error('QMENTUM_FIELDS_INVALID');
+ for(const key of keys)if(input.counts[key]!==null&&(!Number.isSafeInteger(input.counts[key])||input.counts[key]<0||input.counts[key]>10000000))throw Error('QMENTUM_COUNT_INVALID');
  if(new Set(input.notApplicable).size!==input.notApplicable.length||input.notApplicable.some(k=>!COUNT_KEYS.includes(k)||input.counts[k]!==null))throw Error('QMENTUM_STATE_INVALID');
  if(Object.values(input.origins).some(s=>!['MANUAL','UNINFORMED','IMPORTED'].includes(s)))throw Error('QMENTUM_ORIGIN_INVALID');
  if(Object.keys(input.informedRates).sort().join()!==[...QMENTUM_IDS].sort().join())throw Error('QMENTUM_RATES_INVALID');
@@ -47,7 +48,7 @@ export function calculateMonth(inputs,definitions,options={}) {
 }
 export function productionTotals(counts) {
  const sum=keys=>keys.every(k=>counts[k]!==null)?keys.reduce((n,k)=>n+counts[k],0):null;
- return {anestheticTotal:sum(['general','sedation','regional','spinal','epidural','local','support']),legacyBlocks:sum(['regional','epidural','local'])};
+ return {anestheticTotal:counts.anestheticProcedures??sum(['general','sedation','regional','spinal','epidural','local','support']),legacyBlocks:sum(['regional','epidural','local'])};
 }
 export function aggregateResults(rows) {
  if(!rows.length)return {ratio:null,status:'PENDING',N:null,D:null};

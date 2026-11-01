@@ -38,7 +38,7 @@ var QmentumCore = (() => {
 
   // src/qmentum-catalog.js
   var QMENTUM_ENGINE = "qmentum-1";
-  var PRODUCTION = Object.freeze({ general: "Anestesia geral", sedation: "Seda\xE7\xE3o", regional: "Regional", spinal: "Raquianestesia", epidural: "Peridural", local: "Local", support: "Suporte anest\xE9sico", surgical: "Procedimentos cir\xFArgicos", diabetes: "Diab\xE9ticos/hiperglic\xEAmicos", toxicity: "Intoxica\xE7\xF5es por anest\xE9sicos locais", eventEpisodes: "Total de epis\xF3dios de eventos", eventProcedures: "Procedimentos \xFAnicos com pelo menos um evento" });
+  var PRODUCTION = Object.freeze({ general: "Anestesia geral", sedation: "Seda\xE7\xE3o", regional: "Regional", spinal: "Raquianestesia", epidural: "Peridural", local: "Local", support: "Suporte anest\xE9sico", anestheticProcedures: "Procedimentos anest\xE9sicos", surgical: "Procedimentos cir\xFArgicos", diabetes: "Diab\xE9ticos/hiperglic\xEAmicos", toxicity: "Intoxica\xE7\xF5es por anest\xE9sicos locais", eventEpisodes: "Total de epis\xF3dios de eventos", eventProcedures: "Procedimentos \xFAnicos com pelo menos um evento" });
   var rows = [
     ["QM01", "Taxa de mudan\xE7a de t\xE9cnica anest\xE9sica", "techniqueChanges", "Mudan\xE7as de t\xE9cnica", "surgical", "ratio", "lower", false, "TAXA !D18 = D4/ANESTESIAS!D20"],
     ["QM02", "Incid\xEAncia de via a\xE9rea dif\xEDcil identificada no intraoperat\xF3rio", "difficultAirway", "Casos identificados", "general", "ratio", "lower", false, "TAXA !D19 = D5/ANESTESIAS!D11"],
@@ -68,8 +68,9 @@ var QmentumCore = (() => {
   // src/qmentum-engine.js
   function validateInputs(input) {
     if (!input || !input.counts || !input.origins || !input.informedRates || !input.legacyRates || !Array.isArray(input.notApplicable)) throw Error("QMENTUM_INPUT_INVALID");
-    for (const map of [input.counts, input.origins]) if (Object.keys(map).sort().join() !== [...COUNT_KEYS].sort().join()) throw Error("QMENTUM_FIELDS_INVALID");
-    for (const key of COUNT_KEYS) if (input.counts[key] !== null && (!Number.isSafeInteger(input.counts[key]) || input.counts[key] < 0 || input.counts[key] > 1e7)) throw Error("QMENTUM_COUNT_INVALID");
+    const keys = Object.prototype.hasOwnProperty.call(input.counts, "anestheticProcedures") ? COUNT_KEYS : COUNT_KEYS.filter((key) => key !== "anestheticProcedures"), expectedKeys = [...keys].sort().join();
+    for (const map of [input.counts, input.origins]) if (Object.keys(map).sort().join() !== expectedKeys) throw Error("QMENTUM_FIELDS_INVALID");
+    for (const key of keys) if (input.counts[key] !== null && (!Number.isSafeInteger(input.counts[key]) || input.counts[key] < 0 || input.counts[key] > 1e7)) throw Error("QMENTUM_COUNT_INVALID");
     if (new Set(input.notApplicable).size !== input.notApplicable.length || input.notApplicable.some((k) => !COUNT_KEYS.includes(k) || input.counts[k] !== null)) throw Error("QMENTUM_STATE_INVALID");
     if (Object.values(input.origins).some((s) => !["MANUAL", "UNINFORMED", "IMPORTED"].includes(s))) throw Error("QMENTUM_ORIGIN_INVALID");
     if (Object.keys(input.informedRates).sort().join() !== [...QMENTUM_IDS].sort().join()) throw Error("QMENTUM_RATES_INVALID");

@@ -4,6 +4,7 @@ import {calculateMonth,periodKey,validateDefinitions,validateInputs} from './qme
 import {createQmentumCommandSender} from './qmentum-command.js';
 import {participationId,validateParticipation} from './qmentum-participation.js';
 import {latestRecordedMonth} from './qmentum-overview.js';
+import {createQmentumPrintClient} from './qmentum-print-client.js';
 const unitPattern=/^[A-Za-z0-9_-]{1,80}$/;
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const canonical=value=>value&&typeof value==='object'?Array.isArray(value)?'['+value.map(canonical).join(',')+']':'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}':JSON.stringify(value);
@@ -45,6 +46,9 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
   const definitions=await definition(config.definitionVersion);
   return {access:a,units,definitions};
  };
+ const printClient=createQmentumPrintClient({auth,uid,isCurrent,endpoint:writeEndpoint});
+ const printCall=operation=>async payload=>{const grant=await access(payload?.unitId);if(grant.role!=='manager')throw Error('QMENTUM_PERMISSION_DENIED');const result=await printClient[operation](payload);ensure();return result;};
+ const prints={scan:printCall('scan'),preview:printCall('preview'),apply:printCall('apply')};
  const month=async(unitId,year,month)=>{await access(unitId);const d=await read('qmentumUnits',unitId,'months',periodKey(year,month));return d?(await materialize([d]))[0]:null;};
  const year=async(unitId,year)=>{
   await access(unitId);periodKey(year,1);
@@ -115,7 +119,7 @@ export function createQmentumRepository({db,auth,uid,isCurrent=()=>true,firestor
   const id=participationId(participation.analysisId,participation.actorUid,'SUGGESTION'),target=ref('qmentumParticipationReviews',id);
   await api.runTransaction(db,async tx=>{if((await tx.get(target)).exists())return;ensure();tx.set(target,{participationId:id,unitId,actorUid:uid,decision,reason:reason.trim(),status:'PENDING',createdAt:api.serverTimestamp()});});ensure();
  };
- return {open,access,month,year,latest,history,save,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,participate,participations,reviewSuggestion,definition:async version=>{await access();const config=await read('qmentumConfig','current');if(config?.enabled!==true)throw Error('QMENTUM_CONFIG_REQUIRED');return definition(version);}};
+ return {open,access,month,year,latest,history,save,prints,stageImport,publishDefinition,quarterlyAnalyses,requestAnalysisReview,participate,participations,reviewSuggestion,definition:async version=>{await access();const config=await read('qmentumConfig','current');if(config?.enabled!==true)throw Error('QMENTUM_CONFIG_REQUIRED');return definition(version);}};
 }
 
 export function createDraftStore() {

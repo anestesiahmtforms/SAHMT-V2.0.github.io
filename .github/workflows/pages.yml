@@ -87,7 +87,7 @@ jobs:
       - name: Run shared channel realtime tests
         run: npm run test:channel-realtime
       - name: Validate QMENTUM FC local package
-        run: node scripts/build-qmentum-backend.mjs && npm run test:qmentum
+        run: node scripts/build-qmentum-backend.mjs && node scripts/build-qmentum-print-backend.mjs && npm run test:qmentum
       - name: Run legacy QMENTUM rules regression
         run: npm run test:qmentum-rules
       - name: Build FC module rules and test QMENTUM plus occurrences
