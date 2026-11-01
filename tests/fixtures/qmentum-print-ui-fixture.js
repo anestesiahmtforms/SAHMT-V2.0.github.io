@@ -12,7 +12,7 @@ export function mountPrintInputFixture(root,options={}) {
  const call=async(operation,payload)=>{
   state.calls.push({operation,payload:structuredClone(payload)});
   if(state.hold[operation])await new Promise((resolve,reject)=>{state.pending[operation]={resolve,reject};});
-  if(state.failures[operation]){state.failures[operation]--;throw Error('SYNTHETIC_FAILURE');}
+  if(state.failures[operation]){state.failures[operation]--;throw Error(options.failureCodes?.[operation]||'SYNTHETIC_FAILURE');}
   return structuredClone(state.responses[operation]);
  };
  state.release=operation=>{state.hold[operation]=false;state.pending[operation]?.resolve();delete state.pending[operation];};

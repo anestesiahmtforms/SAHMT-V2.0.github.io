@@ -2,7 +2,7 @@ import {emptyInputs} from './qmentum-catalog.js';
 import {periodKey} from './qmentum-engine.js';
 import {prepareQmentumWrite,qmentumCanonical} from './qmentum-write.js';
 import {reconcilePrintImport} from './qmentum-print-import.js';
-export const PRINT_PARSER_VERSION='prints-1';
+export const PRINT_PARSER_VERSION='prints-2';
 export const PRINT_COUNT_FIELDS=Object.freeze(['general','sedation','regional','spinal','epidural','local','support','anestheticProcedures','surgical','techniqueChanges','difficultAirway','toxicity','unplannedIcu','ponv','acutePain','diabetes','hypoglycemia','hypothermia','cardiacArrest']);
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const fail=code=>{throw Error('QMENTUM_PRINT_'+code);};
@@ -27,7 +27,7 @@ export function planPrintScan({files,baselines={},year,sourceYear}){
  }
  return{candidates:[...groups].sort(([a],[b])=>a.localeCompare(b)).map(([period,sources])=>{
   const techniques=sources.filter(f=>f.kind==='TECHNIQUES'),indicators=sources.filter(f=>f.kind==='INDICATORS');
-  const status=techniques.length>1||indicators.length>1?'DUPLICATE':techniques.length!==1||indicators.length!==1?'MISSING_PAIR':!baselines[period]?'NEW':qmentumCanonical(sourceMetadata(sources))===qmentumCanonical(sourceMetadata(baselines[period].sources))?'UNCHANGED':'CHANGED';
+  const status=techniques.length>1||indicators.length>1?'DUPLICATE':techniques.length!==1||indicators.length!==1?'MISSING_PAIR':!baselines[period]?'NEW':baselines[period].parserVersion===PRINT_PARSER_VERSION&&qmentumCanonical(sourceMetadata(sources))===qmentumCanonical(sourceMetadata(baselines[period].sources))?'UNCHANGED':'CHANGED';
   return{period,status,sources};
  })};
 }

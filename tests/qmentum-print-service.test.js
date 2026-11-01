@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {emptyInputs,initialDefinitions} from '../src/qmentum-catalog.js';
-import {planPrintScan,preparePrintMutation,validatePrintPeriod} from '../src/qmentum-print-service.js';
+import {PRINT_PARSER_VERSION,planPrintScan,preparePrintMutation,validatePrintPeriod} from '../src/qmentum-print-service.js';
 const now=new Date('2026-11-01T12:00:00Z'),uid='manager',unitId='synthetic',period='2026-07',root='qmentumUnits/'+unitId;
 function fixture(){
  const documents=new Map([['users/'+uid,{uid,active:true,access:true}],['qmentumAccess/'+uid,{uid,active:true,role:'manager',units:[unitId]}],['qmentumConfig/current',{enabled:true,definitionVersion:1}],[root,{unitId,active:true}],['qmentumDefinitions/1',initialDefinitions()]]);
- const preview={id:'a'.repeat(64),createdBy:uid,unitId,period,baseVersion:0,createdAt:now,expiresAt:now.getTime()+1800000,sourceHash:'b'.repeat(64),parserVersion:'prints-1',counts:{anestheticProcedures:40,surgical:20,general:10,sedation:25,regional:12,spinal:5,epidural:0,local:0,support:0,diabetes:3,toxicity:0},sources:[{kind:'TECHNIQUES',id:'tech-file',sha256:'c'.repeat(64),version:'1'},{kind:'INDICATORS',id:'event-file',sha256:'d'.repeat(64),version:'1'}]};
+ const preview={id:'a'.repeat(64),createdBy:uid,unitId,period,baseVersion:0,createdAt:now,expiresAt:now.getTime()+1800000,sourceHash:'b'.repeat(64),parserVersion:PRINT_PARSER_VERSION,counts:{anestheticProcedures:40,surgical:20,general:10,sedation:25,regional:12,spinal:5,epidural:0,local:0,support:0,diabetes:3,toxicity:0},sources:[{kind:'TECHNIQUES',id:'tech-file',sha256:'c'.repeat(64),version:'1'},{kind:'INDICATORS',id:'event-file',sha256:'d'.repeat(64),version:'1'}]};
  return{documents,preview,uid,unitId,period,baseVersion:0,corrections:{},resolutions:{},requestHash:'e'.repeat(64),now};
 }
 test('print scope excludes January through June 2026, and accepts explicit future years',()=>{
@@ -16,7 +16,8 @@ test('scan binds legacy filenames to their configured source year and exposes mi
  const scan=planPrintScan({files,baselines:{},year:2026,sourceYear:2026});assert.deepEqual(scan.candidates.map(x=>[x.period,x.status]),[['2026-07','NEW'],['2026-08','MISSING_PAIR']]);
  assert.deepEqual(planPrintScan({files,baselines:{},year:2027,sourceYear:2026}).candidates.map(x=>x.period),['2027-01']);
  assert.equal(planPrintScan({files:[...files,{kind:'TECHNIQUES',id:'duplicate',name:'07.jpg'}],baselines:{},year:2026,sourceYear:2026}).candidates[0].status,'DUPLICATE');
- const pair=scan.candidates[0].sources;assert.equal(planPrintScan({files,baselines:{'2026-07':{sources:pair}},year:2026,sourceYear:2026}).candidates[0].status,'UNCHANGED');
+ const pair=scan.candidates[0].sources;assert.equal(planPrintScan({files,baselines:{'2026-07':{sources:pair,parserVersion:PRINT_PARSER_VERSION}},year:2026,sourceYear:2026}).candidates[0].status,'UNCHANGED');
+ assert.equal(planPrintScan({files,baselines:{'2026-07':{sources:pair,parserVersion:'retired-parser'}},year:2026,sourceYear:2026}).candidates[0].status,'CHANGED');
 });
 test('new print import preserves independent source totals and creates atomic month/history/provenance',()=>{
  const f=fixture(),p=preparePrintMutation(f),month=p.writes.find(w=>w.path===root+'/months/'+period).data;

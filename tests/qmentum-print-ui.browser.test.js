@@ -7,6 +7,17 @@ import {chromium,webkit} from 'playwright';
 const engine=process.env.QMENTUM_BROWSER==='webkit'?webkit:chromium;
 const launchOptions=process.env.QMENTUM_BROWSER_CHANNEL?{channel:process.env.QMENTUM_BROWSER_CHANNEL,headless:true}:{headless:true};
 const viewports=[['mobile',390,844],['tablet',768,1024],['desktop',1440,1000],['compact',320,568]];
+
+test('daily Google quota is explained while images and corrections survive a confirmation retry',async()=>{
+ await withBrowser(async(browser,base,origin)=>{
+  const page=await fixture(browser,base,origin,{failures:{apply:1},failureCodes:{apply:'QMENTUM_PRINT_QUOTA_WAIT'}});await uploadPreview(page);
+  await page.locator('[data-print-count="anestheticProcedures"]').fill('84');await page.getByRole('button',{name:'Confirmar importação',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-print-status]')?.textContent.includes('limite diário'));
+  assert.equal(await page.locator('[data-print-count="anestheticProcedures"]').inputValue(),'84');assert.equal(await page.locator('[data-print-image]').count(),2);assert.equal(await page.evaluate(()=>window.printInput.saved.length),0);
+  await page.getByRole('button',{name:'Confirmar importação',exact:true}).click();await page.waitForFunction(()=>window.printInput.saved.length===1);
+  const calls=await page.evaluate(()=>window.printInput.calls.filter(c=>c.operation==='apply').map(c=>c.payload));assert.equal(calls.length,2);assert.deepEqual(calls[0],calls[1]);await page.close();
+ });
+});
 // A synthetic, single-pixel image; no clinical source images or counts.
 const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
 const image=(name='synthetic.png',mimeType='image/png',buffer=pixel)=>({name,mimeType,buffer});
@@ -46,8 +57,8 @@ test('upload preview keeps independent totals and deliberately confirms within o
    await page.locator('[data-print-count="anestheticProcedures"]').waitFor();
    assert.equal(await page.locator('[data-print-count="anestheticProcedures"]').inputValue(),'83',name);
    assert.equal(await page.locator('[data-print-count="surgical"]').inputValue(),'71',name);
-   assert.match(await page.locator('[data-print-total="anestheticProcedures"]').innerText(),/Total geral/,name);
-   assert.match(await page.locator('[data-print-total="surgical"]').innerText(),/Total de registros/,name);
+   assert.match(await page.locator('[data-print-total="anestheticProcedures"]').innerText(),/Soma de cada tipo/,name);
+   assert.match(await page.locator('[data-print-total="surgical"]').innerText(),/Total geral/,name);
    assert.equal(await page.locator('[data-print-count="headache"]').count(),0,name);
    assert.match(await page.locator('[data-print-missing]').innerText(),/cefaleia/i,name);
    assert.match(await page.locator('[data-print-changes]').innerText(),/Anestesia geral.*58.*60/s,name);
@@ -134,7 +145,7 @@ test('Drive scan lists new and changed sources without writing or changing the s
   await page.locator('[data-print-count="surgical"]').waitFor();
   assert.equal(await page.locator('[data-print-source-link]').count(),2);
   assert.equal(await page.locator('[data-print-total="anestheticProcedures"] a').getAttribute('href'),'https://drive.google.com/file/d/synthetic-techniques/view');
-  assert.equal(await page.locator('[data-print-total="surgical"] a').getAttribute('href'),'https://drive.google.com/file/d/synthetic-indicators/view');
+  assert.equal(await page.locator('[data-print-total="surgical"] a').getAttribute('href'),'https://drive.google.com/file/d/synthetic-techniques/view');
   assert.equal(await page.locator('[data-print-source-link]').first().getAttribute('rel'),'noopener noreferrer');
   assert.deepEqual(await page.evaluate(()=>window.printInput.calls.at(-1)),{operation:'preview',payload:{unitId:'synthetic-unit',period:'2026-08',source:'DRIVE'}});
   assert.equal(await page.evaluate(()=>window.printInput.saved.length),0);

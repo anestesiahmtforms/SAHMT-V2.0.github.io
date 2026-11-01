@@ -29,7 +29,7 @@ const indicatorAliases = dictionary([
  ['hypoglycemia',['Hipoglicemia','Hipoglicemia perioperatória','Evento de hipoglicemia perioperatória']],
  ['hypothermia',['Hipotermia','Hipotermia não intencional','Hipotermia não intencional do intraoperatório até a alta anestésica','Incidência de hipotermia não intencional do intraoperatório até a alta anestésica']],
  ['cardiacArrest',['PCR','Parada cardiorrespiratória','Parada cardiorrespiratória do intraoperatório até a alta anestésica','PCR do intraoperatório até a alta anestésica','Incidência de PCR do intraoperatório até a alta anestésica']],
- ['surgical',['Total de registros']]
+ ['ignoredRecords',['Total de registros']]
 ]);
 const commonHeaders = ['Quantidade','Quantidades','Qtd','Qtde','Total'];
 const techniqueHeaders = new Set([...commonHeaders,'Técnica','Técnicas','Técnica anestésica','Técnicas anestésicas','Tipo de anestesia','Técnica anestésica Quantidade','Técnicas anestésicas Quantidade','Técnica Quantidade','Técnica Qtd','Técnica Qtde'].map(normalize));
@@ -51,7 +51,9 @@ function ocrLines(text) {
 }
 
 function countFromText(value) {
- const text=value.trim();
+ // A single OCR letter O in a verified numeric cell is the zero glyph.
+ // Mixed letter/digit strings remain invalid and require manual review.
+ const text=/^[Oo]$/.test(value.trim())?'0':value.trim();
  if(!/^(?:\d+|\d{1,3}(?:\.\d{3})+|\d{1,3}(?: \d{3})+)$/.test(text))fail('COUNT_INVALID');
  const count=Number(text.replace(/[. ]/g,''));
  if(!Number.isSafeInteger(count)||count>MAX_COUNT)fail('COUNT_INVALID');
@@ -70,11 +72,11 @@ function techniqueLabel(label) {
 }
 
 function indicatorLabel(label) {
- const prefix=/^(0?[1-9]|7[AB])\s*[-–—.:]\s*(.+)$/i.exec(label),code=prefix?prefix[1].toUpperCase().replace(/^0/,''):null;
+ const prefix=/^(0?[1-9]|7[AB])(?:\s*[-–—.:]\s*|\s+)(.+)$/i.exec(label),code=prefix?prefix[1].toUpperCase().replace(/^0/,''):null;
  const field=indicatorAliases.get(normalize(prefix?prefix[2]:label));
  if(!field)fail('INDICATOR_UNKNOWN');
  if(code&&reportCodes[code]!==field)fail('INDICATOR_CODE_MISMATCH');
- return {id:field,fields:[field]};
+ return {id:field,fields:field==='ignoredRecords'?[]:[field]};
 }
 
 // Only row-oriented OCR is accepted: one label/value line or an adjacent
@@ -83,14 +85,14 @@ function parseRows(text,headers,resolveLabel) {
  const lines=ocrLines(text),rows=[],seen=new Set();
  for(let index=0;index<lines.length;index++){
   const line=lines[index];
-  if(headers.has(normalize(line))||/^[|:\-\s]+$/.test(line))continue;
-  const inline=line.match(/^(.+?)(?:\s*[:|=]\s*|\s+)([0-9][0-9., \t]*)$/);
+  if(headers.has(normalize(line))||/^(?:[|:\-\s]+|_{3,})$/.test(line))continue;
+  const inline=line.match(/^(.+?)(?:\s*[:|=]\s*|\s+)([0-9][0-9., \t]*|[Oo])$/);
   let label,quantity;
   if(inline){label=inline[1].trim();quantity=countFromText(inline[2]);}
   else{
    label=line.replace(/\s*[:|=]\s*$/,'').trim();
    resolveLabel(label);
-   if(index+1>=lines.length||!/^[0-9][0-9., \t]*$/.test(lines[index+1]))fail('ROW_INCOMPLETE');
+   if(index+1>=lines.length||!/^(?:[0-9][0-9., \t]*|[Oo])$/.test(lines[index+1]))fail('ROW_INCOMPLETE');
    quantity=countFromText(lines[++index]);
   }
   const resolved=resolveLabel(label);
@@ -112,13 +114,15 @@ export function parseTechniquePrint(text) {
  // Absence means zero only after all original rows reconcile to Total geral.
  const counts=Object.fromEntries(TECHNIQUES.map(field=>[field,0]));
  for(const row of rows)for(const field of row.fields)counts[field]+=row.quantity;
- counts.anestheticProcedures=total.quantity;
- return {rows,counts,anestheticProcedures:total.quantity,tableTotal};
+ counts.anestheticProcedures=TECHNIQUES.reduce((sum,field)=>sum+counts[field],0);
+ if(counts.anestheticProcedures>MAX_COUNT)fail('COUNT_INVALID');
+ counts.surgical=total.quantity;
+ return {rows,counts,anestheticProcedures:counts.anestheticProcedures,tableTotal};
 }
 
 export function parseIndicatorPrint(text) {
  const rows=parseRows(text,indicatorHeaders,indicatorLabel);
- return {counts:Object.fromEntries(rows.map(row=>[row.id,row.quantity]))};
+ return {counts:Object.fromEntries(rows.filter(row=>row.id!=='ignoredRecords').map(row=>[row.id,row.quantity]))};
 }
 
 export function preparePrintPreview({period,techniquesText,indicatorsText}={}) {

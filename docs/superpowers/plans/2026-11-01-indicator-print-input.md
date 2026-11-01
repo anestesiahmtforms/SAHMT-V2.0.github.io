@@ -12,7 +12,7 @@
 
 ## Global constraints
 
-- Total geral -> anestheticProcedures, Total de registros -> surgical. Never sum these totals or derive the former from technique multiplicity.
+- Final user rule: Total geral -> surgical; sum individual technique counts -> anestheticProcedures. Ignore event-panel Total de registros. Count every association component individually, including Outra Técnica as sedation + regional. Never add the surgical total to the anesthetic total.
 - Outra Técnica -> sedation + regional. Keep eighteen indicator definitions and missing counts distinct from zero.
 - Exclude periods before 2026-07 from print import/sync. Do not rewrite January–June.
 - Preserve original checkout, untracked local scripts, FC authorization, manual values and immutable history. No forced app-update campaign.

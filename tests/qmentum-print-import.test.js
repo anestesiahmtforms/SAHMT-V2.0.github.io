@@ -5,9 +5,9 @@ import {parseTechniquePrint,parseIndicatorPrint,preparePrintPreview,reconcilePri
 
 test('numbered labels from the institutional event panel map by meaning and report code',()=>{
  const text='FILTROS\nPeríodo (Data registro)\nTotal de registros: 300\n01 - Mudança técnica anestésica: 1\n02 - Via aérea difícil: 2\n03 - Evento de Intoxicação: 3\n04 - Transferência UTI: 4\n05 - Episódios de náusea ou vômitos: 5\n06 - Dor aguda: 6\n7A - Paciente com DM ou hiperglicêmico: 40\n7B - Evento de hipoglicemia: 7\n08 - Evento de hipotermia: 8\n09 - Evento PCR: 9';
- const {counts}=parseIndicatorPrint(text);assert.deepEqual(counts,{surgical:300,techniqueChanges:1,difficultAirway:2,toxicity:3,unplannedIcu:4,ponv:5,acutePain:6,diabetes:40,hypoglycemia:7,hypothermia:8,cardiacArrest:9});
+ const {counts}=parseIndicatorPrint(text);assert.deepEqual(counts,{techniqueChanges:1,difficultAirway:2,toxicity:3,unplannedIcu:4,ponv:5,acutePain:6,diabetes:40,hypoglycemia:7,hypothermia:8,cardiacArrest:9});
  assert.throws(()=>parseIndicatorPrint('03 - Via aérea difícil: 2\nTotal de registros: 300'),/INDICATOR/);
- const tech=parseTechniquePrint('Técnica anestésica | Quantidade\nGeral + Raquianestesia Analgésica | 3\nTotal geral | 3');assert.equal(tech.counts.spinal,3);assert.equal(tech.anestheticProcedures,3);
+ const tech=parseTechniquePrint('Técnica anestésica | Quantidade\nGeral + Raquianestesia Analgésica | 3\nTotal geral | 3');assert.equal(tech.counts.spinal,3);assert.equal(tech.anestheticProcedures,6);
 });
 
 // Entirely synthetic OCR; none of these values describe clinical records.
@@ -32,17 +32,17 @@ Hipotermia não intencional: 7
 Parada cardiorrespiratória: 0
 Total de registros: 40`;
 
-test('associations expand each technique once and preserve the explicit independent anesthetic total',()=>{
+test('associations contribute individually and their sum supplies the anesthetic total',()=>{
  const result=parseTechniquePrint(techniques);
- assert.deepEqual(result.counts,{general:11,sedation:10,regional:2,spinal:4,epidural:4,local:1,support:0,anestheticProcedures:18});
- assert.equal(result.anestheticProcedures,18);
+ assert.deepEqual(result.counts,{general:11,sedation:10,regional:2,spinal:4,epidural:4,local:1,support:0,anestheticProcedures:32,surgical:18});
+ assert.equal(result.anestheticProcedures,32);
  assert.equal(result.tableTotal,18);
  assert.equal(result.rows.length,6);
  assert.deepEqual(result.rows[3],{label:'Outra Técnica',quantity:2,fields:['sedation','regional']});
 });
 
 test('a complete table establishes absent techniques as zero including an empty explicit zero table',()=>{
- assert.deepEqual(parseTechniquePrint('Geral: 0\nTotal geral: 0').counts,{general:0,sedation:0,regional:0,spinal:0,epidural:0,local:0,support:0,anestheticProcedures:0});
+ assert.deepEqual(parseTechniquePrint('Geral: 0\nTotal geral: 0').counts,{general:0,sedation:0,regional:0,spinal:0,epidural:0,local:0,support:0,anestheticProcedures:0,surgical:0});
  assert.equal(parseTechniquePrint('Total geral: 0').anestheticProcedures,0);
  assert.equal(parseTechniquePrint('Sedação\n1.234\nTotal geral\n1.234').counts.sedation,1234);
  assert.equal(parseTechniquePrint('Sedação | 1 234\nTotal geral | 1 234').tableTotal,1234);
@@ -76,25 +76,46 @@ test('unknown, ambiguous, duplicate, incomplete and mismatching technique rows a
 });
 
 test('event panel maps counts without claiming effective management, control, headache or unique procedures',()=>{
- assert.deepEqual(parseIndicatorPrint(indicators).counts,{techniqueChanges:1,difficultAirway:2,toxicity:0,unplannedIcu:3,ponv:4,acutePain:5,diabetes:6,hypoglycemia:0,hypothermia:7,cardiacArrest:0,surgical:40});
+ assert.deepEqual(parseIndicatorPrint(indicators).counts,{techniqueChanges:1,difficultAirway:2,toxicity:0,unplannedIcu:3,ponv:4,acutePain:5,diabetes:6,hypoglycemia:0,hypothermia:7,cardiacArrest:0});
  const result=parseIndicatorPrint('DM: 0\nPCR: 0\nTotal de registros: 2.345');
- assert.deepEqual(result.counts,{diabetes:0,cardiacArrest:0,surgical:2345});
+ assert.deepEqual(result.counts,{diabetes:0,cardiacArrest:0});
 });
 
 test('event OCR rejects mixed or unknown rows and duplicate aliases rather than pairing columns',()=>{
  for(const text of ['Dor aguda\nHipotermia\n1\n2','Dor aguda: 1\nEvento não reconhecido: 0','DM: 1\nDiabéticos/hiperglicêmicos: 2','Hipotermia: 1 2','Hipoglicemia:','Total de registros: 1\nTotal de registros: 1'])assert.throws(()=>parseIndicatorPrint(text),/QMENTUM_PRINT_/);
- assert.deepEqual(parseIndicatorPrint('DM\n0\nTotal de registros\n0').counts,{diabetes:0,surgical:0});
+ assert.deepEqual(parseIndicatorPrint('DM\n0\nTotal de registros\n0').counts,{diabetes:0});
 });
 
 test('preview validates explicit period scope and keeps independent totals and missing outcomes visible',()=>{
  const result=preparePrintPreview({period:'2026-07',techniquesText:techniques,indicatorsText:indicators});
  assert.equal(result.period,'2026-07');
- assert.equal(result.counts.anestheticProcedures,18);
- assert.equal(result.counts.surgical,40);
+ assert.equal(result.counts.anestheticProcedures,32);
+ assert.equal(result.counts.surgical,18);
  for(const key of ['effectiveToxicity','effectiveGlucose','headache','eventProcedures'])assert.ok(result.missingFields.includes(key));
  assert.equal(result.rows.length,6);
  for(const period of ['2026-06','2026-00','2026-13','2026-7',undefined,'2201-01'])assert.throws(()=>preparePrintPreview({period,techniquesText:techniques,indicatorsText:indicators}),/QMENTUM_PRINT_PERIOD/);
- assert.equal(preparePrintPreview({period:'2027-01',techniquesText:'Total geral: 0',indicatorsText:'DM: 0'}).missingFields.includes('surgical'),true);
+ assert.equal(preparePrintPreview({period:'2027-01',techniquesText:'Total geral: 0',indicatorsText:'DM: 0'}).missingFields.includes('surgical'),false);
+});
+
+test('surgical total comes exclusively from the technique table and event record totals are ignored',()=>{
+ for(const records of [0,7,999]){
+  const result=preparePrintPreview({period:'2026-07',techniquesText:techniques,indicatorsText:'Dor aguda: 2\nTotal de registros: '+records});
+  assert.equal(result.counts.surgical,18);assert.equal(result.counts.acutePain,2);
+ }
+ assert.equal(Object.hasOwn(parseIndicatorPrint('Total de registros: 9').counts,'surgical'),false);
+});
+
+test('general with spinal is one of each, and Outra Técnica contributes one sedation and one regional',()=>{
+ const result=parseTechniquePrint('Geral + Raquianestesia: 1\nOutra Técnica: 1\nTotal geral: 2');
+ assert.deepEqual(result.counts,{general:1,sedation:1,regional:1,spinal:1,epidural:0,local:0,support:0,anestheticProcedures:4,surgical:2});
+ assert.equal(result.tableTotal,2);
+ assert.equal(result.anestheticProcedures,4);
+});
+
+test('Google Docs OCR artifacts and report codes without a dash retain strict label/value pairing',()=>{
+ assert.equal(parseTechniquePrint('________________\r\n\r\nSedação 3\r\nTotal geral 3').tableTotal,3);
+ assert.deepEqual(parseIndicatorPrint('________________\n01 Mudança técnica anestésica 2\n-\n02 Via aérea dificil 3\n04 - Transferência UTI O\n09 Evento PCR 0').counts,{techniqueChanges:2,difficultAirway:3,unplannedIcu:0,cardiacArrest:0});
+ for(const text of ['03 Via aérea difícil 2','04 - Transferência UTI 1O','04 - Transferência UTI OO','04 - Transferência UTI o2','__Sedação 3__'])assert.throws(()=>parseIndicatorPrint(text),/QMENTUM_PRINT_/);
 });
 
 test('bounded OCR input rejects non-text, control characters, oversize lines and excessive rows',()=>{

@@ -4,21 +4,23 @@ function qmPrintMac_(payload,key){return Utilities.computeHmacSha256Signature('S
 function qmPrintHex_(bytes){return bytes.map(function(n){return('0'+((n+256)%256).toString(16)).slice(-2);}).join('');}
 function qmPrintBytesHash_(bytes){return qmPrintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,bytes));}
 function qmPrintPlain_(value){return value&&typeof value==='object'&&!Array.isArray(value);}
+function qmPrintQuotaGuard_(){if(typeof sahmtUrlFetchPause_==='function'&&sahmtUrlFetchPause_())qmPrintFail_('QUOTA_WAIT');}
 function qmPrintKeys_(value,allowed){return qmPrintPlain_(value)&&Object.keys(value).every(function(k){return allowed.indexOf(k)>=0;});}
 function qmPrintContext_(uid,unitId){
- qmWriteAssertFc_();if(!/^[A-Za-z0-9_-]{1,128}$/.test(uid||'')||!/^[A-Za-z0-9_-]{1,80}$/.test(unitId||''))qmPrintFail_('PERMISSION_DENIED');
- const documents=new Map();['users/'+uid,'qmentumAccess/'+uid,'qmentumConfig/current','qmentumUnits/'+unitId].forEach(function(path){const d=qmServerGet_(path);if(d)documents.set(path,d);});
+ qmWriteAssertFc_();qmPrintQuotaGuard_();if(!/^[A-Za-z0-9_-]{1,128}$/.test(uid||'')||!/^[A-Za-z0-9_-]{1,80}$/.test(unitId||''))qmPrintFail_('PERMISSION_DENIED');
+ const documents=new Map();['users/'+uid,'qmentumAccess/'+uid,'qmentumConfig/current','qmentumUnits/'+unitId].forEach(function(path){let d;try{d=qmServerGet_(path);}catch(e){qmPrintQuotaGuard_();throw e;}if(d)documents.set(path,d);});
  QmentumPrintCore.assertPrintAccess({documents:documents,uid:uid,unitId:unitId});return documents;
 }
-function qmPrintRead_(documents,path){if(!documents.has(path)){const d=qmServerGet_(path);if(d)documents.set(path,d);}return documents.get(path)||null;}
+function qmPrintRead_(documents,path){if(!documents.has(path)){let d;try{d=qmServerGet_(path);}catch(e){qmPrintQuotaGuard_();throw e;}if(d)documents.set(path,d);}return documents.get(path)||null;}
 function qmPrintConfig_(documents,unitId){
  const c=qmPrintRead_(documents,'qmentumUnits/'+unitId+'/printConfig/current');
  if(c?.enabled!==true||!Number.isInteger(c.sourceYear)||c.sourceYear<2026||c.sourceYear>2200||c.minPeriod!=='2026-07'||!c.folders||!['TECHNIQUES','INDICATORS'].every(function(k){return /^[A-Za-z0-9_-]{10,200}$/.test(c.folders[k]||'');})||c.folders.TECHNIQUES===c.folders.INDICATORS)qmPrintFail_('SOURCE_CONFIG_REQUIRED');return c;
 }
 function qmPrintDriveFetch_(url,options){
  if(!/^https:\/\/www\.googleapis\.com\/(?:upload\/)?drive\/v3\//.test(url))qmPrintFail_('DRIVE_ENDPOINT_DENIED');
+ qmPrintQuotaGuard_();
  const opts=Object.assign({method:'get'},options||{});opts.headers=Object.assign({},opts.headers||{},{Authorization:'Bearer '+ScriptApp.getOAuthToken()});opts.muteHttpExceptions=true;opts.followRedirects=false;
- const response=UrlFetchApp.fetch(url,opts),status=response.getResponseCode();if(status<200||status>=300)qmPrintFail_('DRIVE_UNAVAILABLE');return response;
+ let response;try{const perform=function(){return UrlFetchApp.fetch(url,opts);};response=typeof sahmtUrlFetchRun_==='function'?sahmtUrlFetchRun_(perform):perform();}catch(e){if(e.code==='SAHMT_URLFETCH_DAILY_QUOTA'||typeof sahmtUrlFetchDailyQuota_==='function'&&sahmtUrlFetchDailyQuota_(e))qmPrintFail_('QUOTA_WAIT');throw e;}const status=response.getResponseCode();if(status<200||status>=300)qmPrintFail_('DRIVE_UNAVAILABLE');return response;
 }
 function qmPrintDriveJson_(url,options){const text=qmPrintDriveFetch_(url,options).getContentText();if(text.length>250000)qmPrintFail_('DRIVE_RESPONSE_LIMIT');return JSON.parse(text||'{}');}
 function qmPrintList_(config){
@@ -42,8 +44,9 @@ function qmPrintValidateImage_(image){
  if(image.mimeType==='image/png'?![137,80,78,71,13,10,26,10].every(function(n,i){return u[i]===n;}):image.mimeType==='image/jpeg'?u[0]!==255||u[1]!==216||u[2]!==255:true)qmPrintFail_('IMAGE_INVALID');return image;
 }
 function qmPrintOcr_(image){
- qmPrintValidateImage_(image);const boundary='sahmt_'+Utilities.getUuid().replace(/-/g,''),metadata=JSON.stringify({name:'SAHMT OCR temporario '+Utilities.getUuid(),mimeType:'application/vnd.google-apps.document',appProperties:{sahmtPurpose:'qmentum-print-ocr'}});
- const payload='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+metadata+'\r\n--'+boundary+'\r\nContent-Type: '+image.mimeType+'\r\nContent-Transfer-Encoding: base64\r\n\r\n'+Utilities.base64Encode(image.bytes)+'\r\n--'+boundary+'--';let temporary=null;
+ qmPrintValidateImage_(image);const raster=QmentumPrintCore.preparePrintRaster(image.bytes,image.kind,image.mimeType),ocrBytes=raster.transformed?Array.from(raster.bytes,function(b){return b>127?b-256:b;}):image.bytes;
+ const boundary='sahmt_'+Utilities.getUuid().replace(/-/g,''),metadata=JSON.stringify({name:'SAHMT OCR temporario '+Utilities.getUuid(),mimeType:'application/vnd.google-apps.document',appProperties:{sahmtPurpose:'qmentum-print-ocr'}});
+ const payload='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+metadata+'\r\n--'+boundary+'\r\nContent-Type: '+raster.mimeType+'\r\nContent-Transfer-Encoding: base64\r\n\r\n'+Utilities.base64Encode(ocrBytes)+'\r\n--'+boundary+'--';let temporary=null;
  try{
   const created=qmPrintDriveJson_('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=pt&fields=id,shared',{method:'post',contentType:'multipart/related; boundary='+boundary,payload:payload});temporary=created.id;
   if(!/^[A-Za-z0-9_-]{1,200}$/.test(temporary||'')||created.shared===true)qmPrintFail_('OCR_TEMP_INVALID');
@@ -53,7 +56,7 @@ function qmPrintOcr_(image){
 function qmPrintCommit_(documents,plan){
  const changed=new Set(plan.writes.map(function(w){return w.path;})),writes=plan.writes.map(function(w){return qmServerWrite_(w.path,w.data,documents.get(w.path)||null);});
  Array.from(new Set(plan.checks||[])).filter(function(path){return !changed.has(path);}).forEach(function(path){const d=documents.get(path);writes.push({verify:'projects/indicadores---sahmt/databases/(default)/documents/'+path,currentDocument:d?{updateTime:d._updateTime}:{exists:false}});});
- try{qmServerCommit_(writes);}catch(e){if(e.status===409||e.status===412||e.message==='QMENTUM_VERSION_CONFLICT')throw Error('QMENTUM_VERSION_CONFLICT');throw Error('QMENTUM_PRINT_WRITE_UNAVAILABLE');}
+ try{qmServerCommit_(writes);}catch(e){if(e.status===409||e.status===412||e.message==='QMENTUM_VERSION_CONFLICT')throw Error('QMENTUM_VERSION_CONFLICT');qmPrintQuotaGuard_();throw Error('QMENTUM_PRINT_WRITE_UNAVAILABLE');}
 }
 function qmPrintPublicSources_(sources){return sources.map(function(source){const out={};['kind','id','name','version','modifiedTime','checksum','size','sha256'].forEach(function(key){if(source[key]!==undefined)out[key]=source[key];});if(source.id)out.url='https://drive.google.com/file/d/'+encodeURIComponent(source.id)+'/view';return out;});}
 function qmPrintSameSource_(before,after){return QmentumPrintCore.qmentumCanonical(QmentumPrintCore.sourceMetadata(before))===QmentumPrintCore.qmentumCanonical(QmentumPrintCore.sourceMetadata(after));}

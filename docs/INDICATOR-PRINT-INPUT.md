@@ -2,7 +2,9 @@
 
 Gestores com concessão FC `manager` podem usar **Entrada por prints** no Registro de Indicadores. A competência selecionada permanece fixa durante a operação. O gestor escolhe a tabela de técnicas e o painel de indicadores, ou usa **Usar Drive → Sincronizar alterações** para consultar as pastas institucionais configuradas no servidor. Cada imagem deve ser PNG/JPEG de até 2 MB.
 
-A leitura prepara uma prévia editável. **Procedimentos anestésicos** usa o **Total geral** da tabela; **procedimentos cirúrgicos** usa o **Total de registros** do painel. São totais independentes. A distribuição individual das técnicas contabiliza cada componente das associações; **Outra Técnica** contribui para sedação e bloqueio regional. Esses componentes não substituem o total anestésico do relatório.
+A leitura prepara uma prévia editável. **Procedimentos cirúrgicos** usa o **Total geral** do print **PROCEDIMENTOS ANESTÉSICOS**. O **Total de registros** do painel **NUMERO DE INDICADORES** é ignorado. A distribuição individual das técnicas contabiliza cada componente das associações; **Outra Técnica** contribui para sedação e bloqueio regional. Os dois totais de procedimentos não são somados entre si.
+
+**Procedimentos anestésicos** é a soma das contagens de cada tipo de anestesia, conforme a definição final do usuário. Por exemplo, uma linha Geral + Raquianestesia com quantidade 1 acrescenta uma geral e uma raquianestesia; Outra Técnica acrescenta uma sedação e um bloqueio regional. O Total geral da tabela continua sendo a referência cirúrgica e não entra novamente na soma anestésica.
 
 Os eventos e DM/hiperglicêmicos alimentam os campos existentes. Nenhum caso de intoxicação é convertido em manejo efetivo, nenhum paciente diabético é convertido em controle glicêmico efetivo e dados ausentes, incluindo cefaleia, permanecem pendentes. Os dezoito indicadores e seus critérios não são alterados.
 
@@ -14,7 +16,9 @@ Tudo permanece no FC `indicadores---sahmt`, banco `(default)`, na unidade existe
 
 A configuração vincula os dois papéis de origem às pastas, fixa o ano dos nomes antigos `MM.png` e aceita `AAAA-MM.png` para novos anos. Períodos anteriores a julho de 2026 são excluídos deste fluxo. Arquivos duplicados ou pares incompletos bloqueiam a prévia correspondente. A consulta usa metadados e hashes para ignorar conteúdo igual; não há agendador automático. Uma simples mudança de metadados, com bytes idênticos, atualiza apenas a referência da fonte, sem nova revisão mensal.
 
-A leitura usa OCR do Drive através de documentos temporários privados, descartados após a extração. Rótulos, linhas e totais precisam ser reconhecidos sem ambiguidade; colunas achatadas, técnicas desconhecidas e totais incompatíveis não são adivinhados. Nessas situações, o gestor pode corrigir a origem ou usar a entrada manual. A prévia conserva o texto extraído, a identidade das fontes, as correções confirmadas e o responsável no registro privado de auditoria.
+A leitura usa OCR do Drive através de documentos temporários privados, descartados após a extração. Em PNGs com a grade reconhecida, a cópia usada para OCR aproxima cada rótulo do seu valor; o arquivo original e seu hash permanecem intactos. O painel reorganizado inclui apenas os dez cartões de eventos/DM e exclui Total de registros. Rótulos, linhas e totais precisam ser reconhecidos sem ambiguidade; colunas achatadas, técnicas desconhecidas e totais incompatíveis não são adivinhados. Nessas situações, o gestor pode corrigir a origem ou usar a entrada manual. A prévia conserva o texto extraído, a identidade das fontes, as correções confirmadas e o responsável no registro privado de auditoria.
+
+A leitura respeita a pausa já existente quando o Google esgota sua cota diária de UrlFetch. A interface informa a indisponibilidade e preserva imagens e correções para uma nova tentativa; a função não redefine nem contorna essa cota.
 
 O total anestésico explícito e sua origem são opcionais no esquema de entradas para preservar os documentos antigos. Janeiro–junho não são regravados. Quando ausente nos registros anteriores, o agrupamento histórico permanece como antes.
 
