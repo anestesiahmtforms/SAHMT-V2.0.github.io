@@ -16,6 +16,7 @@ function evaluationChecklistDeliveryPayload_(signature, requestId) {
     signerUid: signature.signerUid, responsibleUid: signature.responsibleUid};
 }
 function evaluationQueueChecklistDelivery_(signature, requestId, transaction) {
+  if(typeof fbOnlyCentralEnabled_==='function'&&fbOnlyCentralEnabled_())return {status:'FB_ONLY_EXCLUDED',writes:[]};
   const payload = evaluationChecklistDeliveryPayload_(signature, requestId);
   const id = 'checklist-' + sha256Hex_(signature.id);
   const fingerprint = sha256Hex_(evaluationDeliveryCanonical_(payload));
@@ -25,6 +26,7 @@ function evaluationQueueChecklistDelivery_(signature, requestId, transaction) {
     {id: id, status: 'PENDING', payload: payload, fingerprint: fingerprint}, null, ['createdAt', 'updatedAt'])]};
 }
 function evaluationDeliverChecklistEvent_(id, options) {
+  if(typeof fbOnlyCentralEnabled_==='function'&&fbOnlyCentralEnabled_())return {status:'FB_ONLY_EXCLUDED',pointsAwarded:0};
   options = options || {};
   evaluationProject_();
   if (options.scienceOnly === true) checklistScienceAssertOperator_(); else evaluationAssertOperator_(true);

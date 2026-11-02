@@ -1,0 +1,11 @@
+{
+ "$schema":"../node_modules/wrangler/config-schema.json",
+ "name":"sahmt-fb-performance",
+ "account_id":"679464db2379db8562b62ae982f30471",
+ "main":"worker.js",
+ "compatibility_date":"2026-11-02",
+ "compatibility_flags":["nodejs_compat"],
+ "workers_dev":true,
+ "vars":{"FB_PERFORMANCE_ENABLED":"false","FB_WEB_API_KEY":"AIzaSyBYzRB28_ashHrVe7AXsUDvLWc4N2Cj-y8"},
+ "observability":{"enabled":false}
+}

@@ -312,6 +312,7 @@ function evaluationApplyAwards_(changes, options) {
   const runtime = evaluationGet_('evaluationRuntime', 'state', transaction);
   const reference = evaluationGet_('evaluationReference', 'team', transaction);
   changes.forEach(function (input) {
+    if(typeof fbOnlyAssertNativeAward_==='function')fbOnlyAssertNativeAward_(input,transaction);
     const id = input.id || evaluationAwardId_(input);
     if (ids.has(id)) throw new Error('Crédito duplicado no mesmo commit.'); ids.add(id);
     const previous = evaluationGet_('evaluationAwards', id, transaction);

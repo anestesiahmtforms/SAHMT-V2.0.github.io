@@ -1,0 +1,18 @@
+{
+  "code": "FB_CENTRAL_CANDIDATE_PREPARED",
+  "scriptId": "1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD",
+  "previousSha256": "0f793b704fb1c1381ca91d7de13260200d0a073c1f1242683d4a1ac516c8977b",
+  "candidateSha256": "4337f6616438db8127935bee2223fc85cce5cb9df4232a63262b2d1852ba8ab1",
+  "changedExistingFiles": [
+    "EvaluationLedger",
+    "EvaluationChecklistDelivery"
+  ],
+  "newFile": "FbCentralCutover",
+  "existingFcCutoverPreserved": true,
+  "otherFilesUnchanged": true,
+  "uploaded": false,
+  "flagsChanged": false,
+  "triggersChanged": false,
+  "businessWrites": 0,
+  "at": "2026-11-02T03:31:46.427Z"
+}

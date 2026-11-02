@@ -1,3 +1,4 @@
+import {fbPerformanceEnabled,watchFbPerformance} from './fb-performance-client.js';
 // Evaluation reads never use the legacy scores collection or the privileged integration.
 async function store() {
   const [{db}, sdk, {auth}] = await Promise.all([import('./firebase.js'), import('firebase/firestore'), import('./firebase-auth.js')]);
@@ -76,16 +77,26 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
     // available without issuing a broad query that Rules must reject.
     const detailsRestricted = category === 'PERFORMANCE' && subjectUid !== actorUid && profile.permissions?.occurrencesAuditRead !== true;
     const privateQuery = (name, field = 'uid', extra = []) => sdk.query(sdk.collection(db, name), sdk.where(field, '==', subjectUid), ...extra);
+    const exclusive=fbPerformanceEnabled&&category==='PERFORMANCE';
     const sources = [
+      ...(!exclusive?[
       ['summary', sdk.doc(db, 'evaluationSummaries', subjectUid), false],
       ['reference', sdk.doc(db, 'evaluationReference', 'team'), false],
       ...(!detailsRestricted ? [
         ['ledger', privateQuery('evaluationLedger', 'uid', [sdk.where('category', '==', category), sdk.orderBy('createdAt', 'desc'), sdk.limit(count + 1)]), true],
         ['awards', privateQuery('evaluationAwards', 'uid', [sdk.where('category', '==', category)]), true]
       ] : []),
+      ]:[]),
       ['requests', privateQuery('evaluationRequests', 'actorUid'), true],
       ...(category === 'PERFORMANCE' ? [['participations', privateQuery('evaluationParticipations'), true]] : [['revisions', privateQuery('evaluationGovernanceRevisions'), true]])
     ];
+    let exclusiveValue=null;
+    const emit=()=>{
+      const ready=metadata.size===sources.length&&(!exclusive||exclusiveValue);
+      const ledger=exclusive?exclusiveValue?.ledger||[]:values.get('ledger')||[];
+      onData({...exclusiveValue,summary:exclusive?exclusiveValue?.summary||null:values.get('summary')||null,reference:exclusive?exclusiveValue?.reference||null:values.get('reference')||null,ledger:ledger.slice(0,count),hasMore:ledger.length>count,loadedLimit:count,awards:detailsRestricted?null:exclusive?exclusiveValue?.awards||[]:values.get('awards')||[],detailsRestricted,participations:values.get('participations')||[],revisions:values.get('revisions')||[],requests:values.get('requests')||[],fromCache:!ready||[...metadata.values()].some(item=>item.fromCache),pendingWrites:[...metadata.values()].some(item=>item.pending),complete:!!ready});
+    };
+    if(exclusive)releases.push(watchFbPerformance({auth:service.auth,subjectUid,isCurrent:()=>!closed,onData:value=>{exclusiveValue=value;emit();},onError:fail}));
     for (const [key, ref, multiple] of sources) {
       if (closed) break;
       const release = sdk.onSnapshot(ref, {includeMetadataChanges: true}, snap => {
@@ -93,11 +104,7 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
         try { service.assertSession?.(); } catch (error) { fail(error); return; }
         values.set(key, multiple ? rows(snap) : snap.exists() ? {...snap.data(), id: snap.id} : null);
         metadata.set(key, {fromCache: snap.metadata?.fromCache !== false, pending: snap.metadata?.hasPendingWrites === true || snap.docs?.some(doc => doc.metadata?.hasPendingWrites === true)});
-        const ready = metadata.size === sources.length;
-        const ledger = values.get('ledger') || [];
-        onData({summary: values.get('summary') || null, reference: values.get('reference') || null, ledger: ledger.slice(0, count), hasMore: ledger.length > count, loadedLimit: count,
-          awards: detailsRestricted ? null : values.get('awards') || [], detailsRestricted, participations: values.get('participations') || [], revisions: values.get('revisions') || [], requests: values.get('requests') || [],
-          fromCache: !ready || [...metadata.values()].some(item => item.fromCache), pendingWrites: [...metadata.values()].some(item => item.pending), complete: ready});
+        emit();
       }, fail);
       if (closed) release(); else releases.push(release);
     }

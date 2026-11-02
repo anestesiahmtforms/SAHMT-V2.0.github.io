@@ -1,3 +1,4 @@
+import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance-client.js';
 import {mountVaccinationEntry} from './vaccination-entry.js';
 import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
 import './styles.css';
@@ -1341,7 +1342,7 @@ async function loadModule(route) {
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseGovernanceHub(session))return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,performanceUid:uid,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
@@ -1440,7 +1441,7 @@ async function loadModule(route) {
       onBalance: value => { lastBalance = value; htmlPerformance?.setBase(value); },
       onOpenGovernance: () => { if (current() && featureEnabledForRoute('management', appFeatures)) navigate('management'); }});
     cleanupCurrentModule = cleanupPerformance;
-    if (deployment.target === 'FB' && htmlTrainingConfigured) {
+    if (deployment.target === 'FB' && htmlTrainingConfigured && !(typeof fbPerformanceEnabled==='boolean'&&fbPerformanceEnabled)) {
       const {mountHtmlTrainingPerformance} = await import('./html-training-performance.js');
       if (!current()) return;
       const panel = document.createElement('section');

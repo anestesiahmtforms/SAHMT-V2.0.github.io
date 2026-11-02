@@ -4,6 +4,7 @@ import {reconcileReportMarkup} from './report-dom.js';
 import {renderCatalogFolders} from './catalog-folders.js';
 import {googleMaterialPreview, renderMaterialViewerTrigger, materialPresentationUrls} from './material-viewer.js';
 import {isOfflineRuntimeForced} from './offline-runtime-mode.js';
+import {fbPerformanceEnabled} from './fb-performance-client.js';
 const reportedConnectionErrors=new WeakSet();
 function reportEvaluationConnectionError(error){
   const code=String(error?.code||'').split('/').at(-1);
@@ -129,7 +130,7 @@ export function createEvaluationLifecycle({services, actorUid, subjectUid = acto
 function baseMarkup(category, isAdmin) {
   const governance = category === 'GOVERNANCE';
   return `<section class="evaluation-page ${governance ? 'evaluation-page--governance' : ''}">
-    <header class="evaluation-heading"><h3>${governance ? 'AVALIAÇÃO DOS GESTORES' : 'DESEMPENHO'}</h3><p class="evaluation-subject"></p></header>
+    <header class="evaluation-heading"><h3>${governance ? 'AVALIAÇÃO DOS GESTORES' : fbPerformanceEnabled?'DESEMPENHO FB':'DESEMPENHO'}</h3><p class="evaluation-subject"></p></header>
     ${isAdmin ? '<label class="evaluation-subject-selector">Consultar pessoa<select data-evaluation-person><option value="">Carregando pessoas autorizadas…</option></select></label>' : ''}
     <section class="evaluation-balance" aria-label="Saldo confirmado"><strong data-evaluation-total>—</strong>${governance ? '<small>Pontos de governança, separados do desempenho.</small>' : '<strong class="evaluation-percentage" data-evaluation-percentage>Aguardando atualização</strong><small>Percentual relativo ao maior saldo confirmado de desempenho da equipe.</small>'}<p data-evaluation-state role="status" aria-live="polite">Carregando avaliação…</p></section>
     ${governance ? '<section data-evaluation-assignments><h4>Áreas e matérias atribuídas</h4><p class="empty-state">Carregando atribuições…</p></section>' : ''}
@@ -231,7 +232,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
     const ledger = ownRecords(snapshot, 'ledger', selectedUid, category);
     const groups = evaluationAwardGroups(snapshot.awards, {subjectUid: selectedUid, category}).map(group => ({...group, title: activityFor(group.activityId)?.title || group.title}));
     markup('[data-evaluation-records]', `<h4>${category === 'GOVERNANCE' ? 'Revisões aprovadas' : 'Matérias e atividades pontuadas'}</h4>${snapshot.detailsRestricted ? '<p class="record-meta">Saldo disponível. O detalhamento de outra pessoa exige permissão de auditoria de ocorrências para preservar a autoria dos relatos anônimos.</p>' : awardGroupMarkup(groups.filter(group => !group.checklist), ledger, category)}`);
-    if (category === 'PERFORMANCE') markup('[data-evaluation-checklist]', snapshot.detailsRestricted ? '' : `<h4>Ajustes do Checklist</h4>${awardGroupMarkup(groups.filter(group => group.checklist), ledger, category)}`);
+    if (category === 'PERFORMANCE') markup('[data-evaluation-checklist]', fbPerformanceEnabled||snapshot.detailsRestricted ? '' : `<h4>Ajustes do Checklist</h4>${awardGroupMarkup(groups.filter(group => group.checklist), ledger, category)}`);
     markup('[data-evaluation-pending]', pendingMarkup(snapshot, selectedUid, category));
     renderActivities();
     if (category === 'GOVERNANCE') {

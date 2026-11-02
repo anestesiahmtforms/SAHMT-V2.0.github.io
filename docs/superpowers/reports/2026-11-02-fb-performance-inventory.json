@@ -1,0 +1,50 @@
+{
+  "at": "2026-11-02T03:21:30.649Z",
+  "project": "sahmt-gestao-5ae66",
+  "email": "anestesiahmtforms2@gmail.com",
+  "billing": {
+    "status": 200,
+    "enabled": false
+  },
+  "runtime": {
+    "status": 404,
+    "exists": false
+  },
+  "collections": [
+    {
+      "collection": "evaluationAwards",
+      "status": 200,
+      "returned": 11,
+      "complete": true,
+      "counts": {
+        "PERFORMANCE/CHECKLIST/CHECKLIST_SIGNATURE/unspecified": 10,
+        "PERFORMANCE/OCCURRENCE/FC_OCCURRENCE_VERIFIED/indicadores---sahmt": 1
+      }
+    },
+    {
+      "collection": "evaluationFormConfigs",
+      "status": 200,
+      "returned": 45,
+      "complete": true,
+      "counts": {
+        "///unspecified": 45
+      }
+    },
+    {
+      "collection": "scores",
+      "status": 200,
+      "returned": 0,
+      "complete": true,
+      "counts": {}
+    },
+    {
+      "collection": "htmlTrainingScores",
+      "status": 200,
+      "returned": 0,
+      "complete": true,
+      "counts": {}
+    }
+  ],
+  "cloudMutations": 0,
+  "userIdentifiersRecorded": false
+}
