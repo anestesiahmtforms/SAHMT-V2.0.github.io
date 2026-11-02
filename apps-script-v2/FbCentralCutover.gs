@@ -23,8 +23,11 @@ function fbOnlyAssertNativeAward_(input,transaction){
 }
 function pararCreditosExternosFbV1(){
  evaluationAssertOperator_(true);
+ const proof=managementIndependentFbEvidence_(false);
+ if(proof.status!=='ACTIVE'||proof.destinationProjectId!==SAHMT_EVALUATION_FB)throw Error('FB_INDEPENDENT_ROUTING_NOT_VERIFIED');
  const props=sahmtV2Properties_(),stoppedAt=new Date().toISOString();
- props.setProperties({SAHMT_FB_PERFORMANCE_MODE:'FB_ONLY',SAHMT_FB_PERFORMANCE_STOPPED_AT:stoppedAt});
+ props.setProperties({SAHMT_FB_PERFORMANCE_MODE:'FB_ONLY',SAHMT_FB_PERFORMANCE_STOPPED_AT:stoppedAt,SAHMT_V2_MANAGEMENT_FB_RELEASE:SAHMT_INDEPENDENT_FB_RELEASE});
+ sahmtIndependentFbEvidence_=proof;
  const result={code:'FB_EXTERNAL_CREDITS_STOPPED',mode:'FB_ONLY',stoppedAt:stoppedAt,triggersChanged:0,historyDeleted:0};console.log(JSON.stringify(result));return result;
 }
 function conferirCorteCentralFbV1(){

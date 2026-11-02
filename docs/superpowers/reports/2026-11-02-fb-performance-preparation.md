@@ -1,6 +1,6 @@
 # Desempenho FB exclusivo — preparação em 02/11/2026
 
-Estado: candidato local preparado e compilado; não publicado e não ativado.
+Estado: candidato local preparado e compilado; preparação central enviada e conferida, ainda inativa. Cloudflare FB e Google FB autenticados. Novo desempenho ainda não publicado nem ativado.
 
 ## Instruções autorizadas
 
@@ -27,7 +27,7 @@ O leitor do PWA passa a consultar o serviço próprio quando VITE_FB_PERFORMANCE
 
 O processador próprio verifica a primeira emissão de cada crédito após o marco, valida a origem nativa e publica resumos com revisão. Resultados incompletos não são publicados como saldo confirmado. As respostas de provas não são copiadas para o livro de pontos.
 
-O candidato central foi construído a partir de leitura autenticada do código central ao vivo, preservando os cortes FC anteriores e os arquivos não envolvidos. Só altera EvaluationLedger e EvaluationChecklistDelivery e acrescenta FbCentralCutover. A barreira fica inativa até executar pararCreditosExternosFbV1. A ciência do Checklist permanece aceita como registro, mas sem criar lançamento em FB.
+O candidato central foi construído a partir de leitura autenticada do código central ao vivo, preservando os cortes FC anteriores e os arquivos não envolvidos. Só altera EvaluationLedger e EvaluationChecklistDelivery e acrescenta FbCentralCutover. A barreira foi enviada ao projeto central sem alterar implantações, propriedades ou acionadores e fica inativa até executar pararCreditosExternosFbV1. A ciência do Checklist permanece aceita como registro, mas sem criar lançamento em FB.
 
 ## Preparação concluída
 
@@ -38,12 +38,15 @@ O candidato central foi construído a partir de leitura autenticada do código c
 - Nenhum teste manual ou escrita artificial de negócio realizado.
 - Nenhuma chave, permissão IAM, runtime, gatilho ou deploy de produção criado para FB nesta etapa.
 
-## Acessos pendentes comprovados
+## Acessos e pendências atuais
 
-1. O perfil Cloudflare disponível enumera só a conta central 1851e9f4cd5f026371beaa2c5a85f1b8. A consulta da conta FB retorna HTTP 403. O perfil sahmt-fb-isolation precisa concluir a autorização oficial com a conta FB.
-2. A credencial Firebase da conta FB funciona para Firestore, IAM e billing, mas Apps Script e Drive administrativo retornam HTTP 403. A autorização administrativa Google FB foi iniciada e aguarda conclusão. As sessões novas ficam protegidas por DPAPI.
-3. O controle de navegador informa Local browser use is disabled in Work settings. A aba do Chrome logada não pode ser lida por esse controle.
-4. Conferir Workers Free da conta FB antes do primeiro deploy. O preparador exige o registro .local-preview/fb-performance/workers-free-confirmed.json com accountId e workersFreeConfirmed=true; não aceita um plano presumido.
+- Cloudflare FB autenticada: anestesiahmtforms2@gmail.com e conta 679464db2379db8562b62ae982f30471 confirmados por API. Subdomínio anestesiahmtforms2 já existe; nenhum Worker existia no inventário.
+- Consulta de assinaturas retorna 403; falta confirmação visual do plano Workers Free.
+- Google FB autenticado e pasta permitiu canAddChildren=true.
+- A criação do Apps Script retornou explicitamente User has not enabled the Apps Script API. Usuário orientado a ativá-la em script.google.com/home/usersettings na conta FB.
+- Regras publicadas: nenhuma regra para fbPerformance*, nenhum match genérico de coleções e default deny; leitura pelo cliente permanece negada.
+- Preparação central enviada: código FB_CENTRAL_GUARDS_UPLOADED, sem alteração de flags, acionadores ou versões implantadas.
+- Evidências atualizadas: 2026-11-02-fb-access-progress.json.
 
 ## Ordem para concluir o corte já autorizado
 
