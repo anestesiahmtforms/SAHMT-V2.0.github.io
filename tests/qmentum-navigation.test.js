@@ -11,5 +11,5 @@ test('direct route uses the independent FC services and preserves the common-use
  const body=main.slice(main.indexOf("if(route === 'qmentum')"),main.indexOf("if (['management', 'training'].includes(route)"));
  assert.match(body,/import\('\.\/fc-module-firebase\.js'\)/);assert.match(body,/import\('\.\/fc-module-session\.js'\)/);assert.match(body,/getIndicatorsAuth\(\),db=getIndicatorsFirestore\(\)/);assert.doesNotMatch(body,/indicatorsDb|ensureProject|signIn/);
  assert.match(body,/session\.user\?\.uid===uid&&canOpenRestrictedModule\('qmentum'\)/);
- assert.match(main,/\['management', 'training', 'qmentum', 'fc-performance'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
+ assert.match(main,/\['management', 'training', 'qmentum', 'fc-performance','fd-performance','fe-performance'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
 });
