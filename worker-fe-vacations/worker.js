@@ -1,12 +1,12 @@
 import {verifyTrainingIdentity} from '../worker-training/google-auth.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
-import {createVacationSheets,vacationServiceToken} from './google.js';
+import {vacationServiceToken} from './google.js';
 import {createVacationService} from './service.js';
 const runtimes=new WeakMap();
 function runtime(env){
  if(!runtimes.has(env)){
   const getAccessToken=vacationServiceToken({credentials:JSON.parse(env.FE_SERVICE_ACCOUNT_JSON)});
-  runtimes.set(env,createVacationService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken}),sheets:createVacationSheets({getAccessToken})}));
+  runtimes.set(env,createVacationService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken})}));
  }
  return runtimes.get(env);
 }

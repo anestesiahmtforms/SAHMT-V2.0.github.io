@@ -25,7 +25,7 @@ export function vacationOverlap(values,rules){
  return total;
 }
 export function vacationSchedule(values,rulesRows){
- const rules=Object.fromEntries(rulesRows.slice(1).filter(r=>vacationSigla(r[0])).map(r=>[vacationSigla(r[0]),r.slice(1,6).map(v=>vacationSigla(v)==='X'?1:0)]));
+ const rules=Object.fromEntries(rulesRows.slice(1).filter(r=>vacationSigla(r[0])).map(r=>[vacationSigla(r[0]),Array.from({length:5},(_,i)=>vacationSigla(r[i+1])==='X'?1:0)]));
  return {rules,siglas:Object.keys(rules).sort(),months:VACATION_MONTHS.map(([id,name,rows,column])=>({id,name,weeks:rows.map((row,index)=>{
   const cells=values[row-1]||[],right=column===9,slots=Array.from({length:3},(_,s)=>({id:`${id}-${index}-${s}`,value:String(cells[column+s-1]??'')}));
   return {label:String(cells[right?6:0]||`${index+1}ª semana`),period:String(cells[right?7:1]||''),overlapDays:vacationOverlap(slots.map(s=>s.value),rules),slots};
@@ -44,9 +44,13 @@ export function simulateVacation(data,sourceId,targetId){
   return {...w,days,unknown,duplicate,allowed:days!==null&&days<=3&&!duplicate};
  });
 }
+export function vacationSimulationModel(data,selectedSigla){
+ const sigla=data.isAdmin===true&&data.siglas.includes(selectedSigla)?selectedSigla:data.ownSigla;
+ return {...data,ownSigla:sigla,simulationAdministrative:data.isAdmin===true&&sigla!==data.ownSigla};
+}
 export function vacationChangeLink(data,results){
  if(!/^https:\/\/wa\.me\/55\d{10,11}$/.test(data?.changeRequestUrl||'')||!data.ownSigla||!Array.isArray(results)||results.length!==2)return null;
- const message='Olá, FR. Solicito a análise de uma mudança na escala de férias 2027. Minha sigla: '+data.ownSigla+'.\n'+results.map(w=>w.month+' · '+w.period+': '+w.slots.map(s=>s.value||'Vaga livre').join(' / ')+'. Coincidência simulada: '+(w.days===null?'não foi possível avaliar':String(w.days).replace('.',',')+' dias')+'.').join('\n')+'\nEsta é apenas uma simulação; a troca ainda não foi realizada. Você pode avaliar?';
+ const message='Olá, FR. Solicito a análise de uma mudança na escala de férias 2027. '+(data.simulationAdministrative?'Simulação administrativa para a sigla: ':'Minha sigla: ')+data.ownSigla+'.\n'+results.map(w=>w.month+' · '+w.period+': '+w.slots.map(s=>s.value||'Vaga livre').join(' / ')+'. Coincidência simulada: '+(w.days===null?'não foi possível avaliar':String(w.days).replace('.',',')+' dias')+'.').join('\n')+'\nEsta é apenas uma simulação; a troca ainda não foi realizada. Você pode avaliar?';
  const url=new URL(data.changeRequestUrl);url.searchParams.set('text',message);return url.href;
 }
 export function canUseVacationModule(session){
@@ -60,5 +64,6 @@ export function vacationMessage(error){return ({
  VACATIONS_PENDING:'O resultado deste ajuste ainda precisa ser confirmado. Atualize a escala antes de tentar outra alteração.',
  VACATIONS_INPUT_INVALID:'Confira o lançamento, a sigla e a justificativa obrigatória.',
  VACATIONS_SHEETS_UNAVAILABLE:'Não foi possível acessar a planilha da escala. Confira a conexão e o acesso do serviço FE.',
+ VACATIONS_SNAPSHOT_UNAVAILABLE:'A escala está sendo preparada. Tente abrir novamente em instantes.',
  VACATIONS_SESSION_CHANGED:'Sua sessão mudou. Volte e abra a escala novamente.',
  })[error?.code||error?.message]||'Não foi possível confirmar a escala. Tente atualizar novamente.';}

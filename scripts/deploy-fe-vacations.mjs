@@ -1,7 +1,10 @@
+import {decodeFields} from '../worker-training/firestore.js';
+import {assertVacationSnapshot} from '../worker-fe-vacations/snapshot.js';
 import {execFileSync} from 'node:child_process';import {resolve} from 'node:path';import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';import {openPrivateJson} from './lib/windows-protected-json.js';import {firebaseCliAccountToken} from './lib/firebase-cli-account-token.js';import {google} from './lib/fd-fe-release.js';
 const config='worker-fe-vacations/wrangler.jsonc',target=JSON.parse(readFileSync(config,'utf8')),free=JSON.parse(readFileSync('docs/superpowers/reports/2026-11-01-cloudflare-free-confirmation.json','utf8'));
 if(target.account_id!==free.accounts.FE||!free.workersFreeConfirmed||free.paidActionsAllowed!==false)throw Error('FE_FREE_REQUIRED');
 const owner=await firebaseCliAccountToken('anestesiahmtforms5@gmail.com'),billing=await google('https://cloudbilling.googleapis.com/v1/projects/outros-48120/billingInfo',owner);if(billing.billingEnabled!==false)throw Error('FE_BILLING_DISABLED_REQUIRED');
+const prepared=await google('https://firestore.googleapis.com/v1/projects/outros-48120/databases/(default)/documents/vacations2027Schedules/current',owner);assertVacationSnapshot(decodeFields(prepared.fields||{}));
 const env={...process.env,CLOUDFLARE_AUTH_USE_KEYRING:'true',WRANGLER_WRITE_LOGS:'false',WRANGLER_SEND_METRICS:'false'};for(const k of ['CLOUDFLARE_API_TOKEN','CLOUDFLARE_API_KEY','CLOUDFLARE_EMAIL'])delete env[k];
 const binary=resolve('node_modules/wrangler/bin/wrangler.js');let auth;try{auth=JSON.parse(execFileSync(process.execPath,[binary,'auth','token','--json','--profile','sahmt-fe-isolation'],{env,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:40000}));}catch{throw Error('FE_CREDENTIAL_UNAVAILABLE');}
 const identity=await fetch('https://api.cloudflare.com/client/v4/user',{headers:{Authorization:'Bearer '+auth.token}}).then(r=>r.json());if(identity.result?.email!=='anestesiahmtforms5@gmail.com')throw Error('FE_IDENTITY_MISMATCH');auth=null;

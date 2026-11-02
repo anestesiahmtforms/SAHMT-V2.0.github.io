@@ -1,13 +1,13 @@
 import {createPrivateKey,sign} from 'node:crypto';
 export const SPREADSHEET_ID='1NFR4jJUV2HRWD68hrh3zT8g6N1i3sGrQ5LXexf-Xm8w';
 const fail=()=>Object.assign(Error('VACATIONS_SHEETS_UNAVAILABLE'),{code:'VACATIONS_SHEETS_UNAVAILABLE',status:503});
-export function vacationServiceToken({credentials,fetchImpl=fetch,now=Date.now}){
+export function vacationServiceToken({credentials,fetchImpl=fetch,now=Date.now,includeSheets=false}){
  if(credentials?.project_id!=='outros-48120'||credentials.client_email!=='fe-survey-worker@outros-48120.iam.gserviceaccount.com')throw fail();
  const key=createPrivateKey(credentials.private_key);let cached,pending;const b=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
  return async()=>{
   if(cached?.until>now()+60000)return cached.token;
   if(!pending)pending=(async()=>{
-   const iat=Math.floor(now()/1000),unsigned=b({alg:'RS256',typ:'JWT'})+'.'+b({iss:credentials.client_email,scope:'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',iat,exp:iat+3600});
+   const iat=Math.floor(now()/1000),unsigned=b({alg:'RS256',typ:'JWT'})+'.'+b({iss:credentials.client_email,scope:'https://www.googleapis.com/auth/datastore'+(includeSheets?' https://www.googleapis.com/auth/spreadsheets':''),aud:'https://oauth2.googleapis.com/token',iat,exp:iat+3600});
    const response=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion:unsigned+'.'+sign('RSA-SHA256',Buffer.from(unsigned),key).toString('base64url')}),redirect:'manual',signal:AbortSignal.timeout(15000)});
    if(!response.ok){await response.body?.cancel();throw fail();}const data=await response.json();
    if(typeof data.access_token!=='string'||!Number.isFinite(data.expires_in)||data.expires_in<120||data.expires_in>3600)throw fail();
