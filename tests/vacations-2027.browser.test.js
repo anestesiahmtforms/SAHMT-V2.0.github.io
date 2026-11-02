@@ -1,36 +1,7 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {chromium} from 'playwright';
-
+import test from 'node:test';import assert from 'node:assert/strict';import {chromium} from 'playwright';
 const url='http://127.0.0.1:5182/tests/fixtures/vacations-2027-preview.html';
-test('FE vacations is a responsive visual shell with no backend, storage, or editable slots',async()=>{
- const browser=await chromium.launch({headless:true,channel:'msedge'});
- try {
-  const page=await browser.newPage(),errors=[],external=[];
-  page.on('pageerror',e=>errors.push(e.message));
-  page.on('request',r=>{if(!r.url().startsWith('http://127.0.0.1:5182/'))external.push(r.url());});
-  for(const width of [320,390,820,1440]){
-   await page.setViewportSize({width,height:900});await page.goto(url);
-   await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();
-   await page.locator('.vacations-2027').waitFor();
-   assert.equal(await page.locator('.vacations-2027 table').count(),12);
-   assert.equal(await page.locator('.vacations-2027 tbody tr').count(),52);
-   assert.equal(await page.locator('.vacations-2027 input,.vacations-2027 select,.vacations-2027 form,.vacations-2027 iframe').count(),0);
-   assert.equal(await page.getByRole('button',{name:'Atualizar escala',exact:true}).isDisabled(),true);
-   assert.equal(await page.getByRole('button',{name:'Gestão administrativa',exact:true}).count(),0);
-   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-   assert.equal(await page.locator('.vacations-2027').evaluate(el=>el.scrollWidth>el.clientWidth),false);
-   await page.locator('.management-hub-body').evaluate(el=>el.scrollTop=el.scrollHeight);
-   await page.getByRole('heading',{name:'DEZEMBRO',exact:true}).scrollIntoViewIfNeeded();
-   assert.equal(await page.getByRole('heading',{name:'DEZEMBRO',exact:true}).isVisible(),true);
-   assert.deepEqual(await page.evaluate(()=>[window.calls,localStorage.length,sessionStorage.length]),[[],0,0]);
-   await page.getByRole('button',{name:'VOLTAR',exact:true}).click();
-   assert.equal(await page.locator('.vacations-2027').count(),0);
-   assert.equal(await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).isEnabled(),true);
-  }
-  await page.goto(url+'?admin');await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();
-  await page.locator('.vacations-2027').waitFor();assert.equal(await page.getByRole('button',{name:'Gestão administrativa',exact:true}).isDisabled(),true);
-  await page.goto(url+'?denied');assert.equal(await page.locator('dialog').getAttribute('data-panel'),'home');assert.equal(await page.locator('.vacations-2027').count(),0);
-  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
- } finally {await browser.close();}
-});
+test('members simulate a move or swap locally for five seconds; admin alone can save',async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));for(const width of [320,390,820,1440]){await page.setViewportSize({width,height:900});await page.goto(url);await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();await page.locator('.vacations-2027 table').first().waitFor();assert.equal(await page.locator('.vacations-2027 table').count(),12);assert.equal(await page.locator('.vacations-2027 tbody tr').count(),52);assert.equal(await page.getByRole('button',{name:'Gestão administrativa',exact:true}).count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.locator('[data-vac-slot="fevereiro-0-1"]').click();await page.locator('[data-vac-slot="janeiro-0-0"]').click();await page.getByRole('heading',{name:'Simulação — nenhuma alteração salva'}).waitFor();assert.match(await page.locator('[data-vac-simulation]').innerText(),/4 dias de coincidência.*ultrapassa/);assert.equal(await page.locator('[data-vac-slot="janeiro-0-0"]').innerText(),'AA');assert.equal(await page.locator('[data-vac-slot="fevereiro-0-1"]').innerText(),'＋');assert.deepEqual(await page.evaluate(()=>window.calls.map(c=>c.action)),['LOAD']);await page.getByRole('button',{name:'VOLTAR',exact:true}).click();assert.equal(await page.locator('.vacations-2027').count(),0);}
+await page.goto(url);await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();await page.locator('[data-vac-slot="fevereiro-0-0"]').click();await page.locator('[data-vac-slot="janeiro-0-0"]').click();assert.match(await page.locator('[data-vac-simulation]').innerText(),/3 dias de coincidência.*dentro/);await page.waitForTimeout(4500);assert.equal(await page.locator('.vacations-2027__simulation').count(),1);await page.waitForTimeout(1100);assert.equal(await page.locator('.vacations-2027__simulation').count(),0);assert.deepEqual(await page.evaluate(()=>[window.calls.map(c=>c.action),localStorage.length,sessionStorage.length]),[['LOAD'],0,0]);
+await page.goto(url+'?admin');await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();await page.getByRole('button',{name:'Gestão administrativa',exact:true}).click();assert.equal(await page.locator('[name*=pin]').count(),0);await page.locator('[name=value]').fill('DD');await page.locator('[name=justification]').fill('Correção sintética');page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Salvar ajuste na escala',exact:true}).click();await page.getByText('Ajuste salvo na planilha e registrado na auditoria.',{exact:true}).waitFor();assert.equal(await page.locator('[data-vac-slot="janeiro-0-0"]').innerText(),'DD');assert.deepEqual(await page.evaluate(()=>window.calls.map(c=>c.action)),['LOAD','UPDATE']);assert.deepEqual(errors,[]);
+await page.goto(url+'?late');await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();await page.waitForFunction(()=>!!window.releaseLate);await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.evaluate(()=>window.releaseLate());await page.waitForTimeout(100);assert.equal(await page.locator('.vacations-2027').count(),0);
+}finally{await browser.close();}});

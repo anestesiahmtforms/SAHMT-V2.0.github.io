@@ -1,3 +1,4 @@
+import {canUseVacationModule} from './vacations-2027-domain.js';
 import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance-client.js';
 import {mountVaccinationEntry} from './vaccination-entry.js';
 import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
@@ -803,7 +804,7 @@ function moduleCards() {
   return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fa-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
     && !['training', 'notifications', 'management-hub'].includes(route)
       && (route==='fd-performance'?fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session):route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
-    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
+    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD','fd-performance':'FD','fe-performance':'FE'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
@@ -1339,21 +1340,22 @@ async function loadModule(route) {
     return;
   }
   if(route === 'management-hub'){
-    if(!canUseGovernanceHub(session)){navigate('home');return;}
+    if(!canUseGovernanceHub(session)&&!(canUseVacationModule(session)&&['surveys','vacations2027'].includes(location.hash.split('/')[2]))){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
     const {mountManagementHub}=await import('./management-hub.js');
-    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseGovernanceHub(session))return;
+    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
+      performVacations:async(action,input,signal)=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseVacationModule(session),action,input,signal});},
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),survey,action,response});},
       performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
-      onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
+      access:{vacations2027:canUseVacationModule(session),groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
+      onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
     return;
   }
   if(route === 'fa-performance'){
@@ -5006,7 +5008,8 @@ async function render() {
   }
   // A pending profile is not an authorization denial. Keep the requested route
   // in the restricted shell until the profile can grant or deny access.
-  if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)){
+  if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)&&canUseVacationModule(session)&&!['surveys','vacations2027'].includes(location.hash.split('/')[2])){navigate('management-hub',{panel:'surveys'});return;}
+  if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)&&!canUseVacationModule(session)){
     notice='Governança está temporariamente indisponível para este perfil.';
     navigate('home');return;
   }
@@ -5073,7 +5076,7 @@ async function render() {
     if(!current())return;
     if (route !== 'events') await bindModuleForm(route);
     if(!current())return;
-    
+
   }
   if(!current())return;
   updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
@@ -5126,7 +5129,7 @@ async function revalidateOnlineSession() {
   for (const kind of ['events', 'labels', 'checklist']) {const state=liveReports.get(kind)?.snapshot();if(state?.scope?.warm===false&&['offline','error'].includes(state.state))liveReports.refresh(kind, 'profile-revalidated');}
   void refreshAppFeatures(session.user.uid);
   if(app.querySelector('[data-online-gate]'))void render();
-  
+
   return true;
 }
 

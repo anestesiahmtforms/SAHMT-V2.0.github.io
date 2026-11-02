@@ -51,3 +51,5 @@ test('station performance has an internal panel URL under its module container',
   assert.equal(currentRoute(),'management-hub');
  }
 });
+
+test('vacation panel has an allowlisted FE URL',()=>{navigate('management-hub',{panel:'vacations2027'});assert.equal(location.hash,'#/management-hub/vacations2027');});

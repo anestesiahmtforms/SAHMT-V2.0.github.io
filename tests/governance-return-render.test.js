@@ -1,3 +1,4 @@
+import {canUseVacationModule} from '../src/vacations-2027-domain.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -68,7 +69,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     updateInformationBanner(){},liveReports:new Map(),reportStates:new Map(),reportPayloads:new Map(),
     labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive'},
-    loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
+    loginView:()=>'<main>Login</main>',bindLogin(){},canUseVacationModule,canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
     canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
@@ -119,10 +120,10 @@ test('FA blocks Governance for an unverified common user before mounting any pan
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
 });
 
-test('FA keeps Governance blocked for a verified team member who can use the separate schedule entry',async()=>{
+test('FA directs verified members to FE without granting the other Governance panels',async()=>{
   const session=authorized();session.profile.role='anestesiologista';session.user.emailVerified=true;session.user.email='team@example.invalid';session.profile.email=session.user.email;
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
+  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub/surveys');assert.deepEqual(h.mounts,[]);await h.render();assert.deepEqual(h.mounts,['surveys']);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();

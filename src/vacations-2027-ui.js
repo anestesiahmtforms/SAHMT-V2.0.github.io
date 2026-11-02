@@ -1,41 +1,31 @@
 import './vacations-2027.css';
-
-// Visual structure only. Keep the source reference without contacting Drive or
-// importing the original app's API, member sessions, reservations or rules.
-export const VACATIONS_2027_REFERENCE = Object.freeze({
-  source: 'https://anestesiahmtforms.github.io/ferias2027/',
-  driveFolder: 'https://drive.google.com/drive/folders/1MmQUTSE0oWVpgrhV8IBzTW7h0E8O3okl',
-});
-
-// Row counts follow the original spreadsheet layout; periods and initials
-// deliberately remain blank until the next implementation stage.
-const months = [
-  ['JANEIRO', 4], ['FEVEREIRO', 4], ['MARÇO', 5], ['ABRIL', 4],
-  ['MAIO', 4], ['JUNHO', 5], ['JULHO', 4], ['AGOSTO', 4],
-  ['SETEMBRO', 5], ['OUTUBRO', 4], ['NOVEMBRO', 4], ['DEZEMBRO', 5],
-];
-
-export function vacations2027Markup({isAdmin = false} = {}) {
-  return `<section class="vacations-2027" aria-label="Estrutura da escala de férias 2027">
-    <header class="vacations-2027__intro">
-      <p class="vacations-2027__eyebrow">SAHMT · FE</p>
-      <h3>Escala de férias 2027</h3>
-      <p>Estrutura visual. Períodos e reservas serão configurados posteriormente.</p>
-    </header>
-    <p class="vacations-2027__status">Somente estrutura — marcações e atualizações ainda não estão disponíveis.</p>
-    <div class="vacations-2027__toolbar"><button type="button" disabled>Atualizar escala</button></div>
-    <div class="vacations-2027__grid">${months.map(([month, rows]) => `
-      <article class="vacations-2027__month">
-        <table aria-label="Escala de ${month.toLocaleLowerCase('pt-BR')} de 2027">
-          <colgroup><col class="vacations-2027__week"><col class="vacations-2027__period"><col><col><col></colgroup>
-          <thead>
-            <tr><th class="vacations-2027__month-title" colspan="5"><h4>${month}</h4></th></tr>
-            <tr><th scope="col">SEMANA</th><th scope="col">PERÍODO</th><th scope="col">SIGLA 1</th><th scope="col">SIGLA 2</th><th scope="col">SIGLA 3</th></tr>
-          </thead>
-          <tbody>${Array.from({length: rows}, (_, index) => `<tr><th scope="row">${index + 1}ª SEMANA</th><td aria-label="Período a definir">—</td><td aria-label="Sigla 1 não configurada"></td><td aria-label="Sigla 2 não configurada"></td><td aria-label="Sigla 3 não configurada"></td></tr>`).join('')}</tbody>
-        </table>
-      </article>`).join('')}
-    </div>
-    ${isAdmin ? '<footer class="vacations-2027__admin"><button type="button" disabled>Gestão administrativa</button></footer>' : ''}
-  </section>`;
+import {vacationSigla,simulateVacation,vacationMessage} from './vacations-2027-domain.js';
+export {VACATIONS_2027_REFERENCE} from './vacations-2027-domain.js';
+const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const days=v=>String(v).replace('.',',');
+export function vacations2027Markup(data){
+ return `<section class="vacations-2027" aria-label="Escala de férias 2027"><header class="vacations-2027__intro"><p class="vacations-2027__eyebrow">SAHMT · FE</p><h3>Escala de férias 2027</h3><p>Escala finalizada. ${data.ownSigla?`Sua sigla: <strong>${h(data.ownSigla)}</strong>. Toque em uma vaga livre ou na sigla de um colega e depois escolha sua semana de saída para simular.`:'Sua conta não tem uma sigla vinculada nesta escala. A consulta permanece disponível.'}</p></header><p class="vacations-2027__status" data-vac-notice role="status">Simulações não alteram a escala. Somente o administrador pode efetivar ajustes.</p><div class="vacations-2027__toolbar"><button type="button" data-vac-refresh>Atualizar escala</button>${data.isAdmin?'<button type="button" data-vac-admin>Gestão administrativa</button>':''}</div><div data-vac-editor></div><div data-vac-simulation aria-live="polite"></div><div class="vacations-2027__grid">${data.months.map(m=>`<article class="vacations-2027__month"><table aria-label="Escala de ${h(m.name)} de 2027"><colgroup><col class="vacations-2027__week"><col class="vacations-2027__period"><col><col><col></colgroup><thead><tr><th class="vacations-2027__month-title" colspan="5"><h4>${h(m.name)}</h4></th></tr><tr><th scope="col">SEMANA</th><th scope="col">PERÍODO</th><th scope="col">SIGLA 1</th><th scope="col">SIGLA 2</th><th scope="col">SIGLA 3</th></tr></thead><tbody>${m.weeks.map(w=>`<tr><th scope="row">${h(w.label)}</th><td>${h(w.period||'—')}</td>${w.slots.map(s=>`<td class="vacations-2027__cell"><button type="button" class="vacations-2027__slot${data.ownSigla&&vacationSigla(s.value)===data.ownSigla?' vacations-2027__own':''}" data-vac-slot="${h(s.id)}" aria-label="${h(`${s.value||'Vaga livre'}, ${m.name}, ${w.label}, ${w.period}`)}" ${data.ownSigla?'':'disabled'}>${h(s.value||'＋')}</button></td>`).join('')}</tr>`).join('')}</tbody></table></article>`).join('')}</div></section>`;
+}
+export function mountVacations2027(root,{request,isCurrent=()=>true}={}){
+ let disposed=false,generation=0,data,target=null,selection=null,timer,fadeTimer;const controllers=new Set();
+ const valid=()=>!disposed&&isCurrent();
+ const cancelSimulation=()=>{clearTimeout(timer);clearTimeout(fadeTimer);target=null;selection=null;const box=root.querySelector('[data-vac-simulation]');box?.replaceChildren();box?.classList.remove('vacations-2027__fade');root.querySelectorAll('[data-vac-slot]').forEach(b=>b.classList.remove('vacations-2027__selected','vacations-2027__preview'));};
+ const call=async(action,input={})=>{const c=new AbortController();controllers.add(c);try{return await request(action,input,c.signal);}finally{controllers.delete(c);}};
+ const notice=text=>{const n=root.querySelector('[data-vac-notice]');if(n)n.textContent=text;};
+ async function load(){cancelSimulation();const id=++generation;root.querySelector('[data-vac-editor]')?.replaceChildren();notice('Atualizando escala…');try{const result=await call('LOAD');if(!valid()||id!==generation)return;data=result;root.innerHTML=vacations2027Markup(data);}catch(e){if(!valid()||id!==generation)return;if(!data)root.innerHTML='<section class="vacations-2027"><p role="alert">'+h(vacationMessage(e))+'</p><button data-vac-refresh type="button">Tentar novamente</button></section>';else notice(vacationMessage(e));}}
+ function simulate(id){
+  if(!data.ownSigla)return;const slot=data.months.flatMap(m=>m.weeks.flatMap(w=>w.slots)).find(s=>s.id===id);if(!slot)return;
+  if(vacationSigla(slot.value)!==data.ownSigla){cancelSimulation();target=id;root.querySelector(`[data-vac-slot="${id}"]`)?.classList.add('vacations-2027__selected');notice('Agora toque na sua semana de saída para ver o resultado da possível troca.');return;}
+  if(!target){notice('Primeiro toque em uma vaga livre ou na sigla do colega com quem deseja simular a troca.');return;}
+  try{const destination=target,results=simulateVacation(data,id,destination);cancelSimulation();selection={sourceId:id,targetId:destination};const box=root.querySelector('[data-vac-simulation]');box.innerHTML='<section class="vacations-2027__simulation"><h4>Simulação — nenhuma alteração salva</h4>'+results.map(w=>`<p><strong>${h(w.month)} · ${h(w.period)}</strong><br>${w.slots.map(s=>h(s.value||'Vaga livre')).join(' · ')}<br>${w.days===null?'Não foi possível avaliar: há texto sem sigla reconhecida nesta semana.':`${days(w.days)} dias de coincidência — ${w.allowed?'dentro do limite de 3 dias':w.duplicate?'sigla repetida na semana':'ultrapassa o limite de 3 dias'}`}</p>`).join('')+'<small>Resultado temporário por 5 segundos. A avaliação considera a regra dos três dias; a troca depende do administrador.</small></section>';for(const changed of [id,destination])root.querySelector(`[data-vac-slot="${changed}"]`)?.classList.add('vacations-2027__preview');box.scrollIntoView({block:'nearest',behavior:'smooth'});timer=setTimeout(()=>{if(!valid())return;box.classList.add('vacations-2027__fade');fadeTimer=setTimeout(()=>{cancelSimulation();notice('Simulação encerrada. A escala original foi preservada.');},400);},5000);}catch(e){notice(e.message);}
+ }
+ function admin(){
+  if(!data?.isAdmin)return;const host=root.querySelector('[data-vac-editor]');const options=data.months.map(m=>`<optgroup label="${h(m.name)}">${m.weeks.map(w=>w.slots.map((s,i)=>`<option value="${h(s.id)}">${h(`${w.label} · ${w.period} · ${s.value||'Vaga livre'} · Sigla ${i+1}`)}</option>`).join('')).join('')}</optgroup>`).join('');
+  host.innerHTML=`<section class="vacations-2027__editor"><h4>Ajuste administrativo</h4><p>Para trocar duas semanas, selecione também o segundo lançamento. Deixe a sigla vazia para limpar uma marcação.</p><form data-vac-form><label>Lançamento<select name="slotId">${options}</select></label><label>Sigla e observação<input name="value" maxlength="120" list="vacation-siglas"></label><datalist id="vacation-siglas">${data.siglas.map(s=>`<option value="${h(s)}"></option>`).join('')}</datalist><label>Segundo lançamento (opcional para troca)<select name="secondId"><option value="">Sem segundo lançamento</option>${options}</select></label><label>Sigla e observação do segundo lançamento<input name="secondValue" maxlength="120" list="vacation-siglas"></label><label>Justificativa obrigatória<textarea name="justification" required minlength="3" maxlength="1000"></textarea></label><button type="submit">Salvar ajuste na escala</button><p data-vac-save-status role="status"></p></form><button data-vac-audit type="button">Consultar auditoria</button><div data-vac-audit-list></div></section>`;
+  const form=host.querySelector('form'),find=id=>data.months.flatMap(m=>m.weeks.flatMap(w=>w.slots)).find(s=>s.id===id)?.value||'';const fill=()=>{form.elements.value.value=find(form.elements.slotId.value);form.elements.secondValue.value=find(form.elements.secondId.value);};
+  if(selection){form.elements.slotId.value=selection.sourceId;form.elements.secondId.value=selection.targetId;fill();[form.elements.value.value,form.elements.secondValue.value]=[form.elements.secondValue.value,form.elements.value.value];}else fill();form.elements.slotId.addEventListener('change',fill);form.elements.secondId.addEventListener('change',fill);
+  form.addEventListener('submit',async event=>{event.preventDefault();if(!valid())return;const changes=[{slotId:form.elements.slotId.value,value:form.elements.value.value}];if(form.elements.secondId.value)changes.push({slotId:form.elements.secondId.value,value:form.elements.secondValue.value});const output=form.querySelector('[data-vac-save-status]'),submit=form.querySelector('[type=submit]');if(changes.length===2&&changes[0].slotId===changes[1].slotId){output.textContent='Selecione dois lançamentos diferentes.';return;}if(!window.confirm('Salvar este ajuste na escala de férias FE?'))return;submit.disabled=true;output.textContent='Salvando ajuste…';const id=++generation;try{const result=await call('UPDATE',{changes,justification:form.elements.justification.value,expectedVersion:data.version,operationId:crypto.randomUUID()});if(!valid()||id!==generation)return;cancelSimulation();data=result;root.innerHTML=vacations2027Markup(data);notice('Ajuste salvo na planilha e registrado na auditoria.');}catch(e){if(valid()&&id===generation){output.textContent=vacationMessage(e);submit.disabled=false;}}});host.scrollIntoView({block:'nearest',behavior:'smooth'});
+ }
+ const click=async e=>{if(!valid())return;if(e.target.closest('[data-vac-refresh]')){await load();return;}if(e.target.closest('[data-vac-admin]')){admin();return;}const slot=e.target.closest('[data-vac-slot]');if(slot){simulate(slot.dataset.vacSlot);return;}if(e.target.closest('[data-vac-audit]')&&data?.isAdmin){const host=root.querySelector('[data-vac-audit-list]');host.textContent='Carregando auditoria…';try{const result=await call('AUDIT');if(valid()&&host.isConnected)host.innerHTML=result.rows.map(r=>`<p><strong>${h(r.at)} · ${h(r.slot)} · ${h(r.sigla)}</strong><br>${h(r.justification)}<br>${h(r.actor)}</p>`).join('')||'Nenhum registro.';}catch(err){if(valid()&&host.isConnected)host.textContent=vacationMessage(err);}}};
+ root.innerHTML='<p role="status">Carregando escala de férias…</p>';root.addEventListener('click',click);void load();return ()=>{disposed=true;generation++;cancelSimulation();for(const c of controllers)c.abort();root.removeEventListener('click',click);root.replaceChildren();};
 }

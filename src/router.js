@@ -14,7 +14,7 @@ export async function navigate(route, {panel} = {}) {
   if (!routes.has(route)) return;
   const generation=++navigationGeneration,sourceHash=location.hash;
   const isCurrent=()=>generation===navigationGeneration&&location.hash===sourceHash;
-  const suffix = route === 'management-hub' && ['records', 'indicators', 'results', 'surveys', 'fdPerformance', 'fePerformance'].includes(panel) ? '/' + panel : '';
+  const suffix = route === 'management-hub' && ['records', 'indicators', 'results', 'surveys', 'fdPerformance', 'fePerformance', 'vacations2027'].includes(panel) ? '/' + panel : '';
   if (deployment.target === 'FB' && !['management','training'].includes(route)) {
     rememberModuleNavigation(deployment.faBase);
     location.assign(deployment.faBase + '#/' + route + suffix); return;

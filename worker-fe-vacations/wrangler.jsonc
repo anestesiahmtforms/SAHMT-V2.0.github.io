@@ -1,0 +1,11 @@
+{
+ "$schema":"../node_modules/wrangler/config-schema.json",
+ "name":"sahmt-fe-vacations",
+ "account_id":"fb3d38f501820ddf90764aadaa94fc89",
+ "main":"worker.js",
+ "compatibility_date":"2026-11-02",
+ "compatibility_flags":["nodejs_compat"],
+ "workers_dev":true,
+ "vars":{"VACATIONS_ENABLED":"true","FA_WEB_API_KEY":"AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"},
+ "observability":{"enabled":false}
+}

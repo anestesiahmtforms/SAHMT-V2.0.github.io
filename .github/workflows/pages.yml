@@ -56,6 +56,8 @@ jobs:
           npm run test:fe-performance
           npm run test:fd-performance-rules
           npm run test:fe-performance-rules
+      - name: Validate authenticated FE vacations and simulation rules
+        run: node --test tests/vacations-2027.test.js
       - name: Validate year-end choices, ordering and FE access rules
         run: |
           npm run test:year-end

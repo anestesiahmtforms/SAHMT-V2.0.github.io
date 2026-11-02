@@ -93,3 +93,8 @@ test('performance buttons are absent when their administrator access is denied',
  assert.match(hub({records:true,fcPerformance:true},'records').body.innerHTML,/Desempenho FC/);
  assert.match(hub({performance:true}).body.innerHTML,/management-hub-label">Desempenho/);
 });
+
+test('vacation-only access opens FE without allowing survey forms or performance',()=>{
+ const h=hub({vacations2027:true},'surveys');assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);assert.doesNotMatch(h.body.innerHTML,/Desempenho FE/);
+ for(const panel of ['professional','epidemiological','climateForm','institutional','results','records'])assert.equal(hub({vacations2027:true},panel).dialog.dataset.panel,'home');
+});

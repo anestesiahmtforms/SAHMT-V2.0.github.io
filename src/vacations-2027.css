@@ -21,3 +21,11 @@
 .vacations-2027__admin{margin-top:18px;padding-top:16px;border-top:1px solid #d9e7f2;text-align:center}
 .vacations-2027__admin button{width:min(100%,340px);color:#526e85;border-color:#cbd8e2;background:#e5eff7}
 @media(max-width:600px){.vacations-2027__grid{grid-template-columns:minmax(0,1fr);gap:12px}}
+.vacations-2027__toolbar{display:flex;flex-wrap:wrap;gap:10px}.vacations-2027__toolbar>button{flex:1 1 180px}
+.vacations-2027 button:not(:disabled){cursor:pointer}.vacations-2027 button:focus-visible{outline:3px solid #137a71;outline-offset:2px}
+.vacations-2027 td.vacations-2027__cell{padding:0}.vacations-2027 button.vacations-2027__slot{border:0;border-radius:0;min-height:36px;height:100%;padding:6px 2px;background:#fff;box-shadow:none;color:#167148;font-size:.7rem;overflow-wrap:anywhere}
+.vacations-2027 button.vacations-2027__own{background:#dff3e9;color:#084a30;font-weight:900}.vacations-2027 button.vacations-2027__selected,.vacations-2027 button.vacations-2027__preview{background:#fff0b5;outline:2px solid #a36b00;outline-offset:-2px}
+.vacations-2027__simulation,.vacations-2027__editor{padding:14px;margin-bottom:18px;border:1px solid #b5d5e5;border-radius:12px;background:#f2f9fc;line-height:1.5}.vacations-2027__simulation{border-color:#d6b754;background:#fff8df}.vacations-2027__simulation h4,.vacations-2027__editor h4{margin:0 0 10px}
+[data-vac-simulation]{opacity:1;transition:opacity .4s ease}[data-vac-simulation].vacations-2027__fade{opacity:0}
+.vacations-2027__editor form,.vacations-2027__editor label{display:grid;gap:8px}.vacations-2027__editor form{gap:14px;margin-bottom:16px}.vacations-2027__editor input,.vacations-2027__editor select,.vacations-2027__editor textarea{box-sizing:border-box;width:100%;max-width:100%;min-width:0;padding:10px;border:1px solid #afc3d0;border-radius:8px;background:#fff;color:#14324b;font:inherit;font-size:16px}
+@media(prefers-reduced-motion:reduce){[data-vac-simulation]{transition:none}}
