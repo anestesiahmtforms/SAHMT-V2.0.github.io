@@ -29,7 +29,7 @@ test('station performance belongs only to its FD or FE parent panel',()=>{
 });
 
 test('common users do not see performance and deep links cannot open paused subpanels',()=>{
- for(const initialPanel of ['home','records','indicators','results','surveys','institutional','climateForm','stressForm']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);}
+ for(const initialPanel of ['home','records','indicators','results','surveys','institutional','climateForm','stressForm','vacations2027']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);}
  const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.doesNotMatch(h.body.innerHTML,/ disabled /);
 });
 test('Governança header uses the existing Diamond seal while retaining all five destinations',()=>{
@@ -82,7 +82,7 @@ test('schedule access opens its menu while other survey panels retain their prev
  assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'4'}}):null}});
  assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/management-hub-button--festive/);
- assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
+ assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
  assert.equal(h.dialog.dataset.panel,'surveys');
 });

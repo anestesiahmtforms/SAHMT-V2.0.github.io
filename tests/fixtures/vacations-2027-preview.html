@@ -1,0 +1,13 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Estrutura da escala de férias</title><div id="app"></div><script type="module">
+import '/src/styles.css';
+import {mountManagementHub} from '/src/management-hub.js';
+const params=new URL(location.href).searchParams;
+window.calls=[];
+const forbidden=async()=>{window.calls.push('backend');throw Error('NO_BACKEND_EXPECTED');};
+window.dispose=mountManagementHub(document.querySelector('#app'),{
+ access:{surveys:!params.has('denied'),fePerformance:params.has('admin')},
+ initialPanel:params.has('denied')?'vacations2027':'surveys',displayName:'Pessoa Sintética',
+ performSurvey:forbidden,performRegistration:forbidden,performIndicators:forbidden,
+ isSurveySessionCurrent:()=>true,onExit(){window.dispose();}
+});
+</script></html>

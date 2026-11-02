@@ -15,7 +15,8 @@ const paths={
  epidemiological:'M12 3v18M3 12h18M6 6l12 12M18 6 6 18',
  climate:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87',
  wellbeing:'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78M3 12h4l2-4 4 8 2-4h6',
- festive:'m7 4-4 6h2l-3 5h3l-3 4h10l-3-4h3l-3-5h2L7 4ZM7 19v3M17 2v3M17 11v3M11 8h3M20 8h3M13 4l2 2M19 10l2 2M13 12l2-2M19 6l2-2'
+ festive:'m7 4-4 6h2l-3 5h3l-3 4h10l-3-4h3l-3-5h2L7 4ZM7 19v3M17 2v3M17 11v3M11 8h3M20 8h3M13 4l2 2M19 10l2 2M13 12l2-2M19 6l2-2',
+ calendar:'M4 5h16v16H4zM8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 18h2'
 };
 const icon=kind=>'<svg class="management-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[kind]+'"></path></svg>';
 const panels={
@@ -37,11 +38,13 @@ const panels={
   {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'surveys'},
   {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'surveys'},
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
+  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'surveys'},
   {label:'Desempenho FE',icon:'performance',panel:'fePerformance',access:'fePerformance'}
  ]},
  fdPerformance:{title:'Desempenho FD',icon:'performance',parent:'results'},
  fePerformance:{title:'Desempenho FE',icon:'performance',parent:'surveys'},
  yearEnd:{title:'Escala Final de Ano',icon:'festive',parent:'surveys'},
+ vacations2027:{title:'Escala de Férias 2027',icon:'calendar',parent:'surveys'},
  professional:{title:'Cadastro Profissional - SAHMT',icon:'professional',parent:'surveys'},
  epidemiological:{title:'Cadastro Epidemiológico - SAHMT',icon:'epidemiological',parent:'surveys'},
  institutional:{title:'Pesquisas institucionais',icon:'records',parent:'surveys'},
@@ -53,7 +56,7 @@ const panels={
 export function mountManagementHub(root,{access={},initialPanel='home',performanceUid=null,fbPerformanceReleased=false,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
  const itemAllowed=item=>item.panel==='surveys'?(access.surveys===true||access.yearEndSchedule===true):(!item.access||access[item.access]===true);
- const panelAllowed=name=>name==='home'||name==='surveys'&&(access.surveys===true||access.yearEndSchedule===true)||access[name==='yearEnd'?'yearEndSchedule':['institutional','climateForm','stressForm','professional','epidemiological'].includes(name)?'surveys':name]===true;
+ const panelAllowed=name=>name==='home'||name==='surveys'&&(access.surveys===true||access.yearEndSchedule===true)||access[name==='yearEnd'?'yearEndSchedule':['institutional','climateForm','stressForm','professional','epidemiological','vacations2027'].includes(name)?'surveys':name]===true;
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
@@ -70,6 +73,11 @@ export function mountManagementHub(root,{access={},initialPanel='home',performan
    const allowed=itemAllowed(item);
    return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
+  if(panel==='vacations2027'&&access.surveys===true){
+   body.innerHTML='<p role="status">Preparando a estrutura da escala…</p>';
+   const current=()=>!disposed&&ticket===renderId&&panel==='vacations2027';
+   void import('./vacations-2027-ui.js').then(({vacations2027Markup})=>{if(current())body.innerHTML=vacations2027Markup({isAdmin:access.fePerformance===true});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a estrutura da escala. Volte e tente novamente.</p>';});
+  }
   if(panel==='yearEnd'&&access.yearEndSchedule===true){
    body.innerHTML='<p role="status">Preparando a escala…</p>';
    const current=()=>!disposed&&ticket===renderId&&panel==='yearEnd'&&isSurveySessionCurrent();

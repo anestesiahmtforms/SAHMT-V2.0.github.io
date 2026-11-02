@@ -1,0 +1,23 @@
+/* Adapted from ferias2027/src/styles.css. Scoped to preserve the SAHMT shell. */
+.management-hub-dialog[data-panel="vacations2027"] .management-hub-body{display:block;overflow:auto}
+.vacations-2027{box-sizing:border-box;width:100%;min-width:0;padding:clamp(4px,1vw,12px);color:#14324b}
+.vacations-2027__intro{margin-bottom:14px}
+.vacations-2027__eyebrow{margin:0 0 4px;color:#137a71;font-size:.72rem;font-weight:800;letter-spacing:.13em}
+.vacations-2027__intro h3{margin:0 0 6px;color:#0f4c81;font-size:clamp(1.2rem,3vw,1.7rem)}
+.vacations-2027__intro>p:last-child{margin:0;color:#536b7d;font-size:.86rem;line-height:1.5}
+.vacations-2027__status{margin:0 0 12px;padding:12px 14px;border:1px solid #d9e7f2;border-radius:14px;background:#fff;font-size:.85rem;line-height:1.5;box-shadow:0 5px 16px #164b7110}
+.vacations-2027__toolbar{margin-bottom:16px}
+.vacations-2027 button{box-sizing:border-box;width:100%;padding:11px 14px;border:1px solid #e5d18a;border-radius:12px;background:#ffe399;color:#5a4b25;font:inherit;font-size:.9rem;font-weight:750;opacity:1;cursor:not-allowed;box-shadow:0 3px 9px #9b740b15}
+.vacations-2027__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:16px;min-width:0}
+.vacations-2027__month{min-width:0;overflow:hidden;border:1px solid #cbd8e2;border-radius:10px;background:#fff;box-shadow:0 5px 16px #164b7110}
+.vacations-2027 table{width:100%;border-collapse:collapse;table-layout:fixed}
+.vacations-2027__week{width:24%}.vacations-2027__period{width:25%}
+.vacations-2027 th,.vacations-2027 td{height:30px;padding:5px 2px;border:1px solid #cfd6dc;text-align:center;font-size:.65rem;overflow-wrap:anywhere}
+.vacations-2027 thead th{background:#eef2f5;color:#385267;font-size:.6rem;font-weight:750}
+.vacations-2027 thead .vacations-2027__month-title{padding:7px 8px;color:#fff;background:#0f4c81}
+.vacations-2027__month-title h4{margin:0;font-size:.95rem;font-weight:800;letter-spacing:.04em}
+.vacations-2027 tbody th{background:#fff;color:#334c60;font-weight:650}
+.vacations-2027 tbody td{background:#fff;color:#65778a}
+.vacations-2027__admin{margin-top:18px;padding-top:16px;border-top:1px solid #d9e7f2;text-align:center}
+.vacations-2027__admin button{width:min(100%,340px);color:#526e85;border-color:#cbd8e2;background:#e5eff7}
+@media(max-width:600px){.vacations-2027__grid{grid-template-columns:minmax(0,1fr);gap:12px}}
