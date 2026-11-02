@@ -66,7 +66,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',performan
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
-   if(['fdPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
+   if(['performance','faPerformance','fcPerformance','fdPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const allowed=itemAllowed(item);
    return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';

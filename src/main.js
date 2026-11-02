@@ -832,6 +832,7 @@ function can(permission) {
 // Individual release is read from the authenticated FA profile. Read/write
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
+  if (['training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
   if (route === 'fd-performance') return fdPerformanceEnabled && fdPerformanceIdentityCanEnter(session);
   if (route === 'fe-performance') return fePerformanceEnabled && session.status==='signed-in' && session.profile?.active===true && session.profile?.access===true && session.profile?.uid===session.user?.uid;
@@ -1350,7 +1351,7 @@ async function loadModule(route) {
       performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session),fePerformance:fePerformanceEnabled&&canUseManagementPilot(session)},
+      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
   }

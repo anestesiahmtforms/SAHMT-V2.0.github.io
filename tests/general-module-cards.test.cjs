@@ -384,16 +384,17 @@ test('Governança preserva a exceção verificada e bloqueia usuários comuns an
  assert.deepEqual(direct.navigations,['home']);assert.deepEqual(direct.loads,[]);
 });
 
-test('liberação individual habilita apenas os dois módulos solicitados, sem poderes administrativos', async () => {
+test('liberação individual mantém Gestão mas não concede Desempenho administrativo', async () => {
   const session = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
   const before = structuredClone(session);
   const h = harness({session, route: 'training'});
-  for (const route of ['management', 'training']) assert.equal(h.context.canOpenRestrictedModule(route),true);
+  assert.equal(h.context.canOpenRestrictedModule('management'),true);
+  assert.equal(h.context.canOpenRestrictedModule('training'),false);
   for (const permission of ['admin', 'usersManage', 'managementManage', 'trainingsManage']) assert.equal(h.ui.can(permission), false);
   assert.equal(h.ui.managementUtilityCards(), '');
   await h.ui.loadModule('training');
-  assert.deepEqual(h.navigations, []);
-  assert.deepEqual(h.queries, [{name: 'mountPerformanceModule'}]);
+  assert.deepEqual(h.navigations, ['home']);
+  assert.deepEqual(h.queries, []);
   assert.deepEqual(session, before);
   const direct = renderHarness(session);
   await direct.context.runRender();
@@ -404,7 +405,7 @@ test('liberação individual habilita apenas os dois módulos solicitados, sem p
 test('liberações de Gestão e Desempenho são independentes e não liberam QMENTUM', () => {
   for (const [flag, route, blocked] of [['managementModuleEnabled','management','training'], ['performanceModuleEnabled','training','management']]) {
     const h = harness({session: individuallyReleased({[flag]: true})});
-    assert.equal(h.context.canOpenRestrictedModule(route),true);
+    assert.equal(h.context.canOpenRestrictedModule(route),route==='management');
     assert.equal(h.context.canOpenRestrictedModule(blocked),false);
     assert.equal(h.context.canOpenRestrictedModule('qmentum'), true);
   }
@@ -447,4 +448,11 @@ test('troca de tela encerra observação de treinamentos e consulta administrati
  const session=approved({},'administrador_app'),h=renderHarness(session);let documents=0,inspection=0;
  h.context.cleanupDocumentTraining=()=>documents++;h.context.cleanupUserInspection=()=>inspection++;
  await h.context.runRender();assert.equal(documents,1);assert.equal(inspection,1);assert.equal(h.context.cleanupDocumentTraining,null);assert.equal(h.context.cleanupUserInspection,null);assert.equal(session.user.uid,'pessoa-ficticia');
+});
+
+test('todas as rotas de desempenho exigem administrador mesmo com liberação individual',()=>{
+ for(const session of [approved(),individuallyReleased({managementModuleEnabled:true,performanceModuleEnabled:true,trainingsRead:true}),approved({},'gestor')]){
+  const h=harness({session}); for(const route of ['training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'])assert.equal(h.context.canOpenRestrictedModule(route),false);
+ }
+ for(const session of [approved({},'administrador_app'),approved({admin:true})]){session.profile.uid=session.user.uid;const h=harness({session});h.context.fcPerformanceEnabled=true;h.context.fdPerformanceEnabled=true;h.context.fePerformanceEnabled=true;h.context.fdPerformanceIdentityCanEnter=()=>true;for(const route of ['training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'])assert.equal(h.context.canOpenRestrictedModule(route),true,route);}
 });
