@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectId": "outros-48120",
+  "station": "FE",
+  "enabled": true,
+  "effectiveFrom": "2026-11-02T02:27:37.680Z",
+  "automaticFbSync": false,
+  "historyImported": 0,
+  "mode": "FE_ONLY",
+  "configuredAt": "2026-11-02T02:26:37.963Z",
+  "approval": "User explicitly authorized immediate production activation on 2026-11-01",
+  "billingEnabled": false,
+  "pointsCreatedByActivation": 0
+}

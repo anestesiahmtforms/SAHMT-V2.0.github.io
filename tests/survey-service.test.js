@@ -27,6 +27,35 @@ test('concurrent submissions with distinct random IDs commit a single ledger and
  const {service,responses}=await fixture();const results=await Promise.all(Array.from({length:20},(_,i)=>service.execute('SUBMIT',input('stress',(i+1).toString(16).padStart(32,'0')),identity)));
  assert.equal(results.filter(r=>!r.alreadyResponded).length,1);assert.equal((await responses.list('stressResponses')).length,1);assert.equal((await responses.list('surveyParticipation')).length,1);
 });
+test('FE awards one point for an accepted participation without copying survey answers',async()=>{
+ const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
+ f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-01T00:00:00Z')});
+ const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,now:()=>clock,uuid:()=> 'b'.repeat(32)});
+ assert.deepEqual(await service.execute('SUBMIT',input('climate'),identity),{accepted:true,alreadyResponded:false});
+ const awards=await f.responses.list('fePerformanceAwards');
+ assert.equal(awards.length,1);assert.equal(awards[0].uid,identity.uid);assert.equal(awards[0].points,1);assert.equal(awards[0].survey,'climate');
+ assert.equal(Object.hasOwn(awards[0],'answers'),false);assert.equal(Object.hasOwn(awards[0],'comments'),false);assert.equal(Object.hasOwn(awards[0],'responseId'),false);
+});
+test('FE does not award historical participation or a second point for duplicate submissions',async()=>{
+ const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
+ f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-29T00:00:00Z')});
+ const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,now:()=>clock,uuid:()=> 'b'.repeat(32)});
+ await service.execute('SUBMIT',input('climate'),identity);
+ assert.equal((await f.responses.list('fePerformanceAwards')).length,0);
+ f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-01T00:00:00Z')});
+ const retry=input('climate','c'.repeat(32));await service.execute('SUBMIT',retry,identity);
+ assert.equal((await f.responses.list('fePerformanceAwards')).length,0);
+});
+test('FE performance read returns only the caller ledger and never includes survey responses',async()=>{
+ const f=await fixture();f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-01T00:00:00Z')});
+ f.responses.seed('fePerformanceAwards',`${identity.uid}_climate_2026`,{uid:identity.uid,category:'PERFORMANCE',points:1,survey:'climate',cycle:'2026',createdAt:Date.parse('2026-10-02T00:00:00Z')});
+ f.responses.seed('fePerformanceAwards','other_climate_2026',{uid:'other',category:'PERFORMANCE',points:1,survey:'climate',cycle:'2026',createdAt:Date.parse('2026-10-02T00:00:00Z')});
+ const result=await f.service.execute('GET_PERFORMANCE',{},identity);assert.equal(result.uid,identity.uid);assert.equal(result.awards.length,1);assert.equal(result.awards[0].uid,identity.uid);assert.equal(Object.hasOwn(result.awards[0],'answers'),false);
+});
+test('FE performance stays in preparation until its server activation boundary',async()=>{
+ const f=await fixture();f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.now()+60000});
+ const result=await f.service.execute('GET_PERFORMANCE',{},identity);assert.equal(result.status,'PREPARING');assert.equal(result.awards.length,0);
+});
 test('invalid identity, schema, closed cycle or revoked profile cannot consume a participation slot',async()=>{
  for(const patch of [{emailVerified:false},{provider:'password'},{uid:'../bad'},{email:'other@example.invalid'}]){const f=await fixture();await assert.rejects(f.service.execute('SUBMIT',input('stress'),{...identity,...patch}));assert.equal((await f.responses.list('surveyParticipation')).length,0);}
  for(const field of ['uid','email','ip','responseId']){const f=await fixture(),payload=input('stress');payload.response[field]='forbidden';await assert.rejects(f.service.execute('SUBMIT',payload,identity),e=>e.code==='SURVEY_INVALID_INPUT');assert.equal((await f.responses.list('surveyParticipation')).length,0);}

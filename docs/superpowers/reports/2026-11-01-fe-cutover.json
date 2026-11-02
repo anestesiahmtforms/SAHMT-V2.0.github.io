@@ -1,0 +1,15 @@
+{
+  "station": "FE",
+  "centralWorker": "sahmt-html-training",
+  "originalModulePreserved": true,
+  "otherBindingsPreserved": true,
+  "forwardedActions": [
+    "SUBMIT",
+    "GET_PERFORMANCE"
+  ],
+  "otherRoutesUnchanged": true,
+  "newCron": null,
+  "centralFdCronNoop": false,
+  "at": "2026-11-02T02:25:41.315Z",
+  "billingChanges": 0
+}

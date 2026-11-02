@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-11-02T02:03:17.718Z",
+  "cloudMutations": 0,
+  "secretValuesRecorded": false,
+  "projects": [
+    {
+      "station": "FD",
+      "projectId": "rotinas-8a617",
+      "authenticatedEmail": "anestesiahmtforms4@gmail.com",
+      "billing": {
+        "status": 200,
+        "billingEnabled": false
+      },
+      "database": {
+        "status": 200,
+        "name": "projects/rotinas-8a617/databases/(default)",
+        "type": "FIRESTORE_NATIVE",
+        "locationId": "southamerica-east1"
+      },
+      "rules": {
+        "status": 200,
+        "release": "projects/rotinas-8a617/releases/cloud.firestore",
+        "ruleset": "projects/rotinas-8a617/rulesets/59a7e65f-a569-49e2-8aa6-c132c6e99ed9",
+        "files": [
+          {
+            "name": "firestore.indicators-platform.rules",
+            "sha256": "c5b3b3c334b2502038fcbb32b66ab95a996c36b310e877dc7111860a61f0dcc2"
+          }
+        ]
+      },
+      "serviceAccounts": {
+        "status": 200,
+        "complete": true,
+        "accounts": [
+          {
+            "email": "firebase-adminsdk-fbsvc@rotinas-8a617.iam.gserviceaccount.com",
+            "disabled": false
+          },
+          {
+            "email": "indicator-compiler@rotinas-8a617.iam.gserviceaccount.com",
+            "disabled": false
+          }
+        ]
+      },
+      "performanceRuntime": {
+        "status": 404,
+        "exists": false,
+        "enabled": null,
+        "projectId": null
+      }
+    },
+    {
+      "station": "FE",
+      "projectId": "outros-48120",
+      "authenticatedEmail": "anestesiahmtforms5@gmail.com",
+      "billing": {
+        "status": 200,
+        "billingEnabled": false
+      },
+      "database": {
+        "status": 200,
+        "name": "projects/outros-48120/databases/(default)",
+        "type": "FIRESTORE_NATIVE",
+        "locationId": "southamerica-east1"
+      },
+      "rules": {
+        "status": 200,
+        "release": "projects/outros-48120/releases/cloud.firestore",
+        "ruleset": "projects/outros-48120/rulesets/3e8f4163-ab95-47ca-8001-550bf73cd71d",
+        "files": [
+          {
+            "name": "firestore.climate.rules",
+            "sha256": "e5c75a8279f863ff5e255e8ef174fa1285505f8ca408597bc1f2fa089673cb82"
+          }
+        ]
+      },
+      "serviceAccounts": {
+        "status": 200,
+        "complete": true,
+        "accounts": [
+          {
+            "email": "firebase-adminsdk-fbsvc@outros-48120.iam.gserviceaccount.com",
+            "disabled": false
+          }
+        ]
+      },
+      "performanceRuntime": {
+        "status": 404,
+        "exists": false,
+        "enabled": null,
+        "projectId": null
+      }
+    }
+  ]
+}

@@ -50,6 +50,12 @@ jobs:
           npm run test:vaccination-rules
       - name: Validate authenticated survey participation and session bridge
         run: npm run test:survey-session
+      - name: Validate isolated FD and FE performance
+        run: |
+          npm run test:fd-performance
+          npm run test:fe-performance
+          npm run test:fd-performance-rules
+          npm run test:fe-performance-rules
       - name: Validate year-end choices, ordering and FE access rules
         run: |
           npm run test:year-end
@@ -154,6 +160,8 @@ jobs:
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}
           VITE_FC_INTEGRATION_ENABLED: ${{ vars.VITE_FC_INTEGRATION_ENABLED || 'true' }}
           VITE_FC_PERFORMANCE_ENABLED: ${{ vars.VITE_FC_PERFORMANCE_ENABLED || 'true' }}
+          VITE_FD_PERFORMANCE_ENABLED: ${{ vars.VITE_FD_PERFORMANCE_ENABLED || 'true' }}
+          VITE_FE_PERFORMANCE_ENABLED: ${{ vars.VITE_FE_PERFORMANCE_ENABLED || 'true' }}
           VITE_FC_INTEGRATION_ORIGIN: ${{ vars.VITE_FC_INTEGRATION_ORIGIN || 'https://sahmt-fc-integration.anestesiahmtforms3.workers.dev' }}
           VITE_OPERATIONAL_CHANNEL_ENDPOINT: ${{ vars.VITE_OPERATIONAL_CHANNEL_ENDPOINT }}
           VITE_OPERATIONAL_CONTINUITY_ENABLED: ${{ vars.VITE_OPERATIONAL_CONTINUITY_ENABLED }}

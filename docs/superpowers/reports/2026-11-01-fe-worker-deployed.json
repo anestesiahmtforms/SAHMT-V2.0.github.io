@@ -1,0 +1,15 @@
+{
+  "station": "FE",
+  "project": "outros-48120",
+  "account": "fb3d38f501820ddf90764aadaa94fc89",
+  "worker": "sahmt-fe-surveys",
+  "url": "https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev",
+  "deploymentId": "7a02c56967044ceab0b19f182b3601ac",
+  "modified": "2026-11-02T02:20:47.748731Z",
+  "enabled": true,
+  "performanceRuntimeActivated": false,
+  "scheduledTriggersInstalled": false,
+  "billingChanges": 0,
+  "businessWrites": 0,
+  "at": "2026-11-02T02:20:51.663Z"
+}

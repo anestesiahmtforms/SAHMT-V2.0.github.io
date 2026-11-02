@@ -1,0 +1,92 @@
+{
+  "at": "2026-11-02T02:27:58.500Z",
+  "stations": [
+    {
+      "station": "FD",
+      "projectId": "rotinas-8a617",
+      "runtime": {
+        "projectId": "rotinas-8a617",
+        "schemaVersion": 1,
+        "station": "FD",
+        "mode": "FD_ONLY",
+        "historyImported": 0,
+        "enabled": true,
+        "automaticFbSync": false,
+        "effectiveFrom": "2026-11-02T02:27:29.459Z"
+      },
+      "transactionReadVerified": true,
+      "guards": [
+        {
+          "url": "https://sahmt-indicators.anestesiahmtforms4.workers.dev/v1/indicators",
+          "unauthenticatedStatus": 401
+        },
+        {
+          "url": "https://sahmt-indicators.anestesiahmtforms.workers.dev/v1/indicators",
+          "unauthenticatedStatus": 401
+        }
+      ],
+      "sources": [
+        {
+          "platform": "management",
+          "available": true,
+          "metrics": 32
+        },
+        {
+          "platform": "records",
+          "available": true,
+          "metrics": 19
+        },
+        {
+          "platform": "surveys",
+          "available": true,
+          "metrics": 6
+        },
+        {
+          "platform": "operations",
+          "available": true,
+          "metrics": 4
+        }
+      ]
+    },
+    {
+      "station": "FE",
+      "projectId": "outros-48120",
+      "runtime": {
+        "station": "FE",
+        "automaticFbSync": false,
+        "historyImported": 0,
+        "enabled": true,
+        "effectiveFrom": "2026-11-02T02:27:37.680Z",
+        "mode": "FE_ONLY",
+        "projectId": "outros-48120",
+        "schemaVersion": 1
+      },
+      "transactionReadVerified": true,
+      "guards": [
+        {
+          "url": "https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev/v1/institutional-surveys",
+          "unauthenticatedStatus": 401
+        },
+        {
+          "url": "https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/institutional-surveys",
+          "unauthenticatedStatus": 401
+        }
+      ],
+      "sources": [
+        {
+          "survey": "climate",
+          "status": "open"
+        },
+        {
+          "survey": "stress",
+          "status": "open"
+        },
+        {
+          "survey": "epidemiological",
+          "status": "open"
+        }
+      ]
+    }
+  ],
+  "businessWrites": 0
+}

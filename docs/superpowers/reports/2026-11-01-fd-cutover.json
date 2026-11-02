@@ -1,0 +1,12 @@
+{
+  "station": "FD",
+  "centralWorker": "sahmt-indicators",
+  "originalModulePreserved": true,
+  "otherBindingsPreserved": true,
+  "forwardedActions": "all indicator actions",
+  "otherRoutesUnchanged": true,
+  "newCron": "0 7-10 * * *",
+  "centralFdCronNoop": true,
+  "at": "2026-11-02T02:25:31.853Z",
+  "billingChanges": 0
+}

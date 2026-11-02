@@ -9,6 +9,11 @@ test('only survey route selects FA issuer and key; caller cannot choose its proj
  const result=await worker.fetch(request(body),env);assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');assert.deepEqual(calls,[{apiKey:'fa-public-key',projectId:'sahmt-17a16'}]);
  assert.equal((await worker.fetch(request({...body,projectId:'other'}),env)).status,400);
 });
+test('FE performance summary uses the authenticated survey route with no survey-answer input',async()=>{
+ let payload;const worker=createTrainingWorker({verifyIdentity:async()=>({uid:'synthetic'}),buildSurveyService:()=>({execute:async(action,input)=>{payload={action,input};return {status:'READY',uid:'synthetic',summary:{uid:'synthetic',total:1},reference:{maxTotal:1},awards:[]};}})});
+ const request=new Request('https://worker.test/v1/institutional-surveys',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer synthetic'},body:JSON.stringify({action:'GET_PERFORMANCE',input:{}})});
+ const response=await worker.fetch(request,{INSTITUTIONAL_SURVEYS_ENABLED:'true',FA_WEB_API_KEY:'fa-public-key'});assert.equal(response.status,200);assert.deepEqual(payload,{action:'GET_PERFORMANCE',input:{}});assert.equal((await response.json()).summary.total,1);
+});
 test('FA tokens pass only an explicitly FA-bound verification; other issuers cannot widen the existing FB routes',async()=>{
  const claims={aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16',sub:'synthetic',email:'one@example.invalid',email_verified:true,auth_time:10,iat:10,exp:3000,firebase:{sign_in_provider:'google.com'}},token=['header',Buffer.from(JSON.stringify(claims)).toString('base64url'),'signature'].join('.');
  let reads=0;const options={apiKey:'fa-public-key',projectId:'sahmt-17a16',now:()=>1000000,fetchImpl:async()=>{reads++;return Response.json({users:[{localId:'synthetic',email:'one@example.invalid',emailVerified:true,validSince:'10'}]});}};

@@ -24,6 +24,11 @@ test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Es
   assert.equal(currentRoute(),'events');
 });
 
+test('Desempenho FD e FE têm rotas próprias no PWA',()=>{
+ navigate('fd-performance');assert.equal(location.hash,'#/fd-performance');assert.equal(currentRoute(),'fd-performance');
+ navigate('fe-performance');assert.equal(location.hash,'#/fe-performance');assert.equal(currentRoute(),'fe-performance');
+});
+
 test('sessão autenticada offline redesenha a rota ao navegar', () => {
   assert.equal(shouldRenderHashChange({status: 'signed-in', offline: true}), true);
   assert.equal(shouldRenderHashChange({status: 'signed-in', offline: false}), true);

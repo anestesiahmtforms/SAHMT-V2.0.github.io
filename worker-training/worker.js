@@ -11,6 +11,7 @@ import {createDriveClient} from './drive.js';
 import {Buffer} from 'node:buffer';
 import {createSurveyService} from './survey-service.js';
 import {createYearEndStatusService} from './year-end-status-service.js';
+import {stationAwareWorker} from '../worker-station-forwarding/forward.js';
 
 const origins=['https://anestesiahmtforms.github.io'];
 const fail=(code,status)=>Object.assign(new Error(code),{code,status});
@@ -105,4 +106,4 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
   }
  }};
 }
-export default createTrainingWorker();
+export default stationAwareWorker(createTrainingWorker(),'FE');

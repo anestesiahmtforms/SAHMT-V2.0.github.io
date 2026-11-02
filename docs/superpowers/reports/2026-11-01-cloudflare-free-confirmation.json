@@ -1,0 +1,11 @@
+{
+  "source": "User confirmed both Cloudflare Workers plans show Free in this conversation",
+  "localDate": "2026-11-01",
+  "accounts": {
+    "FD": "434b7325287b58f36d214c9403819db2",
+    "FE": "fb3d38f501820ddf90764aadaa94fc89"
+  },
+  "workersFreeConfirmed": true,
+  "paidActionsAllowed": false,
+  "apiSubscriptionVerification": "403; confirmation supplied by user"
+}
