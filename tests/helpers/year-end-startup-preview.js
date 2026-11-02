@@ -7,6 +7,7 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
  let hold=true,failSave=true,authHeld=holdAuthentication;const authWaiters=[];
  const stubs={
   'app-updates-targeted-firebase.js':'export async function recordAppInstallation(){}',
+  'vacations-2027-client.js':`export async function callVacationsApi({uid,isCurrent,action}){if(!isCurrent())throw Error('VACATIONS_SESSION_CHANGED');if(action!=='ACCESS')throw Error('UNEXPECTED_VACATION_ACTION');return {eligibleForConsultations:['team','shift-only','admin'].includes(uid)};}`,
   'firebase-app.js':'export const firebaseConfigured=true,app=null,appCheckReady=Promise.resolve(null);',
   'year-end-status-client.js':`export async function readYearEndBannerStatus({uid,isCurrent}){const r=await fetch('${base}__year-end-fixture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,action:'banner'})});const data=await r.json();if(!r.ok)throw Object.assign(Error(data.code),{code:data.code});if(!isCurrent())throw Error('YEAR_END_SESSION_CHANGED');return {participation:{canParticipate:data.eligible},completed:data.completed};}`,
   'auth.js':`const uid=new URL(location.href).searchParams.get('account')||'team';
