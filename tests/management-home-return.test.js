@@ -1,10 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
 const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-const start=main.indexOf("  if (!authLimited && ['occurrences','qmentum','fc-performance'].includes(requestedRoute))");
+const start=main.indexOf("  if (!authLimited && ['occurrences','qmentum','fc-performance','fd-performance','fe-performance'].includes(requestedRoute))");
 assert.ok(start>=0,'FC module footer lifecycle must be present');
 const code=main.slice(start,main.indexOf('  if(!authLimited)preloadOperationalDataWhenIdle',start));
 test('Governance module footers return to their immediate parent',()=>{
- for(const requestedRoute of ['occurrences','qmentum','fc-performance']){
+ for(const requestedRoute of ['occurrences','qmentum','fc-performance','fd-performance']){
   const calls=[],events=new Map(),button={textContent:'Home',removeAttribute(){},addEventListener:(name,fn)=>events.set(name,fn)};
   vm.runInNewContext(code,{authLimited:false,requestedRoute,app:{querySelectorAll:()=>[button]},navigate:(...args)=>calls.push(args)});
   assert.equal(button.textContent,'VOLTAR');events.get('click')();assert.equal(calls[0][0],'management-hub');assert.equal(calls[0][1].panel,'records');
