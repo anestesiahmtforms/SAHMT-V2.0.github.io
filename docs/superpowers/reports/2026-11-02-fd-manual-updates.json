@@ -1,0 +1,26 @@
+{
+  "code": "FD_MANUAL_UPDATES_ACTIVE",
+  "account": "434b7325287b58f36d214c9403819db2",
+  "worker": "sahmt-indicators",
+  "automaticSchedules": 0,
+  "sourceSha256": "3890221cd7020973f6995f49b8faac2dd9187ff1e73e425e7ec5731dafbeb43c",
+  "bindingsPreserved": true,
+  "manualActivityRequired": true,
+  "faQueriesFilteredByYear": true,
+  "otherInstances": [
+    "FA",
+    "FB",
+    "FC",
+    "FE"
+  ],
+  "businessWrites": 0,
+  "billingChanges": 0,
+  "at": "2026-11-02T13:13:12.209Z",
+  "verification": {
+    "backendTests": 41,
+    "browserTests": 3,
+    "buildPassed": true,
+    "faYearQueriesAccepted": true
+  },
+  "pwaPublication": "pending"
+}

@@ -28,7 +28,7 @@ demand(hash(afterModules)===hash(files),'RELEASE_FORWARD_READBACK_FAILED');
 demand(hash(normalize(after.bindings))===hash(normalize(settings.bindings)),'RELEASE_EXISTING_BINDINGS_CHANGED');
 if(station==='FD'){
  const fd=await cloudflare('FD');
- await fd.request('/workers/scripts/'+target.worker+'/schedules',{method:'PUT',body:[{cron:'0 7-10 * * *'}]});
+ await fd.request('/workers/scripts/'+target.worker+'/schedules',{method:'PUT',body:[]});
 }
-const result={station,centralWorker:worker,originalModulePreserved:true,otherBindingsPreserved:true,forwardedActions:station==='FD'?'all indicator actions':['SUBMIT','GET_PERFORMANCE'],otherRoutesUnchanged:true,newCron:station==='FD'?'0 7-10 * * *':null,centralFdCronNoop:station==='FD',at:new Date().toISOString(),billingChanges:0};
+const result={station,centralWorker:worker,originalModulePreserved:true,otherBindingsPreserved:true,forwardedActions:station==='FD'?'all indicator actions':['SUBMIT','GET_PERFORMANCE'],otherRoutesUnchanged:true,newCron:null,manualFdUpdates:station==='FD',centralFdCronNoop:station==='FD',at:new Date().toISOString(),billingChanges:0};
 await report('2026-11-01-'+station.toLowerCase()+'-cutover',result);console.log(JSON.stringify(result));
