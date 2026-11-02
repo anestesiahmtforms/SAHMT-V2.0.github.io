@@ -2,9 +2,10 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../src/evaluation-data.js'), 'utf8').replaceAll('export ', '').replaceAll("import('./firebase.js')", 'Promise.resolve({db: fakeDb})').replaceAll("import('./firebase-auth.js')", 'Promise.resolve({auth: fakeAuth})').replaceAll("import('firebase/firestore')", 'Promise.resolve(fakeSdk)').replaceAll("import('./evaluation-store.js')", 'Promise.resolve({loadEvaluationStore: async ({faDb, sdk, auth}) => ({db: faDb, identityDb: faDb, sdk, auth})})');
-function setup({admin = false, managementManage = admin, occurrencesAuditRead = false, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false} = {}) {
-  const listeners = [], events = [], errors = [];
+const {transformSync} = require('esbuild');
+const source = transformSync(fs.readFileSync(require('node:path').join(__dirname, '../src/evaluation-data.js'), 'utf8').replaceAll("import('./firebase.js')", 'Promise.resolve({db: fakeDb})').replaceAll("import('./firebase-auth.js')", 'Promise.resolve({auth: fakeAuth})').replaceAll("import('firebase/firestore')", 'Promise.resolve(fakeSdk)').replaceAll("import('./evaluation-store.js')", 'Promise.resolve({loadEvaluationStore: async ({faDb, sdk, auth}) => ({db: faDb, identityDb: faDb, sdk, auth})})'), {format: 'cjs', target: 'es2022', sourcefile: 'evaluation-data.js'}).code;
+function setup({admin = false, managementManage = admin, occurrencesAuditRead = false, revoked = false, accessGroups = ['GENERAL'], claims = {}, activities = [], groupReadDenied = false, fbExclusive = false} = {}) {
+  const listeners = [], fbListeners = [], events = [], errors = [];
   const sdk = {doc: (_db, name, id) => ({name, id}), collection: (_db, name) => ({name}), where: (...args) => ({where: args}), query: (...args) => args, orderBy: (...args) => ({orderBy: args}), limit: count => ({limit: count}), documentId: () => '__name__', startAfter: cursor => ({startAfter: cursor}),
     getDocFromServer: async ref => ref?.name === 'documentAccessEmails'
       ? (groupReadDenied ? Promise.reject(new Error('permission-denied')) : {exists: () => accessGroups.length > 0, data: () => ({email: 'test-user-1@example.test', active: accessGroups.length > 0, groups: accessGroups})})
@@ -17,13 +18,34 @@ function setup({admin = false, managementManage = admin, occurrencesAuditRead = 
     },
     onSnapshot: (query, options, next, error) => { const item = {query, options, next, error, stops: 0}; listeners.push(item); return () => item.stops++; }};
   const fakeAuth = {currentUser: {uid: 'fixture-user', getIdTokenResult: async () => ({claims: {email: 'test-user-1@example.test', email_verified: true, firebase: {sign_in_provider: 'google.com'}, ...claims}})}};
-  const context = vm.createContext({fakeDb: {}, fakeSdk: sdk, fakeAuth, URL, console, crypto: {randomUUID: () => 'fixture-request'}, navigator: {onLine: true}});
+  const dependencies = {'./fb-performance-client.js': {fbPerformanceEnabled: fbExclusive, watchFbPerformance: options => {const item = {...options, stops: 0};fbListeners.push(item);return () => item.stops++;}}};
+  const context = vm.createContext({module: {exports: {}}, require: name => {assert.ok(Object.hasOwn(dependencies, name), 'Unmocked evaluation dependency: ' + name);return dependencies[name];}, fakeDb: {}, fakeSdk: sdk, fakeAuth, URL, console, crypto: {randomUUID: () => 'fixture-request'}, navigator: {onLine: true}});
   vm.runInContext(source, context);
+  Object.assign(context, context.module.exports);
   const watch = options => context.watchEvaluation({actorUid: 'fixture-user', category: 'PERFORMANCE', onData: data => events.push(data), onError: error => errors.push(error), ...options});
   const tick = () => new Promise(resolve => setImmediate(resolve));
-  return {context, listeners, events, errors, watch, tick};
+  return {context, listeners, fbListeners, events, errors, watch, tick};
 }
 test('cleanup imediato impede listeners após a carga assíncrona', async () => { const h = setup(); h.watch()(); await h.tick(); assert.equal(h.listeners.length, 0); });
+
+test('FB exclusivo confirma somente a projeção própria, recupera pendência e preserva governança', async () => {
+  const h=setup({fbExclusive:true}),stop=h.watch();await h.tick();
+  assert.equal(h.errors.length,0);assert.equal(h.fbListeners.length,1);assert.equal(h.fbListeners[0].subjectUid,'fixture-user');
+  assert.deepEqual(h.listeners.map(item=>item.query[0].name).sort(),['evaluationParticipations','evaluationRequests']);
+  for(const listener of h.listeners)listener.next({docs:[],metadata:{fromCache:false,hasPendingWrites:false}});
+  assert.equal(h.events.at(-1).complete,false);assert.equal(h.events.at(-1).fromCache,true);
+  const value={summary:{uid:'fixture-user',performanceTotal:3},reference:{performanceRevision:1},awards:[{id:'fb-award',uid:'fixture-user',points:3}],ledger:[],complete:true,fromCache:false,pendingWrites:false};
+  h.fbListeners[0].onData(value);
+  assert.equal(h.events.at(-1).summary,value.summary);assert.equal(h.events.at(-1).awards,value.awards);
+  assert.equal(h.events.at(-1).complete,true);assert.equal(h.events.at(-1).fromCache,false);
+  h.fbListeners[0].onData({summary:null,reference:null,awards:[],ledger:[],complete:false,fromCache:true,pendingWrites:false});
+  h.listeners[0].next({docs:[],metadata:{fromCache:false,hasPendingWrites:false}});
+  assert.equal(h.events.at(-1).complete,false);assert.equal(h.events.at(-1).fromCache,true);assert.equal(h.events.at(-1).summary,null);
+  h.fbListeners[0].onData(value);assert.equal(h.events.at(-1).complete,true);assert.equal(h.events.at(-1).fromCache,false);
+  stop();stop();assert.equal(h.fbListeners[0].stops,1);assert.equal(h.fbListeners[0].isCurrent(),false);assert.ok(h.listeners.every(item=>item.stops===1));
+  const governance=setup({fbExclusive:true});const stopGovernance=governance.watch({category:'GOVERNANCE'});await governance.tick();
+  assert.equal(governance.errors.length,0);assert.equal(governance.fbListeners.length,0);assert.equal(governance.listeners.length,6);stopGovernance();
+});
 
 test('cross-user performance without audit observes totals without fetching private detail', async () => {
  const h=setup({admin:true});h.watch({subjectUid:'other'});await h.tick();

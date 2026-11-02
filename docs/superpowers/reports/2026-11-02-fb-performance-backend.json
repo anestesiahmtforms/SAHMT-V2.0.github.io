@@ -1,0 +1,23 @@
+{
+  "code": "FB_PRODUCTION_BACKEND_VERIFIED",
+  "projectId": "sahmt-gestao-5ae66",
+  "effectiveFrom": "2026-11-02T10:31:44.534Z",
+  "mode": "FB_ONLY",
+  "historyImported": 0,
+  "automaticExternalSync": false,
+  "revision": 1,
+  "status": "CONFIRMED",
+  "eligibleCount": 58,
+  "summaryCount": 58,
+  "allSummariesMatchRevision": true,
+  "allInitialTotalsZero": true,
+  "legacyOrExternalExcludedReported": 11,
+  "worker": "sahmt-fb-performance",
+  "workerActive": true,
+  "billingEnabled": false,
+  "sourceRevision": "06abddb243ef077e998c6d4381906e72749d5a3a",
+  "workflowRunId": 41429847779,
+  "pwaPublication": "in_progress",
+  "at": "2026-11-02T10:34:47.681Z",
+  "userIdentifiersRecorded": false
+}

@@ -1,6 +1,6 @@
 # Desempenho FB exclusivo — preparação em 02/11/2026
 
-Estado às 07:29: código revisado com Astra e enviado aos executores. Corte central executado pelo proprietário às 07:24:44, com drenagem até 07:31:44. Instalador FB concluído às 07:29:14: pasta correta, runtime FB_ONLY habilitado, um acionador, zero importação e sincronização externa desabilitada. Worker próprio publicado desativado; aguarda primeiro ciclo confirmado para liberar o leitor. Novo leitor do PWA ainda não publicado.
+Estado após 07:34: código revisado com Astra e enviado aos executores. Corte central executado pelo proprietário às 07:24:44, com drenagem até 07:31:44. Instalador FB concluído às 07:29:14: pasta correta, runtime FB_ONLY habilitado e um acionador. Primeiro ciclo confirmou revisão 1, 58 resumos zerados, nenhum crédito admitido e 11 registros antigos/externos excluídos. Worker próprio ativado com IAM somente leitura e billing desabilitado; conteúdo e flag conferidos por API. Envio pelo GitHub Desktop concluído; a primeira publicação do PWA foi interrompida pelo harness antigo de evaluation-data que não carregava a nova dependência estática. Ajuste do harness não altera saldos ou serviços.
 
 ## Instruções autorizadas
 
@@ -16,7 +16,7 @@ Estado às 07:29: código revisado com Astra e enviado aos executores. Corte cen
 - Conta executora esperada: anestesiahmtforms2@gmail.com.
 - Cloudflare: 679464db2379db8562b62ae982f30471.
 - Pasta Drive: 1SiIvED7gjlsA0tA5SqGAUE3U3jCHRuSj. O instalador executado pelo proprietário move o próprio script e verifica a pasta; o grant administrativo drive.file recebeu appNotAuthorizedToFile ao tentar mover um arquivo criado pela Script API.
-- Worker publicado: sahmt-fb-performance, desativado. Identidade própria fb-performance-reader, somente datastore.entities.get/list no FB.
+- Worker publicado e ativo: sahmt-fb-performance. Identidade própria fb-performance-reader, somente datastore.entities.get/list no FB.
 - Apps Script criado na conta FB: 1c5MjrI-TDGO-ydKHGKJO9J-G2KOA4S7qZhNFdz65PMA0HOza3ItUYreh. Fonte em apps-script-fb/FbPerformance.gs e domínio gerado por scripts/build-fb-performance.mjs. Grava somente fbPerformanceRuntime, fbPerformanceReference, fbPerformanceAwards, fbPerformanceLedger e fbPerformanceSummaries no projeto FB.
 
 ## Inventário e comportamento
@@ -36,7 +36,7 @@ O candidato central foi construído a partir de leitura autenticada do código c
 - Pacote Apps Script gerado em .local-preview/fb-performance/apps-script-bundle.json.
 - Bundle Worker e compilação independente FA/FB/enquetes concluídos.
 - Nenhum teste manual ou escrita artificial de negócio realizado.
-- Identidade IAM somente leitura, chave protegida por DPAPI e secret do Worker criados; Worker próprio publicado desativado. Runtime/acionador FB instalados, com effectiveFrom=2026-11-02T10:31:44.534Z e historyImported=0.
+- Identidade IAM somente leitura, chave protegida por DPAPI e secret do Worker criados; Worker próprio ativado após conferência de 58 saldos na revisão 1. Runtime/acionador FB instalados, com effectiveFrom=2026-11-02T10:31:44.534Z e historyImported=0.
 
 ## Acessos e pendências atuais
 
