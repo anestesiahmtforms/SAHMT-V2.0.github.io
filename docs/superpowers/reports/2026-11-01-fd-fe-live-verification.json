@@ -1,17 +1,17 @@
 {
-  "at": "2026-11-02T02:27:58.500Z",
+  "at": "2026-11-02T02:52:54.271Z",
   "stations": [
     {
       "station": "FD",
       "projectId": "rotinas-8a617",
       "runtime": {
+        "historyImported": 0,
+        "mode": "FD_ONLY",
+        "enabled": true,
         "projectId": "rotinas-8a617",
+        "automaticFbSync": false,
         "schemaVersion": 1,
         "station": "FD",
-        "mode": "FD_ONLY",
-        "historyImported": 0,
-        "enabled": true,
-        "automaticFbSync": false,
         "effectiveFrom": "2026-11-02T02:27:29.459Z"
       },
       "transactionReadVerified": true,
@@ -55,11 +55,11 @@
         "station": "FE",
         "automaticFbSync": false,
         "historyImported": 0,
+        "schemaVersion": 1,
         "enabled": true,
-        "effectiveFrom": "2026-11-02T02:27:37.680Z",
-        "mode": "FE_ONLY",
         "projectId": "outros-48120",
-        "schemaVersion": 1
+        "mode": "FE_ONLY",
+        "effectiveFrom": "2026-11-02T02:27:37.680Z"
       },
       "transactionReadVerified": true,
       "guards": [

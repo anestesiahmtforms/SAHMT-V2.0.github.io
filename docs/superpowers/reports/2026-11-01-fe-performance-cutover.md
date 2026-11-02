@@ -1,6 +1,6 @@
 # Desempenho FE — implantação real
 
-Servidor publicado e pontuação ativada. Publicação do PWA em andamento.
+Servidor publicado, pontuação ativada e PWA V2.8 publicado em produção. Build, implantação e verificação do GitHub Actions concluídos com sucesso. Revisão: b0a085d3abbe8191f972f4ca8d739e4d028bcb0b.
 
 - Firebase: `outros-48120`; billing desativado confirmado pela API.
 - Cloudflare: `fb3d38f501820ddf90764aadaa94fc89`; Workers Free confirmado visualmente pelo usuário. Nenhuma contratação.

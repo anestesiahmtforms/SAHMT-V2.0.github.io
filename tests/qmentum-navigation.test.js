@@ -4,7 +4,7 @@ test('QMENTUM opens directly from Registro de Indicadores and is absent from Cli
  assert.doesNotMatch(main,/qmentum-open/);
  assert.match(hub,/label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'/);
  assert.doesNotMatch(hub,/label:'Indicadores Qmentum'|indicators:\{title:/);
- assert.match(main,/!\['people', 'admin', 'occurrences', 'qmentum', 'fc-performance'\]\.includes\(route\)/);
+ assert.match(main,/!\['people', 'admin', 'occurrences', 'qmentum', 'fc-performance', 'fd-performance', 'fe-performance'\]\.includes\(route\)/);
  assert.match(router,/'qmentum'/);
 });
 test('direct route uses the independent FC services and preserves the common-user administrative pause',()=>{

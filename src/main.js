@@ -6,8 +6,6 @@ import './fc-performance.css';
 import {fcPerformanceEnabled} from './fc-performance-data.js';
 import {fdPerformanceEnabled,fdPerformanceIdentityCanEnter} from './fd-performance-data.js';
 import {fePerformanceEnabled} from './fe-performance-data.js';
-import './fd-performance.css';
-import './fe-performance.css';
 import './catalog-folders.css';
 import {MEMBER_CATEGORIES,memberCategoryLabels,mergeMemberCategoryAssignments,memberCategoryCounts} from './member-categories.js';
 import {withinDeadline} from './async-deadline.js';
@@ -800,7 +798,7 @@ function moduleCards() {
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
   const commonModules = commonUserActive ? ['management'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fc-performance'].includes(route)
+  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
     && !['training', 'notifications', 'management-hub'].includes(route)
       && (route==='fd-performance'?fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session):route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
@@ -1343,7 +1341,7 @@ async function loadModule(route) {
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!canUseGovernanceHub(session))return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,performanceUid:uid,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
@@ -1351,7 +1349,7 @@ async function loadModule(route) {
       performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session),fePerformance:fePerformanceEnabled&&canUseManagementPilot(session)},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
   }
@@ -4996,6 +4994,7 @@ async function render() {
     notice='Governança está temporariamente indisponível para este perfil.';
     navigate('home');return;
   }
+  if (deployment.target==='FA'&&['fd-performance','fe-performance'].includes(requestedRoute)){navigate('management-hub',{panel:requestedRoute==='fd-performance'?'fdPerformance':'fePerformance'});return;}
   if (deployment.target === 'FB' && ['qmentum','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {

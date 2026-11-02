@@ -44,3 +44,10 @@ test('voltar aos painéis de Governança usa a rota local sem recarregar FA', ()
   navigate('management-hub', {panel:'https://example.com'});
   assert.equal(location.hash, '#/management-hub');
 });
+test('station performance has an internal panel URL under its module container',()=>{
+ for(const panel of ['fdPerformance','fePerformance']){
+  navigate('management-hub',{panel});
+  assert.equal(location.hash,'#/management-hub/'+panel);
+  assert.equal(currentRoute(),'management-hub');
+ }
+});

@@ -1,5 +1,7 @@
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
+import './fd-performance.css';
+import './fe-performance.css';
 
 const paths={
  groups:'M3 7h18v14H3zM7 7V3h10v4M7 12h10M7 16h7',
@@ -34,8 +36,11 @@ const panels={
   {label:'PESQUISAS INSTITUCIONAIS',icon:'records',panel:'institutional',access:'surveys'},
   {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'surveys'},
   {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'surveys'},
-  {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'}
+  {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
+  {label:'Desempenho FE',icon:'performance',panel:'fePerformance',access:'fePerformance'}
  ]},
+ fdPerformance:{title:'Desempenho FD',icon:'performance',parent:'results'},
+ fePerformance:{title:'Desempenho FE',icon:'performance',parent:'surveys'},
  yearEnd:{title:'Escala Final de Ano',icon:'festive',parent:'surveys'},
  professional:{title:'Cadastro Profissional - SAHMT',icon:'professional',parent:'surveys'},
  epidemiological:{title:'Cadastro Epidemiológico - SAHMT',icon:'epidemiological',parent:'surveys'},
@@ -45,7 +50,7 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',performanceUid=null,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
  if(initialPanel==='indicators')initialPanel='records';
  const itemAllowed=item=>item.panel==='surveys'?(access.surveys===true||access.yearEndSchedule===true):(!item.access||access[item.access]===true);
  const panelAllowed=name=>name==='home'||name==='surveys'&&(access.surveys===true||access.yearEndSchedule===true)||access[name==='yearEnd'?'yearEndSchedule':['institutional','climateForm','stressForm','professional','epidemiological'].includes(name)?'surveys':name]===true;
@@ -61,6 +66,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
+   if(['fdPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const allowed=itemAllowed(item);
    return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+item.label+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
@@ -70,7 +76,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
    void import('./year-end-schedule-ui.js').then(({mountYearEndSchedule})=>{if(!current())return;cleanupYearEnd=mountYearEndSchedule(body,{isCurrent:current,onConfirmed:onYearEndConfirmed,connectAccess:connectYearEndAccess,createRepository:current=>createYearEndRepository(current)});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a escala. Volte e tente novamente.</p>';});
   }
   if(panel==='results'&&access.results===true){
-   body.innerHTML='<div class="management-indicators-host" data-hub-indicators><p role="status">Carregando indicadores…</p></div>';
+   body.innerHTML=(access.fdPerformance===true?'<button type="button" class="management-hub-button" data-hub-fd-performance><span class="management-hub-label">Desempenho FD</span><span aria-hidden="true">›</span></button>':'')+'<div class="management-indicators-host" data-hub-indicators><p role="status">Carregando indicadores…</p></div>';
    const host=body.querySelector('[data-hub-indicators]');
    const current=()=>!disposed&&ticket===renderId&&panel==='results'&&isSurveySessionCurrent();
    void import('../indicators-platform/ui.js').then(({mountIndicatorsPlatform})=>{
@@ -81,6 +87,20 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
   if(panel==='institutional'){
    const surveyCard=(kind,url,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+(kind==='climate'?'climateForm':'stressForm')+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
+  }
+  if(['fdPerformance','fePerformance'].includes(panel)&&access[panel]===true){
+   const activePanel=panel;
+   body.innerHTML='<div data-hub-performance><p role="status">Carregando desempenho…</p></div>';
+   const host=body.querySelector('[data-hub-performance]');
+   const current=()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent();
+   const fd=panel==='fdPerformance';
+   const modules=fd?Promise.all([import('./fd-performance-data.js'),import('./fd-performance-ui.js')]):Promise.all([import('./fe-performance-data.js'),import('./fe-performance-ui.js')]);
+   void modules.then(([data,ui])=>{
+    if(!current())return;
+    const uid=performanceUid;
+    const repository=fd?data.createFdPerformanceRepository({uid,isCurrent:current,request:(action,input)=>performIndicators(action,input)}):data.createFePerformanceRepository({uid,isCurrent:current,request:()=>performSurvey(undefined,'GET_PERFORMANCE')});
+    cleanupIndicators=(fd?ui.mountFdPerformanceModule:ui.mountFePerformanceModule)(host,{repository,isCurrent:current});
+   }).catch(()=>{if(current())host.innerHTML='<p role="status">Não foi possível confirmar seu desempenho. Confira a conexão e tente novamente.</p>';});
   }
   if(['climateForm','stressForm'].includes(panel)&&climateEnabled&&access.surveys===true){
    body.innerHTML='<iframe class="management-survey-frame" title="'+spec.title+'" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>';
@@ -99,6 +119,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',assetBase
  };
  const goBack=()=>{const parent=panels[panel].parent;if(parent){panel=parent;render();}else onExit();};
  const click=event=>{
+  if(event.target.closest('[data-hub-fd-performance]')){if(panel==='results'&&access.fdPerformance===true){panel='fdPerformance';render();}return;}
   if(event.target.closest('[data-hub-indicators-retry]')){if(panel==='results'&&access.results===true)render();return;}
   const survey=event.target.closest('[data-survey-panel]');
   if(survey){if(panel==='institutional'&&climateEnabled&&access.surveys===true&&['climateForm','stressForm'].includes(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}

@@ -69,6 +69,13 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
 function visibleRoutes(h) {
   return [...h.ui.moduleCards().matchAll(/data-route="([^"]+)"/g)].map((match) => match[1]);
 }
+test('FD and FE performance never appear on Home even with both releases enabled',()=>{
+ const h=harness({session:approved({admin:true},'administrador_app')});
+ h.context.fdPerformanceEnabled=true;h.context.fePerformanceEnabled=true;
+ h.context.fdPerformanceIdentityCanEnter=()=>true;
+ assert.equal(visibleRoutes(h).includes('fd-performance'),false);
+ assert.equal(visibleRoutes(h).includes('fe-performance'),false);
+});
 function cardMarkup(h, route) {
   return h.ui.moduleCards().match(new RegExp(`<button\\b(?=[^>]*data-route="${route}")[^>]*>[\\s\\S]*?<\\/button>`))?.[0] || '';
 }

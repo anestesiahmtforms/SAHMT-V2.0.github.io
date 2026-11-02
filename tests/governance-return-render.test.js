@@ -70,6 +70,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive'},
     loginView:()=>'<main>Login</main>',bindLogin(){},canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
     canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
+    fdPerformanceEnabled:false,fePerformanceEnabled:false,
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
     labels:{management:['Grupos de Gestão'],training:['Desempenho'],'management-hub':['Governança']},
