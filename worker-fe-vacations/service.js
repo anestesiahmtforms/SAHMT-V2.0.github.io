@@ -11,8 +11,8 @@ export function createVacationService({store,sheets,now=Date.now}){
   return p;
  }
  async function load(profile,identity){
-  const data=await sheets.read(),parsed=vacationSchedule(data.values,data.rules),binding=await store.get('vacations2027Identities',await vacationHash(identity.email.trim().toLowerCase()));
-  return {status:'READY',finalized:true,isAdmin:vacationAdmin(profile),ownSigla:binding?.schemaVersion===1&&binding.email===identity.email.trim().toLowerCase()&&parsed.siglas.includes(binding.sigla)?binding.sigla:null,version:await vacationHash(data),...parsed};
+  const data=await sheets.read(),parsed=vacationSchedule(data.values,data.rules),[binding,settings]=await Promise.all([store.get('vacations2027Identities',await vacationHash(identity.email.trim().toLowerCase())),store.get('vacations2027Settings','current')]);
+  return {status:'READY',finalized:true,changeRequestUrl:settings?.schemaVersion===1&&settings.contactSigla==='FR'&&/^https:\/\/wa\.me\/55\d{10,11}$/.test(settings.changeRequestUrl||'')?settings.changeRequestUrl:null,isAdmin:vacationAdmin(profile),ownSigla:binding?.schemaVersion===1&&binding.email===identity.email.trim().toLowerCase()&&parsed.siglas.includes(binding.sigla)?binding.sigla:null,version:await vacationHash(data),...parsed};
  }
  return {async execute(action,input,identity){
   const profile=await actor(identity),admin=vacationAdmin(profile);

@@ -8,7 +8,7 @@ export function vacationServiceToken({credentials,fetchImpl=fetch,now=Date.now})
   if(cached?.until>now()+60000)return cached.token;
   if(!pending)pending=(async()=>{
    const iat=Math.floor(now()/1000),unsigned=b({alg:'RS256',typ:'JWT'})+'.'+b({iss:credentials.client_email,scope:'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',iat,exp:iat+3600});
-   const response=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion:unsigned+'.'+sign('RSA-SHA256',Buffer.from(unsigned),key).toString('base64url')}),redirect:'error',signal:AbortSignal.timeout(15000)});
+   const response=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion:unsigned+'.'+sign('RSA-SHA256',Buffer.from(unsigned),key).toString('base64url')}),redirect:'manual',signal:AbortSignal.timeout(15000)});
    if(!response.ok){await response.body?.cancel();throw fail();}const data=await response.json();
    if(typeof data.access_token!=='string'||!Number.isFinite(data.expires_in)||data.expires_in<120||data.expires_in>3600)throw fail();
    cached={token:data.access_token,until:now()+data.expires_in*1000};return cached.token;
@@ -26,7 +26,7 @@ async function boundedJson(response,max=512*1024){
 export function createVacationSheets({getAccessToken,fetchImpl=fetch}){
  const base='https://sheets.googleapis.com/v4/spreadsheets/'+SPREADSHEET_ID;
  async function request(path,body){
-  try{return await boundedJson(await fetchImpl(base+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getAccessToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(20000)}));}catch{throw fail();}
+  try{return await boundedJson(await fetchImpl(base+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getAccessToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(20000)}));}catch{throw fail();}
  }
  return {
   async read(){const d=await request('/values:batchGet?'+new URLSearchParams([['ranges',"'FERIAS 2027'!A1:K52"],['ranges',"'REGRAS'!A1:F100"],['valueRenderOption','FORMATTED_VALUE']]));if(d.valueRanges?.length!==2)throw fail();return {values:d.valueRanges[0].values||[],rules:d.valueRanges[1].values||[]};},

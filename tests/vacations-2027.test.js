@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {vacationSchedule,simulateVacation,vacationOverlap,vacationSigla,canUseVacationModule} from '../src/vacations-2027-domain.js';
+import {vacationSchedule,simulateVacation,vacationOverlap,vacationSigla,vacationChangeLink,canUseVacationModule} from '../src/vacations-2027-domain.js';
 import {vacationFixture,vacationModel} from './fixtures/vacations-2027-data.js';
 import {createVacationService,vacationHash} from '../worker-fe-vacations/service.js';
 import {createVacationWorker} from '../worker-fe-vacations/worker.js';
@@ -18,3 +18,5 @@ test('worker enforces origin, body size and verified FA session before service',
 test('vacation access never trusts only a logged-in account or mismatched profile',()=>{const s={status:'signed-in',user:{uid:'u',email:'a@example.invalid',emailVerified:true},profile:{uid:'u',email:'a@example.invalid',active:true,access:true}};assert.equal(canUseVacationModule(s),true);s.profile.uid='other';assert.equal(canUseVacationModule(s),false);});
 
 test('parenthesized annotations following a sigla are ignored even without spaces',()=>{for(const value of ['LU (+2)','LU(+2)',' lu (1/2) ','LU (observação)'])assert.equal(vacationSigla(value),'LU');assert.equal(vacationOverlap(['CH(+2)','FL (1/2)'],{CH:[1,0,0,0,0],FL:[1,0,0,0,0]}),.5);});
+
+test('request change link targets FR and contains only the simulated schedule',()=>{const data=vacationModel(),result=simulateVacation(data,'janeiro-0-0','fevereiro-0-0'),url=new URL(vacationChangeLink(data,result));assert.equal(url.hostname,'wa.me');assert.equal(url.pathname,'/5511999990000');assert.match(url.searchParams.get('text'),/Minha sigla: AA/);assert.match(url.searchParams.get('text'),/troca ainda não foi realizada/);assert.doesNotMatch(url.href,/token|uid|email/);assert.equal(vacationChangeLink({...data,changeRequestUrl:'https:\/\/evil.invalid'},result),null);});

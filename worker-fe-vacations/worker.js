@@ -18,6 +18,7 @@ export function createVacationWorker({verifyIdentity=verifyTrainingIdentity,buil
   if(new URL(request.url).pathname!=='/v1/vacations-2027')return reply({code:'VACATIONS_ROUTE_UNKNOWN'},404);
   if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...headers,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Max-Age':'600'}});
   if(request.method!=='POST')return reply({code:'VACATIONS_METHOD_DENIED'},405);
+  let stage='request';
   try{
    if(env.VACATIONS_ENABLED!=='true')throw Error();
    if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))return reply({code:'VACATIONS_INPUT_INVALID'},400);
@@ -26,9 +27,11 @@ export function createVacationWorker({verifyIdentity=verifyTrainingIdentity,buil
    try{for(;;){const r=await reader.read();if(r.done)break;size+=r.value.length;if(size>4096)return reply({code:'VACATIONS_INPUT_INVALID'},413);parts.push(r.value);}}finally{await reader.cancel().catch(()=>{});}
    let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return reply({code:'VACATIONS_INPUT_INVALID'},400);}
    if(!body||Array.isArray(body)||Object.keys(body).length!==2||typeof body.action!=='string'||!body.input||typeof body.input!=='object'||Array.isArray(body.input))return reply({code:'VACATIONS_INPUT_INVALID'},400);
+   stage='identity';
    const identity=await verifyIdentity(request.headers.get('Authorization'),{apiKey:env.FA_WEB_API_KEY,projectId:'sahmt-17a16'});
+   stage='service';
    return reply(await buildService(env).execute(body.action,body.input,identity),200);
-  }catch(error){const code=/^VACATIONS_[A-Z_]+$/.test(error?.code||'')?error.code:'VACATIONS_UNAVAILABLE';return reply({code},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);}
+  }catch(error){console.warn(JSON.stringify({event:'VACATIONS_REQUEST_FAILED',stage,code:/^(?:VACATIONS|TRAINING)_[A-Z_]+$/.test(error?.code||'')?error.code:'UNCLASSIFIED',name:['ReferenceError','TypeError','SyntaxError'].includes(error?.name)?error.name:'Error',status:error?.status||503}));const code=/^VACATIONS_[A-Z_]+$/.test(error?.code||'')?error.code:'VACATIONS_UNAVAILABLE';return reply({code},[400,401,403,404,409,413,422,429,503].includes(error?.status)?error.status:503);}
  }};
 }
 export default createVacationWorker();

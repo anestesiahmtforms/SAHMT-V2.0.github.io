@@ -1,3 +1,3 @@
 import {vacationSchedule} from '../../src/vacations-2027-domain.js';
 export function vacationFixture(){const values=Array.from({length:52},()=>[]);values[4]=['1ª semana','04 A 10/01','AA','BB','',null,'1ª semana','01 A 07/02','CC','',''];values[5]=['2ª semana','11 A 17/01','DD','',''];const rules=[['SIGLA'],['AA','X','X','X','X',''],['BB','X','X','X','',''],['CC','X','X','X','X',''],['DD','','','','','X']];return {values,rules};}
-export function vacationModel(admin=false){const d=vacationFixture();return {status:'READY',finalized:true,isAdmin:admin,ownSigla:'AA',version:'a'.repeat(64),...vacationSchedule(d.values,d.rules)};}
+export function vacationModel(admin=false){const d=vacationFixture();return {status:'READY',finalized:true,changeRequestUrl:'https://wa.me/5511999990000',isAdmin:admin,ownSigla:'AA',version:'a'.repeat(64),...vacationSchedule(d.values,d.rules)};}

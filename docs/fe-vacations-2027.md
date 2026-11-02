@@ -16,3 +16,7 @@ Somente administrador pode salvar correções ou trocar dois lançamentos. Justi
 Serviço: `worker-fe-vacations` → `sahmt-fe-vacations.anestesiahmtforms5.workers.dev/v1/vacations-2027`. Workers Free; billing Firebase continua desativado; sem gatilhos. Credencial privada somente no segredo `FE_SERVICE_ACCOUNT_JSON`. Planilha compartilhada como Editor com `fe-survey-worker@outros-48120.iam.gserviceaccount.com` pelo proprietário. Google Sheets API habilitada no projeto FE.
 
 Reversão: desativar `VACATIONS_ENABLED` no Worker e reverter este commit do PWA para a estrutura visual. Não apagar as identidades nem os registros de auditoria. As marcações da planilha permanecem intactas na ativação; nenhum lançamento de férias é criado para teste.
+
+Solicitação de mudança: o resultado da simulação oferece Solicitar Mudança antes de Fechar. O link abre o WhatsApp de FR com uma mensagem que descreve as duas semanas simuladas; o participante ainda deve enviar a mensagem. O telefone é obtido do cadastro de contatos e guardado somente na configuração privada de FE, sem ser incluído no repositório. Abrir o WhatsApp não altera reservas.
+
+Correção de compatibilidade: as consultas do Worker usam redirect manual e rejeitam respostas não bem-sucedidas. O teste workerd percorre autenticação, token de serviço, perfil FE e leitura da planilha para detectar diferenças em relação ao Node. O executável workerd local suporta até 2026-10-13; esse é o marco usado no teste, sem mudar a data da configuração de produção.

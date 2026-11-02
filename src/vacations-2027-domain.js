@@ -44,6 +44,11 @@ export function simulateVacation(data,sourceId,targetId){
   return {...w,days,unknown,duplicate,allowed:days!==null&&days<=3&&!duplicate};
  });
 }
+export function vacationChangeLink(data,results){
+ if(!/^https:\/\/wa\.me\/55\d{10,11}$/.test(data?.changeRequestUrl||'')||!data.ownSigla||!Array.isArray(results)||results.length!==2)return null;
+ const message='Olá, FR. Solicito a análise de uma mudança na escala de férias 2027. Minha sigla: '+data.ownSigla+'.\n'+results.map(w=>w.month+' · '+w.period+': '+w.slots.map(s=>s.value||'Vaga livre').join(' / ')+'. Coincidência simulada: '+(w.days===null?'não foi possível avaliar':String(w.days).replace('.',',')+' dias')+'.').join('\n')+'\nEsta é apenas uma simulação; a troca ainda não foi realizada. Você pode avaliar?';
+ const url=new URL(data.changeRequestUrl);url.searchParams.set('text',message);return url.href;
+}
 export function canUseVacationModule(session){
  const u=session?.user,p=session?.profile;
  return Boolean(session?.status==='signed-in'&&u?.uid&&u.emailVerified===true&&p?.uid===u.uid&&p.active===true&&p.access===true&&typeof u.email==='string'&&p.email?.trim().toLowerCase()===u.email.trim().toLowerCase());

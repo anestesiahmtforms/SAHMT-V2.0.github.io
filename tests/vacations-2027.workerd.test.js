@@ -1,0 +1,17 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {generateKeyPairSync} from 'node:crypto';import {build} from 'esbuild';import {Miniflare,convertV4MiniflareOptions} from 'miniflare';import {encodeFields} from '../worker-training/firestore.js';import {vacationHash} from '../worker-fe-vacations/service.js';import {vacationFixture} from './fixtures/vacations-2027-data.js';
+test('deployed vacations bundle authenticates and loads Sheets in workerd',{timeout:60000},async()=>{
+ const uid='runtime-member',email='member@example.invalid',project='outros-48120',now=Math.floor(Date.now()/1000),calls=[];
+ const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});const credentials={project_id:project,client_email:'fe-survey-worker@outros-48120.iam.gserviceaccount.com',private_key:privateKey.export({type:'pkcs8',format:'pem'})};const jwt=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:'sahmt-17a16',iss:'https://securetoken.google.com/sahmt-17a16',sub:uid,email,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');
+ const f=vacationFixture(),hash=await vacationHash(email),bundle=await build({entryPoints:['worker-fe-vacations/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
+ const mf=new Miniflare(convertV4MiniflareOptions({name:'vacations',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{VACATIONS_ENABLED:'true',FA_WEB_API_KEY:'synthetic-key',FE_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
+ const u=new URL(request.url);calls.push(u.hostname+u.pathname);
+ if(u.hostname==='identitytoolkit.googleapis.com')return Response.json({users:[{localId:uid,email,emailVerified:true,validSince:'0'}]});
+ if(u.hostname==='oauth2.googleapis.com')return Response.json({access_token:'synthetic-service',expires_in:3600});
+ if(u.hostname==='sheets.googleapis.com')return Response.json({valueRanges:[{values:f.values},{values:f.rules}]});
+ if(u.pathname.endsWith('/vacations2027Settings/current'))return Response.json({fields:encodeFields({schemaVersion:1,contactSigla:'FR',changeRequestUrl:'https://wa.me/5511999990000'})});
+ if(u.pathname.endsWith('/users/'+uid))return Response.json({fields:encodeFields({uid,email,active:true,access:true,role:'anestesiologista'})});
+ if(u.pathname.endsWith('/vacations2027Identities/'+hash))return Response.json({fields:encodeFields({schemaVersion:1,email,sigla:'AA'})});
+ throw Error('UNEXPECTED_OUTBOUND');
+ }}));
+ try{const r=await mf.dispatchFetch('https://vacations.test/v1/vacations-2027',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json',Authorization:'Bearer '+jwt},body:JSON.stringify({action:'LOAD',input:{}})});const data=await r.json();assert.equal(r.status,200,JSON.stringify({data,calls}));assert.equal(data.ownSigla,'AA');assert.equal(data.months.length,12);assert.equal(data.changeRequestUrl,'https://wa.me/5511999990000');assert.equal(calls.some(c=>/:commit|beginTransaction/.test(c)),false);}finally{await mf.dispose();}
+});
