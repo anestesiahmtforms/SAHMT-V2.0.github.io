@@ -92,7 +92,7 @@ export function watchEvaluation({actorUid, subjectUid = actorUid, category = 'PE
     ];
     let exclusiveValue=null;
     const emit=()=>{
-      const ready=metadata.size===sources.length&&(!exclusive||exclusiveValue);
+      const ready=metadata.size===sources.length&&(!exclusive||exclusiveValue?.complete===true);
       const ledger=exclusive?exclusiveValue?.ledger||[]:values.get('ledger')||[];
       onData({...exclusiveValue,summary:exclusive?exclusiveValue?.summary||null:values.get('summary')||null,reference:exclusive?exclusiveValue?.reference||null:values.get('reference')||null,ledger:ledger.slice(0,count),hasMore:ledger.length>count,loadedLimit:count,awards:detailsRestricted?null:exclusive?exclusiveValue?.awards||[]:values.get('awards')||[],detailsRestricted,participations:values.get('participations')||[],revisions:values.get('revisions')||[],requests:values.get('requests')||[],fromCache:!ready||[...metadata.values()].some(item=>item.fromCache),pendingWrites:[...metadata.values()].some(item=>item.pending),complete:!!ready});
     };

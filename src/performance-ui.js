@@ -215,7 +215,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
   function updateCorrectionOptions() {
     const form = formFor('CORRECT_SCORE');
     if (!form || !admin()) return;
-    const awards = ownRecords(latest, 'awards', selectedUid, category);
+    const awards = ownRecords(latest, 'awards', selectedUid, category).filter(award=>award.correctionSupported!==false);
     setOptions(form.elements.awardId, awards.map(award => ({id: award.id, name: `${award.activityTitle || award.activityId || 'Checklist'} · ${MODALITY_LABELS[award.modality] || award.modality} · ${pointLabel(award.points)}`})), 'Selecione um lançamento');
   }
   function renderSnapshot(snapshot, {live = false} = {}) {

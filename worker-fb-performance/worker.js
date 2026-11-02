@@ -28,17 +28,18 @@ export default {async fetch(request,env){
   const identity=await verifyTrainingIdentity(request.headers.get('Authorization'),{apiKey:env.FB_WEB_API_KEY,projectId:PROJECT});
   const db=store(env),profile=await db.get('users',identity.uid),subject=body.input.subjectUid;
   if(profile?.uid!==identity.uid||profile.email?.toLowerCase()!==identity.email||profile.active!==true||profile.access!==true)return reply({code:'FB_PERFORMANCE_FORBIDDEN'},403);
-  if(subject!==identity.uid&&!(profile.role==='administrador_app'||profile.permissions?.admin===true))return reply({code:'FB_PERFORMANCE_FORBIDDEN'},403);
+  const canInspect=p=>(p?.role==='administrador_app'||p?.permissions?.admin===true)&&p?.permissions?.managementManage===true;
+  if(subject!==identity.uid&&!canInspect(profile))return reply({code:'FB_PERFORMANCE_FORBIDDEN'},403);
   const runtime=await db.get('fbPerformanceRuntime','current');
-  if(runtime?.enabled!==true||runtime.projectId!==PROJECT||runtime.schemaVersion!==1||runtime.mode!=='FB_ONLY')return reply({code:'FB_PERFORMANCE_PREPARING'},503);
+  if(runtime?.enabled!==true||runtime.projectId!==PROJECT||runtime.schemaVersion!==1||runtime.mode!=='FB_ONLY'||!Number.isFinite(Date.parse(runtime.effectiveFrom))||Date.now()<Date.parse(runtime.effectiveFrom))return reply({code:'FB_PERFORMANCE_PREPARING'},503);
   const reference=await db.get('fbPerformanceReference','team'),revision=reference?.revision;
   if(!Number.isSafeInteger(revision)||reference.status!=='CONFIRMED')return reply({code:'FB_PERFORMANCE_PENDING'},503);
   const collection=(suffix)=>'fbPerformance'+suffix;
   const [summary,allAwards,allLedger]=await Promise.all([db.get(collection('Summaries'),subject),db.list(collection('Awards'),[{field:'uid',op:'EQUAL',value:subject}],999),db.list(collection('Ledger'),[{field:'uid',op:'EQUAL',value:subject}],999)]);
   if(summary?.revision!==revision)return reply({code:'FB_PERFORMANCE_PENDING'},503);
   const awards=allAwards.filter(a=>a.revision===revision),ledger=allLedger.filter(l=>l.revision===revision).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  const fresh=await db.get('users',identity.uid),ref=await db.get('fbPerformanceReference','team');
-  if(fresh?.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email||fresh.active!==true||fresh.access!==true||subject!==identity.uid&&!(fresh.role==='administrador_app'||fresh.permissions?.admin===true)||ref?.revision!==revision)return reply({code:'FB_PERFORMANCE_PENDING'},503);
+  const fresh=await db.get('users',identity.uid),ref=await db.get('fbPerformanceReference','team'),active=await db.get('fbPerformanceRuntime','current');
+  if(fresh?.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email||fresh.active!==true||fresh.access!==true||subject!==identity.uid&&!canInspect(fresh)||ref?.revision!==revision||ref?.status!=='CONFIRMED'||active?.enabled!==true||active?.mode!==runtime.mode||active?.projectId!==PROJECT||active?.effectiveFrom!==runtime.effectiveFrom)return reply({code:'FB_PERFORMANCE_PENDING'},503);
   return reply({summary:{uid:subject,status:'CONFIRMED',performanceTotal:summary.total,performanceRevision:revision},reference:{performanceStatus:'CONFIRMED',performanceRevision:revision,maxPerformance:reference.maxPerformance,eligibleCount:reference.eligibleCount},awards,ledger,fromCache:false,pendingWrites:false,complete:true,sourceProjectId:PROJECT},200);
  }catch(error){return reply({code:'FB_PERFORMANCE_UNAVAILABLE'},error?.status===401?401:503);}
 }};

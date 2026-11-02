@@ -1,6 +1,6 @@
 # Desempenho FB exclusivo — preparação em 02/11/2026
 
-Estado: candidato local preparado e compilado; preparação central enviada e conferida, ainda inativa. Cloudflare FB e Google FB autenticados. Novo desempenho ainda não publicado nem ativado.
+Estado às 07:29: código revisado com Astra e enviado aos executores. Corte central executado pelo proprietário às 07:24:44, com drenagem até 07:31:44. Instalador FB concluído às 07:29:14: pasta correta, runtime FB_ONLY habilitado, um acionador, zero importação e sincronização externa desabilitada. Worker próprio publicado desativado; aguarda primeiro ciclo confirmado para liberar o leitor. Novo leitor do PWA ainda não publicado.
 
 ## Instruções autorizadas
 
@@ -15,9 +15,9 @@ Estado: candidato local preparado e compilado; preparação central enviada e co
 - Firebase: sahmt-gestao-5ae66; billingEnabled=false confirmado por API.
 - Conta executora esperada: anestesiahmtforms2@gmail.com.
 - Cloudflare: 679464db2379db8562b62ae982f30471.
-- Pasta Drive: 1SiIvED7gjlsA0tA5SqGAUE3U3jCHRuSj, vazia na listagem do conector.
-- Worker candidato: sahmt-fb-performance, desativado por padrão. Identidade própria fb-performance-reader, somente datastore.entities.get/list no FB.
-- Apps Script candidato: apps-script-fb/FbPerformance.gs e domínio gerado por scripts/build-fb-performance.mjs. Grava somente fbPerformanceRuntime, fbPerformanceReference, fbPerformanceAwards, fbPerformanceLedger e fbPerformanceSummaries no projeto FB.
+- Pasta Drive: 1SiIvED7gjlsA0tA5SqGAUE3U3jCHRuSj. O instalador executado pelo proprietário move o próprio script e verifica a pasta; o grant administrativo drive.file recebeu appNotAuthorizedToFile ao tentar mover um arquivo criado pela Script API.
+- Worker publicado: sahmt-fb-performance, desativado. Identidade própria fb-performance-reader, somente datastore.entities.get/list no FB.
+- Apps Script criado na conta FB: 1c5MjrI-TDGO-ydKHGKJO9J-G2KOA4S7qZhNFdz65PMA0HOza3ItUYreh. Fonte em apps-script-fb/FbPerformance.gs e domínio gerado por scripts/build-fb-performance.mjs. Grava somente fbPerformanceRuntime, fbPerformanceReference, fbPerformanceAwards, fbPerformanceLedger e fbPerformanceSummaries no projeto FB.
 
 ## Inventário e comportamento
 
@@ -25,9 +25,9 @@ O livro evaluationAwards contém 11 créditos: 10 Checklist/CHECKLIST_SIGNATURE 
 
 O leitor do PWA passa a consultar o serviço próprio quando VITE_FB_PERFORMANCE_ENABLED=true. As atividades, solicitações, permissões, revisão de gestores e autenticação existentes são mantidas. GOVERNANCE continua na avaliação existente. Em PERFORMANCE, o saldo e histórico vêm exclusivamente da nova projeção. Treinamentos HTML locais integram esse mesmo saldo com eventos após o marco; o painel anterior de soma é suprimido para evitar duplicidade. Nenhum cartão novo é adicionado na Home.
 
-O processador próprio verifica a primeira emissão de cada crédito após o marco, valida a origem nativa e publica resumos com revisão. Resultados incompletos não são publicados como saldo confirmado. As respostas de provas não são copiadas para o livro de pontos.
+O processador verifica tanto a primeira emissão quanto a data original da participação/score após o marco. Todas as coleções de origem usam o mesmo readTime. A referência fica PENDING antes de sobrescrever qualquer projeção e só é confirmada ao final; o leitor reconfirma referência e runtime. Estado pendente mantém polling, sem mostrar saldo parcial. Respostas de provas não são copiadas para o livro de pontos.
 
-O candidato central foi construído a partir de leitura autenticada do código central ao vivo, preservando os cortes FC anteriores e os arquivos não envolvidos. Só altera EvaluationLedger e EvaluationChecklistDelivery e acrescenta FbCentralCutover. A barreira foi enviada ao projeto central sem alterar implantações, propriedades ou acionadores e fica inativa até executar pararCreditosExternosFbV1. A ciência do Checklist permanece aceita como registro, mas sem criar lançamento em FB.
+O candidato central foi construído a partir de leitura autenticada do código central ao vivo, preservando os cortes FC e arquivos não envolvidos. Só altera EvaluationLedger e EvaluationChecklistDelivery e acrescenta FbCentralCutover. O proprietário executou pararCreditosExternosFbV1: modo FB_ONLY, marco 2026-11-02T10:24:44.534Z, ativação não anterior a 2026-11-02T10:31:44.534Z. Acionadores e histórico não foram removidos. O guard no HEAD deixa a ciência do Checklist aceita sem pontos. Implantações antigas versionadas não foram alteradas por esse upload; a exclusão no novo saldo independe delas e é imposta pela projeção própria.
 
 ## Preparação concluída
 
@@ -36,27 +36,27 @@ O candidato central foi construído a partir de leitura autenticada do código c
 - Pacote Apps Script gerado em .local-preview/fb-performance/apps-script-bundle.json.
 - Bundle Worker e compilação independente FA/FB/enquetes concluídos.
 - Nenhum teste manual ou escrita artificial de negócio realizado.
-- Nenhuma chave, permissão IAM, runtime, gatilho ou deploy de produção criado para FB nesta etapa.
+- Identidade IAM somente leitura, chave protegida por DPAPI e secret do Worker criados; Worker próprio publicado desativado. Runtime/acionador FB instalados, com effectiveFrom=2026-11-02T10:31:44.534Z e historyImported=0.
 
 ## Acessos e pendências atuais
 
 - Cloudflare FB autenticada: anestesiahmtforms2@gmail.com e conta 679464db2379db8562b62ae982f30471 confirmados por API. Subdomínio anestesiahmtforms2 já existe; nenhum Worker existia no inventário.
-- Consulta de assinaturas retorna 403; falta confirmação visual do plano Workers Free.
+- Consulta de assinaturas retorna 403; usuário confirmou visualmente Free — Current plan. Nenhuma API de assinatura ou billing foi alterada.
 - Google FB autenticado e pasta permitiu canAddChildren=true.
-- A criação do Apps Script retornou explicitamente User has not enabled the Apps Script API. Usuário orientado a ativá-la em script.google.com/home/usersettings na conta FB.
+- API Apps Script habilitada pelo usuário e projeto próprio criado; conteúdo revisado enviado e conferido por leitura posterior. A execução remota scripts.run recebeu 403; autenticação para upload não concede autorização de runtime.
 - Regras publicadas: nenhuma regra para fbPerformance*, nenhum match genérico de coleções e default deny; leitura pelo cliente permanece negada.
-- Preparação central enviada: código FB_CENTRAL_GUARDS_UPLOADED, sem alteração de flags, acionadores ou versões implantadas.
+- Guard central atualizado e conferido após o corte, incluindo correção administrativa de crédito v1 quando a configuração já avançou para v2. O upload preservou propriedades, acionadores e versões implantadas.
 - Evidências atualizadas: 2026-11-02-fb-access-progress.json.
 
 ## Ordem para concluir o corte já autorizado
 
-1. Concluir as duas autenticações de FB, conferir e-mail/conta/Free e API Apps Script habilitada.
-2. Executar node scripts/build-fb-performance.mjs e node scripts/prepare-fb-performance.mjs --apply. O script cria a identidade somente leitura, publica Worker desativado, cria/upload do Apps Script na pasta exata e confere conteúdo e localização por leitura posterior.
+1. Autenticações, e-mail/conta/Free e API Apps Script já confirmados.
+2. Pacote construído e node scripts/prepare-fb-performance.mjs --apply concluído. O instalador próprio finaliza a movimentação à pasta quando o grant administrativo não permite fazê-la; o relatório registra OWNER_INSTALLER_REQUIRED, sem afirmar localização ainda não verificada.
 3. Conferir as regras publicadas: coleções fbPerformance* devem permanecer inacessíveis ao cliente; o leitor usa exclusivamente a identidade de serviço. Não abrir regra genérica para essas coleções.
 4. Upload do candidato central somente se o hash remoto continuar igual ao inventariado. Conferir arquivos e manter as implantações existentes.
-5. Executar pararCreditosExternosFbV1 no central e conferir FB_EXTERNAL_CREDITS_STOPPED. Ativar o runtime próprio com ativarDesempenhoFbV1 na conta FB; a função configura effectiveFrom com drenagem de sete minutos e cria somente um acionador de quinze minutos. Pode ser necessária a concessão inicial de permissões do executor pelo Google; não presumir que autorizar o upload autoriza o runtime.
+5. Corte central concluído. Executar instalarDesempenhoFbV1 na conta FB para mover o script, ativar o runtime com effectiveFrom após a drenagem e instalar um acionador de quinze minutos. Instalação repetida recupera acionador ausente e mantém o marco original.
 6. Após o marco, executar executarDesempenhoFbV1; confirmar um saldo inicial zero para todos os perfis elegíveis e nenhuma importação.
-7. Ativar somente o Worker FB e publicar VITE_FB_PERFORMANCE_ENABLED=true pelo GitHub Desktop. Conferir versão/revisão pública e fontes do saldo. A autorização de publicação do usuário já é suficiente; não pedir nova aprovação de corte.
+7. Executar node scripts/activate-fb-performance.mjs --apply: exige marcador central, runtime, ciclo confirmado, pasta correta, resumos completos, origem dos créditos, IAM somente leitura e billing desabilitado antes de ativar somente o Worker FB. Publicar VITE_FB_PERFORMANCE_ENABLED=true pelo GitHub Desktop e conferir revisão pública. A autorização do usuário já é suficiente.
 
 ## Reversão
 

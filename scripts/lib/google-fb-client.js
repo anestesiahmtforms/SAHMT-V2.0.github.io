@@ -12,7 +12,7 @@ export async function googleFbClient(){
    ||u.origin==='https://www.googleapis.com'&&/^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/.test(u.pathname)&&['GET','PATCH'].includes(method);
   if(!allowed)throw Error('FB_ADMIN_ENDPOINT_DENIED');
   try{return (await client.request({url,method,...(data!==undefined?{data}:{}),retry:false})).data;}
-  catch(e){const msg=String(e.response?.data?.error?.message||'');const error=Error(/User has not enabled the Apps Script API/i.test(msg)?'FB_APPS_SCRIPT_API_USER_DISABLED':'FB_ADMIN_HTTP_'+Number(e.response?.status||0));error.status=Number(e.response?.status||0);throw error;}
+  catch(e){const msg=String(e.response?.data?.error?.message||'');const error=Error(/User has not enabled the Apps Script API/i.test(msg)?'FB_APPS_SCRIPT_API_USER_DISABLED':'FB_ADMIN_HTTP_'+Number(e.response?.status||0));error.status=Number(e.response?.status||0);error.reasons=(e.response?.data?.error?.errors||[]).map(x=>x.reason);error.insufficientScope=/insufficient.*scope|insufficient authentication/i.test(msg);throw error;}
  };
  const identity=await request('https://www.googleapis.com/oauth2/v2/userinfo');
  if(identity.email!==saved.email||identity.verified_email!==true)throw Error('FB_GOOGLE_IDENTITY_MISMATCH');

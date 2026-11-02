@@ -16,9 +16,9 @@ const base='https://script.googleapis.com/v1/projects/'+id;
 const before=await call(base+'/content'),deployments=await call(base+'/deployments');
 if(sha(before.files)===candidate.report.candidateSha256){console.log(JSON.stringify({code:'FB_CENTRAL_ALREADY_UPLOADED'}));process.exit(0);}
 if(sha(before.files)!==candidate.report.previousSha256)throw Error('FB_CENTRAL_REMOTE_DRIFT');
-const changes=new Set(['EvaluationLedger','EvaluationChecklistDelivery']);
+const changes=new Set(['EvaluationLedger','EvaluationChecklistDelivery','FbCentralCutover']);
 for(const file of before.files){const next=candidate.files.find(f=>f.name===file.name);if(!next||next.type!==file.type||!changes.has(file.name)&&next.source!==file.source)throw Error('FB_CENTRAL_UNREVIEWED_CHANGE');}
-await writeFile(dir+'/central-before-upload.dpapi.json',JSON.stringify(await sealPrivateJson({content:before,deployments})));
+await writeFile(dir+'/central-before-upload-'+sha(before.files).slice(0,16)+'.dpapi.json',JSON.stringify(await sealPrivateJson({content:before,deployments})));
 await call(base+'/content','PUT',{files:candidate.files.map(({name,type,source})=>({name,type,source}))});
 const after=await call(base+'/content'),afterDeployments=await call(base+'/deployments');
 if(sha(after.files)!==candidate.report.candidateSha256||JSON.stringify(deployments)!==JSON.stringify(afterDeployments))throw Error('FB_CENTRAL_UPLOAD_READBACK_FAILED');

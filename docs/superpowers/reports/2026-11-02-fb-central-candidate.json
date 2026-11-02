@@ -1,18 +1,17 @@
 {
   "code": "FB_CENTRAL_CANDIDATE_PREPARED",
   "scriptId": "1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD",
-  "previousSha256": "0f793b704fb1c1381ca91d7de13260200d0a073c1f1242683d4a1ac516c8977b",
-  "candidateSha256": "3f95d9df9636b518c4f6d72bdb24b9a08e5f9b4ff1ddd1e996c86ccb1b0174ec",
+  "previousSha256": "ae5cbe66d555a5f7f53b55fec1883661980a3112ab81ae451f56d0104b37527f",
+  "candidateSha256": "339d2f8b33684f65a699cf2d8f9ec7867f92262fdbf7a125164b247b783003ca",
   "changedExistingFiles": [
-    "EvaluationLedger",
-    "EvaluationChecklistDelivery"
+    "FbCentralCutover"
   ],
-  "newFile": "FbCentralCutover",
+  "newFile": null,
   "existingFcCutoverPreserved": true,
   "otherFilesUnchanged": true,
   "uploaded": false,
   "flagsChanged": false,
   "triggersChanged": false,
   "businessWrites": 0,
-  "at": "2026-11-02T10:06:39.980Z"
+  "at": "2026-11-02T10:27:09.296Z"
 }
