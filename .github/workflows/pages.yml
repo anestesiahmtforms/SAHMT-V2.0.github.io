@@ -67,6 +67,8 @@ jobs:
           npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain
+      - name: Verify isolated FA performance and event corrections
+        run: node --test tests/fa-performance*.test.js
       - name: Verify targeted updates and device confirmation security
         run: |
           node --test tests/app-publication.test.js tests/app-updates-control-route.test.js tests/app-updates-targeted.test.js tests/app-updates-admin-lifecycle.test.js

@@ -109,6 +109,7 @@ const labels = {
   'management-hub': ['Governança', 'Áreas de governança'],
   'year-end-schedule': ['ESCALA FINAL DE ANO', 'Confirme suas escolhas de plantão e grupo de trabalho.'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
+  'fa-performance': ['Desempenho FA', 'Checklist e eventos de escala'],
   'fc-performance': ['Desempenho FC', 'Pontuação das ações em FC'],
   'fd-performance': ['Desempenho FD', 'Ciência e sugestões dos indicadores'],
   'fe-performance': ['Desempenho FE', 'Pontuação por participação em pesquisas'],
@@ -799,7 +800,7 @@ function moduleCards() {
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
   const commonModules = commonUserActive ? ['management'] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
+  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fa-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
     && !['training', 'notifications', 'management-hub'].includes(route)
       && (route==='fd-performance'?fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session):route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
@@ -1090,7 +1091,7 @@ function shellView() {
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const checklistCalendar = '';
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
-  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
+  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button>${can('admin') ? '<button type="button" data-route="fa-performance">DESEMPENHO FA</button>' : ''}</div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
   const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
@@ -1355,7 +1356,20 @@ async function loadModule(route) {
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel))});
     return;
   }
+  if(route === 'fa-performance'){
+    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
+    const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid&&can('admin');
+    if(!current()){navigate('checklist');return;}
+    try{
+      const [{auth},{readFaPerformance},{mountFaPerformanceModule}]=await Promise.all([import('./firebase-auth.js'),import('./fa-performance-client.js'),import('./fa-performance-ui.js')]);
+      if(!current())return;
+      const cleanup=mountFaPerformanceModule(content,{uid,isCurrent:current,load:subjectUid=>readFaPerformance({auth,subjectUid,isCurrent:current})});
+      if(current())cleanupCurrentModule=cleanup;else cleanup();
+    }catch{if(current())content.innerHTML='<p role="status">Não foi possível abrir o Desempenho FA.</p>';}
+    return;
+  }
   if(route === 'fc-performance'){
+
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid&&canOpenRestrictedModule(route);
     if(!current()){navigate('home');return;}
@@ -4997,14 +5011,14 @@ async function render() {
     navigate('home');return;
   }
   if (deployment.target==='FA'&&['fd-performance','fe-performance'].includes(requestedRoute)){navigate('management-hub',{panel:requestedRoute==='fd-performance'?'fdPerformance':'fePerformance'});return;}
-  if (deployment.target === 'FB' && ['qmentum','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
+  if (deployment.target === 'FB' && ['qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
-  if (!authLimited && ['management', 'training', 'qmentum', 'fc-performance','fd-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if (!authLimited && ['management', 'training', 'qmentum', 'fa-performance', 'fc-performance','fd-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
@@ -5020,17 +5034,17 @@ async function render() {
     return;
   }
   if(authLimited){}
-  else if(['qmentum','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)){
+  else if(['qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
-    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
+    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fa-performance'?'DESEMPENHO FA':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
   }else app.innerHTML = shellView();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
-  if (!authLimited && ['occurrences','qmentum','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
+  if (!authLimited && ['occurrences','qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR';
-      button.addEventListener('click',()=>requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
+      button.addEventListener('click',()=>requestedRoute==='fa-performance'?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
     });
   }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);

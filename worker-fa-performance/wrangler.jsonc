@@ -1,0 +1,10 @@
+{
+ "name":"sahmt-fa-performance",
+ "account_id":"1851e9f4cd5f026371beaa2c5a85f1b8",
+ "main":"worker.js",
+ "compatibility_date":"2026-11-02",
+ "compatibility_flags":["nodejs_compat"],
+ "workers_dev":true,
+ "vars":{"FA_PERFORMANCE_ENABLED":"false","FA_WEB_API_KEY":"AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"},
+ "observability":{"enabled":false}
+}

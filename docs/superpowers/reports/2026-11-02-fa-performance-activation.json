@@ -1,0 +1,88 @@
+{
+  "code": "FA_PERFORMANCE_WORKER_ACTIVE",
+  "effectiveFrom": "2026-11-02T12:10:52.279Z",
+  "revision": 1,
+  "summaries": 58,
+  "awards": 0,
+  "sourceSha256": "8ad9db4b95ebfe738e915abb16a284277bbcaaf0acfd83c8fab7f9517a96a128",
+  "billingEnabled": false,
+  "automaticExternalSync": false,
+  "at": "2026-11-02T12:13:06.063Z",
+  "centralUpload": {
+    "scriptId": "1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD",
+    "previousSha256": "c248b57e8a94e133472d3dc4ebbcc195febd15fd8621d8c5fa8a96bb89a6e132",
+    "candidateSha256": "0cbf88e7c958d4b862e49fec44e1be1ccc348fd30f0b42019bc78f095a0de22a",
+    "changedFiles": [
+      "FaPerformance"
+    ],
+    "existingDeploymentsUnchanged": true,
+    "manifestUnchanged": true,
+    "otherFilesUnchanged": true,
+    "at": "2026-11-02T12:08:17.456Z"
+  },
+  "deploymentAudit": {
+    "versions": [
+      {
+        "version": 45,
+        "executionApi": {
+          "access": "MYSELF"
+        },
+        "httpEntrypoint": "OperationalSheetPush",
+        "getFiles": [],
+        "httpChecklistDispatch": false,
+        "hasFbOnlyGuard": false
+      },
+      {
+        "version": 54,
+        "executionApi": {
+          "access": "MYSELF"
+        },
+        "httpEntrypoint": "OperationalSheetPush",
+        "getFiles": [],
+        "httpChecklistDispatch": false,
+        "hasFbOnlyGuard": false
+      },
+      {
+        "version": 55,
+        "executionApi": {
+          "access": "MYSELF"
+        },
+        "httpEntrypoint": "OperationalSheetPush",
+        "getFiles": [],
+        "httpChecklistDispatch": false,
+        "hasFbOnlyGuard": false
+      }
+    ],
+    "ruleset": "projects/sahmt-17a16/rulesets/3b602e39-9209-4278-814a-6898a52e12bd",
+    "explicitFaPerformanceMatch": false,
+    "defaultDeny": true,
+    "capturedAt": "2026-11-02T12:00:29.239Z"
+  },
+  "checks": [
+    {
+      "origin": "https://anestesiahmtforms.github.io",
+      "httpStatus": 401
+    },
+    {
+      "origin": "https://example.invalid",
+      "httpStatus": 403
+    }
+  ],
+  "initialCycle": {
+    "revision": 1,
+    "summaries": 58,
+    "awards": 0,
+    "changes": 0,
+    "pending": 0,
+    "triggerCount": 1
+  },
+  "verification": {
+    "domain": 1172,
+    "faFocused": 15,
+    "build": true,
+    "independentReview": "unavailable: workspace credits exhausted",
+    "selfReview": true
+  },
+  "pwaPublication": "pending",
+  "rollback": "Disable FA_PERFORMANCE_ENABLED in the dedicated Worker and faPerformanceRuntime/current.enabled; remove only executarDesempenhoFaV1 trigger. Preserve cutoff and audit. Do not restore external scoring."
+}

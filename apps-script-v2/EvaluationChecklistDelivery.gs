@@ -16,6 +16,7 @@ function evaluationChecklistDeliveryPayload_(signature, requestId) {
     signerUid: signature.signerUid, responsibleUid: signature.responsibleUid};
 }
 function evaluationQueueChecklistDelivery_(signature, requestId, transaction) {
+  if(typeof faPerformanceOnly_==='function'&&faPerformanceOnly_())return {status:'FA_ONLY_EXCLUDED',writes:[]};
   if(typeof fbOnlyCentralEnabled_==='function'&&fbOnlyCentralEnabled_())return {status:'FB_ONLY_EXCLUDED',writes:[]};
   const payload = evaluationChecklistDeliveryPayload_(signature, requestId);
   const id = 'checklist-' + sha256Hex_(signature.id);
@@ -26,6 +27,7 @@ function evaluationQueueChecklistDelivery_(signature, requestId, transaction) {
     {id: id, status: 'PENDING', payload: payload, fingerprint: fingerprint}, null, ['createdAt', 'updatedAt'])]};
 }
 function evaluationDeliverChecklistEvent_(id, options) {
+  if(typeof faPerformanceOnly_==='function'&&faPerformanceOnly_())return {status:'FA_ONLY_EXCLUDED',pointsAwarded:0};
   if(typeof fbOnlyCentralEnabled_==='function'&&fbOnlyCentralEnabled_())return {status:'FB_ONLY_EXCLUDED',pointsAwarded:0};
   options = options || {};
   evaluationProject_();

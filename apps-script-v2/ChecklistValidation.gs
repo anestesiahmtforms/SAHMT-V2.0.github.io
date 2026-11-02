@@ -136,7 +136,9 @@ function validateChecklistSignatureRequest_(request, options) {
     };
     let transfer;
     try {
-      transfer = evaluationProject_() === SAHMT_EVALUATION_FB
+      transfer = typeof faPerformanceOnly_ === 'function' && faPerformanceOnly_()
+        ? {status: 'FA_ONLY_PENDING', writes: []}
+        : evaluationProject_() === SAHMT_EVALUATION_FB
         ? evaluationQueueChecklistDelivery_(signature, current.id, transaction)
         : evaluationApplyChecklistTransfer_(current.day, snapshot.responsible.responsibleUid, current.signerUid, signatureId, {transaction: transaction});
     }
