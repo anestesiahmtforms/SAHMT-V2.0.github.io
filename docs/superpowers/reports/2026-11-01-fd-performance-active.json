@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectId": "rotinas-8a617",
+  "station": "FD",
+  "enabled": true,
+  "effectiveFrom": "2026-11-02T02:27:29.459Z",
+  "automaticFbSync": false,
+  "historyImported": 0,
+  "mode": "FD_ONLY",
+  "configuredAt": "2026-11-02T02:26:29.771Z",
+  "approval": "User explicitly authorized immediate production activation on 2026-11-01",
+  "billingEnabled": false,
+  "pointsCreatedByActivation": 0
+}

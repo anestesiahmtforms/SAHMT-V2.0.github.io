@@ -1,0 +1,15 @@
+{
+  "station": "FD",
+  "project": "rotinas-8a617",
+  "account": "434b7325287b58f36d214c9403819db2",
+  "worker": "sahmt-indicators",
+  "url": "https://sahmt-indicators.anestesiahmtforms4.workers.dev",
+  "deploymentId": "fe8940405de541099342fbfab3c8852a",
+  "modified": "2026-11-02T02:20:37.340341Z",
+  "enabled": true,
+  "performanceRuntimeActivated": false,
+  "scheduledTriggersInstalled": false,
+  "billingChanges": 0,
+  "businessWrites": 0,
+  "at": "2026-11-02T02:20:41.131Z"
+}

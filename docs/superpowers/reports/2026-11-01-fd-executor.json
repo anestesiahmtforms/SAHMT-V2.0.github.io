@@ -1,0 +1,53 @@
+{
+  "station": "FD",
+  "projectId": "rotinas-8a617",
+  "serviceEmail": "indicator-compiler@rotinas-8a617.iam.gserviceaccount.com",
+  "checked": [
+    {
+      "project": "sahmt-17a16",
+      "role": "projects/sahmt-17a16/roles/sahmtIndicatorSourceReader",
+      "permissions": [
+        "datastore.entities.get",
+        "datastore.entities.list"
+      ]
+    },
+    {
+      "project": "sahmt-gestao-5ae66",
+      "role": "projects/sahmt-gestao-5ae66/roles/sahmtIndicatorSourceReader",
+      "permissions": [
+        "datastore.entities.get",
+        "datastore.entities.list"
+      ]
+    },
+    {
+      "project": "indicadores---sahmt",
+      "role": "projects/indicadores---sahmt/roles/sahmtIndicatorSourceReader",
+      "permissions": [
+        "datastore.entities.get",
+        "datastore.entities.list"
+      ]
+    },
+    {
+      "project": "outros-48120",
+      "role": "projects/outros-48120/roles/sahmtIndicatorSnapshotReader",
+      "permissions": [
+        "datastore.entities.get"
+      ]
+    },
+    {
+      "project": "rotinas-8a617",
+      "role": "projects/rotinas-8a617/roles/sahmtIndicatorCompiler",
+      "permissions": [
+        "datastore.databases.get",
+        "datastore.entities.create",
+        "datastore.entities.get",
+        "datastore.entities.list",
+        "datastore.entities.update"
+      ]
+    }
+  ],
+  "billingEnabled": false,
+  "credentialsEncryptedLocally": true,
+  "businessWrites": 0,
+  "at": "2026-11-02T02:18:54.150Z"
+}

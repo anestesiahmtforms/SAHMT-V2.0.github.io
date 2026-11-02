@@ -1,0 +1,29 @@
+{
+  "station": "FE",
+  "projectId": "outros-48120",
+  "serviceEmail": "fe-survey-worker@outros-48120.iam.gserviceaccount.com",
+  "checked": [
+    {
+      "project": "outros-48120",
+      "role": "projects/outros-48120/roles/sahmtFeSurveyWorker",
+      "permissions": [
+        "datastore.databases.get",
+        "datastore.entities.create",
+        "datastore.entities.get",
+        "datastore.entities.list",
+        "datastore.entities.update"
+      ]
+    },
+    {
+      "project": "sahmt-gestao-5ae66",
+      "role": "projects/sahmt-gestao-5ae66/roles/sahmtFeMembershipReader",
+      "permissions": [
+        "datastore.entities.get"
+      ]
+    }
+  ],
+  "billingEnabled": false,
+  "credentialsEncryptedLocally": true,
+  "businessWrites": 0,
+  "at": "2026-11-02T02:19:14.064Z"
+}

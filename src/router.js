@@ -1,12 +1,12 @@
 import {deployment} from './deployment-context.js';
 import {rememberModuleNavigation,rememberManagementReturn} from './module-navigation.js';
 import {repairAppFiles,staleModuleFailure} from './app-repair.js';
-const routes = new Set(['home', 'events', 'labels', 'management-hub', 'year-end-schedule', 'management', 'qmentum', 'fc-performance', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'app-updates-control', 'offline']);
+const routes = new Set(['home', 'events', 'labels', 'management-hub', 'year-end-schedule', 'management', 'qmentum', 'fc-performance', 'fd-performance', 'fe-performance', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'app-updates-control', 'offline']);
 let navigationGeneration=0;
 
 export function currentRoute() {
   const route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';
-  if (deployment.target === 'FB') return ['management','training','qmentum','fc-performance','app-updates-control'].includes(route) ? route : 'management';
+  if (deployment.target === 'FB') return ['management','training','qmentum','fc-performance','fd-performance','fe-performance','app-updates-control'].includes(route) ? route : 'management';
   return routes.has(route) ? route : 'home';
 }
 
