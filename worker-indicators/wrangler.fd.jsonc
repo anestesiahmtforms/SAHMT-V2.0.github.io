@@ -10,6 +10,7 @@
   "workers_dev": true,
   "vars": {
     "INDICATORS_ENABLED": "true",
+    "FD_FIXED_REFRESH_ENABLED": "true",
     "FA_WEB_API_KEY": "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"
   },
   "triggers": {

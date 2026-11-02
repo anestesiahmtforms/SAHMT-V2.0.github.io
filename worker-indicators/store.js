@@ -31,7 +31,7 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
  async function request(path,body,method=body===undefined?'GET':'POST'){
   const token=await getAccessToken();let response;
   try{response=await fetchImpl(root+path,{method,headers:{Authorization:'Bearer '+token,...(body!==undefined?{'Content-Type':'application/json'}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{}),redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});}catch{throw fail('TRAINING_STORE_UNAVAILABLE');}
-  if(response.status===404&&method==='GET')return null;
+  if(response.status===404&&method==='GET'){await response.body?.cancel();return null;}
   let data;try{data=await response.json();}catch{throw fail('TRAINING_STORE_UNAVAILABLE');}
   if(!response.ok){const error=fail(data.error?.status==='ABORTED'?'TRAINING_STORE_ABORTED':'TRAINING_STORE_UNAVAILABLE',data.error?.status==='ABORTED'?409:503);throw error;}
   return data;
@@ -78,5 +78,10 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
   }
   throw fail('TRAINING_STORE_CONFLICT',409);
  }
- return {get,getMany,list,transaction};
+ async function finishReadReservation(id,reserved,actual){
+  if(!/^(FA|FB|FC|FE)_\d{4}-\d{2}-\d{2}$/.test(id)||!Number.isSafeInteger(reserved)||!Number.isSafeInteger(actual)||actual<1||actual>reserved)throw fail('INDICATOR_READ_SETTLEMENT_INVALID');
+  // One atomic update; never retry an ambiguous response, which could refund twice.
+  return request(':commit',{writes:[{transform:{document:name('indicatorReadBudgets',id),fieldTransforms:[{fieldPath:'chargedReads',increment:{integerValue:String(actual-reserved)}},{fieldPath:'confirmedReads',increment:{integerValue:String(actual)}},{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]}}]});
+ }
+ return {get,getMany,list,transaction,finishReadReservation};
 }

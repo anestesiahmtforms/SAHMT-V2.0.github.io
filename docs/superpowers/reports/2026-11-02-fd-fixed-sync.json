@@ -1,0 +1,27 @@
+{
+  "code": "FD_FIXED_SYNC_ACTIVE",
+  "cronUTC": "0 3,15 * * *",
+  "timesBrasilia": [
+    "00:00",
+    "12:00"
+  ],
+  "sourceReadLimitPerProject": 6000,
+  "manualPreserved": true,
+  "paidChanges": 0,
+  "targetSha256": "54819f6a2e2501522ed026f2f1a47e51d83389d4a39b95f32fa03d7377a06c4e",
+  "schedulerSha256": "f0d7260f82fa67973926cd8975359611f723ec0efe5567b6d6d75d479eeb0ffd",
+  "account": "434b7325287b58f36d214c9403819db2",
+  "schedulerWorker": "sahmt-fd-refresh-scheduler",
+  "processorWorker": "sahmt-indicators",
+  "schedulerPublic": false,
+  "bindingsPreserved": true,
+  "firstScheduledCycle": "pending next configured window",
+  "businessWrites": 0,
+  "at": "2026-11-02T13:55:56.638Z",
+  "schedulerBindingsVerified": true,
+  "verification": {
+    "backendTests": 47,
+    "browserTests": 3
+  },
+  "pwaPublication": "pending"
+}

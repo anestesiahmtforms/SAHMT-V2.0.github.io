@@ -1,0 +1,12 @@
+{
+ "name":"sahmt-fd-refresh-scheduler",
+ "account_id":"434b7325287b58f36d214c9403819db2",
+ "main":"worker.js",
+ "compatibility_date":"2026-11-02",
+ "compatibility_flags":["nodejs_compat"],
+ "workers_dev":false,
+ "services":[{"binding":"FD_INDICATOR_EXECUTOR","service":"sahmt-indicators"}],
+ "vars":{"FD_FIXED_REFRESH_ENABLED":"true"},
+ "triggers":{"crons":["0 3,15 * * *"]},
+ "observability":{"enabled":false}
+}
