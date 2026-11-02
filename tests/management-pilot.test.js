@@ -70,11 +70,11 @@ test('institutional surveys open from their menu button and return to surveys',(
  assert.equal(h.dialog.dataset.panel,'surveys');
 });
 
-test('the direct schedule entry never grants common team members access to Governance',()=>{
- for(const role of ['gestor','coordenador','anestesiologista','temporario']){const common=pilot();common.profile.role=role;common.user.email='common@example.invalid';common.profile.email=common.user.email;assert.equal(canUseGovernanceHub(common),false);assert.equal(canUseManagementPilot(common),false);}
+test('Governance opens for every approved identity without granting protected destinations',()=>{
+ for(const role of ['gestor','coordenador','anestesiologista','temporario']){const common=pilot();common.profile.role=role;common.user.email='common@example.invalid';common.profile.email=common.user.email;assert.equal(canUseGovernanceHub(common),true);assert.equal(canUseManagementPilot(common),false);}
  assert.equal(canUseGovernanceHub(pilot()),true);
  for(const change of [s=>s.user.emailVerified=false,s=>s.profile.email='other@example.invalid',s=>s.profile.uid='other',s=>s.profile.access=false]){const current=pilot();change(current);assert.equal(canUseGovernanceHub(current),false);}
- for(const permissions of [{admin:true},{}]){const admin=pilot();admin.user.email='owner@example.invalid';admin.profile.role=permissions.admin?'anestesiologista':'administrador_app';admin.profile.permissions=permissions;assert.equal(canUseGovernanceHub(admin),true);admin.profile.active=false;assert.equal(canUseGovernanceHub(admin),false);}
+ for(const permissions of [{admin:true},{}]){const admin=pilot();admin.user.email='owner@example.invalid';admin.profile.email=admin.user.email;admin.profile.role=permissions.admin?'anestesiologista':'administrador_app';admin.profile.permissions=permissions;assert.equal(canUseGovernanceHub(admin),true);admin.profile.active=false;assert.equal(canUseGovernanceHub(admin),false);}
 });
 
 test('schedule access opens its menu while other survey panels retain their previous gate',()=>{
@@ -98,3 +98,5 @@ test('vacation-only access opens FE without allowing survey forms or performance
  const h=hub({vacations2027:true},'surveys');assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);assert.doesNotMatch(h.body.innerHTML,/Desempenho FE/);
  for(const panel of ['professional','epidemiological','climateForm','institutional','results','records'])assert.equal(hub({vacations2027:true},panel).dialog.dataset.panel,'home');
 });
+
+test('team consultations show only the two schedules and block institutional deep links',()=>{const access={surveys:true,institutionalSurveys:false,yearEndSchedule:true,vacations2027:true};const h=hub(access,'surveys');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,2);assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.doesNotMatch(h.body.innerHTML,/PESQUISAS INSTITUCIONAIS|CADASTRO PROFISSIONAL|CADASTRO EPIDEMIOLÓGICO|Desempenho FE/);for(const panel of ['institutional','climateForm','stressForm','professional','epidemiological'])assert.equal(hub(access,panel).dialog.dataset.panel,'home');const admin=hub({...access,institutionalSurveys:true,fePerformance:true},'surveys');assert.equal((admin.body.innerHTML.match(/data-hub-item=/g)||[]).length,6);});

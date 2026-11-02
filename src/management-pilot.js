@@ -1,8 +1,9 @@
+import {governanceSessionReady} from './governance-access.js';
 import {canUseYearEndSchedule} from './year-end-schedule.js';
 export {canUseYearEndSchedule};
-// The temporary schedule entry has its own route and grants no hub access.
+// Governance is available to every approved identity; each destination has its own gate.
 export function canUseGovernanceHub(session) {
-  return canUseManagementPilot(session);
+  return governanceSessionReady(session);
 }
 export function canUseManagementPilot(session) {
   const user=session?.user,profile=session?.profile;

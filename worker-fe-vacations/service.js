@@ -1,3 +1,4 @@
+import {assignedInstitutionalGroup,institutionalAssignmentKey} from '../src/institutional-group.js';
 import {vacationSlot,vacationSigla,vacationOverlap} from '../src/vacations-2027-domain.js';
 import {vacationHash,assertVacationSnapshot} from './snapshot.js';
 export {vacationHash} from './snapshot.js';
@@ -5,20 +6,23 @@ const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 export const vacationAdmin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 export function createVacationService({store,now=Date.now}){
- async function actor(identity,tx=store){
+ async function actor(identity,tx=store,requireTeam=true){
   if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||typeof identity.email!=='string')fail('VACATIONS_FORBIDDEN',403);
   const p=await tx.get('users',identity.uid);
   if(!p||p.uid!==identity.uid||p.email?.trim().toLowerCase()!==identity.email.trim().toLowerCase()||p.active!==true||p.access!==true)fail('VACATIONS_FORBIDDEN',403);
+  if(!vacationAdmin(p)){const category=await tx.get('userCategories',await institutionalAssignmentKey(identity.email));const team=assignedInstitutionalGroup(category,identity)==='team';if(requireTeam&&!team)fail('VACATIONS_FORBIDDEN',403);return {...p,consultationsTeam:team};}
   return p;
  }
  async function load(identity){
-  const [profile,raw,binding,settings]=await Promise.all([actor(identity),store.get('vacations2027Schedules','current'),store.get('vacations2027Identities',await vacationHash(identity.email.trim().toLowerCase())),store.get('vacations2027Settings','current')]);
+  const identityKey=await vacationHash(identity.email.trim().toLowerCase());
+  const [profile,raw,binding,settings]=await Promise.all([actor(identity),store.get('vacations2027Schedules','current'),store.get('vacations2027Identities',identityKey),store.get('vacations2027Settings','current')]);
   const data=assertVacationSnapshot(raw);
   return {status:'READY',storage:'FIRESTORE',finalized:true,changeRequestUrl:settings?.schemaVersion===1&&settings.contactSigla==='FR'&&/^https:\/\/wa\.me\/55\d{10,11}$/.test(settings.changeRequestUrl||'')?settings.changeRequestUrl:null,
    isAdmin:vacationAdmin(profile),ownSigla:binding?.schemaVersion===1&&binding.email===identity.email.trim().toLowerCase()&&data.siglas.includes(binding.sigla)?binding.sigla:null,version:data.version,revision:data.revision,months:data.months,siglas:data.siglas,rules:data.rules};
  }
  return {async execute(action,input,identity){
   if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||typeof identity.email!=='string')fail('VACATIONS_FORBIDDEN',403);
+  if(action==='ACCESS'&&exact(input,[])){const profile=await actor(identity,store,false);return {isAdmin:vacationAdmin(profile),eligibleForConsultations:vacationAdmin(profile)||profile.consultationsTeam===true};}
   if(action==='LOAD'&&exact(input,[]))return load(identity);
   const profile=await actor(identity);if(!vacationAdmin(profile))fail('VACATIONS_FORBIDDEN',403);
   if(action==='REFRESH'&&exact(input,[]))return load(identity);

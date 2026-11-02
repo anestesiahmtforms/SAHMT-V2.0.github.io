@@ -1,3 +1,4 @@
+import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {canUseVacationModule} from './vacations-2027-domain.js';
 import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance-client.js';
 import {mountVaccinationEntry} from './vaccination-entry.js';
@@ -834,7 +835,7 @@ function can(permission) {
 // Individual release is read from the authenticated FA profile. Read/write
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
-  if (['training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'].includes(route) && !can('admin')) return false;
+  if (['management','qmentum','training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
   if (route === 'fd-performance') return fdPerformanceEnabled && fdPerformanceIdentityCanEnter(session);
   if (route === 'fe-performance') return fePerformanceEnabled && session.status==='signed-in' && session.profile?.active===true && session.profile?.access===true && session.profile?.uid===session.user?.uid;
@@ -1326,6 +1327,7 @@ function showScheduleContacts(contacts, context = {}) {
   dialog.showModal();
 }
 
+const readConsultationsAccess=createConsultationsAccessReader({request:async options=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi(options);}});
 async function loadModule(route) {
   if(route==='year-end-schedule'){
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
@@ -1344,17 +1346,21 @@ async function loadModule(route) {
     const content=document.querySelector('#module-content'),uid=session.user?.uid;
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
+    const currentHub=()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
+    let consultationsAllowed=can('admin');
+    if(!consultationsAllowed)try{consultationsAllowed=await readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub});}catch{}
+    if(!content.isConnected||!currentHub())return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
-      performVacations:async(action,input,signal)=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseVacationModule(session),action,input,signal});},
-      performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),survey,action,response});},
-      performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),action,input,signal});},
-      performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session),kind,action,input,signal});},
+      performVacations:async(action,input,signal)=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&consultationsAllowed,action,input,signal});},
+      performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),survey,action,response});},
+      performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),action,input,signal});},
+      performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{vacations2027:canUseVacationModule(session),groups:canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:canUseManagementPilot(session),results:canUseManagementPilot(session),surveys:canUseManagementPilot(session),yearEndSchedule:canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
+      access:{vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:can('admin')&&canUseManagementPilot(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
     return;
   }

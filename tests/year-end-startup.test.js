@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createYearEndStartup} from '../src/year-end-startup.js';
-const session=uid=>({status:'signed-in',user:{uid,email:uid+'@example.invalid',emailVerified:true},profile:{uid,email:uid+'@example.invalid',active:true,access:true}});
+const session=uid=>({status:'signed-in',user:{uid,email:uid+'@example.invalid',emailVerified:true},profile:{uid,email:uid+'@example.invalid',active:true,access:true,memberCategories:['EFETIVO']}});
 const participation={sigla:'AB',requireGroup:true,canParticipate:true};
 const record=uid=>({uid,sigla:'AB',plantao:'natal',grupo:'reveillon',position:1});
 const flush=()=>new Promise(setImmediate);

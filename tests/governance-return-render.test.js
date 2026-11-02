@@ -57,13 +57,13 @@ function dom() {
   }
   return decorate(parseFragment(''));
 }
-const user={uid:'fixture-admin',displayName:'Fixture'};
-const authorized=()=>({status:'signed-in',user,profile:{uid:user.uid,active:true,access:true,role:'administrador_app',permissions:{}},offline:false});
+const user={uid:'fixture-admin',displayName:'Fixture',email:'admin@example.invalid',emailVerified:true};
+const authorized=()=>({status:'signed-in',user,profile:{uid:user.uid,email:user.email,active:true,access:true,role:'administrador_app',permissions:{}},offline:false});
 const limited=()=>({status:'auth-limited',user,profile:{uid:user.uid,active:false,access:false,permissions:{}},offline:true,validatingProfile:true});
 function harness({route='management',target='FB',session=authorized()}={}){
-  const app=dom(),assignments=[],mounts=[],loaded=[];
+  const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[];
   const ctx=vm.createContext({
-    app,document:app,session,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
+    app,document:app,session,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
     deployment:{target,faBase:'/SAHMT-V2.0.github.io/',externalManagementEnabled:true},rememberModuleNavigation(){},
     evaluationModuleGeneration:0,googleAccessPanel:null,scheduleGridObserver:null,operationalDrafts:{flush(){},restore(){}},
     updateInformationBanner(){},liveReports:new Map(),reportStates:new Map(),reportPayloads:new Map(),
@@ -75,13 +75,13 @@ function harness({route='management',target='FB',session=authorized()}={}){
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
     labels:{management:['Grupos de Gestão'],training:['Desempenho'],'management-hub':['Governança']},
-    managementUtilityCards:()=>'',can:()=>false,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
-    mountHub:(content,options)=>{mounts.push(options.initialPanel);return ()=>{};}
+    managementUtilityCards:()=>'',can:permission=>session.profile?.role==='administrador_app'||session.profile?.permissions?.[permission]===true,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
+    mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};}
   });
   const code=(router+'\n'+cards+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replace("await import('./management-hub.js')",'await Promise.resolve({mountManagementHub:mountHub})');
   vm.runInContext(code,ctx);
-  return {ctx,app,assignments,mounts,loaded,render:()=>ctx.render()};
+  return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
 }
 
 for(const route of ['management','training'])for(const sessionFactory of [authorized]){
@@ -115,15 +115,15 @@ for(const route of ['management','training','management-hub','labels'])test(`${r
  h.ctx.session=authorized();h.ctx.navigator.onLine=false;await h.render();assert.ok(h.app.querySelector('[data-online-gate]'));
 });
 test('FA blocks Governance for an unverified common user before mounting any panel',async()=>{
-  const session=authorized();session.profile.role='anestesiologista';
+  const session=authorized();session.profile.role='anestesiologista';session.user={...session.user,emailVerified:false};
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
 });
 
 test('FA directs verified members to FE without granting the other Governance panels',async()=>{
-  const session=authorized();session.profile.role='anestesiologista';session.user.emailVerified=true;session.user.email='team@example.invalid';session.profile.email=session.user.email;
+  const session=authorized();session.profile.role='anestesiologista';session.user={...session.user,emailVerified:true,email:'team@example.invalid'};session.profile.memberCategories=['EFETIVO'];session.profile.email=session.user.email;
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub/surveys');assert.deepEqual(h.mounts,[]);await h.render();assert.deepEqual(h.mounts,['surveys']);
+  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','results','institutionalSurveys'])assert.equal(access[key],false);for(const key of ['surveys','yearEndSchedule','vacations2027'])assert.equal(access[key],true);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();
@@ -137,3 +137,6 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
   for(const click of footer.listeners.click||[])await click();
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.assignments,[]);
 });
+
+test('residents and substitutes can open Governance without opening consultations',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','results','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],false);}});
+test('administrators retain every Governance destination without requiring team affiliation',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','results','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);});

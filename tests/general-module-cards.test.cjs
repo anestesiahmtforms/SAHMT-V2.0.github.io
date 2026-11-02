@@ -6,10 +6,12 @@ const vm = require('node:vm');
 
 const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8').replace(/\r\n/g, '\n');
 const features = readFileSync(join(__dirname, '../src/feature-flags.js'), 'utf8').replace(/\r\n/g, '\n');
-const yearEnd = readFileSync(join(__dirname, '../src/year-end-schedule.js'), 'utf8').replace(/^export /gm, '');
+const yearEnd = readFileSync(join(__dirname, '../src/year-end-schedule.js'), 'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm, '');
 const vacationSource=readFileSync(join(__dirname,'../src/vacations-2027-domain.js'),'utf8');
 const vacation=vacationSource.slice(vacationSource.indexOf('export function canUseVacationModule'),vacationSource.indexOf('export function vacationMessage')).replaceAll('export ','');
-const pilot = vacation+'\n'+yearEnd + '\n' + readFileSync(join(__dirname, '../src/management-pilot.js'), 'utf8').replace(/^import[^\n]+\n/gm, '').replace(/^export /gm, '');
+const affiliation=readFileSync(join(__dirname,'../src/institutional-group.js'),'utf8').replace(/^export /gm,'');
+const accessPolicy=readFileSync(join(__dirname,'../src/governance-access.js'),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm,'');
+const pilot = affiliation+'\n'+accessPolicy+'\n'+vacation+'\n'+yearEnd + '\n' + readFileSync(join(__dirname, '../src/management-pilot.js'), 'utf8').replace(/^import[^\n]+\n/gm, '').replace(/^export /gm, '');
 const managementPilotOwnerEmail=pilot.match(/===['\"]([^'\"]+@gmail\.com)['\"]/)[1];
 
 function extractFunction(name, {async = false} = {}) {
@@ -22,7 +24,7 @@ function extractFunction(name, {async = false} = {}) {
 }
 
 function approved(permissions = {}, role = 'anestesiologista') {
-  return {status: 'signed-in', user: {uid: 'pessoa-ficticia'}, profile: {active: true, access: true, role, permissions}};
+  return {status: 'signed-in', user: {uid: 'pessoa-ficticia',email:'member@example.invalid',emailVerified:true}, profile: {uid:'pessoa-ficticia',email:'member@example.invalid',memberCategories:['EFETIVO'],active: true, access: true, role, permissions}};
 }
 
 function harness({session = approved(), appFeatures = {}, route = 'home', hasContent = true, secondaryDomainProjects = {}} = {}) {
@@ -37,7 +39,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
   const context = vm.createContext({isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
-    session, appFeatures, secondaryDomainProjects, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
+    session, appFeatures, secondaryDomainProjects,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,
     location:{hash:'#/management-hub'},history:{replaceState(){}},
@@ -85,13 +87,13 @@ function cardMarkup(h, route) {
 const legacyManagementPermissions = ['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage', 'peopleManage', 'usersManage'];
 
 for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) {
-  test(`Governança permanece desativada para ${role}, sem alterar as permissões existentes`, async () => {
+  test(`Governança abre para ${role}, mantendo os destinos protegidos`, async () => {
     for (const permission of legacyManagementPermissions) {
       const session = approved({[permission]: true}, role);
       const before = structuredClone(session);
       const h = harness({session, route: 'management'});
       assert.equal(visibleRoutes(h).includes('management-hub'), true, permission);
-      assert.match(cardMarkup(h, 'management-hub'), /disabled/);
+      assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
       assert.equal(h.context.canOpenRestrictedModule('management'), false);
       await h.ui.loadModule('management');
       assert.deepEqual(h.navigations, ['home'], permission);
@@ -197,7 +199,7 @@ test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Dese
   const before = structuredClone(session);
   const h = harness({session});
   assert.deepEqual(visibleRoutes(h), ['management-hub']);
-  assert.match(cardMarkup(h, 'management-hub'), /disabled/);
+  assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
   assert.equal(h.context.canOpenRestrictedModule('management'), false);
   assert.equal(h.context.canOpenRestrictedModule('training'), false);
   assert.match(h.ui.moduleCards(), /<strong>Governança<\/strong>/);
@@ -266,7 +268,7 @@ test('o acesso comum aos cartões exige sessão aprovada e ambos os indicadores 
 test('o menu Gestão permanece disponível quando os destinos estão desativados', () => {
   const common = harness({session: approved(), appFeatures: {management: false, trainings: false, notifications: false}});
   assert.deepEqual(visibleRoutes(common), ['management-hub']);
-  assert.match(cardMarkup(common, 'management-hub'), /disabled/);
+  assert.doesNotMatch(cardMarkup(common, 'management-hub'), /disabled/);
   assert.equal(common.context.canOpenRestrictedModule('management'), false);
   assert.equal(common.context.canOpenRestrictedModule('training'), false);
   assert.equal(visibleRoutes(common).includes('notifications'), false);
@@ -342,11 +344,11 @@ test('Informações fica somente em Gestão para administrador; o cartão de oco
 
 test('pausa administrativa mantém os dois módulos inativos mesmo com permissões individuais', () => {
  const h=harness({session:approved({managementRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.match(cardMarkup(h, 'management-hub'), /disabled/);
+ assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
  assert.equal(h.context.canOpenRestrictedModule('management'),false);
  assert.equal(h.context.canOpenRestrictedModule('training'),false);
  const p=harness({session:approved({trainingsRead:true}),secondaryDomainProjects:{management:'FA',training:'FA'}});
- assert.match(cardMarkup(p, 'management-hub'), /disabled/);
+ assert.doesNotMatch(cardMarkup(p, 'management-hub'), /disabled/);
  assert.equal(p.context.canOpenRestrictedModule('management'),false);
  assert.equal(p.context.canOpenRestrictedModule('training'),false);
 });
@@ -367,7 +369,7 @@ function individuallyReleased(permissions = {}) {
   return session;
 }
 
-test('Governança preserva a exceção verificada e bloqueia usuários comuns antes de carregar o menu',async()=>{
+test('Governança admite todos os perfis aprovados e mantém contas não aprovadas bloqueadas',async()=>{
  const pilot=individuallyReleased();
  const h=harness({session:pilot});
  assert.doesNotMatch(cardMarkup(h,'management-hub'),/disabled/);
@@ -381,16 +383,16 @@ test('Governança preserva a exceção verificada e bloqueia usuários comuns an
  }
  assert.deepEqual(pilot,before);
  const common=harness({session:approved(),route:'management-hub'});await common.ui.loadModule('management-hub');
- assert.deepEqual(common.imports,[]);assert.deepEqual(common.queries,[]);assert.deepEqual(common.navigations,['home']);
+ assert.deepEqual(common.imports,['./management-hub.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,false);assert.equal(access.institutionalSurveys,false);assert.equal(access.surveys,true);
  const direct=renderHarness(approved(),'management-hub');await direct.context.runRender();
- assert.deepEqual(direct.navigations,['home']);assert.deepEqual(direct.loads,[]);
+ assert.deepEqual(direct.navigations,[]);assert.deepEqual(direct.loads,['management-hub']);
 });
 
-test('liberação individual mantém Gestão mas não concede Desempenho administrativo', async () => {
+test('liberação individual não supera a nova pausa dos destinos administrativos', async () => {
   const session = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
   const before = structuredClone(session);
   const h = harness({session, route: 'training'});
-  assert.equal(h.context.canOpenRestrictedModule('management'),true);
+  assert.equal(h.context.canOpenRestrictedModule('management'),false);
   assert.equal(h.context.canOpenRestrictedModule('training'),false);
   for (const permission of ['admin', 'usersManage', 'managementManage', 'trainingsManage']) assert.equal(h.ui.can(permission), false);
   assert.equal(h.ui.managementUtilityCards(), '');
@@ -400,16 +402,16 @@ test('liberação individual mantém Gestão mas não concede Desempenho adminis
   assert.deepEqual(session, before);
   const direct = renderHarness(session);
   await direct.context.runRender();
-  assert.deepEqual(direct.navigations, []);
-  assert.deepEqual(direct.loads, ['management']);
+  assert.deepEqual(direct.navigations, ['home']);
+  assert.deepEqual(direct.loads, []);
 });
 
 test('liberações de Gestão e Desempenho são independentes e não liberam QMENTUM', () => {
   for (const [flag, route, blocked] of [['managementModuleEnabled','management','training'], ['performanceModuleEnabled','training','management']]) {
     const h = harness({session: individuallyReleased({[flag]: true})});
-    assert.equal(h.context.canOpenRestrictedModule(route),route==='management');
+    assert.equal(h.context.canOpenRestrictedModule(route),false);
     assert.equal(h.context.canOpenRestrictedModule(blocked),false);
-    assert.equal(h.context.canOpenRestrictedModule('qmentum'), true);
+    assert.equal(h.context.canOpenRestrictedModule('qmentum'), false);
   }
 });
 
@@ -437,7 +439,7 @@ test('flag ausente, inválida, UID divergente, conta inativa ou sem leitura mant
 test('troca de usuário e revogação não transportam a liberação para outra conta', async () => {
   const session = individuallyReleased({managementModuleEnabled: true, performanceModuleEnabled: true});
   const h = harness({session});
-  assert.equal(h.context.canOpenRestrictedModule('management'), true);
+  assert.equal(h.context.canOpenRestrictedModule('management'), false);
   h.context.session = individuallyReleased();
   assert.equal(h.context.canOpenRestrictedModule('management'), false);
   h.context.session = session;

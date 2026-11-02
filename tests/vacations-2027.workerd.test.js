@@ -10,7 +10,8 @@ test('deployed vacations bundle authenticates and loads only Firestore in worker
  if(u.hostname==='oauth2.googleapis.com'){const claim=JSON.parse(Buffer.from(new URLSearchParams(await request.text()).get('assertion').split('.')[1],'base64url'));assert.equal(claim.scope,'https://www.googleapis.com/auth/datastore');return Response.json({access_token:'synthetic-service',expires_in:3600});}
  assert.notEqual(u.hostname,'sheets.googleapis.com');if(u.pathname.endsWith('/vacations2027Schedules/current'))return Response.json({fields:encodeFields(snapshot)});
  if(u.pathname.endsWith('/vacations2027Settings/current'))return Response.json({fields:encodeFields({schemaVersion:1,contactSigla:'FR',changeRequestUrl:'https://wa.me/5511999990000'})});
- if(u.pathname.endsWith('/users/'+uid))return Response.json({fields:encodeFields({uid,email,active:true,access:true,role:'anestesiologista'})});
+ if(u.pathname.includes('/userCategories/'))return Response.json({fields:encodeFields({schemaVersion:1,identityStatus:'LINKED',uid,email,memberCategories:['EFETIVO']})});
+ if(u.pathname.endsWith('/users/'+uid))return Response.json({fields:encodeFields({uid,email,active:true,access:true,role:'anestesiologista',memberCategories:['EFETIVO']})});
  if(u.pathname.endsWith('/vacations2027Identities/'+hash))return Response.json({fields:encodeFields({schemaVersion:1,email,sigla:'AA'})});
  throw Error('UNEXPECTED_OUTBOUND');
  }}));

@@ -27,7 +27,7 @@ test('the approved FE project and exact dates preserve the midday handover and n
   assert.equal(YEAR_END_GROUPS[1].detail,'30/12/2026 · E nos dias 02 e 03/01/2027');
 });
 test('team eligibility requires the server-approved matching profile and verified account',()=>{
-  const session={status:'signed-in',user:{uid:'one',email:'one@example.invalid',emailVerified:true},profile:{uid:'one',email:'one@example.invalid',active:true,access:true}};
+  const session={status:'signed-in',user:{uid:'one',email:'one@example.invalid',emailVerified:true},profile:{uid:'one',email:'one@example.invalid',active:true,access:true,memberCategories:['EFETIVO']}};
   assert.equal(canUseYearEndSchedule(session),true);
   for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'])assert.equal(canUseYearEndSchedule({...session,profile:{...session.profile,memberCategories:[category,'ADMINISTRADOR']}}),false);
   for(const change of [s=>s.status='auth-limited',s=>s.profile.active=false,s=>s.profile.access=false,s=>s.profile.uid='other',s=>s.user.emailVerified=false,s=>s.profile.email='other@example.invalid']){const altered=structuredClone(session);change(altered);assert.equal(canUseYearEndSchedule(altered),false);}

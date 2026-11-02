@@ -1,3 +1,4 @@
+import {governanceSessionReady} from './governance-access.js';
 export const VACATIONS_2027_REFERENCE=Object.freeze({
  source:'https://anestesiahmtforms.github.io/ferias2027/',
  driveFolder:'https://drive.google.com/drive/folders/1MmQUTSE0oWVpgrhV8IBzTW7h0E8O3okl',
@@ -53,10 +54,7 @@ export function vacationChangeLink(data,results){
  const message='Olá, FR. Solicito a análise de uma mudança na escala de férias 2027. '+(data.simulationAdministrative?'Simulação administrativa para a sigla: ':'Minha sigla: ')+data.ownSigla+'.\n'+results.map(w=>w.month+' · '+w.period+': '+w.slots.map(s=>s.value||'Vaga livre').join(' / ')+'. Coincidência simulada: '+(w.days===null?'não foi possível avaliar':String(w.days).replace('.',',')+' dias')+'.').join('\n')+'\nEsta é apenas uma simulação; a troca ainda não foi realizada. Você pode avaliar?';
  const url=new URL(data.changeRequestUrl);url.searchParams.set('text',message);return url.href;
 }
-export function canUseVacationModule(session){
- const u=session?.user,p=session?.profile;
- return Boolean(session?.status==='signed-in'&&u?.uid&&u.emailVerified===true&&p?.uid===u.uid&&p.active===true&&p.access===true&&typeof u.email==='string'&&p.email?.trim().toLowerCase()===u.email.trim().toLowerCase());
-}
+export function canUseVacationModule(session){return governanceSessionReady(session);}
 export function vacationMessage(error){return ({
  VACATIONS_FORBIDDEN:'Seu perfil precisa estar ativo e liberado. Ajustes são exclusivos do administrador.',
  VACATIONS_CONFLICT:'A escala foi alterada. Atualize e confira o lançamento antes de salvar novamente.',
