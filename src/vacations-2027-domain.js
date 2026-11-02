@@ -11,7 +11,7 @@ export const VACATION_MONTHS=[
  ['setembro','SETEMBRO',[39,40,41,42,43],3],['outubro','OUTUBRO',[39,40,41,42],9],
  ['novembro','NOVEMBRO',[48,49,50,51],3],['dezembro','DEZEMBRO',[48,49,50,51,52],9],
 ];
-export const vacationSigla=value=>String(value||'').trim().toUpperCase().split(/\s+/)[0];
+export const vacationSigla=value=>String(value||'').trim().toUpperCase().split('(')[0].trim().split(/\s+/)[0];
 export function vacationSlot(id){
  for(const [month,,rows,column] of VACATION_MONTHS)for(let w=0;w<rows.length;w++)for(let s=0;s<3;s++)if(id===`${month}-${w}-${s}`)return {month,week:w,slot:s,row:rows[w],column:column+s};
  return null;
