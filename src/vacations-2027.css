@@ -31,3 +31,5 @@
 
 .vacations-2027__simulation-actions{display:grid;gap:10px;margin-top:14px}.vacations-2027__simulation-actions a{box-sizing:border-box;display:block;width:100%;padding:11px 14px;border:1px solid #167148;border-radius:12px;background:#e0f3e8;color:#084a30;font:inherit;font-size:.9rem;font-weight:750;text-align:center;text-decoration:none}.vacations-2027__simulation-actions a:focus-visible{outline:3px solid #137a71;outline-offset:2px}
 .vacations-2027__status:empty{display:none}.vacations-2027__simulation-identity{display:grid;gap:6px;margin:0 0 14px;font-size:.86rem;font-weight:750}.vacations-2027__simulation-identity select{box-sizing:border-box;max-width:100%;width:100%;padding:10px;border:1px solid #afc3d0;border-radius:8px;background:#fff;color:#14324b;font:inherit;font-size:16px}
+
+.vacations-2027__help{margin-bottom:14px}.vacations-2027__help>button{width:100%}.vacations-2027__help>div{padding:2px 12px;margin-top:10px;border:1px solid #b5d5e5;border-radius:12px;background:#f2f9fc;line-height:1.5;font-size:.9rem}
