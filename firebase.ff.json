@@ -1,6 +1,7 @@
 {
   "firestore": {
     "database": "comunicacao",
-    "rules": "firestore.ff.rules"
+    "rules": "firestore.ff.rules",
+    "indexes": "firestore.ff.indexes.json"
   }
 }

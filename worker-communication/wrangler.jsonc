@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "sahmt-communication-ff",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {"enabled": false},
+  "vars": {"COMMUNICATION_ENABLED": "false", "WORKERS_FREE_CONFIRMED": "false"}
+}

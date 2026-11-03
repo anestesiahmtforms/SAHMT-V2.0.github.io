@@ -1,3 +1,4 @@
+import {communicationLink} from './communication-link.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 import './fd-performance.css';
@@ -25,8 +26,10 @@ const panels={
   {label:'Desempenho',icon:'performance',route:'training',access:'performance'},
   {label:'Registros',icon:'records',panel:'records',access:'records'},
   {label:'INDICADORES - SAHMT',icon:'results',panel:'results',access:'results'},
-  {label:'Enquetes e Consultas',icon:'surveys',panel:'surveys',access:'surveys'}
+  {label:'Enquetes e Consultas',icon:'surveys',panel:'surveys',access:'surveys'},
+  {label:'CENTRAL DE COMUNICAÇÃO — FF',icon:'surveys',panel:'communication',access:'communication'}
  ]},
+ communication:{title:'Central de Comunicação — FF',icon:'surveys',parent:'home'},
  records:{title:'Registros',icon:'records',parent:'home',items:[
   {label:'Registros de Ocorrências',icon:'occurrence',route:'occurrences',access:'occurrences'},
   {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'},
@@ -53,7 +56,8 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',performanceUid=null,fbPerformanceReleased=false,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,performanceUid=null,fbPerformanceReleased=false,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
+ access={...access,communication:communicationAllowed===true};
  if(initialPanel==='indicators')initialPanel='records';
  const institutionalAllowed=()=>access.surveys===true&&access.institutionalSurveys!==false;
  const restrictedSurveyPanels=['institutional','climateForm','stressForm','professional','epidemiological'];
@@ -71,11 +75,17 @@ export function mountManagementHub(root,{access={},initialPanel='home',performan
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
+   if(item.access==='communication'&&!communicationAllowed)return '';
    if(panel==='surveys'&&access.institutionalSurveys===false&&(restrictedSurveyPanels.includes(item.panel)||item.panel==='fePerformance'))return '';
    if(['performance','faPerformance','fcPerformance','fdPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const allowed=itemAllowed(item);
-   return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
+  if(panel==='communication'&&communicationAllowed&&openCommunication){
+   body.innerHTML='<div data-comm-host></div>';
+   const host=body.querySelector('[data-comm-host]'),current=()=>!disposed&&ticket===renderId&&panel==='communication'&&isSurveySessionCurrent();
+   void openCommunication(host,current).then(cleanup=>{if(current())cleanupIndicators=cleanup;else cleanup?.();}).catch(()=>{if(current())host.textContent='Não foi possível abrir a Central.';});
+  }
   if(panel==='vacations2027'&&access.vacations2027===true){
    body.innerHTML='<p role="status">Carregando escala de férias…</p>';
    const current=()=>!disposed&&ticket===renderId&&panel==='vacations2027'&&isSurveySessionCurrent();
@@ -125,6 +135,8 @@ export function mountManagementHub(root,{access={},initialPanel='home',performan
    body.innerHTML='<p role="status">Preparando cadastro…</p>';const activePanel=panel;
    void import('./registration-ui.js').then(({mountInstitutionalRegistration})=>{if(disposed||ticket!==renderId||panel!==activePanel)return;cleanupRegistration=mountInstitutionalRegistration(body,{kind:activePanel,request:performRegistration,isCurrent:()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent(),onGroup:group=>{dialog.querySelector('[data-hub-user]').textContent='Grupo: '+({team:'Equipe',resident:'Residentes'}[group]||'');}});}).catch(()=>{if(!disposed&&ticket===renderId)body.innerHTML='<p role="alert">Não foi possível preparar o cadastro. Volte e tente novamente.</p>';});
   }
+  dialog.querySelector('[data-comm-origin]')?.remove();
+  if(communicationAllowed&&panel!=='home'&&panel!=='communication'){const origin=['results','fdPerformance'].includes(panel)?'FD':['surveys','fePerformance','institutional','professional','epidemiological','climateForm','stressForm'].includes(panel)?'FE':panel==='records'?'FC':'FA';const link=document.createElement('a');link.dataset.commOrigin='';link.className='comm-forward';link.href=communicationLink({project:origin});link.textContent='ENCAMINHAR PARA PUSH — FF';dialog.querySelector('.management-hub-footer').prepend(link);}
   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
  };

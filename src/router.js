@@ -1,7 +1,7 @@
 import {deployment} from './deployment-context.js';
 import {rememberModuleNavigation,rememberManagementReturn} from './module-navigation.js';
 import {repairAppFiles,staleModuleFailure} from './app-repair.js';
-const routes = new Set(['home', 'events', 'labels', 'management-hub', 'year-end-schedule', 'management', 'qmentum', 'fa-performance', 'fc-performance', 'fd-performance', 'fe-performance', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'app-updates-control', 'offline']);
+const routes = new Set(['communications', 'home', 'events', 'labels', 'management-hub', 'year-end-schedule', 'management', 'qmentum', 'fa-performance', 'fc-performance', 'fd-performance', 'fe-performance', 'checklist', 'training', 'notifications', 'occurrences', 'people', 'admin', 'app-updates-control', 'offline']);
 let navigationGeneration=0;
 
 export function currentRoute() {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGoogleProjectAuthRuntime} from '../src/google-project-auth-adapter.js';
-const person=(uid='same-uid')=>({uid,email:'fixture@example.test',providerData:[{providerId:'google.com',uid:'google-'+uid}]});
+const person=(uid='same-uid')=>({uid,emailVerified:true,email:'fixture@example.test',providerData:[{providerId:'google.com',uid:'google-'+uid}]});
 const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),resolve:v=>resolve(v)};};
 const idToken='header.'+Buffer.from(JSON.stringify({iss:'https://accounts.google.com',sub:'google-same-uid',aud:'source-client'})).toString('base64url')+'.signature';
 const credential={providerId:'google.com',idToken};

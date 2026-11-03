@@ -16,3 +16,8 @@ dist-indicators/
 
 # Local migration bundles; source lives in worker-fc-integration/.
 /fc-isolation/
+
+# Communication development output and private runtime secrets
+.dev.vars*
+.wrangler/
+.local-preview*.log
