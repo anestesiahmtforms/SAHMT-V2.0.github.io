@@ -223,6 +223,7 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
+let cleanupCommunicationHomeBanners = null;
 let cleanupDocumentTraining = null;
 let cleanupUserInspection = null;
 let evaluationModuleGeneration = 0;
@@ -1106,7 +1107,7 @@ function shellView() {
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
-      <section class="modules-section"><div class="module-grid">${moduleCards()}</div>${communicationFeatureEnabled&&!communicationDevicePushActive()?'<aside class="comm-home-banner" aria-label="Notificações institucionais"><span class="comm-banner-burst" aria-hidden="true">NOVO</span><div><strong>🔔 Ative os avisos do SAHMT</strong><p>Receba os avisos neste aparelho.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Ativar notificações ou ver mensagens">ABRIR</button></aside>':''}</section>
+      <section class="modules-section"><div class="module-grid">${moduleCards()}</div>${communicationFeatureEnabled&&!communicationDevicePushActive()?'<aside class="comm-home-banner" aria-label="Notificações institucionais"><span class="comm-banner-burst" aria-hidden="true">NOVO</span><div><strong>🔔 Ative os avisos do SAHMT</strong><p>Receba os avisos neste aparelho.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Ativar notificações ou ver mensagens">ABRIR</button>':''}${communicationFeatureEnabled?'<div class="comm-home-notices" data-comm-home-banners aria-live="polite"></div>':''}</section>
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
@@ -4999,6 +5000,11 @@ async function render() {
     try {void Promise.resolve(cleanup()).catch(()=>console.warn('[SAHMT] Encerramento do módulo pendente; navegação mantida.'));}
     catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
+  if (cleanupCommunicationHomeBanners) {
+    const cleanup = cleanupCommunicationHomeBanners;
+    cleanupCommunicationHomeBanners = null;
+    cleanup();
+  }
   if(document.querySelector('.required-app-update[open]'))return;
   if (startupBannerActive || session.status==='checking' || session.status==='loading-profile') {
     if (app.querySelector('.startup-logo')) return;
@@ -5109,7 +5115,17 @@ async function render() {
     return;
   }
   void updateOutboxStatus();
-  if (currentRoute() === 'home') await loadHome(); else {
+  if (currentRoute() === 'home') {
+    await loadHome();
+    const host = app.querySelector('[data-comm-home-banners]');
+    if (communicationFeatureEnabled && host && session.status === 'signed-in' && !authLimited && current()) {
+      const uid = session.user.uid;
+      const isCurrentHome = () => current() && currentRoute() === 'home' && session.status === 'signed-in' && session.user?.uid === uid;
+      const [{mountCommunicationHomeBanners}, {createCommunicationClient}] = await Promise.all([import('./communication-home-banners.js'), import('./communication-client.js')]);
+      if (!isCurrentHome() || !host.isConnected) return;
+      cleanupCommunicationHomeBanners = mountCommunicationHomeBanners(host, {client:createCommunicationClient({isCurrent:isCurrentHome}), uid, isCurrent:isCurrentHome});
+    }
+  } else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);
     if(!current())return;
