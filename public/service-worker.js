@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v292';
+const CACHE = 'sahmt-v2-shell-v293';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -128,5 +128,32 @@ self.addEventListener('fetch', (event) => {
     }
     return response;
     });
+  })());
+});
+
+
+// Web Push arrives without a live page; only display non-sensitive institutional text.
+self.addEventListener('push', event => {
+  let data = {};
+  try { const message = event.data?.json() || {}; data = message.data || message; } catch { return; }
+  if (!data.notificationId || !data.title) return;
+  const safeRoute = ['home','events','labels','management','checklist','training','notifications'].includes(data.route) ? data.route : 'notifications';
+  event.waitUntil(self.registration.showNotification(String(data.title).slice(0,120), {
+    body: String(data.body || '').slice(0,300),
+    icon: BASE + 'assets/icon-192.png',
+    badge: BASE + 'assets/icon-192.png',
+    tag: 'sahmt-' + String(data.notificationId).slice(0,100),
+    data: {url: BASE + '#/' + safeRoute}
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || BASE, self.location.origin);
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(BASE)) return;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type:'window', includeUncontrolled:true});
+    const existing = windows.find(client => new URL(client.url).origin === url.origin && new URL(client.url).pathname.startsWith(BASE));
+    if (existing) { await existing.focus(); existing.navigate(url.href); return; }
+    await self.clients.openWindow(url.href);
   })());
 });
