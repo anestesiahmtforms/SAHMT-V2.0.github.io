@@ -1,18 +1,18 @@
 import {auth} from './firebase-auth.js';
-import {getGoogleProjectAuth,verifyGoogleProjectSession} from './google-project-auth-runtime.js';
+import {getGoogleProjectAuth,waitForGoogleProjectSession,confirmGoogleProjectAccess,currentGoogleProjectIdentity,googleProjectClientId} from './google-project-auth-runtime.js';
 import {FF,fail} from '../communication/domain.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
 export function createCommunicationClient({isCurrent=()=>true}={}){
- let disposed=false;const controllers=new Set();
+ let disposed=false;const controllers=new Set(),widgets=new Set();
  const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden';
  const suspend=()=>{if(document.visibilityState==='hidden')for(const c of controllers)c.abort();};
  document.addEventListener('visibilitychange',suspend);
  async function sessions(){
   if(!communicationEnabled||!current())throw fail('COMM_CONFIG_REQUIRED');
   const source=auth.currentUser;
-  if(!source||!await verifyGoogleProjectSession('FF')||!current())throw fail('COMM_SESSION_INVALID');
+  if(!source||!await waitForGoogleProjectSession('FF',{isCurrent:current})||!current())throw fail('COMM_SESSION_INVALID');
   const ff=getGoogleProjectAuth('FF');
   if(ff.app.options.projectId!==FF.projectId||ff.app.options.appId!==FF.appId||ff.app.options.messagingSenderId!==FF.senderId)throw fail('COMM_CONFIG_REQUIRED');
   const target=ff.currentUser;
@@ -51,5 +51,16 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   }
   await deleteToken(messaging);return {registered:false};
  }
- return {request,enable,disable,dispose(){disposed=true;for(const c of controllers)c.abort();document.removeEventListener('visibilitychange',suspend);}};
+ async function connectGoogle(host,{onConnected,onError}){
+  const live=()=>!disposed&&isCurrent()&&host.isConnected;
+  const {createGoogleProjectAuthGoogleButton}=await import('./google-project-auth-google-button.js');
+  if(!live())return()=>{};
+  const widget=createGoogleProjectAuthGoogleButton({clientId:googleProjectClientId,getExpectedIdentity:currentGoogleProjectIdentity,onError,
+   onCredential:async credential=>{await confirmGoogleProjectAccess(credential);if(!current())return;if(!await waitForGoogleProjectSession('FF',{isCurrent:current}))throw fail('COMM_SESSION_INVALID');if(current())await onConnected();}});
+  widgets.add(widget);
+  const cleanup=()=>{widget.dispose();widgets.delete(widget);};
+  try{await widget.render(host);if(!live())cleanup();}catch(e){cleanup();throw e;}
+  return cleanup;
+ }
+ return {request,enable,disable,connectGoogle,dispose(){disposed=true;for(const c of controllers)c.abort();for(const w of widgets)w.dispose();widgets.clear();document.removeEventListener('visibilitychange',suspend);}};
 }

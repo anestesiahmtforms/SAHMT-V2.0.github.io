@@ -23,4 +23,4 @@ export function matches(message,sourceUid,profile,members){
  if(!activeProfile(profile))return false;
  switch(message.audienceType){case 'ALL':return true;case 'USER':return message.audienceValue===sourceUid;case 'ROLE':return message.audienceValue===profile.role;case 'GROUP':case 'AREA':return members?.includes(sourceUid)===true;default:return false;}
 }
-export const safePreview=Object.freeze({title:'SAHMT · Comunicação',body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.'});
+export const safePreview=Object.freeze({title:'🔔 SAHMT · NOVO AVISO',body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.'});

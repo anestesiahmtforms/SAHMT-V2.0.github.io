@@ -76,8 +76,8 @@
     "test:indicators-platform-rules": "firebase emulators:exec --config firebase.indicators-platform.test.json --project demo-sahmt-fd-indicators --only firestore --non-interactive \"node --test tests/indicators-platform.rules.test.js\"",
     "test:fd-performance-rules": "firebase emulators:exec --config firebase.indicators-platform.test.json --project demo-sahmt-fd-performance --only firestore --non-interactive \"node --test tests/fd-performance.rules.test.js\"",
     "test:fe-performance-rules": "firebase emulators:exec --config firebase.climate.test.json --project demo-sahmt-fe-performance --only firestore --non-interactive \"node --test tests/fe-performance.rules.test.js\"",
-    "test:communication": "node --test tests/communication.test.js tests/communication.workerd.test.js",
-    "test:communication-browser": "node --test tests/communication.browser.test.js",
+    "test:communication": "node --test tests/communication.test.js tests/communication.workerd.test.js tests/communication-client-lifecycle.test.js",
+    "test:communication-browser": "node --test tests/communication.browser.test.js tests/communication-home.browser.test.js",
     "test:communication-rules": "firebase emulators:exec --config firebase.ff.test.json --project demo-sahmt-ff --only firestore --non-interactive \"node --test tests/communication.rules.test.js\"",
     "build:communication-worker": "wrangler deploy --dry-run --config worker-communication/wrangler.jsonc"
   },

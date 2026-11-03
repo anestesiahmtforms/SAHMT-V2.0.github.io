@@ -138,7 +138,7 @@ self.addEventListener('push', event => {
   if(data?.source!=='SAHMT_FF'||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(data.communicationId||''))return;
   const routes=['communications','home','management-hub','management','training','events','labels','checklist','occurrences','qmentum'];
   const route=routes.includes(data.route)?data.route:'communications';
-  event.waitUntil(self.registration.showNotification('SAHMT · Comunicação',{
+  event.waitUntil(self.registration.showNotification('🔔 SAHMT · NOVO AVISO',{
     body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.',
     icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
     tag:'sahmt-ff-'+data.communicationId,renotify:false,
