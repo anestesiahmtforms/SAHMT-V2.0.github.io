@@ -36,10 +36,12 @@ export async function verifyExistingGoogleDestination({entry,credential,expected
     postBody:new URLSearchParams({providerId:'google.com',id_token:credential.idToken}).toString()});
   if(!isCurrent())throw error('AUTH_ACCOUNT_CHANGED');
   if(result.isNewUser===true||result.needConfirmation||result.mfaPendingCredential||!result.idToken)throw error('AUTH_EXISTING_ACCOUNT_REQUIRED');
-  if(result.localId!==expected.uid)throw error('AUTH_UID_MISMATCH');
+  const independentFF=entry.config.projectId==='sahmt-comunicacao-ff'&&entry.appName==='sahmt-ff-direct';
+  if(!result.localId||(!independentFF&&result.localId!==expected.uid))throw error('AUTH_UID_MISMATCH');
   const lookup=await post('lookup',{idToken:result.idToken});
   const account=lookup.users?.length===1?lookup.users[0]:null;
-  if(account?.localId!==expected.uid)throw error('AUTH_UID_MISMATCH');
+  if(account?.localId!==result.localId||(!independentFF&&account?.localId!==expected.uid))throw error('AUTH_UID_MISMATCH');
+  if(independentFF&&account.emailVerified!==true)throw error('AUTH_GOOGLE_IDENTITY_MISMATCH');
   if(account.disabled)throw error('auth/user-disabled');
   if(!account.providerUserInfo?.some(p=>p.providerId==='google.com'&&p.rawId===expected.googleUid))throw error('AUTH_GOOGLE_IDENTITY_MISMATCH');
   if(!isCurrent())throw error('AUTH_ACCOUNT_CHANGED');

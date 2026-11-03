@@ -1,11 +1,11 @@
-import {googleIdentity,sameGoogleIdentity} from './google-project-auth-core.js';
+import {googleIdentity,sameGoogleIdentity,sameProjectGoogleIdentity} from './google-project-auth-core.js';
 
 /** Wait only for the requested SDK identity; unrelated projects do not gate entry. */
 export async function waitForGoogleProjectSession({auth,getSourceUser,controller,target='FB',isCurrent=()=>true,timeoutMs=12000}){
  const expected=googleIdentity(getSourceUser());if(!expected||!auth)return false;
  let timer,unsubscribe,closed=false;
  const sourceCurrent=()=>!closed&&isCurrent()&&sameGoogleIdentity(getSourceUser(),expected)&&!controller.snapshot().signingOut;
- const valid=()=>sourceCurrent()&&sameGoogleIdentity(auth.currentUser,expected);
+ const valid=()=>sourceCurrent()&&sameProjectGoogleIdentity(target,auth.currentUser,expected);
  const pending=state=>{
   const destination=state.targets?.[target];
   const failed=destination?.status==='pending'&&destination.code;

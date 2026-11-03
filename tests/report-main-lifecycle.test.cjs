@@ -378,7 +378,7 @@ test('integração main: render ao sair de Etiquetas elimina dados transitórios
 test('Checklist: indicador fica na faixa da data sem ocupar a linha expansível dos arsenais',()=>{
   const shell=source.slice(source.indexOf('function shellView()'),source.indexOf('async function loadHome()')).replaceAll('import.meta.env.BASE_URL',"'/SAHMT-V2.0.github.io/'");
   for(const mode of ['daily','monthly'])for(const write of [true,false]) {
-    const context=vm.createContext({googleProjectAuthEnabled:false,currentRoute:()=> 'checklist',session:{profile:{displayName:'Pessoa fictícia'},user:{uid:'fixture',displayName:'Pessoa fictícia'}},labels:{checklist:['Checklist','']},can:permission=>permission!=='checklistWrite'||write,todayInputValue:()=> '2026-10-02',escapeHtml:String,checklistReportMode:mode,notice:''});
+    const context=vm.createContext({forwardingButton:()=>'',deployment:{target:'FA'},googleProjectAuthEnabled:false,currentRoute:()=> 'checklist',session:{profile:{displayName:'Pessoa fictícia'},user:{uid:'fixture',displayName:'Pessoa fictícia'}},labels:{checklist:['Checklist','']},can:permission=>permission!=='checklistWrite'||write,todayInputValue:()=> '2026-10-02',escapeHtml:String,checklistReportMode:mode,notice:''});
     vm.runInContext(shell,context);const html=context.shellView();
     const dialog=html.slice(html.indexOf('<dialog class="checklist-report-dialog"'),html.indexOf('</dialog>',html.indexOf('<dialog class="checklist-report-dialog"'))+9);
     const root={children:[]},stack=[root],voidTags=new Set(['input','img','br','hr','meta','link']);let indicator;

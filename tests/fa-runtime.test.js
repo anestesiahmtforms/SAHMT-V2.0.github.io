@@ -8,7 +8,7 @@ import {spawnSync} from 'node:child_process';
 test('FA dependency verification accepts the shared view while rejecting unrelated files and retired auth',()=>{
  const root=mkdtempSync(join(tmpdir(),'sahmt-runtime-'));
  try{
-  for(const dir of ['src','scripts','indicators-platform','dist/assets'])mkdirSync(join(root,dir),{recursive:true});
+  for(const dir of ['src','scripts','indicators-platform','communication','dist/assets'])mkdirSync(join(root,dir),{recursive:true});
   writeFileSync(join(root,'scripts/check-fa-runtime.mjs'),readFileSync(new URL('../scripts/check-fa-runtime.mjs',import.meta.url)));
   writeFileSync(join(root,'src/main.js'),"import '../indicators-platform/ui.js';");
   writeFileSync(join(root,'indicators-platform/ui.js'),"import './ui.css';");
@@ -17,6 +17,9 @@ test('FA dependency verification accepts the shared view while rejecting unrelat
   writeFileSync(join(root,'dist/assets-manifest.json'),'{}');
   const check=()=>spawnSync(process.execPath,[join(root,'scripts/check-fa-runtime.mjs')],{encoding:'utf8',timeout:10000});
   const valid=check();assert.ifError(valid.error);assert.equal(valid.status,0,valid.stderr);assert.equal(JSON.parse(valid.stdout).reachableSourceFiles,3);
+  writeFileSync(join(root,'communication/domain.js'),'export const project="FF";');
+  writeFileSync(join(root,'src/main.js'),"import '../indicators-platform/ui.js'; import '../communication/domain.js';");
+  const communication=check();assert.equal(communication.status,0,communication.stderr);assert.equal(JSON.parse(communication.stdout).reachableSourceFiles,4);
   for(const path of ['./entry.js','../worker-indicators/store.js']){
    writeFileSync(join(root,'indicators-platform/ui.js'),'import '+JSON.stringify(path)+';');
    const blocked=check();assert.notEqual(blocked.status,0);assert.match(blocked.stderr,/FA_RUNTIME_PATH_INVALID/);

@@ -130,3 +130,31 @@ self.addEventListener('fetch', (event) => {
     });
   })());
 });
+
+// FF data-only FCM payloads reuse this worker and its existing scope/cache lifecycle.
+// Never render author-supplied content on a locked screen.
+self.addEventListener('push', event => {
+  let data;try{data=event.data?.json()?.data;}catch{return;}
+  if(data?.source!=='SAHMT_FF'||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(data.communicationId||''))return;
+  const routes=['communications','home','management-hub','management','training','events','labels','checklist','occurrences','qmentum'];
+  const route=routes.includes(data.route)?data.route:'communications';
+  event.waitUntil(self.registration.showNotification('SAHMT · Comunicação',{
+    body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.',
+    icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
+    tag:'sahmt-ff-'+data.communicationId,renotify:false,
+    data:{source:'SAHMT_FF',route,communicationId:data.communicationId}
+  }));
+});
+self.addEventListener('notificationclick',event=>{
+  if(event.notification.data?.source!=='SAHMT_FF')return;
+  event.notification.close();
+  const routes=['communications','home','management-hub','management','training','events','labels','checklist','occurrences','qmentum'];
+  const route=routes.includes(event.notification.data.route)?event.notification.data.route:'communications';
+  const suffix=route==='communications'?'/message/'+encodeURIComponent(event.notification.data.communicationId):'';
+  const url=new URL(BASE+'#/'+route+suffix,self.location.origin);
+  event.waitUntil((async()=>{
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const existing=windows.find(c=>{const u=new URL(c.url);return u.origin===url.origin&&u.pathname===url.pathname;});
+    if(existing){await existing.navigate(url.href);await existing.focus();}else await self.clients.openWindow(url.href);
+  })());
+});

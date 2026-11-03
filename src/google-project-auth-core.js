@@ -10,6 +10,13 @@ export function sameGoogleIdentity(user, expected) {
   const identity = googleIdentity(user);
   return Boolean(expected && identity?.uid === expected.uid && identity.googleUid === expected.googleUid);
 }
+// FF was provisioned independently. Link by Google's immutable subject, never by UID equality.
+// Existing FA–FE identity contracts remain unchanged.
+export function sameProjectGoogleIdentity(target,user,expected) {
+  if(target!=='FF')return sameGoogleIdentity(user,expected);
+  const identity=googleIdentity(user);
+  return Boolean(expected?.googleUid&&identity?.uid&&identity.googleUid===expected.googleUid&&user.emailVerified===true);
+}
 export function safeGoogleAuthCode(error) {
   const code=String(error?.code || 'AUTH_UNAVAILABLE');
   const allowed=new Set(['auth/network-request-failed','auth/too-many-requests','auth/user-disabled','auth/user-not-found',
@@ -53,7 +60,7 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
       if(states[target].status!=='ready')update(target,{status:'restoring',code:null},ticket);
       try{const existing=await restoreTarget(target);
         if(!current(ticket,expected))return;
-        if(existing&&!sameGoogleIdentity(existing,expected)){
+        if(existing&&!sameProjectGoogleIdentity(target,existing,expected)){
           await signOutTarget(target,{isCurrent:()=>current(ticket,expected)});update(target,{status:'pending',code:'AUTH_UID_MISMATCH'},ticket);
         }else update(target,{status:existing?'ready':'pending',code:null},ticket);
       }catch(error){update(target,{status:'pending',code:safeGoogleAuthCode(error)},ticket);}
@@ -95,7 +102,7 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
           if(!current(ticket,expected))return;
           try{const user=await connectTarget(target,credential,expected,()=>current(ticket,expected));
             if(!current(ticket,expected))return;
-            if(!sameGoogleIdentity(user,expected)){
+            if(!sameProjectGoogleIdentity(target,user,expected)){
               await signOutTarget(target,{isCurrent:()=>current(ticket,expected)});throw fail('AUTH_UID_MISMATCH');
             }
             update(target,{status:'ready',code:null},ticket);break;
@@ -138,7 +145,7 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
   }
   return Object.freeze({restore,connect,signOutAll,clearSecondaries,snapshot,
     observeTarget(target,user){if(!identity||!sameGoogleIdentity(getPrimaryUser(),identity)||target===primary||!targets.includes(target))return;
-      states[target]=sameGoogleIdentity(user,identity)?{status:'ready',code:null}:{status:'pending',code:user?'AUTH_UID_MISMATCH':null};emit();},
+      states[target]=sameProjectGoogleIdentity(target,user,identity)?{status:'ready',code:null}:{status:'pending',code:user?'AUTH_UID_MISMATCH':null};emit();},
     subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);},
     invalidate(){generation++;identity=null;sourceUid=null;emit();}});
 }

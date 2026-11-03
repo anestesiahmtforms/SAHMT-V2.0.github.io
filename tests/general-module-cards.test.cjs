@@ -41,7 +41,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   const context = vm.createContext({isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     session, appFeatures, secondaryDomainProjects,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
-    fdPerformanceEnabled:false,fePerformanceEnabled:false,
+    fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,communicationAdminSession:()=>false,
     location:{hash:'#/management-hub'},history:{replaceState(){}},
     currentRoute: () => context.route,
     document: {querySelector: (selector) => selector === '#module-content' && hasContent ? content : null},

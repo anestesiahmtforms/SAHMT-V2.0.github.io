@@ -1,0 +1,11 @@
+{
+  "indexes": [
+    {"collectionGroup":"communicationDevices","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"uid","order":"ASCENDING"}]},
+    {"collectionGroup":"communicationDevices","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"sourceUid","order":"ASCENDING"}]}
+  ],
+  "fieldOverrides": [
+    {"collectionGroup":"communicationDevices","fieldPath":"token","indexes":[]},
+    {"collectionGroup":"communicationMessages","fieldPath":"message","indexes":[]},
+    {"collectionGroup":"communicationAuditLogs","fieldPath":"detail","indexes":[]}
+  ]
+}

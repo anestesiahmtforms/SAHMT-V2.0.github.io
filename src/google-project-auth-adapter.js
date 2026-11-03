@@ -1,4 +1,4 @@
-import {GOOGLE_AUTH_TARGETS,createGoogleProjectAuth,createGoogleAuthProgressStore,googleIdentity,sameGoogleIdentity} from './google-project-auth-core.js';
+import {GOOGLE_AUTH_TARGETS,createGoogleProjectAuth,createGoogleAuthProgressStore,googleIdentity,sameGoogleIdentity,sameProjectGoogleIdentity} from './google-project-auth-core.js';
 import {googleTokenClaims,verifyExistingGoogleDestination} from './google-project-auth-preflight.js';
 import {waitForGoogleProjectSession} from './google-project-session.js';
 
@@ -38,7 +38,7 @@ function targetAuth(target){
   let instance;try{instance=initializeAuth(app,{persistence:[indexedDBLocalPersistence,browserLocalPersistence,inMemoryPersistence]});}
   catch(error){if(error.code!=='auth/already-initialized')throw error;instance=getAuth(app);}
   instance.languageCode='pt-BR';initialized.set(target,instance);
-  beforeAuthStateChanged(instance,user=>{if(user&&!sameGoogleIdentity(user,googleIdentity(auth.currentUser)))throw fail('AUTH_UID_MISMATCH');});
+  beforeAuthStateChanged(instance,user=>{if(user&&!sameProjectGoogleIdentity(target,user,googleIdentity(auth.currentUser)))throw fail('AUTH_UID_MISMATCH');});
   // Auth-only listener. No Firestore listener or periodic token refresh is added.
   onAuthStateChanged(instance,user=>{
     if(!user)coordinator?.observeTarget(target,null);
@@ -46,9 +46,9 @@ function targetAuth(target){
       if(instance.currentUser===user)coordinator?.observeTarget(target,valid?user:null);
     }).catch(()=>{if(instance.currentUser===user)coordinator?.observeTarget(target,null);});
     // SDK storage events from another tab may bypass beforeAuthStateChanged.
-    if(user&&!sameGoogleIdentity(user,googleIdentity(auth.currentUser))){
+    if(user&&!sameProjectGoogleIdentity(target,user,googleIdentity(auth.currentUser))){
       void withTargetLock(target,async()=>{
-        if(instance.currentUser===user&&!sameGoogleIdentity(user,googleIdentity(auth.currentUser)))await signOut(instance);
+        if(instance.currentUser===user&&!sameProjectGoogleIdentity(target,user,googleIdentity(auth.currentUser)))await signOut(instance);
       }).catch(()=>{});
     }
   },()=>{});
@@ -68,19 +68,19 @@ coordinator=createGoogleProjectAuth({primary,targets,getPrimaryUser:()=>auth.cur
   connectTarget:(target,credential,expected,isCurrent)=>withTargetLock(target,async()=>{
     if(!isCurrent())throw fail('AUTH_ACCOUNT_CHANGED');
     const instance=targetAuth(target);await ready(instance);
-    if(sameGoogleIdentity(instance.currentUser,expected)&&await nativeGoogleSession(instance.currentUser,target))return instance.currentUser;
+    if(sameProjectGoogleIdentity(target,instance.currentUser,expected)&&await nativeGoogleSession(instance.currentUser,target))return instance.currentUser;
     await verifyDestination({entry:entries[target],credential,expected,isCurrent,
       requestUri:requestUri()});
     if(!isCurrent())throw fail('AUTH_ACCOUNT_CHANGED');
     let result,rejectSession=false;
     try{result=await signInWithCredential(instance,GoogleAuthProvider.credential(credential.idToken));
-      if(getAdditionalUserInfo(result)?.isNewUser===true||!sameGoogleIdentity(result.user,expected)){
+      if(getAdditionalUserInfo(result)?.isNewUser===true||!sameProjectGoogleIdentity(target,result.user,expected)){
         rejectSession=true;throw fail('AUTH_UID_MISMATCH');
       }
       if(!await nativeGoogleSession(result.user,target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');
       if(!isCurrent())throw fail('AUTH_ACCOUNT_CHANGED');return result.user;
     }catch(error){
-      if(instance.currentUser&&(rejectSession||!isCurrent()||!sameGoogleIdentity(instance.currentUser,expected)))await signOut(instance);
+      if(instance.currentUser&&(rejectSession||!isCurrent()||!sameProjectGoogleIdentity(target,instance.currentUser,expected)))await signOut(instance);
       throw error;
     }
   })
@@ -130,7 +130,7 @@ function verifyTargetSession(target){
     await ready(instance);
     if(!sameGoogleIdentity(auth.currentUser,expected))return false;
     const user=instance.currentUser;
-    const valid=sameGoogleIdentity(user,expected)&&await nativeGoogleSession(user,target);
+    const valid=sameProjectGoogleIdentity(target,user,expected)&&await nativeGoogleSession(user,target);
     return valid&&instance.currentUser===user&&sameGoogleIdentity(auth.currentUser,expected);
   })();
   const entry={source:auth.currentUser,user:instance.currentUser,promise:null};
