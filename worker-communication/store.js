@@ -6,7 +6,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
  if(source&&!Object.hasOwn(SOURCE_COLLECTIONS,source))throw fail('COMM_CONFIG_REQUIRED',503);
  const project=source?{FA:'sahmt-17a16',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FD:'rotinas-8a617',FE:'outros-48120',FF:FF.projectId}[source]:FF.projectId;
  const name=`projects/${project}/databases/${source?'(default)':FF.databaseId}/documents`,root='https://firestore.googleapis.com/v1/'+name;
- const checkCollection=c=>{id(c);if(source&&![...(SOURCE_COLLECTIONS[source]||[]),...(source==='FA'?['users','notificationGroups']:source==='FB'?['users','userCategories','managementAreas']:[])].includes(c))throw fail('COMM_SOURCE_DENIED',403);};
+ const checkCollection=c=>{id(c);if(source&&![...(SOURCE_COLLECTIONS[source]||[]),...(source==='FA'?['users','notificationGroups','scheduleDays']:source==='FB'?['users','userCategories','managementAreas']:[])].includes(c))throw fail('COMM_SOURCE_DENIED',403);};
  async function request(path,body){
   const r=await fetchImpl(root+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});
   if(r.status===404&&!body){await r.body?.cancel();return null;}

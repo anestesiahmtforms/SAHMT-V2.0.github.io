@@ -139,10 +139,12 @@ self.addEventListener('push', event => {
   const routes=['communications','home','management-hub','management','training','events','labels','checklist','occurrences','qmentum'];
   const route=routes.includes(data.route)?data.route:'communications';
   event.waitUntil((async()=>{
-    await self.registration.showNotification('🔔 SAHMT · NOVO AVISO',{
-      body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.',
+    const title=typeof data.title==='string'&&data.title.trim()?data.title.slice(0,120):'🔔 SAHMT · NOVO AVISO';
+    const body=typeof data.body==='string'&&data.body.trim()?data.body.slice(0,220):'Há uma nova comunicação institucional. Abra o SAHMT para consultar.';
+    await self.registration.showNotification(title,{
+      body,
       icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
-      tag:'sahmt-ff-'+data.communicationId,renotify:false,
+      tag:'sahmt-ff-'+data.communicationId,renotify:false,requireInteraction:true,
       data:{source:'SAHMT_FF',route,communicationId:data.communicationId}
     });
     const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});

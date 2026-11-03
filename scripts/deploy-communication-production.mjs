@@ -10,10 +10,14 @@ try{
  if(!process.argv.includes('--apply'))throw Error('FF_DEPLOY_APPLY_REQUIRED');
  const target=JSON.parse(await readFile(config,'utf8'));if(target.account_id!==account||target.name!=='sahmt-ff-comunicacao')throw Error('FF_DEPLOY_TARGET_INVALID');
  let auth;try{auth=JSON.parse(execFileSync(process.execPath,[binary,'auth','token','--json','--profile','sahmt-ff-isolation'],{env,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:40000}));}catch{throw Error('FF_PROFILE_UNAVAILABLE');}
- const api=async path=>{const r=await fetch('https://api.cloudflare.com/client/v4'+path,{headers:{Authorization:'Bearer '+auth.token}});if(!r.ok)throw Error('FF_CF_HTTP_'+r.status);return(await r.json()).result;};
+ const api=async(path,options={})=>{const r=await fetch('https://api.cloudflare.com/client/v4'+path,{...options,headers:{Authorization:'Bearer '+auth.token,...(options.headers||{})}});const body=await r.json().catch(()=>null);if(!r.ok||body?.success!==true)throw Error('FF_CF_HTTP_'+r.status);return body.result;};
  if((await api('/user')).email!=='anestesiahmtforms6@gmail.com'||(await api('/accounts/'+account)).id!==account)throw Error('FF_CF_IDENTITY_MISMATCH');
  const credentials=await openPrivateJson(JSON.parse(await readFile(resolve(process.env.LOCALAPPDATA,'SAHMT','communication-production','worker.dpapi.json'),'utf8')));
  if(credentials.project_id!=='sahmt-comunicacao-ff'||credentials.client_email!=='communication-worker@sahmt-comunicacao-ff.iam.gserviceaccount.com')throw Error('FF_SERVICE_IDENTITY_INVALID');
+ // Queue bindings must point to existing queues before Wrangler can deploy the Worker.
+ const queueNames=['sahmt-ff-push','sahmt-ff-push-dead'];
+ const existingQueues=await api('/accounts/'+account+'/queues?per_page=100');
+ for(const queue_name of queueNames)if(!existingQueues.some(queue=>queue.queue_name===queue_name))await api('/accounts/'+account+'/queues',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({queue_name})});
  const run=(args,input)=>{try{return execFileSync(process.execPath,[binary,...args,'--config',config,'--profile','sahmt-ff-isolation'],{env,encoding:'utf8',windowsHide:true,stdio:['pipe','pipe','pipe'],...(input?{input}:{}),timeout:120000});}catch{throw Error('FF_DEPLOYMENT_FAILED');}};
  // User confirmed Workers Free for this exact account on 03/11/2026.
  // First install code disabled; then install secret; only then activate API.

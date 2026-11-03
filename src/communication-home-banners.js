@@ -1,6 +1,7 @@
 const MAX_INBOX_PAGES = 18;
 const MAX_DISMISSED_IDS = 500;
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const linkedText = value => escapeHtml(value).replace(/https:\/\/[^\s<]+/g, raw => {let url=raw,tail='';while(/[.,;:!?)]$/.test(url)){tail=url.slice(-1)+tail;url=url.slice(0,-1);}try{const parsed=new URL(url);if(parsed.protocol!=='https:')return raw;const internal=parsed.hostname==='anestesiahmtforms.github.io';return `<a href="${escapeHtml(url)}"${internal?'':' target="_blank" rel="noopener noreferrer"'}>${url}</a>${tail}`;}catch{return raw;}}).replace(/\r?\n/g,'<br>');
 
 function dismissedStorageKey(uid) {
   return `sahmt-communication-dismissed-v1:${encodeURIComponent(uid)}`;
@@ -35,8 +36,9 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
     root.innerHTML = visibleItems.map(item => `<article class="comm-home-notice${item.priority === 'URGENT' ? ' comm-home-notice--urgent' : ''}" role="status" aria-label="Novo aviso institucional">
       <header><strong>🔔 NOVO AVISO · ${escapeHtml(item.category)}</strong><button type="button" class="comm-home-notice__close" data-dismiss-comm="${escapeHtml(item.id)}" aria-label="Fechar aviso">×</button></header>
-      <h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.message)}</p>
-      <a href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>
+      <h2>${escapeHtml(item.title)}</h2><p>${linkedText(item.message)}</p>
+      ${item.linkUrl&&/^https:\/\//.test(item.linkUrl)?`<a class="comm-home-notice__destination" href="${escapeHtml(item.linkUrl)}"${item.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(item.linkLabel||'ABRIR DESTINO')}</a>`:''}
+      <a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>
     </article>`).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '');
   }
 

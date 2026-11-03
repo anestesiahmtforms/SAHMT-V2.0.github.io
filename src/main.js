@@ -1315,6 +1315,19 @@ function showScheduleContacts(contacts, context = {}) {
         currentSiglas: context.highlightedSiglas
       });
       context.highlightedSiglas = updated.highlights?.siglas || [];
+      let releaseNoticeStatus = '';
+      if (marked && !updated.pendingFirestore && communicationFeatureEnabled) {
+        const {createCommunicationClient} = await import('./communication-client.js');
+        const commClient = createCommunicationClient();
+        try {
+          const result = await commClient.request('SCHEDULE_RELEASE_NOTICE', {day: context.date, sigla: button.dataset.releaseSigla});
+          releaseNoticeStatus = result.alreadySent ? 'O aviso desta liberação já foi criado.' : result.pushQueued ? 'O Push foi iniciado e o aviso ficará na Home até ser fechado.' : result.pushEnabled ? 'O aviso ficará na Home. O serviço não confirmou a fila automática do Push.' : 'O aviso ficará na Home; o Push ainda está desativado nas Configurações da Central.';
+        } catch {
+          releaseNoticeStatus = 'A liberação foi salva, mas o aviso automático não pôde ser confirmado. Verifique a conexão e a sessão FF.';
+        } finally {
+          commClient.dispose();
+        }
+      }
       content.querySelectorAll('[data-release-sigla]').forEach((item) => {
         const itemMarked = context.highlightedSiglas.includes(String(item.dataset.releaseSigla || '').toUpperCase());
         item.setAttribute('aria-pressed', String(itemMarked));
@@ -1324,7 +1337,7 @@ function showScheduleContacts(contacts, context = {}) {
       });
       if (status) status.textContent = updated.pendingFirestore
         ? 'Liberação salva neste aparelho; aguardando confirmação do Firestore.'
-        : marked ? '' : 'Liberação removida para esta data.';
+        : marked ? releaseNoticeStatus : 'Liberação removida para esta data.';
       context.onRelease?.();
     } catch {
       button.disabled = false;
