@@ -1,6 +1,7 @@
 import {auth} from './firebase-auth.js';
 import {getGoogleProjectAuth,waitForGoogleProjectSession,confirmGoogleProjectAccess,currentGoogleProjectIdentity,googleProjectClientId} from './google-project-auth-runtime.js';
 import {FF,fail} from '../communication/domain.js';
+import {rememberCommunicationDevicePushActive} from './communication-link.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
@@ -40,7 +41,9 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   const registration=await navigator.serviceWorker.ready;
   if(new URL(registration.scope).pathname!==import.meta.env.BASE_URL)throw fail('COMM_PUSH_UNSUPPORTED');
   const token=await getToken(getMessaging(ff.app),{vapidKey,serviceWorkerRegistration:registration});
-  return request('REGISTER_DEVICE',{token,platform:navigator.userAgentData?.platform||navigator.platform||'Outro'});
+  const result=await request('REGISTER_DEVICE',{token,platform:navigator.userAgentData?.platform||navigator.platform||'Outro'});
+  rememberCommunicationDevicePushActive(true);
+  return result;
  }
  async function disable(){
   const {ff}=await sessions(),{getMessaging,getToken,deleteToken}=await import('firebase/messaging');
@@ -49,6 +52,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    const token=await getToken(messaging,{vapidKey,serviceWorkerRegistration:registration});
    if(token)await request('DISABLE_DEVICE',{token});
   }
+  rememberCommunicationDevicePushActive(false);
   await deleteToken(messaging);return {registered:false};
  }
  async function connectGoogle(host,{onConnected,onError}){
