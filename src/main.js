@@ -5000,7 +5000,7 @@ async function render() {
     try {void Promise.resolve(cleanup()).catch(()=>console.warn('[SAHMT] Encerramento do módulo pendente; navegação mantida.'));}
     catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
-  if (cleanupCommunicationHomeBanners) {
+  if (typeof cleanupCommunicationHomeBanners !== 'undefined' && cleanupCommunicationHomeBanners) {
     const cleanup = cleanupCommunicationHomeBanners;
     cleanupCommunicationHomeBanners = null;
     cleanup();
