@@ -1103,7 +1103,7 @@ function shellView() {
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
-      <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
+      <section class="modules-section"><div class="module-grid">${moduleCards()}</div><div class="panel" style="margin-top:1rem;padding:1rem"><strong>Notificações SAHMT</strong><p class="record-meta">Receba avisos institucionais neste aparelho, mesmo com o app fechado.</p><button type="button" class="secondary-button" data-push-enable>Ativar notificações neste aparelho</button><p data-push-status role="status" aria-live="polite"></p></div></section>
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
@@ -1655,8 +1655,20 @@ async function loadModule(route) {
       const items = await listNotifications(session.profile, {canManage: can('notificationsManage')});
       const canAcknowledge = can('notificationsRead') && !can('notificationsManage');
       const unreadCount = items.filter((item) => !item.read).length;
-      content.innerHTML = items.length ? `${canAcknowledge ? `<p class="sync-state" id="notification-read-summary">${unreadCount} comunicado(s) não lido(s).</p>` : ''}<ul class="record-list notification-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title)}</strong><small class="record-meta">${escapeHtml(item.type || 'INFO')} · prioridade ${escapeHtml(item.priority)}</small></div><p>${escapeHtml(item.message)}</p><small>${escapeHtml(interactionDateTime(item.createdAt))}${can('notificationsManage') ? ` · Público: ${escapeHtml(item.audienceType)}${item.audienceValue ? ` (${escapeHtml(item.audienceValue)})` : ''}` : ''}</small>${item.actionRoute ? `<button class="secondary-button" type="button" data-notification-route="${escapeHtml(item.actionRoute)}">Abrir área</button>` : ''}${canAcknowledge ? `<button class="secondary-button" type="button" data-notification-read="${escapeHtml(item.id)}" ${item.read ? 'disabled' : ''}>${item.read ? 'Lido' : 'Marcar como lido'}</button>` : ''}</li>`).join('')}</ul>` : '<p class="empty-state">Não há comunicados ativos para sua sessão.</p>';
+      content.innerHTML = items.length ? `${canAcknowledge ? `<p class="sync-state" id="notification-read-summary">${unreadCount} comunicado(s) não lido(s).</p>` : ''}<ul class="record-list notification-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title)}</strong><small class="record-meta">${escapeHtml(item.type || 'INFO')} · prioridade ${escapeHtml(item.priority)}</small></div><p>${escapeHtml(item.message)}</p><small>${escapeHtml(interactionDateTime(item.createdAt))}${can('notificationsManage') ? ` · Público: ${escapeHtml(item.audienceType)}${item.audienceValue ? ` (${escapeHtml(item.audienceValue)})` : ''}` : ''}</small>${item.actionRoute ? `<button class="secondary-button" type="button" data-notification-route="${escapeHtml(item.actionRoute)}">Abrir área</button>` : ''}${can('admin') ? `<button type="button" class="secondary-button" data-push-send="${escapeHtml(item.id)}" ${item.pushStatus ? 'disabled' : ''}>${item.pushStatus ? 'Push: ' + escapeHtml(item.pushStatus) : 'Enviar Push'}</button>` : ''}${canAcknowledge ? `<button class="secondary-button" type="button" data-notification-read="${escapeHtml(item.id)}" ${item.read ? 'disabled' : ''}>${item.read ? 'Lido' : 'Marcar como lido'}</button>` : ''}</li>`).join('')}</ul>` : '<p class="empty-state">Não há comunicados ativos para sua sessão.</p>';
       content.querySelectorAll('[data-notification-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.notificationRoute)));
+      content.querySelectorAll('[data-push-send]').forEach(button => button.addEventListener('click', async () => {
+        if (!can('admin') || !window.confirm('Enviar esta notificação aos dispositivos habilitados?')) return;
+        button.disabled = true; button.textContent = 'Enviando Push…';
+        try {
+          const {sendSahmtPush} = await import('./sahmt-push.js');
+          const result = await sendSahmtPush(button.dataset.pushSend);
+          button.textContent = 'Push enviado: ' + result.delivered;
+        } catch (error) {
+          button.textContent = 'Falha no envio';
+          alert(error.message || 'Verifique o envio no Firebase.');
+        }
+      }));
       content.querySelectorAll('[data-notification-read]').forEach((button) => button.addEventListener('click', async () => {
         button.disabled = true;
         try {
@@ -3932,7 +3944,7 @@ async function bindModuleForm(route) {
       if (route === 'notifications') {
         const {createNotification} = await import('./data.js');
         await createNotification(values, session.user.uid);
-        notice = 'Comunicado publicado no Firestore.';
+        notice = 'Comunicado publicado. Para avisar os aparelhos, use Enviar Push na lista.';
         await render();
         return;
       }
@@ -5409,6 +5421,23 @@ void render();
 
 globalThis.sahmtRemoteContinuityEnabled=false;
 globalThis.sahmtProvisionalChannelEnabled=false;
+document.addEventListener('click', async event => {
+  const button = event.target.closest?.('[data-push-enable]');
+  if (!button) return;
+  const status = button.parentElement.querySelector('[data-push-status]');
+  if (session.status !== 'signed-in' || session.offline || session.profile?.active !== true || session.profile?.access !== true) {
+    if (status) status.textContent = 'Entre no SAHMT e conecte-se para habilitar notificações.';
+    return;
+  }
+  button.disabled = true;
+  try {
+    const {activateSahmtPush} = await import('./sahmt-push.js');
+    await activateSahmtPush();
+    if (status) status.textContent = 'Notificações ativadas neste aparelho.';
+  } catch (error) {
+    if (status) status.textContent = error?.message || 'Falha ao ativar notificações.';
+  } finally { button.disabled = false; }
+});
 document.addEventListener('click',async event=>{
   if(!event.target.closest?.('[data-app-update-panel]')||session.status!=='signed-in'||session.offline||session.validatingProfile||
     session.profile?.active!==true||session.profile?.access!==true||!can('admin')||currentRoute()!=='management')return;
