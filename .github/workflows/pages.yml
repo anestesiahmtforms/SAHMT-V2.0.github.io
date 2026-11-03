@@ -147,6 +147,9 @@ jobs:
         run: node scripts/prepare-app-publication.mjs
       - name: Build PWA
         env:
+          VITE_COMMUNICATION_FF_ENABLED: ${{ vars.VITE_COMMUNICATION_FF_ENABLED || 'false' }}
+          VITE_COMMUNICATION_FF_ENDPOINT: ${{ vars.VITE_COMMUNICATION_FF_ENDPOINT }}
+          VITE_COMMUNICATION_FF_VAPID_KEY: ${{ vars.VITE_COMMUNICATION_FF_VAPID_KEY }}
           VITE_CLIMATE_SURVEY_ENABLED: 'true'
           SAHMT_FB_CUTOVER: 'true'
           VITE_GOOGLE_PROJECT_AUTH_ENABLED: 'true'
