@@ -1,6 +1,6 @@
 # Central de Comunicação — FF
 
-Branch `codex/central-comunicacao-ff`. Interface e Worker desabilitados por padrão. Não houve implantação em produção nem envio real de Push. O provisionamento administrativo solicitado para `anestesiahmtforms6@gmail.com` foi aplicado separadamente nos seis projetos.
+Branch `codex/central-comunicacao-ff`. O histórico de implementação abaixo é complementado pelo registro de implantação ao final. Não houve envio real de Push. O provisionamento administrativo solicitado para `anestesiahmtforms6@gmail.com` foi aplicado separadamente nos seis projetos.
 
 ## Configuração preservada e verificação real
 
@@ -57,7 +57,7 @@ Workers Free publica limites de 100 mil requisições/dia, 50 subrequisições/i
 1. Repetir `node scripts/inspect-ff.mjs`; exigir banco `comunicacao` gratuito, ausência de faturamento e quatro identidades válidas.
 2. Confirmar Workers Free na conta de destino, sem alterar plano. Manter desabilitado se a confirmação não for possível.
 3. Preparar exclusivamente `communication-worker@sahmt-comunicacao-ff.iam.gserviceaccount.com`: acesso de dados FF, envio FCM FF, consulta de usuários Auth FA/FF e metadados do banco/projeto; somente leitura de Firestore FA–FE. A consulta de faturamento requer `resourcemanager.projects.get`. Não conceder Owner/Editor ou escrita FA–FE. IAM não limita acesso por coleção; a lista fixa do Worker também é necessária.
-4. Guardar o JSON administrativo exclusivamente no secret `FF_SERVICE_ACCOUNT_JSON` do Worker. Nunca em `VITE_*`, arquivos públicos, logs, PR ou service worker. Nenhuma chave privada foi criada nesta implementação.
+4. Guardar o JSON administrativo exclusivamente no secret `FF_SERVICE_ACCOUNT_JSON` do Worker. Nunca em `VITE_*`, arquivos públicos, logs, PR ou service worker. Na implantação foi criada uma chave da conta de serviço, guardada por DPAPI fora do Git e instalada somente como secret no Worker.
 5. Após revisão, publicar regras/índices por `firebase deploy --config firebase.ff.json --project sahmt-comunicacao-ff --only firestore`. A configuração mantém `comunicacao` e não contém Functions.
 6. Obter a chave **pública** VAPID/Web Push de FF. Tokens são gerados pelo app Messaging FF existente. Configurar `VITE_COMMUNICATION_FF_ENDPOINT` com URL HTTPS `workers.dev` terminada em `/v1/communication`, `VITE_COMMUNICATION_FF_VAPID_KEY` e, apenas na homologação, `VITE_COMMUNICATION_FF_ENABLED=true`.
 7. Implantar Worker somente após confirmação Free, com `COMMUNICATION_ENABLED=true` e `WORKERS_FREE_CONFIRMED=true`. CORS aceita exclusivamente `https://anestesiahmtforms.github.io`.
@@ -86,3 +86,15 @@ Pendências para produção: comprovar Workers Free; configurar IAM/secret/VAPID
 O PR #151 foi revisado. Sua proposta de Cloud Functions em FA não foi integrada por conflitar com FF e a restrição de faturamento. Esta proposta é independente, sem merge/publicação na `main`.
 
 Referências: [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Firebase](https://firebase.google.com/pricing), [FCM HTTP v1](https://firebase.google.com/docs/cloud-messaging/send/v1-api), [consulta de faturamento](https://cloud.google.com/billing/docs/reference/rest/v1/projects/getBillingInfo), [importação Auth](https://cloud.google.com/identity-platform/docs/reference/rest/v1/projects.accounts/batchCreate), [Web Push iOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+
+## Implantação FF — 03/11/2026
+
+O usuário confirmou Workers Free da conta FF `7c4c3dcb7472c5daa58620efd358dfb1`, com titular `anestesiahmtforms6@gmail.com`. A conexão genérica da conta FA foi descartada; a implantação usa o perfil local `sahmt-ff-isolation`, com identidade e conta verificadas por API. Worker: `sahmt-ff-comunicacao`; endpoint: `https://sahmt-ff-comunicacao.anestesiahmtforms6.workers.dev/v1/communication`.
+
+Regras e índices publicados no banco FF `comunicacao`. Criada conta de serviço `communication-worker@sahmt-comunicacao-ff.iam.gserviceaccount.com`, com papéis personalizados: dados e transações FF, FCM FF, consulta de Auth FA/FF, metadados FF e somente leitura dos documentos FA–FE. Políticas anteriores e chave privada protegidas por DPAPI fora do repositório. Nenhuma permissão Owner/Editor ou de cobrança foi atribuída ao serviço. A API Cloud Billing foi habilitada apenas para a consulta de metadados de faturamento pelo serviço, sem vincular conta ou habilitar Blaze.
+
+Os scripts `prepare-communication-production.mjs --apply` e `deploy-communication-production.mjs --apply` usam o destino fixo e verificam identidades. A ativação do backend usa flags explícitas no comando de implantação; os valores locais padrão continuam desativados. O secret foi instalado e o endpoint real confirmou negação HTTP 401 de requisição sem autenticação. Transação FF e consulta de dispositivos foram verificadas com a conta de serviço real; nenhum aparelho estava inscrito.
+
+A chave VAPID pública fornecida pelo usuário e o endpoint FF foram incluídos no workflow de publicação. A chave pública pode constar na build; a privada permanece fora do cliente. Encaminhamentos leem somente campos de texto permitidos ou `updatedAt` na origem, evitando carregar snapshots grandes e dados pessoais desnecessários.
+
+Pendências de homologação em aparelho: login real FA/FF, inscrição voluntária de um dispositivo, consumo de CPU no Free e envio manual individual com PWA fechado. `pushEnabled` permanece false até ação explícita de administrador nas Configurações. Os testes locais não comprovam entrega real ou compatibilidade visual em iPhone/Android. Antes do teste, fechar clientes antigos para ativar o novo service worker.

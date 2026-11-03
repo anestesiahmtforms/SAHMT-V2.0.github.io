@@ -13,7 +13,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
   const d=await boundedJson(r);if(!r.ok)throw fail(r.status===429?'COMM_FREE_QUOTA_EXHAUSTED':r.status===409||d.error?.status==='ABORTED'?'COMM_CONFLICT':'COMM_STORE_UNAVAILABLE',r.status===429?429:r.status===409||d.error?.status==='ABORTED'?409:503);return d;
  }
  const path=(c,k)=>{checkCollection(c);id(k);return c+'/'+k;};
- async function get(c,k,transaction){const d=await request('/'+path(c,k)+(transaction?'?transaction='+encodeURIComponent(transaction):''));return d?{...decodeFields(d.fields||{}),id:k}:null;}
+ async function get(c,k,transaction,fields){const q=new URLSearchParams();if(transaction)q.set('transaction',transaction);for(const field of fields||[])q.append('mask.fieldPaths',id(field));const d=await request('/'+path(c,k)+(q.size?'?'+q:''));return d?{...decodeFields(d.fields||{}),id:k}:null;}
  async function page(c,{cursor='',limit=20,filters=[],fields}={}){
   checkCollection(c);if(cursor)id(cursor);if(!Number.isInteger(limit)||limit<1||limit>21)throw fail('COMM_INVALID_INPUT');
   const clauses=filters.map(([field,value])=>({fieldFilter:{field:{fieldPath:field},op:'EQUAL',value:encodeFields({v:value}).v}}));

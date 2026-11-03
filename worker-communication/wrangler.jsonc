@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
-  "name": "sahmt-communication-ff",
+  "name": "sahmt-ff-comunicacao",
+  "account_id": "7c4c3dcb7472c5daa58620efd358dfb1",
   "main": "worker.js",
   "compatibility_date": "2026-11-03",
   "compatibility_flags": ["nodejs_compat"],

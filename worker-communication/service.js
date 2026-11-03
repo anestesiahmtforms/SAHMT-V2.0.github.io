@@ -139,7 +139,8 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   if(!SOURCE_COLLECTIONS[project]?.includes(collection))throw fail('COMM_SOURCE_UNSUPPORTED');
   const source=project==='FF'?store:project==='FA'?fa:project==='FB'?fb:sources[project];
   if(!source)throw fail('COMM_SOURCE_UNSUPPORTED');
-  const record=await source.get(collection,key);if(!record)throw fail('COMM_SOURCE_UNSUPPORTED');
+  const fields=['notifications','communicationMessages','htmlTrainings'].includes(collection)?['title','message','description']:['updatedAt'];
+  const record=await source.get(collection,key,undefined,fields);if(!record)throw fail('COMM_SOURCE_UNSUPPORTED');
   return {record,reference:{project,collection,id:key,verifiedAt:now()}};
  }
  return {async execute(action,input,a){

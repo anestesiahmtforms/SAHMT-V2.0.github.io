@@ -129,6 +129,7 @@ test('worker rejects origin, methods, oversized body, disabled config and safe e
 test('source stores refuse writes and FF storage paths are fixed',async()=>{
  const fa=createStore({getToken:async()=>'',source:'FA'});await assert.rejects(fa.transaction(()=>{}),{code:'COMM_SOURCE_READ_ONLY'});await assert.rejects(fa.get('communicationDevices','x'),{code:'COMM_SOURCE_DENIED'});
  const urls=[],ff=createStore({getToken:async()=>'',fetchImpl:async url=>{urls.push(url);return Response.json({fields:{}});}});await ff.get('communicationMessages','one');assert.ok(urls[0].includes('/sahmt-comunicacao-ff/databases/comunicacao/'));
+ await ff.get('communicationMessages','one',undefined,['title','message']);assert.deepEqual(new URL(urls[1]).searchParams.getAll('mask.fieldPaths'),['title','message']);
 });
 test('service worker shows private generic preview and opens only allowlisted same-origin module',async()=>{
  const events={},shown=[],opened=[];const self={location:{origin:'https://anestesiahmtforms.github.io'},addEventListener:(n,f)=>events[n]=f,registration:{showNotification:async(...a)=>shown.push(a)},clients:{matchAll:async()=>[],openWindow:async u=>opened.push(u)}};
