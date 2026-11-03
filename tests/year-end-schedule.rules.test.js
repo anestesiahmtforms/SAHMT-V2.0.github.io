@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 
 let env;setLogLevel('silent');
 const base='yearEndSchedules/2026-2027',stamp=()=>serverTimestamp();
-const siglas={one:'AB',two:'CD',three:'EF',four:'GH',five:'IJ',six:'KL',inactive:'ZZ',fr:'FR',ad:'AD',l2:'L2',le:'LE',resident1:'AA',resident2:'BB',resident3:'CC',substitute:'DD',excluded:'EE'};
+const siglas={one:'AB',two:'CD',three:'EF',four:'GH',five:'IJ',six:'KL',inactive:'ZZ',fr:'FR',ad:'AD',l2:'L2',le:'LE',resident1:'AA',resident2:'BB',resident3:'CC',substitute:'DD',excluded:'EE',unlabeled:null};
 const assignment=(uid,categories=['EFETIVO'])=>({schemaVersion:1,identityStatus:'LINKED',uid,email:uid+'@example.invalid',memberCategories:categories});
 const categoryKey=uid=>createHash('sha256').update(JSON.stringify(uid+'@example.invalid')).digest('hex');
 const context=(uid,claims={})=>env.authenticatedContext(uid,{email:uid+'@example.invalid',email_verified:true,name:'Pessoa '+uid,firebase:{sign_in_provider:'google.com'},...claims}).firestore();
@@ -30,7 +30,7 @@ beforeEach(async()=>{
       await setDoc(doc(db,'users',uid),{uid,email:uid+'@example.invalid',displayName:'Pessoa '+uid,sigla:'',active:uid!=='inactive',access:true,role:admin?'administrador_app':'temporario'});
       const categories=uid==='admin'?['ADMINISTRADOR']:uid==='two'?['EFETIVO','ADMINISTRADOR']:uid.startsWith('resident')?['RESIDENTE_'+uid.at(-1),'ADMINISTRADOR']:uid==='substitute'?['SUBSTITUTO','ADMINISTRADOR']:['EFETIVO'];
       await setDoc(doc(db,'userCategories',categoryKey(uid)),assignment(uid,categories));
-      if(siglas[uid])await setDoc(doc(db,base+'/participation/'+uid),{schemaVersion:1,cycle:'2026-2027',sigla:siglas[uid]});
+      if(Object.hasOwn(siglas,uid))await setDoc(doc(db,base+'/participation/'+uid),{schemaVersion:1,cycle:'2026-2027',sigla:siglas[uid]});
     }
     await setDoc(doc(db,base+'/policy/participation'),{schemaVersion:1,cycle:'2026-2027',summaryVersion:2,siglasByUid:siglas,excludedUids:['excluded']});
     await setDoc(totalsRef(db),{...emptyYearEndTotals(),updatedAt:stamp()});
@@ -79,6 +79,22 @@ test('participants read their own choice and four totals; only administrators re
   assert.deepEqual(Object.keys(totals).sort(),['grupoNatal','grupoReveillon','plantaoNatal','plantaoReveillon','plantaoCarnaval','totalRegistrations','updatedAt'].sort());
   await assertFails(confirm(admin,'admin',{sigla:'ZZ'})); // administrative viewer is not an enrolled participant
   await assertFails(updateDoc(ownRef(admin,'one'),{grupo:'natal',updatedAt:stamp()}));
+});
+
+test('only an explicitly enrolled UID can confirm without a sigla, and both choices are required',async()=>{
+  const uid='unlabeled',db=context(uid),ref=ownRef(db,uid);
+  await assertSucceeds(getDoc(doc(db,base+'/participation/'+uid)));
+  await assertFails(confirm(db,uid,{sigla:'WX'}));
+  await assertFails(confirm(db,uid,{grupo:null}));
+  await assertSucceeds(save(uid,{plantao:'natal',grupo:'reveillon'}));
+  await assertSucceeds(save(uid,{plantao:'reveillon',grupo:'natal'}));
+  const {sigla,position}= (await getDoc(ref)).data();
+  assert.deepEqual({sigla,position},{sigla:null,position:1});
+  await assertFails(getDocs(collection(db,base+'/registrations')));
+  await assertFails(getDoc(ownRef(db,'one')));
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),base+'/policy/participation'),{schemaVersion:1,cycle:'2026-2027',summaryVersion:2,siglasByUid:{one:'AB'}}));
+  await assertFails(getDoc(ref));
+  await assertFails(getDoc(totalsRef(db)));
 });
 
 test('privacy regression: a participant cannot query legacy registrations after the update',async()=>{

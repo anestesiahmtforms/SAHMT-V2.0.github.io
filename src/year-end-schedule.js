@@ -30,7 +30,7 @@ export function yearEndParticipation(policy,uid) {
 export function yearEndOwnParticipation(config) {
   if(config?.schemaVersion!==1||config.cycle!==YEAR_END_CYCLE)throw yearEndError('YEAR_END_POLICY_UNAVAILABLE');
   const sigla=config.sigla;
-  if(typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla))throw yearEndError('YEAR_END_INELIGIBLE');
+  if(sigla!==null&&(typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla)))throw yearEndError('YEAR_END_INELIGIBLE');
   return {sigla,requireGroup:!YEAR_END_SHIFT_ONLY_SIGLAS.includes(sigla)};
 }
 

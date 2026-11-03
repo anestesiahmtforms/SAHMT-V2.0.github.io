@@ -28,7 +28,8 @@ const [contacts,categories,registrations,previous]=await Promise.all([
 // Owner-confirmed aliases and exclusions live only in the private FE policy.
 const approvedBindingsByUid=previous?.data.approvedBindingsByUid||{},excludedUids=previous?.data.excludedUids||[];
 if(typeof approvedBindingsByUid!=='object'||Array.isArray(approvedBindingsByUid)||!Array.isArray(excludedUids)||
-  Object.entries(approvedBindingsByUid).some(([uid,sigla])=>!uid||typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla)||excludedUids.includes(uid))||
+  Object.entries(approvedBindingsByUid).some(([uid,sigla])=>!uid||excludedUids.includes(uid)||
+    (sigla!==null&&(typeof sigla!=='string'||!/^(?:[A-Z]{2}|L2)$/.test(sigla))))||
   excludedUids.some(uid=>typeof uid!=='string'||!uid)||new Set(excludedUids).size!==excludedUids.length)throw Error('POLICY_OVERRIDES_INVALID');
 const siglasByUid={},siglas=new Set(),unmatched=[];let excluded=0;
 for(const category of categories){
@@ -40,20 +41,22 @@ for(const category of categories){
   const profile=await request('outros-48120',fe,'users/'+encodeURIComponent(uid),{fields:['uid','email','active','access']});
   if(profile?.data.active!==true||profile.data.access!==true)continue;
   if(profile.data.uid!==uid||profile.data.email?.trim().toLowerCase()!==email)throw Error('PROFILE_BINDING');
-  const approvedSigla=approvedBindingsByUid[uid];
+  const approvedSigla=Object.hasOwn(approvedBindingsByUid,uid)?approvedBindingsByUid[uid]:undefined;
+  // An explicit null is an owner-approved participant without an institutional sigla.
+  if(approvedSigla===null){siglasByUid[uid]=null;continue;}
   const matches=contacts.filter(c=>c.data.active===true&&(approvedSigla?c.id===approvedSigla:c.data.email?.trim().toLowerCase()===email));
   if(matches.length===0&&/^anestesiahmtforms[2-5]?@gmail[.]com$/.test(email)){excluded++;continue;}
   if(matches.length===0){unmatched.push({uid,email});continue;}
   if(matches.length!==1)throw Error('CANONICAL_CONTACT_REQUIRED');
   const contact=matches[0],sigla=contact.data.sigla||contact.id;
-  if(!/^(?:[A-Z]{2}|L2)$/.test(sigla)||contact.id!==sigla||siglas.has(sigla)||siglasByUid[uid])throw Error('CANONICAL_SIGLA_CONFLICT');
+  if(!/^(?:[A-Z]{2}|L2)$/.test(sigla)||contact.id!==sigla||siglas.has(sigla)||Object.hasOwn(siglasByUid,uid))throw Error('CANONICAL_SIGLA_CONFLICT');
   siglas.add(sigla);siglasByUid[uid]=sigla;
 }
 for(const sigla of YEAR_END_SHIFT_ONLY_SIGLAS)if(!siglas.has(sigla))throw Error('SHIFT_ONLY_MEMBER_MISSING_'+sigla);
 // Never overwrite choices or silently migrate records during policy publication.
 for(const {data} of registrations)if(data.sigla!==siglasByUid[data.uid]||'displayName' in data)throw Error('REGISTRATION_MIGRATION_REQUIRED');
 const policy={schemaVersion:1,cycle:'2026-2027',siglasByUid,source:'FA_CONTACTS_USER_RULE_20261030',approvedBindingsByUid,excludedUids,...([0,1,2].includes(previous?.data.summaryVersion)?{summaryVersion:previous.data.summaryVersion}:{})};
-const summary={eligibleMembers:siglas.size,shiftOnlySiglas:[...YEAR_END_SHIFT_ONLY_SIGLAS],excludedAssignments:excluded,unmatchedTeamAccounts:unmatched.length,existingRegistrations:registrations.length,profileFieldsChanged:0};
+const summary={eligibleMembers:Object.keys(siglasByUid).length,shiftOnlySiglas:[...YEAR_END_SHIFT_ONLY_SIGLAS],excludedAssignments:excluded,unmatchedTeamAccounts:unmatched.length,existingRegistrations:registrations.length,profileFieldsChanged:0};
 await mkdir('.local-preview',{recursive:true});
 await writeFile('.local-preview/year-end-policy-plan.json',JSON.stringify({policy,previous,summary,unmatched},null,2));
 if(apply){
@@ -64,7 +67,7 @@ if(apply){
   if(!response.ok)throw Error('POLICY_COMMIT_FAILED_'+response.status);
   const verified=await request('outros-48120',fe,'yearEndSchedules/2026-2027/policy/participation');
   if(JSON.stringify(verified.data.siglasByUid)!==JSON.stringify(siglasByUid)){
-    if(Object.entries(siglasByUid).some(([uid,sigla])=>verified.data.siglasByUid?.[uid]!==sigla)||Object.keys(verified.data.siglasByUid||{}).length!==siglas.size)throw Error('POLICY_VERIFICATION_FAILED');
+    if(Object.entries(siglasByUid).some(([uid,sigla])=>verified.data.siglasByUid?.[uid]!==sigla)||Object.keys(verified.data.siglasByUid||{}).length!==summary.eligibleMembers)throw Error('POLICY_VERIFICATION_FAILED');
   }
 }
 console.log(JSON.stringify({...summary,applied:apply}));

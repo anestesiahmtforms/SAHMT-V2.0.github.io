@@ -31,6 +31,8 @@ As Rules exigem perfil FE ativo e liberado, UID correspondente, conta Google ver
 
 Vínculos e exclusões confirmados pelo proprietário são mantidos nos campos privados `approvedBindingsByUid` e `excludedUids` da política FE. A regeneração preserva essas decisões, continua exigindo perfil ativo e vínculo EFETIVO e confere a existência da sigla no catálogo. Não altera e-mails, contatos, categorias ou permissões de outros módulos.
 
+O proprietário pode aprovar individualmente um integrante efetivo sem sigla usando `null` no vínculo privado. A inscrição registra `sigla: null` e exige as escolhas de plantão e de grupo.
+
 O acesso específico à escala permite que integrantes aprovados entrem em Governança. Os demais painéis conservam a autorização anterior, inclusive a liberação restrita das pesquisas e dos cadastros.
 
 ## Validação e publicação

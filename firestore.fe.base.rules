@@ -45,10 +45,11 @@ service cloud.firestore {
     function yearEndMember() {
       let category = yearEndCategory();
       let policy = yearEndPolicy();
+      let sigla = policy.get('siglasByUid', {}).get(request.auth.uid, '');
       return yearEndIdentity() && category.memberCategories.hasAll(['EFETIVO']) &&
         policy.schemaVersion == 1 && policy.cycle == '2026-2027' && policy.siglasByUid is map &&
         !policy.get('excludedUids', []).hasAny([request.auth.uid]) &&
-        policy.siglasByUid.get(request.auth.uid, '').matches('^([A-Z]{2}|L2)$');
+        (sigla == null || (sigla is string && sigla.matches('^([A-Z]{2}|L2)$')));
     }
     function yearEndAdmin() {
       return yearEndIdentity() && memberCategoryAdmin_() && !yearEndPolicy().get('excludedUids', []).hasAny([request.auth.uid]);

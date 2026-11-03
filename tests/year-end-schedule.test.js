@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateYearEndChoices,canUseYearEndSchedule,yearEndParticipation,sortYearEndRegistrations,YEAR_END_PROJECT,YEAR_END_SHIFTS,YEAR_END_GROUPS} from '../src/year-end-schedule.js';
+import {validateYearEndChoices,canUseYearEndSchedule,yearEndParticipation,confirmedYearEndRegistration,sortYearEndRegistrations,YEAR_END_PROJECT,YEAR_END_SHIFTS,YEAR_END_GROUPS} from '../src/year-end-schedule.js';
 
 test('each category accepts exactly one choice; all three shifts keep the two existing groups',()=>{
   for(const plantao of ['natal','reveillon','carnaval'])for(const grupo of ['natal','reveillon'])assert.deepEqual(validateYearEndChoices({plantao,grupo}),{plantao,grupo});
@@ -17,6 +17,15 @@ test('only the canonical policy grants the four shift-only exemptions',()=>{
     else assert.throws(()=>validateYearEndChoices({plantao:'natal',grupo:null},participation));
   }
   for(const policy of [null,{schemaVersion:1,cycle:'2026-2027',siglasByUid:{}}])assert.throws(()=>yearEndParticipation(policy,'one'));
+});
+test('an explicit empty sigla requires both choices and preserves the UID binding',()=>{
+  const policy={schemaVersion:1,cycle:'2026-2027',siglasByUid:{one:null}};
+  const participation=yearEndParticipation(policy,'one');
+  assert.deepEqual(participation,{sigla:null,requireGroup:true});
+  const record={uid:'one',sigla:null,position:1,plantao:'natal',grupo:'reveillon'};
+  assert.equal(confirmedYearEndRegistration(record,{uid:'one',...participation}),true);
+  assert.equal(confirmedYearEndRegistration({...record,grupo:null},{uid:'one',...participation}),false);
+  assert.throws(()=>yearEndParticipation(policy,'other'),{code:'YEAR_END_INELIGIBLE'});
 });
 test('the approved FE project and exact dates preserve the midday handover and new year',()=>{
   assert.equal(YEAR_END_PROJECT,'outros-48120');
