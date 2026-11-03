@@ -138,12 +138,18 @@ self.addEventListener('push', event => {
   if(data?.source!=='SAHMT_FF'||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(data.communicationId||''))return;
   const routes=['communications','home','management-hub','management','training','events','labels','checklist','occurrences','qmentum'];
   const route=routes.includes(data.route)?data.route:'communications';
-  event.waitUntil(self.registration.showNotification('🔔 SAHMT · NOVO AVISO',{
-    body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.',
-    icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
-    tag:'sahmt-ff-'+data.communicationId,renotify:false,
-    data:{source:'SAHMT_FF',route,communicationId:data.communicationId}
-  }));
+  event.waitUntil((async()=>{
+    const title=typeof data.title==='string'&&data.title.trim()?data.title.slice(0,120):'🔔 SAHMT · NOVO AVISO';
+    const body=typeof data.body==='string'&&data.body.trim()?data.body.slice(0,220):'Há uma nova comunicação institucional. Abra o SAHMT para consultar.';
+    await self.registration.showNotification(title,{
+      body,
+      icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
+      tag:'sahmt-ff-'+data.communicationId,renotify:false,requireInteraction:true,
+      data:{source:'SAHMT_FF',route,communicationId:data.communicationId}
+    });
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of windows)client.postMessage({source:'SAHMT_FF',type:'NEW_COMMUNICATION',communicationId:data.communicationId});
+  })());
 });
 self.addEventListener('notificationclick',event=>{
   if(event.notification.data?.source!=='SAHMT_FF')return;

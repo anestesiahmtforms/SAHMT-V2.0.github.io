@@ -8,5 +8,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": {"enabled": false},
+  "queues": {
+    "producers": [{"binding": "COMMUNICATION_PUSH_QUEUE", "queue": "sahmt-ff-push"}],
+    "consumers": [{"queue": "sahmt-ff-push", "max_batch_size": 3, "max_batch_timeout": 1, "max_retries": 5, "dead_letter_queue": "sahmt-ff-push-dead"}]
+  },
   "vars": {"COMMUNICATION_ENABLED": "false", "WORKERS_FREE_CONFIRMED": "false"}
 }
