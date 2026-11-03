@@ -5,6 +5,53 @@ import {chromium,webkit} from 'playwright';
 import {createYearEndStartupPreview} from './helpers/year-end-startup-preview.js';
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit',engine=safari?webkit:chromium;
 
+test('the owner can switch between administrator and team views without replacing the login',{timeout:60000},async()=>{
+ const preview=await createYearEndStartupPreview();let browser;
+ try{
+  preview.records.set('mode-owner',{uid:'mode-owner',sigla:'FR',plantao:'natal',grupo:null,position:1,createdAt:Date.now()});
+  preview.release();
+  browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
+  const context=await browser.newContext({viewport:{width:320,height:650}}),page=await context.newPage();
+  page.setDefaultTimeout(12000);
+  const origin=new URL(preview.url).origin;
+  await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+  await page.goto(preview.url+'?account=mode-owner');
+  const selector=page.getByLabel('Modo de uso');
+  assert.equal(await selector.inputValue(),'administrator');
+  await selector.selectOption('team');
+  assert.equal(await selector.inputValue(),'team');
+  const bounds=await selector.boundingBox();
+  assert.ok(bounds.x>=0&&bounds.x+bounds.width<=320&&bounds.height>=44,JSON.stringify(bounds));
+  await page.reload();
+  assert.equal(await selector.inputValue(),'team');
+  await page.evaluate(()=>location.hash='#/admin');
+  await page.waitForFunction(()=>location.hash==='#/home');
+  await assertTeamConsultations(page);
+  await page.evaluate(()=>location.hash='#/management-hub/surveys');
+  await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();
+  await page.locator('.vacations-2027').waitFor();
+  assert.equal(await page.locator('[data-vac-admin]').count(),0);
+  assert.equal(await page.locator('[data-vac-simulation-sigla]').count(),0);
+  await page.getByRole('button',{name:'VOLTAR',exact:true}).click();
+  await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('input[name="plantao"][value="natal"]')?.checked===true);
+  assert.equal(await page.locator('[data-year-end-admin]').count(),0);
+  await page.evaluate(()=>location.hash='#/year-end-schedule');
+  await page.locator('.year-end-dialog[open]').waitFor();
+  await page.waitForFunction(()=>document.querySelector('input[name="plantao"][value="natal"]')?.checked===true);
+  assert.equal(await page.locator('[data-year-end-admin]').count(),0);
+  await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();
+  await selector.selectOption('administrator');
+  await page.evaluate(()=>location.hash='#/year-end-schedule');
+  await page.locator('[data-year-end-admin]').waitFor();
+  await page.evaluate(()=>location.hash='#/management-hub/vacations2027');
+  await page.locator('[data-vac-admin]').waitFor();
+  await page.goto(preview.url+'?account=admin');
+  await page.locator('#schedule-date').waitFor();
+  assert.equal(await selector.count(),0);
+ }finally{await browser?.close();await preview.close();}
+});
+
 test('banner recovers without FE login; team Governance opens only the two schedules',{timeout:60000},async()=>{
  const preview=await createYearEndStartupPreview({statusFailures:1,requireSecondaryConnect:true});let browser;
  try{

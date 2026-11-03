@@ -7,13 +7,18 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
  let hold=true,failSave=true,authHeld=holdAuthentication;const authWaiters=[];
  const stubs={
   'app-updates-targeted-firebase.js':'export async function recordAppInstallation(){}',
-  'vacations-2027-client.js':`export async function callVacationsApi({uid,isCurrent,action}){if(!isCurrent())throw Error('VACATIONS_SESSION_CHANGED');if(action!=='ACCESS')throw Error('UNEXPECTED_VACATION_ACTION');return {eligibleForConsultations:['team','shift-only','admin'].includes(uid)};}`,
+  'vacations-2027-client.js':`export async function callVacationsApi({uid,isCurrent,action}){
+   if(!isCurrent())throw Error('VACATIONS_SESSION_CHANGED');
+   if(action==='ACCESS')return {eligibleForConsultations:['team','shift-only','admin','mode-owner'].includes(uid)};
+   if(action==='LOAD'&&uid==='mode-owner')return {isAdmin:true,ownSigla:'FR',siglas:['FR'],months:[],rules:{}};
+   throw Error('UNEXPECTED_VACATION_ACTION');
+  }`,
   'firebase-app.js':'export const firebaseConfigured=true,app=null,appCheckReady=Promise.resolve(null);',
   'year-end-status-client.js':`export async function readYearEndBannerStatus({uid,isCurrent}){const r=await fetch('${base}__year-end-fixture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,action:'banner'})});const data=await r.json();if(!r.ok)throw Object.assign(Error(data.code),{code:data.code});if(!isCurrent())throw Error('YEAR_END_SESSION_CHANGED');return {participation:{canParticipate:data.eligible},completed:data.completed};}`,
   'auth.js':`const uid=new URL(location.href).searchParams.get('account')||'team';
    window.fixtureFeReady=${!requireSecondaryConnect};
-   const user={uid,email:uid+'@example.invalid',emailVerified:true,displayName:'Pessoa de conferência',providerData:[{providerId:'google.com'}]};
-   export function watchSession(fn){fn({status:'checking'});void fetch('${base}__auth-fixture').then(()=>fn({status:'signed-in',user,offline:false,profile:{uid,email:user.email,displayName:user.displayName,active:true,access:true,role:uid==='admin'?'administrador_app':uid==='resident'?'residente':uid==='substitute'?'substituto':'anestesiologista',permissions:{scheduleRead:true}}}));return()=>{};}
+   const user={uid,email:uid==='mode-owner'?'wx2064@gmail.com':uid+'@example.invalid',emailVerified:true,displayName:'Pessoa de conferência',providerData:[{providerId:'google.com'}]};
+   export function watchSession(fn){fn({status:'checking'});void fetch('${base}__auth-fixture').then(()=>fn({status:'signed-in',user,offline:false,profile:{uid,email:user.email,displayName:user.displayName,active:true,access:true,role:['admin','mode-owner'].includes(uid)?'administrador_app':uid==='resident'?'residente':uid==='substitute'?'substituto':'anestesiologista',permissions:{scheduleRead:true}}}));return()=>{};}
    export async function retryAuthenticatedProfile(){}export async function signInGoogle(){window.fixtureFeReady=true;}export async function signOutGlobal(){return true;}`,
   'data-lite.js':'export async function readAppFeatures(){return {};}export async function readSchedule(){return null;}export async function listActiveContacts(){return [];}export async function listVacationsForDate(){return [];}',
   'data.js':'export async function syncQueuedOperations(){return {};}export async function listUnsentChecklistTransfers(){return [];}export async function flushOperationalSheetDelivery(){}export async function listModuleRecords(){return [];}export async function getAppFeatures(){return {};}',
@@ -33,14 +38,15 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
   res.setHeader('Content-Type','application/json');
   try{
    let body='';for await(const chunk of req){body+=chunk;if(body.length>2000)throw Error('TOO_LARGE');}const {uid,action,input}=JSON.parse(body);
-   const participation={sigla:uid==='shift-only'?'FR':uid==='admin'?'ZZ':'AB',requireGroup:uid!=='shift-only',canParticipate:true,isAdmin:uid==='admin'};
-   if(!['team','shift-only','admin'].includes(uid))throw Object.assign(Error('YEAR_END_INELIGIBLE'),{code:'YEAR_END_INELIGIBLE'});
+   const shiftOnly=['shift-only','mode-owner'].includes(uid);
+   const participation={sigla:shiftOnly?'FR':uid==='admin'?'ZZ':'AB',requireGroup:!shiftOnly,canParticipate:true,isAdmin:['admin','mode-owner'].includes(uid)};
+   if(!['team','shift-only','admin','mode-owner'].includes(uid))throw Object.assign(Error('YEAR_END_INELIGIBLE'),{code:'YEAR_END_INELIGIBLE'});
    let value;
    if(action==='banner'){if(statusFailures>0){statusFailures--;throw Error('unavailable');}if(hold)await new Promise(resolve=>held.push(resolve));value={eligible:true,completed:Boolean(records.get(uid))};}
    else if(action==='open')value=participation;
    else if(action==='read'){if(hold)await new Promise(resolve=>held.push(resolve));value=records.get(uid)||null;}
    else if(action==='totals')value=[...records.values()].reduce((totals,row)=>changeYearEndTotals(totals,null,row),emptyYearEndTotals());
-   else if(action==='rows'){if(uid!=='admin')throw Error('permission-denied');value=[...records.values()];}
+   else if(action==='rows'){if(!participation.isAdmin)throw Error('permission-denied');value=[...records.values()];}
    else if(action==='save'){
     const choices=validateYearEndChoices(input,participation);
     if(failSave){failSave=false;throw Object.assign(Error('unavailable'),{code:'unavailable'});}

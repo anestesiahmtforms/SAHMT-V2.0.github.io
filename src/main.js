@@ -1,4 +1,5 @@
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
+import {createAccountMode} from './account-mode.js';
 import {canUseVacationModule} from './vacations-2027-domain.js';
 import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance-client.js';
 import {mountVaccinationEntry} from './vaccination-entry.js';
@@ -144,6 +145,7 @@ const userPermissions = [
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
 ];
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
+const accountMode = createAccountMode();
 const yearEndStartup=createYearEndStartup({enabled:deployment.target==='FA'&&YEAR_END_STARTUP_ENABLED,
   onChange:()=>yearEndFloating?.update(),
   readStatus:({uid,isCurrent})=>{
@@ -1085,6 +1087,7 @@ function shellView() {
   const route = currentRoute();
   if(route==='year-end-schedule'&&session.status==='signed-in')return '<main class="year-end-entry" id="module-content"><p role="status">Preparando a escala…</p></main>';
   const profile = session.profile;
+  const modeSelector = route === 'home' && session.accountMode ? `<label class="account-mode">Modo de uso <select data-account-mode><option value="administrator"${session.accountMode === 'administrator' ? ' selected' : ''}>ADMINISTRADOR</option><option value="team"${session.accountMode === 'team' ? ' selected' : ''}>EQUIPE</option></select></label>` : '';
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
   const checklistVisual = route === 'checklist' ? `<div class="checklist-visual-frame"><figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure></div>` : '';
   const utilityCards = route === 'management' ? managementUtilityCards() : '';
@@ -1103,7 +1106,7 @@ function shellView() {
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div></section>
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
-    <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
+    <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline && route !== 'home' && route !== 'events' ? `<div class="notice profile-connection-notice" data-local-profile-notice role="status"><span>${session.validatingProfile ? 'Confirmando a conexão com o servidor… Sua sessão Firebase está ativa.' : 'Sua sessão Firebase está ativa. Usando o perfil local enquanto a conexão com o servidor é restabelecida.'}</span><button type="button" class="secondary-button" data-profile-reconnect ${session.validatingProfile ? 'disabled' : ''}>${session.validatingProfile ? 'Verificando…' : 'Reconectar'}</button><small data-profile-retry-message></small></div>` : ''}${session.status === 'auth-limited' && !session.validatingProfile && session.profileFailureCode ? `<p class="notice" data-profile-diagnostic role="status">Diagnóstico: <strong>${escapeHtml(session.profileFailureCode)}</strong>. ${session.profileFailureCode === 'LOCAL_PROFILE_UNAVAILABLE' ? 'Este aparelho não tem uma cópia local válida do perfil. Será necessária uma validação online quando o Firestore estiver disponível.' : session.profileFailureCode === 'LOCAL_STORAGE_UNAVAILABLE' ? 'O armazenamento local do navegador está indisponível.' : 'A validação online do perfil não foi concluída.'}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><div class="checklist-qr-tools"><div class="checklist-qr-zoom" role="group" aria-label="Ampliação do QR"><button type="button" data-checklist-qr-zoom="1" aria-pressed="false">1×</button><button type="button" data-checklist-qr-zoom="2" aria-pressed="true">2×</button></div><button id="checklist-qr-camera-switch" type="button" hidden disabled>Trocar câmera</button></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
@@ -1336,17 +1339,18 @@ async function loadModule(route) {
     const [{mountYearEndScheduleDialog},{openYearEndScheduleRepository}]=await Promise.all([import('./year-end-schedule-dialog.js'),import('./year-end-schedule-firebase.js')]);
     if(!current())return;
     cleanupCurrentModule=mountYearEndScheduleDialog(content,{isCurrent:current,onExit:()=>navigate('home'),
-      createRepository:isCurrent=>openYearEndScheduleRepository({uid,isCurrent}),
+      createRepository:isCurrent=>openYearEndScheduleRepository({uid,isCurrent,participantOnly:session.accountMode==='team'}),
       connectAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);}});
     return;
   }
   if(route === 'management-hub'){
     if(!canUseGovernanceHub(session)&&!(canUseVacationModule(session)&&['surveys','vacations2027'].includes(location.hash.split('/')[2]))){navigate('home');return;}
-    const content=document.querySelector('#module-content'),uid=session.user?.uid;
+    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
-    const currentHub=()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
+    const currentHub=()=>generation===evaluationModuleGeneration&&content.isConnected&&session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
+    const participantOnly=session.accountMode==='team';
     let consultationsAllowed=can('admin');
     if(!consultationsAllowed)try{consultationsAllowed=await readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub});}catch{}
     if(!content.isConnected||!currentHub())return;
@@ -1354,8 +1358,13 @@ async function loadModule(route) {
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
-      createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent});},
-      performVacations:async(action,input,signal)=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&consultationsAllowed,action,input,signal});},
+      createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent:()=>currentHub()&&isCurrent(),participantOnly});},
+      performVacations:async(action,input,signal)=>{
+        if(participantOnly&&action!=='LOAD')throw Error('VACATIONS_FORBIDDEN');
+        const {callVacationsApi}=await import('./vacations-2027-client.js');
+        const result=await callVacationsApi({uid,isCurrent:()=>currentHub()&&consultationsAllowed,action,input,signal});
+        return participantOnly?{...result,isAdmin:false}:result;
+      },
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),survey,action,response});},
       performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),kind,action,input,signal});},
@@ -4990,6 +4999,11 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fa-performance', 'fc-performance',
+    'fd-performance', 'fe-performance', 'people', 'admin', 'notifications', 'app-updates-control'].includes(requestedRoute)) {
+    navigate('home');
+    return;
+  }
   if(!authLimited&&requestedRoute==='app-updates-control'){
     const actorUid=session.user?.uid;
     const authorized=()=>session.status==='signed-in'&&Boolean(actorUid)&&session.user?.uid===actorUid&&
@@ -5064,6 +5078,13 @@ async function render() {
     });
   }
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
+  document.querySelector('[data-account-mode]')?.addEventListener('change', event => {
+    const control = event.currentTarget;
+    const next = accountMode.select(control.value);
+    if (!next) { control.value = session.accountMode; return; }
+    sessionChanged(next);
+    document.querySelector('[data-account-mode]')?.focus({preventScroll:true});
+  });
   document.querySelector('#outbox-open')?.addEventListener('click', () => navigate('offline'));
   if (authLimited) {
     const unavailable=document.querySelector('#schedule-content')||document.querySelector('#module-content');
@@ -5170,6 +5191,7 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
+  const modeChanged = session.accountMode !== next.accountMode;
   if (googleProjectAuthEnabled) queueMicrotask(()=>googleAccessPanel?.refresh());
   if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-session-status', {detail: {status: next.status, code: next.error?.code || '', transportFailure: isFirestoreCacheFallbackError(next.error)}}));
   const wasOffline = session.offline === true;
@@ -5179,7 +5201,7 @@ function sessionChanged(next) {
   // Keep open group/evaluation dialogs intact; refresh their menu on close.
   const refreshManagementMenu = profileRevalidated && currentRoute() === 'management' &&
     !document.querySelector?.('#management-area-dialog[open], .evaluation-governance-dialog[open]');
-  const preserveEvaluationModule = cleanupCurrentModule?.canPreserveSession?.(session, next) === true && !refreshManagementMenu;
+  const preserveEvaluationModule = !modeChanged && cleanupCurrentModule?.canPreserveSession?.(session, next) === true && !refreshManagementMenu;
   const profileValidationChanged = session.validatingProfile !== next.validatingProfile || session.profileFailureCode !== next.profileFailureCode;
   const reconnectReports=profileRevalidated?['events','labels','checklist'].filter(kind=>['offline','error'].includes(liveReports.get?.(kind)?.snapshot().state)):[];
   const previousPresentation = JSON.stringify([session.status, session.user?.uid, session.profile?.displayName, session.profile?.sigla, session.profile?.role, session.profile?.active, session.profile?.access, Object.entries(session.profile?.permissions || {}).sort(([left], [right]) => left.localeCompare(right))]);
@@ -5191,7 +5213,7 @@ function sessionChanged(next) {
     presentationWithoutGeneralReads(session) === presentationWithoutGeneralReads(next) &&
     generalReadPermissions.some((key) => session.profile?.permissions?.[key] !== true && next.profile?.permissions?.[key] === true) &&
     generalReadPermissions.every((key) => session.profile?.permissions?.[key] === next.profile?.permissions?.[key] || next.profile?.permissions?.[key] === true);
-  const preserveCurrentModule = onlyGeneralReadGrant && !refreshManagementMenu && !['home', 'training', 'notifications'].includes(currentRoute());
+  const preserveCurrentModule = !modeChanged && onlyGeneralReadGrant && !refreshManagementMenu && !['home', 'training', 'notifications'].includes(currentRoute());
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
   if (next.status === 'signed-in' && next.offline === false && next.profile?.active === true && next.profile?.access === true) {
@@ -5199,9 +5221,9 @@ function sessionChanged(next) {
     if (!operationalBackend.snapshot().code) backendFailureDisplayed = false;
   }
   if(userChanged||next.status!=='signed-in')pendingSyncBanner.reset(next.status==='signed-in'?next.user?.uid:'');
-  if (userChanged) deniedOperationalModules.clear();
+  if (userChanged || modeChanged) deniedOperationalModules.clear();
   if (userChanged || next.status === 'signed-out') onlineValidationRequired = false;
-  if (userChanged || next.status !== 'signed-in') {
+  if (userChanged || modeChanged || next.status !== 'signed-in') {
     startupReports.clear(); liveReports.clear('session-changed'); reportPayloads.clear(); reportPaintKeys.clear(); reportStates.clear(); suspendedReportScopes = []; checklistCatalogLive = null; checklistModuleStations = []; checklistResponsibilityLive = null; checklistRotationLive = null; checklistConferenceLive = null; loadedLabelRecords = []; loadedEventReportRecords = []; eventReportSourceRecords = []; checklistReportContext = null;
     for (const [kind, waiter] of reportWaiters) settleReportWaiter(kind, waiter.key, false);
   }
@@ -5233,7 +5255,7 @@ function sessionChanged(next) {
     }
   notice = '';
   const connectionChanged = profileBecameLocal || profileRevalidated || profileValidationChanged;
-  if ((!unchangedPresentation || connectionChanged) && !preserveCurrentModule && !preserveEvaluationModule) void render();
+  if ((!unchangedPresentation || connectionChanged || modeChanged) && !preserveCurrentModule && !preserveEvaluationModule) void render();
   else if (preserveEvaluationModule) {
     cleanupCurrentModule?.revalidate?.(); cleanupCurrentModule?.updateProfile?.(next.profile);
     const identity = document.querySelector?.('.identity-card__user'); if (identity) identity.textContent = next.profile?.displayName || next.user?.displayName || 'Usuário';
@@ -5393,7 +5415,7 @@ document.addEventListener('click',async event=>{
   await navigate('app-updates-control');
 });
 const targetedAppUpdates=installTargetedAppUpdates({target:deployment.target,signOut:signOutGlobal});
-watchSession(next=>{const blocked=targetedAppUpdates.blocked;targetedAppUpdates.setSession(next);sessionChanged(next);if(blocked&&!targetedAppUpdates.blocked)void render();});
+watchSession(next=>{const blocked=targetedAppUpdates.blocked;targetedAppUpdates.setSession(next);sessionChanged(accountMode.update(next));if(blocked&&!targetedAppUpdates.blocked)void render();});
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const startUpdates=()=>{void installAppUpdatePrompt({base:import.meta.env.BASE_URL,target:deployment.target}).catch(error=>console.warn('[SAHMT PWA] Atualização indisponível:',error?.message));};

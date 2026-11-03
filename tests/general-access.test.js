@@ -4,6 +4,43 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {GENERAL_READ_PERMISSIONS, withGeneralReadPermissions} from '../src/general-access.js';
 import {FIRST_LOGIN_COHORTS} from '../src/management-first-login-cohort.js';
+import {createAccountMode} from '../src/account-mode.js';
+
+test('only the verified administrator can use the team view without changing the authenticated profile', () => {
+  const uid = 'mode-test';
+  const email = 'wx2064@gmail.com';
+  const admin = {status: 'signed-in', user: {uid, email, emailVerified: true}, profile: {
+    uid, email, active: true, access: true, role: 'administrador_app', sigla: 'FR', permissions: {admin: true, scheduleWrite: true}
+  }};
+  const mode = createAccountMode();
+  assert.equal(mode.update(admin).accountMode, 'administrator');
+  assert.equal(mode.select('invalid'), null);
+  const team = mode.select('team');
+  assert.equal(team.user, admin.user);
+  assert.equal(team.profile.sigla, 'FR');
+  assert.equal(team.profile.permissions.checklistSign, true);
+  assert.equal(team.profile.permissions.admin, undefined);
+  assert.equal(team.profile.permissions.scheduleWrite, undefined);
+  assert.equal(admin.profile.permissions.admin, true);
+  assert.equal(mode.update(structuredClone(admin)).accountMode, 'team');
+  assert.deepEqual(mode.select('administrator').profile, admin.profile);
+  for (const change of [
+    s => {s.user.email = s.profile.email = 'other@example.test';},
+    s => {s.profile.uid = 'different-user';},
+    s => {s.user.emailVerified = false;},
+    s => {s.profile.active = false;},
+    s => {s.profile.role = 'temporario'; s.profile.permissions = {};}
+  ]) {
+    const denied = structuredClone(admin);
+    change(denied);
+    assert.equal(mode.update(denied).accountMode, undefined);
+    assert.equal(mode.select('team'), null);
+  }
+  mode.update(admin);
+  mode.select('team');
+  mode.update({status: 'signed-out'});
+  assert.equal(mode.update(admin).accountMode, 'administrator');
+});
 
 const dataSource = readFileSync(new URL('../src/data.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const functionStart = dataSource.indexOf('export async function saveUserProfile(');
