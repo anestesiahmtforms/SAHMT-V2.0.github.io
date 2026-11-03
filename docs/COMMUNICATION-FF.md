@@ -98,3 +98,11 @@ Os scripts `prepare-communication-production.mjs --apply` e `deploy-communicatio
 A chave VAPID pública fornecida pelo usuário e o endpoint FF foram incluídos no workflow de publicação. A chave pública pode constar na build; a privada permanece fora do cliente. Encaminhamentos leem somente campos de texto permitidos ou `updatedAt` na origem, evitando carregar snapshots grandes e dados pessoais desnecessários.
 
 Pendências de homologação em aparelho: login real FA/FF, inscrição voluntária de um dispositivo, consumo de CPU no Free e envio manual individual com PWA fechado. `pushEnabled` permanece false até ação explícita de administrador nas Configurações. Os testes locais não comprovam entrega real ou compatibilidade visual em iPhone/Android. Antes do teste, fechar clientes antigos para ativar o novo service worker.
+
+## Correção de ativação no iPhone
+
+O atalho global foi retirado da grade principal da Home: adicioná-lo como filho direto criava uma linha grande e comprimia os módulos. A solicitação agora é um banner compacto na área de módulos, com destaque dourado/selo NOVO e entrada breve respeitando movimento reduzido. O título Push genérico passa a “🔔 SAHMT · NOVO AVISO”; apresentação nativa continua controlada pelo iOS.
+
+A Central espera a restauração coordenada da sessão FF. Se faltar a sessão no navegador, exibe o botão Google oficial na própria tela e, após confirmar a mesma identidade, repete somente BOOTSTRAP. Não repete escritas ou envios e não cria contas. A recuperação substitui o carregamento inicial e mantém o botão ao retornar do segundo plano.
+
+Validação local: 1.180 testes gerais, 75 testes focados, 19 testes de Central/runtime/ciclo do cliente e quatro testes de navegador incluindo a Home real em 320/390/430 px e recuperação Google. Build e verificação de dependências aprovadas. O teste de entrega real continua pendente da inscrição do iPhone de wx2064@gmail.com.

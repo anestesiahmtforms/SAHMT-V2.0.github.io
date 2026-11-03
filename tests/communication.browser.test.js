@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 const url=process.env.COMMUNICATION_PREVIEW_URL||'http://127.0.0.1:5178/SAHMT-V2.0.github.io/tests/fixtures/communication-preview.html';
 const open=(p,name)=>p.getByRole('button',{name,exact:true}).click();
+
+test('missing FF session replaces loading with Google recovery and retries only bootstrap',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{const page=await browser.newPage();await page.goto(url+'?common&needs-google');await open(page,'Confirmar Google (teste)');await page.locator('[data-enable]').waitFor();assert.equal(await page.getByText('Confirmando acesso no servidor FF…',{exact:true}).count(),0);assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='BOOTSTRAP').length),2);assert.equal(await page.evaluate(()=>window.calls.some(c=>['SAVE_MESSAGE','SEND_BATCH','REGISTER_DEVICE'].includes(c.action))),false);}finally{await browser.close();}
+});
 test('admin home, individual recipient, three groups, forwarding and manual send work on phones and desktop',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());

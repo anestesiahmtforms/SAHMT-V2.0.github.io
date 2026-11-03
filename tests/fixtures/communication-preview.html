@@ -2,10 +2,10 @@
 import {mountCommunication} from '../../src/communication-ui.js';
 import {mountManagementHub} from '../../src/management-hub.js';
 import {BUILTIN_GROUPS} from '../../communication/domain.js';
-const params=new URLSearchParams(location.search),admin=!params.has('common'),records=[],groups=[];window.calls=[];
-const client={dispose(){},enable:async permission=>{await permission;window.calls.push({action:'REGISTER_DEVICE'});},disable:async()=>{window.calls.push({action:'DISABLE_DEVICE'});},request:async(action,input={})=>{
+const params=new URLSearchParams(location.search),admin=!params.has('common'),records=[],groups=[];let connected=!params.has('needs-google');window.calls=[];
+const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=document.createElement('button');b.textContent='Confirmar Google (teste)';b.onclick=async()=>{connected=true;await onConnected();};host.append(b);return()=>b.remove();},enable:async permission=>{await permission;window.calls.push({action:'REGISTER_DEVICE'});},disable:async()=>{window.calls.push({action:'DISABLE_DEVICE'});},request:async(action,input={})=>{
  window.calls.push({action,input});
- if(action==='BOOTSTRAP')return {isAdmin:admin};
+ if(action==='BOOTSTRAP'){if(!connected)throw Object.assign(Error('session'),{code:'COMM_SESSION_INVALID'});return {isAdmin:admin};}
  if(action==='DIRECTORY')return {items:[{uid:'fa-person',email:'synthetic@example.test',displayName:'Pessoa Sintética'}],cursor:null};
  if(action==='GROUPS')return {items:[...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})),...groups],cursor:null};
  if(action==='AREAS')return {items:[{id:'quality',name:'Qualidade',active:true}],cursor:null};
