@@ -91,6 +91,24 @@ export const GOOGLE_PROJECT_CONFIG = Object.freeze({
     ],
     "credentialExchangeVerified": true,
     "clientSignupDisabled": true
+  },
+  "FF": {
+    "label": "Comunicação",
+    "appName": "sahmt-ff-direct",
+    "config": {
+      "apiKey": "AIzaSyBaEnjZ2jJgQNJbsOW0ks1asvFWGU1c_Ww",
+      "authDomain": "sahmt-comunicacao-ff.firebaseapp.com",
+      "projectId": "sahmt-comunicacao-ff",
+      "appId": "1:772883283859:web:9e26ccec85366db0e53266",
+      "messagingSenderId": "772883283859",
+      "storageBucket": "sahmt-comunicacao-ff.firebasestorage.app"
+    },
+    "googleEnabled": true,
+    "clientSignupDisabled": true,
+    "acceptedGoogleClientIds": [
+      "1072832154794-lb4cu9dcg3q49t60dadp9cc5m6h7dhai.apps.googleusercontent.com"
+    ],
+    "credentialExchangeVerified": true
   }
 });
 
