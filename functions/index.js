@@ -618,3 +618,6 @@ export const queueActionPlansReportSync = createReportSyncTrigger('actionPlans')
 export const queueActionPlanItemsReportSync = createReportSyncTrigger('actionPlanItems');
 export const queueScoresReportSync = createReportSyncTrigger('scores');
 export const queueAuditLogsReportSync = createReportSyncTrigger('auditLogs');
+
+// Manual Web Push callables (no automatic event triggers).
+export {registerSahmtPushDevice, unregisterSahmtPushDevice, sendSahmtManualNotification} from './push-notifications.js';
