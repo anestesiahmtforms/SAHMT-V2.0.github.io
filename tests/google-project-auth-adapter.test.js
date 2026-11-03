@@ -77,7 +77,7 @@ test('independent FB maintenance refreshes its own SDK session without initializ
  assert.equal((await runtime.maintainSessions()).status,'ready');assert.deepEqual(calls,[false]);assert.equal(await runtime.verifyTargetSession('FC'),false);
 });
 const entries=Object.fromEntries(['FA','FB','FC','FD','FE'].map(t=>[t,{acceptedGoogleClientIds:['source-client'],appName:'app-'+t,config:{projectId:t,appId:'id-'+t}}]));
-function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFailure,tokenRead}={}){
+function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFailure,tokenRead,includeFf=false}={}){
   const auth={target:'FA',currentUser:person()},apps=[],instances={FA:auth},calls=[],saved=new Map();
   const sdk={
     indexedDBLocalPersistence:'indexeddb',browserLocalPersistence:'local',inMemoryPersistence:'memory',browserPopupRedirectResolver:{},
@@ -109,7 +109,8 @@ function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFail
       static credentialFromResult(result){return result.credential;}
     }
   };
-  const runtime=createGoogleProjectAuthRuntime({sdk,auth,entries,enabled:true,isOnline:()=>true,randomId:()=> 'installation',
+  const configuredEntries = includeFf ? { ...entries, FF: { appName: 'app-FF', config: { projectId: 'FF', appId: 'id-FF' } } } : entries;
+  const runtime=createGoogleProjectAuthRuntime({sdk,auth,entries:configuredEntries,enabled:true,isOnline:()=>true,randomId:()=> 'installation',
     storage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},requestUri:()=> 'https://fixture.example/',
     restoreTimeoutMs:25,verifyDestination:async args=>{calls.push({kind:'preflight',target:args.entry.config.projectId});return verify?.(args);}});
   return {runtime,auth,instances,apps,calls,saved};
@@ -237,4 +238,17 @@ test('logout antigo não encerra conta nova surgida enquanto uma conexão termin
   assert.throws(()=>f.runtime.assertCanStartPrimarySignIn(),{code:'AUTH_LOGOUT_IN_PROGRESS'});
   f.auth.currentUser=person('new-person');finish.resolve();await Promise.allSettled([connecting,leaving]);
   assert.equal(f.auth.currentUser.uid,'new-person');assert.equal((await leaving).status,'superseded');
+});
+
+test('configured FF shares Google sign-in, restoration and global sign-out', async () => {
+  const h = fixture({ includeFf: true });
+  const state = await h.runtime.connectFromPrimarySignIn(credential, h.auth.currentUser);
+  assert.equal(state.targets.FF.status, 'ready');
+  assert.equal(state.complete, true);
+  assert.equal(h.instances.FF.currentUser.uid, h.auth.currentUser.uid);
+  assert.equal(h.calls.filter(call => call.kind === 'signin' && call.target === 'FF').length, 1);
+  await h.runtime.reconcile(h.auth.currentUser);
+  assert.equal(h.calls.filter(call => call.kind === 'signin' && call.target === 'FF').length, 1);
+  await h.runtime.controller.signOutAll();
+  assert.equal(h.instances.FF.currentUser, null);
 });

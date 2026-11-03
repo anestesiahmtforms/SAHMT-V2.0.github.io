@@ -26,21 +26,21 @@ const transient = code => ['auth/network-request-failed','AUTH_RESTORE_TIMEOUT']
 const fail=code=>Object.assign(new Error(code),{code});
 
 /** No Firestore, tokens, permissions or timer-based maintenance in this coordinator. */
-export function createGoogleProjectAuth({primary='FA',getPrimaryUser,restoreTarget,connectTarget,signOutTarget,
+export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGETS,getPrimaryUser,restoreTarget,connectTarget,signOutTarget,
   onState=()=>{},saveProgress=()=>{},isOnline=()=>true,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}) {
   let generation=0,identity=null,sourceUid=null,running=null,runningIdentity=null,restoring=null,loggingOut=null;
-  let states=Object.fromEntries(GOOGLE_AUTH_TARGETS.map(target=>[target,{status:'pending',code:null}]));
+  let states=Object.fromEntries(targets.map(target=>[target,{status:'pending',code:null}]));
   const listeners=new Set();
   const snapshot=()=>({release:GOOGLE_AUTH_RELEASE,uid:sourceUid,busy:Boolean(running||restoring||loggingOut),connecting:Boolean(running),signingOut:Boolean(loggingOut),
-    complete:GOOGLE_AUTH_TARGETS.every(target=>states[target].status==='ready'),targets:structuredClone(states)});
+    complete:targets.every(target=>states[target].status==='ready'),targets:structuredClone(states)});
   function emit(){const value=snapshot();onState(value);for(const listener of listeners)listener(value);
     if(identity)try{saveProgress({release:GOOGLE_AUTH_RELEASE,uid:identity.uid,complete:value.complete,
-      readyTargets:GOOGLE_AUTH_TARGETS.filter(target=>states[target].status==='ready')});}catch{/* Optional UI progress must not fail Auth. */}}
+      readyTargets:targets.filter(target=>states[target].status==='ready')});}catch{/* Optional UI progress must not fail Auth. */}}
   const current=(ticket,expected)=>ticket===generation&&sameGoogleIdentity(getPrimaryUser(),expected);
   const update=(target,value,ticket)=>{if(ticket===generation){states[target]=value;emit();}};
   async function pool(items,work){let index=0;await Promise.all([0,1].map(async()=>{while(index<items.length){const item=items[index++];await work(item);}}));}
   function adopt(user){const next=googleIdentity(user);if((user?.uid||null)!==sourceUid||next?.uid!==identity?.uid||next?.googleUid!==identity?.googleUid){
-    generation++;identity=next;sourceUid=user?.uid||null;states=Object.fromEntries(GOOGLE_AUTH_TARGETS.map(t=>[t,{status:'pending',code:null}]));
+    generation++;identity=next;sourceUid=user?.uid||null;states=Object.fromEntries(targets.map(t=>[t,{status:'pending',code:null}]));
   }return generation;}
   async function scan(user){
     const ticket=adopt(user),expected=identity;
@@ -48,7 +48,7 @@ export function createGoogleProjectAuth({primary='FA',getPrimaryUser,restoreTarg
     update(primary,{status:'ready',code:null},ticket);
     // Restoration only reads existing SDK sessions. A slow project must not
     // occupy the connection pool and hold up healthy destinations.
-    await Promise.all(GOOGLE_AUTH_TARGETS.filter(t=>t!==primary).map(async target=>{
+    await Promise.all(targets.filter(t=>t!==primary).map(async target=>{
       if(!current(ticket,expected))return;
       if(states[target].status!=='ready')update(target,{status:'restoring',code:null},ticket);
       try{const existing=await restoreTarget(target);
@@ -87,7 +87,7 @@ export function createGoogleProjectAuth({primary='FA',getPrimaryUser,restoreTarg
       await restore(getPrimaryUser());
       if(!current(ticket,expected))throw fail('AUTH_ACCOUNT_CHANGED');
       update(primary,{status:'ready',code:null},ticket);
-      await pool(GOOGLE_AUTH_TARGETS.filter(t=>t!==primary&&states[t].status!=='ready'),async target=>{
+      await pool(targets.filter(t=>t!==primary&&states[t].status!=='ready'),async target=>{
         if(!current(ticket,expected))return;
         if(!isOnline()){update(target,{status:'pending',code:'AUTH_OFFLINE',phase:'connect'},ticket);return;}
         update(target,{status:'connecting',code:null},ticket);
@@ -114,21 +114,21 @@ export function createGoogleProjectAuth({primary='FA',getPrimaryUser,restoreTarg
   }
   function clearSecondaries(source=getPrimaryUser()){
     const ticket=++generation;identity=null;sourceUid=source?.uid||null;
-    states=Object.fromEntries(GOOGLE_AUTH_TARGETS.map(t=>[t,{status:'pending',code:null}]));
+    states=Object.fromEntries(targets.map(t=>[t,{status:'pending',code:null}]));
     if(source)states[primary].code='AUTH_SOURCE_GOOGLE_LINK_REQUIRED';emit();
     // An Auth signed-out observation is not permission to sign out a subsequent login.
     const isCurrent=()=>ticket===generation&&getPrimaryUser()===source&&!googleIdentity(source);
-    return Promise.allSettled(GOOGLE_AUTH_TARGETS.filter(t=>t!==primary)
+    return Promise.allSettled(targets.filter(t=>t!==primary)
       .map(target=>signOutTarget(target,{isCurrent})));
   }
   function signOutAll(){
     if(loggingOut)return loggingOut;
     const source=getPrimaryUser(),expected=googleIdentity(source);
     const isCurrent=()=>!getPrimaryUser()||getPrimaryUser()===source||sameGoogleIdentity(getPrimaryUser(),expected);
-    generation++;identity=null;sourceUid=null;const active=running;states=Object.fromEntries(GOOGLE_AUTH_TARGETS.map(t=>[t,{status:'pending',code:null}]));
+    generation++;identity=null;sourceUid=null;const active=running;states=Object.fromEntries(targets.map(t=>[t,{status:'pending',code:null}]));
     const operation=(async()=>{
       // Invalidate in-flight sign-ins, then perform a second sweep after they settle.
-      const clear=()=>Promise.allSettled(GOOGLE_AUTH_TARGETS.map(target=>signOutTarget(target,{isCurrent})));
+      const clear=()=>Promise.allSettled(targets.map(target=>signOutTarget(target,{isCurrent})));
       const first=await clear();
       if(active)await active.catch(()=>{});
       const second=active?await clear():first;
@@ -137,16 +137,16 @@ export function createGoogleProjectAuth({primary='FA',getPrimaryUser,restoreTarg
     })();loggingOut=operation;emit();operation.finally(()=>{loggingOut=null;emit();}).catch(()=>{});return operation;
   }
   return Object.freeze({restore,connect,signOutAll,clearSecondaries,snapshot,
-    observeTarget(target,user){if(!identity||!sameGoogleIdentity(getPrimaryUser(),identity)||target===primary||!GOOGLE_AUTH_TARGETS.includes(target))return;
+    observeTarget(target,user){if(!identity||!sameGoogleIdentity(getPrimaryUser(),identity)||target===primary||!targets.includes(target))return;
       states[target]=sameGoogleIdentity(user,identity)?{status:'ready',code:null}:{status:'pending',code:user?'AUTH_UID_MISMATCH':null};emit();},
     subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);},
     invalidate(){generation++;identity=null;sourceUid=null;emit();}});
 }
 
 /** Local metadata only: no credential, token, email or authorization decision. */
-export function createGoogleAuthProgressStore(storage,randomId) {
+export function createGoogleAuthProgressStore(storage,randomId,targets=GOOGLE_AUTH_TARGETS) {
   let installation='memory';
   try{installation=storage.getItem('sahmt-google-auth-installation')||randomId();storage.setItem('sahmt-google-auth-installation',installation);}catch{}
   return {save(value){try{storage.setItem(`sahmt-google-auth:${GOOGLE_AUTH_RELEASE}:${installation}:${value.uid}`,
-    JSON.stringify({release:GOOGLE_AUTH_RELEASE,complete:value.complete===true,readyTargets:value.readyTargets.filter(t=>GOOGLE_AUTH_TARGETS.includes(t))}));}catch{}}};
+    JSON.stringify({release:GOOGLE_AUTH_RELEASE,complete:value.complete===true,readyTargets:value.readyTargets.filter(t=>targets.includes(t))}));}catch{}}};
 }

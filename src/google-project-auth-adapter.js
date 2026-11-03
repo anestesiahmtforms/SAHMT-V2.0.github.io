@@ -1,4 +1,4 @@
-import {createGoogleProjectAuth,createGoogleAuthProgressStore,googleIdentity,sameGoogleIdentity} from './google-project-auth-core.js';
+import {GOOGLE_AUTH_TARGETS,createGoogleProjectAuth,createGoogleAuthProgressStore,googleIdentity,sameGoogleIdentity} from './google-project-auth-core.js';
 import {googleTokenClaims,verifyExistingGoogleDestination} from './google-project-auth-preflight.js';
 import {waitForGoogleProjectSession} from './google-project-session.js';
 
@@ -57,8 +57,9 @@ function targetAuth(target){
 async function ready(instance){let timer;
   try{await Promise.race([instance.authStateReady?.(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]);}
   finally{clearTimeout(timer);}}
-const progress=createGoogleAuthProgressStore(storage,randomId);
-coordinator=createGoogleProjectAuth({primary:primary,getPrimaryUser:()=>auth.currentUser,
+const targets=entries.FF?[...GOOGLE_AUTH_TARGETS,'FF']:GOOGLE_AUTH_TARGETS;
+const progress=createGoogleAuthProgressStore(storage,randomId,targets);
+coordinator=createGoogleProjectAuth({primary,targets,getPrimaryUser:()=>auth.currentUser,
   isOnline,saveProgress:progress.save,
   restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;if(user&&!await verifyTargetSession(target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');return instance.currentUser;},
   signOutTarget:(target,{isCurrent=()=>true}={})=>withTargetLock(target,async()=>{
