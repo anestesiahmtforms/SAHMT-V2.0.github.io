@@ -5118,7 +5118,7 @@ async function render() {
   if (currentRoute() === 'home') {
     await loadHome();
     const host = app.querySelector('[data-comm-home-banners]');
-    if (communicationFeatureEnabled && host && session.status === 'signed-in' && !authLimited && current()) {
+    if (typeof communicationFeatureEnabled !== 'undefined' && communicationFeatureEnabled && host && session.status === 'signed-in' && !authLimited && current()) {
       const uid = session.user.uid;
       const isCurrentHome = () => current() && currentRoute() === 'home' && session.status === 'signed-in' && session.user?.uid === uid;
       const [{mountCommunicationHomeBanners}, {createCommunicationClient}] = await Promise.all([import('./communication-home-banners.js'), import('./communication-client.js')]);
