@@ -83,6 +83,15 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
       if(!participation.canParticipate)throw yearEndError('YEAR_END_FORBIDDEN');
       const choices=validateYearEndChoices(input,participation);
       return writeYearEndChoices({api,db,ownRef,totalsRef,uid,sigla:participation.sigla,choices,ensure});
+    },
+    async saveFor(targetUid,input) {
+      const actor=await profile();ensure();
+      if(!actor.isAdmin)throw yearEndError('YEAR_END_ADMIN_REQUIRED');
+      const policy=await api.getDocFromServer(policyRef);ensure();
+      const participant=yearEndParticipants(policy.exists()?policy.data():null).find(person=>person.uid===targetUid);
+      if(!participant)throw yearEndError('YEAR_END_INELIGIBLE');
+      const choices=validateYearEndChoices(input,participant),targetRef=api.doc(db,...base,'registrations',targetUid),adminEditRef=api.doc(db,...base,'adminEdits',uid);
+      return writeYearEndChoices({api,db,ownRef:targetRef,totalsRef,uid:targetUid,sigla:participant.sigla,choices,ensure,adminEditRef,actorUid:uid});
     }
   };
 }

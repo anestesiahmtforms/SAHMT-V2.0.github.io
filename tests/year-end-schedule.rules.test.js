@@ -51,6 +51,7 @@ async function confirm(db,uid,patch={},summaryPatch={}) {
   },{maxAttempts:15});
 }
 const save=(uid,choices)=>{const db=context(uid);return writeYearEndChoices({api:firestore,db,ownRef:ownRef(db,uid),totalsRef:totalsRef(db),uid,sigla:siglas[uid],choices,ensure(){}});};
+const adminSave=(actorUid,targetUid,choices)=>{const db=context(actorUid);return writeYearEndChoices({api:firestore,db,ownRef:ownRef(db,targetUid),totalsRef:totalsRef(db),uid:targetUid,sigla:Object.hasOwn(siglas,targetUid)?siglas[targetUid]:'XY',choices,adminEditRef:doc(db,base+'/adminEdits/'+actorUid),actorUid,ensure(){}});};
 
 test('simultaneous confirmations keep unique positions and correct anonymous totals',async()=>{
   const users=['one','two','three','four','five','six'];
@@ -198,4 +199,56 @@ test('ordinary participants cannot fetch the full participation policy',async()=
   await assertFails(getDoc(doc(context('one'),base+'/participation/two')));
   await assertFails(getDocs(collection(context('one'),base+'/participation')));
   await assertFails(updateDoc(doc(context('one'),base+'/participation/one'),{sigla:'FR'}));
+});
+
+test('administrator can edit confirmed and pending choices with atomic totals and a private edit record',async()=>{
+  await assertSucceeds(save('one',{plantao:'natal',grupo:'reveillon'}));
+  const original=(await getDoc(ownRef(context('admin'),'one'))).data();
+  await assertSucceeds(adminSave('admin','one',{plantao:'carnaval',grupo:'natal'}));
+  const changed=(await getDoc(ownRef(context('admin'),'one'))).data();
+  assert.equal(changed.position,original.position);assert.ok(changed.createdAt.isEqual(original.createdAt));assert.equal(changed.uid,'one');assert.equal(changed.sigla,'AB');
+  await assertSucceeds(adminSave('admin','fr',{plantao:'reveillon',grupo:null}));
+  assert.equal((await getDoc(ownRef(context('admin'),'fr'))).data().position,2);
+  assert.equal((await getDoc(ownRef(context('admin'),'admin'))).exists(),false);
+  const totals=(await getDoc(totalsRef(context('one')))).data();
+  assert.deepEqual(readYearEndTotals(totals),{plantaoNatal:0,plantaoReveillon:1,plantaoCarnaval:1,grupoNatal:1,grupoReveillon:0,totalRegistrations:2});
+  assert.ok(!('actorUid' in totals));assert.ok(!('targetUid' in totals));
+  await assertFails(getDoc(doc(context('one'),base+'/adminEdits/admin')));
+  await assertSucceeds(getDoc(doc(context('admin'),base+'/adminEdits/admin')));
+  await assertFails(getDocs(collection(context('one'),base+'/adminEdits')));
+});
+
+test('non-admins, revoked admins and excluded or inactive targets cannot use administrative editing',async()=>{
+  await assertFails(adminSave('one','three',{plantao:'natal',grupo:'natal'}));
+  for(const target of ['inactive','excluded','resident1','resident2','resident3','substitute','admin','unknown'])await assertFails(adminSave('admin',target,{plantao:'natal',grupo:'natal'}));
+  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'userCategories',categoryKey('three')),assignment('three',['SUBSTITUTO'])));
+  await assertFails(adminSave('admin','three',{plantao:'natal',grupo:'natal'}));
+  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users/admin'),{role:'temporario'}));
+  await assertFails(adminSave('admin','one',{plantao:'natal',grupo:'natal'}));
+  assert.equal((await getDocs(collection(context('two'),base+'/registrations'))).size,0);
+});
+
+test('administrative edits cannot forge identities, order, exemptions, totals or skip the paired registration',async()=>{
+  await assertSucceeds(save('one',{plantao:'natal',grupo:'reveillon'}));
+  const db=context('admin'),edit=doc(db,base+'/adminEdits/admin');
+  await assertFails(setDoc(edit,{actorUid:'admin',targetUid:'one',updatedAt:stamp()}));
+  await assertFails(adminSave('admin','fr',{plantao:'natal',grupo:'natal'}));
+  await assertFails(adminSave('admin','one',{plantao:'natal',grupo:null}));
+  for(const patch of [{uid:'three'},{sigla:'FR'},{position:2},{createdAt:stamp()}]){
+    await assertFails(runTransaction(db,async tx=>{const current=await tx.get(totalsRef(db)),prior=await tx.get(ownRef(db,'one')),choices={plantao:'reveillon',grupo:'natal'};
+      tx.set(edit,{actorUid:'admin',targetUid:'one',updatedAt:stamp()});tx.set(totalsRef(db),{...changeYearEndTotals(current.data(),prior.data(),choices),updatedAt:stamp()});tx.update(ownRef(db,'one'),{...choices,...patch,updatedAt:stamp()});}));
+  }
+  const batch=writeBatch(db);batch.set(edit,{actorUid:'other-admin',targetUid:'one',updatedAt:stamp()});batch.update(ownRef(db,'one'),{grupo:'natal',updatedAt:stamp()});await assertFails(batch.commit());
+});
+
+test('a single administrative edit cannot change two people while applying only one counter delta',async()=>{
+  await assertSucceeds(save('one',{plantao:'natal',grupo:'reveillon'}));await assertSucceeds(save('two',{plantao:'natal',grupo:'reveillon'}));
+  const db=context('two');
+  await assertFails(runTransaction(db,async tx=>{const current=await tx.get(totalsRef(db)),prior=await tx.get(ownRef(db,'one')),choices={plantao:'carnaval',grupo:'natal'};
+    tx.set(doc(db,base+'/adminEdits/two'),{actorUid:'two',targetUid:'one',updatedAt:stamp()});
+    tx.set(totalsRef(db),{...changeYearEndTotals(current.data(),prior.data(),choices),updatedAt:stamp()});
+    tx.update(ownRef(db,'one'),{...choices,updatedAt:stamp()});tx.update(ownRef(db,'two'),{...choices,updatedAt:stamp()});}));
+  await assertSucceeds(adminSave('two','one',{plantao:'carnaval',grupo:'natal'}));
+  await assertSucceeds(save('two',{plantao:'reveillon',grupo:'natal'}));
+  assert.equal((await getDoc(totalsRef(db))).data().totalRegistrations,2);
 });

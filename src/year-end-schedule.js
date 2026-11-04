@@ -84,6 +84,7 @@ export function yearEndMessage(error) {
     YEAR_END_SESSION_CHANGED:'Sua sessão mudou. Volte e reabra a escala com a mesma conta do app.',
     YEAR_END_AUTH_REQUIRED:'Conecte a escala com a mesma conta Google usada no app para continuar.',
     YEAR_END_FORBIDDEN:'Seu perfil precisa estar ativo e liberado no cadastro institucional.',
+    YEAR_END_ADMIN_REQUIRED:'Somente o administrador pode editar as escolhas de outra pessoa.',
     YEAR_END_CORRUPT_ORDER:'A ordem de inscrições precisa ser conferida pela gestão.',
     'permission-denied':'O acesso à escala precisa ser liberado pela administração.',
     unavailable:'Não foi possível conectar. Confira a internet e tente novamente.',

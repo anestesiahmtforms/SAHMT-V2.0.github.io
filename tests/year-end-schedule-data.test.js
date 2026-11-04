@@ -160,3 +160,26 @@ test('administrator policy denial stops listeners instead of showing an incomple
   f.subscriptions.find(s=>s.ref===base+'/policy/participation').error({code:'permission-denied'});
   assert.deepEqual(errors,[{code:'permission-denied'}]);assert.ok(f.subscriptions.every(s=>s.stopped));
 });
+
+test('administrator can fill a pending participant and edit a confirmed choice without changing its order',async()=>{
+  const f=fixture(),one=f.repository('one','AB'),exempt=f.repository('exempt','FR'),admin=f.repository('admin',null,['ADMINISTRADOR'],{role:'administrador_app'});
+  const saved=await one.repo.save({plantao:'natal',grupo:'reveillon'}),first=await f.store.get(base+'/registrations','one');
+  const edited=await admin.repo.saveFor('one',{plantao:'carnaval',grupo:'natal'});
+  assert.equal(edited.uid,'one');assert.equal(edited.updated,true);assert.equal(edited.position,saved.position);assert.equal(edited.createdAt,first.createdAt);
+  const pending=await admin.repo.saveFor('exempt',{plantao:'reveillon',grupo:null});
+  assert.equal(pending.uid,'exempt');assert.equal(pending.sigla,'FR');assert.equal(pending.position,2);assert.equal(pending.updated,false);
+  assert.equal((await f.store.get(base+'/registrations','admin')),null,'editar outra pessoa não inscreve o administrador');
+  assert.deepEqual(await f.store.get(base+'/adminEdits','admin'),{actorUid:'admin',targetUid:'exempt',updatedAt:(await f.store.get(base+'/registrations','exempt')).updatedAt});
+  const totals=await f.store.get(base+'/summary','totals');assert.equal(totals.totalRegistrations,2);assert.equal(totals.plantaoCarnaval,1);assert.equal(totals.plantaoReveillon,1);assert.equal(totals.grupoNatal,1);assert.equal(totals.grupoReveillon,0);
+  assert.ok(!('targetUid' in totals));assert.ok(!('actorUid' in totals));
+});
+
+test('administrator editing rechecks access, canonical roster and mandatory choices',async()=>{
+  const f=fixture(),one=f.repository('one','AB'),admin=f.repository('admin',null,['ADMINISTRADOR'],{role:'administrador_app'});
+  await assert.rejects(one.repo.saveFor('one',{plantao:'natal',grupo:'natal'}),{code:'YEAR_END_ADMIN_REQUIRED'});
+  await assert.rejects(admin.repo.saveFor('unknown',{plantao:'natal',grupo:'natal'}),{code:'YEAR_END_INELIGIBLE'});
+  await assert.rejects(admin.repo.saveFor('one',{plantao:'natal',grupo:null}),{code:'YEAR_END_INVALID_CHOICES'});
+  const profile=await f.store.get('users','admin');f.store.seed('users','admin',{...profile,role:'temporario'});
+  await assert.rejects(admin.repo.saveFor('one',{plantao:'natal',grupo:'natal'}),{code:'YEAR_END_INELIGIBLE'});
+  assert.equal((await f.store.list(base+'/registrations')).length,0);assert.equal((await f.store.list(base+'/adminEdits')).length,0);
+});
