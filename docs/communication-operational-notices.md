@@ -30,3 +30,13 @@ node --test tests/communication-operational-notices.test.js tests/schedule-relea
 ```
 
 Os testes usam perfis e dispositivos sintéticos. Eles cobrem o formulário fixo, a proteção contra duplicação, a audiência individual, o texto e o Push, a exigência de autorização e a privacidade da marcação verde na Home.
+
+## Correção do retorno da liberação
+
+Administradores são reconhecidos pelo perfil FA (função administrador_app ou permissão admin), e Márcio pelo email Google verificado, além dos perfis com scheduleWrite. O perfil deve continuar ativo e autorizado. A liberação da própria pessoa é incluída na primeira página da caixa de entrada da Home, mesmo quando há muitos avisos destinados a terceiros.
+
+A confirmação distingue aviso publicado, Push na fila, ausência de aparelho ativo, Push desativado e aceitação pelo FCM. Entrar na fila não confirma recebimento. O botão de uma sigla já liberada mostra CANCELAR LIBERAÇÃO, evitando uma retirada silenciosa ao clicar novamente.
+
+O service worker avisa as janelas abertas independentemente de falha ao mostrar a notificação do sistema. A Home exibe páginas recebidas progressivamente e atualiza ao retornar ao aplicativo, sem consultas periódicas em segundo plano. Falhas de sessão ficam visíveis com acesso à Central.
+
+O consumidor da fila usa max_batch_size 1. A configuração anterior com três mensagens podia exceder o orçamento compartilhado de 44 chamadas externas da execução. O teste communication-queue-budget passa pelo handler real, pela implementação de armazenamento e pelo envio simulado de três aparelhos, e reproduz a falha ao restaurar o lote anterior. As filas, os destinatários e os limites de gasto não são ampliados.

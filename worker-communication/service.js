@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS,SOURCE_COLLECTIONS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
-import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE} from '../src/communication-operational-notices.js';
+import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,scheduleReleaseIdentity} from '../src/communication-operational-notices.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
@@ -76,18 +76,19 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   }
  }
  async function releaseNotice(input,a,ownProfile){
-  if(ownProfile.permissions?.scheduleWrite!==true)throw fail('COMM_FORBIDDEN',403);
+  if(!scheduleReleaseIdentity(ownProfile,a))throw fail('COMM_FORBIDDEN',403);
   const day=String(input.day||''),sigla=String(input.sigla||'').trim().toUpperCase();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||! /^(?:[A-Z]{2}|L2)$/.test(sigla))throw fail('COMM_INVALID_INPUT');
   const schedule=await fa.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[sigla]);
   if(!schedule||!Array.isArray(schedule.highlights?.siglas)||!schedule.highlights.siglas.includes(sigla)||!Number.isSafeInteger(releaseAt)||releaseAt<=0||releaseAt>now()+60000)throw fail('COMM_NOT_CURRENT',409);
   const people=await fa.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
   if(people.length!==1||typeof people[0].uid!=='string')throw fail('COMM_INVALID_AUDIENCE',409);
+  const pushEligible=(await store.page('communicationDevices',{limit:1,filters:[['sourceUid',people[0].uid],['active',true]]})).length>0;
   const key=`release-${day}-${sigla}-${releaseAt}`;
   const old=await store.get('communicationMessages',key);
-  if(old?.status==='published'){const dispatch=await store.get('communicationDispatches',key);return {message:old,dispatch,pushQueued:Boolean(dispatch),pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true,alreadySent:true};}
+  if(old?.status==='published'){const dispatch=await store.get('communicationDispatches',key);return {message:old,dispatch,pushEligible,pushQueued:Boolean(dispatch),pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true,alreadySent:true};}
   const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a);
-  return {...result,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
+  return {...result,pushEligible,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
  }
  async function device(input,a,enable){
   if(typeof input.token!=='string'||input.token.length<50||input.token.length>4096||/\s/.test(input.token))throw fail('COMM_INVALID_TOKEN');
@@ -260,7 +261,15 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   if(action==='REGISTER_DEVICE'||action==='DISABLE_DEVICE')return device(input,a,action==='REGISTER_DEVICE');
   if(action==='INBOX'){
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:5,filters:[['status','published']]}),items=[];
-   for(const m of rows)if(isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
+   if(!input.cursor&&/^(?:[A-Z]{2}|L2)$/.test(ownProfile.sigla||'')){
+    const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now())).map(part=>[part.type,part.value]));
+    const day=`${parts.year}-${parts.month}-${parts.day}`,schedule=await fa.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[ownProfile.sigla]);
+    if(schedule?.highlights?.siglas?.includes(ownProfile.sigla)&&Number.isSafeInteger(releaseAt)&&releaseAt>0){
+     const ownRelease=await store.get('communicationMessages',`release-${day}-${ownProfile.sigla}-${releaseAt}`);
+     if(ownRelease?.audienceType==='USER'&&ownRelease.audienceValue===a.sourceUid&&isCurrentMessage(ownRelease,now()))items.push(ownRelease);
+    }
+   }
+   for(const m of rows)if(!items.some(item=>item.id===m.id)&&isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
    return {items,cursor:rows.length===5?rows.at(-1).id:null};
   }
   if(action==='MESSAGE'){

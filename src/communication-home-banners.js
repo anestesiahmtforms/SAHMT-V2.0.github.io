@@ -26,6 +26,9 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   let disposed = false;
   let visibleItems = [];
   let pushedItems = [];
+  let loading = false;
+  let lastLoadAt = 0;
+  let loadError = '';
   const active = () => !disposed && root.isConnected && isCurrent();
   const dismissed = readDismissed(uid);
 
@@ -39,7 +42,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
       <h2>${escapeHtml(item.title)}</h2><p>${linkedText(item.message)}</p>
       ${item.linkUrl&&/^https:\/\//.test(item.linkUrl)?`<a class="comm-home-notice__destination" href="${escapeHtml(item.linkUrl)}"${item.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(item.linkLabel||'ABRIR DESTINO')}</a>`:''}
       <a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>
-    </article>`).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '');
+    </article>`).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '') + (loadError ? `<article class="comm-home-notice" role="status"><p>${escapeHtml(loadError)} <a href="#/communications">ABRIR CENTRAL DE COMUNICAÇÃO</a></p></article>` : '');
   }
 
   async function appendPushedMessage(id) {
@@ -55,6 +58,10 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   }
 
   async function load() {
+    if (loading || !active() || document.visibilityState === 'hidden') return;
+    loading = true;
+    lastLoadAt = Date.now();
+    loadError = '';
     let cursor = '';
     let pages = 0;
     let hasMore = false;
@@ -73,11 +80,14 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         cursor = typeof result.cursor === 'string' ? result.cursor : '';
         pages++;
         hasMore = Boolean(cursor && pages >= MAX_INBOX_PAGES);
+        render(items, hasMore);
       } while (cursor && pages < MAX_INBOX_PAGES);
-    } catch {
-      // Home remains usable when the FF inbox is temporarily unavailable.
+    } catch (error) {
+      loadError = ['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code) ? 'Conecte sua conta à Central para receber seus avisos.' : 'Não foi possível atualizar seus avisos. Abra a Central para conferir.';
+    } finally {
+      loading = false;
     }
-    if (active()) render(items, hasMore);
+    if (active()) render(loadError && !items.length ? visibleItems : items, hasMore);
   }
 
   const onClick = event => {
@@ -95,13 +105,21 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     if (data?.source === 'SAHMT_FF' && data.type === 'NEW_COMMUNICATION') void appendPushedMessage(data.communicationId);
   };
 
+  const onResume = () => {
+    if (document.visibilityState !== 'hidden' && Date.now() - lastLoadAt > 2000) void load();
+  };
+
   root.addEventListener('click', onClick);
   navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage);
+  document.addEventListener('visibilitychange', onResume);
+  window.addEventListener('focus', onResume);
   void load();
   return () => {
     disposed = true;
     root.removeEventListener('click', onClick);
     navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage);
+    document.removeEventListener('visibilitychange', onResume);
+    window.removeEventListener('focus', onResume);
     root.replaceChildren();
     client.dispose();
   };

@@ -34,6 +34,7 @@ import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
+import {releaseNoticeFeedback, releaseNoticeError} from './communication-operational-notices.js';
 import {openChecklistCamera} from './checklist-camera.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {resolveChecklistQrStation} from './checklist-static.js';
@@ -1298,7 +1299,7 @@ function showScheduleContacts(contacts, context = {}) {
     const links = contactActionLinks(contact);
     const actions = `${links.whatsApp ? `<a class="contact-action" href="${escapeHtml(links.whatsApp)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}${links.phone ? `<a class="contact-action" href="tel:${links.phone}">Ligar</a>` : ''}${links.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(links.email)}">Enviar e-mail</a>` : ''}`;
     const released = (context.highlightedSiglas || []).includes(String(contact.sigla || '').toUpperCase());
-    const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}" aria-pressed="${released}" aria-label="Liberar ${escapeHtml(contact.name)}">LIBERAR</button>` : '';
+    const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}" aria-pressed="${released}" aria-label="${released ? 'Cancelar liberação de' : 'Liberar'} ${escapeHtml(contact.name)}">${released ? 'CANCELAR LIBERAÇÃO' : 'LIBERAR'}</button>` : '';
     return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${actions}${release}</div></article>`;
   }).join('');
   content.innerHTML = `<h3 id="schedule-contact-heading">${records.length > 1 ? 'Contatos vinculados' : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
@@ -1322,9 +1323,9 @@ function showScheduleContacts(contacts, context = {}) {
         const commClient = createCommunicationClient();
         try {
           const result = await commClient.request('SCHEDULE_RELEASE_NOTICE', {day: context.date, sigla: button.dataset.releaseSigla});
-          releaseNoticeStatus = result.alreadySent ? 'O aviso desta liberação já foi criado.' : result.pushQueued ? 'O Push foi iniciado e o aviso ficará na Home até ser fechado.' : result.pushEnabled ? 'O aviso ficará na Home. O serviço não confirmou a fila automática do Push.' : 'O aviso ficará na Home; o Push ainda está desativado nas Configurações da Central.';
-        } catch {
-          releaseNoticeStatus = 'A liberação foi salva, mas o aviso automático não pôde ser confirmado. Verifique a conexão e a sessão FF.';
+          releaseNoticeStatus = releaseNoticeFeedback(result, button.dataset.releaseSigla);
+        } catch (error) {
+          releaseNoticeStatus = releaseNoticeError(error);
         } finally {
           commClient.dispose();
         }
@@ -1332,7 +1333,8 @@ function showScheduleContacts(contacts, context = {}) {
       content.querySelectorAll('[data-release-sigla]').forEach((item) => {
         const itemMarked = context.highlightedSiglas.includes(String(item.dataset.releaseSigla || '').toUpperCase());
         item.setAttribute('aria-pressed', String(itemMarked));
-        item.textContent = 'LIBERAR';
+        item.textContent = itemMarked ? 'CANCELAR LIBERAÇÃO' : 'LIBERAR';
+        item.setAttribute('aria-label', (itemMarked ? 'Cancelar liberação da sigla ' : 'Liberar sigla ') + item.dataset.releaseSigla);
         item.classList.toggle('is-released', itemMarked);
         item.disabled = false;
       });

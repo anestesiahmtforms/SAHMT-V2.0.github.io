@@ -1,4 +1,4 @@
-const CACHE = 'sahmt-v2-shell-v292';
+const CACHE = 'sahmt-v2-shell-v293';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
 const PRECACHE = [
@@ -141,14 +141,15 @@ self.addEventListener('push', event => {
   event.waitUntil((async()=>{
     const title=typeof data.title==='string'&&data.title.trim()?data.title.slice(0,120):'🔔 SAHMT · NOVO AVISO';
     const body=typeof data.body==='string'&&data.body.trim()?data.body.slice(0,220):'Há uma nova comunicação institucional. Abra o SAHMT para consultar.';
-    await self.registration.showNotification(title,{
+    const notification=Promise.resolve().then(()=>self.registration.showNotification(title,{
       body,
       icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
       tag:'sahmt-ff-'+data.communicationId,renotify:false,requireInteraction:true,
       data:{source:'SAHMT_FF',route,communicationId:data.communicationId}
-    });
-    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
-    for(const client of windows)client.postMessage({source:'SAHMT_FF',type:'NEW_COMMUNICATION',communicationId:data.communicationId});
+    }));
+    const banner=(async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+      for(const client of windows)client.postMessage({source:'SAHMT_FF',type:'NEW_COMMUNICATION',communicationId:data.communicationId});})();
+    await Promise.allSettled([notification,banner]);
   })());
 });
 self.addEventListener('notificationclick',event=>{
