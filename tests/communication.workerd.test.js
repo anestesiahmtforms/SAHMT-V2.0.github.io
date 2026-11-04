@@ -16,7 +16,8 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
  const credentials={project_id:FF.projectId,client_email:`communication-worker@${FF.projectId}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
  const token=(p,project,uid)=>{const now=Math.floor(Date.now()/1000);return Buffer.from('{"alg":"RS256"}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:project,iss:'https://securetoken.google.com/'+project,sub:uid,email:p.email,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com',identities:{'google.com':[p.google]}}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');};
  const bundle=await build({entryPoints:['worker-communication/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
- const mf=new Miniflare(convertV4MiniflareOptions({name:'communication-test',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-11-03',compatibilityFlags:['nodejs_compat'],bindings:{COMMUNICATION_ENABLED:'true',WORKERS_FREE_CONFIRMED:'true',FF_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
+ // The pinned local workerd binary supports dates through 2026-10-13; production retains its own date.
+ const mf=new Miniflare(convertV4MiniflareOptions({name:'communication-test',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{COMMUNICATION_ENABLED:'true',WORKERS_FREE_CONFIRMED:'true',FF_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
   const u=new URL(request.url);requests.push(u.hostname+u.pathname);
   if(u.hostname==='identitytoolkit.googleapis.com'){
    const body=await request.json();let p,uid;
