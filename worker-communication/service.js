@@ -93,11 +93,34 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
    if(old&&old.uid!==a.uid)throw fail('COMM_DEVICE_OWNER',403);
    if(!enable&&!old)return {registered:false};
    const wasActive=old?.active===true;
-   tx.set('communicationDevices',key,{id:key,uid:a.uid,sourceUid:a.sourceUid,email:a.email,googleUid:a.googleUid,token:input.token,active:enable,platform:String(input.platform||'').slice(0,60),updatedAt:now()});
+   const deviceId=typeof input.deviceId==='string'&&/^[a-f0-9-]{36}$/.test(input.deviceId)?input.deviceId:old?.deviceId||'';
+   const displayMode=['browser','standalone'].includes(input.displayMode)?input.displayMode:old?.displayMode||'';
+   tx.set('communicationDevices',key,{id:key,uid:a.uid,sourceUid:a.sourceUid,email:a.email,googleUid:a.googleUid,token:input.token,active:enable,platform:String(input.platform||old?.platform||'').slice(0,60),deviceId,displayMode,updatedAt:now()});
    if(wasActive!==enable){metrics.devices=Math.max(0,metrics.devices+(enable?1:-1));tx.set('communicationMetrics','total',metrics);}
    tx.set('communicationRecipients',a.uid,{...actorData(a),googleUid:a.googleUid,verifiedAt:now(),deviceIds:enable?[...deviceIds,key]:deviceIds});
    audit(tx,a,enable?'DEVICE_REGISTERED':'DEVICE_DISABLED',key);return {registered:enable};
   });
+ }
+ async function pushDeviceDirectory(input){
+  const rows=await fa.page('users',{cursor:input.cursor||'',limit:9,filters:[['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
+  const users=rows.slice(0,8),items=[];
+  for(const user of users){
+   const sourceUid=user.uid||user.id;
+   const [installations,pushRows]=await Promise.all([
+    fa.listUserAppInstallations(sourceUid,{limit:100}),
+    store.page('communicationDevices',{limit:21,filters:[['sourceUid',sourceUid],['active',true]],fields:['active','deviceId','platform','displayMode','updatedAt']})
+   ]);
+   const appDevices=installations.filter(device=>device.target==='FA'&&typeof device.deviceId==='string');
+   const installIds=new Set(appDevices.map(device=>device.deviceId));
+   const activeUnlinked=pushRows.filter(device=>device.active===true&&(!device.deviceId||!installIds.has(device.deviceId)));
+   const devices=appDevices.map(device=>{
+    const linked=pushRows.filter(push=>push.deviceId===device.deviceId),active=linked.length>0;
+    return {deviceId:device.deviceId,platform:String(device.platform||'Outro'),displayMode:String(device.displayMode||''),appVersion:String(device.appVersion||''),loadedRelease:Number(device.loadedRelease)||0,lastSeenAt:Number(device.lastSeenAt)||0,pushStatus:active?'ACTIVE':activeUnlinked.length?'UNLINKED':'NOT_REGISTERED',pushUpdatedAt:Math.max(0,...linked.map(push=>Number(push.updatedAt)||0))};
+   });
+   for(const push of activeUnlinked)devices.push({deviceId:'',platform:String(push.platform||'Outro'),displayMode:String(push.displayMode||''),appVersion:'',loadedRelease:0,lastSeenAt:0,pushStatus:'UNLINKED',pushUpdatedAt:Number(push.updatedAt)||0});
+   if(devices.length)items.push({uid:sourceUid,displayName:String(user.displayName||''),email:String(user.email||''),sigla:String(user.sigla||''),devices});
+  }
+  return {items,cursor:rows.length>8?users.at(-1)?.id||null:null};
  }
  async function prepare(input,a){
   const key=id(input.id);
@@ -247,6 +270,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
    if(action==='GROUPS'&&!input.cursor)result.items.unshift(...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})));return result;
   }
   if(action==='DIRECTORY')return paged(await fa.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access']}));
+  if(action==='PUSH_DEVICE_DIRECTORY')return pushDeviceDirectory(input);
   if(action==='AREAS')return paged(await fb.page('managementAreas',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true]],fields:['name','title','active']}));
   if(action==='SAVE_GROUP'){
    const key=input.id?id(input.id):uuid(),name=text(input.name,100),members=[...new Set(input.memberUids||[])];
