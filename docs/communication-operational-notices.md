@@ -50,3 +50,11 @@ Somente a primeira publicação de um aviso consome o saldo de publicações. Ra
 A ação administrativa USAGE e a tela USO E LIMITES DIÁRIOS permitem consultar o consumo mesmo quando a proteção geral diária bloqueia outras operações; autenticação, perfil ativo e limite por minuto continuam obrigatórios. Márcio vê o saldo de publicações no formulário simplificado. Operações anteriores à separação são identificadas como sem classificação histórica.
 
 Erros distinguem limite diário de publicações, proteção diária de operações, orçamento de trabalho por operação e limitação do provedor. Respostas de limite diário informam consumo, teto e horário de renovação. Nenhuma opção altera faturamento ou ativa plano pago.
+
+## Entrega durante a preparação de destinatários
+
+Cada página reserva suas pendências antes de enfileirar os aparelhos. O consumidor verifica essa reserva e pode entregar enquanto as páginas seguintes ainda são preparadas. Na implementação anterior, o estado queueing obrigava todo aparelho a repetir o processamento até terminar a paginação; com repetição imediata, as tentativas podiam se esgotar antes disso.
+
+A reserva guarda os aparelhos e o próximo cursor. Se o produtor falhar ou perder a resposta do enfileiramento, ele reutiliza o mesmo plano sem aumentar novamente as pendências; trabalhos repetidos continuam usando o recibo individual existente. O total processado conta somente os aparelhos concluídos. Trabalhos legados sem referência à reserva continuam seguindo o fluxo anterior, sem reinterpretar seus contadores. Falhas aguardam 30 segundos antes de nova tentativa, mantendo o máximo existente de cinco repetições e o lote de um trabalho por execução.
+
+Os testes simulam sete aparelhos, mais de uma página, consumidores que terminam antes da resposta do produtor, falhas antes e depois do enfileiramento e reservas inválidas. O handler real também percorre o fluxo completo com respostas HTTP sintéticas, conferindo o teto de 44 chamadas externas por execução. Isso verifica a correção sem enviar avisos reais e sem atribuir o incidente anterior a uma causa que não foi registrada em produção.

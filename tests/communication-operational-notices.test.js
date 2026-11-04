@@ -21,10 +21,11 @@ function fixture(){
  for(const [actor,sigla]of [[operator,'MH'],[person,'AB'],[other,'CD']])fa.data.set('users/'+actor.sourceUid,{uid:actor.sourceUid,email:actor.email,active:true,access:true,sigla,permissions:{scheduleWrite:actor===operator}});
  fa.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-1000}}});
  store.data.set('communicationSettings/main',{pushEnabled:true});
- const service=createCommunicationService({store,fa,now:()=>NOW,uuid:()=>`test-${++sequence}`,pushQueue:{send:async body=>queued.push(body),sendBatch:async batch=>queued.push(...batch.map(item=>item.body))},send:async(token,data)=>{sent.push({token,data});return {status:'accepted'};},recipientEnabled:async()=>true});
+ const queue={send:async body=>queued.push(body),sendBatch:async batch=>queued.push(...batch.map(item=>item.body))};
+ const service=createCommunicationService({store,fa,now:()=>NOW,uuid:()=>`test-${++sequence}`,pushQueue:queue,send:async(token,data)=>{sent.push({token,data});return {status:'accepted'};},recipientEnabled:async()=>true});
  const call=(action,input={},actor=operator)=>service.execute(action,input,actor);
  const deliver=async()=>{while(queued.length)await service.consumePush(queued.shift());};
- return {store,fa,queued,sent,call,deliver};
+ return {store,fa,queued,sent,call,deliver,queue,consume:input=>service.consumePush(input)};
 }
 const draft=()=>urgentNoticeInput({noticeId:'urgent-test',title:'Aviso de teste',message:'Descrição de teste'},NOW);
 
@@ -58,6 +59,56 @@ test('liberação do Márcio mantém mensagem individual, texto exato, banner e 
  await assert.rejects(f.call('MESSAGE',{id:result.message.id},other),{code:'COMM_FORBIDDEN'});
  await f.deliver();assert.equal(f.sent.length,1);assert.equal(f.sent[0].token,person.uid+'x'.repeat(70));assert.equal(f.sent[0].data.title,RELEASE_NOTICE.title);assert.equal(f.sent[0].data.body,RELEASE_NOTICE.message);
  const again=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});assert.equal(again.alreadySent,true);assert.equal(f.queued.length,0);
+});
+
+test('primeiros aparelhos recebem o aviso enquanto as outras páginas de destinatários são preparadas',async()=>{
+ const f=fixture();
+ for(let i=0;i<7;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
+ const saved=await f.call('SAVE_MESSAGE',draft());
+ await f.consume(f.queued.shift());
+ assert.equal((await f.store.get('communicationDispatches',saved.message.id)).status,'queueing');
+ await f.consume(f.queued.shift());
+ assert.equal(f.sent.length,1,'o primeiro aparelho deve receber sem aguardar o fim da paginação');
+ await f.deliver();
+ const dispatch=await f.store.get('communicationDispatches',saved.message.id);
+ assert.equal(f.sent.length,7);assert.equal(dispatch.status,'completed');assert.equal(dispatch.pendingCount,0);assert.equal(dispatch.processed,7);assert.equal(dispatch.accepted,7);
+});
+
+test('consumidores podem terminar antes da resposta do produtor sem perder o saldo de pendências',async()=>{
+ const f=fixture();
+ for(let i=0;i<7;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
+ const saved=await f.call('SAVE_MESSAGE',draft());
+ f.queue.sendBatch=async batch=>{for(const item of batch)await f.consume(item.body);};
+ await f.deliver();
+ const dispatch=await f.store.get('communicationDispatches',saved.message.id);
+ assert.equal(dispatch.status,'completed');assert.equal(dispatch.pendingCount,0);assert.equal(dispatch.processed,7);assert.equal(dispatch.accepted,7);
+});
+
+test('falha de enfileiramento preserva a reserva e resposta perdida não duplica os Push',async()=>{
+ for(const count of [1,7])for(const acceptedBeforeFailure of [false,true]){
+  const f=fixture();
+  for(let i=0;i<count;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
+  const saved=await f.call('SAVE_MESSAGE',draft()),first=f.queued.shift(),enqueue=f.queue.sendBatch;
+  f.queue.sendBatch=async batch=>{if(acceptedBeforeFailure)await enqueue(batch);throw Error('synthetic queue outage');};
+  await assert.rejects(f.consume(first),/synthetic queue outage/);
+  const pending=(await f.store.get('communicationDispatches',saved.message.id)).pendingCount;
+  f.queue.sendBatch=enqueue;await f.consume(first);
+  assert.equal((await f.store.get('communicationDispatches',saved.message.id)).pendingCount,pending,'repetir o produtor não reserva os aparelhos novamente');
+  await f.deliver();
+  const dispatch=await f.store.get('communicationDispatches',saved.message.id);
+  assert.equal(dispatch.status,'completed');assert.equal(dispatch.pendingCount,0);assert.equal(dispatch.processed,count);assert.equal(dispatch.accepted,count);
+  assert.equal(f.sent.length,count);assert.equal(new Set(f.sent.map(item=>item.token)).size,count);
+ }
+});
+
+test('entrega antecipada exige reserva válida do aparelho e do próprio aviso',async()=>{
+ const f=fixture();f.store.data.set('communicationDevices/device-0',{id:'device-0',uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-0'});
+ const saved=await f.call('SAVE_MESSAGE',draft());
+ for(const plan of [{reserved:false,dispatchId:saved.message.id,deviceIds:['device-0']},{reserved:true,dispatchId:'other-notice',deviceIds:['device-0']},{reserved:true,dispatchId:saved.message.id,deviceIds:['other-device']}]){
+  f.store.data.set('communicationPushFanoutPages/invalid',plan);
+  await assert.rejects(f.consume({kind:'device',dispatchId:saved.message.id,deviceId:'device-0',fanoutPageId:'invalid'}),{code:'COMM_QUEUE_RETRY'});
+ }
+ assert.equal(f.sent.length,0);
 });
 
 test('liberação exige permissão de escala, marca confirmada e destinatário ativo único',async()=>{

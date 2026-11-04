@@ -204,34 +204,43 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   });
  }
  async function claimQueueWork(collection,key){
-  return store.transaction(async tx=>{const old=await tx.get(collection,key);if(old?.status==='done')return false;if(old?.status==='processing'&&old.startedAt>now()-120000)throw fail('COMM_QUEUE_RETRY',503);tx.set(collection,key,{id:key,status:'processing',startedAt:now()});return true;});
+  return store.transaction(async tx=>{const old=await tx.get(collection,key);if(old?.status==='done')return false;if(old?.status==='processing'&&old.startedAt>now()-120000)throw fail('COMM_QUEUE_RETRY',503);tx.set(collection,key,{...old,id:key,status:'processing',startedAt:now()});return old||{};});
  }
  async function queueFanout(input){
   const dispatchId=id(input.dispatchId),dispatch=await store.get('communicationDispatches',dispatchId),message=await store.get('communicationMessages',dispatchId);
   if(!dispatch||dispatch.automatic!==true||dispatch.status==='completed')return {done:true};
-  if(dispatch.status!=='queueing')throw fail('COMM_QUEUE_RETRY',503);
   const cursor=typeof input.cursor==='string'?input.cursor:'',pageKey=`${dispatchId}:${cursor||'first'}`;
-  if(!await claimQueueWork('communicationPushFanoutPages',pageKey))return {done:true};
+  if(dispatch.status!=='queueing'&&!(await store.get('communicationPushFanoutPages',pageKey))?.reserved)throw fail('COMM_QUEUE_RETRY',503);
+  let reservation=await claimQueueWork('communicationPushFanoutPages',pageKey);if(!reservation)return {done:true};
   try{
    const settings=await store.get('communicationSettings','main');
    if(!message||!isCurrentMessage(message,now())||settings?.pushEnabled!==true){await store.transaction(async tx=>{const live=await tx.get('communicationDispatches',dispatchId);if(live)tx.set('communicationDispatches',dispatchId,{...live,status:'completed',pendingCount:0,updatedAt:now()});const receipt=await tx.get('communicationPushFanoutPages',pageKey);if(receipt)tx.set('communicationPushFanoutPages',pageKey,{...receipt,status:'done'});});return {done:true};}
-   const page=await store.page('communicationDevices',{cursor,limit:BATCH_SIZE+1,filters:[['active',true],...(message.audienceType==='USER'?[['sourceUid',message.audienceValue]]:[])]});
-   const devices=page.slice(0,BATCH_SIZE),hasMore=page.length>BATCH_SIZE,nextCursor=devices.at(-1)?.id||cursor;
-   const batch=devices.map(device=>({body:{kind:'device',dispatchId,deviceId:device.id}}));if(hasMore)batch.push({body:{kind:'fanout',dispatchId,cursor:nextCursor}});
+   if(!reservation.reserved){
+    const page=await store.page('communicationDevices',{cursor,limit:BATCH_SIZE+1,filters:[['active',true],...(message.audienceType==='USER'?[['sourceUid',message.audienceValue]]:[])]});
+    const devices=page.slice(0,BATCH_SIZE),hasMore=page.length>BATCH_SIZE,nextCursor=devices.at(-1)?.id||cursor;
+    reservation=await store.transaction(async tx=>{
+     const live=await tx.get('communicationDispatches',dispatchId),receipt=await tx.get('communicationPushFanoutPages',pageKey);if(!live||receipt?.status==='done')return null;if(receipt?.reserved)return receipt;
+     const pendingCount=Math.max(0,live.pendingCount-1+devices.length+(hasMore?1:0)),reserved={...receipt,dispatchId,reserved:true,deviceIds:devices.map(device=>device.id),hasMore,nextCursor};
+     tx.set('communicationPushFanoutPages',pageKey,reserved);
+     tx.set('communicationDispatches',dispatchId,{...live,status:hasMore?'queueing':pendingCount?'processing':'completed',cursor:hasMore?nextCursor:live.cursor,pendingCount,updatedAt:now()});
+     return reserved;
+    });
+    if(!reservation)return {done:true};
+   }
+   // Reserve counters before exposing jobs to concurrent consumers. Retries reuse this plan.
+   const batch=reservation.deviceIds.map(deviceId=>({body:{kind:'device',dispatchId,deviceId,fanoutPageId:pageKey}}));if(reservation.hasMore)batch.push({body:{kind:'fanout',dispatchId,cursor:reservation.nextCursor}});
    if(batch.length)await pushQueue.sendBatch(batch);
    await store.transaction(async tx=>{
-    const live=await tx.get('communicationDispatches',dispatchId),receipt=await tx.get('communicationPushFanoutPages',pageKey);if(!live||receipt?.status==='done')return;
-    const pendingCount=Math.max(0,live.pendingCount-1+devices.length+(hasMore?1:0));
-    tx.set('communicationPushFanoutPages',pageKey,{...receipt,status:'done',count:devices.length,at:now()});
-    tx.set('communicationDispatches',dispatchId,{...live,status:hasMore?'queueing':pendingCount?'processing':'completed',cursor:hasMore?nextCursor:live.cursor,processed:live.processed+devices.length,pendingCount,updatedAt:now()});
+    const receipt=await tx.get('communicationPushFanoutPages',pageKey);if(receipt&&receipt.status!=='done')tx.set('communicationPushFanoutPages',pageKey,{...receipt,status:'done',count:reservation.deviceIds.length,at:now()});
    });
-   return {done:!hasMore};
+   return {done:!reservation.hasMore};
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushFanoutPages',pageKey);if(receipt?.status==='processing')tx.set('communicationPushFanoutPages',pageKey,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
  async function queueDevice(input){
   const dispatchId=id(input.dispatchId),deviceId=id(input.deviceId),dispatch=await store.get('communicationDispatches',dispatchId),receiptId=`${dispatchId}:${deviceId}`;
   if(!dispatch||dispatch.automatic!==true||dispatch.status==='completed')return {done:true};
-  if(dispatch.status==='queueing')throw fail('COMM_QUEUE_RETRY',503);
+  if(input.fanoutPageId){const page=await store.get('communicationPushFanoutPages',id(input.fanoutPageId));if(page?.reserved!==true||page.dispatchId!==dispatchId||!page.deviceIds?.includes(deviceId))throw fail('COMM_QUEUE_RETRY',503);}
+  else if(dispatch.status==='queueing')throw fail('COMM_QUEUE_RETRY',503);
   if(!await claimQueueWork('communicationPushDeliveries',receiptId))return {done:true};
   try{
    const message=await store.get('communicationMessages',dispatchId),device=await store.get('communicationDevices',deviceId),settings=await store.get('communicationSettings','main');

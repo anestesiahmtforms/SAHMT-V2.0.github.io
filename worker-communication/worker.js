@@ -49,11 +49,11 @@ export function createCommunicationWorker({verify=verifyPair,buildService}={}){
    }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,409,413,429,503].includes(e.status)?e.status:503);}
   },
   async queue(batch,env){
-   if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'){for(const message of batch.messages)message.retry();return;}
+   if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'){for(const message of batch.messages)message.retry({delaySeconds:30});return;}
    try{
     const service=await runtime(env,limitedFetch(),buildService);
-    for(const message of batch.messages){try{await service.consumePush(message.body);message.ack();}catch{message.retry();}}
-   }catch{for(const message of batch.messages)message.retry();}
+    for(const message of batch.messages){try{await service.consumePush(message.body);message.ack();}catch{message.retry({delaySeconds:30});}}
+   }catch{for(const message of batch.messages)message.retry({delaySeconds:30});}
   }
  };
 }
