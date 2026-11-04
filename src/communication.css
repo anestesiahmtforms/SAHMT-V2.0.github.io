@@ -17,3 +17,29 @@
 .communication--menu .comm-menu{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .communication--menu .comm-menu button{min-height:56px;padding:10px;font-size:clamp(.75rem,2.8vw,.95rem);line-height:1.25;overflow-wrap:anywhere;min-width:0}
 .communication--menu .comm-menu button:last-child:nth-child(odd){grid-column:1/-1}
+
+/* Keep the complete user directory in one scrollable region. */
+.communication--push-devices{display:flex;flex-direction:column;height:min(80dvh,760px);min-height:0}
+.communication--push-devices>.comm-heading{flex:0 0 auto;margin-bottom:8px}
+.communication--push-devices>.comm-heading h2{font-size:clamp(1rem,3.5vw,1.4rem)}
+.communication--push-devices>.comm-status{flex:0 0 auto}
+.communication--push-devices>.comm-content{display:flex;flex:1 1 auto;flex-direction:column;min-height:0}
+.communication--push-devices .comm-note{flex:0 0 auto;margin:0 0 8px;font-size:.78rem;line-height:1.35}
+.comm-push-summary{flex:0 0 auto;margin:0 0 8px;font-size:.82rem;font-weight:800}
+.comm-push-directory{flex:1 1 auto;min-height:0;overflow-y:scroll;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin!important;scrollbar-color:#58758a #dbe5eb;padding:0 8px 4px 0;-webkit-overflow-scrolling:touch}
+.communication .comm-push-directory::-webkit-scrollbar,.app-shell dialog .comm-push-directory::-webkit-scrollbar{display:block!important;width:8px!important;height:8px!important}
+.comm-push-directory::-webkit-scrollbar-track{background:#dbe5eb;border-radius:8px}
+.comm-push-directory::-webkit-scrollbar-thumb{background:#58758a;border-radius:8px}
+.comm-push-directory>.comm-card{margin:0 0 10px;padding:12px}
+.comm-push-directory h3{font-size:.95rem;margin:0 0 5px}
+.comm-push-directory p,.comm-push-empty{font-size:.8rem;line-height:1.35;margin:0 0 6px}
+.comm-push-directory .comm-push-device{gap:6px;padding:8px 0}
+.communication--push-devices .comm-actions{flex:0 0 auto;margin:8px 0 0}
+.communication--push-devices>footer.comm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.communication--push-devices>footer.comm-actions button{min-height:44px;padding:7px;font-size:.75rem;line-height:1.2}
+.management-hub-dialog[data-panel=communication]:has(.communication--push-devices){height:min(720px,calc(100dvh - var(--hub-edge) - var(--hub-edge)))}
+.management-hub-dialog[data-panel=communication]:has(.communication--push-devices) .management-hub-body{display:flex;overflow:hidden}
+.management-hub-dialog[data-panel=communication]:has(.communication--push-devices) .management-hub-footer{display:none}
+.management-hub-dialog[data-panel=communication] .communication--push-devices{flex:1 1 auto;height:100%;min-height:0}
+@media(max-height:660px){.management-hub-dialog[data-panel=communication]:has(.communication--push-devices){gap:8px}.management-hub-dialog:has(.communication--push-devices) .management-hub-header{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:0;min-height:0;padding:6px 8px}.management-hub-dialog:has(.communication--push-devices) .management-hub-header>[data-hub-heading-icon],.management-hub-dialog:has(.communication--push-devices) .management-hub-user-row{display:none}}
+@media(max-height:420px){.communication--push-devices .comm-note{display:none}.communication--push-devices>.comm-heading{margin-bottom:4px}.comm-push-summary{margin-bottom:4px}}
