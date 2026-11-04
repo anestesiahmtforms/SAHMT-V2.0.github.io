@@ -218,6 +218,15 @@ test('administrator can edit confirmed and pending choices with atomic totals an
   await assertFails(getDocs(collection(context('one'),base+'/adminEdits')));
 });
 
+test('enrolled administrator can edit their own pending or confirmed entry through the administrative form',async()=>{
+  await assertSucceeds(adminSave('two','two',{plantao:'carnaval',grupo:'natal'}));
+  const first=(await getDoc(ownRef(context('two'),'two'))).data();
+  await assertSucceeds(adminSave('two','two',{plantao:'reveillon',grupo:'reveillon'}));
+  const changed=(await getDoc(ownRef(context('two'),'two'))).data();
+  assert.equal(changed.position,1);assert.ok(changed.createdAt.isEqual(first.createdAt));
+  assert.deepEqual(readYearEndTotals((await getDoc(totalsRef(context('two')))).data()),{plantaoNatal:0,plantaoReveillon:1,plantaoCarnaval:0,grupoNatal:0,grupoReveillon:1,totalRegistrations:1});
+});
+
 test('non-admins, revoked admins and excluded or inactive targets cannot use administrative editing',async()=>{
   await assertFails(adminSave('one','three',{plantao:'natal',grupo:'natal'}));
   for(const target of ['inactive','excluded','resident1','resident2','resident3','substitute','admin','unknown'])await assertFails(adminSave('admin',target,{plantao:'natal',grupo:'natal'}));
