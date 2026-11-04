@@ -5,7 +5,7 @@ import {rememberCommunicationDevicePushActive} from './communication-link.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
-const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT']);
+const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
 export async function prepareCommunicationSession({isCurrent=()=>true}={}){
  const current=()=>communicationEnabled&&isCurrent()&&document.visibilityState!=='hidden';
  return current()&&await waitForGoogleProjectSession('FF',{isCurrent:current})&&current();
@@ -33,7 +33,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    const [ffToken,faToken]=await Promise.all([target.getIdToken(),source.getIdToken()]);
    if(!current()||auth.currentUser!==source||getGoogleProjectAuth('FF').currentUser!==target)throw fail('COMM_SESSION_INVALID');
    const r=await fetch(endpoint,{method:'POST',headers:{Authorization:'Bearer '+ffToken,'X-SAHMT-FA-Authorization':'Bearer '+faToken,'Content-Type':'application/json'},body:JSON.stringify({action,input}),cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});
-   const d=await r.json();if(!r.ok)throw fail(d.code||'COMM_SERVICE_UNAVAILABLE',r.status);
+   const d=await r.json();if(!r.ok){const error=fail(d.code||'COMM_SERVICE_UNAVAILABLE',r.status);for(const key of ['used','limit','resetsAt'])if(Number.isSafeInteger(d[key])&&d[key]>=0)error[key]=d[key];throw error;}
    if(!current()||auth.currentUser!==source||getGoogleProjectAuth('FF').currentUser!==target)throw fail('COMM_SESSION_INVALID');return d;
   }finally{clearTimeout(timer);controllers.delete(controller);}
  }

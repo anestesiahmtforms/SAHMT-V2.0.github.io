@@ -43,6 +43,13 @@ test('writes are never cached, merged, retried or sent automatically',async()=>{
  assert.equal(requests,2);h.client.dispose();
 });
 
+test('cliente preserva consumo e renovação de um bloqueio diário sem repetir o envio',async()=>{
+ let requests=0;const resetsAt=Date.parse('2026-11-05T00:00:00Z');
+ const h=clientHarness(async()=>{requests++;return Response.json({code:'COMM_DAILY_PUBLICATION_LIMIT',used:200,limit:200,resetsAt,privateDetail:'not forwarded'},{status:429});});
+ await assert.rejects(h.client.request('SAVE_MESSAGE',{version:0}),error=>error.code==='COMM_DAILY_PUBLICATION_LIMIT'&&error.used===200&&error.limit===200&&error.resetsAt===resetsAt&&error.privateDetail===undefined);
+ assert.equal(requests,1);h.client.dispose();
+});
+
 test('an account change cannot reuse another account’s in-flight result',async()=>{
  let release,requests=0;
  const h=clientHarness(async()=>{requests++;if(requests===1)return new Promise(resolve=>release=resolve);return Response.json({items:[{id:'new-account'}]});});

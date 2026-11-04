@@ -2,8 +2,9 @@ import {FF,fail} from '../communication/domain.js';
 import {verifyPair,serviceToken,assertFreeProject,boundedJson} from './google.js';
 import {createStore} from './store.js';
 import {createCommunicationService} from './service.js';
+import {COMMUNICATION_LIMITS} from '../src/communication-usage.js';
 const ORIGIN='https://anestesiahmtforms.github.io';
-function limitedFetch(){let calls=0;return (url,options)=>{if(++calls>44)throw fail('COMM_FREE_QUOTA_EXHAUSTED',429);return fetch(url,options);};}
+function limitedFetch(){let calls=0;return (url,options)=>{if(++calls>COMMUNICATION_LIMITS.externalCalls)throw fail('COMM_OPERATION_WORK_LIMIT',429);return fetch(url,options);};}
 async function runtime(env,fetchImpl,buildService){
  if(buildService)return buildService(env);
  const getToken=serviceToken(JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null'),fetchImpl);
@@ -45,7 +46,7 @@ export function createCommunicationWorker({verify=verifyPair,buildService}={}){
     if(!body||typeof body.action!=='string'||Object.keys(body).some(k=>!['action','input'].includes(k)))throw fail('COMM_INVALID_INPUT');
     const fetchImpl=limitedFetch(),actor=await verify(request,{fetchImpl}),service=await runtime(env,fetchImpl,buildService);
     return json(await service.execute(body.action,body.input||{},actor));
-   }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE';return json({code},[400,401,403,409,413,429,503].includes(e.status)?e.status:503);}
+   }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,409,413,429,503].includes(e.status)?e.status:503);}
   },
   async queue(batch,env){
    if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'){for(const message of batch.messages)message.retry();return;}

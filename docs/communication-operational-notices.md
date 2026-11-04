@@ -40,3 +40,13 @@ A confirmação distingue aviso publicado, Push na fila, ausência de aparelho a
 O service worker avisa as janelas abertas independentemente de falha ao mostrar a notificação do sistema. A Home exibe páginas recebidas progressivamente e atualiza ao retornar ao aplicativo, sem consultas periódicas em segundo plano. Falhas de sessão ficam visíveis com acesso à Central.
 
 O consumidor da fila usa max_batch_size 1. A configuração anterior com três mensagens podia exceder o orçamento compartilhado de 44 chamadas externas da execução. O teste communication-queue-budget passa pelo handler real, pela implementação de armazenamento e pelo envio simulado de três aparelhos, e reproduz a falha ao restaurar o lote anterior. As filas, os destinatários e os limites de gasto não são ampliados.
+
+## Contagem diária e diagnóstico de limites
+
+O limite legado de 200 operações misturava abertura da Home, consultas e envios de todos os usuários. Agora há um limite separado de 200 novas publicações por dia UTC e uma proteção geral de 2.000 operações por dia UTC. Permanecem 20 operações por minuto por UID e 44 chamadas externas por execução. Esses números são limites internos; o consumo do provedor depende também de documentos, consultas e aparelhos.
+
+Somente a primeira publicação de um aviso consome o saldo de publicações. Rascunhos, edições, validações recusadas e repetição do mesmo envio não consomem outra publicação. A reserva é transacional. Ao iniciar o contador novo, uma agregação por firstPublishedAt inclui os avisos já publicados naquele dia, sem zerar o histórico. O contador antigo de operações é preservado e registra separadamente consultas e outras ações a partir da atualização.
+
+A ação administrativa USAGE e a tela USO E LIMITES DIÁRIOS permitem consultar o consumo mesmo quando a proteção geral diária bloqueia outras operações; autenticação, perfil ativo e limite por minuto continuam obrigatórios. Márcio vê o saldo de publicações no formulário simplificado. Operações anteriores à separação são identificadas como sem classificação histórica.
+
+Erros distinguem limite diário de publicações, proteção diária de operações, orçamento de trabalho por operação e limitação do provedor. Respostas de limite diário informam consumo, teto e horário de renovação. Nenhuma opção altera faturamento ou ativa plano pago.

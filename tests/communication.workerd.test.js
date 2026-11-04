@@ -11,7 +11,7 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
  const roots={FA:'projects/sahmt-17a16/databases/(default)/documents',FF:`projects/${FF.projectId}/databases/${FF.databaseId}/documents`};
  const people=[{fa:'fa-admin',ff:'ff-admin',email:ADMINS[0],google:'google-admin'},{fa:'fa-person',ff:'ff-person',email:'person@example.test',google:'google-person'}];
  for(const p of people)data.set(roots.FA+'/users/'+p.fa,{uid:p.fa,email:p.email,active:true,access:true,role:'gestor'});
- data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});
+ data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  const credentials={project_id:FF.projectId,client_email:`communication-worker@${FF.projectId}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
  const token=(p,project,uid)=>{const now=Math.floor(Date.now()/1000);return Buffer.from('{"alg":"RS256"}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:project,iss:'https://securetoken.google.com/'+project,sub:uid,email:p.email,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com',identities:{'google.com':[p.google]}}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');};
@@ -32,6 +32,12 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
   if(u.pathname.endsWith(':rollback'))return Response.json({});
   if(u.pathname.endsWith(':commit')){const payload=await request.json();for(const w of payload.writes){assert.ok(w.update.name.startsWith(roots.FF+'/'));writes.push(w.update.name);data.set(w.update.name,decodeFields(w.update.fields));}return Response.json({commitTime:new Date().toISOString()});}
   const root=decodeURIComponent(u.pathname.slice(4).split('/documents')[0]+'/documents');
+  if(u.pathname.endsWith(':runAggregationQuery')){
+   const {structuredAggregationQuery:q}=await request.json(),filters=q.structuredQuery.where.compositeFilter.filters;
+   const start=decodeFields({v:filters[0].fieldFilter.value}).v,end=decodeFields({v:filters[1].fieldFilter.value}).v;
+   const count=[...data].filter(([key,v])=>key.startsWith(root+'/communicationMessages/')&&v.firstPublishedAt>=start&&v.firstPublishedAt<end).length;
+   return Response.json([{result:{aggregateFields:{published:{integerValue:String(count)}}}}]);
+  }
   if(u.pathname.endsWith(':runQuery')){
    const {structuredQuery:q}=await request.json(),clauses=q.where?.compositeFilter?.filters||(q.where?[q.where]:[]),cursor=q.startAt?.values?.[0]?.referenceValue||'';
    return Response.json([...data].filter(([key,v])=>key.startsWith(root+'/'+q.from[0].collectionId+'/')&&key>cursor&&clauses.every(({fieldFilter:f})=>v[f.field.fieldPath]===decodeFields({v:f.value}).v)).sort(([a],[b])=>a.localeCompare(b)).slice(0,q.limit).map(([name,value])=>({document:{name,fields:encodeFields(value)}})));
@@ -43,10 +49,12 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
   assert.equal((await call('DIRECTORY',{},people[1])).status,403);
   const device='synthetic-device-'+'x'.repeat(60);assert.equal((await call('REGISTER_DEVICE',{token:device},people[1])).status,200);
   const saved=await call('SAVE_MESSAGE',{version:0,message:{title:'Synthetic',message:'Never on lock screen',category:'COMUNICADO GERAL',priority:'NORMAL',audienceType:'USER',audienceValue:'fa-person',route:'management',status:'published',publishAt:Date.now()-1000,expiresAt:Date.now()+86400000}});assert.equal(saved.status,200,JSON.stringify(saved));const id=saved.body.message.id;
-  assert.equal((await call('PREPARE',{id})).status,200);assert.equal(pushes.length,0);
-  const sent=await call('SEND_BATCH',{id,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'management');assert.equal(JSON.stringify(pushes).includes('Never on lock screen'),false);
+  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});assert.equal((await call('PREPARE',{id})).status,200);assert.equal(pushes.length,0);
+  const sent=await call('SEND_BATCH',{id,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'home');assert.equal(pushes[0].message.data.body,'Never on lock screen');
   assert.equal((await call('SEND_BATCH',{id,batches:0,confirmed:true})).status,409);assert.equal(pushes.length,1);assert.ok(writes.length>0);assert.ok(writes.every(p=>p.startsWith(roots.FF+'/')));
+  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
   const next=await call('SAVE_MESSAGE',{version:0,message:{...saved.body.message,title:'Primary account disabled'}});assert.equal(next.status,200);
+  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});
   const nextId=next.body.message.id;await call('PREPARE',{id:nextId});disabledFa=true;
   const denied=await call('SEND_BATCH',{id:nextId,batches:0,confirmed:true});assert.equal(denied.status,200);assert.equal(denied.body.dispatch.accepted,0);assert.equal(denied.body.dispatch.skipped,1);assert.equal(pushes.length,1,'disabled FA Auth cannot receive through active FF Auth');
  }finally{await mf.dispose();}

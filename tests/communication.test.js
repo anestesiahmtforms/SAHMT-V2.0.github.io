@@ -17,8 +17,9 @@ function memory(){
  const data=new Map();let lock=Promise.resolve();
  const get=async(c,k)=>structuredClone(data.get(c+'/'+k)||null);
  const page=async(c,{cursor='',limit=20,filters=[],fields}={})=>[...data].filter(([k,v])=>k.startsWith(c+'/')&&k.split('/')[1]>cursor&&filters.every(([f,val])=>v[f]===val)).sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([key,v])=>({...structuredClone(fields?Object.fromEntries(fields.filter(f=>f in v).map(f=>[f,v[f]])):v),id:key.split('/')[1]}));
- const transaction=work=>{const run=lock.then(async()=>{const writes=[];const result=await work({get,set:(c,k,v)=>writes.push([c+'/'+k,v]),create:(c,k,v)=>{assert.equal(data.has(c+'/'+k),false);writes.push([c+'/'+k,v]);}});for(const [k,v]of writes)data.set(k,structuredClone(v));return result;});lock=run.catch(()=>{});return run;};
- return {data,get,page,transaction,getMany:(c,keys)=>Promise.all(keys.map(k=>get(c,k)))};
+ const countPublished=async(start,end)=>[...data].filter(([key,v])=>key.startsWith('communicationMessages/')&&v.firstPublishedAt>=start&&v.firstPublishedAt<end).length;
+ const transaction=work=>{const run=lock.then(async()=>{const writes=[];const result=await work({get,countPublished,set:(c,k,v)=>writes.push([c+'/'+k,v]),create:(c,k,v)=>{assert.equal(data.has(c+'/'+k),false);writes.push([c+'/'+k,v]);}});for(const [k,v]of writes)data.set(k,structuredClone(v));return result;});lock=run.catch(()=>{});return run;};
+ return {data,get,page,countPublished,transaction,getMany:(c,keys)=>Promise.all(keys.map(k=>get(c,k)))};
 }
 function fixture(){
  const store=memory(),fa=memory(),fb=memory(),sources={FC:memory(),FD:memory(),FE:memory()},sent=[];let n=0,time=NOW,enabled=true;
@@ -29,7 +30,11 @@ function fixture(){
  return {store,fa,fb,sources,sent,call,setTime:v=>time=v,disableAccount:()=>enabled=false};
 }
 async function register(f,a=person,token='device-'+ 'x'.repeat(80)){await f.call('REGISTER_DEVICE',{token},a);return token;}
-async function publish(f,extra={}){return (await f.call('SAVE_MESSAGE',{version:0,message:message(extra)})).message;}
+async function publish(f,extra={}){
+ // These cases exercise the manual fallback after publication with automatic Push off.
+ const settings=f.store.data.get('communicationSettings/main'),enabled=settings.pushEnabled;settings.pushEnabled=false;
+ try{return (await f.call('SAVE_MESSAGE',{version:0,message:message(extra)})).message;}finally{settings.pushEnabled=enabled;}
+}
 test('only the four verified emails grant administration, never local roles or permissions',async()=>{
  assert.equal(ADMINS.length,4);for(const email of ADMINS)assert.equal(adminIdentity({email,emailVerified:true}),true);
  assert.equal(adminIdentity({email:ADMINS[0],emailVerified:false}),false);
@@ -62,7 +67,7 @@ test('concurrent send claims and HTTP retries cannot send the same device twice'
  const f=fixture();await register(f);const m=await publish(f);await f.call('PREPARE',{id:m.id});
  const results=await Promise.allSettled([f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true}),f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true})]);
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(f.sent.length,1);
- assert.equal(f.sent[0].data.title.includes(m.title),false);assert.equal(f.sent[0].data.route,'management');
+ assert.equal(f.sent[0].data.title,m.title);assert.equal(f.sent[0].data.route,'home');
  assert.equal((await f.call('HISTORY')).items[0].accepted,1);await assert.rejects(f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true}),{code:'COMM_DISPATCH_LOCKED'});
 });
 test('expired token is disabled; disabled account, inactive source and unrelated audience are skipped',async()=>{
@@ -99,7 +104,7 @@ test('source forwarding creates only a draft, checks every reference and never w
  await assert.rejects(f.call('IMPORT_SOURCE',{project:'FA',collection:'users',id:person.sourceUid}),{code:'COMM_SOURCE_UNSUPPORTED'});
 });
 test('quota exhaustion fails closed; incomplete dispatch reconciliation never resends reserved devices',async()=>{
- const f=fixture();f.store.data.set('communicationBudgets/2026-11-03',{requests:200});await assert.rejects(f.call('BOOTSTRAP'),{code:'COMM_FREE_QUOTA_EXHAUSTED'});
+ const f=fixture();f.store.data.set('communicationBudgets/2026-11-03',{requests:2000});await assert.rejects(f.call('BOOTSTRAP'),{code:'COMM_DAILY_OPERATION_LIMIT'});
  const g=fixture();g.store.data.set('communicationDispatches/interrupted',{id:'interrupted',status:'processing',batchStartedAt:NOW-180000,batchId:'one',pendingCount:3,batches:1,cursor:'last',unknown:0,processed:0});const d=await g.call('RECONCILE',{id:'interrupted',confirmed:true});assert.equal(d.dispatch.unknown,3);assert.equal(d.dispatch.cursor,'last');assert.equal(g.sent.length,0);
 });
 test('FF identity tolerates a different Firebase UID only for the same verified Google subject',()=>{
@@ -131,9 +136,9 @@ test('source stores refuse writes and FF storage paths are fixed',async()=>{
  const urls=[],ff=createStore({getToken:async()=>'',fetchImpl:async url=>{urls.push(url);return Response.json({fields:{}});}});await ff.get('communicationMessages','one');assert.ok(urls[0].includes('/sahmt-comunicacao-ff/databases/comunicacao/'));
  await ff.get('communicationMessages','one',undefined,['title','message']);assert.deepEqual(new URL(urls[1]).searchParams.getAll('mask.fieldPaths'),['title','message']);
 });
-test('service worker shows private generic preview and opens only allowlisted same-origin module',async()=>{
+test('service worker shows the requested preview and opens only allowlisted same-origin module',async()=>{
  const events={},shown=[],opened=[];const self={location:{origin:'https://anestesiahmtforms.github.io'},addEventListener:(n,f)=>events[n]=f,registration:{showNotification:async(...a)=>shown.push(a)},clients:{matchAll:async()=>[],openWindow:async u=>opened.push(u)}};
  vm.runInNewContext(readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8'),{self,URL});let pending;
- events.push({data:{json:()=>({data:{source:'SAHMT_FF',communicationId:'one',title:'Private author title',body:'private',route:'https://evil.invalid'}})},waitUntil:p=>pending=p});await pending;assert.equal(shown.length,1);assert.equal(JSON.stringify(shown).includes('private'),false);
+ events.push({data:{json:()=>({data:{source:'SAHMT_FF',communicationId:'one',title:'Private author title',body:'private',route:'https://evil.invalid'}})},waitUntil:p=>pending=p});await pending;assert.equal(shown.length,1);assert.equal(shown[0][0],'Private author title');assert.equal(shown[0][1].body,'private');
  events.notificationclick({notification:{data:shown[0][1].data,close(){}},waitUntil:p=>pending=p});await pending;assert.equal(opened[0],'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/communications/message/one');
 });

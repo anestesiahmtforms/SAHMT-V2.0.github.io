@@ -48,7 +48,7 @@ Não há listeners permanentes. Listas administrativas paginam 20 registros. A c
 
 ## Limites e faturamento
 
-Limites conservadores da aplicação: 200 operações autenticadas por dia UTC para toda a Central, 20 por minuto por UID e 44 chamadas externas por requisição. Excesso retorna erro explícito. Outros módulos compartilham cotas dos respectivos projetos/contas; esses limites não reservam cota global.
+Limites internos da aplicação: 200 novos avisos publicados por dia UTC, separados da proteção de 2.000 operações autenticadas por dia UTC para toda a Central. Permanecem 20 operações por minuto por UID e 44 chamadas externas por requisição. Consultas, rascunhos, edições e tentativas repetidas não são novas publicações. O painel USO E LIMITES DIÁRIOS mostra os dois contadores e a renovação (21h de Brasília). Os limites do provedor são independentes, e o serviço continua exigindo faturamento desativado e banco elegível ao plano gratuito.
 
 Workers Free publica limites de 100 mil requisições/dia, 50 subrequisições/invocação e 10 ms de CPU. A conta disponível retornou `default_usage_model: standard`, o que não comprova Free; consulta de assinaturas retornou 403 por falta de acesso de faturamento. **O plano gratuito ainda precisa ser confirmado antes de implantação.** `WORKERS_FREE_CONFIRMED=false` bloqueia operação. CPU real de OAuth/Firestore deve ser homologada no Free; testes locais não comprovam esse limite. Não contratar plano pago caso o fluxo não caiba.
 

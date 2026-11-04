@@ -21,8 +21,9 @@ test('FA dependency verification accepts the shared view while rejecting unrelat
   writeFileSync(join(root,'src/main.js'),"import '../indicators-platform/ui.js'; import '../communication/domain.js';");
   const communication=check();assert.equal(communication.status,0,communication.stderr);assert.equal(JSON.parse(communication.stdout).reachableSourceFiles,4);
   writeFileSync(join(root,'src/communication-operational-notices.js'),readFileSync(new URL('../src/communication-operational-notices.js',import.meta.url)));
+  writeFileSync(join(root,'src/communication-usage.js'),readFileSync(new URL('../src/communication-usage.js',import.meta.url)));
   writeFileSync(join(root,'src/main.js'),"import '../indicators-platform/ui.js'; import './communication-operational-notices.js';");
-  const operational=check();assert.equal(operational.status,0,operational.stderr);assert.equal(JSON.parse(operational.stdout).reachableSourceFiles,5);
+  const operational=check();assert.equal(operational.status,0,operational.stderr);assert.equal(JSON.parse(operational.stdout).reachableSourceFiles,6);
   for(const path of ['./entry.js','../worker-indicators/store.js']){
    writeFileSync(join(root,'indicators-platform/ui.js'),'import '+JSON.stringify(path)+';');
    const blocked=check();assert.notEqual(blocked.status,0);assert.match(blocked.stderr,/FA_RUNTIME_PATH_INVALID/);
