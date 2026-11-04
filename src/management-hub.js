@@ -26,9 +26,9 @@ const panels={
   {label:'Registros',icon:'records',panel:'records',access:'records'},
   {label:'INDICADORES - SAHMT',icon:'results',panel:'results',access:'results'},
   {label:'Enquetes e Consultas',icon:'surveys',panel:'surveys',access:'surveys'},
-  {label:'CENTRAL DE COMUNICAÇÃO — FF',icon:'surveys',panel:'communication',access:'communication'}
+  {label:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',panel:'communication',access:'communication'}
  ]},
- communication:{title:'Central de Comunicação — FF',icon:'surveys',parent:'home'},
+ communication:{title:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',parent:'home'},
  records:{title:'Registros',icon:'records',parent:'home',items:[
   {label:'Registros de Ocorrências',icon:'occurrence',route:'occurrences',access:'occurrences'},
   {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'},
