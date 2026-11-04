@@ -3,6 +3,7 @@ import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMes
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
 import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,scheduleReleaseIdentity} from '../src/communication-operational-notices.js';
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
+import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
@@ -30,6 +31,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   return {day:period.day,resetsAt:period.resetsAt,operations:{used,limit:COMMUNICATION_LIMITS.dailyOperations,reads,changes,unclassified:Math.max(0,used-reads-changes)},publications:{used:published,limit:COMMUNICATION_LIMITS.dailyPublications,remaining:Math.max(0,COMMUNICATION_LIMITS.dailyPublications-published)},minuteLimit:COMMUNICATION_LIMITS.minuteOperations};
  }
  async function audience(m,p,sourceUid){
+  if(isSystemOwnerEmail(p?.email))return false;
   if(m.audienceType==='GROUP'){
    if(BUILTIN_GROUPS.some(g=>g.id===m.audienceValue)){
     const email=p.email.trim().toLowerCase(),people=await fb.page('users',{limit:2,filters:[['email',email]],fields:['uid','email','active','access']});
@@ -96,7 +98,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   const schedule=await fa.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[sigla]);
   if(!schedule||!Array.isArray(schedule.highlights?.siglas)||!schedule.highlights.siglas.includes(sigla)||!Number.isSafeInteger(releaseAt)||releaseAt<=0||releaseAt>now()+60000)throw fail('COMM_NOT_CURRENT',409);
   const people=await fa.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
-  if(people.length!==1||typeof people[0].uid!=='string')throw fail('COMM_INVALID_AUDIENCE',409);
+  if(people.length!==1||typeof people[0].uid!=='string'||isSystemOwnerEmail(people[0].email))throw fail('COMM_INVALID_AUDIENCE',409);
   const pushEligible=(await store.page('communicationDevices',{limit:1,filters:[['sourceUid',people[0].uid],['active',true]]})).length>0;
   const key=`release-${day}-${sigla}-${releaseAt}`;
   const old=await store.get('communicationMessages',key);
@@ -313,7 +315,10 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
    const result=paged(await store.page(collection,{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:action==='AUDIT'&&input.id?[['subject',id(input.id)]]:[]}));
    if(action==='GROUPS'&&!input.cursor)result.items.unshift(...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})));return result;
   }
-  if(action==='DIRECTORY')return paged(await fa.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access']}));
+  if(action==='DIRECTORY'){
+   const rows=await fa.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access']}),page=rows.slice(0,PAGE_SIZE);
+   return {items:page.filter(user=>!isSystemOwnerEmail(user.email)),cursor:rows.length>PAGE_SIZE?page.at(-1)?.id||null:null};
+  }
   if(action==='PUSH_DEVICE_DIRECTORY')return pushDeviceDirectory(input);
   if(action==='AREAS')return paged(await fb.page('managementAreas',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true]],fields:['name','title','active']}));
   if(action==='SAVE_GROUP'){
