@@ -41,7 +41,9 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   const registration=await navigator.serviceWorker.ready;
   if(new URL(registration.scope).pathname!==import.meta.env.BASE_URL)throw fail('COMM_PUSH_UNSUPPORTED');
   const token=await getToken(getMessaging(ff.app),{vapidKey,serviceWorkerRegistration:registration});
-  const result=await request('REGISTER_DEVICE',{token,platform:navigator.userAgentData?.platform||navigator.platform||'Outro'});
+  const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');
+  const displayMode=appDisplayMode(),deviceId=installationId(localStorage,globalThis.crypto,displayMode);
+  const result=await request('REGISTER_DEVICE',{token,deviceId,displayMode,platform:devicePlatform()});
   rememberCommunicationDevicePushActive(true);
   return result;
  }

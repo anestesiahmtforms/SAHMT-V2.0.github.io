@@ -20,6 +20,12 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
   const q={from:[{collectionId:c}],orderBy:[{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit,...(fields?{select:{fields:fields.map(fieldPath=>({fieldPath}))}}:{}),...(cursor?{startAt:{values:[{referenceValue:name+'/'+c+'/'+cursor}],before:false}}:{}),...(clauses.length?{where:clauses.length===1?clauses[0]:{compositeFilter:{op:'AND',filters:clauses}}}:{})};
   const d=await request(':runQuery',{structuredQuery:q});return d.filter(x=>x.document).map(({document:d})=>({...decodeFields(d.fields||{}),id:d.name.split('/').at(-1)}));
  }
+ async function listUserAppInstallations(uid,{limit=100}={}){
+  if(source!=='FA'||!Number.isInteger(limit)||limit<1||limit>100)throw fail('COMM_SOURCE_DENIED',403);
+  id(uid);
+  const d=await request('/users/'+encodeURIComponent(uid)+'/appInstallations?pageSize='+limit);
+  return (d?.documents||[]).map(document=>({...decodeFields(document.fields||{}),id:document.name.split('/').at(-1)}));
+ }
  async function transaction(work){
   if(source)throw fail('COMM_SOURCE_READ_ONLY',403);
   const {transaction:t}=await request(':beginTransaction',{options:{readWrite:{}}}),writes=[];if(!t)throw fail('COMM_STORE_UNAVAILABLE',503);
@@ -35,5 +41,5 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
   if(names.some(n=>!map.has(n)))throw fail('COMM_STORE_UNAVAILABLE',503);
   return names.map((n,i)=>map.get(n)?{...map.get(n),id:keys[i]}:null);
  }
- return {get,getMany,page,transaction};
+ return {get,getMany,page,listUserAppInstallations,transaction};
 }
