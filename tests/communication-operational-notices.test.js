@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ADMINS} from '../communication/domain.js';
-import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE} from '../communication/operational-notices.js';
+import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE} from '../src/communication-operational-notices.js';
 import {createCommunicationService} from '../worker-communication/service.js';
 
 const NOW=Date.parse('2026-11-04T15:00:00Z');

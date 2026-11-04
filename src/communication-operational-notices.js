@@ -1,4 +1,4 @@
-import {adminIdentity,fail,id,text} from './domain.js';
+import {adminIdentity,fail,id,text} from '../communication/domain.js';
 
 export const operationalNoticeIdentity=user=>adminIdentity(user)&&String(user.email).trim().toLowerCase()==='marcio.henrique82@gmail.com';
 export const RELEASE_NOTICE=Object.freeze({title:'LIBERAÇÃO',message:'Você está Liberado! O SAHMT agradece por sua dedicação. BOM DESCANSO! 🤜🤛.'});

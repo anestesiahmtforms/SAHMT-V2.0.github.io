@@ -2,7 +2,7 @@ import {CATEGORIES,ROUTES,ROLES,SOURCE_COLLECTIONS} from '../communication/domai
 import './communication.css';
 import {loadCommunicationPushDirectory} from './communication-push-directory.js';
 import {communicationEntryFromSession} from './communication-entry.js';
-import {operationalNoticeIdentity,urgentNoticeInput,newUrgentNoticeId} from '../communication/operational-notices.js';
+import {operationalNoticeIdentity,urgentNoticeInput,newUrgentNoticeId} from './communication-operational-notices.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=v=>v?new Date(v).toLocaleString('pt-BR'):'';
 const local=v=>{const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};

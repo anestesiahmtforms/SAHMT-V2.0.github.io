@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS,SOURCE_COLLECTIONS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
-import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE} from '../communication/operational-notices.js';
+import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE} from '../src/communication-operational-notices.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
