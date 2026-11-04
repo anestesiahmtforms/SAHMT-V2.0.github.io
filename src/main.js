@@ -108,7 +108,7 @@ const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
 const firstLoginCohortAdminUiEnabled = deployment.target === 'FA' && firstLoginCohortAdminEnabled();
 const labels = {
-  communications: ['Mensagens e notificações — FF', 'Comunicação institucional'],
+  communications: ['CENTRAL DE COMUNICAÇÃO', 'Comunicação institucional'],
   events: ['Operacional', 'Eventos, escala e férias'],
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
   management: ['Governança', 'Áreas, atividades e indicadores'],
