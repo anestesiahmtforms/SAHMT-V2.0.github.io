@@ -79,6 +79,7 @@ import './app-updates-targeted.css';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationDevicePushActive,communicationAdminSession,parseCommunicationForward} from './communication-link.js';
 import './communication.css';
+import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 const app = document.querySelector('#app');
 try {await discardLegacyOfflineData();}
@@ -1353,11 +1354,11 @@ async function loadModule(route) {
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid;
     if(!communicationFeatureEnabled||!current()){navigate('home');return;}
-    const [{mountCommunication},{createCommunicationClient}]=await Promise.all([import('./communication-ui.js'),import('./communication-client.js')]);
+    const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();
     if(!current())return;
     const adminMode=['compose','forward'].includes(location.hash.split('/')[2]);
     if(adminMode&&!communicationAdminSession(session)){navigate('home');return;}
-    cleanupCurrentModule=mountCommunication(content,{client:createCommunicationClient({isCurrent:current}),adminMode,isCurrent:current,onBack:()=>navigate(adminMode?'management-hub':'home'),forward:parseCommunicationForward(location.hash),sourceProject:location.hash.split('/')[3]||'FF'});
+    cleanupCurrentModule=mountCommunication(content,{client:createCommunicationClient({isCurrent:current}),adminMode,appSession:session,isCurrent:current,onBack:()=>navigate(adminMode?'management-hub':'home'),forward:parseCommunicationForward(location.hash),sourceProject:location.hash.split('/')[3]||'FF'});
     return;
   }
   if(route==='year-end-schedule'){
@@ -1378,12 +1379,13 @@ async function loadModule(route) {
     const {mountManagementHub}=await import('./management-hub.js');
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
     const currentHub=()=>generation===evaluationModuleGeneration&&content.isConnected&&session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
+    if(communicationAdminSession(session))preloadCommunicationModules({isCurrent:currentHub});
     const participantOnly=session.accountMode==='team';
     let consultationsAllowed=can('admin');
     if(!consultationsAllowed)try{consultationsAllowed=await readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub});}catch{}
     if(!content.isConnected||!currentHub())return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await Promise.all([import('./communication-ui.js'),import('./communication-client.js')]);if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent:()=>currentHub()&&isCurrent(),participantOnly});},

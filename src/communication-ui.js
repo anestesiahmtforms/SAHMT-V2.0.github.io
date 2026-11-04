@@ -1,6 +1,7 @@
 import {CATEGORIES,ROUTES,ROLES,SOURCE_COLLECTIONS} from '../communication/domain.js';
 import './communication.css';
 import {loadCommunicationPushDirectory} from './communication-push-directory.js';
+import {communicationEntryFromSession} from './communication-entry.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=v=>v?new Date(v).toLocaleString('pt-BR'):'';
 const local=v=>{const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
@@ -9,8 +10,8 @@ const routeNames={communications:'Central de Comunicação',home:'Início',manag
 const routeOptions=(value)=>ROUTES.map(v=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(routeNames[v]||v)}</option>`).join('');
 const linkedText=value=>esc(value).replace(/https:\/\/[^\s<]+/g,raw=>{let url=raw,tail='';while(/[.,;:!?)]$/.test(url)){tail=url.slice(-1)+tail;url=url.slice(0,-1);}try{const parsed=new URL(url);if(parsed.protocol!=='https:')return raw;const internal=parsed.hostname==='anestesiahmtforms.github.io';return `<a href="${esc(url)}"${internal?'':' target="_blank" rel="noopener noreferrer"'}>${url}</a>${tail}`;}catch{return raw;}}).replace(/\r?\n/g,'<br>');
 const errors={COMM_CONFIG_REQUIRED:'A Central aguarda a configuração segura da Central de Comunicação.',COMM_FREE_PLAN_UNCONFIRMED:'Operação bloqueada: não foi possível confirmar a cota gratuita da Central de Comunicação sem faturamento.',COMM_SESSION_INVALID:'Confirme sua conta Google em Sincronização e reabra a Central.',COMM_IDENTITY_MISMATCH:'As sessões do app e da Central de Comunicação pertencem a identidades diferentes. Reconecte sua conta.',COMM_FORBIDDEN:'Sua identidade não tem autorização para esta ação.',COMM_CONFLICT:'Este registro mudou em outra sessão. Reabra para conferir a versão atual.',COMM_MESSAGE_LOCKED:'Este aviso já foi enviado ou está em processamento. Consulte as publicações e o histórico antes de criar outro.',COMM_DISPATCH_LOCKED:'Outro lote já está em processamento ou a tela está desatualizada. Consulte o histórico.',COMM_PUSH_QUEUE_UNAVAILABLE:'O aviso foi salvo, mas a fila automática do Push não está disponível. O aviso continua na Home; peça à administração para verificar o serviço.',COMM_FREE_QUOTA_EXHAUSTED:'O limite gratuito de operação foi atingido. Nenhum plano pago será ativado.',COMM_RATE_LIMIT:'Limite de ações por minuto atingido. Aguarde e tente novamente.',COMM_PUSH_UNSUPPORTED:'Push indisponível. No iPhone, use o PWA na tela inicial com iOS 16.4 ou posterior. A chave pública da Central de Comunicação também precisa estar configurada.',COMM_PUSH_PERMISSION:'A permissão não foi concedida. Você pode alterá-la nas configurações do navegador.',COMM_PUSH_DISABLED:'O envio Push está desativado nas Configurações da Central.',COMM_NOT_CURRENT:'O aviso precisa estar publicado e dentro da validade.',COMM_DEVICE_OWNER:'Este dispositivo está vinculado a outra conta. Desative as notificações na conta anterior primeiro.',COMM_DEVICE_LIMIT:'Limite de cinco dispositivos ativos por usuário.',COMM_INVALID_INPUT:'Confira os campos, as datas e os limites de tamanho.',COMM_INVALID_AUDIENCE:'O destinatário selecionado está inativo ou não existe.',COMM_SOURCE_UNSUPPORTED:'Esta origem não oferece encaminhamento de registro. Use o atalho da Central e redija o aviso.'};
-export function mountCommunication(root,{client,adminMode=false,isCurrent=()=>true,onBack=()=>{},forward=null,sourceProject=null}={}){
- let disposed=false,generation=0,authorized=false,bootstrapped=false,currentView='home',selectedMembers=new Set(),cleanupGoogle=()=>{},pushDirectoryController=null;
+export function mountCommunication(root,{client,adminMode=false,appSession=null,isCurrent=()=>true,onBack=()=>{},forward=null,sourceProject=null}={}){
+ let disposed=false,generation=0,authorized=false,bootstrapped=false,currentView='home',selectedMembers=new Set(),cleanupGoogle=()=>{},pushDirectoryController=null,pushDirectorySnapshot=null,recoveryDraft=null;
  const active=()=>!disposed&&isCurrent();
  const render=(title,html,{menu=false,pushDevices=false}={})=>{
   pushDirectoryController?.abort();pushDirectoryController=null;
@@ -27,25 +28,59 @@ export function mountCommunication(root,{client,adminMode=false,isCurrent=()=>tr
   finally{if(active()&&ticket===generation)buttons.forEach(b=>b.disabled=false);}
  }
  function recoverGoogle(){
+  if(root.querySelector('[data-comm-form]'))try{recoveryDraft=formValue();}catch{}
+  pushDirectorySnapshot=null;
   bootstrapped=false;cleanupGoogle();cleanupGoogle=()=>{};
   render('Ativar notificações neste aparelho','<p>Confirme a mesma conta Google já aberta no SAHMT para conectar este aparelho à Central de Comunicação.</p><div data-comm-google></div><p class="comm-note">Depois da confirmação, você poderá habilitar as notificações. Nenhuma mensagem será enviada por esta confirmação.</p>');
   const ticket=generation,host=root.querySelector('[data-comm-google]');
   void client.connectGoogle(host,{onConnected:async()=>{if(active()&&generation===ticket){cleanupGoogle();cleanupGoogle=()=>{};await run(bootstrap);}},onError:()=>{if(active()&&generation===ticket)status('Não foi possível confirmar. Escolha a mesma conta Google já aberta no SAHMT e tente novamente.',true);}}).then(cleanup=>{if(active()&&generation===ticket)cleanupGoogle=cleanup;else cleanup?.();}).catch(()=>{if(active()&&generation===ticket)status('Não foi possível carregar o Google. Reabra esta tela para tentar novamente.',true);});
  }
- async function bootstrap(){const data=await client.request('BOOTSTRAP');if(!active())return;authorized=data.isAdmin===true;if(adminMode&&!authorized){status(errors.COMM_FORBIDDEN,true);return;}bootstrapped=true;if(forward&&adminMode){const d=await client.request('IMPORT_SOURCE',forward);if(active())form(d.message);}else if(adminMode&&sourceProject)forwardForm(sourceProject);else if(!adminMode&&location.hash.split('/')[2]==='message')await detail(decodeURIComponent(location.hash.split('/')[3]||''));else await view('home');}
+ async function initialView(){
+  if(recoveryDraft&&adminMode){const draft=recoveryDraft;recoveryDraft=null;form({...draft.message,id:draft.id,version:draft.version,source:draft.source});status('Acesso confirmado. Seu texto foi preservado; revise antes de enviar.');}
+  else if(forward&&adminMode){const data=await client.request('IMPORT_SOURCE',forward);if(active())form(data.message);}
+  else if(adminMode&&sourceProject)forwardForm(sourceProject);
+  else if(!adminMode&&location.hash.split('/')[2]==='message')await detail(decodeURIComponent(location.hash.split('/')[3]||''));
+  else await view('home');
+ }
+ async function bootstrap(){const data=await client.request('BOOTSTRAP');if(!active())return;authorized=data.isAdmin===true;if(adminMode&&!authorized){status(errors.COMM_FORBIDDEN,true);return;}bootstrapped=true;await initialView();}
+ async function loadViewData(title,action,input={}){
+  render(title,'<p class="comm-loading" role="status">Carregando informações…</p>');
+  const ticket=generation;
+  try{const data=await client.request(action,input);return active()&&generation===ticket?data:null;}
+  catch(error){
+   if(!active()||generation!==ticket)return null;
+   if(['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)){recoverGoogle();return null;}
+   pushDirectorySnapshot=null;
+   root.querySelector('.comm-content').innerHTML='<p>Não foi possível carregar esta tela. Volte à Central e tente novamente.</p>';
+   status(error.name==='AbortError'?'Carregamento interrompido.':errors[error.code]||'Confira a conexão e tente novamente.',true);return null;
+  }
+ }
  const adminMenu=()=>{currentView='home';render('CENTRAL DE COMUNICAÇÃO',`<div class="comm-menu">${[['new','CRIAR E ENVIAR AVISO'],['messages','COMUNICAÇÕES PUBLICADAS'],['pushDevices','DISPOSITIVOS E STATUS DO PUSH'],['groups','DESTINATÁRIOS E GRUPOS'],['history','HISTÓRICO DE ENVIOS'],['metrics','INDICADORES DE COMUNICAÇÃO'],['settings','CONFIGURAÇÕES']].map(([v,label])=>`<button type="button" data-view="${v}">${label}</button>`).join('')}</div>`,{menu:true});};
- async function pushDevices(){
+ async function pushDevices(force=false){
   currentView='pushDevices';
   render('Dispositivos e status do Push','<p class="comm-note">Lista única: todos com Push ativo primeiro, seguidos dos usuários sem Push ativo. Inclui quem não tem aparelho registrado.</p><p class="comm-push-summary" data-push-count aria-live="polite">Carregando lista completa…</p><div class="comm-push-directory" role="list" aria-label="Usuários, dispositivos e status do Push" aria-busy="true" tabindex="0"></div>',{pushDevices:true});
   root.querySelector('footer.comm-actions').insertAdjacentHTML('afterbegin','<button type="button" data-first="pushDevices" disabled>ATUALIZAR LISTA</button>');
   const ticket=generation,controller=new AbortController(),current=()=>active()&&generation===ticket;
   pushDirectoryController=controller;
   const list=root.querySelector('.comm-push-directory'),count=root.querySelector('[data-push-count]'),refresh=root.querySelector('[data-first="pushDevices"]');
+  const paintUsers=users=>{
+   const scroll=list.scrollTop,top=list.getBoundingClientRect().top,anchor=scroll>0?[...list.querySelectorAll('[data-comm-user]')].find(card=>card.getBoundingClientRect().bottom>top):null,anchorId=anchor?.dataset.commUser,offset=anchor?anchor.getBoundingClientRect().top-top:0;
+   list.innerHTML=users.map(user=>`<article class="comm-card" role="listitem" data-comm-user="${esc(user.uid)}"><h3>${esc(user.displayName||user.email||user.uid)}</h3><p>${esc([user.sigla,user.email].filter(Boolean).join(' · '))}</p>${user.devices.length?user.devices.map(device=>{const status={ACTIVE:'PUSH ATIVO',NOT_REGISTERED:'PUSH NÃO ATIVO',UNLINKED:'PUSH ATIVO · VÍNCULO NÃO CONFIRMADO'}[device.pushStatus]||'STATUS INDISPONÍVEL';const last=device.lastSeenAt?date(device.lastSeenAt):'não informada';return `<div class="comm-push-device"><div><strong>${esc(device.platform)} · ${esc(device.displayMode==='standalone'?'App instalado':device.displayMode==='browser'?'Navegador':'modo não informado')}${device.deviceId?' · '+esc(device.deviceId.slice(0,8)):''}</strong><small>${device.appVersion?'Versão '+esc(device.appVersion)+' · ':''}${device.loadedRelease?'compilação '+esc(device.loadedRelease)+' · ':''}Última conexão: ${esc(last)}${device.pushUpdatedAt?' · Push atualizado: '+esc(date(device.pushUpdatedAt)):''}</small></div><strong class="comm-push-status" data-status="${esc(device.pushStatus)}">${status}</strong></div>`;}).join(''):user.pushPending?'<p class="comm-push-empty">Consultando dispositivos e Push…</p>':'<p class="comm-push-empty">Nenhum aparelho registrado. Sem inscrição Push confirmada.</p>'}</article>`).join('')||'<p>Nenhum usuário ativo encontrado.</p>';
+   const nextAnchor=anchorId?[...list.querySelectorAll('[data-comm-user]')].find(card=>card.dataset.commUser===anchorId):null;
+   list.scrollTop=nextAnchor?list.scrollTop+nextAnchor.getBoundingClientRect().top-list.getBoundingClientRect().top-offset:scroll;
+  };
+  const summary=(users,at)=>(users.length===1?'1 usuário':`${users.length} usuários`)+(at?' · Atualizada às '+new Date(at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'');
+  if(force)pushDirectorySnapshot=null;
+  const snapshotAge=pushDirectorySnapshot?Date.now()-pushDirectorySnapshot.at:Infinity;
+  if(snapshotAge>=0&&snapshotAge<30000){
+   paintUsers(pushDirectorySnapshot.items);count.textContent=summary(pushDirectorySnapshot.items,pushDirectorySnapshot.at);list.setAttribute('aria-busy','false');refresh.disabled=false;pushDirectoryController=null;return;
+  }
   try{
-   const users=await loadCommunicationPushDirectory({request:(action,input)=>client.request(action,input),isCurrent:current,signal:controller.signal,onProgress:({waiting,count:total})=>{if(current()){count.textContent=`Carregando lista completa… ${total} usuários encontrados.`;status(waiting?'Continuando o carregamento após o limite de consultas por minuto…':'');}}});
+   const users=await loadCommunicationPushDirectory({request:(action,input)=>client.request(action,input),isCurrent:current,signal:controller.signal,onProgress:({waiting,count:total,items})=>{if(current()){if(!waiting&&items)paintUsers(items);count.textContent=`Carregando lista completa… ${total} usuários encontrados.`;status(waiting?'Continuando o carregamento após o limite de consultas por minuto…':'');}}});
    if(!current()||!users)return;
-   list.innerHTML=users.map(user=>`<article class="comm-card" role="listitem"><h3>${esc(user.displayName||user.email||user.uid)}</h3><p>${esc([user.sigla,user.email].filter(Boolean).join(' · '))}</p>${user.devices.length?user.devices.map(device=>{const status={ACTIVE:'PUSH ATIVO',NOT_REGISTERED:'PUSH NÃO ATIVO',UNLINKED:'PUSH ATIVO · VÍNCULO NÃO CONFIRMADO'}[device.pushStatus]||'STATUS INDISPONÍVEL';const last=device.lastSeenAt?date(device.lastSeenAt):'não informada';return `<div class="comm-push-device"><div><strong>${esc(device.platform)} · ${esc(device.displayMode==='standalone'?'App instalado':device.displayMode==='browser'?'Navegador':'modo não informado')}${device.deviceId?' · '+esc(device.deviceId.slice(0,8)):''}</strong><small>${device.appVersion?'Versão '+esc(device.appVersion)+' · ':''}${device.loadedRelease?'compilação '+esc(device.loadedRelease)+' · ':''}Última conexão: ${esc(last)}${device.pushUpdatedAt?' · Push atualizado: '+esc(date(device.pushUpdatedAt)):''}</small></div><strong class="comm-push-status" data-status="${esc(device.pushStatus)}">${status}</strong></div>`;}).join(''):'<p class="comm-push-empty">Nenhum aparelho registrado. Sem inscrição Push confirmada.</p>'}</article>`).join('')||'<p>Nenhum usuário ativo encontrado.</p>';
-   count.textContent=users.length===1?'1 usuário':`${users.length} usuários`;
+   paintUsers(users);
+   pushDirectorySnapshot={items:users,at:Date.now()};
+   count.textContent=summary(users,pushDirectorySnapshot.at);
    status('');
   }catch(error){
    if(!current())return;
@@ -54,12 +89,12 @@ export function mountCommunication(root,{client,adminMode=false,isCurrent=()=>tr
    status(error.name==='AbortError'?'Carregamento interrompido. Toque em ATUALIZAR LISTA para tentar novamente.':errors[error.code]||'Não foi possível carregar a lista completa. Toque em ATUALIZAR LISTA para tentar novamente.',true);
   }finally{if(current()){list.setAttribute('aria-busy','false');refresh.disabled=false;}if(pushDirectoryController===controller)pushDirectoryController=null;}
  }
- async function page(view,cursor=''){
-  if(view==='pushDevices')return pushDevices();
+ async function page(view,cursor='',{refresh=false}={}){
+  if(view==='pushDevices')return pushDevices(refresh);
   currentView=view;
   const action={messages:'MESSAGES',groups:'GROUPS',history:'HISTORY',inbox:'INBOX'}[view];
-  const data=await client.request(action,{cursor});if(!active())return;
   const titles={messages:'Avisos publicados e rascunhos',groups:'Destinatários e grupos',history:'Histórico de envios',inbox:'Mensagens recebidas'};
+  const data=await loadViewData(titles[view],action,{cursor});if(!data)return;
   let html='';
   if(view==='inbox')html='<div class="comm-actions"><button type="button" data-enable>HABILITAR NOTIFICAÇÕES NESTE APARELHO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div><p class="comm-note">O Push traz o título e um trecho do aviso. Ao abrir o app, o aviso completo permanece na Home até você fechar.</p>';
   if(view==='groups')html='<div class="comm-actions"><button type="button" data-new-group>NOVO GRUPO</button><button type="button" data-directory>CONSULTAR USUÁRIOS ATIVOS</button></div>';
@@ -86,9 +121,9 @@ export function mountCommunication(root,{client,adminMode=false,isCurrent=()=>tr
   if(more)select.insertAdjacentHTML('beforeend',html);else select.innerHTML=html;
   root._commTargetCursor=data.cursor;root.querySelector('[data-more-targets]').hidden=!data.cursor;
  }
- async function detail(key){const {message:m}=await client.request('MESSAGE',{id:key});if(!active())return;if(adminMode)form(m);else{const link=m.linkUrl&&/^https:\/\//.test(m.linkUrl)?`<a class="comm-home-notice__destination" href="${esc(m.linkUrl)}"${m.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${esc(m.linkLabel||'ABRIR DESTINO')}</a>`:'';render(m.title,`<article class="comm-card"><p>${esc(m.category)} · ${date(m.publishAt)}</p><p class="comm-message">${linkedText(m.message)}</p>${link}<a href="#/${esc(m.route)}">ABRIR PÁGINA NO APP</a></article>`);}}
- async function metrics(){const month=root.querySelector('[name="month"]')?.value||new Date().toISOString().slice(0,7);const d=await client.request('METRICS',{month});if(!active())return;render('Indicadores de comunicação',`<label>Histórico mensal<input type="month" name="month" value="${esc(month)}"></label><button type="button" data-metrics>CONSULTAR MÊS</button><div class="comm-columns">${[['total','Acumulado'],['monthly','Mês selecionado']].map(([key,label])=>`<article class="comm-card"><h3>${label}</h3>${[['published','Comunicações publicadas pela primeira vez'],['sent','Envios iniciados'],['accepted','Aceitos pelo provedor'],['failed','Falhas'],['unknown','Resultado incerto'],...(key==='total'?[['devices','Dispositivos inscritos ativos']]:[])].map(([k,l])=>`<p>${l}: <strong>${d[key][k]}</strong></p>`).join('')}<h4>Publicações por categoria</h4>${CATEGORIES.map(c=>`<p>${esc(c)}: ${d[key].categories[c]||0}</p>`).join('')}</article>`).join('')}</div>`);}
- async function settings(){const d=await client.request('SETTINGS');if(!active())return;render('Configurações',`<p>Projeto: <strong>${esc(d.projectId)}</strong><br>Banco: ${esc(d.databaseId)}</p><p>Envio: ${d.settings.pushEnabled?'HABILITADO':'DESATIVADO'}</p><p>Limite conservador: ${d.dailyRequestLimit} solicitações por dia, ${d.batchSize} dispositivos por lote manual. O serviço verifica o faturamento e a elegibilidade gratuita do projeto de comunicação a cada operação.</p><button type="button" data-toggle-push="${!d.settings.pushEnabled}">${d.settings.pushEnabled?'DESATIVAR':'HABILITAR'} ENVIO MANUAL</button><p class="comm-note">Nenhuma opção nesta tela altera planos, faturamento ou permissões administrativas.</p>`);}
+ async function detail(key){const data=await loadViewData('Aviso','MESSAGE',{id:key});if(!data)return;const m=data.message;if(adminMode)form(m);else{const link=m.linkUrl&&/^https:\/\//.test(m.linkUrl)?`<a class="comm-home-notice__destination" href="${esc(m.linkUrl)}"${m.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${esc(m.linkLabel||'ABRIR DESTINO')}</a>`:'';render(m.title,`<article class="comm-card"><p>${esc(m.category)} · ${date(m.publishAt)}</p><p class="comm-message">${linkedText(m.message)}</p>${link}<a href="#/${esc(m.route)}">ABRIR PÁGINA NO APP</a></article>`);}}
+ async function metrics(){const month=root.querySelector('[name="month"]')?.value||new Date().toISOString().slice(0,7);const d=await loadViewData('Indicadores de comunicação','METRICS',{month});if(!d)return;render('Indicadores de comunicação',`<label>Histórico mensal<input type="month" name="month" value="${esc(month)}"></label><button type="button" data-metrics>CONSULTAR MÊS</button><div class="comm-columns">${[['total','Acumulado'],['monthly','Mês selecionado']].map(([key,label])=>`<article class="comm-card"><h3>${label}</h3>${[['published','Comunicações publicadas pela primeira vez'],['sent','Envios iniciados'],['accepted','Aceitos pelo provedor'],['failed','Falhas'],['unknown','Resultado incerto'],...(key==='total'?[['devices','Dispositivos inscritos ativos']]:[])].map(([k,l])=>`<p>${l}: <strong>${d[key][k]}</strong></p>`).join('')}<h4>Publicações por categoria</h4>${CATEGORIES.map(c=>`<p>${esc(c)}: ${d[key].categories[c]||0}</p>`).join('')}</article>`).join('')}</div>`);}
+ async function settings(){const d=await loadViewData('Configurações','SETTINGS');if(!d)return;render('Configurações',`<p>Projeto: <strong>${esc(d.projectId)}</strong><br>Banco: ${esc(d.databaseId)}</p><p>Envio: ${d.settings.pushEnabled?'HABILITADO':'DESATIVADO'}</p><p>Limite conservador: ${d.dailyRequestLimit} solicitações por dia, ${d.batchSize} dispositivos por lote manual. O serviço verifica o faturamento e a elegibilidade gratuita do projeto de comunicação a cada operação.</p><button type="button" data-toggle-push="${!d.settings.pushEnabled}">${d.settings.pushEnabled?'DESATIVAR':'HABILITAR'} ENVIO MANUAL</button><p class="comm-note">Nenhuma opção nesta tela altera planos, faturamento ou permissões administrativas.</p>`);}
  async function groupForm(g={}){
   selectedMembers=new Set(g.memberUids||[]);root._commGroup=g;
   render('Editar grupo',`<form data-group-form><label>Nome do grupo<input name="name" maxlength="100" required value="${esc(g.name||'')}"></label><label><input type="checkbox" name="active" ${g.active!==false?'checked':''}> Grupo ativo</label><p data-member-count>${selectedMembers.size} selecionados (máximo 100)</p><div data-members></div><button type="button" data-members-next="">CARREGAR USUÁRIOS ATIVOS</button><button type="submit">SALVAR GRUPO</button></form>`);root._commGroup=g;
@@ -114,7 +149,7 @@ export function mountCommunication(root,{client,adminMode=false,isCurrent=()=>tr
    if(b.hasAttribute('data-import-source')){const f=root.querySelector('[data-forward-form]'),input={project:f.elements.project.value,collection:f.elements.collection.value,id:f.elements.recordId.value};const d=await client.request('IMPORT_SOURCE',input);if(active())form(d.message);return;}
    if(b.hasAttribute('data-home'))return view('home');
    if(b.dataset.view)return view(b.dataset.view);
-   if(b.dataset.first)return page(b.dataset.first);
+   if(b.dataset.first)return page(b.dataset.first,'',{refresh:true});
    if(b.dataset.next)return page(b.dataset.list,b.dataset.next);
    if(b.dataset.message)return detail(b.dataset.message);
    if(b.dataset.send){if(!confirm('Enviar manualmente este lote para até 3 dispositivos elegíveis? A aceitação pelo FCM não comprova entrega.'))return;const {dispatch}=await client.request('SEND_BATCH',{id:b.dataset.send,batches:Number(b.dataset.batches),confirmed:true});if(active())render('Resultado do lote',dispatchCard(dispatch));return;}
@@ -135,7 +170,8 @@ export function mountCommunication(root,{client,adminMode=false,isCurrent=()=>tr
  const submit=event=>{event.preventDefault();if(event.target.matches('[data-comm-form]'))void run(async()=>{const input=formValue();input.message.status=event.submitter?.value||'draft';const result=await client.request('SAVE_MESSAGE',input);if(active()){form(result.message);status(result.message.status==='published'?result.dispatch&&result.pushQueued!==false?'Aviso enviado. O Push foi iniciado automaticamente.':'Aviso enviado. Ele aparecerá na Home; confira se o Push está habilitado nas Configurações.':'Rascunho salvo.');}});else if(event.target.matches('[data-group-form]'))void run(async()=>{const f=event.target,g=root._commGroup||{};await client.request('SAVE_GROUP',{id:g.id,version:g.version||0,name:f.elements.name.value,active:f.elements.active.checked,memberUids:[...selectedMembers]});await page('groups');});};
  const change=event=>{if(event.target.name==='project'){const f=root.querySelector('[data-forward-form]');if(f)f.elements.collection.innerHTML=options(SOURCE_COLLECTIONS[event.target.value]||[],'');}if(event.target.dataset.member){event.target.checked?selectedMembers.add(event.target.dataset.member):selectedMembers.delete(event.target.dataset.member);root.querySelector('[data-member-count]').textContent=selectedMembers.size+' selecionados (máximo 100)';}if(event.target.name==='audienceType'){root.querySelector('[name="audienceValue"]').innerHTML='<option value="">Carregue as opções</option>';root._commTargetCursor='';}};
  root.addEventListener('click',click);root.addEventListener('submit',submit);root.addEventListener('change',change);
- render('Central de Comunicação','<p>Confirmando acesso à Central de Comunicação…</p>');
- void run(bootstrap);
- return ()=>{disposed=true;pushDirectoryController?.abort();cleanupGoogle();client.dispose();root.removeEventListener('click',click);root.removeEventListener('submit',submit);root.removeEventListener('change',change);root.replaceChildren();delete root._commGroups;delete root._commGroup;delete root._commSource;};
+ const entry=communicationEntryFromSession(appSession,{adminMode});
+ if(entry){authorized=entry.isAdmin;bootstrapped=true;void run(initialView);}
+ else{render('Central de Comunicação','<p>Confirmando acesso à Central de Comunicação…</p>');void run(bootstrap);}
+ return ()=>{disposed=true;pushDirectorySnapshot=null;recoveryDraft=null;pushDirectoryController?.abort();cleanupGoogle();client.dispose();root.removeEventListener('click',click);root.removeEventListener('submit',submit);root.removeEventListener('change',change);root.replaceChildren();delete root._commGroups;delete root._commGroup;delete root._commSource;};
 }

@@ -5,22 +5,27 @@ import {rememberCommunicationDevicePushActive} from './communication-link.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
+const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT']);
+export async function prepareCommunicationSession({isCurrent=()=>true}={}){
+ const current=()=>communicationEnabled&&isCurrent()&&document.visibilityState!=='hidden';
+ return current()&&await waitForGoogleProjectSession('FF',{isCurrent:current})&&current();
+}
 export function createCommunicationClient({isCurrent=()=>true}={}){
- let disposed=false;const controllers=new Set(),widgets=new Set();
+ let disposed=false;const controllers=new Set(),widgets=new Set(),reads=new Map();
  const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden';
  const suspend=()=>{if(document.visibilityState==='hidden')for(const c of controllers)c.abort();};
  document.addEventListener('visibilitychange',suspend);
  async function sessions(){
   if(!communicationEnabled||!current())throw fail('COMM_CONFIG_REQUIRED');
   const source=auth.currentUser;
-  if(!source||!await waitForGoogleProjectSession('FF',{isCurrent:current})||!current())throw fail('COMM_SESSION_INVALID');
+  if(!source||!await prepareCommunicationSession({isCurrent:current})||!current())throw fail('COMM_SESSION_INVALID');
   const ff=getGoogleProjectAuth('FF');
   if(ff.app.options.projectId!==FF.projectId||ff.app.options.appId!==FF.appId||ff.app.options.messagingSenderId!==FF.senderId)throw fail('COMM_CONFIG_REQUIRED');
   const target=ff.currentUser;
   if(!target||auth.currentUser!==source)throw fail('COMM_SESSION_INVALID');
   return {source,target,ff};
  }
- async function request(action,input={}){
+ async function performRequest(action,input={}){
   if(!/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev\/v1\/communication$/.test(endpoint))throw fail('COMM_CONFIG_REQUIRED');
   const {source,target}=await sessions(),controller=new AbortController();controllers.add(controller);
   const timer=setTimeout(()=>controller.abort(),60000);
@@ -31,6 +36,16 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    const d=await r.json();if(!r.ok)throw fail(d.code||'COMM_SERVICE_UNAVAILABLE',r.status);
    if(!current()||auth.currentUser!==source||getGoogleProjectAuth('FF').currentUser!==target)throw fail('COMM_SESSION_INVALID');return d;
   }finally{clearTimeout(timer);controllers.delete(controller);}
+ }
+ function request(action,input={}){
+  if(!readActions.has(action))return performRequest(action,input);
+  if(!current())return Promise.reject(fail('COMM_CONFIG_REQUIRED'));
+  const key=JSON.stringify([action,input]),source=auth.currentUser,previous=reads.get(key);
+  if(previous&&previous.source===source)return previous.promise;
+  const entry={source,promise:performRequest(action,input)};
+  reads.set(key,entry);
+  void entry.promise.finally(()=>{if(reads.get(key)===entry)reads.delete(key);}).catch(()=>{});
+  return entry.promise;
  }
  async function enable(permissionPromise){
   if(!('serviceWorker'in navigator)||!('Notification'in window)||!vapidKey)throw fail('COMM_PUSH_UNSUPPORTED');
@@ -68,5 +83,5 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   try{await widget.render(host);if(!live())cleanup();}catch(e){cleanup();throw e;}
   return cleanup;
  }
- return {request,enable,disable,connectGoogle,dispose(){disposed=true;for(const c of controllers)c.abort();for(const w of widgets)w.dispose();widgets.clear();document.removeEventListener('visibilitychange',suspend);}};
+ return {request,enable,disable,connectGoogle,dispose(){disposed=true;reads.clear();for(const c of controllers)c.abort();for(const w of widgets)w.dispose();widgets.clear();document.removeEventListener('visibilitychange',suspend);}};
 }

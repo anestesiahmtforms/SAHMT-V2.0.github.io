@@ -106,3 +106,13 @@ O atalho global foi retirado da grade principal da Home: adicioná-lo como filho
 A Central espera a restauração coordenada da sessão FF. Se faltar a sessão no navegador, exibe o botão Google oficial na própria tela e, após confirmar a mesma identidade, repete somente BOOTSTRAP. Não repete escritas ou envios e não cria contas. A recuperação substitui o carregamento inicial e mantém o botão ao retornar do segundo plano.
 
 Validação local: 1.180 testes gerais, 75 testes focados, 19 testes de Central/runtime/ciclo do cliente e quatro testes de navegador incluindo a Home real em 320/390/430 px e recuperação Google. Build e verificação de dependências aprovadas. O teste de entrega real continua pendente da inscrição do iPhone de wx2064@gmail.com.
+
+## Abertura e carregamento da interface
+
+O menu e o formulário administrativo reutilizam o perfil ativo já confirmado no app e a lista fixa de administradores. Não fazem uma consulta BOOTSTRAP apenas para mostrar navegação estática. A caixa de entrada pode iniciar diretamente sua leitura autenticada. Na ausência dessa sessão validada, permanece a verificação inicial no servidor. Toda operação de dados continua usando os dois tokens e as mesmas autorizações do serviço.
+
+Ao abrir Governança, os arquivos da Central e a restauração da sessão Google FF são preparados em segundo plano para os administradores autorizados. Essa preparação não consulta o Firestore nem abre um popup. Requisições idênticas de leitura compartilham apenas a operação em andamento, dentro do mesmo cliente e da mesma identidade; escritas e envios não são agrupados ou repetidos.
+
+A lista de usuários carrega seus dois diretórios em paralelo, respeitando os cursores e os limites existentes. Os nomes aparecem durante o carregamento; dispositivos ainda não consultados ficam identificados como pendentes. O resultado completo mantém Push ativo primeiro. Na mesma instância da Central, a última lista completa pode ser reaproveitada por 30 segundos, com horário visível. ATUALIZAR LISTA sempre faz nova consulta. Esses dados permanecem apenas na memória da tela e são descartados ao sair ou trocar de conta; não são gravados em cache persistente.
+
+Telas de consulta mostram seu estado de carregamento imediatamente e mantêm a navegação disponível. Respostas atrasadas não substituem uma tela que já foi abandonada. Se a sessão precisar ser reconectada durante a criação de um aviso, o texto fica preservado na memória, e o envio depende de nova ação explícita do usuário.

@@ -40,7 +40,7 @@ test('an empty active directory makes no device-directory requests',async()=>{
 
 test('repeated cursors cannot loop or present a truncated list as complete',async()=>{
  let requests=0;
- await assert.rejects(loadCommunicationPushDirectory({request:async()=>{requests++;return {items:[{uid:'a'}],cursor:'same'};}}),{code:'COMM_DIRECTORY_INCOMPLETE'});
+ await assert.rejects(loadCommunicationPushDirectory({request:async action=>{if(action==='PUSH_DEVICE_DIRECTORY')return {items:[],cursor:null};requests++;return {items:[{uid:'a'}],cursor:'same'};}}),{code:'COMM_DIRECTORY_INCOMPLETE'});
  assert.equal(requests,2);
 });
 
