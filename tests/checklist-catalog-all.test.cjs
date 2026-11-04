@@ -110,7 +110,11 @@ test('largura intrínseca do calendário não estica a coluna e preserva o selet
 
 test('banner exclui a altura fixa global sem aumentar a especificidade dos outros modais', () => {
   const css = readFileSync(join(__dirname, '../src/styles.css'), 'utf8');
-  assert.match(css, /\.app-shell dialog:not\(:where\(#checklist-station-dialog,\.management-area-dialog,\.management-document-dialog\)\)\{[^}]*height:90dvh!important/);
+  const globalDialog = css.match(/\.app-shell dialog:not\(:where\(([^)]+)\)\)\{([^}]+)\}/);
+  assert.ok(globalDialog, 'a regra global deve manter as exceções em :where');
+  const exclusions = globalDialog[1].split(',').map(selector => selector.trim());
+  for (const selector of ['#checklist-station-dialog', '.management-area-dialog', '.management-document-dialog']) assert.ok(exclusions.includes(selector), selector);
+  assert.match(globalDialog[2], /height:90dvh!important/);
   assert.ok(!/\.app-shell dialog\{[^}]*height:[^;}]+!important/.test(css));
   assert.ok(!css.includes('.app-shell dialog:not(#checklist-station-dialog){'));
 });
