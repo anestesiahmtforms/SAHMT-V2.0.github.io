@@ -1,3 +1,5 @@
+import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
+
 export const FF = Object.freeze({projectId:'sahmt-comunicacao-ff', databaseId:'comunicacao', appName:'sahmt-ff-direct', appId:'1:772883283859:web:9e26ccec85366db0e53266', senderId:'772883283859'});
 export const ADMINS = Object.freeze(['wx2064@gmail.com','anestesiahmtforms@gmail.com','anestesiahmtforms6@gmail.com','marcio.henrique82@gmail.com']);
 export const CATEGORIES = Object.freeze(['COMUNICADO GERAL','ALERTA OPERACIONAL','INFORMAÇÃO INSTITUCIONAL','GOVERNANÇA','QUALIDADE E SEGURANÇA','ENQUETES E CONSULTAS','AVISO URGENTE']);
@@ -21,7 +23,7 @@ export function validateMessage(value,now=Date.now()){
 }
 export const isCurrentMessage=(m,now=Date.now())=>m?.status==='published'&&m.publishAt<=now&&m.expiresAt>now;
 export function matches(message,sourceUid,profile,members){
- if(!activeProfile(profile))return false;
+ if(!activeProfile(profile)||isSystemOwnerEmail(profile.email))return false;
  switch(message.audienceType){case 'ALL':return true;case 'USER':return message.audienceValue===sourceUid;case 'ROLE':return message.audienceValue===profile.role;case 'GROUP':case 'AREA':return members?.includes(sourceUid)===true;default:return false;}
 }
 export const safePreview=Object.freeze({title:'🔔 SAHMT · NOVO AVISO',body:'Há uma nova comunicação institucional. Abra o SAHMT para consultar.'});

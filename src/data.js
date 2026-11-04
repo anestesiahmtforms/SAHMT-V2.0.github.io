@@ -20,6 +20,7 @@ import {updateScheduleReleaseState, updateScheduleReleaseTimes} from './schedule
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {withGeneralReadPermissions} from './general-access.js';
+import {isSystemOwnerEmail} from './system-account-exclusions.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS} from './management-first-login-cohort.js';
 import {DOCUMENT_GROUPS, DOCUMENT_MANAGEMENT_AREA_ID, canManageManagementDocuments, canReconcileManagementDocumentLinks, documentCollectionForWrite, documentGroupsFromAccess, mergeManagementDocuments, normalizeDocumentAccessEmail} from './document-access.js';
 import {isFirestoreCacheFallbackError, readThroughSafeCache} from './offline-cache.js';
@@ -487,19 +488,20 @@ export async function listMemberCategoryAssignments(){
 }
 
 export async function listUserProfiles({pageSize = 200} = {}) {
+  const take=Math.min(200,Math.max(1,pageSize));
   const result = await getDocsFromServer(query(
     collection(db, 'users'),
     orderBy('displayName', 'asc'),
-    limit(Math.min(200, Math.max(1, pageSize)))
+    limit(Math.min(206,take+6))
   ));
-  return result.docs.map((item) => ({id: item.id, ...item.data()}));
+  return result.docs.map((item) => ({id: item.id, ...item.data()})).filter(profile=>!isSystemOwnerEmail(profile.email)).slice(0,take);
 }
 
 export async function listAccessRequests({pageSize = 100} = {}) {
   const result = await getDocsFromServer(query(
     collection(db, 'accessRequests'), where('status', '==', 'PENDING'), limit(Math.min(100, Math.max(1, pageSize)))
   ));
-  return result.docs.map((item) => ({id: item.id, ...item.data()}))
+  return result.docs.map((item) => ({id: item.id, ...item.data()})).filter(request=>!isSystemOwnerEmail(request.email))
     .sort((left, right) => dateSortValue(left.createdAt) - dateSortValue(right.createdAt));
 }
 

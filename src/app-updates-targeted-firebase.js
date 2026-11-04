@@ -4,6 +4,7 @@ import {auth} from './firebase-auth.js';
 import {deployment} from './deployment-context.js';
 import {newAppUpdateId} from './app-updates-targeted.js';
 import {updateUsersWithContactSiglas} from './app-updates-targeted-identity.js';
+import {isSystemOwnerEmail} from './system-account-exclusions.js';
 
 function actor(uid) {
   if (!uid || auth?.currentUser?.uid !== uid) throw Error('APP_UPDATE_SESSION_CHANGED');
@@ -57,7 +58,7 @@ export async function listAppUpdateUsers(actorUid) {
   };
   const [users,contacts]=await Promise.all([readAll('users'),deployment.target==='FA'?readAll('contacts').catch(()=>[]):Promise.resolve([])]);
   actor(actorUid);
-  return updateUsersWithContactSiglas(users.filter(user=>user.active===true&&user.access===true),contacts);
+  return updateUsersWithContactSiglas(users.filter(user=>user.active===true&&user.access===true&&!isSystemOwnerEmail(user.email)),contacts);
 }
 export async function sendAppUpdateBatch(actorUid, uids, minimumRelease) {
   actor(actorUid);
