@@ -13,6 +13,10 @@ O dia 30/12 não foi acrescentado. As datas reproduzem a solicitação. Todos os
 
 ## Firebase e autorização
 
+Na tabela de controle do administrador, as inscrições confirmadas continuam primeiro, em ordem de confirmação. Ao final aparecem as siglas habilitadas que ainda não confirmaram, em ordem alfabética, com **Pendente** nas escolhas em aberto. A posição e a data ficam sem preenchimento até a confirmação. FR, AD, L2 e LE mantêm o grupo como Dispensado. O cabeçalho informa separadamente as quantidades de inscrições e de pendentes.
+
+A relação vem da política oficial de participação, respeitando as exclusões, e só é lida na consulta administrativa. Participantes comuns continuam consultando somente seus próprios registros e os totais. A apresentação aguarda registros e política confirmados pelo servidor para não marcar alguém como pendente com base em dados antigos do cache. Novas confirmações atualizam a mesma lista automaticamente; os pendentes são apenas uma apresentação, sem criar inscrições ou alterar os totais gravados.
+
 “FE” é a referência interna ao projeto **outros-48120**, banco **(default)**. O módulo reutiliza a sessão Google FE do app, com o mesmo UID, troca de conta e logout globais. Não cria outro Firebase App nem uma coleção chamada FE.
 
 Os documentos ficam em:

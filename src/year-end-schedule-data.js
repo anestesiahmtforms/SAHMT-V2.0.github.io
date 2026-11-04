@@ -1,6 +1,6 @@
 import * as sdk from 'firebase/firestore';
 import {onAuthStateChanged} from 'firebase/auth';
-import {YEAR_END_CYCLE,YEAR_END_PROJECT,YEAR_END_COLLECTION,validateYearEndChoices,yearEndOwnParticipation,yearEndAdministrator,yearEndError} from './year-end-schedule.js';
+import {YEAR_END_CYCLE,YEAR_END_PROJECT,YEAR_END_COLLECTION,validateYearEndChoices,yearEndOwnParticipation,yearEndAdministrator,yearEndParticipants,yearEndError} from './year-end-schedule.js';
 import {readYearEndTotals} from './year-end-schedule-totals.js';
 import {writeYearEndChoices} from './year-end-schedule-transaction.js';
 import {institutionalAssignmentKey,assignedInstitutionalGroup} from './institutional-group.js';
@@ -19,6 +19,7 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
   const totalsRef=api.doc(db,...base,'summary','totals');
   const rowsRef=api.collection(db,...base,'registrations');
   const participationRef=api.doc(db,...base,'participation',uid);
+  const policyRef=api.doc(db,...base,'policy','participation');
   let access=null;
   const profile=async()=>{
     ensure();
@@ -55,7 +56,7 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
     subscribe(onChange,onError) {
       ensure();if(!access)throw yearEndError('YEAR_END_FORBIDDEN');
       let stopped=false,stopAuth=()=>{};const stops=[],states=new Map();
-      const required=1+Number(access.canParticipate)+Number(access.isAdmin);
+      const required=1+Number(access.canParticipate)+2*Number(access.isAdmin);
       const stop=()=>{if(stopped)return;stopped=true;for(const dispose of stops)dispose();stopAuth();states.clear();};
       const fail=error=>{if(stopped)return;stop();onError(error);};
       const watch=(key,ref,decode)=>{
@@ -63,8 +64,8 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
           if(stopped||snapshot.metadata.hasPendingWrites)return;
           try{
             ensure();states.set(key,{value:decode(snapshot),fromCache:snapshot.metadata.fromCache});
-            if(states.size===required)onChange({totals:states.get('totals').value,own:states.get('own')?.value||null,
-              ...(access.isAdmin?{rows:states.get('rows').value}:{}),fromCache:[...states.values()].some(s=>s.fromCache)});
+            if(states.size===required&&(!access.isAdmin||!states.get('rows').fromCache&&!states.get('participants').fromCache))onChange({totals:states.get('totals').value,own:states.get('own')?.value||null,
+              ...(access.isAdmin?{rows:states.get('rows').value,participants:states.get('participants').value}:{}),fromCache:[...states.values()].some(s=>s.fromCache)});
           }catch(error){fail(error);}
         },fail);
         stops.push(dispose);if(stopped)dispose();
@@ -72,6 +73,7 @@ export function createYearEndScheduleRepository({db,auth,uid,isCurrent=()=>true,
       watch('totals',totalsRef,s=>{if(!s.exists())throw yearEndError('YEAR_END_SUMMARY_UNAVAILABLE');return readYearEndTotals(s.data());});
       if(access.canParticipate&&!stopped)watch('own',ownRef,s=>s.exists()?{...s.data(),uid}:null);
       if(access.isAdmin&&!stopped)watch('rows',api.query(rowsRef,api.orderBy('position','asc')),s=>s.docs.map(d=>({...d.data(),uid:d.id})));
+      if(access.isAdmin&&!stopped)watch('participants',policyRef,s=>yearEndParticipants(s.exists()?s.data():null));
       stopAuth=watchAuth(auth,()=>{try{ensure();}catch(error){fail(error);}});
       if(stopped)stopAuth();
       return stop;

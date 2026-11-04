@@ -108,7 +108,7 @@ test('ordinary participants subscribe only to anonymous totals and their own doc
   const stop=repo.subscribe(s=>changes.push(s),assert.fail);
   assert.deepEqual(f.subscriptions.map(s=>s.ref),[base+'/summary/totals',base+'/registrations/one']);
   for(const s of f.subscriptions)s.callback({exists:()=>s.ref.endsWith('totals'),data:()=>({...emptyYearEndTotals(),lastParticipantUid:'must never escape'}),metadata:{hasPendingWrites:false,fromCache:false}});
-  assert.equal(changes.length,1);assert.ok(!('rows' in changes[0]));assert.ok(!('lastParticipantUid' in changes[0].totals));assert.equal(changes[0].own,null);
+  assert.equal(changes.length,1);assert.ok(!('rows' in changes[0]));assert.ok(!('participants' in changes[0]));assert.ok(!('lastParticipantUid' in changes[0].totals));assert.equal(changes[0].own,null);
   stop();assert.ok(f.subscriptions.every(s=>s.stopped));
 });
 
@@ -131,8 +131,32 @@ test('participant-only entry never loads administrator rows or accepts an admini
 test('administrators may view details without being enrolled as a participant; role alone does not bypass excluded affiliation',async()=>{
   const f=fixture(),{repo}=f.repository('admin',null,['ADMINISTRADOR'],{role:'administrador_app'});
   assert.deepEqual(await repo.open(),{sigla:null,requireGroup:false,canParticipate:false,isAdmin:true});
-  repo.subscribe(()=>{},assert.fail);assert.equal(f.subscriptions.length,2);assert.deepEqual(f.subscriptions[1].ref,{query:base+'/registrations'});
+  repo.subscribe(()=>{},assert.fail);assert.equal(f.subscriptions.length,3);assert.deepEqual(f.subscriptions[1].ref,{query:base+'/registrations'});assert.equal(f.subscriptions[2].ref,base+'/policy/participation');
   await assert.rejects(repo.save({plantao:'natal',grupo:'natal'}),{code:'YEAR_END_FORBIDDEN'});
   const other=fixture(),resident=other.repository('resident','AB',['RESIDENTE_1','ADMINISTRADOR'],{role:'administrador_app'});
   await assert.rejects(resident.repo.open(),{code:'YEAR_END_INELIGIBLE'});
+});
+
+test('administrator pending list waits for server records and policy and updates after a confirmation',async()=>{
+  const f=fixture(),{repo}=f.repository('admin',null,['ADMINISTRADOR'],{role:'administrador_app'}),changes=[];
+  await repo.open();const stop=repo.subscribe(state=>changes.push(state),assert.fail);
+  const totals=f.subscriptions.find(s=>s.ref===base+'/summary/totals'),rows=f.subscriptions.find(s=>s.ref.query),policy=f.subscriptions.find(s=>s.ref===base+'/policy/participation');
+  const meta=fromCache=>({hasPendingWrites:false,fromCache}),registration={sigla:'AB',plantao:'natal',grupo:'natal',position:1};
+  totals.callback({exists:()=>true,data:emptyYearEndTotals,metadata:meta(false)});
+  rows.callback({docs:[{id:'one',data:()=>registration}],metadata:meta(true)});
+  policy.callback({exists:()=>true,data:()=>({schemaVersion:1,cycle:'2026-2027',siglasByUid:{one:'AB',two:'FR',excluded:'CD'},excludedUids:['excluded'],approvedBindingsByUid:{private:'never expose'}}),metadata:meta(false)});
+  assert.equal(changes.length,0,'dados antigos em cache não podem apresentar alguém como pendente');
+  rows.callback({docs:[{id:'one',data:()=>registration}],metadata:meta(false)});
+  assert.deepEqual(changes[0].participants,[{uid:'one',sigla:'AB',requireGroup:true},{uid:'two',sigla:'FR',requireGroup:false}]);
+  assert.equal(changes[0].rows[0].uid,'one');assert.ok(!JSON.stringify(changes[0]).includes('never expose'));
+  rows.callback({docs:[{id:'one',data:()=>registration},{id:'two',data:()=>({sigla:'FR',plantao:'reveillon',grupo:null,position:2})}],metadata:meta(false)});
+  assert.equal(changes.at(-1).rows.length,2);assert.equal(changes.at(-1).rows[1].uid,'two');
+  stop();assert.ok(f.subscriptions.every(s=>s.stopped));
+});
+
+test('administrator policy denial stops listeners instead of showing an incomplete pending list',async()=>{
+  const f=fixture(),{repo}=f.repository('admin',null,['ADMINISTRADOR'],{role:'administrador_app'}),errors=[];
+  await repo.open();repo.subscribe(()=>assert.fail('não deve apresentar lista incompleta'),error=>errors.push(error));
+  f.subscriptions.find(s=>s.ref===base+'/policy/participation').error({code:'permission-denied'});
+  assert.deepEqual(errors,[{code:'permission-denied'}]);assert.ok(f.subscriptions.every(s=>s.stopped));
 });

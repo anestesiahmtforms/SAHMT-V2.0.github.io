@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateYearEndChoices,canUseYearEndSchedule,yearEndParticipation,confirmedYearEndRegistration,sortYearEndRegistrations,YEAR_END_PROJECT,YEAR_END_SHIFTS,YEAR_END_GROUPS} from '../src/year-end-schedule.js';
+import {validateYearEndChoices,canUseYearEndSchedule,yearEndParticipation,yearEndParticipants,yearEndPendingParticipants,confirmedYearEndRegistration,sortYearEndRegistrations,YEAR_END_PROJECT,YEAR_END_SHIFTS,YEAR_END_GROUPS} from '../src/year-end-schedule.js';
 
 test('each category accepts exactly one choice; all three shifts keep the two existing groups',()=>{
   for(const plantao of ['natal','reveillon','carnaval'])for(const grupo of ['natal','reveillon'])assert.deepEqual(validateYearEndChoices({plantao,grupo}),{plantao,grupo});
@@ -43,4 +43,22 @@ test('team eligibility requires the server-approved matching profile and verifie
 });
 test('the ranking uses numerical confirmation order without mutating the input',()=>{
   const rows=[{position:10},{position:2},{position:1}];assert.deepEqual(sortYearEndRegistrations(rows).map(r=>r.position),[1,2,10]);assert.equal(rows[0].position,10);
+});
+
+test('administrator roster uses only the official policy and respects exclusions and group exemptions',()=>{
+  const policy={schemaVersion:1,cycle:'2026-2027',siglasByUid:{one:'AB',two:'FR',three:null,excluded:'CD'},excludedUids:['excluded'],approvedBindingsByUid:{private:'not exposed'}};
+  assert.deepEqual(yearEndParticipants(policy),[{uid:'one',sigla:'AB',requireGroup:true},{uid:'two',sigla:'FR',requireGroup:false},{uid:'three',sigla:null,requireGroup:true}]);
+  for(const invalid of [null,{...policy,cycle:'2025-2026'},{...policy,siglasByUid:[]},{...policy,excludedUids:'excluded'}])assert.throws(()=>yearEndParticipants(invalid),{code:'YEAR_END_POLICY_UNAVAILABLE'});
+});
+
+test('pending siglas follow confirmed choices alphabetically without assigning positions or changing totals',()=>{
+  const rows=[{uid:'confirmed',sigla:'CD',position:2},{uid:'outside-policy',sigla:'AB',position:1}];
+  const participants=yearEndParticipants({schemaVersion:1,cycle:'2026-2027',siglasByUid:{pendingNull:null,pendingFR:'FR',confirmed:'CD',pendingAB:'AB',pendingAD:'AD'}});
+  const before=structuredClone({rows,participants}),pending=yearEndPendingParticipants(rows,participants);
+  assert.deepEqual(pending.map(p=>p.sigla),['AB','AD','FR',null]);assert.ok(pending.every(p=>!('position' in p)));
+  assert.deepEqual({rows,participants},before,'as escolhas e a relação oficial não podem ser alteradas pela consulta');
+  const confirmed=sortYearEndRegistrations(rows);assert.deepEqual(confirmed.map(p=>p.position),[1,2]);
+  const newChoice={uid:'pendingAB',sigla:'AB',position:3};
+  assert.deepEqual(yearEndPendingParticipants([...rows,newChoice],participants).map(p=>p.sigla),['AD','FR',null]);
+  assert.deepEqual(yearEndPendingParticipants(rows,[]),[]);assert.equal(yearEndPendingParticipants([],participants).length,participants.length);
 });

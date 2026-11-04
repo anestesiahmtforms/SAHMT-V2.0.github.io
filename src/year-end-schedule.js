@@ -46,6 +46,19 @@ export function canUseYearEndSchedule(session) {
 
 export const sortYearEndRegistrations = rows => [...rows].sort((a,b)=>a.position-b.position);
 
+export function yearEndParticipants(policy) {
+  const siglas=policy?.siglasByUid,excluded=policy?.excludedUids||[];
+  if(policy?.schemaVersion!==1||policy.cycle!==YEAR_END_CYCLE||!siglas||typeof siglas!=='object'||Array.isArray(siglas)||
+    !Array.isArray(excluded)||excluded.some(uid=>typeof uid!=='string'||!uid))throw yearEndError('YEAR_END_POLICY_UNAVAILABLE');
+  return Object.keys(siglas).filter(uid=>!excluded.includes(uid)).map(uid=>({uid,...yearEndParticipation(policy,uid)}));
+}
+
+export function yearEndPendingParticipants(rows,participants) {
+  const confirmed=new Set(rows.map(row=>row.uid));
+  return participants.filter(person=>!confirmed.has(person.uid)).sort((a,b)=>
+    Number(a.sigla===null)-Number(b.sigla===null)||(a.sigla||'').localeCompare(b.sigla||'','pt-BR')||a.uid.localeCompare(b.uid));
+}
+
 export function confirmedYearEndRegistration(record,{uid,sigla,requireGroup}={}) {
   if(!uid||record?.uid!==uid||record.sigla!==sigla||!Number.isSafeInteger(record.position)||record.position<1)return false;
   try{validateYearEndChoices({plantao:record.plantao,grupo:record.grupo},{requireGroup});return true;}
