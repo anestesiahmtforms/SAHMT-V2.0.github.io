@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {updateScheduleReleaseState} from '../src/schedule-release.js';
+import {updateScheduleReleaseState, visibleScheduleReleaseSiglas} from '../src/schedule-release.js';
 
 test('posição agregada só fica liberada quando todos os membros do grupo foram liberados', () => {
   const first = updateScheduleReleaseState([], {sigla: 'CR', marked: true, groupSiglas: ['CR', 'LH'], tokenSigla: 'DC'});
@@ -39,23 +39,40 @@ test('hora e minuto usam Brasília e não inventam horários para registros anti
   for (const value of [undefined, null, '', NaN, -1]) assert.equal(formatScheduleReleaseTime(value), '');
 });
 
-test('a escala coloca o horário dentro do botão e abaixo da sigla, inclusive nos grupos', async () => {
+test('a Home mostra marca e horário somente à própria pessoa liberada, inclusive nos grupos', async () => {
   const {readFile} = await import('node:fs/promises');
   const {runInNewContext} = await import('node:vm');
   const {formatScheduleReleaseTime} = await import('../src/schedule-release.js');
   const source = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+  const session = {profile: {sigla: 'CR'}};
   const render = runInNewContext(source.slice(source.indexOf('function vacationRankMarkup'), source.indexOf('function renderLabelManualConfirmation')) + '\nrenderSchedulePositionGrid;', {
-    formatScheduleReleaseTime, escapeHtml: value => String(value), can: () => false,
-    featureEnabledForRoute: () => true, appFeatures: {}, session: {profile: {}}
+    formatScheduleReleaseTime, visibleScheduleReleaseSiglas, escapeHtml: value => String(value), can: () => true,
+    featureEnabledForRoute: () => true, appFeatures: {}, session
   });
   const position = (sigla, siglas) => ({sigla, siglas, vacationParts: [], vacationPositions: {}, contacts: [{sigla}]});
   const view = {positions: [position('AB', ['AB']), position('CR/LH', ['CR', 'LH']), position('DC', ['CR', 'LH'])], vacationPositions: {}};
   const schedule = {highlights: {siglas: ['AB', 'CR'], events: [], releaseTimes: {AB: Date.parse('2026-10-09T10:05:00Z'), CR: Date.parse('2026-10-09T11:42:00Z')}}};
   const html = render(view, {schedule});
   const buttons = [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map(match => match[1]);
-  assert.match(buttons[0], />AB<\/span><small[^>]*>07:05<\/small>/);
+  assert.doesNotMatch(buttons[0], /07:05|released-part--checked/);
   assert.match(buttons[1], />CR<\/span><small[^>]*>08:42<\/small>/);
   assert.match(buttons[2], />CR<\/span><small[^>]*>08:42<\/small>/);
   assert.doesNotMatch(html.replace(/<button\b[^>]*>[\s\S]*?<\/button>/g, ''), /07:05|08:42/);
   assert.doesNotMatch(render(view, {mode: 'events', schedule}), /release-time|07:05|08:42/);
+  session.profile.sigla = 'AB';
+  const ownHtml = render(view, {schedule});
+  assert.match(ownHtml, /sigla-token--checked/);
+  assert.match(ownHtml, />AB<\/span><small[^>]*>07:05<\/small>/);
+  assert.doesNotMatch(ownHtml, /08:42/);
+  session.profile.sigla = 'LH';
+  assert.doesNotMatch(render(view, {schedule}), /released-part--checked|sigla-token--checked|release-time|Liberação confirmada/);
+  session.profile.sigla = '';
+  assert.doesNotMatch(render(view, {schedule}), /released-part--checked|sigla-token--checked|release-time/);
+});
+
+test('liberação de posição agregada e estado provisório não expõem os outros membros', () => {
+  assert.deepEqual(visibleScheduleReleaseSiglas(['CR', 'LH', 'DC'], ' cr '), ['CR']);
+  assert.deepEqual(visibleScheduleReleaseSiglas(['AB', 'DC'], 'CR'), []);
+  assert.deepEqual(visibleScheduleReleaseSiglas(['AB'], 'DC'), []);
+  assert.deepEqual(visibleScheduleReleaseSiglas(undefined, 'AB'), []);
 });

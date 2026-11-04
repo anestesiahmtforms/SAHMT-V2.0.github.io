@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS,SOURCE_COLLECTIONS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
+import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE} from '../communication/operational-notices.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
@@ -63,6 +64,17 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   if(saved.dispatch){try{if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});return {...saved,pushQueued:true};}catch{return {...saved,pushQueued:false};}}
   return {...saved,pushQueued:false};
  }
+ async function urgentNotice(input,a){
+  const fixed=urgentNoticeInput({noticeId:input.id||`urgent-${uuid()}`,title:input.message?.title,message:input.message?.message},now());
+  try{return await saveMessage(fixed,a);}
+  catch(error){
+   if(!['COMM_CONFLICT','COMM_MESSAGE_LOCKED'].includes(error.code))throw error;
+   const old=await store.get('communicationMessages',fixed.id);
+   if(old?.status!=='published'||old.createdBy?.sourceUid!==a.sourceUid||old.title!==fixed.message.title||old.message!==fixed.message.message||old.audienceType!=='ALL'||old.category!=='AVISO URGENTE'||old.priority!=='URGENT')throw error;
+   const dispatch=await store.get('communicationDispatches',fixed.id);
+   return {message:old,dispatch,pushQueued:Boolean(dispatch),alreadySent:true};
+  }
+ }
  async function releaseNotice(input,a,ownProfile){
   if(ownProfile.permissions?.scheduleWrite!==true)throw fail('COMM_FORBIDDEN',403);
   const day=String(input.day||''),sigla=String(input.sigla||'').trim().toUpperCase();
@@ -74,8 +86,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   const key=`release-${day}-${sigla}-${releaseAt}`;
   const old=await store.get('communicationMessages',key);
   if(old?.status==='published'){const dispatch=await store.get('communicationDispatches',key);return {message:old,dispatch,pushQueued:Boolean(dispatch),pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true,alreadySent:true};}
-  const time=new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'America/Sao_Paulo'}).format(new Date(releaseAt));
-  const result=await saveMessage({id:key,version:0,message:{title:'Você está Liberado!',message:`O SAHMT agradece pelo empenho e dedicação ao seu trabalho. ${time}`,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a);
+  const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a);
   return {...result,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
  }
  async function device(input,a,enable){
@@ -258,7 +269,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
    return {message:m};
   }
   if(action==='SCHEDULE_RELEASE_NOTICE')return releaseNotice(input,a,ownProfile);
-  if(action==='SAVE_MESSAGE')return saveMessage(input,a);
+  if(action==='SAVE_MESSAGE')return operationalNoticeIdentity(a)?urgentNotice(input,a):saveMessage(input,a);
   if(action==='IMPORT_SOURCE'){
    const {record,reference}=await sourceReference(input);
    const copyText=['notifications','communicationMessages','htmlTrainings'].includes(input.collection);

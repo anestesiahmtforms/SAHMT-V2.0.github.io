@@ -33,7 +33,7 @@ import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTraini
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
-import {formatScheduleReleaseTime} from './schedule-release.js';
+import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
 import {openChecklistCamera} from './checklist-camera.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {resolveChecklistQrStation} from './checklist-static.js';
@@ -936,7 +936,7 @@ function fitSchedulePositionGrid(container) {
 }
 
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
-  const highlightedSiglas = new Set(mode === 'events' ? [] : Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : []);
+  const highlightedSiglas = new Set(mode === 'home' ? visibleScheduleReleaseSiglas(schedule.highlights?.siglas, session.profile?.sigla) : []);
   const releaseTimes = mode === 'home' ? schedule.highlights?.releaseTimes || {} : {};
   const isAdmin = can('admin');
   const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
@@ -962,7 +962,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
       : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, releaseTimes)}</strong>`;
     const marked = !eventMode && highlightedSiglas.has(position.sigla);
-    const provisionalRelease = !eventMode && position.siglas.some(sigla=>(schedule.provisionalReleaseSiglas||[]).includes(sigla));
+    const provisionalRelease = !eventMode && position.siglas.some(sigla=>sigla===ownSigla&&(schedule.provisionalReleaseSiglas||[]).includes(sigla));
     const showConfirmedDot = eventMode ? hasEvent : marked && !provisionalRelease && !schedule.stale && schedule.pendingFirestore !== true;
     const confirmationLabel = eventMode ? 'Registro de evento confirmado no Firestore' : 'Liberação confirmada no Firestore';
     const vacationDescription = position.vacationParts.length
