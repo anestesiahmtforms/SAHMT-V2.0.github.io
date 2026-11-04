@@ -1,4 +1,3 @@
-import {communicationLink} from './communication-link.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 import './fd-performance.css';
@@ -135,8 +134,6 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    body.innerHTML='<p role="status">Preparando cadastro…</p>';const activePanel=panel;
    void import('./registration-ui.js').then(({mountInstitutionalRegistration})=>{if(disposed||ticket!==renderId||panel!==activePanel)return;cleanupRegistration=mountInstitutionalRegistration(body,{kind:activePanel,request:performRegistration,isCurrent:()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent(),onGroup:group=>{dialog.querySelector('[data-hub-user]').textContent='Grupo: '+({team:'Equipe',resident:'Residentes'}[group]||'');}});}).catch(()=>{if(!disposed&&ticket===renderId)body.innerHTML='<p role="alert">Não foi possível preparar o cadastro. Volte e tente novamente.</p>';});
   }
-  dialog.querySelector('[data-comm-origin]')?.remove();
-  if(communicationAllowed&&panel!=='home'&&panel!=='communication'){const origin=['results','fdPerformance'].includes(panel)?'FD':['surveys','fePerformance','institutional','professional','epidemiological','climateForm','stressForm'].includes(panel)?'FE':panel==='records'?'FC':'FA';const link=document.createElement('a');link.dataset.commOrigin='';link.className='comm-forward';link.href=communicationLink({project:origin});link.textContent='ENCAMINHAR PARA PUSH — FF';dialog.querySelector('.management-hub-footer').prepend(link);}
   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
  };

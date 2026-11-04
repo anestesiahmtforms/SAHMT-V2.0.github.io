@@ -14,5 +14,4 @@ export function communicationLink({project='FF',collection,recordId}={}){
  if(collection&&!SOURCE_COLLECTIONS[project].includes(collection))throw Error('COMM_SOURCE_UNSUPPORTED');
  return 'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/communications/'+(collection&&recordId?'forward/'+[project,collection,id(recordId)].map(encodeURIComponent).join('/'):'compose/'+project);
 }
-export function forwardingButton(session,source){if(!communicationAdminSession(session))return '';return `<a class="comm-forward" href="${communicationLink(source)}">ENCAMINHAR PARA PUSH — FF</a>`;}
 export function parseCommunicationForward(hash){const parts=hash.split('/');if(parts[2]!=='forward')return null;try{const [project,collection,recordId]=parts.slice(3).map(decodeURIComponent);communicationLink({project,collection,recordId});return {project,collection,id:recordId};}catch{return null;}}
