@@ -17,6 +17,8 @@ export const assertCanStartPrimarySignIn=runtime.assertCanStartPrimarySignIn;
 export const getGoogleProjectAuth=runtime.getTargetAuth;
 export const verifyGoogleProjectSession=runtime.verifyTargetSession;
 export const waitForGoogleProjectSession=runtime.waitForTargetSession;
+export const waitForIsolatedFfSession=runtime.waitForIsolatedFfSession;
+export const confirmIsolatedFfAccess=runtime.confirmIsolatedFfAccess;
 export const maintainGoogleProjectSessions=runtime.maintainSessions;
 export const currentGoogleProjectIdentity=()=>googleIdentity(auth.currentUser);
 export const googleProjectClientId=GOOGLE_PROJECT_CONFIG.FA.acceptedGoogleClientIds[0];

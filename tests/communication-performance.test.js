@@ -20,7 +20,7 @@ function clientHarness(fetchImpl){
  const auth={currentUser:source},ff={app:{options:{projectId:FF.projectId,appId:FF.appId,messagingSenderId:FF.senderId}},currentUser:target};
  const listeners=new Map(),document={visibilityState:'visible',addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
  const env={VITE_COMMUNICATION_FF_ENABLED:'true',VITE_COMMUNICATION_FF_ENDPOINT:'https://communication.example.workers.dev/v1/communication'};
- const context=vm.createContext({document,auth,FF,fail,env,fetch:fetchImpl,AbortController,setTimeout,clearTimeout,waitForGoogleProjectSession:async()=>true,getGoogleProjectAuth:()=>ff});
+ const context=vm.createContext({document,auth,FF,fail,env,fetch:fetchImpl,AbortController,setTimeout,clearTimeout,waitForIsolatedFfSession:async()=>true,getGoogleProjectAuth:()=>ff});
  const code=readFileSync(new URL('../src/communication-client.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  vm.runInContext(code+'\nglobalThis.client=createCommunicationClient();',context);
  return {client:context.client,auth,ff,document,listeners};
@@ -34,7 +34,7 @@ test('identical in-flight reads share one authenticated request; settled reads a
  assert.equal(first,second);await tick();assert.equal(requests,1);
  release(Response.json({items:[]}));await Promise.all([first,second]);
  await h.client.request('GROUPS',{});assert.equal(requests,2);
- assert.equal(headers[0].Authorization,'Bearer ff-token');assert.equal(headers[0]['X-SAHMT-FA-Authorization'],'Bearer fa-token');h.client.dispose();
+ assert.equal(headers[0].Authorization,'Bearer ff-token');assert.equal(headers[0]['X-SAHMT-FA-Authorization'],undefined);h.client.dispose();
 });
 
 test('writes are never cached, merged, retried or sent automatically',async()=>{

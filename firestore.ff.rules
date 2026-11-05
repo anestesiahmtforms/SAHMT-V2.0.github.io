@@ -3,7 +3,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Central FF: all reads/writes go through the authenticated Worker.
     // This intentionally also denies direct SDK access by the four administrators:
-    // IAM service access bypasses Rules and validates FA + FF, allowlist and audit.
+    // IAM service access validates FF identity, local access, allowlist and audit.
+    // FA verification is restricted to the explicit schedule release bridge.
     // Tokens, source mappings, budgets and audit cannot be read/forged by clients.
     match /{document=**} {
       allow read, write: if false;

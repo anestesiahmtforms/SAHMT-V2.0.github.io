@@ -37,7 +37,12 @@ export async function verifyPair(request,options){
  const ff=await verifyToken(request.headers.get('Authorization'),'FF',options);
  const fa=await verifyToken(request.headers.get('X-SAHMT-FA-Authorization'),'FA',options);
  if(ff.googleUid!==fa.googleUid||ff.email!==fa.email)throw fail('COMM_IDENTITY_MISMATCH',403);
- return {...ff,sourceUid:fa.uid};
+ return {...ff,sourceUid:ff.uid,faUid:fa.uid};
+}
+export async function verifyCommunicationActor(request,options){
+ if(options?.action==='SCHEDULE_RELEASE_NOTICE')return verifyPair(request,options);
+ const ff=await verifyToken(request.headers.get('Authorization'),'FF',options);
+ return {...ff,sourceUid:ff.uid};
 }
 export async function assertFreeProject(getToken,fetchImpl=fetch){
  for(const [url,valid]of [

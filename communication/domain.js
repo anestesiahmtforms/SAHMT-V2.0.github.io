@@ -7,7 +7,7 @@ export const ROUTES = Object.freeze(['communications','home','management-hub','m
 export const ROLES = Object.freeze(['coordenador','conselho_diretor','gestor','anestesiologista','residente','temporario','administrador_app']);
 export const PAGE_SIZE = 20, BATCH_SIZE = 3;
 export const BUILTIN_GROUPS = Object.freeze([{id:'institutional-team',name:'EQUIPE'}, {id:'institutional-resident',name:'RESIDENTES'}, {id:'institutional-substitute',name:'SUBSTITUTOS'}]);
-export const SOURCE_COLLECTIONS=Object.freeze({FA:['notifications'],FB:['notifications','activities','htmlTrainings'],FC:['occurrenceReports','qmentumDefinitions'],FD:['indicatorSnapshots','indicatorMonthlyReviews','indicatorQuarterlyActions'],FE:['climateReports','stressReports','epidemiologicalReports'],FF:['communicationMessages']});
+export const SOURCE_COLLECTIONS=Object.freeze({FF:['communicationMessages']});
 export const fail = (code,status=400) => Object.assign(new Error(code),{code,status});
 export const adminIdentity = user => Boolean(user?.emailVerified===true && ADMINS.includes(String(user.email).trim().toLowerCase()));
 export const activeProfile = p => p?.active===true && p?.access===true;

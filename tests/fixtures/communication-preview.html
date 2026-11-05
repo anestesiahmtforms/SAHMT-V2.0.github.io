@@ -10,9 +10,8 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
  if(action==='GROUPS')return {items:[...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})),...groups],cursor:null};
  if(action==='AREAS')return {items:[{id:'quality',name:'Qualidade',active:true}],cursor:null};
  if(action==='MESSAGES'||action==='INBOX')return {items:records,cursor:null};
- if(action==='SAVE_MESSAGE'){const m={...input.message,id:'one',version:1,...(input.source?{source:input.source}:{})};records.splice(0,records.length,m);return {message:m};}
+ if(action==='SAVE_MESSAGE'){const m={...input.message,id:'one',version:1,...(input.source?{source:input.source}:{})};records.splice(0,records.length,m);return {message:m,dispatch:{status:'queueing'},pushQueued:true};}
  if(action==='MESSAGE')return {message:records[0]};
- if(action==='IMPORT_SOURCE')return {message:{title:'Informação criada em FB',message:'Texto institucional de origem',category:'INFORMAÇÃO INSTITUCIONAL',priority:'NORMAL',route:'management',audienceType:'USER',audienceValue:'',source:input}};
  if(action==='SAVE_GROUP'){groups.push({...input,id:'group-one',version:1});return {saved:true};}
  if(action==='PREPARE')return {dispatch:{id:'one',title:records[0].title,category:records[0].category,status:'ready',batches:0,processed:0,accepted:0,failed:0,skipped:0,unknown:0,author:{email:'synthetic@example.test'}}};
  if(action==='SEND_BATCH')return {dispatch:{id:'one',title:records[0].title,status:'completed',batches:1,processed:1,accepted:1,failed:0,skipped:0,unknown:0,author:{email:'synthetic@example.test'}}};

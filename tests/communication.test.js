@@ -23,7 +23,7 @@ function memory(){
 }
 function fixture(){
  const store=memory(),fa=memory(),fb=memory(),sources={FC:memory(),FD:memory(),FE:memory()},sent=[];let n=0,time=NOW,enabled=true;
- for(const a of [actor,person])fa.data.set('users/'+a.sourceUid,{uid:a.sourceUid,email:a.email,active:true,access:true,role:'gestor'});
+ for(const a of [actor,person])store.data.set('users/'+a.sourceUid,{uid:a.sourceUid,email:a.email,active:true,access:true,role:'gestor'});
  store.data.set('communicationSettings/main',{pushEnabled:true});
  const service=createCommunicationService({store,fa,fb,sources,now:()=>time,uuid:()=>`operation-${++n}`,recipientEnabled:async()=>enabled,send:async(token,data)=>{sent.push({token,data});return {status:token.includes('expired')?'failed':'accepted',disable:token.includes('expired')};}});
  const call=(action,input={},a=actor)=>service.execute(action,input,a);
@@ -39,7 +39,7 @@ test('only the four verified emails grant administration, never local roles or p
  assert.equal(ADMINS.length,4);for(const email of ADMINS)assert.equal(adminIdentity({email,emailVerified:true}),true);
  assert.equal(adminIdentity({email:ADMINS[0],emailVerified:false}),false);
  const f=fixture();for(const action of ['SAVE_MESSAGE','PREPARE','SEND_BATCH','DIRECTORY','GROUPS','HISTORY','AUDIT','METRICS','SETTINGS','SAVE_SETTINGS','IMPORT_SOURCE'])await assert.rejects(f.call(action,{}, {...person,role:'administrador_app',permissions:{admin:true}}),{code:'COMM_FORBIDDEN'});
- assert.equal(f.store.data.size,1);
+ assert.equal(f.store.data.size,3);
 });
 test('publishing, editing with version check, audit and separate manual push',async()=>{
  const f=fixture(),m=await publish(f);assert.equal(f.sent.length,0);assert.equal((await f.call('METRICS')).total.published,1);
@@ -52,7 +52,7 @@ test('publishing, editing with version check, audit and separate manual push',as
 test('ordinary inbox and direct lookup enforce active audience, time and own identity',async()=>{
  const f=fixture(),m=await publish(f);await publish(f,{audienceValue:'another'}).catch(()=>{});
  assert.equal((await f.call('INBOX',{},person)).items.length,1);
- const other={...person,uid:'ff-other',sourceUid:'fa-other',email:'other@example.test'};f.fa.data.set('users/fa-other',{uid:'fa-other',email:other.email,active:true,access:true});
+ const other={...person,uid:'ff-other',sourceUid:'fa-other',email:'other@example.test'};f.store.data.set('users/fa-other',{uid:'fa-other',email:other.email,active:true,access:true});
  assert.equal((await f.call('INBOX',{},other)).items.length,0);
  await assert.rejects(f.call('MESSAGE',{id:m.id},other),{code:'COMM_FORBIDDEN'});
  f.setTime(NOW+2*86400000);assert.equal((await f.call('INBOX',{},person)).items.length,0);
@@ -82,26 +82,19 @@ test('invalidated devices release their slot for a new device registration',asyn
  const recipient=await f.store.get('communicationRecipients',person.uid);
  assert.equal(recipient.deviceIds.length,3);
 });
-test('Equipe, Residentes and Substitutos use authoritative FB assignment and distinct UIDs',async()=>{
- for(const [category,group]of [['EFETIVO','team'],['RESIDENTE_1','resident'],['RESIDENTE_2','resident'],['RESIDENTE_3','resident'],['SUBSTITUTO','substitute']]){
-  const f=fixture();f.fb.data.set('users/fb-person',{uid:'fb-person',email:person.email,active:true,access:true});
-  const key=createHash('sha256').update(JSON.stringify(person.email)).digest('hex');f.fb.data.set('userCategories/'+key,{schemaVersion:1,identityStatus:'LINKED',uid:'fb-person',email:person.email,memberCategories:[category,'GESTOR']});
-  await publish(f,{audienceType:'GROUP',audienceValue:'institutional-'+group});assert.equal((await f.call('INBOX',{},person)).items.length,1);
-  await publish(f,{audienceType:'GROUP',audienceValue:'institutional-'+(group==='team'?'resident':'team')});assert.equal((await f.call('INBOX',{},person)).items.length,1);
- }
- assert.equal(BUILTIN_GROUPS.length,3);
- const f=fixture();await assert.rejects(f.call('SAVE_GROUP',{id:'institutional-team',name:'tampered',memberUids:[],version:0}),{code:'COMM_FORBIDDEN'});
+test('Equipe, Residentes and Substitutos use only FF-local membership',async()=>{
+ for(const group of ['team','resident','substitute']){const f=fixture();f.store.data.get('users/'+person.sourceUid).institutionalGroup=group;
+ await publish(f,{audienceType:'GROUP',audienceValue:'institutional-'+group});assert.equal((await f.call('INBOX',{},person)).items.length,1);
+ await publish(f,{audienceType:'GROUP',audienceValue:'institutional-'+(group==='team'?'resident':'team')});assert.equal((await f.call('INBOX',{},person)).items.length,1);}
+ assert.equal(BUILTIN_GROUPS.length,3);const f=fixture();await assert.rejects(f.call('SAVE_GROUP',{id:'institutional-team',name:'tampered',memberUids:[],version:0}),{code:'COMM_FORBIDDEN'});
 });
-test('FB area membership resolves FB user instead of assuming the FA UID',async()=>{
- const f=fixture();f.fb.data.set('users/fb-person',{uid:'fb-person',email:person.email,active:true,access:true});f.fb.data.set('managementAreas/quality',{active:true,memberUids:['fb-person']});
+test('areas resolve membership only in the FF directory',async()=>{
+ const f=fixture();f.store.data.set('managementAreas/quality',{active:true,memberUids:[person.sourceUid]});
  await publish(f,{audienceType:'AREA',audienceValue:'quality'});assert.equal((await f.call('INBOX',{},person)).items.length,1);
 });
-test('source forwarding creates only a draft, checks every reference and never writes other projects',async()=>{
- const f=fixture();f.fb.data.set('notifications/notice',{title:'Informação FB',message:'Texto da origem'});
- const result=await f.call('IMPORT_SOURCE',{project:'FB',collection:'notifications',id:'notice'});assert.equal(result.message.title,'Informação FB');assert.equal(result.message.status,'draft');assert.equal(result.message.audienceType,'USER');assert.equal(f.sent.length,0);
- const m=await f.call('SAVE_MESSAGE',{message:{...result.message,audienceValue:person.sourceUid},source:result.message.source,version:0});assert.equal(m.message.source.project,'FB');assert.equal(f.fb.data.size,1);
- for(const project of ['FC','FD','FE']){const collection={FC:'occurrenceReports',FD:'indicatorSnapshots',FE:'climateReports'}[project];f.sources[project].data.set(collection+'/one',{patientName:'never copy',title:'private'});const d=await f.call('IMPORT_SOURCE',{project,collection,id:'one'});assert.equal(JSON.stringify(d).includes('private'),false);}
- await assert.rejects(f.call('IMPORT_SOURCE',{project:'FA',collection:'users',id:person.sourceUid}),{code:'COMM_SOURCE_UNSUPPORTED'});
+test('source forwarding is disabled for every project',async()=>{
+ const f=fixture();for(const project of ['FA','FB','FC','FD','FE','FF'])await assert.rejects(f.call('IMPORT_SOURCE',{project,collection:'notifications',id:'one'}),{code:'COMM_SOURCE_UNSUPPORTED'});
+ await assert.rejects(f.call('SAVE_MESSAGE',{version:0,message:message(),source:{project:'FB',collection:'notifications',id:'one'}}),{code:'COMM_SOURCE_UNSUPPORTED'});
 });
 test('quota exhaustion fails closed; incomplete dispatch reconciliation never resends reserved devices',async()=>{
  const f=fixture();f.store.data.set('communicationBudgets/2026-11-03',{requests:2000});await assert.rejects(f.call('BOOTSTRAP'),{code:'COMM_DAILY_OPERATION_LIMIT'});
@@ -119,7 +112,7 @@ test('server validates token with Google, rejects wrong project, revoked, unveri
  await assert.rejects(verifyToken(jwt(FF.projectId),'FF',{...options,fetchImpl:async()=>Response.json({error:{}},{status:400})}),{code:'COMM_SESSION_INVALID'});
  await assert.rejects(verifyToken(jwt(FF.projectId),'FF',{...options,fetchImpl:async()=>Response.json({users:[{localId:'ff-one',disabled:true}]})}),{code:'COMM_SESSION_INVALID'});
  const request=new Request('https://worker.test',{headers:{Authorization:jwt(FF.projectId),'X-SAHMT-FA-Authorization':jwt('sahmt-17a16','fa-other')}});
- const pair=await verifyPair(request,{now:()=>NOW,fetchImpl:async(u,o)=>{const c=JSON.parse(Buffer.from(JSON.parse(o.body).idToken.split('.')[1],'base64url'));return Response.json({users:[{localId:c.sub,email:c.email,emailVerified:true,providerUserInfo:[{providerId:'google.com',rawId:'google-one'}]}]});}});assert.equal(pair.sourceUid,'fa-other');
+ const pair=await verifyPair(request,{now:()=>NOW,fetchImpl:async(u,o)=>{const c=JSON.parse(Buffer.from(JSON.parse(o.body).idToken.split('.')[1],'base64url'));return Response.json({users:[{localId:c.sub,email:c.email,emailVerified:true,providerUserInfo:[{providerId:'google.com',rawId:'google-one'}]}]});}});assert.equal(pair.faUid,'fa-other');
 });
 test('free-plan metadata is checked, including named database freeTier flag and no billing account',async()=>{
  await assertFreeProject(async()=> 'synthetic',async url=>Response.json(url.includes('billingInfo')?{billingEnabled:false}:{name:`projects/${FF.projectId}/databases/${FF.databaseId}`,freeTier:true}));

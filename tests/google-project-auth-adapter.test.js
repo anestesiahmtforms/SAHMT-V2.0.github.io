@@ -6,6 +6,18 @@ const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),res
 const idToken='header.'+Buffer.from(JSON.stringify({iss:'https://accounts.google.com',sub:'google-same-uid',aud:'source-client'})).toString('base64url')+'.signature';
 const credential={providerId:'google.com',idToken};
 
+test('Central FF restoration checks only FF and never starts the shared multi-project coordinator',async()=>{
+ const tokens=[],h=fixture({includeFf:true,persisted:{FF:person()},tokenRead:target=>tokens.push(target)});
+ assert.equal(await h.runtime.waitForIsolatedFfSession(),true);
+ assert.deepEqual(Object.keys(h.instances).sort(),['FA','FF']);assert.ok(tokens.every(t=>t==='FF'));
+ assert.equal(h.calls.some(c=>['signin','reauth','preflight'].includes(c.kind)),false);
+});
+test('Central FF Google confirmation signs into FF only without reauthenticating FA',async()=>{
+ const h=fixture({includeFf:true});await h.runtime.confirmIsolatedFfAccess(credential);
+ assert.deepEqual(h.calls.filter(c=>c.kind==='signin').map(c=>c.target),['FF']);
+ assert.equal(h.calls.some(c=>c.kind==='reauth'),false);assert.deepEqual(Object.keys(h.instances).sort(),['FA','FF']);
+});
+
 test('foreground maintenance validates five existing SDK sessions without login or forced refresh',async()=>{
  const tokens=[],h=fixture({persisted:Object.fromEntries(['FB','FC','FD','FE'].map(target=>[target,person()])),tokenRead:(target,force)=>tokens.push({target,force})});
  assert.equal((await h.runtime.maintainSessions()).status,'ready');await h.runtime.controller.restore(h.auth.currentUser);

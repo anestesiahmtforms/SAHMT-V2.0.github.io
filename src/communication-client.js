@@ -1,17 +1,18 @@
 import {auth} from './firebase-auth.js';
-import {getGoogleProjectAuth,waitForGoogleProjectSession,confirmGoogleProjectAccess,currentGoogleProjectIdentity,googleProjectClientId} from './google-project-auth-runtime.js';
+import {getGoogleProjectAuth,waitForIsolatedFfSession,confirmIsolatedFfAccess,currentGoogleProjectIdentity,googleProjectClientId} from './google-project-auth-runtime.js';
 import {FF,fail} from '../communication/domain.js';
 import {rememberCommunicationDevicePushActive} from './communication-link.js';
+import {APP_VERSION} from './app-version.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
 const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
 export async function prepareCommunicationSession({isCurrent=()=>true}={}){
  const current=()=>communicationEnabled&&isCurrent()&&document.visibilityState!=='hidden';
- return current()&&await waitForGoogleProjectSession('FF',{isCurrent:current})&&current();
+ return current()&&await waitForIsolatedFfSession({isCurrent:current})&&current();
 }
 export function createCommunicationClient({isCurrent=()=>true}={}){
- let disposed=false;const controllers=new Set(),widgets=new Set(),reads=new Map();
+ let disposed=false,presenceReported=false;const controllers=new Set(),widgets=new Set(),reads=new Map();
  const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden';
  const suspend=()=>{if(document.visibilityState==='hidden')for(const c of controllers)c.abort();};
  document.addEventListener('visibilitychange',suspend);
@@ -30,11 +31,16 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   const {source,target}=await sessions(),controller=new AbortController();controllers.add(controller);
   const timer=setTimeout(()=>controller.abort(),60000);
   try{
-   const [ffToken,faToken]=await Promise.all([target.getIdToken(),source.getIdToken()]);
+   const ffToken=await target.getIdToken();
+   const headers={Authorization:'Bearer '+ffToken,'Content-Type':'application/json'};
+   if(action==='SCHEDULE_RELEASE_NOTICE')headers['X-SAHMT-FA-Authorization']='Bearer '+await source.getIdToken();
+   if(!presenceReported&&['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action)){
+    try{const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');const displayMode=appDisplayMode();input={...input,installation:{deviceId:installationId(localStorage,globalThis.crypto,displayMode),displayMode,platform:devicePlatform(),appVersion:APP_VERSION,loadedRelease:Number(import.meta.env.VITE_APP_RELEASE)||0}};}catch{}
+   }
    if(!current()||auth.currentUser!==source||getGoogleProjectAuth('FF').currentUser!==target)throw fail('COMM_SESSION_INVALID');
-   const r=await fetch(endpoint,{method:'POST',headers:{Authorization:'Bearer '+ffToken,'X-SAHMT-FA-Authorization':'Bearer '+faToken,'Content-Type':'application/json'},body:JSON.stringify({action,input}),cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});
+   const r=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify({action,input}),cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});
    const d=await r.json();if(!r.ok){const error=fail(d.code||'COMM_SERVICE_UNAVAILABLE',r.status);for(const key of ['used','limit','resetsAt'])if(Number.isSafeInteger(d[key])&&d[key]>=0)error[key]=d[key];throw error;}
-   if(!current()||auth.currentUser!==source||getGoogleProjectAuth('FF').currentUser!==target)throw fail('COMM_SESSION_INVALID');return d;
+   if(!current()||auth.currentUser!==source||getGoogleProjectAuth('FF').currentUser!==target)throw fail('COMM_SESSION_INVALID');if(input.installation)presenceReported=true;return d;
   }finally{clearTimeout(timer);controllers.delete(controller);}
  }
  function request(action,input={}){
@@ -77,7 +83,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   const {createGoogleProjectAuthGoogleButton}=await import('./google-project-auth-google-button.js');
   if(!live())return()=>{};
   const widget=createGoogleProjectAuthGoogleButton({clientId:googleProjectClientId,getExpectedIdentity:currentGoogleProjectIdentity,onError,
-   onCredential:async credential=>{await confirmGoogleProjectAccess(credential);if(!current())return;if(!await waitForGoogleProjectSession('FF',{isCurrent:current}))throw fail('COMM_SESSION_INVALID');if(current())await onConnected();}});
+   onCredential:async credential=>{await confirmIsolatedFfAccess(credential,{isCurrent:current});if(!current())return;if(!await waitForIsolatedFfSession({isCurrent:current}))throw fail('COMM_SESSION_INVALID');if(current())await onConnected();}});
   widgets.add(widget);
   const cleanup=()=>{widget.dispose();widgets.delete(widget);};
   try{await widget.render(host);if(!live())cleanup();}catch(e){cleanup();throw e;}

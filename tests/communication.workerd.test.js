@@ -6,11 +6,11 @@ import {encodeFields,decodeFields} from '../worker-communication/store.js';
 import {FF,ADMINS} from '../communication/domain.js';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
 const {build}=require('esbuild'),{Miniflare,convertV4MiniflareOptions}=require('miniflare');
-test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence, individual push and denial',async()=>{
- const data=new Map(),writes=[],pushes=[],requests=[];let disabledFa=false;
+test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persistence, individual push and denial',async()=>{
+ const data=new Map(),writes=[],pushes=[],requests=[];let disabledFf=false;
  const roots={FA:'projects/sahmt-17a16/databases/(default)/documents',FF:`projects/${FF.projectId}/databases/${FF.databaseId}/documents`};
  const people=[{fa:'fa-admin',ff:'ff-admin',email:ADMINS[0],google:'google-admin'},{fa:'fa-person',ff:'ff-person',email:'person@example.test',google:'google-person'}];
- for(const p of people)data.set(roots.FA+'/users/'+p.fa,{uid:p.fa,email:p.email,active:true,access:true,role:'gestor'});
+ for(const p of people)data.set(roots.FF+'/users/'+p.fa,{uid:p.fa,email:p.email,active:true,access:true,role:'gestor'});
  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  const credentials={project_id:FF.projectId,client_email:`communication-worker@${FF.projectId}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
@@ -18,11 +18,11 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
  const bundle=await build({entryPoints:['worker-communication/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
  // The pinned local workerd binary supports dates through 2026-10-13; production retains its own date.
  const mf=new Miniflare(convertV4MiniflareOptions({name:'communication-test',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{COMMUNICATION_ENABLED:'true',WORKERS_FREE_CONFIRMED:'true',FF_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
-  const u=new URL(request.url);requests.push(u.hostname+u.pathname);
+  const u=new URL(request.url);requests.push(u.hostname+u.pathname);assert.ok(!u.pathname.includes('sahmt-17a16'),'ordinary FF calls never reach FA');
   if(u.hostname==='identitytoolkit.googleapis.com'){
    const body=await request.json();let p,uid;
    if(body.idToken){const c=JSON.parse(Buffer.from(body.idToken.split('.')[1],'base64url'));p=people.find(p=>p.email===c.email);uid=c.sub;}else{const station=u.pathname.includes('/projects/sahmt-17a16/')?'fa':'ff';p=people.find(p=>p[station]===body.localId[0]);uid=p?.[station];}
-   return Response.json({users:p?[{localId:uid,email:p.email,emailVerified:true,disabled:disabledFa&&uid===people[1].fa,validSince:'0',providerUserInfo:[{providerId:'google.com',rawId:p.google}]}]:[]});
+   return Response.json({users:p?[{localId:uid,email:p.email,emailVerified:true,disabled:disabledFf&&uid===people[1].ff,validSince:'0',providerUserInfo:[{providerId:'google.com',rawId:p.google}]}]:[]});
   }
   if(u.hostname==='oauth2.googleapis.com')return Response.json({access_token:'synthetic-service',expires_in:3600});
   if(u.hostname==='cloudbilling.googleapis.com')return Response.json({billingEnabled:false});
@@ -45,7 +45,7 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
   }
   const key=decodeURIComponent(u.pathname.slice(4));return data.has(key)?Response.json({name:key,fields:encodeFields(data.get(key))}):Response.json({error:{status:'NOT_FOUND'}},{status:404});
  }}));
- const call=async(action,input={},p=people[0])=>{requests.length=0;const r=await mf.dispatchFetch('https://worker.test/v1/communication',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json',Authorization:'Bearer '+token(p,FF.projectId,p.ff),'X-SAHMT-FA-Authorization':'Bearer '+token(p,'sahmt-17a16',p.fa)},body:JSON.stringify({action,input})});const body=await r.json();assert.ok(requests.length<=44,'Free subrequest cap');return {status:r.status,body};};
+ const call=async(action,input={},p=people[0])=>{requests.length=0;const r=await mf.dispatchFetch('https://worker.test/v1/communication',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json',Authorization:'Bearer '+token(p,FF.projectId,p.ff)},body:JSON.stringify({action,input})});const body=await r.json();assert.ok(requests.length<=44,'Free subrequest cap');return {status:r.status,body};};
  try{
   assert.equal((await call('DIRECTORY',{},people[1])).status,403);
   const device='synthetic-device-'+'x'.repeat(60);assert.equal((await call('REGISTER_DEVICE',{token:device},people[1])).status,200);
@@ -56,7 +56,7 @@ test('actual Worker runtime: dual Auth, zero-billing check, FF-only persistence,
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
   const next=await call('SAVE_MESSAGE',{version:0,message:{...saved.body.message,title:'Primary account disabled'}});assert.equal(next.status,200);
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});
-  const nextId=next.body.message.id;await call('PREPARE',{id:nextId});disabledFa=true;
+  const nextId=next.body.message.id;await call('PREPARE',{id:nextId});disabledFf=true;
   const denied=await call('SEND_BATCH',{id:nextId,batches:0,confirmed:true});assert.equal(denied.status,200);assert.equal(denied.body.dispatch.accepted,0);assert.equal(denied.body.dispatch.skipped,1);assert.equal(pushes.length,1,'disabled FA Auth cannot receive through active FF Auth');
  }finally{await mf.dispose();}
 });
