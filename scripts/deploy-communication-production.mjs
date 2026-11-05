@@ -2,6 +2,8 @@ import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {openPrivateJson} from './lib/windows-protected-json.js';
+import {firebaseCliAccountToken} from './lib/firebase-cli-account-token.js';
+import {decodeFields} from '../worker-communication/store.js';
 const config='worker-communication/wrangler.jsonc',account='7c4c3dcb7472c5daa58620efd358dfb1';
 const env={...process.env,CI:'true',CLOUDFLARE_AUTH_USE_KEYRING:'true',WRANGLER_WRITE_LOGS:'false',WRANGLER_SEND_METRICS:'false'};
 for(const k of ['CLOUDFLARE_API_TOKEN','CLOUDFLARE_API_KEY','CLOUDFLARE_EMAIL'])delete env[k];
@@ -9,6 +11,10 @@ const binary=resolve('node_modules/wrangler/bin/wrangler.js');
 try{
  if(!process.argv.includes('--apply'))throw Error('FF_DEPLOY_APPLY_REQUIRED');
  const target=JSON.parse(await readFile(config,'utf8'));if(target.account_id!==account||target.name!=='sahmt-ff-comunicacao')throw Error('FF_DEPLOY_TARGET_INVALID');
+ const directoryToken=await firebaseCliAccountToken('anestesiahmtforms6@gmail.com');
+ const directoryResponse=await fetch('https://firestore.googleapis.com/v1/projects/sahmt-comunicacao-ff/databases/comunicacao/documents/communicationDirectoryState/local-v1',{headers:{Authorization:'Bearer '+directoryToken},signal:AbortSignal.timeout(15000)});
+ const directory=directoryResponse.ok?decodeFields((await directoryResponse.json()).fields||{}):null;
+ if(directory?.status!=='READY'||directory?.sourceMode!=='FF_ONLY'||directory?.permissionsIsolated!==true)throw Error('FF_LOCAL_DIRECTORY_NOT_READY');
  let auth;try{auth=JSON.parse(execFileSync(process.execPath,[binary,'auth','token','--json','--profile','sahmt-ff-isolation'],{env,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:40000}));}catch{throw Error('FF_PROFILE_UNAVAILABLE');}
  const api=async(path,options={})=>{const r=await fetch('https://api.cloudflare.com/client/v4'+path,{...options,headers:{Authorization:'Bearer '+auth.token,...(options.headers||{})}});const body=await r.json().catch(()=>null);if(!r.ok||body?.success!==true)throw Error('FF_CF_HTTP_'+r.status);return body.result;};
  if((await api('/user')).email!=='anestesiahmtforms6@gmail.com'||(await api('/accounts/'+account)).id!==account)throw Error('FF_CF_IDENTITY_MISMATCH');

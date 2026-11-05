@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS,SOURCE_COLLECTIONS} from '../communication/domain.js';
+import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
 import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,scheduleReleaseIdentity} from '../src/communication-operational-notices.js';
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
@@ -7,10 +7,14 @@ import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
-export function createCommunicationService({store,fa,fb,sources={},send,recipientEnabled,pushQueue,now=Date.now,uuid=()=>crypto.randomUUID()}){
+export function createCommunicationService({store,fa,send,recipientEnabled,pushQueue,now=Date.now,uuid=()=>crypto.randomUUID()}){
  const audit=(tx,a,action,subject,detail={})=>tx.create('communicationAuditLogs',uuid(),{...actorData(a),at:now(),action,subject,detail});
  const admin=a=>{if(!adminIdentity(a))throw fail('COMM_FORBIDDEN',403);};
- const profile=async(uid,email)=>{const p=await fa.get('users',id(uid));if(!activeProfile(p)||p.uid!==uid||p.email?.toLowerCase()!==email)throw fail('COMM_FORBIDDEN',403);return p;};
+ const profile=async(uid,email)=>{
+  id(uid);const rows=await store.page('users',{limit:2,filters:[['email',email]]});
+  const p=rows[0];if(rows.length!==1||!activeProfile(p)||typeof p.uid!=='string'||p.uid!==p.id||p.email!==email||p.ffUid&&p.ffUid!==uid)throw fail('COMM_FORBIDDEN',403);
+  return p;
+ };
  const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
  const quota=(code,used,limit,resetsAt)=>Object.assign(fail(code,429),{used,limit,...(resetsAt?{resetsAt}:{})});
  async function admit(a,action){
@@ -30,33 +34,25 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   const used=operations?.requests||0,reads=operations?.reads||0,changes=operations?.changes||0;
   return {day:period.day,resetsAt:period.resetsAt,operations:{used,limit:COMMUNICATION_LIMITS.dailyOperations,reads,changes,unclassified:Math.max(0,used-reads-changes)},publications:{used:published,limit:COMMUNICATION_LIMITS.dailyPublications,remaining:Math.max(0,COMMUNICATION_LIMITS.dailyPublications-published)},minuteLimit:COMMUNICATION_LIMITS.minuteOperations};
  }
- async function audience(m,p,sourceUid){
+ async function audience(m,p,localUid){
   if(isSystemOwnerEmail(p?.email))return false;
   if(m.audienceType==='GROUP'){
-   if(BUILTIN_GROUPS.some(g=>g.id===m.audienceValue)){
-    const email=p.email.trim().toLowerCase(),people=await fb.page('users',{limit:2,filters:[['email',email]],fields:['uid','email','active','access']});
-    if(people.length!==1||!activeProfile(people[0]))return false;
-    const assignment=await fb.get('userCategories',digest(JSON.stringify(email)));
-    return assignedInstitutionalGroup(assignment,{uid:people[0].uid,email})===m.audienceValue.slice('institutional-'.length);
-   }
+   if(BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))return activeProfile(p)&&p.institutionalGroup===m.audienceValue.slice('institutional-'.length);
    const g=await store.get('communicationGroups',m.audienceValue);
-   return matches(m,sourceUid,p,g?.active===true?g.memberUids:[]);
+   return matches(m,localUid,p,g?.active===true?g.memberUids:[]);
   }
   if(m.audienceType==='AREA'){
-   const area=await fb.get('managementAreas',m.audienceValue);
-   if(area?.active!==true)return false;
-   // FB UIDs are resolved from the authoritative, unique email record. No UID equivalence.
-   const users=await fb.page('users',{limit:2,filters:[['email',p.email]],fields:['uid','email','active','access']});
-   return users.length===1&&activeProfile(users[0])&&[...(area.memberUids||[]),...(area.managerUids||[])].includes(users[0].uid);
+   const area=await store.get('managementAreas',m.audienceValue);
+   return area?.active===true&&matches(m,localUid,p,[...(area.memberUids||[]),...(area.managerUids||[])]);
   }
-  return matches(m,sourceUid,p);
+  return matches(m,localUid,p);
  }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
  async function saveMessage(input,a){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
-  if(m.audienceType==='USER'){const p=await fa.get('users',m.audienceValue);if(!activeProfile(p))throw fail('COMM_INVALID_AUDIENCE');}
-  if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await (m.audienceType==='GROUP'?store:fb).get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
-  const source=input.source?await sourceReference(input.source):null;
+  if(m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
+  if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await store.get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
+  if(input.source)throw fail('COMM_SOURCE_UNSUPPORTED');const source=null;
   const saved=await store.transaction(async tx=>{
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
    if(dispatch)throw fail('COMM_MESSAGE_LOCKED',409);
@@ -92,19 +88,22 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   }
  }
  async function releaseNotice(input,a,ownProfile){
-  if(!scheduleReleaseIdentity(ownProfile,a))throw fail('COMM_FORBIDDEN',403);
+  if(!a.faUid)throw fail('COMM_SESSION_INVALID',401);
+  const faProfile=await fa.get('users',id(a.faUid));
+  if(faProfile?.uid!==a.faUid||faProfile.email?.toLowerCase()!==a.email||!scheduleReleaseIdentity(faProfile,a))throw fail('COMM_FORBIDDEN',403);
   const day=String(input.day||''),sigla=String(input.sigla||'').trim().toUpperCase();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||! /^(?:[A-Z]{2}|L2)$/.test(sigla))throw fail('COMM_INVALID_INPUT');
   const schedule=await fa.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[sigla]);
   if(!schedule||!Array.isArray(schedule.highlights?.siglas)||!schedule.highlights.siglas.includes(sigla)||!Number.isSafeInteger(releaseAt)||releaseAt<=0||releaseAt>now()+60000)throw fail('COMM_NOT_CURRENT',409);
-  const people=await fa.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
+  const people=await store.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
   if(people.length!==1||typeof people[0].uid!=='string'||isSystemOwnerEmail(people[0].email))throw fail('COMM_INVALID_AUDIENCE',409);
   const pushEligible=(await store.page('communicationDevices',{limit:1,filters:[['sourceUid',people[0].uid],['active',true]]})).length>0;
   const key=`release-${day}-${sigla}-${releaseAt}`;
+  const remember=()=>store.transaction(async tx=>{const prior=await tx.get('communicationReleaseInboxes',people[0].uid);if(!prior||Number(prior.releaseAt)<releaseAt)tx.set('communicationReleaseInboxes',people[0].uid,{messageId:key,releaseAt});});
   const old=await store.get('communicationMessages',key);
-  if(old?.status==='published'){const dispatch=await store.get('communicationDispatches',key);return {message:old,dispatch,pushEligible,pushQueued:Boolean(dispatch),pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true,alreadySent:true};}
+  if(old?.status==='published'){await remember();const dispatch=await store.get('communicationDispatches',key);return {message:old,dispatch,pushEligible,pushQueued:Boolean(dispatch),pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true,alreadySent:true};}
   const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a);
-  return {...result,pushEligible,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
+  await remember();return {...result,pushEligible,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
  }
  async function device(input,a,enable){
   if(typeof input.token!=='string'||input.token.length<50||input.token.length>4096||/\s/.test(input.token))throw fail('COMM_INVALID_TOKEN');
@@ -130,25 +129,26 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   });
  }
  async function pushDeviceDirectory(input){
-  const rows=await fa.page('users',{cursor:input.cursor||'',limit:9,filters:[['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
+  const rows=await store.page('users',{cursor:input.cursor||'',limit:9,filters:[['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
   const users=rows.slice(0,8),items=[];
   for(const user of users){
    const sourceUid=user.uid||user.id;
    const [installations,pushRows]=await Promise.all([
-    fa.listUserAppInstallations(sourceUid,{limit:100}),
-    store.page('communicationDevices',{limit:21,filters:[['sourceUid',sourceUid],['active',true]],fields:['active','deviceId','platform','displayMode','updatedAt']})
+    store.page('communicationInstallations',{limit:21,filters:[['sourceUid',sourceUid]]}),
+    store.page('communicationDevices',{limit:21,filters:[['sourceUid',sourceUid]],fields:['active','deviceId','platform','displayMode','updatedAt']})
    ]);
-   const appDevices=installations.filter(device=>device.target==='FA'&&typeof device.deviceId==='string');
-   const installIds=new Set(appDevices.map(device=>device.deviceId));
-   const activeUnlinked=pushRows.filter(device=>device.active===true&&(!device.deviceId||!installIds.has(device.deviceId)));
-   const devices=appDevices.map(device=>{
-    const linked=pushRows.filter(push=>push.deviceId===device.deviceId),active=linked.length>0;
-    return {deviceId:device.deviceId,platform:String(device.platform||'Outro'),displayMode:String(device.displayMode||''),appVersion:String(device.appVersion||''),loadedRelease:Number(device.loadedRelease)||0,lastSeenAt:Number(device.lastSeenAt)||0,pushStatus:active?'ACTIVE':activeUnlinked.length?'UNLINKED':'NOT_REGISTERED',pushUpdatedAt:Math.max(0,...linked.map(push=>Number(push.updatedAt)||0))};
-   });
-   for(const push of activeUnlinked)devices.push({deviceId:'',platform:String(push.platform||'Outro'),displayMode:String(push.displayMode||''),appVersion:'',loadedRelease:0,lastSeenAt:0,pushStatus:'UNLINKED',pushUpdatedAt:Number(push.updatedAt)||0});
-   if(devices.length)items.push({uid:sourceUid,displayName:String(user.displayName||''),email:String(user.email||''),sigla:String(user.sigla||''),devices});
+   const active=pushRows.filter(d=>d.active===true),known=new Set(installations.map(d=>d.deviceId));
+   const devices=installations.map(d=>({deviceId:d.deviceId,platform:d.platform||'Outro',displayMode:d.displayMode||'',appVersion:d.appVersion||'',loadedRelease:d.loadedRelease||0,lastSeenAt:d.lastSeenAt||0,pushStatus:active.some(p=>p.deviceId===d.deviceId)?'ACTIVE':'NOT_REGISTERED',pushUpdatedAt:Math.max(0,...pushRows.filter(p=>p.deviceId===d.deviceId).map(p=>p.updatedAt||0))}));
+   for(const push of active.filter(p=>!known.has(p.deviceId)))devices.push({deviceId:push.deviceId||'',platform:push.platform||'Outro',displayMode:push.displayMode||'',appVersion:'',loadedRelease:0,lastSeenAt:push.updatedAt||0,pushStatus:push.deviceId?'ACTIVE':'UNLINKED',pushUpdatedAt:push.updatedAt||0});
+   items.push({uid:sourceUid,displayName:user.displayName||'',email:user.email||'',sigla:user.sigla||'',devices});
   }
   return {items,cursor:rows.length>8?users.at(-1)?.id||null:null};
+ }
+ async function presence(value,a){
+  if(!value||typeof value.deviceId!=='string'||!/^[-a-f0-9]{36}$/.test(value.deviceId))return;
+  const key=digest(a.uid+':'+value.deviceId);
+  await store.transaction(async tx=>{const prior=await tx.get('communicationInstallations',key);if(prior&&prior.lastSeenAt>now()-6*3600000&&prior.loadedRelease===value.loadedRelease)return;
+   tx.set('communicationInstallations',key,{sourceUid:a.sourceUid,uid:a.uid,deviceId:value.deviceId,platform:String(value.platform||'Outro').slice(0,60),displayMode:['browser','standalone'].includes(value.displayMode)?value.displayMode:'',appVersion:String(value.appVersion||'').slice(0,30),loadedRelease:Number.isSafeInteger(value.loadedRelease)?value.loadedRelease:0,lastSeenAt:now()});});
  }
  async function prepare(input,a){
   const key=id(input.id);
@@ -183,7 +183,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
    try{
     if(device.updatedAt<now()-30*86400000){result.disable=true;result.reason='STALE_DEVICE';}
     else{
-     const p=await fa.get('users',device.sourceUid);
+     const p=await store.get('users',device.sourceUid);
      if(!activeProfile(p)||p.email?.toLowerCase()!==device.email||!await audience(m,p,device.sourceUid))result.reason='NOT_ELIGIBLE';
      else if(!await recipientEnabled(device)){result.disable=true;result.reason='ACCOUNT_DISABLED';}
      else result={...result,...await send(device.token,{communicationId:key,route:'home',...automaticNoticePreview(m)})};
@@ -248,7 +248,7 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
    const message=await store.get('communicationMessages',dispatchId),device=await store.get('communicationDevices',deviceId),settings=await store.get('communicationSettings','main');
    let outcome={status:'skipped',reason:'NOT_ELIGIBLE',disable:false};
    if(message&&device?.active===true&&settings?.pushEnabled===true&&isCurrentMessage(message,now())){
-    const recipient=await fa.get('users',device.sourceUid);
+    const recipient=await store.get('users',device.sourceUid);
     if(activeProfile(recipient)&&recipient.uid===device.sourceUid&&recipient.email?.toLowerCase()===device.email&&await audience(message,recipient,device.sourceUid)&&await recipientEnabled(device)){
      if(device.updatedAt<now()-30*86400000)outcome={status:'failed',reason:'STALE_DEVICE',disable:true};
      else outcome=await send(device.token,{communicationId:dispatchId,route:'home',...automaticNoticePreview(message)});
@@ -267,34 +267,19 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushDeliveries',receiptId);if(receipt?.status==='processing')tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
  async function consumePush(input){if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
- async function sourceReference(input){
-  const {project,collection}=input,key=id(input.id);
-  if(!SOURCE_COLLECTIONS[project]?.includes(collection))throw fail('COMM_SOURCE_UNSUPPORTED');
-  const source=project==='FF'?store:project==='FA'?fa:project==='FB'?fb:sources[project];
-  if(!source)throw fail('COMM_SOURCE_UNSUPPORTED');
-  const fields=['notifications','communicationMessages','htmlTrainings'].includes(collection)?['title','message','description']:['updatedAt'];
-  const record=await source.get(collection,key,undefined,fields);if(!record)throw fail('COMM_SOURCE_UNSUPPORTED');
-  return {record,reference:{project,collection,id:key,verifiedAt:now()}};
- }
  return {consumePush,async execute(action,input,a){
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
   const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
   if(!regular.has(action))admin(a);
   // Validate authorization before accessing directory, rate records or messages.
-  const ownProfile=await profile(a.sourceUid,a.email);await admit(a,action);
+  const ownProfile=await profile(a.uid,a.email);a={...a,sourceUid:ownProfile.uid};await admit(a,action);
+  if(['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action))await presence(input.installation,a);
   if(action==='USAGE')return usage();
   if(action==='BOOTSTRAP')return {isAdmin:adminIdentity(a),projectId:FF.projectId,databaseId:FF.databaseId,batchSize:BATCH_SIZE};
   if(action==='REGISTER_DEVICE'||action==='DISABLE_DEVICE')return device(input,a,action==='REGISTER_DEVICE');
   if(action==='INBOX'){
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:5,filters:[['status','published']]}),items=[];
-   if(!input.cursor&&/^(?:[A-Z]{2}|L2)$/.test(ownProfile.sigla||'')){
-    const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now())).map(part=>[part.type,part.value]));
-    const day=`${parts.year}-${parts.month}-${parts.day}`,schedule=await fa.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[ownProfile.sigla]);
-    if(schedule?.highlights?.siglas?.includes(ownProfile.sigla)&&Number.isSafeInteger(releaseAt)&&releaseAt>0){
-     const ownRelease=await store.get('communicationMessages',`release-${day}-${ownProfile.sigla}-${releaseAt}`);
-     if(ownRelease?.audienceType==='USER'&&ownRelease.audienceValue===a.sourceUid&&isCurrentMessage(ownRelease,now()))items.push(ownRelease);
-    }
-   }
+   if(!input.cursor){const pointer=await store.get('communicationReleaseInboxes',a.sourceUid);if(pointer?.messageId){const release=await store.get('communicationMessages',id(pointer.messageId));if(release?.audienceType==='USER'&&release.audienceValue===a.sourceUid&&isCurrentMessage(release,now()))items.push(release);}}
    for(const m of rows)if(!items.some(item=>item.id===m.id)&&isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
    return {items,cursor:rows.length===5?rows.at(-1).id:null};
   }
@@ -305,27 +290,23 @@ export function createCommunicationService({store,fa,fb,sources={},send,recipien
   }
   if(action==='SCHEDULE_RELEASE_NOTICE')return releaseNotice(input,a,ownProfile);
   if(action==='SAVE_MESSAGE')return operationalNoticeIdentity(a)?urgentNotice(input,a):saveMessage(input,a);
-  if(action==='IMPORT_SOURCE'){
-   const {record,reference}=await sourceReference(input);
-   const copyText=['notifications','communicationMessages','htmlTrainings'].includes(input.collection);
-   return {message:{title:copyText?String(record.title||'Comunicação institucional').slice(0,120):'Informação institucional — '+input.project,message:copyText?String(record.message||record.description||'Revise a informação institucional antes de publicar.').slice(0,4000):'Há uma atualização no módulo de origem. Revise e escreva aqui a comunicação institucional, sem dados pessoais ou de pacientes.',category:'INFORMAÇÃO INSTITUCIONAL',priority:'NORMAL',audienceType:'USER',audienceValue:'',route:{FA:'home',FB:'management',FC:'occurrences',FD:'management-hub',FE:'management-hub',FF:'communications'}[input.project],status:'draft',publishAt:now(),expiresAt:now()+7*86400000,source:reference}};
-  }
+  if(action==='IMPORT_SOURCE')throw fail('COMM_SOURCE_UNSUPPORTED');
   if(['MESSAGES','GROUPS','HISTORY','AUDIT'].includes(action)){
    const collection={MESSAGES:'communicationMessages',GROUPS:'communicationGroups',HISTORY:'communicationDispatches',AUDIT:'communicationAuditLogs'}[action];
    const result=paged(await store.page(collection,{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:action==='AUDIT'&&input.id?[['subject',id(input.id)]]:[]}));
    if(action==='GROUPS'&&!input.cursor)result.items.unshift(...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})));return result;
   }
   if(action==='DIRECTORY'){
-   const rows=await fa.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access']}),page=rows.slice(0,PAGE_SIZE);
+   const rows=await store.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access']}),page=rows.slice(0,PAGE_SIZE);
    return {items:page.filter(user=>!isSystemOwnerEmail(user.email)),cursor:rows.length>PAGE_SIZE?page.at(-1)?.id||null:null};
   }
   if(action==='PUSH_DEVICE_DIRECTORY')return pushDeviceDirectory(input);
-  if(action==='AREAS')return paged(await fb.page('managementAreas',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true]],fields:['name','title','active']}));
+  if(action==='AREAS')return paged(await store.page('managementAreas',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true]],fields:['name','title','active']}));
   if(action==='SAVE_GROUP'){
    const key=input.id?id(input.id):uuid(),name=text(input.name,100),members=[...new Set(input.memberUids||[])];
    if(key.startsWith('institutional-'))throw fail('COMM_FORBIDDEN',403);
    if(!Array.isArray(input.memberUids)||members.length>100||members.some(x=>typeof x!=='string'))throw fail('COMM_INVALID_INPUT');
-   const profiles=await fa.getMany('users',members.map(id));if(profiles.some(p=>!activeProfile(p)))throw fail('COMM_INVALID_AUDIENCE');
+   const profiles=await store.getMany('users',members.map(id));if(profiles.some(p=>!activeProfile(p)))throw fail('COMM_INVALID_AUDIENCE');
    return store.transaction(async tx=>{const old=await tx.get('communicationGroups',key);if((old?.version||0)!==input.version)throw fail('COMM_CONFLICT',409);const g={id:key,name,memberUids:members,active:input.active!==false,version:(old?.version||0)+1,updatedAt:now(),updatedBy:actorData(a)};tx.set('communicationGroups',key,g);audit(tx,a,'GROUP_SAVED',key,{record:g});return {group:g};});
   }
   if(action==='SETTINGS')return {settings:await store.get('communicationSettings','main')||{pushEnabled:false},projectId:FF.projectId,databaseId:FF.databaseId,dailyRequestLimit:COMMUNICATION_LIMITS.dailyOperations,dailyPublicationLimit:COMMUNICATION_LIMITS.dailyPublications,batchSize:BATCH_SIZE,categories:CATEGORIES};

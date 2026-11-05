@@ -5,9 +5,9 @@ import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,releaseNotice
 import {createCommunicationService} from '../worker-communication/service.js';
 
 const NOW=Date.parse('2026-11-04T15:00:00Z');
-const operator={uid:'ff-operator',sourceUid:'fa-operator',email:'marcio.henrique82@gmail.com',emailVerified:true};
-const person={uid:'ff-person',sourceUid:'fa-person',email:'person@example.test',emailVerified:true};
-const other={uid:'ff-other',sourceUid:'fa-other',email:'other@example.test',emailVerified:true};
+const operator={uid:'ff-operator',sourceUid:'fa-operator',faUid:'fa-operator',email:'marcio.henrique82@gmail.com',emailVerified:true};
+const person={uid:'ff-person',sourceUid:'fa-person',faUid:'fa-person',email:'person@example.test',emailVerified:true};
+const other={uid:'ff-other',sourceUid:'fa-other',faUid:'fa-other',email:'other@example.test',emailVerified:true};
 function memory(){
  const data=new Map();let lock=Promise.resolve();
  const get=async(c,k)=>structuredClone(data.get(c+'/'+k)||null);
@@ -23,6 +23,7 @@ function fixture(){
  store.data.set('communicationSettings/main',{pushEnabled:true});
  const queue={send:async body=>queued.push(body),sendBatch:async batch=>queued.push(...batch.map(item=>item.body))};
  const service=createCommunicationService({store,fa,now:()=>NOW,uuid:()=>`test-${++sequence}`,pushQueue:queue,send:async(token,data)=>{sent.push({token,data});return {status:'accepted'};},recipientEnabled:async()=>true});
+ for(const [key,value]of fa.data)if(key.startsWith('users/'))store.data.set(key,structuredClone(value));
  const call=(action,input={},actor=operator)=>service.execute(action,input,actor);
  const deliver=async()=>{while(queued.length)await service.consumePush(queued.shift());};
  return {store,fa,queued,sent,call,deliver,queue,consume:input=>service.consumePush(input)};
@@ -44,7 +45,7 @@ test('servidor fixa categoria, prioridade e público e não duplica o aviso urge
  assert.equal(first.message.category,'AVISO URGENTE');assert.equal(first.message.priority,'URGENT');assert.equal(first.message.audienceType,'ALL');assert.equal(first.message.audienceValue,'');assert.equal(first.message.status,'published');assert.equal(first.message.route,'home');
  assert.equal(first.pushQueued,true);assert.equal(again.alreadySent,true);assert.equal(f.queued.length,1);
  assert.equal((await f.call('INBOX',{},person)).items.length,1);
- f.fa.data.get('users/'+other.sourceUid).access=false;
+ f.store.data.get('users/'+other.sourceUid).access=false;
  await assert.rejects(f.call('INBOX',{},other),{code:'COMM_FORBIDDEN'});
 });
 
@@ -114,7 +115,7 @@ test('entrega antecipada exige reserva válida do aparelho e do próprio aviso',
 test('liberação exige permissão de escala, marca confirmada e destinatário ativo único',async()=>{
  const f=fixture();await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},person),{code:'COMM_FORBIDDEN'});
  await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'CD'}),{code:'COMM_NOT_CURRENT'});
- f.fa.data.get('users/'+other.sourceUid).sigla='AB';
+ f.store.data.get('users/'+other.sourceUid).sigla='AB';
  await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_INVALID_AUDIENCE'});
  assert.equal(f.queued.length,0);
 });
@@ -122,7 +123,7 @@ test('liberação exige permissão de escala, marca confirmada e destinatário a
 test('administradores por função ou permissão e Márcio podem publicar a liberação sem flag individual',async()=>{
  for(const profile of [{role:'administrador_app',permissions:{}},{role:'gestor',permissions:{admin:true}},{role:'gestor',permissions:{}}]){
   const f=fixture(),actor=profile.role==='gestor'&&!profile.permissions.admin?operator:{...operator,email:'admin@example.test'};
-  Object.assign(f.fa.data.get('users/'+operator.sourceUid),profile,{email:actor.email});
+  Object.assign(f.fa.data.get('users/'+operator.sourceUid),profile,{email:actor.email});Object.assign(f.store.data.get('users/'+operator.sourceUid),profile,{email:actor.email});
   const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},actor);
   assert.equal(result.message.audienceValue,person.sourceUid);
  }
@@ -131,7 +132,7 @@ test('administradores por função ou permissão e Márcio podem publicar a libe
 });
 
 test('liberação de RL aparece na primeira página da própria Home mesmo após muitos avisos de terceiros',async()=>{
- const f=fixture();f.fa.data.get('users/'+person.sourceUid).sigla='RL';
+ const f=fixture();f.store.data.get('users/'+person.sourceUid).sigla='RL';
  f.fa.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['RL'],releaseTimes:{RL:NOW-1000}}});
  for(let i=0;i<100;i++){const id='a-'+String(i).padStart(3,'0');f.store.data.set('communicationMessages/'+id,{...draft().message,id,audienceType:'USER',audienceValue:other.sourceUid});}
  const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'RL'});

@@ -78,7 +78,7 @@ import {installTargetedAppUpdates} from './app-updates-targeted.js';
 import {APP_VERSION} from './app-version.js';
 import './app-updates-targeted.css';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
-import {communicationFeatureEnabled,communicationDevicePushActive,communicationAdminSession,parseCommunicationForward} from './communication-link.js';
+import {communicationFeatureEnabled,communicationDevicePushActive,communicationAdminSession} from './communication-link.js';
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
@@ -1360,7 +1360,7 @@ async function loadModule(route) {
     if(!current())return;
     const adminMode=['compose','forward'].includes(location.hash.split('/')[2]);
     if(adminMode&&!communicationAdminSession(session)){navigate('home');return;}
-    cleanupCurrentModule=mountCommunication(content,{client:createCommunicationClient({isCurrent:current}),adminMode,appSession:session,isCurrent:current,onBack:()=>navigate(adminMode?'management-hub':'home'),forward:parseCommunicationForward(location.hash),sourceProject:location.hash.split('/')[3]||'FF'});
+    cleanupCurrentModule=mountCommunication(content,{client:createCommunicationClient({isCurrent:current}),adminMode,appSession:session,isCurrent:current,onBack:()=>navigate(adminMode?'management-hub':'home')});
     return;
   }
   if(route==='year-end-schedule'){

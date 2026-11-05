@@ -162,6 +162,34 @@ async function waitForTargetSession(target,{isCurrent=()=>true}={}){
   return restored&&current()&&await verifyTargetSession(target)&&current();
 }
 
-return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,maintainSessions,verifyTargetSession,waitForTargetSession,
+// Communication must not restore or connect unrelated projects.
+async function waitForIsolatedFfSession({isCurrent=()=>true}={}){
+ if(!enabled||!isCurrent()||coordinator.snapshot().signingOut)return false;
+ return await verifyTargetSession('FF')&&isCurrent()&&!coordinator.snapshot().signingOut;
+}
+async function confirmIsolatedFfAccess(credential,{isCurrent=()=>true}={}){
+ assertCanStartPrimarySignIn();if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');
+ const source=auth.currentUser,expected=googleIdentity(source);if(!expected)throw fail('AUTH_SOURCE_REQUIRED');
+ const claims=googleTokenClaims(credential);
+ if(claims.sub!==expected.googleUid)throw fail('AUTH_GOOGLE_IDENTITY_MISMATCH');
+ if(!entries[primary]?.acceptedGoogleClientIds?.includes(claims.aud))throw fail('AUTH_AUDIENCE_NOT_VERIFIED');
+ const current=()=>isCurrent()&&auth.currentUser===source&&sameGoogleIdentity(source,expected)&&!coordinator.snapshot().signingOut;
+ return withTargetLock('FF',async()=>{
+  if(!current())throw fail('AUTH_ACCOUNT_CHANGED');
+  const instance=targetAuth('FF');await ready(instance);
+  await verifyDestination({entry:entries.FF,credential,expected,isCurrent:current,requestUri:requestUri()});
+  if(!current())throw fail('AUTH_ACCOUNT_CHANGED');
+  let signedInUser;
+  try{
+   const result=await signInWithCredential(instance,GoogleAuthProvider.credential(credential.idToken));
+   signedInUser=result.user;
+   if(getAdditionalUserInfo(result)?.isNewUser===true||!sameProjectGoogleIdentity('FF',result.user,expected))throw fail('AUTH_UID_MISMATCH');
+   if(!await nativeGoogleSession(result.user,'FF'))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');
+   if(!current())throw fail('AUTH_ACCOUNT_CHANGED');return result.user;
+  }catch(error){if(signedInUser&&instance.currentUser===signedInUser)await signOut(instance);throw error;}
+ });
+}
+
+return {controller:coordinator,confirm:confirmGoogleProjectAccess,connectFromPrimarySignIn,reconcile:reconcileGoogleProjectSessions,assertCanStartPrimarySignIn,maintainSessions,verifyTargetSession,waitForTargetSession,waitForIsolatedFfSession,confirmIsolatedFfAccess,
   getTargetAuth:target=>{if(!enabled)throw fail('AUTH_CONFIGURATION_REQUIRED');return targetAuth(target);}};
 }

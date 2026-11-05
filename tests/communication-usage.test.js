@@ -18,7 +18,7 @@ function memory(){
 }
 function fixture(){
  const store=memory(),fa=memory();let time=NOW;
- fa.data.set('users/'+actor.sourceUid,{uid:actor.sourceUid,email:actor.email,active:true,access:true});
+ store.data.set('users/'+actor.sourceUid,{uid:actor.sourceUid,email:actor.email,active:true,access:true});
  store.data.set('communicationSettings/main',{pushEnabled:false});
  const service=createCommunicationService({store,fa,now:()=>time,uuid:()=>crypto.randomUUID()});
  return {store,fa,call:(action,input={},user=actor)=>service.execute(action,input,user),advance:()=>time+=60000};
@@ -64,7 +64,7 @@ test('limite geral continua fechando operações, mas o diagnóstico autorizado 
  const usage=await f.call('USAGE');assert.equal(usage.operations.used,2001);
  const person={...actor,email:'ordinary@example.test'};
  await assert.rejects(f.call('USAGE',{},person),{code:'COMM_FORBIDDEN'});
- f.fa.data.get('users/'+actor.sourceUid).access=false;await assert.rejects(f.call('USAGE'),{code:'COMM_FORBIDDEN'});
+ f.store.data.get('users/'+actor.sourceUid).access=false;await assert.rejects(f.call('USAGE'),{code:'COMM_FORBIDDEN'});
 });
 
 test('limite por minuto e renovação UTC permanecem independentes da cota de avisos',async()=>{

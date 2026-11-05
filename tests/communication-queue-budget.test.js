@@ -15,7 +15,7 @@ test('fila entrega a todos os aparelhos mantendo cada execução dentro do orça
  put('communicationMessages/release-test',notice);
  put('communicationSettings/main',{pushEnabled:true});
  put('communicationDispatches/release-test',{id:'release-test',automatic:true,status:'processing',version:1,pendingCount:3,processed:0,accepted:0,failed:0,skipped:0,unknown:0});
- documents.set('projects/sahmt-17a16/databases/(default)/documents/users/fa-rl',{uid:'fa-rl',email:'rl@example.test',active:true,access:true});
+ documents.set(root+'users/fa-rl',{uid:'fa-rl',email:'rl@example.test',active:true,access:true});
  const messages=[];
  for(let i=0;i<3;i++){put('communicationDevices/device-'+i,{uid:'ff-rl',sourceUid:'fa-rl',email:'rl@example.test',googleUid:'google-rl',active:true,updatedAt:now,token:'test-token-'+i});messages.push({body:{kind:'device',dispatchId:'release-test',deviceId:'device-'+i}});}
  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
