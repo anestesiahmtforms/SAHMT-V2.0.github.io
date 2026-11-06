@@ -21,6 +21,23 @@ test('every proof component gates activation without activating readers on retir
 test('cross-project query retains projection/cursor, drops FA transaction and never falls back',()=>{const h=harness({retired:true,ready:true});h.run("evaluationQuery_('scheduleDays',[],[],7,['date'],'fa-token',{values:[]})");const call=h.calls[0],b=JSON.parse(call.options.payload);assert.match(call.url,/sahmt-escala-fj/);assert.equal(b.transaction,undefined);assert.equal(b.structuredQuery.limit,7);assert.equal(b.structuredQuery.select.fields[0].fieldPath,'date');assert.ok(b.structuredQuery.startAt);h.c.sahmtFiFjOriginalFirestoreRequest_=()=>{throw Error('DENIED');};assert.throws(()=>h.run("getFirestoreDocument_('events','a')"),/DENIED/);});
 test('source mutation guard covers direct and atomic writes but preserves unrelated writes and reads',()=>{const h=harness({retired:true});const base='https://firestore.googleapis.com/v1/projects/sahmt-17a16/databases/(default)/documents';for(const suffix of ['/events/a','/scheduleDays/a','/vacations/a','/eventCatalogs/a'])assert.throws(()=>h.c.firestoreRequest_(base+suffix,{method:'patch'}),/MOVED/);for(const write of [{update:{name:base.replace('https://firestore.googleapis.com/v1/','')+'/events/a'}},{delete:base.replace('https://firestore.googleapis.com/v1/','')+'/events/a'},{transform:{document:base.replace('https://firestore.googleapis.com/v1/','')+'/events/a'}}])assert.throws(()=>h.c.firestoreRequest_(base+':commit',{method:'post',payload:JSON.stringify({writes:[write]})}),/MOVED/);h.c.firestoreRequest_(base+'/labels/a',{method:'patch'});h.c.firestoreRequest_(base+':runQuery',{method:'post',payload:'{}'});h.c.firestoreRequest_(base.replace('sahmt-17a16','sahmt-operacional-fi')+'/events/a',{method:'patch'});assert.equal(h.calls.length,3);assert.throws(()=>h.c.ocsFirestore_('/events/a',{method:'delete'}),/MOVED/);});
 test('native entrypoints reject wrong identity and publication epoch zero',()=>{const h=harness();h.c.Session.getEffectiveUser=()=>({getEmail:()=> 'wrong@example.com'});assert.throws(()=>h.run('prepararSeparacaoEscalaEventosFA()'),/OWNER/);h.c.Session.getEffectiveUser=()=>({getEmail:()=> 'anestesiahmtforms@gmail.com'});h.c.SAHMT_V2_CONFIG.projectId='wrong';assert.throws(()=>h.run('prepararSeparacaoEscalaEventosFA()'),/PROJECT/);h.c.SAHMT_V2_CONFIG.projectId='sahmt-17a16';assert.throws(()=>h.run('retirarEscalaEventosFA()'),/PUBLICATION/);});
+
+test('quota diagnostic reports the existing pause without external calls, clearing it or asserting availability',()=>{
+ for(const paused of [false,true]){
+  const h=harness(),now=Date.now();let reads=0;
+  h.c.Utilities={formatDate:(date,zone)=>{assert.equal(zone,'America/Sao_Paulo');return date.toISOString();}};
+  h.c.sahmtUrlFetchPause_=()=>{reads++;return paused?{observedAt:now-1000,retryAfter:now+3599000}:null;};
+  h.c.sahmtFiFjOriginalFirestoreRequest_=()=>assert.fail('Diagnostic cannot fetch');
+  const result=h.run('diagnosticarCotaSeparacaoFA()');
+  assert.equal(result.code,paused?'FI_FJ_URLFETCH_COOLDOWN':'FI_FJ_URLFETCH_RETRY_ALLOWED');
+  assert.equal(result.quotaAvailabilityConfirmed,false);assert.equal(result.externalCalls,0);assert.equal(result.firestoreWrites,0);assert.equal(result.firestoreReads,0);
+  assert.equal(reads,1);assert.equal(h.props.size,0);assert.equal(h.calls.length,0);
+  if(paused){assert.equal(result.retryAfter,new Date(now+3599000).toISOString());assert.ok(result.retryInSeconds>0&&result.retryInSeconds<=3599);}
+  else assert.equal(result.retryAfter,undefined);
+  h.c.Session.getEffectiveUser=()=>({getEmail:()=> 'wrong@example.com'});
+  assert.throws(()=>h.run('diagnosticarCotaSeparacaoFA()'),/OWNER/);assert.equal(reads,1);
+ }
+});
 test('retirement waits for old executions and writes only masked control metadata under lock',()=>{
  const young=harness({publicationEpoch:Date.now()-1000});assert.throws(()=>young.run('retirarEscalaEventosFA()'),/PUBLICATION/);
  const h=harness({publicationEpoch:Date.now()-360001});let held=false;const removed=[];

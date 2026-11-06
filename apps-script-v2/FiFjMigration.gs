@@ -103,6 +103,18 @@ function prepararSeparacaoEscalaEventosFA() {
   const counts={};['events','eventCatalogs','scheduleDays','vacations'].forEach(function(collection){counts[collection]=sahmtFiFjQueryRaw_(collection,[],[],1,['__name__']).filter(function(r){return r.document;}).length;});
   const result={code:'FI_FJ_READ_ACCESS_READY',probeCounts:counts,firestoreWrites:0};console.log(JSON.stringify(result));return result;
 }
+/** Reads the executor's existing circuit breaker; never probes or resets a quota. */
+function diagnosticarCotaSeparacaoFA() {
+  sahmtFiFjIdentity_();
+  const state=sahmtUrlFetchPause_(),now=Date.now();
+  const result={code:state?'FI_FJ_URLFETCH_COOLDOWN':'FI_FJ_URLFETCH_RETRY_ALLOWED',checkedAt:new Date(now).toISOString(),
+    checkedAtSaoPaulo:Utilities.formatDate(new Date(now),'America/Sao_Paulo','yyyy-MM-dd HH:mm:ss'),
+    externalCalls:0,firestoreReads:0,firestoreWrites:0,quotaAvailabilityConfirmed:false};
+  if(state){result.observedAt=new Date(state.observedAt).toISOString();result.retryAfter=new Date(state.retryAfter).toISOString();
+    result.retryAfterSaoPaulo=Utilities.formatDate(new Date(state.retryAfter),'America/Sao_Paulo','yyyy-MM-dd HH:mm:ss');
+    result.retryInSeconds=Math.max(0,Math.ceil((state.retryAfter-now)/1000));}
+  console.log(JSON.stringify(result));return result;
+}
 function conferirPendenciasMigracaoFA() {
   sahmtFiFjIdentity_();
   if(PropertiesService.getScriptProperties().getProperty('SAHMT_CONTINUITY_SYNC_ENABLED')!=='YES')return {code:'CONTINUITY_NOT_ENABLED',pendingMigrated:0};
