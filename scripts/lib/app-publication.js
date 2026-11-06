@@ -1,4 +1,5 @@
 import seed from '../../src/app-version-seed.json' with {type:'json'};
+import maintenanceBaseline from './app-publication-maintenance-baseline.json' with {type:'json'};
 export const APP_REPOSITORY='anestesiahmtforms/SAHMT-V2.0.github.io';
 export const APP_RELEASE_URL='https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/tools/app-release.json';
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
@@ -24,8 +25,9 @@ export function planAppPublication({metadata,deployedRevision,sourceRevision,com
 export async function prepareAppPublication({sourceRevision,repository,token,fetchImpl=fetch,now=Date.now()}){
  if(repository!==APP_REPOSITORY||!sha(sourceRevision))fail('REPOSITORY_INVALID');
  const api='https://api.github.com/repos/'+APP_REPOSITORY;
- const read=async(url,github=true)=>{
+ const read=async(url,github=true,missingValue)=>{
   let response;try{response=await fetchImpl(url,{method:'GET',headers:{Accept:'application/json','Cache-Control':'no-cache',...(github&&token?{Authorization:'Bearer '+token}:{})},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});}catch{fail('SOURCE_UNAVAILABLE');}
+  if(response.status===404&&missingValue!==undefined)return missingValue;
   if(!response.ok)fail('SOURCE_HTTP_'+response.status);
   try{return await response.json();}catch{fail('SOURCE_INVALID');}
  };
@@ -40,7 +42,10 @@ export async function prepareAppPublication({sourceRevision,repository,token,fet
   if(rows.length<100)break;
  }
  if(!deployedRevision)fail('SUCCESSFUL_DEPLOYMENT_MISSING');
- const metadata=await read(APP_RELEASE_URL+'?publication='+sourceRevision+'-'+now,false);
+ // Pages was deliberately unpublished for FI/FJ maintenance. The recovery
+ // baseline is usable only while GitHub still proves that exact deployment.
+ const recovery=maintenanceBaseline.sourceRevision===deployedRevision?maintenanceBaseline:undefined;
+ const metadata=await read(APP_RELEASE_URL+'?publication='+sourceRevision+'-'+now,false,recovery);
  const comparison=sourceRevision===deployedRevision?'identical':(await read(api+'/compare/'+deployedRevision+'...'+sourceRevision)).status;
  return planAppPublication({metadata,deployedRevision,sourceRevision,comparison,now});
 }

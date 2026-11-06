@@ -53,6 +53,18 @@ test('the version embedded by the build is the same value written in actual devi
  assert.equal(records[0].appVersion,'V2.23');assert.equal(records[0].loadedRelease,123);
 });
 
+test('maintenance recovery requires a 404 and the exact previously verified successful deployment',async()=>{
+ const baseline='9fdde44fab69ba74a113bf9b564fc86298ac88f4';
+ const options={sourceRevision:next,repository:'anestesiahmtforms/SAHMT-V2.0.github.io',now:1794000000000};
+ const fixture=(deployed,status)=>{const original=remote({deployed}).fetchImpl;return (url,init)=>new URL(url).pathname.endsWith('/tools/app-release.json')?Promise.resolve(new Response('{}',{status})):original(url,init);};
+ const plan=await prepareAppPublication({...options,fetchImpl:fixture(baseline,404)});
+ assert.equal(plan.appVersion,'V2.41');assert.equal(plan.release,options.now);
+ await assert.rejects(prepareAppPublication({...options,fetchImpl:fixture(old,404)}),/SOURCE_HTTP_404/);
+ await assert.rejects(prepareAppPublication({...options,fetchImpl:fixture(baseline,503)}),/SOURCE_HTTP_503/);
+ const live=remote({deployed:baseline,meta:{schema:1,sourceRevision:baseline,appVersion:'V2.45',targets:{FA:1793900000000,FB:1793900000000}}});
+ assert.equal((await prepareAppPublication({...options,fetchImpl:live.fetchImpl})).appVersion,'V2.46');
+});
+
 test('a deploy-only retry cannot publish an obsolete artifact after another revision has advanced production',async()=>{
  const plan=planAppPublication(input),options={repository:'anestesiahmtforms/SAHMT-V2.0.github.io'};
  await assert.doesNotReject(assertAppPublicationCurrent({...options,plan,fetchImpl:remote().fetchImpl}));

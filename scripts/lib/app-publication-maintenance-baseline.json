@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "appVersion": "V2.40",
+  "sourceRevision": "9fdde44fab69ba74a113bf9b564fc86298ac88f4",
+  "targets": {"FA": 1793869166088, "FB": 1793869166088},
+  "evidence": {"workflowRunId": 41997740502, "verificationJobId": 127148845850}
+}

@@ -156,3 +156,34 @@ test('manual retirement fails closed on public, expired or unreviewed control an
  const h=manualMaintenanceFixture();Object.assign(h.data,{phase:'RETIRE_NATIVE_PRODUCERS',apiReadProofVerified:true,sourceFrozenRulesetName:'frozen',sourceFrozenRulesSha256:'b'.repeat(64),continuityAudit:{code:'CONTINUITY_MODULE_AUDIT',pendingMigrated:0,moduleSubmissionsRetired:true}});
  assert.equal(h.run('retirarProdutoresFADuranteManutencao()').externalCalls,0);assert.equal(h.props.get('SAHMT_FI_FJ_PRODUCERS_RETIRED'),'YES');assert.equal(h.data.nativeRetirementReceipt.producerFlag,'YES');assert.equal(h.calls.length,0);
 });
+
+function resumeFixture() {
+ const h=manualMaintenanceFixture();vm.runInContext(readFileSync(new URL('../apps-script-v2/MigrationResume.gs',import.meta.url),'utf8'),h.c);
+ h.props.set('SAHMT_FI_FJ_PRODUCERS_RETIRED','YES');
+ h.c.PropertiesService.getScriptProperties=()=>({getProperty:key=>h.props.get(key),setProperty:(key,value)=>h.props.set(key,value),getProperties:()=>Object.fromEntries(h.props)});
+ const saved={id:'first',handler:'validatePendingChecklistScienceRequests',station:'FA',source:'CLOCK',eventType:'CLOCK',sourceId:null};
+ h.props.set('SAHMT_MIGRATION_TRIGGER_V1_first',JSON.stringify(saved));h.data.phase='COLLECT_RESUME_CONTROL';
+ return{...h,saved};
+}
+test('resume inventory exports only migration trigger backups and never script secrets',()=>{
+ const h=resumeFixture();const result=h.run('conferirRestauracaoAutomacoesFA()');assert.equal(result.count,1);assert.equal(h.data.pausedTriggerDefinitions[0].handler,h.saved.handler);
+ assert.equal(JSON.stringify(h.data).includes(h.props.get('SAHMT_CONTINUITY_IMPORT_SECRET')),false);assert.equal(result.externalCalls,0);assert.equal(h.calls.length,0);
+});
+test('resume validates saved handlers and proof before creating any trigger',()=>{
+ const h=resumeFixture();h.run('conferirRestauracaoAutomacoesFA()');h.data.phase='RESUME_UNRELATED_AUTOMATIONS';
+ h.c.ScriptApp.newTrigger=()=>assert.fail('No trigger can be created without proof');
+ assert.throws(()=>h.run('retomarAutomacoesPreservadasFA()'),/PROOFS/);
+ Object.assign(h.data,{finalDeltaVerified:true,moduleProjectionsReady:true,nativeModulesActive:true,finalDeltaSha256:'b'.repeat(64),resumeTriggers:[{...h.saved,originalId:'first',handler:'publishScheduleSourceToFirestore',everyMinutes:5}]});
+ assert.throws(()=>h.run('retomarAutomacoesPreservadasFA()'),/NOT_SAVED/);assert.equal(h.props.get('SAHMT_FI_FJ_READS_ACTIVE'),undefined);
+});
+test('resume recreates only the saved permitted schedule and rolls back a failed creation',()=>{
+ for(const fail of [false,true]){
+  const h=resumeFixture();h.run('conferirRestauracaoAutomacoesFA()');Object.assign(h.data,{phase:'RESUME_UNRELATED_AUTOMATIONS',finalDeltaVerified:true,moduleProjectionsReady:true,nativeModulesActive:true,finalDeltaSha256:'b'.repeat(64),resumeTriggers:[{...h.saved,originalId:'first',everyMinutes:5}]});
+  let actual=[];h.c.ScriptApp.getProjectTriggers=()=>actual;
+  h.c.ScriptApp.newTrigger=handler=>({timeBased(){return this;},everyMinutes(value){assert.equal(value,5);return this;},create(){if(fail)throw Error('SYNTHETIC_FAILURE');const trigger={getHandlerFunction:()=>handler};actual.push(trigger);return trigger;}});
+  h.c.ScriptApp.deleteTrigger=trigger=>{actual=actual.filter(item=>item!==trigger);};
+  if(fail){assert.throws(()=>h.run('retomarAutomacoesPreservadasFA()'),/SYNTHETIC_FAILURE/);assert.equal(actual.length,0);assert.equal(h.props.get('SAHMT_MIGRATION_AUTOMATION_PAUSED'),'YES');}
+  else{const result=h.run('retomarAutomacoesPreservadasFA()');assert.equal(result.triggerCount,1);assert.equal(result.sourceModuleProducersRetired,true);assert.equal(h.props.get('SAHMT_MIGRATION_AUTOMATION_PAUSED'),'NO');assert.equal(h.props.get('SAHMT_FI_FJ_READS_ACTIVE'),'YES');}
+  assert.equal(h.calls.length,0);
+ }
+});
