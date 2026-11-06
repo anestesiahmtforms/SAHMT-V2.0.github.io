@@ -7,7 +7,7 @@ import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
-export function createCommunicationService({store,fa,send,recipientEnabled,pushQueue,now=Date.now,uuid=()=>crypto.randomUUID()}){
+export function createCommunicationService({store,fa,scheduleSource=fa,send,recipientEnabled,pushQueue,now=Date.now,uuid=()=>crypto.randomUUID()}){
  const audit=(tx,a,action,subject,detail={})=>tx.create('communicationAuditLogs',uuid(),{...actorData(a),at:now(),action,subject,detail});
  const admin=a=>{if(!adminIdentity(a))throw fail('COMM_FORBIDDEN',403);};
  const profile=async(uid,email)=>{
@@ -93,7 +93,7 @@ export function createCommunicationService({store,fa,send,recipientEnabled,pushQ
   if(faProfile?.uid!==a.faUid||faProfile.email?.toLowerCase()!==a.email||!scheduleReleaseIdentity(faProfile,a))throw fail('COMM_FORBIDDEN',403);
   const day=String(input.day||''),sigla=String(input.sigla||'').trim().toUpperCase();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||! /^(?:[A-Z]{2}|L2)$/.test(sigla))throw fail('COMM_INVALID_INPUT');
-  const schedule=await fa.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[sigla]);
+  const schedule=await scheduleSource.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[sigla]);
   if(!schedule||!Array.isArray(schedule.highlights?.siglas)||!schedule.highlights.siglas.includes(sigla)||!Number.isSafeInteger(releaseAt)||releaseAt<=0||releaseAt>now()+60000)throw fail('COMM_NOT_CURRENT',409);
   const people=await store.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
   if(people.length!==1||typeof people[0].uid!=='string'||isSystemOwnerEmail(people[0].email))throw fail('COMM_INVALID_AUDIENCE',409);

@@ -16,19 +16,32 @@ function memory(){
  const transaction=work=>{const result=lock.then(async()=>{const writes=[];const value=await work({get,countPublished,set:(c,k,v)=>writes.push([c+'/'+k,v]),create:(c,k,v)=>{assert.equal(data.has(c+'/'+k),false);writes.push([c+'/'+k,v]);}});for(const [key,v]of writes)data.set(key,structuredClone(v));return value;});lock=result.catch(()=>{});return result;};
  return {data,get,page,countPublished,transaction};
 }
-function fixture(){
+function fixture({scheduleSource}={}){
  const store=memory(),fa=memory(),queued=[],sent=[];let sequence=0;
  for(const [actor,sigla]of [[operator,'MH'],[person,'AB'],[other,'CD']])fa.data.set('users/'+actor.sourceUid,{uid:actor.sourceUid,email:actor.email,active:true,access:true,sigla,permissions:{scheduleWrite:actor===operator}});
  fa.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-1000}}});
  store.data.set('communicationSettings/main',{pushEnabled:true});
  const queue={send:async body=>queued.push(body),sendBatch:async batch=>queued.push(...batch.map(item=>item.body))};
- const service=createCommunicationService({store,fa,now:()=>NOW,uuid:()=>`test-${++sequence}`,pushQueue:queue,send:async(token,data)=>{sent.push({token,data});return {status:'accepted'};},recipientEnabled:async()=>true});
+ const service=createCommunicationService({store,fa,scheduleSource,now:()=>NOW,uuid:()=>`test-${++sequence}`,pushQueue:queue,send:async(token,data)=>{sent.push({token,data});return {status:'accepted'};},recipientEnabled:async()=>true});
  for(const [key,value]of fa.data)if(key.startsWith('users/'))store.data.set(key,structuredClone(value));
  const call=(action,input={},actor=operator)=>service.execute(action,input,actor);
  const deliver=async()=>{while(queued.length)await service.consumePush(queued.shift());};
  return {store,fa,queued,sent,call,deliver,queue,consume:input=>service.consumePush(input)};
 }
 const draft=()=>urgentNoticeInput({noticeId:'urgent-test',title:'Aviso de teste',message:'Descrição de teste'},NOW);
+
+test('FJ cutover validates the current FJ release and retains the FA operator identity and FF deduplication',async()=>{
+ const fj=memory();fj.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-500}}});
+ const f=fixture({scheduleSource:fj});
+ // The old FA release deliberately differs. Only the new source may validate it.
+ f.fa.data.get('scheduleDays/2026-11-04').highlights.releaseTimes.AB=NOW-5000;
+ const first=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
+ const second=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
+ assert.equal(first.message.id,`release-2026-11-04-AB-${NOW-500}`);
+ assert.equal(second.alreadySent,true);assert.equal(f.queued.length,1);
+ fj.data.delete('scheduleDays/2026-11-04');
+ await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_NOT_CURRENT'});
+});
 
 test('formulário fixo aplica somente ao email verificado do Márcio',()=>{
  assert.equal(operationalNoticeIdentity(operator),true);

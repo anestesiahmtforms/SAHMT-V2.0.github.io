@@ -3,10 +3,10 @@ import {FF,fail,id} from '../communication/domain.js';
 import {boundedJson} from './google.js';
 export {encodeFields,decodeFields};
 export function createStore({getToken,fetchImpl=fetch,source=null}){
- if(source&&source!=='FA')throw fail('COMM_CONFIG_REQUIRED',503);
- const project=source?'sahmt-17a16':FF.projectId;
+ if(source&&!['FA','FJ'].includes(source))throw fail('COMM_CONFIG_REQUIRED',503);
+ const project=source==='FA'?'sahmt-17a16':source==='FJ'?'sahmt-escala-fj':FF.projectId;
  const name=`projects/${project}/databases/${source?'(default)':FF.databaseId}/documents`,root='https://firestore.googleapis.com/v1/'+name;
- const checkCollection=c=>{id(c);if(source&&!['users','scheduleDays'].includes(c))throw fail('COMM_SOURCE_DENIED',403);};
+ const checkCollection=c=>{id(c);if(source&&!(source==='FJ'?['scheduleDays']:['users','scheduleDays']).includes(c))throw fail('COMM_SOURCE_DENIED',403);};
  async function request(path,body){
   const r=await fetchImpl(root+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});
   if(r.status===404&&!body){await r.body?.cancel();return null;}

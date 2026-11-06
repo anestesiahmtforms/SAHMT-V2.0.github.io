@@ -5,14 +5,15 @@ const {join} = require('node:path');
 const vm = require('node:vm');
 const original = readFileSync(join(__dirname, '../src/report-live-data.js'), 'utf8');
 const source = original.replaceAll('export ', '')
+  .replace(/^import .*;\r?\n/gm, '')
   .replaceAll("import('./firebase.js')", 'Promise.resolve({db: mockedRealtimeDb})')
   .replaceAll("import('firebase/firestore')", 'Promise.resolve(realtimeSdk)');
 const scope = {from: '2026-10-01', to: '2026-10-31', uid: 'reader-A', sigla: 'FA', pageSize: 2};
 const doc = (id, fields = {}, pending = false) => ({id, metadata: {hasPendingWrites: pending}, data: () => ({active: true, date: '2026-10-01', createdByUid: 'reader-A', version: 1, createdAt: '2026-10-01T12:00:00.000Z', ...fields})});
-function setup({nullDb = false, throwSetup = false, syncError = false} = {}) {
-  const listeners = [], reports = [], errors = [], queryArgs = [];
+function setup({nullDb = false, throwSetup = false, syncError = false, eventsDb = null} = {}) {
+  const listeners = [], reports = [], errors = [], queryArgs = [], databases = [];
   const realtimeSdk = {
-    collection: (_db, name) => ({collection: name}), where: (...args) => ({where: args}), or: (...clauses) => ({or: clauses}), and: (...clauses) => ({and: clauses}), orderBy: (...args) => ({order: args}), limit: size => ({limit: size}),
+    collection: (_db, name) => {databases.push({db: _db, name}); return {collection: name};}, where: (...args) => ({where: args}), or: (...clauses) => ({or: clauses}), and: (...clauses) => ({and: clauses}), orderBy: (...args) => ({order: args}), limit: size => ({limit: size}),
     query: (...args) => {queryArgs.push(args); return args;},
     onSnapshot: (query, options, next, error) => {
       if (throwSetup) throw new Error('Setup recusado');
@@ -21,8 +22,12 @@ function setup({nullDb = false, throwSetup = false, syncError = false} = {}) {
       return () => {listener.stopped = true; listener.stopCount++;};
     }
   };
-  const context = vm.createContext({mockedRealtimeDb: nullDb ? null : {}, realtimeSdk, console}); vm.runInContext(source, context);
-  return {context, listeners, reports, errors, queryArgs,
+  const context = vm.createContext({mockedRealtimeDb: nullDb ? null : {}, realtimeSdk, console,
+    operationalModuleEnabled: station => station === 'FI' && Boolean(eventsDb),
+    getOperationalModuleDatabase: async (station, uid, options) => {
+      assert.equal(station, 'FI'); assert.equal(uid, scope.uid); assert.equal(options.realtime, true); return eventsDb;
+    }}); vm.runInContext(source, context);
+  return {context, listeners, reports, errors, queryArgs, databases,
     events: options => context.watchEventRecords({...scope, ...options}, result => reports.push(result), error => errors.push(error)),
     stations: () => context.watchChecklistStations(result => reports.push(result), error => errors.push(error)),
     emit: (docs, metadata = {}, index = 0) => listeners[index].next({docs, metadata: {fromCache: false, hasPendingWrites: false, ...metadata}}),

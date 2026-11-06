@@ -1,6 +1,6 @@
 import {FIREBASE_PROJECTS} from './firebase-projects.js';
 
-const TARGETS = Object.freeze(['FB', 'FC']);
+const TARGETS = Object.freeze(['FB', 'FC', 'FI', 'FJ']);
 
 /**
  * Best-effort lifecycle for already initialized secondary Firebase Auth
@@ -91,12 +91,12 @@ function getRuntimeLifecycle() {
 
 export async function reconcileFirebaseSecondarySessions(faUid) {
   try { return await (await getRuntimeLifecycle()).reconcileForFaUid(faUid); }
-  catch { return Object.freeze({status: 'unavailable', cleared: Object.freeze([]), failed: Object.freeze(['FB', 'FC'])}); }
+  catch { return Object.freeze({status: 'unavailable', cleared: Object.freeze([]), failed: TARGETS}); }
 }
 
 export async function signOutFirebaseSecondarySessions() {
   try { return await (await getRuntimeLifecycle()).signOutAll(); }
-  catch { return Object.freeze({status: 'unavailable', cleared: Object.freeze([]), failed: Object.freeze(['FB', 'FC'])}); }
+  catch { return Object.freeze({status: 'unavailable', cleared: Object.freeze([]), failed: TARGETS}); }
 }
 
 /** Run primary and secondary logout independently; never let FB/FC block FA. */

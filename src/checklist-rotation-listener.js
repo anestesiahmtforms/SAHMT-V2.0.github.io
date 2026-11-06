@@ -161,5 +161,7 @@ export async function watchChecklistRotation(options, onNext, onError) {
   rotationScope(options);
   const [sdk, {db}] = await Promise.all([import('firebase/firestore'), import('./firebase.js')]);
   if (!db) throw new Error('Sessão indisponível.');
-  return createChecklistRotationListener(options, onNext, onError, {sdk, db});
+  const modules = await import('./operational-module-firebase.js');
+  const targetDb = modules.operationalModuleEnabled('FJ') ? await modules.getOperationalModuleDatabase('FJ', options.uid, {realtime: true}) : db;
+  return createChecklistRotationListener(options, onNext, onError, {sdk, db: targetDb});
 }

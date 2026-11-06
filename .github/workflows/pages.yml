@@ -69,6 +69,10 @@ jobs:
           npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain
+      - name: Verify isolated FI and FJ modules
+        run: |
+          npm run test:fi-fj
+          npm run test:fi-fj-rules
       - name: Verify isolated FA performance and event corrections
         run: node --test tests/fa-performance*.test.js
       - name: Verify FD manual updates and source read isolation
@@ -147,6 +151,8 @@ jobs:
         run: node scripts/prepare-app-publication.mjs
       - name: Build PWA
         env:
+          VITE_FI_EVENTS_ENABLED: 'true'
+          VITE_FJ_SCHEDULE_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENDPOINT: 'https://sahmt-ff-comunicacao.anestesiahmtforms6.workers.dev/v1/communication'
           VITE_COMMUNICATION_FF_VAPID_KEY: 'BCwEvcJsXxHrmqk5Vfi4cPgQrJgyvDbmlaTc_QL_d6i5dcYO5PcngL_FyHLQIsoPyBhGGssnaI-evX6rQgk0nP0'
