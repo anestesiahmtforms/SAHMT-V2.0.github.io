@@ -140,3 +140,77 @@ function retirarEscalaEventosFA() {
     const result={code:'FI_FJ_SOURCE_PRODUCERS_RETIRED',removedScheduleTriggers:removed,readersActivated:false};console.log(JSON.stringify(result));return result;
   } finally {lock.releaseLock();}
 }
+
+/** Owner-only suspension. Uses Script service and properties; no UrlFetch. */
+function sahmtPauseMigrationAutomations_(station,expectedScript,expectedProject,expectedOwner) {
+  if(String(Session.getEffectiveUser().getEmail()).toLowerCase()!==expectedOwner||ScriptApp.getScriptId()!==expectedScript||SAHMT_V2_CONFIG.projectId!==expectedProject)throw Error('MIGRATION_PAUSE_IDENTITY_MISMATCH');
+  const lock=LockService.getScriptLock();if(!lock.tryLock(1000))throw Error('MIGRATION_PAUSE_BUSY');
+  try{
+    const props=PropertiesService.getScriptProperties(),triggers=ScriptApp.getProjectTriggers();
+    for(const trigger of triggers){
+      const id=String(trigger.getUniqueId());if(!/^[A-Za-z0-9_-]{1,180}$/.test(id))throw Error('MIGRATION_TRIGGER_ID_INVALID');
+      let sourceId=null;try{sourceId=trigger.getTriggerSourceId();}catch(_){}
+      const key='SAHMT_MIGRATION_TRIGGER_V1_'+id;
+      const data={id:id,handler:trigger.getHandlerFunction(),eventType:String(trigger.getEventType()),source:String(trigger.getTriggerSource()),sourceId:sourceId,station:station,savedAt:new Date().toISOString()};
+      const text=JSON.stringify(data);if(text.length>8000)throw Error('MIGRATION_TRIGGER_BACKUP_TOO_LARGE');
+      if(!props.getProperty(key))props.setProperty(key,text);
+      if(!props.getProperty(key))throw Error('MIGRATION_TRIGGER_BACKUP_FAILED');
+    }
+    props.setProperty('SAHMT_MIGRATION_AUTOMATION_PAUSED','YES');
+    props.setProperty('SAHMT_MIGRATION_AUTOMATION_PAUSED_AT',new Date().toISOString());
+    triggers.forEach(function(trigger){ScriptApp.deleteTrigger(trigger);});
+    const remaining=ScriptApp.getProjectTriggers().length;if(remaining!==0)throw Error('MIGRATION_TRIGGERS_REMAIN');
+    const result={code:'SAHMT_AUTOMATION_PAUSED',station:station,scriptId:expectedScript,removedTriggers:triggers.length,remainingTriggers:remaining,triggerDefinitionsSaved:true,clockSchedulesRecoverableFromInstallers:true,externalCalls:0,firestoreWrites:0};
+    console.log(JSON.stringify(result));return result;
+  }finally{lock.releaseLock();}
+}
+
+function pausarAutomacoesMigracaoFA(){return sahmtPauseMigrationAutomations_('FA','1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD','sahmt-17a16','anestesiahmtforms@gmail.com');}
+
+const SAHMT_FI_FJ_MAINTENANCE_CONTROL_FILE = '1uTVR-MjhjCIw7SAgME-A5jcpQGmLrm4j';
+function sahmtFiFjMaintenanceControl_() {
+  sahmtFiFjIdentity_();
+  if(!Number.isSafeInteger(SAHMT_FI_FJ_PUBLICATION_EPOCH)||SAHMT_FI_FJ_PUBLICATION_EPOCH<=0||Date.now()-SAHMT_FI_FJ_PUBLICATION_EPOCH<360000)throw Error('FI_FJ_PUBLICATION_DRAIN_REQUIRED');
+  const properties=PropertiesService.getScriptProperties();
+  if(properties.getProperty('SAHMT_MIGRATION_AUTOMATION_PAUSED')!=='YES'||ScriptApp.getProjectTriggers().length!==0)throw Error('FI_FJ_AUTOMATION_NOT_PAUSED');
+  const file=DriveApp.getFileById(SAHMT_FI_FJ_MAINTENANCE_CONTROL_FILE),owner='anestesiahmtforms@gmail.com';
+  if(file.getOwner().getEmail().toLowerCase()!==owner||file.getSharingAccess()!==DriveApp.Access.PRIVATE||
+    file.getEditors().some(function(user){return user.getEmail().toLowerCase()!==owner;})||file.getViewers().some(function(user){return user.getEmail().toLowerCase()!==owner;}))throw Error('FI_FJ_CONTROL_NOT_PRIVATE');
+  const text=file.getBlob().getDataAsString();if(text.length>65536)throw Error('FI_FJ_CONTROL_TOO_LARGE');
+  const data=JSON.parse(text),now=Date.now();
+  if(data.schema!==1||data.ownerEmail!==owner||data.sourceScriptId!==SAHMT_FI_FJ_SOURCE_SCRIPT||data.sourceProjectId!=='sahmt-17a16'||!sahmtFiFjTargetsValid_(data)||
+    !/^[a-f0-9]{32}$/.test(data.nonce||'')||data.publicationEpoch!==SAHMT_FI_FJ_PUBLICATION_EPOCH||!Number.isSafeInteger(data.expiresAt)||data.expiresAt<=now||data.expiresAt>now+7200000)throw Error('FI_FJ_CONTROL_INVALID');
+  return {file:file,data:data,properties:properties};
+}
+/** A scoped one-use audit signature, never the secret, is stored in a private file. */
+function prepararMigracaoManualFA() {
+  const control=sahmtFiFjMaintenanceControl_(),data=control.data,p=control.properties;
+  if(data.phase!=='COLLECT_NATIVE_MAINTENANCE')throw Error('FI_FJ_CONTROL_PHASE_INVALID');
+  const endpoint=p.getProperty('SAHMT_CONTINUITY_ENDPOINT'),secret=p.getProperty('SAHMT_CONTINUITY_IMPORT_SECRET');
+  if(endpoint!=='https://sahmt-operational-channel.anestesiahmtforms.workers.dev/v1/operational-continuity/import'||typeof secret!=='string'||secret.length<32)throw Error('FI_FJ_AUDIT_CONFIG_REQUIRED');
+  const body=JSON.stringify({schemaVersion:1,action:'module-audit'}),time=String(Date.now()),nonce=Utilities.getUuid().replace(/-/g,'');
+  const hex=function(bytes){return bytes.map(function(n){return ('0'+((n+256)%256).toString(16)).slice(-2);}).join('');};
+  const digest=hex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,body,Utilities.Charset.UTF_8));
+  const signature=hex(Utilities.computeHmacSha256Signature(time+'\n'+nonce+'\n'+digest,secret,Utilities.Charset.UTF_8));
+  data.nativeMaintenanceReceipt={code:'FI_FJ_NATIVE_MAINTENANCE_READY',ownerEmail:'anestesiahmtforms@gmail.com',sourceScriptId:SAHMT_FI_FJ_SOURCE_SCRIPT,
+    nonce:data.nonce,publicationEpoch:SAHMT_FI_FJ_PUBLICATION_EPOCH,remainingTriggers:0,automationPaused:true,preparedAt:new Date().toISOString(),externalCalls:0,firestoreWrites:0};
+  data.auditEnvelope={url:endpoint,body:body,headers:{'X-Continuity-Time':time,'X-Continuity-Nonce':nonce,'X-Continuity-Signature':signature}};
+  control.file.setContent(JSON.stringify(data));
+  const result={code:'FI_FJ_NATIVE_MAINTENANCE_READY',controlFileId:SAHMT_FI_FJ_MAINTENANCE_CONTROL_FILE,remainingTriggers:0,externalCalls:0,firestoreWrites:0};
+  console.log(JSON.stringify(result));return result;
+}
+function retirarProdutoresFADuranteManutencao() {
+  const lock=LockService.getScriptLock();if(!lock.tryLock(1000))throw Error('FI_FJ_RETIREMENT_BUSY');
+  try{
+    const control=sahmtFiFjMaintenanceControl_(),data=control.data;
+    if(data.phase!=='RETIRE_NATIVE_PRODUCERS'||data.apiReadProofVerified!==true||!data.sourceFrozenRulesetName||! /^[a-f0-9]{64}$/.test(data.sourceFrozenRulesSha256||'')||
+      data.continuityAudit?.code!=='CONTINUITY_MODULE_AUDIT'||data.continuityAudit.pendingMigrated!==0||data.continuityAudit.moduleSubmissionsRetired!==true)throw Error('FI_FJ_RETIREMENT_PROOFS_REQUIRED');
+    control.properties.setProperty('SAHMT_FI_FJ_PRODUCERS_RETIRED','YES');
+    if(control.properties.getProperty('SAHMT_FI_FJ_PRODUCERS_RETIRED')!=='YES')throw Error('FI_FJ_RETIREMENT_READBACK_FAILED');
+    data.nativeRetirementReceipt={code:'FI_FJ_NATIVE_PRODUCERS_RETIRED',nonce:data.nonce,ownerEmail:'anestesiahmtforms@gmail.com',sourceScriptId:SAHMT_FI_FJ_SOURCE_SCRIPT,
+      publicationEpoch:SAHMT_FI_FJ_PUBLICATION_EPOCH,sourceFrozenRulesetName:data.sourceFrozenRulesetName,sourceFrozenRulesSha256:data.sourceFrozenRulesSha256,
+      remainingTriggers:0,producerFlag:'YES',retiredAt:new Date().toISOString(),externalCalls:0,firestoreWrites:0};
+    control.file.setContent(JSON.stringify(data));
+    const result={code:'FI_FJ_NATIVE_PRODUCERS_RETIRED',controlFileId:SAHMT_FI_FJ_MAINTENANCE_CONTROL_FILE,remainingTriggers:0,externalCalls:0,firestoreWrites:0};console.log(JSON.stringify(result));return result;
+  }finally{lock.releaseLock();}
+}

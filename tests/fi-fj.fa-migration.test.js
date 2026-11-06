@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import vm from 'node:vm';
+import {createHash,createHmac} from 'node:crypto';
+import {continuityRequestSignature} from '../worker-operational-channel/continuity.js';
 const path=new URL('../apps-script-v2/FiFjMigration.gs',import.meta.url);
 const source=existsSync(path)?readFileSync(path,'utf8'):'';
 function harness({retired=false,ready=false,publicationEpoch=0}={}) {
@@ -93,4 +95,64 @@ test('source preparation preserves unrelated files and retires only event sheet 
  assert.match(osc,/if\(s.deleted\|\|\(sahmtFiFjRetired_\(\)&&key.split\('\/'\)\[0\]==='events'\)\)return/);
  assert.throws(()=>prepareSourceCapture({...capture,ownerEmail:'wrong'},source),/IDENTITY/);
  assert.throws(()=>prepareSourceCapture({...capture,files:files.map(f=>f.name==='OperationalSheetControl'?{...f,source:f.source.replace('tables: [','tables: unavailable [')}:f)},source),/PATCH/);
+});
+
+test('native maintenance saves definitions before deleting all current-owner triggers without HTTP',()=>{
+ const h=harness();let held=false;
+ const triggers=['first','second'].map(id=>({getUniqueId:()=>id,getHandlerFunction:()=> 'handler_'+id,getEventType:()=> 'CLOCK',getTriggerSource:()=> 'CLOCK',getTriggerSourceId:()=>null}));
+ let remaining=[...triggers];
+ h.c.LockService={getScriptLock:()=>({tryLock:()=>{held=true;return true;},releaseLock:()=>{held=false;}})};
+ h.c.ScriptApp.getProjectTriggers=()=>[...remaining];
+ h.c.ScriptApp.deleteTrigger=trigger=>{assert.ok(held);assert.equal(h.props.get('SAHMT_MIGRATION_AUTOMATION_PAUSED'),'YES');
+  for(const saved of triggers)assert.ok(h.props.has('SAHMT_MIGRATION_TRIGGER_V1_'+saved.getUniqueId()));remaining=remaining.filter(item=>item!==trigger);};
+ const result=h.run('pausarAutomacoesMigracaoFA()');
+ assert.equal(result.removedTriggers,2);assert.equal(result.remainingTriggers,0);assert.equal(result.externalCalls,0);assert.equal(result.firestoreWrites,0);assert.equal(h.calls.length,0);assert.equal(held,false);
+ const saved=h.props.get('SAHMT_MIGRATION_TRIGGER_V1_first');
+ assert.equal(h.run('pausarAutomacoesMigracaoFA()').removedTriggers,0);assert.equal(h.props.get('SAHMT_MIGRATION_TRIGGER_V1_first'),saved);
+});
+
+test('maintenance refuses wrong identity and a failed backup before deleting any trigger',()=>{
+ const h=harness();h.c.Session.getEffectiveUser=()=>({getEmail:()=> 'wrong@example.com'});
+ assert.throws(()=>h.run('pausarAutomacoesMigracaoFA()'),/IDENTITY/);assert.equal(h.props.size,0);
+ h.c.Session.getEffectiveUser=()=>({getEmail:()=> 'anestesiahmtforms@gmail.com'});
+ h.c.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})};
+ h.c.ScriptApp.getProjectTriggers=()=>[{getUniqueId:()=> 'first',getHandlerFunction:()=> 'handler',getEventType:()=> 'CLOCK',getTriggerSource:()=> 'CLOCK',getTriggerSourceId:()=>null}];
+ h.c.ScriptApp.deleteTrigger=()=>assert.fail('Unbacked trigger must be preserved');
+ h.c.PropertiesService.getScriptProperties=()=>({getProperty:()=>null,setProperty:()=>{}});
+ assert.throws(()=>h.run('pausarAutomacoesMigracaoFA()'),/BACKUP_FAILED/);assert.equal(h.props.size,0);
+});
+
+function manualMaintenanceFixture() {
+ const epoch=Date.now()-360001,h=harness({publicationEpoch:epoch});
+ const data={schema:1,nonce:'a'.repeat(32),ownerEmail:'anestesiahmtforms@gmail.com',sourceScriptId:'1ReIZEXaVspXDYFP3u5g4pJNPKVOsrafNWACmsPVIbgq85Zav9sjkR4bD',sourceProjectId:'sahmt-17a16',targetProjects:{FI:'sahmt-operacional-fi',FJ:'sahmt-escala-fj'},publicationEpoch:epoch,phase:'COLLECT_NATIVE_MAINTENANCE',expiresAt:Date.now()+600000};
+ const file={getOwner:()=>({getEmail:()=>data.ownerEmail}),getSharingAccess:()=> 'PRIVATE',getEditors:()=>[],getViewers:()=>[],getBlob:()=>({getDataAsString:()=>JSON.stringify(data)}),setContent:text=>{Object.assign(data,JSON.parse(text));}};
+ h.props.set('SAHMT_MIGRATION_AUTOMATION_PAUSED','YES');h.props.set('SAHMT_CONTINUITY_ENDPOINT','https://sahmt-operational-channel.anestesiahmtforms.workers.dev/v1/operational-continuity/import');h.props.set('SAHMT_CONTINUITY_IMPORT_SECRET','synthetic-secret-12345678901234567890');
+ h.c.ScriptApp.getProjectTriggers=()=>[];h.c.DriveApp={Access:{PRIVATE:'PRIVATE'},getFileById:()=>file};
+ h.c.Utilities={getUuid:()=> 'b'.repeat(32),DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(_algorithm,text)=>[...createHash('sha256').update(text).digest()],computeHmacSha256Signature:(text,secret)=>[...createHmac('sha256',secret).update(text).digest()]};
+ h.c.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})};
+ return{...h,data,file};
+}
+
+test('private manual audit exports only a scoped expiring signature with no native HTTP or business writes',async()=>{
+ const h=manualMaintenanceFixture(),result=h.run('prepararMigracaoManualFA()');
+ assert.equal(result.externalCalls,0);assert.equal(result.firestoreWrites,0);assert.equal(h.calls.length,0);assert.equal(h.props.get('SAHMT_FI_FJ_PRODUCERS_RETIRED'),undefined);
+ assert.equal(h.data.nativeMaintenanceReceipt.remainingTriggers,0);
+ const envelope=h.data.auditEnvelope;
+ assert.equal(envelope.headers['X-Continuity-Signature'],await continuityRequestSignature(h.props.get('SAHMT_CONTINUITY_IMPORT_SECRET'),envelope.body,envelope.headers['X-Continuity-Time'],envelope.headers['X-Continuity-Nonce']));
+ assert.equal(JSON.stringify(h.data).includes(h.props.get('SAHMT_CONTINUITY_IMPORT_SECRET')),false);
+ assert.deepEqual(JSON.parse(envelope.body),{schemaVersion:1,action:'module-audit'});
+});
+
+test('manual retirement fails closed on public, expired or unreviewed control and requires an empty retired queue',()=>{
+ for(const failure of ['public','expired','triggers','phase','queue']){
+  const h=manualMaintenanceFixture();
+  if(failure==='public')h.file.getSharingAccess=()=> 'ANYONE_WITH_LINK';
+  if(failure==='expired')h.data.expiresAt=Date.now()-1;
+  if(failure==='triggers')h.c.ScriptApp.getProjectTriggers=()=>[{}];
+  if(failure==='queue'){Object.assign(h.data,{phase:'RETIRE_NATIVE_PRODUCERS',apiReadProofVerified:true,sourceFrozenRulesetName:'frozen',sourceFrozenRulesSha256:'b'.repeat(64),continuityAudit:{code:'CONTINUITY_MODULE_AUDIT',pendingMigrated:1,moduleSubmissionsRetired:true}});}
+  assert.throws(()=>h.run('retirarProdutoresFADuranteManutencao()'),/CONTROL|AUTOMATION|PROOFS/);
+  assert.equal(h.props.get('SAHMT_FI_FJ_PRODUCERS_RETIRED'),undefined);assert.equal(h.calls.length,0);
+ }
+ const h=manualMaintenanceFixture();Object.assign(h.data,{phase:'RETIRE_NATIVE_PRODUCERS',apiReadProofVerified:true,sourceFrozenRulesetName:'frozen',sourceFrozenRulesSha256:'b'.repeat(64),continuityAudit:{code:'CONTINUITY_MODULE_AUDIT',pendingMigrated:0,moduleSubmissionsRetired:true}});
+ assert.equal(h.run('retirarProdutoresFADuranteManutencao()').externalCalls,0);assert.equal(h.props.get('SAHMT_FI_FJ_PRODUCERS_RETIRED'),'YES');assert.equal(h.data.nativeRetirementReceipt.producerFlag,'YES');assert.equal(h.calls.length,0);
 });
