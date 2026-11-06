@@ -2,6 +2,7 @@ import {createHmac, timingSafeEqual} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {boundedJson, fail} from './identity.js';
 import {normalizeProjectionEvent, planEventProjection} from './projection-plan.js';
+import {decodeFields} from '../worker-training/firestore.js';
 
 const ENDPOINT = 'https://sahmt-fj-escala.sahmt-fj-563bc56a.workers.dev/internal/v1/event-projection';
 function requireSecret(secret) {if (!/^[A-Za-z0-9_-]{43,128}$/.test(secret || '')) throw fail('DOMAIN_PROJECTION_CONFIG_REQUIRED');}
@@ -60,9 +61,18 @@ export async function drainEventProjections({station, store, secret, fetchImpl =
       else if (station === 'FI') {
         const source = await store.get('events', item.data.eventId);
         if (!source || !Number.isSafeInteger(item.data.version) || source.data.version < item.data.version) throw fail('DOMAIN_PROJECTION_SOURCE_UNAVAILABLE');
-        const event = normalizeProjectionEvent({eventId: item.data.eventId, version: source.data.version, date: source.data.date,
+        let before = {};
+        if (source.data.sheetDeleted === true && source.data.active === false) {
+          const archived = await store.get('operationalSheetArchives', source.data.sheetArchiveId);
+          if (archived?.data.sourceKey !== 'events/' + item.data.eventId || typeof archived.data.snapshotJson !== 'string' ||
+              archived.data.snapshotJson.length > 512000) throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');
+          let snapshot;try {snapshot = JSON.parse(archived.data.snapshotJson);}catch {throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');}
+          if (snapshot.name !== 'projects/sahmt-operacional-fi/databases/(default)/documents/events/' + item.data.eventId) throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');
+          before = decodeFields(snapshot.fields || {});
+        }
+        const event = normalizeProjectionEvent({eventId: item.data.eventId, version: source.data.version, date: source.data.date || before.date,
           active: source.data.active, scheduleSigla: source.data.scheduleSigla || '', memberSigla: source.data.memberSigla || '',
-          actorUid: source.data.updatedByUid || source.data.createdByUid});
+          actorUid: source.data.updatedByUid || source.data.createdByUid || (source.data.sheetDeleted === true ? 'native:fi-sheet' : '')});
         const body = JSON.stringify(event);
         const response = await fetchImpl(ENDPOINT, {method: 'POST', body, headers: projectionHeaders(body, secret),
           redirect: 'manual', signal: AbortSignal.timeout(20000)});

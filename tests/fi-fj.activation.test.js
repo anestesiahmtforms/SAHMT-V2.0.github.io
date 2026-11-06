@@ -7,7 +7,7 @@ async function fixture(station, proof = {}) {
   const source = (await Promise.all(['Config.gs', 'Activation.gs'].map(file => readFile(new URL(file, directory), 'utf8')))).join('\n');
   const props = new Map([['FJ_SOURCE_SPREADSHEET_ID','synthetic-source-sheet']]), calls = [], triggers = [];
   const context = vm.createContext({console, Date, OSC: {sheetId:'synthetic-events-sheet'},
-    oscOwner_:()=>{}, oscRun_:mode=>{assert.equal(mode,'PULL');return {received:3};}, ativarControleOperacionalV1:()=>({code:'CONTROLE_EDICOES_PLANILHA_ATIVO'}),
+    oscOwner_:()=>{}, oscList_:()=>[], oscRun_:mode=>{assert.equal(mode,'PULL');return {received:3};}, ativarControleOperacionalV1:()=>({code:'CONTROLE_EDICOES_PLANILHA_ATIVO'}),
     Session:{getEffectiveUser:()=>({getEmail:()=> 'anestesiahmtforms10@gmail.com'})},
     PropertiesService:{getScriptProperties:()=>({getProperty:key=>props.get(key),setProperty:(key,value)=>props.set(key,value)})},
     ScriptApp:{getProjectTriggers:()=>[],newTrigger:name=>({timeBased(){return this;},everyMinutes(value){assert.equal(value,5);return this;},

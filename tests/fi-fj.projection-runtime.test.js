@@ -53,3 +53,18 @@ test('a failed FI delivery stays pending and a successful retry marks only the o
   assert.equal(store.documents.get('eventProjectionOutbox/event-2').status, 'DONE');
   assert.equal(store.documents.get('events/event').version, 2);
 });
+
+test('native sheet deletion projects removal from its immutable archive even when the tombstone omits event fields', async () => {
+  const store=memoryStore();
+  store.documents.set('events/event',{id:'event',active:false,sheetDeleted:true,sheetArchiveId:'archive',version:3});
+  store.documents.set('operationalSheetArchives/archive',{sourceKey:'events/event',snapshotJson:JSON.stringify({
+    name:'projects/sahmt-operacional-fi/databases/(default)/documents/events/event',
+    fields:{date:{stringValue:event.date},scheduleSigla:{stringValue:'AA'},memberSigla:{stringValue:'BB'}}})});
+  store.documents.set('eventProjectionOutbox/event-2',{status:'PENDING'});
+  let delivered;
+  const result=await drainEventProjections({station:'FI',store,secret,fetchImpl:async(_url,options)=>{
+    delivered=JSON.parse(options.body);return Response.json({eventId:'event',version:3,status:'APPLIED'});
+  }});
+  assert.equal(result.completed,1);assert.equal(delivered.active,false);assert.equal(delivered.version,3);assert.equal(delivered.date,event.date);
+  assert.equal(store.documents.get('eventProjectionOutbox/event-2').status,'DONE');
+});

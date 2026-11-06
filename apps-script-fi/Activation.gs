@@ -7,6 +7,12 @@ function ativarOperacionalFI() {
       proof.targetProjects.FI !== SAHMT_V2_CONFIG.projectId || !/^[a-f0-9]{64}$/.test(proof.finalDeltaSha256 || '')) throw Error('FI_CORTE_NAO_CONFERIDO');
   sahmtV2RequirePrivateSpreadsheet_(OSC.sheetId);
   const properties = sahmtV2Properties_(); properties.setProperty('FI_CUTOVER_ENABLED','YES');
+  if (!properties.getProperty('SAHMT_OPERATIONAL_LAST_DELETION')) {
+    const archives=oscList_('operationalSheetArchives').filter(function(doc) {
+      const data=firestoreFieldsToJs_(doc.fields||{});return data.action==='EXCLUSAO'&&/^events\/[^/]+$/.test(data.sourceKey||'');
+    }).sort(function(a,b) {return String(b.fields.createdAt&&b.fields.createdAt.timestampValue||'').localeCompare(String(a.fields.createdAt&&a.fields.createdAt.timestampValue||''));});
+    if (archives.length) properties.setProperty('SAHMT_OPERATIONAL_LAST_DELETION',archives[0].name.split('/').pop());
+  }
   const result = ativarControleOperacionalV1();
   // One bounded incremental query every five minutes keeps new PWA events in
   // this independent sheet without an FA relay or shared Apps Script endpoint.
