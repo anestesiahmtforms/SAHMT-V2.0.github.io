@@ -11,16 +11,16 @@ function responsibilityScope({uid, day, isAdmin} = {}) {
 }
 
 /** Preserves the existing admin reader filters and uses one extra document to detect incomplete sources. */
-export function buildChecklistResponsibilityQueries(options, sdk, db) {
+export function buildChecklistResponsibilityQueries(options, sdk, db, {scheduleDb = db, eventDb = db} = {}) {
   const scope = responsibilityScope(options);
   const {collection, doc, query, where, orderBy, limit} = sdk;
   return {scope, sources: [
-    {key: 'schedule', reference: doc(db, 'scheduleDays', scope.day)},
-    {key: 'vacations', maximum: 100, reference: query(collection(db, 'vacations'),
+    {key: 'schedule', reference: doc(scheduleDb, 'scheduleDays', scope.day)},
+    {key: 'vacations', maximum: 100, reference: query(collection(scheduleDb, 'vacations'),
       where('active', '==', true), where('start', '<=', scope.day), where('end', '>=', scope.day), orderBy('start', 'asc'), limit(101))},
     // Inactive contacts still disambiguate event member names in the existing resolver.
-    {key: 'contacts', maximum: 200, reference: query(collection(db, 'contacts'), orderBy('sigla', 'asc'), limit(201))},
-    {key: 'events', maximum: 1000, reference: query(collection(db, 'events'),
+    {key: 'contacts', maximum: 200, reference: query(collection(eventDb, 'contacts'), orderBy('sigla', 'asc'), limit(201))},
+    {key: 'events', maximum: 1000, reference: query(collection(eventDb, 'events'),
       where('active', '==', true), where('date', '==', scope.day), orderBy('date', 'desc'), limit(1001))}
   ]};
 }
@@ -28,9 +28,9 @@ export function buildChecklistResponsibilityQueries(options, sdk, db) {
 function recordFrom(document) { return {id: document.id, ...document.data()}; }
 
 /** Display only: this listener does not grant signing permission or replace its server validation. */
-export function createChecklistResponsibilityListener(options, onNext, onError, {sdk, db, resolve = resolveChecklistResponsibility} = {}) {
+export function createChecklistResponsibilityListener(options, onNext, onError, {sdk, db, scheduleDb = db, eventDb = db, resolve = resolveChecklistResponsibility} = {}) {
   if (typeof onNext !== 'function') throw new Error('Informe como atualizar a responsabilidade do Checklist.');
-  const {scope, sources} = buildChecklistResponsibilityQueries(options, sdk, db);
+  const {scope, sources} = buildChecklistResponsibilityQueries(options, sdk, db, {scheduleDb, eventDb});
   const states = new Map(sources.map(({key}) => [key, {ready: false, fromCache: true, pending: false, truncated: false}]));
   const records = new Map(sources.filter(({maximum}) => maximum).map(({key}) => [key, new Map()]));
   const values = {schedule: null, vacations: [], contacts: [], events: []};
@@ -120,5 +120,8 @@ export function createChecklistResponsibilityListener(options, onNext, onError, 
 export async function watchChecklistResponsibility(options, onNext, onError) {
   responsibilityScope(options);
   const [sdk, {db}] = await Promise.all([import('firebase/firestore'), import('./firebase.js')]);
-  return createChecklistResponsibilityListener(options, onNext, onError, {sdk, db});
+  const modules = await import('./operational-module-firebase.js');
+  const [scheduleDb, eventDb] = await Promise.all(['FJ', 'FI'].map(station => modules.operationalModuleEnabled(station)
+    ? modules.getOperationalModuleDatabase(station, options.uid, {realtime: true}) : db));
+  return createChecklistResponsibilityListener(options, onNext, onError, {sdk, db, scheduleDb, eventDb});
 }

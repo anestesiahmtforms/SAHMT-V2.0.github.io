@@ -121,7 +121,7 @@ test('liberação superseded não pode receber ACK mesmo que o estado coincida n
 });
 test('transação da escala não rebaseia automaticamente liberação antiga após alteração concorrente',async()=>{
   const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');const begin=source.indexOf('async function applyScheduleSiglaRelease('),end=source.indexOf('function scheduleReleaseRequestId(',begin);let callback,writes=0;
-  const context=vm.createContext({Boolean,Number,Date,db:{},doc:()=>({}),serverTimestamp:()=>0,updateScheduleReleaseState:()=>({changed:true,siglas:['AA']}),updateScheduleReleaseTimes:()=>({AA:now}),writeSafeCache:async()=>{},runTransaction:async(_db,work)=>{callback=work;await work({get:async()=>({exists:()=>true,id:day,data:()=>({version:1,highlights:{siglas:[]}})}),update:()=>writes++});return work({get:async()=>({exists:()=>true,id:day,data:()=>({version:2,highlights:{siglas:[]}})}),update:()=>writes++});}});
+  const context=vm.createContext({Boolean,Number,Date,operationalDatabase:async()=>({}),operationalModuleEnabled:()=>false,db:{},doc:()=>({}),serverTimestamp:()=>0,updateScheduleReleaseState:()=>({changed:true,siglas:['AA']}),updateScheduleReleaseTimes:()=>({AA:now}),writeSafeCache:async()=>{},runTransaction:async(_db,work)=>{callback=work;await work({get:async()=>({exists:()=>true,id:day,data:()=>({version:1,highlights:{siglas:[]}})}),update:()=>writes++});return work({get:async()=>({exists:()=>true,id:day,data:()=>({version:2,highlights:{siglas:[]}})}),update:()=>writes++});}});
   vm.runInContext(source.slice(begin,end).replaceAll('import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT','true'),context);
   await assert.rejects(()=>context.applyScheduleSiglaRelease({day,sigla:'AA',marked:true,occurredAt:now,expectedVersion:1},'userA'),{code:'stale-version'});assert.equal(writes,1);assert.equal(typeof callback,'function');
 });
@@ -138,7 +138,7 @@ test('alteração de permissões não reutiliza o cache provisório anterior',as
 });
 test('confirmação sem mudança de Liberar também avança a versão que bloqueia operação antiga',async()=>{
  const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8'),begin=source.indexOf('async function applyScheduleSiglaRelease('),end=source.indexOf('function scheduleReleaseRequestId(',begin);let patch;
- const context=vm.createContext({Boolean,Number,Date,db:{},doc:()=>({}),serverTimestamp:()=>0,updateScheduleReleaseState:()=>({changed:false,siglas:[]}),updateScheduleReleaseTimes:()=>({}),writeSafeCache:async()=>{},runTransaction:async(_db,work)=>work({get:async()=>({exists:()=>true,id:day,data:()=>({version:1,highlights:{siglas:[]}})}),update:(_ref,value)=>patch=value})});
+ const context=vm.createContext({Boolean,Number,Date,operationalDatabase:async()=>({}),operationalModuleEnabled:()=>false,db:{},doc:()=>({}),serverTimestamp:()=>0,updateScheduleReleaseState:()=>({changed:false,siglas:[]}),updateScheduleReleaseTimes:()=>({}),writeSafeCache:async()=>{},runTransaction:async(_db,work)=>work({get:async()=>({exists:()=>true,id:day,data:()=>({version:1,highlights:{siglas:[]}})}),update:(_ref,value)=>patch=value})});
  vm.runInContext(source.slice(begin,end).replaceAll('import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT','true'),context);await context.applyScheduleSiglaRelease({day,sigla:'AA',marked:false,occurredAt:now,expectedVersion:1},'userA');assert.equal(patch.version,2);
 });
 test('NOT_READY não consome tentativas de prova e confirmação volta após backoff',async()=>{

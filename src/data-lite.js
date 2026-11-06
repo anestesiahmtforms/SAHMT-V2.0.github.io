@@ -1,5 +1,6 @@
 import {collection, doc, getDoc, getDocs, limit, orderBy, query, where} from 'firebase/firestore/lite';
 import {db} from './firebase-lite.js';
+import {operationalModuleEnabled, getOperationalModuleDatabase} from './operational-module-firebase.js';
 import {readFreshSafeCache, readSafeCache, writeSafeCache, listUnsettledOperations} from './outbox.js';
 import {isFirestoreCacheFallbackError, readThroughSafeCache} from './offline-cache.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
@@ -21,7 +22,8 @@ export async function readAppFeatures(uid) {
 export async function readSchedule(day, uid, {onRefresh} = {}) {
   const project = async value => projectPendingSchedule(value, uid ? await listUnsettledOperations(uid) : [], {uid, day});
   const value = await readThroughSafeCache({uid, kind: 'scheduleDays', id: day, localFirst: true, onRefresh: onRefresh ? value => {void project(value).then(onRefresh).catch(() => {});} : undefined, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-    const snapshot = await getDoc(doc(db, 'scheduleDays', day));
+    const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
+    const snapshot = await getDoc(doc(targetDb, 'scheduleDays', day));
     if (!snapshot.exists()) return null;
     return {id: snapshot.id, ...snapshot.data()};
   }});
@@ -43,8 +45,9 @@ export async function listActiveContacts({uid, pageSize = 200, onRefresh} = {}) 
 export async function listVacationsForDate(day, {uid, pageSize = 100, onRefresh} = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Informe uma data válida para consultar as férias.');
   return readThroughSafeCache({uid, kind: 'vacations', id: day, localFirst: true, onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
+    const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
     const result = await getDocs(query(
-      collection(db, 'vacations'),
+      collection(targetDb, 'vacations'),
       where('active', '==', true),
       where('start', '<=', day),
       where('end', '>=', day),

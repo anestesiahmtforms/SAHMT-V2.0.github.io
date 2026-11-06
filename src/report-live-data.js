@@ -1,3 +1,5 @@
+import {operationalModuleEnabled, getOperationalModuleDatabase} from './operational-module-firebase.js';
+
 function watchLimit(value, fallback) {
   const count = value == null ? fallback : Number(value);
   if (!Number.isSafeInteger(count) || count < 1 || count >= Number.MAX_SAFE_INTEGER) throw new Error('Informe um limite válido para acompanhar o relatório.');
@@ -22,10 +24,10 @@ function recordChanges(previous, current) {
   return changes;
 }
 
-async function realtimeFirestore() {
+async function realtimeFirestore(station, uid) {
   const [{db}, sdk] = await Promise.all([import('./firebase.js'), import('firebase/firestore')]);
   if (!db) throw new Error('O Firestore não está disponível para atualizar o relatório.');
-  return {db, sdk};
+  return {db: station && operationalModuleEnabled(station) ? await getOperationalModuleDatabase(station, uid, {realtime: true}) : db, sdk};
 }
 
 function subscribeReport(sdk, scopedQuery, onNext, onError, project) {
@@ -72,7 +74,7 @@ export async function watchEventRecords({from, to, uid, sigla = '', isAdmin = fa
   if (!Number.isSafeInteger(count + page)) throw new Error('Informe um limite válido para acompanhar o relatório.');
   const member = String(sigla || '').trim().toUpperCase();
   const admin = isAdmin === true;
-  const {db, sdk} = await realtimeFirestore();
+  const {db, sdk} = await realtimeFirestore('FI', uid);
   const base = [sdk.where('active', '==', true), sdk.where('date', '>=', from), sdk.where('date', '<=', to)];
   // The full SDK requires field filters and an OR filter to be enclosed by one composite AND.
   const filters = admin ? base : member ? [sdk.and(...base, sdk.or(

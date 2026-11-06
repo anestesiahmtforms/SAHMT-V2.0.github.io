@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function moduleSession() {
+      return request.auth != null && request.auth.token.aud == 'sahmt-escala-fj' &&
+        request.auth.token.get('sourceProjectId', '') == 'sahmt-17a16' &&
+        request.auth.token.get('moduleStation', '') == 'FJ' &&
+        request.auth.token.get('moduleLeaseExpiresAt', 0) is int &&
+        request.time.toMillis() < request.auth.token.get('moduleLeaseExpiresAt', 0) * 1000 &&
+        request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+    function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profilePath()); }
+    function profile() { return get(profilePath()).data; }
+    function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
+    function isAdmin() {
+      return activeUser() && ((profile().role == 'administrador_app') ||
+        (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
+    }
+    function can(permission) {
+      let p = profile();
+      let permissions = p.get('permissions', {});
+      return activeUser() && (p.get('role', '') == 'administrador_app' ||
+        permissions.get('admin', false) == true || permissions.get(permission, false) == true);
+    }
+    function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
+    function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    match /users/{uid} {
+      allow read: if moduleSession() && (activeUser() && (request.auth.uid == uid || isAdmin()));
+      allow write: if false;
+    }
+    match /scheduleDays/{scheduleId} {
+      function validScheduleHighlightUpdate(scheduleId) {
+        let oldHighlights = resource.data.get('highlights', {});
+        let newHighlights = request.resource.data.get('highlights', {});
+        return can('scheduleWrite') && updateActorIsSelf() &&
+          scheduleId.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['highlights', 'updatedByUid', 'updatedAt', 'version']) &&
+          request.resource.data.id == resource.data.id && request.resource.data.date == resource.data.date &&
+          request.resource.data.positions == resource.data.positions &&
+          oldHighlights is map && newHighlights is map &&
+          newHighlights.keys().hasOnly(['siglas', 'events', 'releaseTimes']) &&
+          newHighlights.get('events', []) == oldHighlights.get('events', []) &&
+          newHighlights.get('releaseTimes', {}) is map && newHighlights.get('releaseTimes', {}).size() <= 30 &&
+          newHighlights.get('releaseTimes', {}).keys().hasOnly(newHighlights.get('siglas', [])) &&
+          newHighlights.get('siglas', []) is list && newHighlights.get('siglas', []).size() <= 30 &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.version == resource.data.get('version', 0) + 1;
+      }
+      allow read: if moduleSession() && (can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign'));
+      allow create: if false;
+      allow update: if moduleSession() && (validScheduleHighlightUpdate(scheduleId));
+      allow delete: if false;
+    }
+    match /vacations/{vacationId} {
+      function validVacation(data, vacationId) {
+        return data.keys().hasAll(['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+          data.keys().hasOnly(['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+          data.id == vacationId && data.start is string && data.start.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          data.end is string && data.end.matches('^\\d{4}-\\d{2}-\\d{2}$') && data.start <= data.end &&
+          data.siglas is list && data.siglas.size() <= 30 && data.label is string && data.label.size() <= 240 &&
+          data.notes is string && data.notes.size() <= 1000 && data.active is bool &&
+          data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+          data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow read: if moduleSession() && (((can('scheduleRead') || can('checklistSign')) && resource.data.active == true) || can('scheduleWrite'));
+      allow create: if moduleSession() && (can('scheduleWrite') && validVacation(request.resource.data, vacationId));
+      allow update: if moduleSession() && (can('scheduleWrite') && resource.data.id == vacationId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt && validVacation(request.resource.data, vacationId));
+      allow delete: if false;
+    }
+    match /contacts/{sigla} {
+      function validContact(data, sigla) {
+        return data.keys().hasAll(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+          data.keys().hasOnly(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+          data.sigla == sigla && (data.sigla.matches('^[A-Z]{2}$') || data.sigla == 'L2') &&
+          data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+          data.role is string && data.role.size() <= 80 && data.phone is string && data.phone.size() <= 40 &&
+          data.email is string && data.email.size() <= 200 && data.whatsAppLink is string && data.whatsAppLink.size() <= 250 &&
+          (data.whatsAppLink == '' || data.whatsAppLink.matches('^https://wa[.]me/[0-9]+$') || data.whatsAppLink.matches('^https://api[.]whatsapp[.]com/send[?]phone=[0-9]+$')) &&
+          data.crm is string && data.crm.size() <= 40 &&
+          data.entryDate is string && data.entryDate.size() <= 32 && data.active is bool &&
+          data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 &&
+          data.updatedByUid == request.auth.uid &&
+          data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow read: if moduleSession() && (((can('scheduleRead') || can('scheduleWrite')) && resource.data.active == true) || can('peopleManage'));
+      allow create: if moduleSession() && (can('peopleManage') && validContact(request.resource.data, sigla) &&
+        request.resource.data.createdByUid == request.auth.uid);
+      allow update: if moduleSession() && (can('peopleManage') && resource.data.sigla == sigla &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        validContact(request.resource.data, sigla));
+      allow delete: if false;
+    }
+    match /eventMembers/{sigla} {
+      function validEventMember(data, sigla) {
+        return data.keys().hasAll(['id', 'sigla', 'name', 'active', 'updatedByUid', 'updatedAt']) &&
+          data.keys().hasOnly(['id', 'sigla', 'name', 'active', 'updatedByUid', 'updatedAt']) &&
+          data.id == sigla && data.sigla == sigla && (sigla.matches('^[A-Z]{2}$') || sigla == 'L2') &&
+          data.name is string && data.name.size() > 0 && data.name.size() <= 120 && data.active is bool &&
+          data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+      }
+
+      allow read: if moduleSession() && (can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign'));
+      allow create, update: if moduleSession() && (can('peopleManage') && validEventMember(request.resource.data, sigla));
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

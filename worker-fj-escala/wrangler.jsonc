@@ -1,0 +1,13 @@
+{
+  "name": "sahmt-fj-escala",
+  "account_id": "563bc56aba4539b2621b9a0eb4520e32",
+  "main": "../worker-operational-domain/worker.js",
+  "compatibility_date": "2026-11-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "triggers": {"crons": ["* * * * *"]},
+  "placement": {"region": "gcp:southamerica-east1"},
+  "observability": {"enabled": true, "redact_query_string": true, "logs": {"enabled": true, "head_sampling_rate": 1}, "traces": {"enabled": true, "head_sampling_rate": 0.01}},
+  "vars": {"MODULE_STATION": "FJ", "MODULE_PROJECT_ID": "sahmt-escala-fj", "MODULE_CUTOVER_ACTIVE": "false", "ALLOWED_ORIGINS": "https://anestesiahmtforms.github.io"}
+}

@@ -2013,7 +2013,8 @@ test('Eventos: usuário sem administração cria pela escala e confirma reenvio 
   const source = await readFile(new URL('../src/data.js', import.meta.url), 'utf8');
   const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
   let failEventCommit = false;
-  const bindings = {db, identityDb: db, doc, runTransaction, writeBatch: database => failEventCommit
+  const bindings = {db, identityDb: db, operationalModuleEnabled: () => false, operationalDatabase: async () => db,
+    doc, runTransaction, writeBatch: database => failEventCommit
     ? {set() {}, commit: async () => {throw Object.assign(new Error('Indisponível no teste'), {code: 'unavailable'});}}
     : writeBatch(database), serverTimestamp,
     getDocFromServer, stageOperationalWrite, assertOnlineOperation:()=>{}, unconfirmedWrite, navigator: {onLine: true}, isOfflineRuntimeForced: () => false,

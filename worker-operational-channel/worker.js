@@ -4,6 +4,7 @@ import {createChannelIdentityVerifier,readChannelJson} from './identity.js';
 import {updateScheduleReleaseState} from '../src/schedule-release.js';
 import {issueRealtimeTicket,upgradeRealtime,setupRealtime,acceptRealtimeSocket,broadcastRealtime,realtimeSocketMessage,notifyRealtime} from './realtime.js';
 import {importContinuitySnapshot,bootstrapContinuity,setupContinuityAuthority,continuityAuthorityAction,setupContinuityState,continuityStateAction,recordContinuitySubmission,setContinuityOperationState,recordContinuityCommit,recordContinuitySourceChange} from './continuity.js';
+import {retiredChannelCollection, retiredContinuityKind} from './module-retirement.js';
 const PREFIX='https://firestore.googleapis.com/v1/projects/sahmt-17a16/databases/(default)/documents/';
 const json=(body,status=200,origin)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
   ...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
@@ -53,6 +54,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       if(body.action==='source'){
         if(env.OPERATIONAL_CONTINUITY_ENABLED!=='true')throw channelError('CONTINUITY_DISABLED',503);
         if(Object.keys(body).some(key=>!['action','path'].includes(key))||! /^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(body.path||''))throw channelError('CHANNEL_REQUEST_INVALID');
+        if(retiredContinuityKind(env,body.path.split('/')[0]))throw channelError('CHANNEL_MODULE_MOVED',409);
         const data=await firestore(body.path,bearer,appCheckToken),result=await recordContinuitySourceChange(env,body.path,data,now());
         return json({code:'CHANNEL_SOURCE_UPDATED'},result.status,origin);
       }
@@ -89,6 +91,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       }
       const collection=body.collection,day=body.day;
       if(!CHANNEL_COLLECTIONS.includes(collection)||!validDay(day))throw channelError('CHANNEL_REQUEST_INVALID');
+      if(retiredChannelCollection(env,collection)&&!['status','withdraw'].includes(body.action))throw channelError('CHANNEL_MODULE_MOVED',409);
       const keys={submit:['action','collection','day','requestId','data','createdAt'],list:['action','collection','day','cursor'],ack:['action','collection','day','requestId'],withdraw:['action','collection','day','requestId'],status:['action','collection','day','requestId']};
       if(Object.keys(body).some(key=>!keys[body.action].includes(key)))throw channelError('CHANNEL_REQUEST_INVALID');
       const stub=env.OPERATIONAL_CHANNEL_STATE.get(env.OPERATIONAL_CHANNEL_STATE.idFromName(collection+':'+day));

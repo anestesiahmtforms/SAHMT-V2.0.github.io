@@ -3,7 +3,9 @@ const WEB_CONFIG_KEYS = Object.freeze(['apiKey', 'authDomain', 'projectId', 'sto
 export const FIREBASE_PROJECTS = Object.freeze({
   FA: Object.freeze({projectId: 'sahmt-17a16', appName: 'sahmt-v2', databaseId: '(default)'}),
   FB: Object.freeze({projectId: 'sahmt-gestao-5ae66', appName: 'sahmt-management', databaseId: '(default)'}),
-  FC: Object.freeze({projectId: 'indicadores---sahmt', appName: 'sahmt-indicators', databaseId: '(default)'})
+  FC: Object.freeze({projectId: 'indicadores---sahmt', appName: 'sahmt-indicators', databaseId: '(default)'}),
+  FI: Object.freeze({projectId: 'sahmt-operacional-fi', appName: 'sahmt-fi-operacional', databaseId: '(default)'}),
+  FJ: Object.freeze({projectId: 'sahmt-escala-fj', appName: 'sahmt-fj-escala', databaseId: '(default)'})
 });
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);

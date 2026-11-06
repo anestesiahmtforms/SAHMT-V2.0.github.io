@@ -85,7 +85,8 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     const source = original.split('\n').filter((line) => !line.startsWith('import ')).join('\n').replaceAll('export ', '')
       .replaceAll("import('./firebase.js')", 'Promise.resolve({db: emulatorDb})')
       .replaceAll("import('firebase/firestore')", 'Promise.resolve(fullSdk)');
-    const context = vm.createContext({emulatorDb: db, fullSdk: realSdk, console});
+    const context = vm.createContext({emulatorDb: db, fullSdk: realSdk, console,
+      operationalModuleEnabled: () => false});
     vm.runInContext(source, context, {filename: file});
     return context;
   }

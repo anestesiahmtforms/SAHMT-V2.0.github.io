@@ -1,0 +1,245 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function moduleSession() {
+      return request.auth != null && request.auth.token.aud == 'sahmt-operacional-fi' &&
+        request.auth.token.get('sourceProjectId', '') == 'sahmt-17a16' &&
+        request.auth.token.get('moduleStation', '') == 'FI' &&
+        request.auth.token.get('moduleLeaseExpiresAt', 0) is int &&
+        request.time.toMillis() < request.auth.token.get('moduleLeaseExpiresAt', 0) * 1000 &&
+        request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+    function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profilePath()); }
+    function profile() { return get(profilePath()).data; }
+    function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
+    function isAdmin() {
+      return activeUser() && ((profile().role == 'administrador_app') ||
+        (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
+    }
+    function can(permission) {
+      let p = profile();
+      let permissions = p.get('permissions', {});
+      return activeUser() && (p.get('role', '') == 'administrador_app' ||
+        permissions.get('admin', false) == true || permissions.get(permission, false) == true);
+    }
+    function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
+    function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    match /users/{uid} {
+      allow read: if moduleSession() && (activeUser() && (request.auth.uid == uid || isAdmin()));
+      allow write: if false;
+    }
+    match /appConfig/labelStaff {
+      function validLabelStaffCatalog(data) {
+        return data.keys().hasAll(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.id == 'labelStaff' && data.siglas is list && data.siglas.size() <= 80 && data.active == true &&
+          data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 &&
+          data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt == request.time &&
+          data.version is int && data.version > 0;
+      }
+
+      allow read: if moduleSession() && (can('labelsRead') || can('labelsWrite') || can('labelsManage') || can('eventsRead') || can('eventsWrite'));
+      allow create: if moduleSession() && (can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1);
+      allow update: if moduleSession() && (can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['siglas', 'active', 'updatedByUid', 'updatedAt', 'version']));
+      allow delete: if false;
+    }
+    match /eventCatalogs/{catalogId} {
+      function validEventCatalog(data, catalogId) {
+        return catalogId == 'operational' &&
+          data.keys().hasAll(['id', 'payers', 'creditors', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['id', 'payers', 'creditors', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.id == catalogId && data.payers is list && data.payers.size() <= 100 &&
+          data.creditors is list && data.creditors.size() <= 100 &&
+          data.createdByUid is string && data.updatedByUid == request.auth.uid &&
+          data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
+      }
+
+      allow read: if moduleSession() && (can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage'));
+      allow create: if moduleSession() && (can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+        request.resource.data.version == 1);
+      allow update: if moduleSession() && (can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payers', 'creditors', 'updatedByUid', 'updatedAt', 'version']));
+      allow delete: if false;
+    }
+    match /events/{eventId} {
+      function eventCatalogContains(field, value) {
+        let path = /databases/$(database)/documents/eventCatalogs/operational;
+        return exists(path) && get(path).data.keys().hasAny([field]) && get(path).data[field] is list && get(path).data[field].hasAny([value]);
+      }
+      function eventCatalogContainsOrUnchanged(field, value, eventId, allowHistorical) {
+        let existing = /databases/$(database)/documents/events/$(eventId);
+        return eventCatalogContains(field, value) ||
+          (allowHistorical && exists(existing) && get(existing).data[field] == value);
+      }
+      function unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues) {
+        return allowHistoricalCatalogValues &&
+          data.eventType == resource.data.eventType &&
+          data.delayMultiple == resource.data.delayMultiple &&
+          data.shift == resource.data.shift &&
+          data.amountToPay == resource.data.amountToPay;
+      }
+      function validEventRecord(data, eventId, allowHistoricalCatalogValues) {
+        let actorName = profile().displayName;
+        return data.keys().hasAll(['date', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdByName', 'updatedByName', 'createdAt', 'updatedAt', 'version']) &&
+          (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() <= 120 && data.createdByName == (allowHistoricalCatalogValues ? resource.data.get('createdByName', actorName) : actorName))) &&
+          (!data.keys().hasAny(['updatedByName']) || (data.updatedByName is string && data.updatedByName.size() <= 120 && data.updatedByName == actorName)) &&
+          data.id == eventId && data.clientMutationId == eventId && data.active == true && data.version is int && data.version > 0 &&
+          data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
+          data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          data.eventType in ['Pessoal', 'Férias', 'Ferias', 'ATRASO', 'Suporte', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude', 'Ausência', 'Ausencia', 'Outros'] &&
+          data.get('memberSigla', '') is string && data.get('memberSigla', '').size() <= 2 && (data.get('memberSigla', '') == '' || data.get('memberSigla', '').matches('^[A-Z]{2}$') || data.get('memberSigla', '') == 'L2') &&
+          data.get('scheduleSigla', '') is string && data.get('scheduleSigla', '').size() <= 30 && (data.get('scheduleSigla', '') == '' || data.get('scheduleSigla', '') == 'SUPORTE' || data.get('scheduleSigla', '').matches('^(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*$')) &&
+          data.memberStatus is string && data.memberStatus.size() <= 160 && data.description is string && data.description.size() <= 1000 &&
+          data.delayMultiple in [null, 0, 1, 2, 3, 4, 5, 6] && data.substitute is string && data.substitute.size() <= 120 &&
+          data.shift in ['', 'Manhã', 'Manha', 'Tarde', 'Integral'] &&
+          data.payer is string && data.payer.size() > 0 && data.payer.size() <= 120 && eventCatalogContainsOrUnchanged('payers', data.payer, eventId, allowHistoricalCatalogValues) &&
+          data.creditor is string && data.creditor.size() > 0 && data.creditor.size() <= 120 && eventCatalogContainsOrUnchanged('creditors', data.creditor, eventId, allowHistoricalCatalogValues) &&
+          data.amountToPay is number && data.amountToPay >= 0 && data.status == 'OPEN' &&
+          ((data.eventType == 'ATRASO' && data.memberStatus.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && (data.amountToPay == data.delayMultiple * 100 || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues)) && data.description == '' && data.substitute == '' && data.shift == '') ||
+           (data.eventType == 'Suporte' && data.memberStatus == 'SUPORTE' && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral'] && (((data.shift == 'Integral' && data.amountToPay == 2000) || (data.shift in ['Manhã', 'Manha', 'Tarde'] && data.amountToPay == 1000)) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues))) ||
+           (data.eventType in ['Pessoal', 'Férias', 'Ferias', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral'] && (((data.shift == 'Integral' && data.amountToPay == 2000) || (data.shift in ['Manhã', 'Manha', 'Tarde'] && data.amountToPay == 1000)) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues))) ||
+           (data.eventType in ['Ausência', 'Ausencia'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
+           (data.eventType == 'Outros' && data.memberStatus.size() > 0 && data.description.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']));
+      }
+      function eventHistorySnapshot(data) {
+        return {
+          'date': data.get('date', null),
+          'memberSigla': data.get('memberSigla', null),
+          'scheduleSigla': data.get('scheduleSigla', null),
+          'memberStatus': data.get('memberStatus', null),
+          'eventType': data.get('eventType', null),
+          'description': data.get('description', null),
+          'delayMultiple': data.get('delayMultiple', null),
+          'substitute': data.get('substitute', null),
+          'shift': data.get('shift', null),
+          'payer': data.get('payer', null),
+          'creditor': data.get('creditor', null),
+          'amountToPay': data.get('amountToPay', null),
+          'status': data.get('status', null)
+        };
+      }
+      function validEventHistoryEntry(data, eventId, version) {
+        let parentPath = /databases/$(database)/documents/events/$(eventId);
+        let before = data.before;
+        let after = data.after;
+        let fields = data.changedFields;
+        let previousEvent = get(parentPath).data;
+        let updatedEvent = getAfter(parentPath).data;
+        let changedKeys = before.diff(after).affectedKeys();
+        return exists(parentPath) && existsAfter(parentPath) &&
+          can('admin') &&
+          fields is list && fields.size() > 0 && fields.size() <= 13 &&
+          fields.hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
+          fields.toSet().size() == fields.size() &&
+          before is map && after is map &&
+          before.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
+          after.keys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
+          before.keys().size() == 13 && after.keys().size() == 13 &&
+          fields.toSet() == changedKeys &&
+          before == eventHistorySnapshot(previousEvent) && after == eventHistorySnapshot(updatedEvent) &&
+          data.keys().hasAll(['id', 'eventId', 'version', 'requestId', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
+          data.keys().hasOnly(['id', 'eventId', 'version', 'requestId', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
+          version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.eventId == eventId &&
+          data.version is int && int(version) == data.version &&
+          data.requestId is string && data.requestId.size() > 0 && data.requestId.size() <= 128 &&
+          data.actorUid == request.auth.uid && data.actorName is string && data.actorName == profile().displayName && data.createdAt == request.time &&
+          previousEvent.version == data.version - 1 &&
+          updatedEvent.version == data.version && updatedEvent.updatedByUid == request.auth.uid &&
+          changedKeys.size() > 0;
+      }
+      function eventHistoryExistsAfter(eventId, version) {
+        let historyPath = /databases/$(database)/documents/events/$(eventId)/history/$(string(version));
+        return existsAfter(historyPath);
+      }
+      function eventRecordReadAccess(data) {
+        return isAdmin() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
+          (data.createdByUid == request.auth.uid ||
+           (profile().sigla is string && profile().sigla != '' &&
+            (data.get('memberSigla', '') == profile().sigla || data.get('scheduleSigla', '') == profile().sigla))));
+      }
+
+      function eventProjectionExistsAfter(eventId, version) {
+        return existsAfter(/databases/$(database)/documents/eventProjectionOutbox/$(eventId + '-' + string(version)));
+      }
+      allow read: if moduleSession() && (eventRecordReadAccess(resource.data));
+      allow create: if moduleSession() && (can('eventsWrite') && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
+        eventProjectionExistsAfter(eventId, request.resource.data.version) && validEventRecord(request.resource.data, eventId, false));
+      allow update: if moduleSession() && (can('eventsWrite') && can('admin') && updateActorIsSelf() &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        eventHistoryExistsAfter(eventId, request.resource.data.version) && eventProjectionExistsAfter(eventId, request.resource.data.version) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status', 'updatedByName', 'updatedByUid', 'updatedAt', 'version']) &&
+        validEventRecord(request.resource.data, eventId, true));
+      allow delete: if false;
+      match /history/{version} {
+        allow read: if moduleSession() && (exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data));
+        allow create: if moduleSession() && (can('eventsWrite') && can('admin') && validEventHistoryEntry(request.resource.data, eventId, version));
+        allow update, delete: if false;
+      }
+    }
+    match /contacts/{sigla} {
+      function validContact(data, sigla) {
+        return data.keys().hasAll(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+          data.keys().hasOnly(['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']) &&
+          data.sigla == sigla && (data.sigla.matches('^[A-Z]{2}$') || data.sigla == 'L2') &&
+          data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+          data.role is string && data.role.size() <= 80 && data.phone is string && data.phone.size() <= 40 &&
+          data.email is string && data.email.size() <= 200 && data.whatsAppLink is string && data.whatsAppLink.size() <= 250 &&
+          (data.whatsAppLink == '' || data.whatsAppLink.matches('^https://wa[.]me/[0-9]+$') || data.whatsAppLink.matches('^https://api[.]whatsapp[.]com/send[?]phone=[0-9]+$')) &&
+          data.crm is string && data.crm.size() <= 40 &&
+          data.entryDate is string && data.entryDate.size() <= 32 && data.active is bool &&
+          data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 &&
+          data.updatedByUid == request.auth.uid &&
+          data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow read: if moduleSession() && (((can('eventsRead') || can('eventsWrite')) && resource.data.active == true) || can('peopleManage'));
+      allow create: if moduleSession() && (can('peopleManage') && validContact(request.resource.data, sigla) &&
+        request.resource.data.createdByUid == request.auth.uid);
+      allow update: if moduleSession() && (can('peopleManage') && resource.data.sigla == sigla &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        validContact(request.resource.data, sigla));
+      allow delete: if false;
+    }
+    match /eventMembers/{sigla} {
+      function validEventMember(data, sigla) {
+        return data.keys().hasAll(['id', 'sigla', 'name', 'active', 'updatedByUid', 'updatedAt']) &&
+          data.keys().hasOnly(['id', 'sigla', 'name', 'active', 'updatedByUid', 'updatedAt']) &&
+          data.id == sigla && data.sigla == sigla && (sigla.matches('^[A-Z]{2}$') || sigla == 'L2') &&
+          data.name is string && data.name.size() > 0 && data.name.size() <= 120 && data.active is bool &&
+          data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
+      }
+
+      allow read: if moduleSession() && (can('eventsRead') || can('eventsWrite'));
+      allow create, update: if moduleSession() && (can('peopleManage') && validEventMember(request.resource.data, sigla));
+      allow delete: if false;
+    }
+    match /eventProjectionOutbox/{operationId} {
+      function validProjectionRequest() {
+        let data = request.resource.data;
+        let event = getAfter(/databases/$(database)/documents/events/$(data.eventId)).data;
+        return can('eventsWrite') && data.keys().hasOnly(['eventId','version','status','updatedAt','actorUid']) &&
+          data.eventId is string && data.version is int && data.version > 0 &&
+          operationId == data.eventId + '-' + string(data.version) && data.status == 'PENDING' &&
+          data.actorUid == request.auth.uid && data.updatedAt == request.time &&
+          event.version == data.version && event.updatedByUid == request.auth.uid;
+      }
+      allow create: if moduleSession() && (validProjectionRequest());
+      allow read, update, delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

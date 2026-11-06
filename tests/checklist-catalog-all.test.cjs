@@ -11,6 +11,7 @@ test('Checklist consulta os 28 arsenais ativos e inativos sem gravar cache local
   const ctx = vm.createContext({
     moduleCollections: {checklist: {name: 'checklistStations', order: 'order', direction: 'asc'}, events: {name: 'events', order: 'date', direction: 'desc'}},
     MAX_PAGE_SIZE: 50, SAFE_CACHE_MODULES: new Set(['checklist']), db: {}, isOfflineRuntimeForced: () => false, readThroughSafeCache, readSafeCache: async()=>null,
+    operationalDatabase: async station => {assert.equal(station, 'FI'); return {};},
     where: (...args) => ({where: args}), orderBy: (...args) => ({order: args}), limit: value => ({limit: value}),
     collection: () => ({}), query: (_collection, ...args) => {constraints = args; return {};},
     getDocsFromServer: async () => ({docs: stations.map(item => ({id: item.id, data: () => item}))}),

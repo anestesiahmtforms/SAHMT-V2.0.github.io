@@ -9,7 +9,8 @@ function limitedFetch(action){let calls=0;return (url,options)=>{
  if(target.hostname==='firestore.googleapis.com'){
   const ff=path.startsWith(`/v1/projects/${FF.projectId}/databases/${FF.databaseId}`);
   const fa=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-17a16\/databases\/\(default\)\/documents\/(?:users|scheduleDays)\/[^/]+$/.test(path);
-  if(!ff&&!fa)throw fail('COMM_SOURCE_DENIED',403);
+  const fj=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-escala-fj\/databases\/\(default\)\/documents\/scheduleDays\/[^/]+$/.test(path);
+  if(!ff&&!fa&&!fj)throw fail('COMM_SOURCE_DENIED',403);
  }
  if(target.hostname==='identitytoolkit.googleapis.com'&&path.includes('/projects/')&&!path.startsWith(`/v1/projects/${FF.projectId}/`))throw fail('COMM_SOURCE_DENIED',403);
  if(++calls>COMMUNICATION_LIMITS.externalCalls)throw fail('COMM_OPERATION_WORK_LIMIT',429);return fetch(url,options);
@@ -19,6 +20,8 @@ async function runtime(env,fetchImpl,buildService){
  const getToken=serviceToken(JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null'),fetchImpl);
  await assertFreeProject(getToken,fetchImpl);
  const store=createStore({getToken,fetchImpl}),fa=createStore({getToken,fetchImpl,source:'FA'});
+ if(env.SCHEDULE_SOURCE_PROJECT&&!['FA','FJ'].includes(env.SCHEDULE_SOURCE_PROJECT))throw fail('COMM_CONFIG_REQUIRED',503);
+ const scheduleSource=env.SCHEDULE_SOURCE_PROJECT==='FJ'?createStore({getToken,fetchImpl,source:'FJ'}):fa;
  const recipientEnabled=async device=>{
   for(const [project,uid]of [[FF.projectId,device.uid]]){
    const r=await fetchImpl(`https://identitytoolkit.googleapis.com/v1/projects/${project}/accounts:lookup`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+await getToken(),'Content-Type':'application/json'},body:JSON.stringify({localId:[uid]})});
@@ -34,7 +37,7 @@ async function runtime(env,fetchImpl,buildService){
   if(code==='UNREGISTERED')return {status:'failed',disable:true,reason:'UNREGISTERED'};
   return {status:'failed',reason:r.status===429?'PROVIDER_QUOTA':code==='SENDER_ID_MISMATCH'?'SENDER_ID_MISMATCH':'PROVIDER_REJECTED'};
  };
- return createCommunicationService({store,fa,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
+ return createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
 }
 export function createCommunicationWorker({verify=verifyCommunicationActor,buildService}={}){
  return {
