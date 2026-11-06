@@ -35,6 +35,17 @@ test('retirement rejects unfrozen state and readers reject wrong project respons
  const h=harness({publicationEpoch:Date.now()-360001});h.c.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})};assert.throws(()=>h.run('retirarEscalaEventosFA()'),/FREEZE/);assert.equal(h.props.get('SAHMT_FI_FJ_PRODUCERS_RETIRED'),undefined);
  const r=harness({retired:true,ready:true});r.c.sahmtFiFjOriginalFirestoreRequest_=()=>({name:'projects/sahmt-17a16/databases/(default)/documents/events/a',fields:{}});assert.throws(()=>r.run("getFirestoreDocument_('events','a')"),/SCOPE/);
 });
+
+test('retirement preserves producers while remote module operations or old submissions are still possible',()=>{
+ for(const audit of [{code:'CONTINUITY_MODULE_AUDIT',pendingMigrated:1,moduleSubmissionsRetired:true},{code:'CONTINUITY_MODULE_AUDIT',pendingMigrated:0,moduleSubmissionsRetired:false}]){
+  const h=harness({publicationEpoch:Date.now()-360001});
+  h.props.set('SAHMT_CONTINUITY_SYNC_ENABLED','YES');h.c.ocsRemote_=()=>audit;
+  h.c.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})};
+  h.c.sahmtFiFjOriginalGetFirestoreDocument_=()=>({phase:'SOURCE_RULES_FROZEN',_updateTime:'version',targetProjects:{FI:'sahmt-operacional-fi',FJ:'sahmt-escala-fj'}});
+  assert.throws(()=>h.run('retirarEscalaEventosFA()'),/CONTINUITY_RETIREMENT_REQUIRED|PENDING_CONTINUITY_OPERATIONS/);
+  assert.equal(h.props.get('SAHMT_FI_FJ_PRODUCERS_RETIRED'),undefined);assert.equal(h.calls.length,4);
+ }
+});
 test('performance uses numeric date decoder and consistent readTime',()=>{const h=harness({retired:true,ready:true});h.c.sahmtFiFjOriginalFirestoreRequest_=(url,options)=>{h.calls.push({url,options});return [{document:{name:'projects/sahmt-operacional-fi/databases/(default)/documents/events/a',fields:{createdAt:{timestampValue:'2026-11-01T00:00:00Z'}}},readTime:'2026-11-06T00:00:00Z'}];};const rows=h.run("faPerformanceRead_('events',10,{readTime:'2026-11-06T00:00:00Z'})");assert.equal(rows[0].createdAt,Date.parse('2026-11-01T00:00:00Z'));assert.equal(JSON.parse(h.calls[0].options.payload).readTime,'2026-11-06T00:00:00Z');});
 test('performance preserves native executor guard before target read',()=>{const h=harness({retired:true,ready:true});h.c.faPerformanceIdentity_=()=>{throw Error('FA_EXECUTOR_MISMATCH');};assert.throws(()=>h.run("faPerformanceRead_('events',10,{})"),/FA_EXECUTOR_MISMATCH/);assert.equal(h.calls.length,0);});
 test('source preparation preserves unrelated files and retires only event sheet table',async()=>{
@@ -59,6 +70,7 @@ test('source preparation preserves unrelated files and retires only event sheet 
  const remoteCalls=[],ops=[{collection:'events',uid:'uid',requestId:'event'},{collection:'scheduleReleases',uid:'uid',requestId:'release'},{collection:'labels',uid:'uid',requestId:'label'},{collection:'checklists',uid:'uid',requestId:'checklist'}];
  Object.assign(h.c,{LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})},ocsFlushSources_:()=>0,ocsGet_:()=>({data:{uid:'uid'}}),SahmtContinuity:{reconcileContinuityOperation:op=>({state:'confirmed',record:{id:op.requestId}})},ocsRemote_:body=>{remoteCalls.push(body);return body.action==='drain'?{code:'CONTINUITY_DRAIN',operations:ops}:body.action==='claim'?{code:'CONTINUITY_CLAIMED'}:{code:'CONTINUITY_OK'};}});
  const continuity=h.run('sincronizarCanalOperacionalRemotoV1()');assert.equal(continuity.confirmed,2);assert.equal(continuity.conflicts,2);assert.deepEqual(remoteCalls.filter(c=>c.action==='claim').map(c=>c.requestId),['label','checklist']);assert.deepEqual(remoteCalls.filter(c=>c.action==='complete').map(c=>c.requestId),['label','checklist']);assert.equal(h.props.get('SAHMT_CONTINUITY_PAUSE_UNTIL'),undefined);
+ assert.equal(remoteCalls.find(call=>call.action==='drain').excludeMigratedModules,true);
  const osc=prepared.files.find(f=>f.name==='OperationalSheetControl').source;
  assert.match(osc,/views\[key.split\('\/'\)\[0\]\]&&/);
  assert.match(osc,/if\(s.deleted\|\|\(sahmtFiFjRetired_\(\)&&key.split\('\/'\)\[0\]==='events'\)\)return/);

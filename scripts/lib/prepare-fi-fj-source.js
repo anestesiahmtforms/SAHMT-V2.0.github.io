@@ -27,6 +27,7 @@ export function prepareSourceCapture(capture,template) {
  patch('OperationalSheetPush','function ospReceive_(doc) {',"function ospReceive_(doc) {\n  if (sahmtFiFjRetired_() && /^projects\\/sahmt-17a16\\/databases\\/\\(default\\)\\/documents\\/events\\//.test(String(doc && doc.name))) return 'CONTROLE_REGISTRO_MOVED';");
  patch('SparkReportSync','function listSparkReportChanges_(config, limit) {',"function listSparkReportChanges_(config, limit) {\n  if (sahmtFiFjRetired_() && config.type === 'events') return [];");
  // Leave retired operations unclaimed and unconfirmed for the final reconciliation.
+ patch('OperationalContinuitySync',"const remote=ocsRemote_({schemaVersion:1,action:'drain'});","const remote=ocsRemote_({schemaVersion:1,action:'drain',excludeMigratedModules:sahmtFiFjRetired_()});");
  patch('OperationalContinuitySync','for(const operation of remote.operations){',"for(const operation of remote.operations){\n      if(sahmtFiFjRetired_()&&['events','scheduleReleases','scheduleDays','vacations','eventCatalogs'].includes(operation.collection)){conflicts++;continue;}");
  // Filter before the batch limit: pending module keys must not starve labels/checklists.
  patch('OperationalContinuitySync',"return key.indexOf('SAHMT_CONTINUITY_DIRTY_')===0;","return key.indexOf('SAHMT_CONTINUITY_DIRTY_')===0 && (!sahmtFiFjRetired_() || !sahmtFiFjTarget_(String(JSON.parse(all[key]).path).split('/')[0]));");

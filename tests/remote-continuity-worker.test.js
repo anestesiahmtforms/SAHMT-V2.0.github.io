@@ -24,7 +24,7 @@ export default {fetch(request,env){
  if(kind==='journal'&&fail&&path==='/continuity-journal-put'){fail=false;return Response.json({code:'CONTINUITY_JOURNAL_UNAVAILABLE'},{status:503});}
  if(kind==='index'&&failIndex&&path==='/continuity-pending-state'){failIndex=false;return Response.json({code:'CONTINUITY_JOURNAL_UNAVAILABLE'},{status:503});}
  return stub.fetch(incoming);}};}});
- return worker.fetch(request,{...env,OPERATIONAL_CHANNEL_AUTHORIZATION:wrap(env.OPERATIONAL_CHANNEL_AUTHORIZATION,'journal'),OPERATIONAL_CHANNEL_STATE:wrap(env.OPERATIONAL_CHANNEL_STATE,'index')});}};`;
+ return worker.fetch(request,{...env,FI_FJ_MODULES_RETIRED:request.headers.get('X-Fixture-Retired')==='yes'?'true':'false',OPERATIONAL_CHANNEL_AUTHORIZATION:wrap(env.OPERATIONAL_CHANNEL_AUTHORIZATION,'journal'),OPERATIONAL_CHANNEL_STATE:wrap(env.OPERATIONAL_CHANNEL_STATE,'index')});}};`;
 test('SQLite recupera perfil/dados/fila sem Firestore e não permite importações ou acessos divergentes',async()=>{
  const bundle=await build({stdin:{contents:entry,resolveDir:resolve('.')},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',tsconfigRaw:{}});
  const mf=new Miniflare(convertV4MiniflareOptions({name:'continuity',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-06',durableObjects:{OPERATIONAL_CHANNEL_STATE:{className:'OperationalChannelState',useSQLite:true},OPERATIONAL_CHANNEL_AUTHORIZATION:{className:'OperationalChannelAuthorization',useSQLite:true}},bindings:{OPERATIONAL_CHANNEL_ENABLED:'true',OPERATIONAL_CONTINUITY_ENABLED:'true',CONTINUITY_IMPORT_SECRET:secret},outboundService:async()=>assert.fail('No external calls')}));
@@ -68,6 +68,26 @@ test('SQLite recupera perfil/dados/fila sem Firestore e não permite importaçõ
   assert.equal((await send(release('release-old',true,now-1000))).code,'CHANNEL_SHARED');
   assert.equal((await send(release('release-new',false,now))).code,'CHANNEL_SHARED');
   assert.deepEqual((await send({action:'bootstrap',day})).operations.filter(row=>row.state==='pending').map(row=>row.requestId),['release-new']);
+  // Retired entries stay recoverable, but cannot consume the first ten drain slots forever.
+  for(let i=1;i<=12;i++){
+   assert.equal((await send({action:'submit',collection:'events',day,requestId:'aa-event-'+i,data:{date:day,memberSigla:'AA',scheduleSigla:'AA',memberStatus:'AA',eventType:'ATRASO',description:'',delayMultiple:1,amountToPay:0,substitute:'',shift:'',payer:'',creditor:'',status:'OPEN'}})).code,'CHANNEL_SHARED');
+  }
+  assert.equal((await send({...submission,requestId:'zz-preserved-checklist'})).code,'CHANNEL_SHARED');
+  const audit=await install({schemaVersion:1,action:'module-audit'});
+  assert.equal(audit.code,'CONTINUITY_MODULE_AUDIT');assert.equal(audit.counts.events,12);assert.equal(audit.counts.scheduleReleases,1);assert.equal(audit.pendingMigrated,13);
+  const filtered=await install({schemaVersion:1,action:'drain',excludeMigratedModules:true});
+  assert.deepEqual(filtered.operations.map(row=>row.requestId),['zz-preserved-checklist']);
+  assert.equal((await install({schemaVersion:1,action:'module-audit'})).pendingMigrated,13);
+  const retiredHeaders={'X-Fixture-Retired':'yes'};
+  assert.equal((await send(release('retired-release',true,now),token,retiredHeaders)).code,'CHANNEL_MODULE_MOVED');
+  assert.equal((await send({action:'list',collection:'events',day},token,retiredHeaders)).code,'CHANNEL_MODULE_MOVED');
+  assert.equal((await send({action:'source',path:'scheduleDays/'+day},token,retiredHeaders)).code,'CHANNEL_MODULE_MOVED');
+  const retiredBoot=await send({action:'bootstrap',day},token,retiredHeaders);
+  assert.ok(retiredBoot.entries.every(row=>!['events','scheduleDays','vacations','eventCatalogs'].includes(row.kind)));
+  assert.ok(retiredBoot.entries.some(row=>row.kind==='checklists'));
+  assert.equal(retiredBoot.operations.filter(row=>['events','scheduleReleases'].includes(row.collection)&&row.state==='pending').length,13);
+  assert.equal((await send({action:'status',collection:'scheduleReleases',day,requestId:'release-new'},token,retiredHeaders)).state,'pending');
+  assert.equal((await send({...submission,requestId:'retired-mode-checklist'},token,retiredHeaders)).code,'CHANNEL_SHARED');
   const disabled={...profiles[0],verifiedAt:now,profile:{...profiles[0].profile,active:false}};
   assert.equal((await install({schemaVersion:1,profiles:[disabled],resources:[]})).code,'CONTINUITY_IMPORTED');
   assert.equal((await send({action:'bootstrap',day})).code,'CONTINUITY_ACCESS_DENIED');

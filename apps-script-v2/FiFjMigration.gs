@@ -103,6 +103,13 @@ function prepararSeparacaoEscalaEventosFA() {
   const counts={};['events','eventCatalogs','scheduleDays','vacations'].forEach(function(collection){counts[collection]=sahmtFiFjQueryRaw_(collection,[],[],1,['__name__']).filter(function(r){return r.document;}).length;});
   const result={code:'FI_FJ_READ_ACCESS_READY',probeCounts:counts,firestoreWrites:0};console.log(JSON.stringify(result));return result;
 }
+function conferirPendenciasMigracaoFA() {
+  sahmtFiFjIdentity_();
+  if(PropertiesService.getScriptProperties().getProperty('SAHMT_CONTINUITY_SYNC_ENABLED')!=='YES')return {code:'CONTINUITY_NOT_ENABLED',pendingMigrated:0};
+  const result=ocsRemote_({schemaVersion:1,action:'module-audit'});
+  if(result.code!=='CONTINUITY_MODULE_AUDIT'||!Number.isSafeInteger(result.pendingMigrated)||result.pendingMigrated<0)throw Error('FI_FJ_CONTINUITY_AUDIT_INVALID');
+  console.log(JSON.stringify(result));return result;
+}
 function retirarEscalaEventosFA() {
   sahmtFiFjIdentity_();
   if(!Number.isSafeInteger(SAHMT_FI_FJ_PUBLICATION_EPOCH)||SAHMT_FI_FJ_PUBLICATION_EPOCH<=0||Date.now()-SAHMT_FI_FJ_PUBLICATION_EPOCH<360000)throw Error('FI_FJ_PUBLICATION_DRAIN_REQUIRED');
@@ -111,6 +118,9 @@ function retirarEscalaEventosFA() {
   try {
     const control=sahmtFiFjOriginalGetFirestoreDocument_('migrationControl','fi-fj-cutover');
     if(!sahmtFiFjTargetsValid_(control)||!['SOURCE_RULES_FROZEN','SOURCE_PRODUCERS_RETIRED'].includes(control.phase)||!control._updateTime)throw Error('FI_FJ_SOURCE_FREEZE_REQUIRED');
+    const audit=conferirPendenciasMigracaoFA();
+    if(audit.code==='CONTINUITY_MODULE_AUDIT'&&audit.moduleSubmissionsRetired!==true)throw Error('FI_FJ_CONTINUITY_RETIREMENT_REQUIRED');
+    if(audit.pendingMigrated!==0)throw Error('FI_FJ_PENDING_CONTINUITY_OPERATIONS');
     PropertiesService.getScriptProperties().setProperty('SAHMT_FI_FJ_PRODUCERS_RETIRED','YES');
     let removed=0;ScriptApp.getProjectTriggers().forEach(function(t){if(t.getHandlerFunction()==='publishScheduleSourceToFirestore'&&t.getEventType()===ScriptApp.EventType.CLOCK){ScriptApp.deleteTrigger(t);removed++;}});
     const changes={phase:'SOURCE_PRODUCERS_RETIRED',sourceProducersRetired:true,sourceScriptId:SAHMT_FI_FJ_SOURCE_SCRIPT,sourceProducersRetiredAt:new Date(),targetProjects:{FI:'sahmt-operacional-fi',FJ:'sahmt-escala-fj'}};

@@ -3,6 +3,7 @@ import {channelActorFromProfile,validDay,validId,channelError} from '../src/prov
 import {readChannelJson} from './identity.js';
 import {continuitySourceChanges} from '../src/remote-continuity-source-change.js';
 import {notifyRealtime,notifyRealtimeSourceChange} from './realtime.js';
+import {retiredContinuityKind} from './module-retirement.js';
 const response=(body,status=200)=>Response.json(body,{status});
 const internal=(stub,path,body)=>stub.fetch(new Request('https://channel.internal/'+path,{method:'POST',body:JSON.stringify(body)}));
 const authority=(env,uid)=>env.OPERATIONAL_CHANNEL_AUTHORIZATION.get(env.OPERATIONAL_CHANNEL_AUTHORIZATION.idFromName(uid));
@@ -92,8 +93,15 @@ export function continuityStateAction(sql,path,body){
   sql.exec('UPDATE continuity_pending SET state=? WHERE id=?',body.state,body.uid+':'+body.requestId);return response({code:'CONTINUITY_PENDING_UPDATED'});
  }
  if(path==='/continuity-drain'){
-  const rows=sql.exec("SELECT content FROM continuity_pending WHERE state='pending' ORDER BY id LIMIT 10").toArray();
+  const rows=sql.exec(body.excludeMigratedModules===true
+   ? "SELECT content FROM continuity_pending WHERE state='pending' AND json_extract(content,'$.collection') NOT IN ('events','scheduleReleases') ORDER BY id LIMIT 10"
+   : "SELECT content FROM continuity_pending WHERE state='pending' ORDER BY id LIMIT 10").toArray();
   return response({code:'CONTINUITY_DRAIN',operations:rows.map(row=>JSON.parse(row.content))});
+ }
+ if(path==='/continuity-module-audit'){
+  const counts={events:0,scheduleReleases:0};
+  for(const row of sql.exec("SELECT json_extract(content,'$.collection') AS collection,COUNT(*) AS count FROM continuity_pending WHERE state='pending' AND json_extract(content,'$.collection') IN ('events','scheduleReleases') GROUP BY json_extract(content,'$.collection')").toArray())counts[row.collection]=Number(row.count);
+  return response({code:'CONTINUITY_MODULE_AUDIT',counts,pendingMigrated:counts.events+counts.scheduleReleases});
  }
  if(path==='/continuity-commit'){
   const {collection,day,fields,now}=body;
@@ -145,10 +153,15 @@ export async function importContinuitySnapshot(request,env,now){
  const body=await readChannelJson(request,CONTINUITY_MAX_BODY_BYTES),expected=await continuityRequestSignature(secret,JSON.stringify(body),time,nonce);
  let difference=0;for(let i=0;i<64;i++)difference|=expected.charCodeAt(i)^signature.charCodeAt(i);if(difference)failure('CONTINUITY_IMPORT_DENIED',401);
  if(body?.schemaVersion!==1)failure('CONTINUITY_IMPORT_INVALID');
- if(['drain','complete','source-change','claim'].includes(body.action)){
+ if(['drain','complete','source-change','claim','module-audit'].includes(body.action)){
   const nonceResponse=await internal(state(env),'continuity-import-nonce',{nonce,now});if(!nonceResponse.ok)return nonceResponse;
+  if(body.action==='module-audit'){
+   const audit=await internal(state(env),'continuity-module-audit',{});
+   return response({...await audit.json(),moduleSubmissionsRetired:env.FI_FJ_MODULES_RETIRED==='true'},audit.status);
+  }
   if(body.action==='drain'){
-   const candidates=await (await internal(state(env),'continuity-drain',{})).json(),operations=[];
+   if(body.excludeMigratedModules!==undefined&&typeof body.excludeMigratedModules!=='boolean')failure('CONTINUITY_OPERATION_INVALID');
+   const candidates=await (await internal(state(env),'continuity-drain',{excludeMigratedModules:body.excludeMigratedModules===true})).json(),operations=[];
    for(const operation of candidates.operations){
     const stub=env.OPERATIONAL_CHANNEL_STATE.get(env.OPERATIONAL_CHANNEL_STATE.idFromName(operation.collection+':'+operation.day));
     const actual=await (await internal(stub,'continuity-record-status',{uid:operation.uid,requestId:operation.requestId})).json();
@@ -196,7 +209,7 @@ export async function bootstrapContinuity(env,uid,day,now,{recoverOnly=false,aft
  if(!repaired.ok)failure('CONTINUITY_JOURNAL_UNAVAILABLE',503);
  if(recoverOnly)return response({code:'CONTINUITY_RECOVERY',...recovery});
  const {resources}=await (await internal(state(env),'continuity-resource-get',{day,now})).json();
- const entries=continuityEntriesForActor(profile,resources,{day,now});
+ const entries=continuityEntriesForActor(profile,resources.filter(resource=>!retiredContinuityKind(env,resource.kind)),{day,now});
  const payload={code:'CONTINUITY_READY',profile:profile.profile,profileVerifiedAt:profile.verifiedAt,authorizedUntil:actor.expiresAt,entries,...recovery};
  if(JSON.stringify(payload).length>CONTINUITY_MAX_BODY_BYTES)failure('CONTINUITY_BOOTSTRAP_TOO_LARGE',507);
  return response(payload);
