@@ -271,7 +271,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
         `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
       const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
-      render('CENTRAL DE COMUNICAÇÃO', `<article class="comm-card"><h3>${esc(message.title)}</h3><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}<button type="button" data-home>VOLTAR ÀS MENSAGENS</button></article>`, {inbox: true});
+      render('CENTRAL DE COMUNICAÇÃO', `<article class="comm-card"><h3>${esc(message.title)}</h3><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`, {inbox: true});
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
