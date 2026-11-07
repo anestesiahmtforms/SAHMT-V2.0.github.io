@@ -1,4 +1,5 @@
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
+import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
 import {canUseVacationModule} from './vacations-2027-domain.js';
 import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance-client.js';
@@ -410,7 +411,7 @@ function invalidateChecklistSignature(message) {
 function checklistSignatureCurrent(scope, fingerprint) {
   const state = liveReports.get('checklist')?.snapshot();
   const result = reportPayloads.get('checklist')?.report;
-  return !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
+  return !checklistScienceDeadlinePassed(scope) && !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
     reportScopeCurrent(scope) && state?.confirmed && !result?.truncated && !result?.historyIncomplete && !result?.localPending &&
     !reportPayloads.get('checklist')?.catalog?.truncated &&
     checklistReportContext?.fingerprint === fingerprint && checklistReportContext?.conferenceComplete === true &&
@@ -428,9 +429,10 @@ function checklistConferenceRotation(scope) {
 }
 function checklistConferenceCanOpen(scope) {
   const conference = checklistConferenceLive?.key === scope.key ? checklistConferenceLive : null;
-  return conference?.ready === true && !conference.confirmation && !conference.error &&
+  return !checklistScienceDeadlinePassed(scope) && conference?.ready === true && !conference.confirmation && !conference.error &&
     !conference.fromCache && !conference.hasPendingWrites;
 }
+function checklistScienceDeadlinePassed(scope){return typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&!isChecklistScienceOpen(scope.day);}
 function updateChecklistResponsibilityUI() {
   const state = reportStates.get('checklist'), scope = state?.scope;
   if (!scope || scope.warm || !reportScopeCurrent(scope) || scope.mode !== 'daily') return;
@@ -452,8 +454,9 @@ function updateChecklistResponsibilityUI() {
     prepare.classList?.toggle('checklist-confirmation-button--scheduled', confirmation?.kind === 'scheduled');
     prepare.classList?.toggle('checklist-confirmation-button--alternate', confirmation?.kind === 'alternate');
     prepare.classList?.toggle('checklist-confirmation-button--recorded', confirmation?.kind === 'recorded');
-    prepare.disabled = !checklistLocalConferenceCurrent(scope, checklistReportContext?.fingerprint) && (!checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint));
+    prepare.disabled = checklistScienceDeadlinePassed(scope) || !checklistLocalConferenceCurrent(scope, checklistReportContext?.fingerprint) && (!checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint));
     if (confirmation) prepare.title = 'Conferência registrada por ' + confirmation.signerName;
+    else if(checklistScienceDeadlinePassed(scope))prepare.title='Prazo de ciência encerrado às 23h59 (São Paulo).';
   }
   if (confirmation) {
     const dialog = document.querySelector('#checklist-confirmation-dialog');
@@ -2270,6 +2273,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
     const prepareChecklistConfirmation = async () => {
+      if(checklistScienceDeadlinePassed(scope)){updateChecklistResponsibilityUI();return;}
       if (!canPrepareSignature || !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, fingerprint)) return;
       const signerName = checklistIdentityProfile()?.displayName || '';
       content.querySelector('#checklist-preceptor-name').textContent = signerName || 'Nome de perfil indisponível';
@@ -2345,6 +2349,9 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             // The explicit confirmation keeps the existing acknowledgement contract and server-side scoring.
             const result = await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
               signerName, signerSigla: checklistIdentityProfile()?.sigla || '', rotationSigla: rotation.sigla, rotationPosition: rotation.position});
+            if(typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&result.signerUid===uid&&result.status==='PENDING_VALIDATION'){
+              void import('./fg-science-dispatch.js').then(({dispatchFgScience})=>dispatchFgScience({day,uid})).catch(()=>{});
+            }
             await removeOperationalDraft(uid, 'checklists', 'conference:' + day); checklistLocalIntent = null;
             pendingSyncBanner.confirmed(uid, 'conference:' + day);void updateOutboxStatus();
             if (!previewCurrent()) return;

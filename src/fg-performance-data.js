@@ -6,7 +6,7 @@ export async function loadFgPerformance({database,sdk,uid,subjectUid=uid,isCurre
   const runtime=await getDoc(doc(database,'fgPerformanceRuntime','state'));
   if(!isCurrent()||!runtime.exists())throw pending();
   const state=runtime.data();
-  if(state.status!=='ACTIVE'||state.projectId!=='sahmt-checklist-fg'||state.rule!=='FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V1'||!state.activatedAt)throw pending();
+  if(state.status!=='ACTIVE'||state.projectId!=='sahmt-checklist-fg'||state.rule!=='FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2'||!state.activatedAt)throw pending();
   const [profileRows,summaryRows,ledgerRows]=await Promise.all([
     getDocs(query(collection(database,'users'),limit(401))),
     getDocs(query(collection(database,'fgPerformanceSummaries'),limit(401))),

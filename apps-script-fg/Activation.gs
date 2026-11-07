@@ -4,6 +4,7 @@ function ativarChecklistFG(){
   const proof=getFirestoreDocument_('migrationControl','fg-cutover');
   if(!proof||!['TARGET_READY','ACTIVE'].includes(proof.phase)||proof.sourceProducersRetired!==true||proof.sourceRulesFrozen!==true||proof.finalDeltaVerified!==true||proof.targetProjectId!==SAHMT_V2_CONFIG.projectId||!/^[a-f0-9]{64}$/.test(proof.finalDeltaSha256||''))throw Error('FG_MIGRATION_NOT_VERIFIED');
   verificarProntidaoChecklistFG();reconciliarBaseFinalChecklistFG_(proof.finalDeltaSha256);
+  configurarRecepcaoCienciaFG_();
   const props=sahmtV2Properties_();props.setProperty('FG_CUTOVER_ENABLED','NO');
   try{
     checklistSourceTransaction_(function(transaction){
@@ -12,17 +13,17 @@ function ativarChecklistFG(){
       const times=previous&&previous.release===FG_NATIVE_RELEASE?['updatedAt']:['activatedAt','updatedAt'];
       return {writes:[
         evaluationWrite_('checklistScienceRuntime','state',{enabled:true,release:FG_NATIVE_RELEASE},previous,times),
-        evaluationWrite_('fgPerformanceRuntime','state',{status:'ACTIVE',projectId:SAHMT_V2_CONFIG.projectId,release:FG_NATIVE_RELEASE,rule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V1',finalDeltaSha256:proof.finalDeltaSha256},performance,performance?['updatedAt']:['activatedAt','updatedAt'])
+        evaluationWrite_('fgPerformanceRuntime','state',{status:'ACTIVE',projectId:SAHMT_V2_CONFIG.projectId,release:FG_NATIVE_RELEASE,rule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2',finalDeltaSha256:proof.finalDeltaSha256},performance,performance?['updatedAt']:['activatedAt','updatedAt'])
       ],result:true};
     });
     props.setProperty('FG_CUTOVER_ENABLED','YES');
     const activated=ativarControleOperacionalV1();
     ScriptApp.getProjectTriggers().forEach(function(trigger){if(['receberChecklistFG','validarCienciaChecklistFG'].includes(trigger.getHandlerFunction()))ScriptApp.deleteTrigger(trigger);});
-    ['receberChecklistFG','validarCienciaChecklistFG'].forEach(function(handler){ScriptApp.newTrigger(handler).timeBased().everyMinutes(5).create();});
-    const pull=receberChecklistFG(),validation=validarCienciaChecklistFG();
-    const receipt={station:'FG',spreadsheetId:OSC.sheetId,activatedAt:new Date(),finalDeltaSha256:proof.finalDeltaSha256,incrementalPullMinutes:5,validationMinutes:5,performanceRule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V1'};
+    ScriptApp.newTrigger('receberChecklistFG').timeBased().everyMinutes(5).create();
+    const clock=instalarApuracaoChecklistFG_(),pull=receberChecklistFG();
+    const receipt={station:'FG',spreadsheetId:OSC.sheetId,activatedAt:new Date(),finalDeltaSha256:proof.finalDeltaSha256,incrementalPullMinutes:5,scoringSchedule:'23:59',scoringTimezone:'America/Sao_Paulo',nextScoringAt:clock.dueAt,immediateAcknowledgement:true,performanceRule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2'};
     firestoreRequest_(firestoreDocumentsUrl_(':commit'),{method:'post',contentType:'application/json',payload:JSON.stringify({writes:[{update:{name:firestoreDocumentName_('migrationControl','apps-script-activation'),fields:firestoreFieldsFromJs_(receipt)}}]})});
-    const result={code:'FG_CHECKLIST_INDEPENDENTE_ATIVO',spreadsheetId:OSC.sheetId,preparation:activated.code,received:pull.received||0,validation:validation.code,performance:'DESEMPENHO_FG',incrementalPullMinutes:5};
+    const result={code:'FG_CHECKLIST_INDEPENDENTE_ATIVO',spreadsheetId:OSC.sheetId,preparation:activated.code,received:pull.received||0,scoringSchedule:'23:59',performance:'DESEMPENHO_FG',incrementalPullMinutes:5};
     console.log(JSON.stringify(result));return result;
   }catch(error){
     props.setProperty('FG_CUTOVER_ENABLED','NO');props.setProperty(OSC.enabled,'NO');

@@ -20,22 +20,22 @@ function verificarProntidaoChecklistFG(){
   const assignment={schemaVersion:1,identityStatus:'LINKED',uid:signer.uid,email:signer.email,memberCategories:['EFETIVO']};
   const plan=planChecklistDailyPerformance({day:'2026-11-07',signatureId:'synthetic',signer:signer,scheduled:scheduled,assignment:assignment});
   const own=planChecklistDailyPerformance({day:'2026-11-07',signatureId:'synthetic',signer:scheduled,scheduled:scheduled});
-  if(plan.entries.length!==2||plan.entries.reduce(function(total,row){return total+row.points;},0)!==0||own.entries.length!==0)throw Error('FG_PERFORMANCE_SELF_TEST_FAILED');
+  const absence=planChecklistDailyAbsence({day:'2026-11-07',closedThroughDay:'2026-11-07',eligibleFromDay:'2026-11-07',scheduled:scheduled});
+  if(plan.entries.length!==2||plan.entries.reduce(function(total,row){return total+row.points;},0)!==0||own.entries.length!==0||absence.entries.length!==1||absence.entries[0].points!==-1)throw Error('FG_PERFORMANCE_SELF_TEST_FAILED');
   const result={code:'FG_CHECKLIST_PRONTO',probes:probes,performanceSelfTest:true,firestoreWrites:0,cutoverEnabled:sahmtV2Properties_().getProperty('FG_CUTOVER_ENABLED')==='YES'};
   console.log(JSON.stringify(result));return result;
 }
-function validarCienciaChecklistFG(){
-  const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'FG_VALIDATION_BUSY'};
+function validarCienciaChecklistFG(event){
+  const lock=LockService.getUserLock();lock.waitLock(30000);
   try{
-    const activation=checklistScienceAssertOperator_();
-    const pending=evaluationQuery_('checklistSignatureRequests',[
-      firestoreFilter_('status','EQUAL',{stringValue:'PENDING_VALIDATION'}),
-      firestoreFilter_('recordKind','EQUAL',{stringValue:'ACKNOWLEDGEMENT'}),
-      firestoreFilter_('acknowledgedAt','GREATER_THAN_OR_EQUAL',{timestampValue:activation.activatedAt.toISOString()})
-    ],[{fieldPath:'acknowledgedAt',direction:'ASCENDING'}],20,['id']);
-    const result={code:'FG_CHECKLIST_PROCESSADO',processed:0,validated:0,review:0,rejected:0,retried:0};
-    try{result.responsibility=atualizarResponsavelChecklistFG_();}catch(_){result.responsibility='RETRY';}
-    pending.forEach(function(request){try{const outcome=validateChecklistSignatureRequest_(request,{scienceOnly:true});result.processed++;if(outcome==='VALIDATED'||outcome==='DUPLICATE')result.validated++;else if(outcome==='NEEDS_REVIEW')result.review++;else if(outcome==='REJECTED')result.rejected++;}catch(_){result.retried++;}});
+    checklistScienceAssertOperator_();
+    const cutoff=fgClaimScoringClock_(event);if(!cutoff)return {code:'FG_APURACAO_SOMENTE_2359'};
+    const day=Utilities.formatDate(cutoff,'America/Sao_Paulo','yyyy-MM-dd');
+    const request=evaluationGet_('checklistSignatureRequests',day);
+    const outcome=fgAcknowledgementOnTime_(request,day,cutoff)&&request.status==='PENDING_VALIDATION'
+      ?validateChecklistSignatureRequest_(request,{scienceOnly:true})
+      :apurarDiaEncerradoChecklistFG_(day,cutoff).outcome;
+    const result={code:'FG_CHECKLIST_PROCESSADO',day:day,outcome:outcome};
     console.log(JSON.stringify(result));return result;
   }finally{lock.releaseLock();}
 }

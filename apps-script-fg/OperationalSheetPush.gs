@@ -1,5 +1,6 @@
 /** Dedicated signed receiver. No Firestore reads; trusts only the private Worker HMAC. */
 function doPost(event) {
+  if(event?.parameter?.action==='fg-science-v1')return fgScienceHttp_(event);
   if (event && event.parameter && event.parameter.action === 'qmentum-prints-v1') return qmPrintsHttp_(event);
   if (event && event.parameter && event.parameter.action === 'qmentum-write-config-v1') return qmWriteConfigureHttp_(event);
   if (event && event.parameter && event.parameter.action === 'qmentum-write-v1') return qmWriteHttp_(event);

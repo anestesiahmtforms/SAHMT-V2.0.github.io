@@ -42,6 +42,7 @@ service cloud.firestore {
       let localTime = request.time - duration.value(3, 'h');
       return string(localTime.year()) + '-' + paddedDayPart(localTime.month()) + '-' + paddedDayPart(localTime.day());
     }
+    function checklistScienceWindowOpen(at) { let localTime = at - duration.value(3, 'h'); return localTime.hours() < 23 || localTime.minutes() < 59; }
     match /users/{uid} {
       function modulePermissionUpdate() {
         let keys = ['checklistRead','checklistWrite','checklistSign','checklistManage'];
@@ -162,7 +163,7 @@ service cloud.firestore {
           ((data.rotationSigla == null && data.rotationPosition == null) ||
             (data.rotationSigla is string && data.rotationSigla.matches('^(?:[A-Z]{2}|L2)$') &&
              data.rotationPosition is int && data.rotationPosition >= 1 && data.rotationPosition <= 30));
-        return common && acknowledgement && acknowledgementFields;
+        return common && acknowledgement && acknowledgementFields && checklistScienceWindowOpen(request.time);
       }
 
       allow get: if moduleSession() && (signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||

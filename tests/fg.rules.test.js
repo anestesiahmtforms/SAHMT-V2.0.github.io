@@ -45,3 +45,17 @@ test('FG administrators change only another users Checklist permissions, preserv
   await assertFails(updateDoc(doc(db('admin'),'users/admin'),{permissions:grants,updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(doc(db(),'users/other'),{permissions:grants,updatedAt:serverTimestamp()}));
 });
+
+test('FG server deadline accepts 23:58:59.999 and denies 23:59:00 and later in São Paulo',async()=>{
+  const original=await readFile(new URL('../firestore.fg.rules',import.meta.url),'utf8');
+  for(const [instant,allowed]of [['2026-11-08T02:58:59.999Z',true],['2026-11-08T02:59:00Z',false],['2026-11-08T02:59:59Z',false]]){
+    const rules=original.replace('checklistScienceWindowOpen(request.time)','checklistScienceWindowOpen(timestamp.value('+Date.parse(instant)+'))');
+    const testEnv=await initializeTestEnvironment({projectId:'demo-sahmt-fg-deadline',firestore:{host:'127.0.0.1',port:8494,rules}});
+    try{
+      await testEnv.clearFirestore();await testEnv.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'users/member'),profile));
+      const database=testEnv.authenticatedContext('member',{email:'member@example.test',email_verified:true,aud:'sahmt-checklist-fg',sourceProjectId:'sahmt-17a16',moduleStation:'FG',moduleLeaseExpiresAt:Math.floor(Date.now()/1000)+300,firebase:{sign_in_provider:'custom'}}).firestore();
+      const request={id:day(),day:day(),revision:'a'.repeat(64),signerUid:'member',signerName:'Member',signerSigla:'AA',declaration:true,justification:'Declaro que tomei ciência das informações deste relatório.',status:'PENDING_VALIDATION',recordKind:'ACKNOWLEDGEMENT',acknowledgedAt:serverTimestamp(),rotationSigla:'BB',rotationPosition:1};
+      const write=setDoc(doc(database,'checklistSignatureRequests/'+day()),request);await (allowed?assertSucceeds(write):assertFails(write));
+    }finally{await testEnv.cleanup();}
+  }
+});

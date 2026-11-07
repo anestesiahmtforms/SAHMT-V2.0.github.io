@@ -5,7 +5,11 @@ function evaluationApplyChecklistTransfer_(day,responsibleUid,signerUid,signatur
   const email=String(signer&&signer.email||'').trim().toLowerCase();
   const assignment=signerUid!==responsibleUid?evaluationGet_('userCategories',sha256Hex_(JSON.stringify(email)),transaction):null;
   const plan=planChecklistDailyPerformance({day:day,signatureId:signatureId,signer:signer,scheduled:scheduled,assignment:assignment,previous:previous});
-  if(!plan.changed)return {status:'DUPLICATE',writes:[]};
+  return {status:!plan.changed?'DUPLICATE':plan.receipt.outcome==='TRANSFER'?'APPLIED':'ZERO',writes:fgPerformancePlanWrites_(plan,transaction)};
+}
+function fgPerformancePlanWrites_(plan,transaction){
+  if(!plan.changed)return [];
+  const day=plan.receipt.day;
   const writes=[evaluationWrite_('fgPerformanceReceipts',day,plan.receipt,null,['createdAt'])];
   plan.entries.forEach(function(entry){
     const old=evaluationGet_('fgPerformanceSummaries',entry.uid,transaction);
@@ -15,5 +19,32 @@ function evaluationApplyChecklistTransfer_(day,responsibleUid,signerUid,signatur
     writes.push(evaluationWrite_('fgPerformanceLedger',entry.id,Object.assign({},entry,{delta:entry.points,sourceType:'CHECKLIST',sourceProjectId:SAHMT_V2_CONFIG.projectId,rule:plan.receipt.rule}),null,['createdAt']));
     writes.push(evaluationWrite_('fgPerformanceSummaries',entry.uid,{uid:entry.uid,points:points,days:days,lastDay:day},old,['updatedAt']));
   });
-  return {status:plan.receipt.outcome==='TRANSFER'?'APPLIED':'ZERO',writes:writes};
+  return writes;
+}
+
+function fgNextDay_(day){return new Date(new Date(day+'T12:00:00Z').getTime()+86400000).toISOString().slice(0,10);}
+function fgAcknowledgementOnTime_(request,day,cutoff){
+  return request&&request.id===day&&request.day===day&&request.recordKind==='ACKNOWLEDGEMENT'&&
+    request.declaration===true&&request.acknowledgedAt instanceof Date&&request.acknowledgedAt<cutoff&&
+    Utilities.formatDate(request.acknowledgedAt,'America/Sao_Paulo','yyyy-MM-dd')===day;
+}
+/** Only the day represented by this scheduled cutoff can be charged. */
+function apurarDiaEncerradoChecklistFG_(day,cutoff){
+  if(!isValidDateKey(day)||!(cutoff instanceof Date)||!Number.isFinite(cutoff.getTime())||
+      Utilities.formatDate(cutoff,'America/Sao_Paulo','yyyy-MM-dd HH:mm:ss')!==day+' 23:59:00')throw Error('FG_DAY_NOT_ELIGIBLE_FOR_CLOSURE');
+  return checklistSourceTransaction_(function(transaction){
+    const activation=checklistScienceAssertOperator_(transaction);
+    if(activation.activatedAt>=cutoff)return {writes:[],result:{day:day,outcome:'OUTSIDE_RELEASE'}};
+    if(evaluationGet_('fgPerformanceReceipts',day,transaction))return {writes:[],result:{day:day,outcome:'ALREADY_SETTLED'}};
+    const request=evaluationGet_('checklistSignatureRequests',day,transaction);
+    const signatures=request?[]:evaluationQuery_('checklistSignatures',[firestoreFilter_('date','EQUAL',{stringValue:day})],[],1,null,transaction);
+    if(fgAcknowledgementOnTime_(request,day,cutoff)||signatures.length)return {writes:[],result:{day:day,outcome:'ACKNOWLEDGEMENT_PRESENT'}};
+    let snapshot;
+    try{snapshot=readTrustedChecklistSnapshot_(day,transaction,{eventRotation:true,responsibilityOnly:true});}
+    catch(error){if(error.status)throw error;return {writes:[],result:{day:day,outcome:'NEEDS_REVIEW'}};}
+    const scheduled=evaluationGet_('users',snapshot.responsible.responsibleUid,transaction);
+    const plan=planChecklistDailyAbsence({day:day,closedThroughDay:day,eligibleFromDay:Utilities.formatDate(activation.activatedAt,'America/Sao_Paulo','yyyy-MM-dd'),scheduled:scheduled});
+    plan.receipt.responsible=snapshot.responsible;
+    return {writes:fgPerformancePlanWrites_(plan,transaction),result:{day:day,outcome:plan.receipt.outcome}};
+  });
 }

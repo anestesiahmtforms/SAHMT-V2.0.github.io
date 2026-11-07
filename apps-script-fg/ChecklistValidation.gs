@@ -108,7 +108,7 @@ function readTrustedChecklistSnapshot_(day, transaction, options) {
   const queryTrusted = function (collectionId, filters, order, maximum, fields) { return transaction ? evaluationQuery_(collectionId, filters, order, maximum, fields, transaction) : queryFirestore_(collectionId, filters, order, maximum, fields); };
   const schedule = getTrusted('scheduleDays', day, ['positions', 'vacationLabel', 'highlights']);
   if (!schedule) throw new Error('Escala do dia indisponível.');
-  const stations = queryTrusted('stations', [
+  const stations = options.responsibilityOnly ? [] : queryTrusted('stations', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
   ], [{fieldPath: 'order', direction: 'ASCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxStations + 1,
   ['active', 'start', 'end', 'order', 'name']);
@@ -124,7 +124,7 @@ function readTrustedChecklistSnapshot_(day, transaction, options) {
   const contacts = queryTrusted('contacts', [
     firestoreFilter_('active', 'EQUAL', {booleanValue: true})
   ], [], 201, ['active', 'sigla', 'name']);
-  const records = queryTrusted('checklists', [
+  const records = options.responsibilityOnly ? [] : queryTrusted('checklists', [
     firestoreFilter_('date', 'EQUAL', {stringValue: day})
   ], [{fieldPath: 'createdAt', direction: 'DESCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords + 1,
   ['date', 'createdAt', 'stationId', 'condition', 'occurrence']);
@@ -133,7 +133,7 @@ function readTrustedChecklistSnapshot_(day, transaction, options) {
     throw new Error('O volume excede os limites seguros de validação.');
   }
   const activeStations = stations.filter(function (station) { return (!station.start || station.start <= day) && (!station.end || station.end >= day); });
-  if (!activeStations.length) throw new Error('Não há estações vigentes para o Checklist de hoje.');
+  if (!activeStations.length && !options.responsibilityOnly) throw new Error('Não há estações vigentes para o Checklist de hoje.');
   const responseByStation = new Map();
   records.forEach(function (record) {
     if (!responseByStation.has(record.stationId)) responseByStation.set(record.stationId, record);

@@ -100,3 +100,42 @@ test('real snapshot reader preserves consistent identity and the unique director
     assert.equal(result.responsible.responsibleUid,'scheduled');assert.equal(result.responsible.responsibleEmail,'scheduled@example.test');assert.equal(result.responsible.sigla,'AA');
   }
 });
+
+function closingFixture(){
+  const f=fixture();f.rows.delete('checklistSignatureRequests/'+day);
+  f.rows.set('fgPerformanceRuntime/state',{status:'ACTIVE',projectId:'sahmt-checklist-fg',rule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2',activatedAt:new Date('2026-11-07T14:00:00Z'),_updateTime:'runtime-version'});
+  f.context.Utilities.formatDate=(date,zone,format)=>{
+    assert.equal(zone,'America/Sao_Paulo');const local=new Date(date.getTime()-3*3600000).toISOString();return format==='yyyy-MM-dd'?local.slice(0,10):local.slice(0,19).replace('T',' ');
+  };
+  f.context.evaluationQuery_=(collection,filters)=>[...f.rows.entries()].filter(([key])=>key.startsWith(collection+'/')).map(([,row])=>row).filter(row=>row[filters[0].field.fieldPath]===filters[0].value.stringValue);
+  f.apply=()=>{for(const write of f.commits.at(-1)){const path=write.update.name.split('/documents/')[1],data=f.context.firestoreFieldsToJs_(write.update.fields);f.rows.set(path,{...f.rows.get(path),...data,_updateTime:'new-version'});}};
+  f.cutoff=new Date('2026-11-08T02:59:00Z');return f;
+}
+test('23:59 absence closes only the scheduled day with one atomic FG receipt, debit and summary',()=>{
+  const f=closingFixture(),result=f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff);assert.equal(result.outcome,'NO_ACKNOWLEDGEMENT');
+  const writes=f.commits[0],paths=writes.map(w=>w.update.name.split('/documents/')[1]);
+  assert.deepEqual(plain(paths),['fgPerformanceReceipts/'+day,'fgPerformanceLedger/'+day+'_debit','fgPerformanceSummaries/scheduled']);
+  const debit=f.context.firestoreFieldsToJs_(writes[1].update.fields);assert.equal(debit.points,-1);assert.equal(debit.uid,'scheduled');
+  f.apply();f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff);assert.equal(f.commits[1].length,0);
+  assert.throws(()=>f.context.apurarDiaEncerradoChecklistFG_('2026-11-06',f.cutoff),/FG_DAY_NOT_ELIGIBLE/);
+});
+test('23:58:59 stays open, while 23:59:00 closes using São Paulo rather than UTC',()=>{
+  const f=closingFixture();assert.throws(()=>f.context.apurarDiaEncerradoChecklistFG_(day,new Date('2026-11-08T02:58:59.999Z')),/FG_DAY_NOT_ELIGIBLE/);
+  assert.equal(f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff).outcome,'NO_ACKNOWLEDGEMENT');
+});
+test('pending on-time acknowledgement and settled transfer or zero receipt prevent another penalty',()=>{
+  for(const previous of [null,{schemaVersion:1,day,outcome:'TRANSFER'},{schemaVersion:1,day,outcome:'SCHEDULED_USER_ACKNOWLEDGEMENT'}]){
+    const f=closingFixture();if(previous)f.rows.set('fgPerformanceReceipts/'+day,previous);
+    else f.rows.set('checklistSignatureRequests/'+day,{...f.request,acknowledgedAt:new Date('2026-11-08T02:58:59.999Z')});
+    f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff);assert.equal(f.commits[0].length,0);
+  }
+});
+test('unresolved scheduled identity produces review without penalty',()=>{
+  const f=closingFixture();f.context.readTrustedChecklistSnapshot_=()=>{throw Error('INCONSISTENT_DIRECTORY');};
+  assert.equal(f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff).outcome,'NEEDS_REVIEW');assert.equal(f.commits[0].length,0);
+});
+test('activation after the deadline cannot penalize an already closed day retroactively',()=>{
+  const f=closingFixture();f.rows.get('checklistScienceRuntime/state').activatedAt=new Date('2026-11-08T02:59:00Z');
+  assert.equal(f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff).outcome,'OUTSIDE_RELEASE');
+  assert.equal(f.commits[0].length,0);
+});
