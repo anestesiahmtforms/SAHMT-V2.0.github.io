@@ -611,6 +611,10 @@ export async function saveUserProfile(input, actorUid) {
     .filter(([permission, enabled]) => permissionIds.includes(permission) && enabled === true)), input);
   const ref = doc(db, 'users', uid);
   const current = await getDocFromServer(ref);
+  // General FA administration does not edit legacy label grants or the independent FH profile.
+  for (const key of ['labelsRead', 'labelsWrite', 'labelsManage']) {
+    if (current.exists() && typeof current.data().permissions?.[key] === 'boolean') permissions[key] = current.data().permissions[key];
+  }
   const currentCohort = current.exists() ? current.data().firstLoginCohort : undefined;
   if (currentCohort !== undefined && !FIRST_LOGIN_COHORTS.includes(currentCohort)) {
     throw new Error('A classificação de primeiro login existente é inválida; solicite revisão administrativa.');
