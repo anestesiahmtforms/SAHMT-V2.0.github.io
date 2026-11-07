@@ -1,5 +1,6 @@
-import {BUILTIN_GROUPS, ROUTES} from '../communication/domain.js';
+import {BUILTIN_GROUPS, ROUTES, adminIdentity} from '../communication/domain.js';
 import {communicationEntryFromSession} from './communication-entry.js';
+import {operationalNoticeIdentity} from './communication-operational-notices.js';
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
 import {communicationLimitMessage} from './communication-usage.js';
 import './communication.css';
@@ -24,6 +25,10 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   let directory;
   const active = () => !disposed && isCurrent();
   const dialog = root.closest('.management-hub-dialog');
+  const canCreateEvents = adminMode && (
+    (adminIdentity(appSession?.user) && String(appSession?.user?.email || '').trim().toLowerCase() === 'wx2064@gmail.com') ||
+    operationalNoticeIdentity(appSession?.user)
+  );
 
   async function pendingEventKey(payload) {
     const uid = appSession?.user?.uid;
@@ -34,16 +39,17 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     return `sahmt-ff-pending-event:${uid}:${hash}`;
   }
 
-  function render(title, content, {compose = false, menu = false} = {}) {
+  function render(title, content, {compose = false, menu = false, inbox = false} = {}) {
     generation++;
     root.classList.add('communication');
     root.classList.toggle('communication--compose', compose);
     root.classList.toggle('communication--menu', menu);
+    root.classList.toggle('communication--inbox', inbox);
     const hubHeading = dialog?.querySelector('#management-hub-title');
     if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : 'CENTRAL DE COMUNICAÇÃO';
-    const heading = (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
+    const heading = inbox && hubHeading || (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
     const navigation = compose ? '<button type="button" data-home>CENTRAL DE COMUNICAÇÃO</button><button type="button" data-back>VOLTAR</button>' :
-      !adminMode ? '<button type="button" data-home>MENSAGENS RECEBIDAS</button><button type="button" data-back>VOLTAR</button>' : '';
+      inbox ? '<button type="button" data-back>VOLTAR PARA HOME</button>' : '';
     root.innerHTML = `${heading}<section class="comm-content">${content}</section><div class="comm-status" role="status" aria-live="polite"></div>${navigation ? `<footer class="comm-actions">${navigation}</footer>` : ''}`;
     (root.querySelector('h2') || hubHeading)?.focus({preventScroll: true});
   }
@@ -81,7 +87,11 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
 
   function adminMenu() {
     composeState = undefined;
-    render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button></div>', {menu: true});
+    if (canCreateEvents) {
+      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button></div>', {menu: true});
+      return;
+    }
+    void inbox();
   }
 
   async function loadDirectory() {
@@ -237,13 +247,13 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   }
 
   async function inbox(cursor = '') {
-    render('Mensagens recebidas', '<p>Carregando mensagens…</p>');
+    render('CENTRAL DE COMUNICAÇÃO', '<p>Carregando mensagens…</p>', {inbox: true});
     const ticket = generation;
     try {
       const data = await client.request('INBOX', {recent: true, cursor});
       if (!active() || generation !== ticket) return;
       const cards = data.items.map(item => `<article class="comm-card"><h3>${esc(item.title)}</h3><p>${esc(item.category)} · ${new Date(item.publishAt).toLocaleString('pt-BR')}</p><p>${esc(item.message.slice(0, 200))}${item.message.length > 200 ? '…' : ''}</p><button type="button" data-message="${esc(item.id)}">LER AVISO</button></article>`).join('');
-      render('Mensagens recebidas', `<div class="comm-actions"><button type="button" data-enable>HABILITAR NOTIFICAÇÕES NESTE APARELHO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div>${cards || '<p>Nenhuma mensagem nesta página.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMA PÁGINA</button>` : ''}`);
+      render('CENTRAL DE COMUNICAÇÃO', `${cards || '<p class="comm-empty">Nenhuma mensagem recebida.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMAS MENSAGENS</button>` : ''}`, {inbox: true});
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
@@ -253,7 +263,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   }
 
   async function detail(key) {
-    render('Aviso', '<p>Carregando aviso…</p>');
+    render('CENTRAL DE COMUNICAÇÃO', '<p>Carregando aviso…</p>', {inbox: true});
     const ticket = generation;
     try {
       const {message} = await client.request('MESSAGE', {id: decodeURIComponent(key)});
@@ -261,7 +271,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
         `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
       const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
-      render(message.title, `<article class="comm-card"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`);
+      render('CENTRAL DE COMUNICAÇÃO', `<article class="comm-card"><h3>${esc(message.title)}</h3><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}<button type="button" data-home>VOLTAR ÀS MENSAGENS</button></article>`, {inbox: true});
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
@@ -271,7 +281,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   }
 
   async function initialView() {
-    if (adminMode) return composeState ? eventForm() : adminMenu();
+    if (canCreateEvents) return composeState ? eventForm() : adminMenu();
     const [, , section, key] = location.hash.split('/');
     return section === 'message' && key ? detail(key) : inbox();
   }
@@ -311,7 +321,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     const button = event.target.closest('button');
     if (!button || button.disabled || button.type === 'submit') return;
     if (button.hasAttribute('data-back')) return onBack();
-    if (button.hasAttribute('data-home')) return adminMode ? adminMenu() : void inbox();
+    if (button.hasAttribute('data-home')) return canCreateEvents ? adminMenu() : void inbox();
     if (button.hasAttribute('data-create-event')) return eventForm();
     if (button.dataset.next) return void inbox(button.dataset.next);
     if (button.dataset.message) return void detail(button.dataset.message);
