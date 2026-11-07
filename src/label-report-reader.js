@@ -1,5 +1,6 @@
 import {collection, getDocs, limit, orderBy, query, startAfter, where} from 'firebase/firestore/lite';
 import {db} from './firebase-lite.js';
+import {operationalModuleEnabled, getOperationalModuleDatabase} from './operational-module-firebase.js';
 
 function dateSortValue(value) {
   if (typeof value?.toMillis === 'function') return value.toMillis();
@@ -10,13 +11,14 @@ function dateSortValue(value) {
 export async function listLabelRecords({from, to, uid, sigla = '', canManage = false, pageSize = 50, cursor = null} = {}) {
   if (!from || !to || from > to) throw new Error('Informe um período válido para consultar as etiquetas.');
   if (!uid) throw new Error('A sessão expirou. Entre novamente para consultar etiquetas.');
+  const labelDb = operationalModuleEnabled('FH') ? await getOperationalModuleDatabase('FH', uid) : db;
   const currentLimit = Math.min(100, Math.max(1, pageSize));
   const dateFilters = from === to ? [where('date', '==', from)] : [where('date', '>=', from), where('date', '<=', to)];
   const base = [where('active', '==', true), ...dateFilters];
   const cursorMode = canManage ? 'admin' : 'staff';
   if (cursor && cursor.mode !== cursorMode) cursor = null;
   const list = async (extra = [], after = null) => getDocs(query(
-    collection(db, 'labels'), ...base, ...extra, orderBy('date', 'desc'), ...(after ? [startAfter(after)] : []), limit(currentLimit)
+    collection(labelDb, 'labels'), ...base, ...extra, orderBy('date', 'desc'), ...(after ? [startAfter(after)] : []), limit(currentLimit)
   ));
   let snapshots = [];
   let nextCursor = null;
@@ -86,7 +88,10 @@ export async function watchLabelRecords({from, to, uid, sigla = '', canManage = 
   if (typeof onNext !== 'function') throw new Error('O relatório de etiquetas não está disponível.');
   const page = Math.min(100, labelWatchLimit(pageSize, 50));
   const count = labelWatchLimit(loadedLimit, page);
-  const [{db: realtimeDb}, realtime] = await Promise.all([import('./firebase.js'), import('firebase/firestore')]);
+  const [realtimeDb, realtime] = await Promise.all([
+    operationalModuleEnabled('FH') ? getOperationalModuleDatabase('FH', uid, {realtime: true}) : import('./firebase.js').then(module => module.db),
+    import('firebase/firestore')
+  ]);
   if (!realtimeDb) throw new Error('O Firestore não está disponível para atualizar as etiquetas.');
   const dateFilters = from === to ? [realtime.where('date', '==', from)] : [realtime.where('date', '>=', from), realtime.where('date', '<=', to)];
   const base = [realtime.where('active', '==', true), ...dateFilters];

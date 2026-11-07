@@ -106,7 +106,7 @@ function preloadStartupReports(user, {explicit = false} = {}) {
   window.setTimeout(() => startupReports.clear(), 30000);
 }
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
-  import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract' &&
+  import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === (import.meta.env.VITE_FH_LABELS_ENABLED === 'true' ? 'https://sahmt-fh-etiquetas.sahmt-fh-f7b8a88b.workers.dev/v1/labels/extract' : 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract') &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
 const firstLoginCohortAdminUiEnabled = deployment.target === 'FA' && firstLoginCohortAdminEnabled();
 const labels = {

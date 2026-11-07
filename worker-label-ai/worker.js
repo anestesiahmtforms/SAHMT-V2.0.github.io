@@ -193,14 +193,15 @@ function profilePermission(fields, name) {
   return field(field(fields, 'permissions', 'mapValue')?.fields, name, 'booleanValue') === true;
 }
 
-async function readAuthorizedProfile(uid, idToken, fetchImpl) {
+async function readAuthorizedProfile(uid, idToken, fetchImpl, projectId = PROJECT_ID) {
   const query = new URLSearchParams();
   for (const path of ['uid', 'active', 'access', 'role', 'permissions.labelsWrite', 'permissions.labelsManage', 'permissions.admin']) {
     query.append('mask.fieldPaths', path);
   }
   let response;
   try {
-    response = await fetchImpl(`${FIRESTORE_DOCUMENTS_URL}/users/${encodeURIComponent(uid)}?${query}`, {
+    const documentsUrl = projectId === PROJECT_ID ? FIRESTORE_DOCUMENTS_URL : `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+    response = await fetchImpl(`${documentsUrl}/users/${encodeURIComponent(uid)}?${query}`, {
       method: 'GET', headers: {Authorization: `Bearer ${idToken}`, Accept: 'application/json'}, signal: AbortSignal.timeout(8000)
     });
   } catch {
@@ -317,7 +318,7 @@ async function extractWithOpenAi(images, apiKey, fetchImpl) {
   return parseOpenAiOutput(payload);
 }
 
-function tokenPolicy(kind) {
+function tokenPolicy(kind, projectId = PROJECT_ID) {
   if (kind === 'appCheck') return {
     jwksUrl: APP_CHECK_JWKS_URL,
     maxKeyAgeSeconds: APP_CHECK_MAX_KEY_AGE_SECONDS,
@@ -331,8 +332,8 @@ function tokenPolicy(kind) {
   return {
     jwksUrl: AUTH_JWKS_URL,
     maxKeyAgeSeconds: APP_CHECK_MAX_KEY_AGE_SECONDS,
-    issuer: `https://securetoken.google.com/${PROJECT_ID}`,
-    audience: PROJECT_ID,
+    issuer: `https://securetoken.google.com/${projectId}`,
+    audience: projectId,
     requireAuthTime: true,
     status: 401,
     code: 'UNAUTHENTICATED',
@@ -340,7 +341,8 @@ function tokenPolicy(kind) {
   };
 }
 
-export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.crypto, now = Date.now} = {}) {
+export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.crypto, now = Date.now, projectId = PROJECT_ID} = {}) {
+  if (![PROJECT_ID, 'sahmt-etiquetas-fh'].includes(projectId)) throw new Error('LABEL_PROJECT_INVALID');
   const getKeys = createJwkCache(fetchImpl, now);
 
   async function handle(request, env = {}) {
@@ -349,7 +351,7 @@ export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.
 
     const url = new URL(request.url);
     if (url.pathname === '/health' && request.method === 'GET') {
-      return jsonResponse(200, {ok: true, service: 'sahmt-label-ai', firebaseProject: PROJECT_ID, model: MODEL}, origin);
+      return jsonResponse(200, {ok: true, service: 'sahmt-label-ai', firebaseProject: projectId, model: MODEL}, origin);
     }
     if (url.pathname !== '/v1/labels/extract') return jsonResponse(404, {error: {code: 'NOT_FOUND', message: 'Rota não encontrada.'}}, origin);
     if (request.method === 'OPTIONS') {
@@ -370,11 +372,14 @@ export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.
       const appCheckToken = request.headers.get('X-Firebase-AppCheck') || '';
       if (!appCheckToken) throw new WorkerError(401, 'APP_CHECK_REQUIRED', 'A validação de segurança do app não foi enviada. Atualize a página e tente novamente.');
       const [identity, appCheck] = await Promise.all([
-        verifyJwt(idToken, tokenPolicy('auth'), {getKeys, crypto, now}),
+        verifyJwt(idToken, tokenPolicy('auth', projectId), {getKeys, crypto, now}),
         verifyJwt(appCheckToken, tokenPolicy('appCheck'), {getKeys, crypto, now})
       ]);
       if (!identity.sub || appCheck.sub !== WEB_APP_ID) throw new WorkerError(401, 'UNAUTHENTICATED', 'A sessão não foi validada. Entre novamente no SAHMT.');
-      await readAuthorizedProfile(identity.sub, idToken, fetchImpl);
+      if (projectId === 'sahmt-etiquetas-fh' && (identity.sourceProjectId !== PROJECT_ID || identity.moduleStation !== 'FH' ||
+          identity.firebase?.sign_in_provider !== 'custom' || !Number.isSafeInteger(identity.moduleLeaseExpiresAt) || identity.moduleLeaseExpiresAt <= now() / 1000))
+        throw new WorkerError(401, 'UNAUTHENTICATED', 'A sessão de Etiquetas expirou. Abra o módulo novamente.');
+      await readAuthorizedProfile(identity.sub, idToken, fetchImpl, projectId);
 
       const contentType = request.headers.get('Content-Type') || '';
       if (!contentType.toLowerCase().startsWith('application/json')) throw new WorkerError(400, 'INVALID_REQUEST', 'A imagem enviada está inválida. Capture novamente.');

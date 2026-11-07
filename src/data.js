@@ -132,7 +132,7 @@ export async function listVacationsForDate(day, {pageSize = 100} = {}) {
 }
 
 export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} = {}) {
-  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
+  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : module === 'labels' ? await operationalDatabase('FH', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
   if (module === 'checklist') return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
@@ -346,6 +346,7 @@ export async function syncEventMemberDirectory(uid) {
 
 export async function listLabelStaffSiglas({uid} = {}) {
   return readThroughSafeCache({uid, kind: 'labelStaff', id: 'all', localFirst: true, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
+  const db = await operationalDatabase('FH', uid);
   const snapshot = await getDocFromServer(doc(db, 'appConfig', 'labelStaff'));
   if (!snapshot.exists() || snapshot.data().active !== true || !Array.isArray(snapshot.data().siglas)) return [];
   return [...new Set(snapshot.data().siglas.map((value) => String(value || '').trim().toUpperCase()).filter((value) => /^(?:[A-Z]{2}|L2)$/.test(value)))].sort();
@@ -359,6 +360,7 @@ export async function saveLabelStaffSiglas(values, uid) {
   if (!uid || siglas.length > 80 || siglas.some((value) => !/^(?:[A-Z]{2}|L2)$/.test(value))) {
     throw new Error('Informe até 80 siglas válidas (duas letras ou L2).');
   }
+  const db = await operationalDatabase('FH', uid);
   const reference = doc(db, 'appConfig', 'labelStaff');
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(reference);
@@ -369,7 +371,7 @@ export async function saveLabelStaffSiglas(values, uid) {
       transaction.set(reference, {id: 'labelStaff', siglas, active: true, createdByUid: uid, createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp(), version: 1});
     }
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('appConfig/labelStaff');
+  if (!operationalModuleEnabled('FH')) void globalThis.sahmtMirrorConfirmedSource?.('appConfig/labelStaff');
   return siglas;
 }
 
@@ -1588,6 +1590,7 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
     if (!Array.isArray(cached?.data?.records)) throw Object.assign(new Error('Não há uma cópia recente deste período de Etiquetas.'), {code: 'unavailable'});
     return {records: cached.data.records.map((item) => ({...item, stale: true})), nextCursor: null, stale: true};
   }
+  const db = await operationalDatabase('FH', uid);
   const base = [where('active', '==', true), where('date', '>=', from), where('date', '<=', to)];
   const cursorMode = canManage ? 'admin' : 'staff';
   if (cursor && cursor.mode !== cursorMode) cursor = null;
@@ -1641,6 +1644,7 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
   if(queueOffline)return persistOperationalMutation({id:requestId,online:navigator.onLine&&!isOfflineRuntimeForced(),
     sendRemote:()=>updateLabelRecord(labelId,input,uid,actorName,expectedVersion,{queueOffline:false,requestId}),
     onFailure:error=>operationalBackend.noteFailure(error,'labels')});
+  const db = await operationalDatabase('FH', uid);
   const ref = doc(db, 'labels', labelId);
   const fields = ['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
@@ -1667,12 +1671,13 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
     transaction.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
     transaction.set(historyRef, historyEntry);
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('labels/'+labelId);
+  if (!operationalModuleEnabled('FH')) void globalThis.sahmtMirrorConfirmedSource?.('labels/'+labelId);
   return {id: labelId, pendingFirestore: false};
 }
 
-export async function listLabelHistory(labelId, {pageSize = 20} = {}) {
+export async function listLabelHistory(labelId, {pageSize = 20, uid} = {}) {
   if (!labelId) throw new Error('Selecione uma etiqueta para consultar o histórico.');
+  const db = await operationalDatabase('FH', uid);
   const result = await getDocsFromServer(query(
     collection(db, 'labels', labelId, 'history'),
     orderBy('version', 'desc'),
@@ -2434,7 +2439,7 @@ function canonicalValue(value) {
 }
 
 async function confirmCommittedMutation({collectionName, data, uid, requestId}) {
-  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
+  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
   const snapshot = await getDocFromServer(doc(db, collectionName, requestId));
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
@@ -2449,7 +2454,7 @@ export async function createOperationalRecord(collectionName,data,{uid,requestId
   const result=await persistOperationalMutation({id:requestId,online:true,
     sendRemote:()=>sendOperationalRecordInFirestore(collectionName,data,{uid,requestId}),
     onFailure:error=>operationalBackend.noteFailure(error,collectionName)});
-  if (collectionName !== 'events' || !operationalModuleEnabled('FI')) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
+  if (!(collectionName === 'events' && operationalModuleEnabled('FI')) && !(collectionName === 'labels' && operationalModuleEnabled('FH'))) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
   return result;
 }
 
@@ -2468,7 +2473,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
       throw unconfirmedWrite(error,requestId);
     }
   }
-  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
+  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
   const batch = writeBatch(targetDb);
   buildRecordBatch(batch, {collectionName, data, uid, requestId}, targetDb);
   try {
@@ -2495,6 +2500,7 @@ async function commitOperationalMutationOnce(collectionName, data, uid, requestI
     }
     return {id: requestId, pendingFirestore: false};
   }
+  const db = collectionName === 'labels' ? await operationalDatabase('FH', uid) : identityDb;
   const reference = doc(db, collectionName, requestId);
   return runTransaction(db, async transaction => {
     const existing = await transaction.get(reference);
@@ -2505,7 +2511,7 @@ async function commitOperationalMutationOnce(collectionName, data, uid, requestI
       if (!same) throw Object.assign(new Error('O registro remoto mudou; a cópia local foi preservada.'), {code: 'stale-version'});
       return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
     }
-    buildRecordBatch(transaction, {collectionName, data, uid, requestId});
+    buildRecordBatch(transaction, {collectionName, data, uid, requestId}, db);
     return {id: requestId, pendingFirestore: false};
   });
 }

@@ -10,6 +10,7 @@ export function createOperationalDomainWorker({verify = verifyFaSession, createS
     return createStore({station: env.MODULE_STATION, getAccessToken: () => service.accessToken(), fetchImpl});
   };
   return {async scheduled(_controller, env, ctx) {
+    if (env.MODULE_STATION === 'FH') return;
     if (env.MODULE_CUTOVER_ACTIVE !== 'true') return;
     if (DOMAIN_PROJECTS[env.MODULE_STATION] !== env.MODULE_PROJECT_ID) throw fail('DOMAIN_CONFIG_REQUIRED');
     ctx.waitUntil(drainEventProjections({station: env.MODULE_STATION, store: storeFor(env),

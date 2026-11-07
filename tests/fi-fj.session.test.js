@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createOperationalModuleSession} from '../src/operational-module-session.js';
 
-function fixture({signInDelay, exchangeError, claimsOverride} = {}) {
+function fixture({signInDelay, exchangeError, claimsOverride, station = 'FJ'} = {}) {
   let clock = 1800000000000, listener;
   const timers = new Map(), calls = {exchange: 0, signIn: 0, signOut: 0};
   const source = uid => ({uid, getIdToken: async () => 'synthetic-fa-proof-' + uid});
-  const faAuth = {currentUser: source('alice')}, targetAuth = {currentUser: null, app: {options: {projectId: 'sahmt-escala-fj'}}};
-  const session = createOperationalModuleSession({station: 'FJ', faAuth, targetAuth,
+  const projectId = station === 'FH' ? 'sahmt-etiquetas-fh' : 'sahmt-escala-fj';
+  const faAuth = {currentUser: source('alice')}, targetAuth = {currentUser: null, app: {options: {projectId}}};
+  const session = createOperationalModuleSession({station, faAuth, targetAuth,
     subscribeSource: callback => {listener = callback; return () => {listener = null;};},
     exchange: async ({faUid, faIdToken}) => {
       calls.exchange++; assert.equal(faIdToken, 'synthetic-fa-proof-' + faUid);
@@ -18,7 +19,7 @@ function fixture({signInDelay, exchangeError, claimsOverride} = {}) {
       calls.signIn++; const uid = faAuth.currentUser?.uid;
       if (signInDelay) await signInDelay;
       const user = {uid, getIdTokenResult: async () => ({claims: {
-        aud: 'sahmt-escala-fj', sub: uid, sourceProjectId: 'sahmt-17a16', moduleStation: 'FJ',
+        aud: projectId, sub: uid, sourceProjectId: 'sahmt-17a16', moduleStation: station,
         firebase: {sign_in_provider: 'custom'}, moduleLeaseExpiresAt: Math.floor(clock / 1000) + 300, ...claimsOverride
       }})};
       targetAuth.currentUser = user; return {user};
@@ -44,6 +45,13 @@ test('module sessions reuse only an unexpired lease for the exact FA user and re
   assert.equal(f.calls.exchange, 2);
   await f.session.dispose();
   assert.equal(f.targetAuth.currentUser, null);
+});
+
+test('FH sessions preserve the central UID and refuse other module or expired leases',async()=>{
+  const f=fixture({station:'FH'});assert.equal((await f.session.ensure('alice')).uid,'alice');f.changeSource(null);await assert.rejects(f.session.ensure('alice'),/MODULE_SOURCE_SESSION_REQUIRED/);await f.session.dispose();assert.equal(f.targetAuth.currentUser,null);
+  for(const claimsOverride of [{aud:'sahmt-17a16'},{moduleStation:'FI'},{moduleLeaseExpiresAt:1}]){
+    const denied=fixture({station:'FH',claimsOverride});await assert.rejects(denied.session.ensure('alice'),/MODULE_SESSION_INVALID/);assert.equal(denied.targetAuth.currentUser,null);await denied.session.dispose();
+  }
 });
 
 test('FA signout clears the module session and rejects reuse', async () => {

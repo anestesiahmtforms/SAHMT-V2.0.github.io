@@ -50,7 +50,7 @@ function firestoreProfile({uid = 'test-user-1', active = true, access = true, ro
   }};
 }
 
-function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAiPayload, apiKey = 'test-only-secret'} = {}) {
+function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAiPayload, apiKey = 'test-only-secret', projectId = PROJECT_ID} = {}) {
   const calls = [];
   const fetchImpl = async (input, init = {}) => {
     const url = String(input);
@@ -61,7 +61,7 @@ function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAi
     if (url === 'https://firebaseappcheck.googleapis.com/v1/jwks') {
       return Response.json({keys: [appCheckJwk]}, {headers: {'Cache-Control': 'public, max-age=7200'}});
     }
-    if (url.startsWith(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/`)) {
+    if (url.startsWith(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/`)) {
       return profile === null ? new Response('', {status: 404}) : Response.json(profile);
     }
     if (url === 'https://api.openai.com/v1/responses') {
@@ -70,7 +70,7 @@ function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAi
     }
     throw new Error(`Unexpected outbound request: ${url}`);
   };
-  const worker = createWorker({fetchImpl, crypto: webcrypto, now: () => nowMs});
+  const worker = createWorker({fetchImpl, crypto: webcrypto, now: () => nowMs, projectId});
   const request = async ({origin = ORIGIN, idToken, appCheckToken, body = {imageDataUrl: testJpeg, numericImageDataUrls: []}, method = 'POST', path = '/v1/labels/extract'} = {}) => {
     const headers = new Headers();
     if (origin !== null) headers.set('Origin', origin);
@@ -229,4 +229,18 @@ test('indisponibilidade e limite da OpenAI retornam erros controlados sem detalh
   assert.match((await rateLimited.json()).error.message, /preencha os campos manualmente/i);
   const missingSecret = await createFixture({apiKey: ''}).request(tokensForUser);
   assert.equal(missingSecret.status, 503);
+});
+
+const fhClaims = {iss:'https://securetoken.google.com/sahmt-etiquetas-fh',aud:'sahmt-etiquetas-fh',sourceProjectId:PROJECT_ID,moduleStation:'FH',moduleLeaseExpiresAt:nowSeconds+300,firebase:{sign_in_provider:'custom'}};
+test('FH image reader verifies its own leased token and reads only the FH profile',async()=>{
+ const fixture=createFixture({projectId:'sahmt-etiquetas-fh'}),response=await fixture.request(await validTokenPair({idClaims:fhClaims}));
+ assert.equal(response.status,200);assert.deepEqual(await response.json(),{model:'gpt-6-luna',patientName:validExtraction.nomePaciente,insurance:validExtraction.convenio,procedureCode:validExtraction.cirurgia,encounterCode:validExtraction.atendimento,type:'',creditor:'',uncertain:[]});
+ const profiles=fixture.calls.filter(x=>x.url.includes('firestore.googleapis.com'));
+ assert.equal(profiles.length,1);assert.match(profiles[0].url,/projects\/sahmt-etiquetas-fh\/databases/);
+});
+test('FH image reader rejects FA tokens, expired leases and foreign module claims before profile or OpenAI calls',async()=>{
+ for(const claims of [{},{...fhClaims,moduleStation:'FI'},{...fhClaims,sourceProjectId:'foreign-project'},{...fhClaims,moduleLeaseExpiresAt:nowSeconds},{...fhClaims,firebase:{sign_in_provider:'google.com'}}]){
+  const fixture=createFixture({projectId:'sahmt-etiquetas-fh'});assert.equal((await fixture.request(await validTokenPair({idClaims:claims}))).status,401);
+  assert.equal(fixture.calls.some(x=>x.url.includes('firestore.googleapis.com')||x.url.includes('api.openai.com')),false);
+ }
 });

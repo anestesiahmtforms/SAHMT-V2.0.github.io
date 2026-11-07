@@ -4,6 +4,8 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "test:fh": "node --test tests/fh.apps-script.test.js tests/fh.audit.test.js tests/fh.image-client.test.js tests/fh.native-retirement.test.js tests/fh.retirement.test.js tests/fh.routing.test.js tests/fh.source-freeze.test.js tests/fh.worker.test.js tests/label-report-realtime.test.cjs tests/label-report-load.test.cjs worker-label-ai/worker.test.js",
+    "test:fh-rules": "firebase emulators:exec --config firebase.fh.test.json --project demo-sahmt-fh --only firestore --non-interactive \"node --test --test-concurrency=1 tests/fh.rules.test.js tests/fh.source-freeze.rules.test.js\"",
     "test:year-end": "node --test tests/year-end-schedule.test.js tests/year-end-schedule-data.test.js tests/year-end-schedule-migration.test.js tests/year-end-startup.test.js tests/year-end-carnival-reset.test.js tests/year-end-status.test.js tests/year-end-status.workerd.test.js",
     "test:year-end-rules": "node scripts/build-climate-rules.mjs && firebase emulators:exec --config firebase.year-end.test.json --project demo-sahmt-year-end --only firestore --non-interactive \"node --test tests/year-end-schedule.rules.test.js\"",
     "build:climate": "node scripts/build-climate-rules.mjs && node scripts/build-climate.mjs",

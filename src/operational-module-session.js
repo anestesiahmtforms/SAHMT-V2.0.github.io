@@ -1,4 +1,4 @@
-const PROJECTS = Object.freeze({FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj'});
+const PROJECTS = Object.freeze({FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj', FH: 'sahmt-etiquetas-fh'});
 const fail = code => Object.assign(new Error(code), {code});
 
 /** Sessions stay in memory and are serialized so a late SDK signin cannot

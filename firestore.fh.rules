@@ -1,0 +1,148 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function moduleSession() {
+      return request.auth != null && request.auth.token.aud == 'sahmt-etiquetas-fh' &&
+        request.auth.token.get('sourceProjectId', '') == 'sahmt-17a16' &&
+        request.auth.token.get('moduleStation', '') == 'FH' &&
+        request.auth.token.get('moduleLeaseExpiresAt', 0) is int &&
+        request.time.toMillis() < request.auth.token.get('moduleLeaseExpiresAt', 0) * 1000 &&
+        request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+    function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profilePath()); }
+    function profile() { return get(profilePath()).data; }
+    function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
+    function isAdmin() {
+      return activeUser() && ((profile().role == 'administrador_app') ||
+        (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
+    }
+    function can(permission) {
+      let p = profile();
+      let permissions = p.get('permissions', {});
+      return activeUser() && (p.get('role', '') == 'administrador_app' ||
+        permissions.get('admin', false) == true || permissions.get(permission, false) == true);
+    }
+    function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
+    function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    match /users/{uid} { allow read: if moduleSession() && activeUser() && (request.auth.uid == uid || isAdmin()); allow write: if false; }
+    match /appConfig/labelStaff {
+      function validLabelStaffCatalog(data) {
+        return data.keys().hasAll(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.id == 'labelStaff' && data.siglas is list && data.siglas.size() <= 80 && data.active == true &&
+          data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 &&
+          data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt == request.time &&
+          data.version is int && data.version > 0;
+      }
+
+      allow read: if moduleSession() && (can('labelsRead') || can('labelsWrite') || can('labelsManage'));
+      allow create: if moduleSession() && (can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1);
+      allow update: if moduleSession() && (can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['siglas', 'active', 'updatedByUid', 'updatedAt', 'version']));
+      allow delete: if moduleSession() && (false);
+    }
+    match /labels/{labelId} {
+      function validLabelRecord(data, labelId) {
+        return data.keys().hasAll(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version', 'createdByName', 'updatedByName']) &&
+          data.id == labelId && data.clientMutationId == labelId && data.active == true && data.version is int && data.version > 0 &&
+          data.createdByUid is string && data.updatedByUid == request.auth.uid && data.createdAt is timestamp && data.updatedAt is timestamp &&
+          (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() <= 120 && data.createdByName == profile().displayName)) &&
+          (!data.keys().hasAny(['updatedByName']) || (data.updatedByName is string && data.updatedByName.size() <= 120 && data.updatedByName == profile().displayName)) &&
+          data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 160 &&
+          data.procedureCode is string && data.encounterCode is string && data.encounterCode.size() > 0 &&
+          data.type in ['Particular', 'Complementação', 'Convênio', 'Consulta Pré-anestésica', 'SADT'] &&
+          (data.amount == null || (data.amount is number && data.amount >= 0)) &&
+          data.insurance is string && data.creditor in ['Caixa', 'Plantão', 'Plantão/Caixa'] &&
+          data.staffSiglas is list && data.staffSiglas.size() <= 20 &&
+          ((data.creditor == 'Caixa' && data.staffSiglas.size() == 0) ||
+           (data.creditor != 'Caixa' && data.staffSiglas.size() > 0 && labelStaffAllowed(data.staffSiglas, labelId))) &&
+          data.consultation == (data.type == 'Consulta Pré-anestésica') && data.status == 'CONFIRMED';
+      }
+      function labelActorAccess(data) {
+        return data.get('createdByUid', '') == request.auth.uid ||
+          (profile().sigla is string && profile().sigla != '' && data.get('staffSiglas', []).hasAny([profile().sigla]));
+      }
+      function labelRecordAccess() {
+        return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) && labelActorAccess(resource.data));
+      }
+      function labelHistoryAccess(labelId) {
+        let parent = get(/databases/$(database)/documents/labels/$(labelId)).data;
+        return can('labelsManage') || ((can('labelsRead') || can('labelsWrite')) && labelActorAccess(parent));
+      }
+      function labelHistoryFieldMatches(original, updated, fields, before, after, field) {
+        let oldValue = original[field];
+        let newValue = updated[field];
+        return fields.hasAny([field])
+          ? (before[field] == oldValue && after[field] == newValue && before[field] != after[field])
+          : oldValue == newValue;
+      }
+      function validLabelHistoryEntry(data, labelId, version) {
+        let parentPath = /databases/$(database)/documents/labels/$(labelId);
+        let before = data.before;
+        let after = data.after;
+        let fields = data.changedFields;
+        let original = get(parentPath).data;
+        let updated = getAfter(parentPath).data;
+        return exists(parentPath) && existsAfter(parentPath) &&
+          (can('labelsManage') || labelActorAccess(original)) &&
+          fields is list && fields.size() > 0 && fields.size() <= 10 &&
+          fields.hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation']) &&
+          before is map && after is map && before.keys().hasOnly(fields) && after.keys().hasOnly(fields) &&
+          before.keys().size() == fields.size() && after.keys().size() == fields.size() &&
+          data.keys().hasAll(['id', 'labelId', 'version', 'actorUid', 'changedFields', 'before', 'after', 'createdAt']) &&
+          data.keys().hasOnly(['id', 'labelId', 'version', 'actorUid', 'actorName', 'changedFields', 'before', 'after', 'createdAt']) &&
+          version.matches('^[1-9][0-9]{0,18}$') && data.id == version && data.labelId == labelId &&
+          data.version is int && int(version) == data.version &&
+          data.actorUid == request.auth.uid && (!data.keys().hasAny(['actorName']) || (data.actorName is string && data.actorName.size() <= 120 && data.actorName == profile().displayName)) && data.createdAt == request.time &&
+          updated.version == data.version && updated.updatedByUid == request.auth.uid &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'date') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'patientName') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'procedureCode') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'encounterCode') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'type') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'amount') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'insurance') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'creditor') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'staffSiglas') &&
+          labelHistoryFieldMatches(original, updated, fields, before, after, 'consultation');
+      }
+      function labelStaffAllowed(siglas, labelId) {
+        let catalogPath = /databases/$(database)/documents/appConfig/labelStaff;
+        let existingPath = /databases/$(database)/documents/labels/$(labelId);
+        return (exists(catalogPath) && get(catalogPath).data.active == true && siglas.hasOnly(get(catalogPath).data.siglas)) ||
+          (exists(existingPath) && siglas == get(existingPath).data.staffSiglas);
+      }
+
+      function labelHistoryCreated(labelId, version) {
+        let path = /databases/$(database)/documents/labels/$(labelId)/history/$(string(version));
+        return !exists(path) && existsAfter(path);
+      }
+
+      allow read: if moduleSession() && (labelRecordAccess());
+      allow create: if moduleSession() && ((can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId));
+      allow update: if moduleSession() && ((can('labelsWrite') || can('labelsManage')) && updateActorIsSelf() &&
+        (labelActorAccess(resource.data) || can('labelsManage')) &&
+        request.resource.data.id == resource.data.id && request.resource.data.clientMutationId == resource.data.clientMutationId &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.version == resource.data.version + 1 &&
+        labelHistoryCreated(labelId, request.resource.data.version) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation', 'status', 'updatedByName', 'updatedByUid', 'updatedAt', 'version']) &&
+        validLabelRecord(request.resource.data, labelId));
+      allow delete: if moduleSession() && (false);
+      match /history/{version} {
+        allow read: if moduleSession() && (exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId));
+        allow create: if moduleSession() && ((can('labelsWrite') || can('labelsManage')) && validLabelHistoryEntry(request.resource.data, labelId, version));
+        allow update, delete: if moduleSession() && (false);
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
