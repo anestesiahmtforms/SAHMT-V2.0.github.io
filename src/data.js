@@ -508,6 +508,61 @@ export async function listUserProfiles({pageSize = 200} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()})).filter(profile=>!isSystemOwnerEmail(profile.email)).slice(0,take);
 }
 
+/** Reads the independent Etiquetas permission profile in FH using the current FA identity. */
+export async function readLabelModuleProfile(uid) {
+  const targetUid = String(uid || '').trim();
+  if (!/^[^\s/]{1,128}$/.test(targetUid)) throw new Error('UID do perfil FH inválido.');
+  const moduleDb = await operationalDatabase('FH', targetUid);
+  const snapshot = await getDocFromServer(doc(moduleDb, 'users', targetUid));
+  return snapshot.exists() && snapshot.data().uid === targetUid ? {id: snapshot.id, ...snapshot.data()} : null;
+}
+
+/** Lists FH module profiles. Firestore rules restrict this to an FH labels administrator. */
+export async function listLabelModuleProfiles({pageSize = 200, uid} = {}) {
+  const actorUid = String(uid || '').trim();
+  if (!/^[^\s/]{1,128}$/.test(actorUid)) throw new Error('UID administrativo inválido.');
+  const moduleDb = await operationalDatabase('FH', actorUid);
+  const snapshot = await getDocsFromServer(query(collection(moduleDb, 'users'), orderBy(documentId()), limit(pageSize)));
+  return snapshot.docs.map(item => ({id: item.id, ...item.data()}));
+}
+
+/** Writes only Etiquetas permissions in FH; identity and all other permissions stay in their source systems. */
+export async function saveLabelModulePermissions(input, actorUid) {
+  assertOnlineOperation();
+  const uid = String(input?.uid || '').trim();
+  const actor = String(actorUid || '').trim();
+  const email = String(input?.email || '').trim().toLowerCase();
+  const displayName = String(input?.displayName || '').trim().slice(0, 120);
+  const sigla = String(input?.sigla || '').trim().toUpperCase().slice(0, 20);
+  const role = String(input?.role || '').trim();
+  const active = input?.active === true;
+  const access = input?.access === true;
+  const roleIds = ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'];
+  if (!/^[^\s/]{1,128}$/.test(uid) || !/^[^\s/]{1,128}$/.test(actor) || uid === actor ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName || !roleIds.includes(role)) {
+    throw new Error('Confira a identidade de destino e selecione outra conta além da sua.');
+  }
+  const moduleDb = await operationalDatabase('FH', actor);
+  const actorSnapshot = await getDocFromServer(doc(moduleDb, 'users', actor));
+  const actorProfile = actorSnapshot.exists() ? actorSnapshot.data() : {};
+  if (actorProfile.active !== true || actorProfile.access !== true ||
+      !(actorProfile.permissions?.admin === true || actorProfile.permissions?.labelsManage === true)) {
+    throw Object.assign(new Error('Somente um administrador de Etiquetas em FH pode alterar estas permissões.'), {code: 'permission-denied'});
+  }
+  const reference = doc(moduleDb, 'users', uid);
+  const current = await getDocFromServer(reference);
+  const old = current.exists() ? current.data() : null;
+  const permissions = {...(old?.permissions || {})};
+  for (const key of ['labelsRead', 'labelsWrite', 'labelsManage']) permissions[key] = input.permissions?.[key] === true;
+  if (current.exists()) {
+    await updateDoc(reference, {permissions});
+  } else {
+    await setDoc(reference, {uid, email, displayName, sigla, phone: '', role, active, access,
+      permissions, createdAt: serverTimestamp()});
+  }
+  return {uid, created: !current.exists(), permissions: Object.fromEntries(['labelsRead', 'labelsWrite', 'labelsManage'].map(key => [key, permissions[key]]))};
+}
+
 export async function listAccessRequests({pageSize = 100} = {}) {
   const result = await getDocsFromServer(query(
     collection(db, 'accessRequests'), where('status', '==', 'PENDING'), limit(Math.min(100, Math.max(1, pageSize)))
@@ -547,7 +602,7 @@ export async function saveUserProfile(input, actorUid) {
   const phone = String(input.phone || '').trim();
   const role = String(input.role || '').trim();
   const roleIds = ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'];
-  const permissionIds = ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementModuleEnabled', 'performanceModuleEnabled', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'occurrencesRead', 'occurrencesWrite', 'occurrencesAuditRead', 'usersManage', 'admin'];
+  const permissionIds = ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementModuleEnabled', 'performanceModuleEnabled', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'occurrencesRead', 'occurrencesWrite', 'occurrencesAuditRead', 'usersManage', 'admin'];
   if (!/^[^\s\/]{1,128}$/.test(uid) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName || displayName.length > 120 || sigla.length > 20 || phone.length > 40 || !roleIds.includes(role)) {
     throw new Error('Confira UID, e-mail, nome, sigla, telefone e função antes de salvar.');
   }

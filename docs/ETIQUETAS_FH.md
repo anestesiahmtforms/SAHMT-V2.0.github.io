@@ -4,6 +4,8 @@ Etiquetas utiliza `sahmt-etiquetas-fh`, o Worker `sahmt-fh-etiquetas` e o Apps S
 
 O destino inclui usuários, perfis, etiquetas, histórico, catálogo de plantonistas e arquivos de recuperação das etiquetas. O programa de migração copia os documentos com conferência de conteúdo e condições de versão; mantém cópias protegidas e os originais em FA. Recuperações apontam para FH. Edições pelo aplicativo gravam o histórico na mesma operação.
 
+As permissões `labelsRead`, `labelsWrite` e `labelsManage` são lidas e verificadas no perfil `users/{uid}` de FH. O formulário de administração grava esses três campos somente em FH; não atualiza o perfil de FA. O campo `admin`, se presente, também é avaliado a partir do perfil FH copiado e pode ser alterado ali pelo administrador FH. Um usuário recém-aprovado em FA precisa ser incluído no controle FH com o mesmo UID antes de acessar Etiquetas; isso não cria uma segunda conta nem uma senha.
+
 A planilha privada é [Etiquetas — FH — Registros](https://docs.google.com/spreadsheets/d/18Gdo73lCkh_mwXQwVkw6AkasbYw-Q7Up4eyOCqZcm9Y/edit). No [Apps Script de FH](https://script.google.com/d/14IrTLzvSvk9UNK3VKxUElpqi4A9AZkTL7hwmkGPcH6MxZxdSYUMgvTZJ/edit), `Setup.gs → prepararEtiquetasFH` prepara a planilha sem gravar no Firestore. `Activation.gs → ativarEtiquetasFH` exige um recibo de migração final antes de instalar o controle de edições e a atualização incremental a cada cinco minutos.
 
 O leitor de imagens recebe a sessão própria de FH e o App Check da aplicação compartilhada de FA. Consulta somente o perfil de FH e usa `OPENAI_API_KEY` armazenada como segredo no próprio Worker. O Worker permanece inativo durante a preparação. A credencial administrativa do intercâmbio de sessões permite apenas consultar documentos em FH.

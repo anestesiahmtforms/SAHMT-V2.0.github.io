@@ -15,18 +15,40 @@ service cloud.firestore {
     function profile() { return get(profilePath()).data; }
     function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
     function isAdmin() {
-      return activeUser() && ((profile().role == 'administrador_app') ||
-        (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
+      let permissions = profile().get('permissions', {});
+      return activeUser() && (permissions.get('admin', false) == true || permissions.get('labelsManage', false) == true);
     }
     function can(permission) {
       let p = profile();
       let permissions = p.get('permissions', {});
-      return activeUser() && (p.get('role', '') == 'administrador_app' ||
-        permissions.get('admin', false) == true || permissions.get(permission, false) == true);
+      return activeUser() && (permissions.get('admin', false) == true || permissions.get(permission, false) == true);
     }
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
-    match /users/{uid} { allow read: if moduleSession() && activeUser() && (request.auth.uid == uid || isAdmin()); allow write: if false; }
+    match /users/{uid} {
+      function validLabelPermissionProfile(data, profileUid) {
+        return data.keys().hasAll(['uid', 'email', 'displayName', 'sigla', 'phone', 'role', 'active', 'access', 'permissions', 'createdAt']) &&
+          data.keys().hasOnly(['uid', 'email', 'displayName', 'sigla', 'phone', 'role', 'active', 'access', 'permissions', 'createdAt']) &&
+          data.uid == profileUid && data.email is string && data.email.size() <= 200 &&
+          data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
+          data.sigla is string && data.sigla.size() <= 20 && data.phone is string && data.phone.size() <= 40 &&
+          data.role in ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'] &&
+          data.active is bool && data.access is bool && data.permissions is map && data.createdAt == request.time &&
+          data.permissions.keys().hasOnly(['labelsRead', 'labelsWrite', 'labelsManage']) &&
+          data.permissions.values().hasOnly([true, false]);
+      }
+      allow read: if moduleSession() && activeUser() && (request.auth.uid == uid || isAdmin() || can('labelsManage'));
+      allow create: if moduleSession() && activeUser() && can('labelsManage') && request.auth.uid != uid &&
+        validLabelPermissionProfile(request.resource.data, uid);
+      allow update: if moduleSession() && activeUser() && can('labelsManage') && request.auth.uid != uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['permissions']) &&
+        request.resource.data.permissions is map && resource.data.permissions is map &&
+        request.resource.data.permissions.diff(resource.data.permissions).affectedKeys().hasOnly(['labelsRead', 'labelsWrite', 'labelsManage']) &&
+        request.resource.data.permissions.get('labelsRead', false) is bool &&
+        request.resource.data.permissions.get('labelsWrite', false) is bool &&
+        request.resource.data.permissions.get('labelsManage', false) is bool;
+      allow delete: if false;
+    }
     match /appConfig/labelStaff {
       function validLabelStaffCatalog(data) {
         return data.keys().hasAll(['id', 'siglas', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&

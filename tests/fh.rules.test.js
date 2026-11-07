@@ -8,7 +8,7 @@ const db=(uid='member',claims={})=>env.authenticatedContext(uid,{aud:'sahmt-etiq
 const seed=(path,data)=>env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),path),data));
 const label=()=>({id:'l1',clientMutationId:'l1',date:'2026-11-06',patientName:'Synthetic',procedureCode:'',encounterCode:'123',type:'Particular',amount:null,insurance:'',creditor:'Caixa',staffSiglas:[],consultation:false,status:'CONFIRMED',active:true,createdByUid:'member',updatedByUid:'member',createdAt:serverTimestamp(),updatedAt:serverTimestamp(),version:1});
 before(async()=>{if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8493')throw Error('FH_LOCAL_EMULATOR_REQUIRED');env=await initializeTestEnvironment({projectId:'sahmt-etiquetas-fh',firestore:{host:'127.0.0.1',port:8493,rules:await readFile(new URL('../firestore.fh.rules',import.meta.url),'utf8')}});});
-beforeEach(async()=>{await env.clearFirestore();await seed('users/member',member);await seed('users/other',{...member,uid:'other'});await seed('users/admin',{...member,uid:'admin',permissions:{admin:true}});await seed('labels/l1',label());});
+beforeEach(async()=>{await env.clearFirestore();await seed('users/member',member);await seed('users/other',{...member,uid:'other'});await seed('users/admin',{...member,uid:'admin',role:'administrador_app',permissions:{admin:true}});await seed('labels/l1',label());});
 after(async()=>{await env?.cleanup();});
 test('FH requires its own live lease, central source, module and custom provider',async()=>{
  await assertSucceeds(getDoc(doc(db(),'labels/l1')));
@@ -19,6 +19,19 @@ test('FH permits own label creation and rejects foreign records, profiles and ot
  await assertSucceeds(setDoc(doc(db(),'labels/l2'),{...label(),id:'l2',clientMutationId:'l2'}));
  await assertFails(getDoc(doc(db('other'),'labels/l1')));await assertSucceeds(getDoc(doc(db('admin'),'labels/l1')));
  await assertFails(updateDoc(doc(db(),'users/member'),{permissions:{admin:true}}));await assertFails(getDoc(doc(db(),'events/e1')));await assertFails(deleteDoc(doc(db(),'labels/l1')));
+});
+test('FH permission administrators change only Etiquetas permissions in FH',async()=>{
+ const manager=db('admin');
+ await assertSucceeds(getDoc(doc(manager,'users/other')));
+ await assertSucceeds(updateDoc(doc(manager,'users/other'),{permissions:{labelsRead:true,labelsWrite:true,labelsManage:true}}));
+ await assertFails(updateDoc(doc(manager,'users/other'),{permissions:{labelsRead:true,labelsWrite:true,labelsManage:true,admin:true}}));
+ await assertFails(updateDoc(doc(manager,'users/other'),{active:false}));
+ await assertFails(updateDoc(doc(manager,'users/admin'),{permissions:{labelsRead:true,labelsWrite:true,labelsManage:false}}));
+ const newProfile={uid:'new-profile',email:'new@example.test',displayName:'New',sigla:'BB',phone:'',role:'anestesiologista',active:true,access:true,permissions:{labelsRead:true,labelsWrite:false,labelsManage:false},createdAt:serverTimestamp()};
+ await assertSucceeds(setDoc(doc(manager,'users/new-profile'),newProfile));
+ await assertFails(setDoc(doc(manager,'users/privileged'),{...newProfile,uid:'privileged',permissions:{labelsRead:true,admin:true}}));
+ await seed('users/role-only',{...member,uid:'role-only',role:'administrador_app',permissions:{labelsRead:true}});
+ await assertFails(getDoc(doc(db('role-only'),'users/other')));
 });
 test('FH catalog is managed locally and does not grant access to an events-only profile',async()=>{
  const catalog={id:'labelStaff',siglas:['AA'],active:true,createdByUid:'admin',updatedByUid:'admin',createdAt:serverTimestamp(),updatedAt:serverTimestamp(),version:1};

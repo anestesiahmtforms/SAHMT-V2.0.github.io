@@ -137,7 +137,6 @@ const userRoles = [
 const userPermissions = [
   ['scheduleRead', 'Consultar escala'], ['scheduleWrite', 'Liberar siglas na escala'],
   ['eventsRead', 'Consultar eventos'], ['eventsWrite', 'Registrar eventos'], ['eventsCatalogManage', 'Gerenciar catálogo de Eventos'],
-  ['labelsRead', 'Consultar etiquetas'], ['labelsWrite', 'Registrar etiquetas'], ['labelsManage', 'Gerenciar etiquetas'],
   ['checklistRead', 'Consultar checklist'], ['checklistWrite', 'Registrar checklist'], ['checklistSign', 'Assinar checklist'], ['checklistManage', 'Gerenciar estações'],
   ['managementModuleEnabled', 'Liberar botão Gestão'], ['performanceModuleEnabled', 'Liberar botão Desempenho'],
   ['managementRead', 'Consultar Gestão'], ['managementActivityWrite', 'Gerenciar atividades'], ['managementIndicatorsRead', 'Consultar indicadores'], ['managementIndicatorsWrite', 'Gerenciar indicadores'], ['managementPlansManage', 'Gerenciar planos de ação'], ['managementManage', 'Administrar áreas'],
@@ -261,6 +260,9 @@ function reportAllowed(kind) {
   return session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) && reportPermissions[kind].some(can);
 }
 function reportPermissionKey(kind) {
+  if (kind === 'labels' && import.meta.env.VITE_FH_LABELS_ENABLED === 'true') return JSON.stringify([session.labelProfile?.active, session.labelProfile?.access,
+    String(session.labelProfile?.sigla || session.profile?.sigla || '').trim().toUpperCase(), session.labelProfile?.role,
+    ...reportPermissions.labels.map(can)]);
   return JSON.stringify([session.profile?.role, session.profile?.active, session.profile?.access,
     String(session.profile?.sigla || '').trim().toUpperCase(), can('admin'), ...reportPermissions[kind].map(can)]);
 }
@@ -282,7 +284,7 @@ function makeReportScope(kind, {warm = false, append = false, suppliedDay} = {})
   const loadedLimit = append && samePeriod && cursor?.nextLimit ? cursor.nextLimit : samePeriod ? previous.loadedLimit : pageSize;
   const targetNode = warm ? null : document.querySelector(kind === 'checklist' ? '#module-content' : '#' + prefix + '-report-results');
   const scope = {kind, module: kind, uid: session.user.uid, mode, day: mode === 'daily' ? day : from, month: mode === 'monthly' ? month : day.slice(0, 7), from, to, pageSize, loadedLimit,
-    sigla: String(session.profile?.sigla || '').trim().toUpperCase(), isAdmin: can('admin'), canManage: can('labelsManage'), canWrite: can('labelsWrite'),
+    sigla: String((kind === 'labels' ? session.labelProfile?.sigla : '') || session.profile?.sigla || '').trim().toUpperCase(), isAdmin: kind === 'labels' ? can('labelsManage') : can('admin'), canManage: can('labelsManage'), canWrite: can('labelsWrite'),
     permissionKey, authorized: reportAllowed(kind), warm, targetNode, target: targetNode,
     sourceKeys: kind === 'checklist' ? ['catalog', 'report'] : ['report']};
   scope.key = JSON.stringify([kind, scope.uid, mode, from, to, permissionKey, loadedLimit]);
@@ -834,6 +836,11 @@ function managementUtilityCards() {
 }
 
 function can(permission) {
+  if (['labelsRead', 'labelsWrite', 'labelsManage'].includes(permission) && import.meta.env.VITE_FH_LABELS_ENABLED === 'true') {
+    const moduleProfile = session.labelProfile;
+    if (session.profile?.active !== true || session.profile?.access !== true || moduleProfile?.active !== true || moduleProfile?.access !== true) return false;
+    return moduleProfile.permissions?.admin === true || moduleProfile.permissions?.[permission] === true;
+  }
   if (session.profile?.role === 'administrador_app' || session.profile?.permissions?.admin === true || session.profile?.permissions?.[permission] === true) return true;
   const qualityAreaPermissions = ['managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage'];
   return currentRoute() === 'management' && (!selectedManagementAreaId || selectedManagementAreaId === 'area-gestao-da-qualidade') &&
@@ -1104,13 +1111,15 @@ function shellView() {
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button>${can('admin') ? '<button type="button" data-route="fa-performance">DESEMPENHO FA</button>' : ''}</div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
-  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';  const view = route === 'home' ? `<section class="content-grid">
+  const labelReport = route === 'labels' ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
+  const labelPermissionPanel = route === 'labels' && can('labelsManage') ? `<details class="admin-user-list fh-label-permissions-panel"><summary>Permissões de Etiquetas · FH</summary><p class="record-meta">Este painel administra apenas as permissões de Etiquetas armazenadas no projeto FH. O login e a identidade continuam em FA.</p><button type="button" class="secondary-button" data-load-fh-label-directory>Atualizar lista de usuários FH</button><div data-fh-label-directory role="status" aria-live="polite"></div></details>` : '';
+  const view = route === 'home' ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div>${communicationFeatureEnabled&&!communicationDevicePushActive()?'<aside class="comm-home-banner" aria-label="Notificações institucionais"><span class="comm-banner-burst" aria-hidden="true">NOVO</span><div><strong>🔔 Ative os avisos do SAHMT</strong><p>Receba os avisos neste aparelho.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Ativar notificações ou ver mensagens">ABRIR</button>':''}${communicationFeatureEnabled?'<div class="comm-home-notices" data-comm-home-banners aria-live="polite"></div>':''}</section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${actionForm(route)}${labelPermissionPanel}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline && route !== 'home' && route !== 'events' ? `<div class="notice profile-connection-notice" data-local-profile-notice role="status"><span>${session.validatingProfile ? 'Confirmando a conexão com o servidor… Sua sessão Firebase está ativa.' : 'Sua sessão Firebase está ativa. Usando o perfil local enquanto a conexão com o servidor é restabelecida.'}</span><button type="button" class="secondary-button" data-profile-reconnect ${session.validatingProfile ? 'disabled' : ''}>${session.validatingProfile ? 'Verificando…' : 'Reconectar'}</button><small data-profile-retry-message></small></div>` : ''}${session.status === 'auth-limited' && !session.validatingProfile && session.profileFailureCode ? `<p class="notice" data-profile-diagnostic role="status">Diagnóstico: <strong>${escapeHtml(session.profileFailureCode)}</strong>. ${session.profileFailureCode === 'LOCAL_PROFILE_UNAVAILABLE' ? 'Este aparelho não tem uma cópia local válida do perfil. Será necessária uma validação online quando o Firestore estiver disponível.' : session.profileFailureCode === 'LOCAL_STORAGE_UNAVAILABLE' ? 'O armazenamento local do navegador está indisponível.' : 'A validação online do perfil não foi concluída.'}</p>` : ''}${view}</main>
@@ -1901,8 +1910,13 @@ async function loadAdminModule(content) {
   }
   content.innerHTML = '<p class="loading">Carregando perfis da V2…</p>';
   try {
-    const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments} = await import('./data.js');
+    const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments,listLabelModuleProfiles} = await import('./data.js');
     const [rawProfiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
+    let labelProfiles=[],labelProfileLoadFailed=false;
+    if (can('labelsManage')) {
+      try { labelProfiles=await listLabelModuleProfiles({uid:session.user.uid}); }
+      catch { labelProfileLoadFailed=true; }
+    }
     let assignments=[],categoryLoadFailed=false;
     try{assignments=await withinDeadline(listMemberCategoryAssignments,{timeoutMs:4000});}catch{categoryLoadFailed=true;}
     const profiles=mergeMemberCategoryAssignments(rawProfiles,assignments);
@@ -1929,10 +1943,13 @@ async function loadAdminModule(content) {
       const cohortControl = firstLoginCohortAdminUiEnabled && can('admin') ? `<div class="first-login-cohort-controls"><label>Primeiro login<select data-first-login-cohort="${escapeHtml(profile.uid)}" ${protectedCohort ? 'disabled' : ''}>${FIRST_LOGIN_COHORTS.map((value) => `<option value="${value}" ${cohort === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>${protectedCohort ? '<small>Classificação protegida; não pode ser reclassificada por este painel.</small>' : `<button type="button" class="secondary-button" data-save-first-login-cohort="${escapeHtml(profile.uid)}">Salvar classificação</button>`}<small data-first-login-cohort-status="${escapeHtml(profile.uid)}">A classificação não altera função, permissões, atividade ou acesso.</small></div>` : '';
       const cohortSummary = firstLoginCohortAdminUiEnabled && can('admin') ? `<small>Primeiro login: ${cohort}${profile.firstLoginCohort ? '' : ' · não classificado'}</small>` : '';
       const membershipSummary=memberCategoryLabels(profile.memberCategories).join(' · ')||'Sem classificação';
-      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button><button class="secondary-button" type="button" data-user-app-updates="${escapeHtml(profile.uid)}">Atualização do aparelho</button>` : ''}${cohortControl}</article>`;
+      const fhProfile=labelProfiles.find(row=>row.uid===profile.uid);
+      const fhPermissions=fhProfile?.permissions||{};
+      const fhControl=can('labelsManage')?`<details class="fh-label-permissions"><summary>Permissões de Etiquetas · FH${fhProfile?'':' · incluir no FH'}</summary>${labelProfileLoadFailed?'<p role="status">Não foi possível consultar as permissões no FH. Atualize a tela antes de tentar novamente.</p>':`<fieldset><legend>Acesso independente em FH</legend>${[['labelsRead','Consultar etiquetas'],['labelsWrite','Registrar e editar etiquetas'],['labelsManage','Administrar Etiquetas e permissões']].map(([key,title])=>`<label class="permission-option"><input type="checkbox" data-fh-label-permission="${key}" ${fhPermissions[key]===true?'checked':''}><span>${title}</span></label>`).join('')}</fieldset><button type="button" class="secondary-button" data-save-fh-label-permissions="${escapeHtml(profile.uid)}" ${self?'disabled':''}>Salvar permissões em FH</button><small data-fh-permission-status="${escapeHtml(profile.uid)}">Apenas os três acessos de Etiquetas são gravados no projeto FH. As permissões do FA não são alteradas por este controle.</small>`}</details>`:'';
+      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões gerais${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button><button class="secondary-button" type="button" data-user-app-updates="${escapeHtml(profile.uid)}">Atualização do aparelho</button>` : ''}${cohortControl}${fhControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
-    content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso.</p>
+    content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso. As permissões de Etiquetas ficam separadas em FH e são editadas no controle próprio de cada perfil abaixo.</p>
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Solicitações de acesso</h3></div><p class="record-meta">Pedidos feitos no login aparecem aqui. Eles não concedem acesso automaticamente; escolha função e permissões antes de provisionar.</p>${requestEntries || '<p class="empty-state">Nenhuma solicitação pendente.</p>'}</section>
       ${featureSettings}${categorySummary}
       <details id="admin-user-editor" class="quick-form admin-user-form"><summary id="user-form-summary">Configurar um pedido ou editar perfil</summary><section class="panel"><h3 id="user-form-title">Provisionar perfil SAHMT</h3><p>Ao abrir um pedido, UID, e-mail e nome são preenchidos automaticamente. O cadastro manual sem pedido fica reservado a casos administrativos excepcionais.</p>
@@ -1944,6 +1961,21 @@ async function loadAdminModule(content) {
       </section></details>
       ${can('admin') ? '<section class="admin-user-list"><h3>Atualização dos aparelhos</h3><p>Exija a versão atual para todos com acesso ativo ou use “Atualização do aparelho” no perfil de uma pessoa. Cada aparelho confirma separadamente.</p><button type="button" class="primary-button" data-all-app-updates>ATUALIZAR TODOS OS USUÁRIOS</button></section>' : ''}
       <section class="admin-user-list"><div class="admin-list-heading"><h3>Perfis V2</h3><label>Filtrar perfis<input id="admin-user-search" type="search" placeholder="Nome, sigla, e-mail, UID ou categoria"></label></div><p class="record-meta">Exibindo até 200 perfis, ordenados por nome. Para remover acesso, desative o perfil; o registro não é apagado.</p>${entries || '<p class="empty-state">Nenhum perfil provisionado foi encontrado.</p>'}</section>`;
+    content.querySelectorAll('[data-save-fh-label-permissions]').forEach(button=>button.addEventListener('click',async()=>{
+      const uid=button.dataset.saveFhLabelPermissions,profile=profiles.find(row=>row.uid===uid),status=content.querySelector(`[data-fh-permission-status="${CSS.escape(uid)}"]`);
+      if(!profile||!can('labelsManage')||!session.user?.uid||uid===session.user.uid)return;
+      const row=button.closest('.user-profile-row');
+      const permissions=Object.fromEntries([...row.querySelectorAll('[data-fh-label-permission]')].map(input=>[input.dataset.fhLabelPermission,input.checked]));
+      button.disabled=true;if(status)status.textContent='Salvando somente em FH…';
+      try{
+        const {saveLabelModulePermissions}=await import('./data.js');
+        await saveLabelModulePermissions({...profile,permissions},session.user.uid);
+        if(session.user?.uid!==uid&&currentRoute()==='admin')await loadAdminModule(content);
+      }catch(error){
+        if(status)status.textContent=error.code==='permission-denied'?'FH recusou a alteração. Confira a permissão de administração de Etiquetas.':'Não foi possível salvar no FH. Confira a conexão e tente novamente.';
+        button.disabled=false;
+      }
+    }));
     const featureForm = content.querySelector('#app-feature-form');
     featureForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -2098,6 +2130,36 @@ async function loadAdminModule(content) {
     });
   } catch (error) {
     content.innerHTML = `<p class="empty-state">Não foi possível consultar os perfis V2. ${escapeHtml(error.message || '')}</p>`;
+  }
+}
+
+async function loadLabelPermissionDirectory(container) {
+  if (!container || currentRoute() !== 'labels' || !can('labelsManage') || !session.user?.uid) return;
+  container.innerHTML = '<p class="loading">Lendo perfis próprios de FH…</p>';
+  try {
+    const {listLabelModuleProfiles, saveLabelModulePermissions} = await import('./data.js');
+    const profiles = await listLabelModuleProfiles({uid: session.user.uid});
+    if (currentRoute() !== 'labels' || !can('labelsManage')) return;
+    container.innerHTML = profiles.length ? profiles.map(profile=>{
+      const own = profile.uid === session.user.uid, permissions=profile.permissions||{};
+      return `<article class="user-profile-row" data-fh-label-user="${escapeHtml(profile.uid)}"><div><strong>${escapeHtml(profile.displayName||profile.email||profile.uid)}</strong><small>${escapeHtml([profile.email,profile.sigla].filter(Boolean).join(' · '))}</small><code>${escapeHtml(profile.uid)}</code></div><fieldset><legend>Permissões em FH</legend>${[['labelsRead','Consultar etiquetas'],['labelsWrite','Registrar e editar etiquetas'],['labelsManage','Administrar Etiquetas e permissões']].map(([key,title])=>`<label class="permission-option"><input type="checkbox" data-fh-label-key="${key}" ${permissions[key]===true?'checked':''} ${own?'disabled':''}><span>${title}</span></label>`).join('')}</fieldset><button type="button" class="secondary-button" data-fh-label-save="${escapeHtml(profile.uid)}" ${own?'disabled':''}>Salvar em FH</button><small data-fh-label-status>${own?'Peça a outro administrador FH para alterar suas permissões.':'As alterações ficam apenas no perfil FH.'}</small></article>`;
+    }).join('') : '<p class="empty-state">Nenhum perfil foi encontrado em FH.</p>';
+    container.querySelectorAll('[data-fh-label-save]').forEach(button=>button.addEventListener('click',async()=>{
+      const uid=button.dataset.fhLabelSave,profile=profiles.find(item=>item.uid===uid),row=button.closest('[data-fh-label-user]');
+      const status=row?.querySelector('[data-fh-label-status]');
+      if(!profile||!row||uid===session.user?.uid||!can('labelsManage'))return;
+      const permissions=Object.fromEntries([...row.querySelectorAll('[data-fh-label-key]')].map(input=>[input.dataset.fhLabelKey,input.checked]));
+      button.disabled=true;if(status)status.textContent='Salvando no FH…';
+      try{
+        await saveLabelModulePermissions({...profile,permissions},session.user.uid);
+        if(currentRoute()==='labels'&&can('labelsManage'))await loadLabelPermissionDirectory(container);
+      }catch(error){
+        if(status)status.textContent=error.code==='permission-denied'?'FH recusou a alteração; confira sua permissão de administrador.':'Não foi possível salvar em FH. Confira a conexão e tente novamente.';
+        button.disabled=false;
+      }
+    }));
+  } catch {
+    container.innerHTML = '<p class="empty-state" role="alert">Não foi possível consultar os perfis e permissões em FH. Atualize a tela e tente novamente.</p>';
   }
 }
 
@@ -5115,6 +5177,7 @@ async function render() {
     });
   }
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
+  document.querySelector('[data-load-fh-label-directory]')?.addEventListener('click', event=>loadLabelPermissionDirectory(event.currentTarget.closest('.fh-label-permissions-panel')?.querySelector('[data-fh-label-directory]')));
   document.querySelector('[data-account-mode]')?.addEventListener('change', event => {
     const control = event.currentTarget;
     const next = accountMode.select(control.value);
@@ -5462,7 +5525,39 @@ document.addEventListener('click',async event=>{
   await navigate('app-updates-control');
 });
 const targetedAppUpdates=installTargetedAppUpdates({target:deployment.target,signOut:signOutGlobal});
-watchSession(next=>{const blocked=targetedAppUpdates.blocked;targetedAppUpdates.setSession(next);sessionChanged(accountMode.update(next));if(blocked&&!targetedAppUpdates.blocked)void render();});
+let labelProfileLoadUid = '';
+let labelProfileLoadSequence = 0;
+async function loadOwnLabelModuleProfile(uid) {
+  if (deployment.target !== 'FA' || import.meta.env.VITE_FH_LABELS_ENABLED !== 'true' || !uid || labelProfileLoadUid === uid) return;
+  labelProfileLoadUid = uid;
+  const sequence = ++labelProfileLoadSequence;
+  try {
+    const {readLabelModuleProfile} = await import('./data.js');
+    const profile = await readLabelModuleProfile(uid);
+    if (sequence !== labelProfileLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    session = {...session, labelProfile: profile, labelProfileLoaded: true};
+  } catch {
+    if (sequence !== labelProfileLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    session = {...session, labelProfile: null, labelProfileLoaded: true};
+    labelProfileLoadUid = '';
+  }
+  if (sequence === labelProfileLoadSequence && session.status === 'signed-in' && session.user?.uid === uid) await render();
+}
+watchSession(next=>{
+  const blocked=targetedAppUpdates.blocked;
+  targetedAppUpdates.setSession(next);
+  const sameUser = next.user?.uid && next.user.uid === session.user?.uid;
+  if (next.status === 'signed-in' && sameUser && session.labelProfileLoaded) {
+    next = {...next, labelProfile: session.labelProfile, labelProfileLoaded: true};
+  } else if (next.status !== 'signed-in' || !sameUser) {
+    labelProfileLoadUid = '';
+    labelProfileLoadSequence++;
+    next = {...next, labelProfile: null, labelProfileLoaded: false};
+  }
+  sessionChanged(accountMode.update(next));
+  if (next.status === 'signed-in' && next.offline !== true) void loadOwnLabelModuleProfile(next.user?.uid);
+  if(blocked&&!targetedAppUpdates.blocked)void render();
+});
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const startUpdates=()=>{void installAppUpdatePrompt({base:import.meta.env.BASE_URL,target:deployment.target}).catch(error=>console.warn('[SAHMT PWA] Atualização indisponível:',error?.message));};
