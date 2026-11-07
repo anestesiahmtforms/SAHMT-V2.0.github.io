@@ -1,8 +1,10 @@
 import {auth} from './firebase-auth.js';
 import {app, appCheckReady} from './firebase-app.js';
+import {operationalModuleEnabled, getOperationalModuleIdToken} from './operational-module-firebase.js';
+import {imageEndpoint as fhImageEndpoint} from './firebase-config-fh.js';
 
 const workerEndpoint = import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() || '';
-const workerOrigin = 'https://sahmt-label-ai.anestesiahmtforms.workers.dev';
+const workerOrigin = operationalModuleEnabled('FH') ? new URL(fhImageEndpoint).origin : 'https://sahmt-label-ai.anestesiahmtforms.workers.dev';
 const workerPath = '/v1/labels/extract';
 const unavailableMessage = 'Não foi possível realizar a leitura por IA. Tente novamente ou preencha os campos manualmente.';
 
@@ -60,14 +62,14 @@ export async function extractLabelWithAi(file) {
   try {
     const [{getToken}, refreshedIdToken] = await Promise.all([
       import('firebase/app-check').then((module) => module),
-      user.getIdToken()
+      operationalModuleEnabled('FH') ? getOperationalModuleIdToken('FH', user.uid) : user.getIdToken()
     ]);
     idToken = refreshedIdToken;
     appCheckToken = (await getToken(appCheck)).token;
   } catch {
     throw new Error('Não foi possível validar a sessão e a proteção do app. Atualize a página ou faça o registro manual.');
   }
-  if (!idToken || !appCheckToken) throw new Error('Não foi possível validar a sessão e a proteção do app. Atualize a página ou faça o registro manual.');
+  if (!idToken || !appCheckToken || auth.currentUser !== user) throw new Error('Não foi possível validar a sessão e a proteção do app. Atualize a página ou faça o registro manual.');
 
   const image = await loadImage(file);
   const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
@@ -105,6 +107,7 @@ export async function extractLabelWithAi(file) {
   }
 
   let response;
+  if (auth.currentUser !== user) throw new Error('A sessão mudou durante a leitura. Entre novamente para ler a etiqueta.');
   try {
     response = await fetch(endpoint, {
       method: 'POST',

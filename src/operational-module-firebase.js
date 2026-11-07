@@ -7,7 +7,7 @@ const env = import.meta.env || {};
 const instances = new Map();
 // Only the deployment configuration can choose these destinations.
 export const operationalModuleEnabled = station => deployment.target === 'FA' &&
-  (station === 'FI' ? env.VITE_FI_EVENTS_ENABLED === 'true' : station === 'FJ' && env.VITE_FJ_SCHEDULE_ENABLED === 'true');
+  (station === 'FI' ? env.VITE_FI_EVENTS_ENABLED === 'true' : station === 'FJ' ? env.VITE_FJ_SCHEDULE_ENABLED === 'true' : station === 'FH' && env.VITE_FH_LABELS_ENABLED === 'true');
 
 async function getInstance(station) {
   if (!operationalModuleEnabled(station)) throw Object.assign(new Error('MODULE_DISABLED'), {code: 'MODULE_DISABLED'});
@@ -52,6 +52,16 @@ export async function getOperationalModuleDatabase(station, uid, {realtime = fal
   if (instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser?.uid !== expectedUid)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
   return sdk.getFirestore(instance.app);
+}
+
+export async function getOperationalModuleIdToken(station, uid) {
+  const instance = await getInstance(station);
+  const expectedUid = uid || instance.faAuth.currentUser?.uid;
+  const user = await instance.session.ensure(expectedUid);
+  const token = await user.getIdToken();
+  if (instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser !== user)
+    throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
+  return token;
 }
 
 export async function disposeOperationalModuleSessions() {

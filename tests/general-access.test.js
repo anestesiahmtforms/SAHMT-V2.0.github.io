@@ -190,7 +190,7 @@ test('perfil existente mantém createdAt e todas as outras permissões aceitas f
   const result = await h.save(input, 'admin-ficticio');
   assert.equal(result.createdAt, createdAt);
   assert.deepEqual(h.writes[0].record.createdAt, createdAt);
-  assert.deepEqual(h.writes[0].record.permissions, {...permissions, trainingsRead: true, notificationsRead: true});
+  assert.deepEqual(h.writes[0].record.permissions, {eventsRead:true, checklistWrite:true, trainingsManage:true, trainingsRead: true, notificationsRead: true});
   assert.deepEqual(current, {createdAt, permissions: {eventsRead: true, checklistWrite: true}});
   assert.equal(permissions.trainingsManage, true);
   assert.equal(Object.hasOwn(permissions, 'notificationsRead'), false);
@@ -213,7 +213,7 @@ test('saveUserProfile mantém o filtro de IDs conhecidos e de valores exatamente
   }});
   const before = structuredClone(input);
   await h.save(input, 'admin-ficticio');
-  assert.deepEqual(h.writes[0].record.permissions, {labelsRead: true, eventsWrite: true, occurrencesRead:true, occurrencesWrite:true,
+  assert.deepEqual(h.writes[0].record.permissions, {eventsWrite: true, occurrencesRead:true, occurrencesWrite:true,
     occurrencesAuditRead:true, trainingsRead: true, notificationsRead: true});
   assert.deepEqual(input, before);
 });
@@ -224,10 +224,16 @@ test('salvar perfil não aprovado não acrescenta as consultas gerais nem privil
     const h = harness();
     const input = profileInput({...flags, permissions: {labelsRead: true, trainingsRead: false, notificationsRead: false}});
     await h.save(input, 'admin-ficticio');
-    assert.deepEqual(h.writes[0].record.permissions, {labelsRead: true});
+    assert.deepEqual(h.writes[0].record.permissions, {});
     assert.equal(h.writes[0].record.active, flags.active === true);
     assert.equal(h.writes[0].record.access, flags.access === true);
   }
+});
+
+test('FA profile administration preserves legacy Etiquetas grants without accepting new changes',async()=>{
+  const h=harness({current:{createdAt:{seconds:1},permissions:{labelsRead:true,labelsWrite:false}}});
+  await h.save(profileInput({permissions:{labelsRead:false,labelsWrite:true,labelsManage:true}}),'admin-ficticio');
+  assert.deepEqual(h.writes[0].record.permissions,{trainingsRead:true,notificationsRead:true,labelsRead:true,labelsWrite:false});
 });
 
 test('normalização de UID, e-mail, nome, sigla, telefone e função é preservada', async () => {

@@ -54,7 +54,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       if(body.action==='source'){
         if(env.OPERATIONAL_CONTINUITY_ENABLED!=='true')throw channelError('CONTINUITY_DISABLED',503);
         if(Object.keys(body).some(key=>!['action','path'].includes(key))||! /^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(body.path||''))throw channelError('CHANNEL_REQUEST_INVALID');
-        if(retiredContinuityKind(env,body.path.split('/')[0]))throw channelError('CHANNEL_MODULE_MOVED',409);
+        if(retiredContinuityKind(env,body.path.split('/')[0])||(env.FH_MODULE_RETIRED==='true'&&body.path==='appConfig/labelStaff'))throw channelError('CHANNEL_MODULE_MOVED',409);
         const data=await firestore(body.path,bearer,appCheckToken),result=await recordContinuitySourceChange(env,body.path,data,now());
         return json({code:'CHANNEL_SOURCE_UPDATED'},result.status,origin);
       }

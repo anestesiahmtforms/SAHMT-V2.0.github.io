@@ -10,10 +10,10 @@ const source = original.split('\n').filter(line => !line.startsWith('import ')).
 const scope = {from: '2026-10-01', to: '2026-10-31', uid: 'reader-A', sigla: 'FA', pageSize: 2};
 const doc = (id, fields = {}, pending = false) => ({id, metadata: {hasPendingWrites: pending}, data: () => ({id, active: true, date: '2026-10-01', createdByUid: 'reader-A', staffSiglas: ['FA'], version: 1, createdAt: '2026-10-01T12:00:00.000Z', ...fields})});
 const snapshot = (docs, {fromCache = false, hasPendingWrites = false} = {}) => ({docs, metadata: {fromCache, hasPendingWrites}});
-function setup({nullDb = false, throwAt = null, syncError = false} = {}) {
-  const listeners = [], reports = [], errors = [], queryArgs = [];
+function setup({nullDb = false, throwAt = null, syncError = false, migrated = false, denied = false} = {}) {
+  const listeners = [], reports = [], errors = [], queryArgs = [], moduleCalls = [], moduleDb = {station:'FH'};
   const realtimeSdk = {
-    collection: (_db, name) => ({collection: name}), where: (...args) => ({where: args}), orderBy: (...args) => ({order: args}), limit: size => ({limit: size}),
+    collection: (_db, name) => {if(migrated)assert.equal(_db,moduleDb);return {collection: name};}, where: (...args) => ({where: args}), orderBy: (...args) => ({order: args}), limit: size => ({limit: size}),
     query: (...args) => {queryArgs.push(args); return args;},
     onSnapshot: (query, options, next, error) => {
       const index = listeners.length;
@@ -23,9 +23,9 @@ function setup({nullDb = false, throwAt = null, syncError = false} = {}) {
       return () => {listener.stopped = true; listener.stopCount++;};
     }
   };
-  const context = vm.createContext({mockedRealtimeDb: nullDb ? null : {}, realtimeSdk, console});
+  const context = vm.createContext({mockedRealtimeDb: nullDb ? null : {}, realtimeSdk, console, operationalModuleEnabled:s=>migrated&&s==='FH',getOperationalModuleDatabase:async(...args)=>{moduleCalls.push(args);if(denied)throw Error('MODULE_ACCESS_DENIED');return moduleDb;}});
   vm.runInContext(source, context);
-  return {context, listeners, reports, errors, queryArgs,
+  return {context, listeners, reports, errors, queryArgs, moduleCalls,
     watch: options => context.watchLabelRecords({...scope, ...options}, report => reports.push(report), error => errors.push(error)),
     emit: (index, docs, metadata) => listeners[index].next(snapshot(docs, metadata)),
     last: () => reports.at(-1)};
@@ -33,6 +33,11 @@ function setup({nullDb = false, throwAt = null, syncError = false} = {}) {
 
 const ids = report => Array.from(report.records, record => record.id);
 const changes = report => Array.from(report.changes, change => `${change.type}:${change.id}`);
+
+test('FH realtime reports use only the destination and denial starts no FA listener',async()=>{
+  const h=setup({migrated:true});const stop=await h.watch();assert.equal(h.moduleCalls.length,1);assert.equal(h.moduleCalls[0][0],'FH');assert.equal(h.moduleCalls[0][1],scope.uid);assert.equal(h.moduleCalls[0][2].realtime,true);stop();
+  const denied=setup({migrated:true,denied:true});await assert.rejects(denied.watch(),/MODULE_ACCESS_DENIED/);assert.equal(denied.listeners.length,0);
+});
 
 test('usuário comum mantém duas consultas autorizadas, período limitado, sentinel e metadados', async () => {
   const h = setup(), stop = await h.watch();

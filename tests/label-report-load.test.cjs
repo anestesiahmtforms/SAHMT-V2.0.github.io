@@ -206,7 +206,7 @@ test('sincronização geral não força V do relatório e PDF não é pré-carre
 test('leitor leve preserva filtros, deduplicação e paginação, sem persistência',async()=>{
   const source=readFileSync(join(__dirname,'../src/label-report-reader.js'),'utf8');const captured=[];let count=0;
   const item={id:'label-1',data:()=>({date:'2026-09-30'})};
-  const ctx=vm.createContext({db:{},collection:()=> 'labels',where:(...args)=>({where:args}),orderBy:(...args)=>({order:args}),startAfter:doc=>({cursor:doc}),limit:n=>({limit:n}),query:(...args)=>args,getDocs:async q=>{captured.push(q);count++;return {docs:[item]};}});
+  const ctx=vm.createContext({operationalModuleEnabled:()=>false,db:{},collection:()=> 'labels',where:(...args)=>({where:args}),orderBy:(...args)=>({order:args}),startAfter:doc=>({cursor:doc}),limit:n=>({limit:n}),query:(...args)=>args,getDocs:async q=>{captured.push(q);count++;return {docs:[item]};}});
   vm.runInContext(source.split('\n').filter(line=>!line.startsWith('import ')).join('\n').replaceAll('export ',''),ctx);
   const result=await vm.runInContext("listLabelRecords({from:'2026-09-30',to:'2026-09-30',uid:'user-1',sigla:'FA'})",ctx);
   assert.equal(count,2);assert.equal(result.records.length,1);assert.ok(captured[0].some(x=>x.where?.[0]==='createdByUid'));assert.ok(captured[1].some(x=>x.where?.[0]==='staffSiglas'));

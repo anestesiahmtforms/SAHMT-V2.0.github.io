@@ -73,6 +73,10 @@ jobs:
         run: |
           npm run test:fi-fj
           npm run test:fi-fj-rules
+      - name: Verify isolated FH labels, session, native setup and source closure
+        run: |
+          npm run test:fh
+          npm run test:fh-rules
       - name: Verify isolated FA performance and event corrections
         run: node --test tests/fa-performance*.test.js
       - name: Verify FD manual updates and source read isolation
@@ -153,6 +157,7 @@ jobs:
         env:
           VITE_FI_EVENTS_ENABLED: 'true'
           VITE_FJ_SCHEDULE_ENABLED: 'true'
+          VITE_FH_LABELS_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENDPOINT: 'https://sahmt-ff-comunicacao.anestesiahmtforms6.workers.dev/v1/communication'
           VITE_COMMUNICATION_FF_VAPID_KEY: 'BCwEvcJsXxHrmqk5Vfi4cPgQrJgyvDbmlaTc_QL_d6i5dcYO5PcngL_FyHLQIsoPyBhGGssnaI-evX6rQgk0nP0'
@@ -169,7 +174,7 @@ jobs:
           VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED: 'false'
           VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN: ${{ vars.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN }}
           VITE_APP_CHECK_SITE_KEY: ${{ vars.VITE_APP_CHECK_SITE_KEY }}
-          VITE_LABEL_AI_ENDPOINT: ${{ vars.VITE_LABEL_AI_ENDPOINT }}
+          VITE_LABEL_AI_ENDPOINT: 'https://sahmt-fh-etiquetas.sahmt-fh-f7b8a88b.workers.dev/v1/labels/extract'
           VITE_HTML_TRAINING_ENDPOINT: ${{ vars.VITE_HTML_TRAINING_ENDPOINT || 'https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/training' }}
           VITE_LABEL_AI_ENABLED: ${{ vars.VITE_LABEL_AI_ENABLED }}
           VITE_OPERATIONAL_SHEETS_ENDPOINT: ${{ vars.VITE_OPERATIONAL_SHEETS_ENDPOINT }}

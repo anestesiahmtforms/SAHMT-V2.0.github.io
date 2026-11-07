@@ -8,9 +8,9 @@ const response = (station, overrides = {}, {headers, url} = {}) => {
   Object.defineProperty(value, 'url', {value: url || target.endpoint}); return value;
 };
 
-test('FI and FJ exchange FA proofs only at their own fixed Worker endpoints', async () => {
+test('FI, FJ and FH exchange FA proofs only at their own fixed Worker endpoints', async () => {
   const calls = [];
-  await Promise.all(['FI', 'FJ'].map(async station => {
+  await Promise.all(['FI', 'FJ', 'FH'].map(async station => {
     const exchange = createOperationalModuleExchange({station, getAppCheckToken: async () => 'synthetic-attestation',
       fetchImpl: async (url, options) => {calls.push(url); assert.equal(url, OPERATIONAL_MODULE_TARGETS[station].endpoint);
         assert.equal(options.headers.Authorization, 'Bearer synthetic-fa-proof');
@@ -20,7 +20,7 @@ test('FI and FJ exchange FA proofs only at their own fixed Worker endpoints', as
       }});
     assert.equal((await exchange({faIdToken: 'synthetic-fa-proof', faUid: 'member'})).uid, 'member');
   }));
-  assert.equal(new Set(calls).size, 2);
+  assert.equal(new Set(calls).size, 3);
 });
 
 test('broker rejects swapped stations, UIDs, cacheable replies, redirects and oversized tokens', async () => {

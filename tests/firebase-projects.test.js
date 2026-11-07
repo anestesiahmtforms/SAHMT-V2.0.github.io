@@ -6,11 +6,11 @@ const fcConfig = Object.freeze({apiKey: 'synthetic-public-key', authDomain: 'ind
   projectId: 'indicadores---sahmt', storageBucket: 'indicadores---sahmt.firebasestorage.app',
   messagingSenderId: '123456789012', appId: '1:123456789012:web:abcdef0123456789'});
 
-test('central registry keeps FA, FB, FC, FI and FJ on separate named Firebase apps', () => {
-  assert.deepEqual(Object.keys(FIREBASE_PROJECTS), ['FA', 'FB', 'FC', 'FI', 'FJ']);
-  assert.deepEqual(Object.values(FIREBASE_PROJECTS).map(value => value.databaseId), Array(5).fill('(default)'));
-  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.projectId)).size, 5);
-  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.appName)).size, 5);
+test('central registry keeps FA, FB, FC, FI, FJ and FH on separate named Firebase apps', () => {
+  assert.deepEqual(Object.keys(FIREBASE_PROJECTS), ['FA', 'FB', 'FC', 'FI', 'FJ', 'FH']);
+  assert.deepEqual(Object.values(FIREBASE_PROJECTS).map(value => value.databaseId), Array(6).fill('(default)'));
+  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.projectId)).size, 6);
+  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.appName)).size, 6);
   assert.equal(FIREBASE_PROJECTS.FC.projectId, 'indicadores---sahmt');
 });
 

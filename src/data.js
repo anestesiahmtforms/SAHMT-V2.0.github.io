@@ -132,7 +132,7 @@ export async function listVacationsForDate(day, {pageSize = 100} = {}) {
 }
 
 export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} = {}) {
-  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
+  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : module === 'labels' ? await operationalDatabase('FH', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
   if (module === 'checklist') return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
@@ -346,6 +346,7 @@ export async function syncEventMemberDirectory(uid) {
 
 export async function listLabelStaffSiglas({uid} = {}) {
   return readThroughSafeCache({uid, kind: 'labelStaff', id: 'all', localFirst: true, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
+  const db = await operationalDatabase('FH', uid);
   const snapshot = await getDocFromServer(doc(db, 'appConfig', 'labelStaff'));
   if (!snapshot.exists() || snapshot.data().active !== true || !Array.isArray(snapshot.data().siglas)) return [];
   return [...new Set(snapshot.data().siglas.map((value) => String(value || '').trim().toUpperCase()).filter((value) => /^(?:[A-Z]{2}|L2)$/.test(value)))].sort();
@@ -359,6 +360,7 @@ export async function saveLabelStaffSiglas(values, uid) {
   if (!uid || siglas.length > 80 || siglas.some((value) => !/^(?:[A-Z]{2}|L2)$/.test(value))) {
     throw new Error('Informe até 80 siglas válidas (duas letras ou L2).');
   }
+  const db = await operationalDatabase('FH', uid);
   const reference = doc(db, 'appConfig', 'labelStaff');
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(reference);
@@ -369,7 +371,7 @@ export async function saveLabelStaffSiglas(values, uid) {
       transaction.set(reference, {id: 'labelStaff', siglas, active: true, createdByUid: uid, createdAt: serverTimestamp(), updatedByUid: uid, updatedAt: serverTimestamp(), version: 1});
     }
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('appConfig/labelStaff');
+  if (!operationalModuleEnabled('FH')) void globalThis.sahmtMirrorConfirmedSource?.('appConfig/labelStaff');
   return siglas;
 }
 
@@ -506,6 +508,61 @@ export async function listUserProfiles({pageSize = 200} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()})).filter(profile=>!isSystemOwnerEmail(profile.email)).slice(0,take);
 }
 
+/** Reads the independent Etiquetas permission profile in FH using the current FA identity. */
+export async function readLabelModuleProfile(uid) {
+  const targetUid = String(uid || '').trim();
+  if (!/^[^\s/]{1,128}$/.test(targetUid)) throw new Error('UID do perfil FH inválido.');
+  const moduleDb = await operationalDatabase('FH', targetUid);
+  const snapshot = await getDocFromServer(doc(moduleDb, 'users', targetUid));
+  return snapshot.exists() && snapshot.data().uid === targetUid ? {id: snapshot.id, ...snapshot.data()} : null;
+}
+
+/** Lists FH module profiles. Firestore rules restrict this to an FH labels administrator. */
+export async function listLabelModuleProfiles({pageSize = 200, uid} = {}) {
+  const actorUid = String(uid || '').trim();
+  if (!/^[^\s/]{1,128}$/.test(actorUid)) throw new Error('UID administrativo inválido.');
+  const moduleDb = await operationalDatabase('FH', actorUid);
+  const snapshot = await getDocsFromServer(query(collection(moduleDb, 'users'), orderBy(documentId()), limit(pageSize)));
+  return snapshot.docs.map(item => ({id: item.id, ...item.data()}));
+}
+
+/** Writes only Etiquetas permissions in FH; identity and all other permissions stay in their source systems. */
+export async function saveLabelModulePermissions(input, actorUid) {
+  assertOnlineOperation();
+  const uid = String(input?.uid || '').trim();
+  const actor = String(actorUid || '').trim();
+  const email = String(input?.email || '').trim().toLowerCase();
+  const displayName = String(input?.displayName || '').trim().slice(0, 120);
+  const sigla = String(input?.sigla || '').trim().toUpperCase().slice(0, 20);
+  const role = String(input?.role || '').trim();
+  const active = input?.active === true;
+  const access = input?.access === true;
+  const roleIds = ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'];
+  if (!/^[^\s/]{1,128}$/.test(uid) || !/^[^\s/]{1,128}$/.test(actor) || uid === actor ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName || !roleIds.includes(role)) {
+    throw new Error('Confira a identidade de destino e selecione outra conta além da sua.');
+  }
+  const moduleDb = await operationalDatabase('FH', actor);
+  const actorSnapshot = await getDocFromServer(doc(moduleDb, 'users', actor));
+  const actorProfile = actorSnapshot.exists() ? actorSnapshot.data() : {};
+  if (actorProfile.active !== true || actorProfile.access !== true ||
+      (actorProfile.permissions?.labelsManage ?? actorProfile.permissions?.admin) !== true) {
+    throw Object.assign(new Error('Somente um administrador de Etiquetas em FH pode alterar estas permissões.'), {code: 'permission-denied'});
+  }
+  const reference = doc(moduleDb, 'users', uid);
+  const current = await getDocFromServer(reference);
+  const old = current.exists() ? current.data() : null;
+  const permissions = {...(old?.permissions || {})};
+  for (const key of ['labelsRead', 'labelsWrite', 'labelsManage']) permissions[key] = input.permissions?.[key] === true;
+  if (current.exists()) {
+    await updateDoc(reference, {permissions});
+  } else {
+    await setDoc(reference, {uid, email, displayName, sigla, phone: '', role, active, access,
+      permissions, createdAt: serverTimestamp()});
+  }
+  return {uid, created: !current.exists(), permissions: Object.fromEntries(['labelsRead', 'labelsWrite', 'labelsManage'].map(key => [key, permissions[key]]))};
+}
+
 export async function listAccessRequests({pageSize = 100} = {}) {
   const result = await getDocsFromServer(query(
     collection(db, 'accessRequests'), where('status', '==', 'PENDING'), limit(Math.min(100, Math.max(1, pageSize)))
@@ -545,7 +602,7 @@ export async function saveUserProfile(input, actorUid) {
   const phone = String(input.phone || '').trim();
   const role = String(input.role || '').trim();
   const roleIds = ['coordenador', 'conselho_diretor', 'gestor', 'anestesiologista', 'residente', 'temporario', 'administrador_app'];
-  const permissionIds = ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'labelsRead', 'labelsWrite', 'labelsManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementModuleEnabled', 'performanceModuleEnabled', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'occurrencesRead', 'occurrencesWrite', 'occurrencesAuditRead', 'usersManage', 'admin'];
+  const permissionIds = ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'scheduleRead', 'scheduleWrite', 'trainingsRead', 'trainingsManage', 'managementModuleEnabled', 'performanceModuleEnabled', 'managementRead', 'managementManage', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'qualityManage', 'equipmentManage', 'peopleManage', 'financeRead', 'financeWrite', 'financeManage', 'notificationsRead', 'notificationsManage', 'occurrencesRead', 'occurrencesWrite', 'occurrencesAuditRead', 'usersManage', 'admin'];
   if (!/^[^\s\/]{1,128}$/.test(uid) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName || displayName.length > 120 || sigla.length > 20 || phone.length > 40 || !roleIds.includes(role)) {
     throw new Error('Confira UID, e-mail, nome, sigla, telefone e função antes de salvar.');
   }
@@ -554,6 +611,10 @@ export async function saveUserProfile(input, actorUid) {
     .filter(([permission, enabled]) => permissionIds.includes(permission) && enabled === true)), input);
   const ref = doc(db, 'users', uid);
   const current = await getDocFromServer(ref);
+  // General FA administration does not edit legacy label grants or the independent FH profile.
+  for (const key of ['labelsRead', 'labelsWrite', 'labelsManage']) {
+    if (current.exists() && typeof current.data().permissions?.[key] === 'boolean') permissions[key] = current.data().permissions[key];
+  }
   const currentCohort = current.exists() ? current.data().firstLoginCohort : undefined;
   if (currentCohort !== undefined && !FIRST_LOGIN_COHORTS.includes(currentCohort)) {
     throw new Error('A classificação de primeiro login existente é inválida; solicite revisão administrativa.');
@@ -1588,6 +1649,7 @@ export async function listLabelRecords({from, to, uid, sigla = '', canManage = f
     if (!Array.isArray(cached?.data?.records)) throw Object.assign(new Error('Não há uma cópia recente deste período de Etiquetas.'), {code: 'unavailable'});
     return {records: cached.data.records.map((item) => ({...item, stale: true})), nextCursor: null, stale: true};
   }
+  const db = await operationalDatabase('FH', uid);
   const base = [where('active', '==', true), where('date', '>=', from), where('date', '<=', to)];
   const cursorMode = canManage ? 'admin' : 'staff';
   if (cursor && cursor.mode !== cursorMode) cursor = null;
@@ -1641,6 +1703,7 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
   if(queueOffline)return persistOperationalMutation({id:requestId,online:navigator.onLine&&!isOfflineRuntimeForced(),
     sendRemote:()=>updateLabelRecord(labelId,input,uid,actorName,expectedVersion,{queueOffline:false,requestId}),
     onFailure:error=>operationalBackend.noteFailure(error,'labels')});
+  const db = await operationalDatabase('FH', uid);
   const ref = doc(db, 'labels', labelId);
   const fields = ['date', 'patientName', 'procedureCode', 'encounterCode', 'type', 'amount', 'insurance', 'creditor', 'staffSiglas', 'consultation'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
@@ -1667,12 +1730,13 @@ export async function updateLabelRecord(labelId, input, uid, actorName = '', exp
     transaction.update(ref, {...updates, updatedByName: String(actorName || '').trim().slice(0, 120), updatedByUid: uid, updatedAt: serverTimestamp(), version});
     transaction.set(historyRef, historyEntry);
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('labels/'+labelId);
+  if (!operationalModuleEnabled('FH')) void globalThis.sahmtMirrorConfirmedSource?.('labels/'+labelId);
   return {id: labelId, pendingFirestore: false};
 }
 
-export async function listLabelHistory(labelId, {pageSize = 20} = {}) {
+export async function listLabelHistory(labelId, {pageSize = 20, uid} = {}) {
   if (!labelId) throw new Error('Selecione uma etiqueta para consultar o histórico.');
+  const db = await operationalDatabase('FH', uid);
   const result = await getDocsFromServer(query(
     collection(db, 'labels', labelId, 'history'),
     orderBy('version', 'desc'),
@@ -2434,7 +2498,7 @@ function canonicalValue(value) {
 }
 
 async function confirmCommittedMutation({collectionName, data, uid, requestId}) {
-  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
+  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
   const snapshot = await getDocFromServer(doc(db, collectionName, requestId));
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
@@ -2449,7 +2513,7 @@ export async function createOperationalRecord(collectionName,data,{uid,requestId
   const result=await persistOperationalMutation({id:requestId,online:true,
     sendRemote:()=>sendOperationalRecordInFirestore(collectionName,data,{uid,requestId}),
     onFailure:error=>operationalBackend.noteFailure(error,collectionName)});
-  if (collectionName !== 'events' || !operationalModuleEnabled('FI')) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
+  if (!(collectionName === 'events' && operationalModuleEnabled('FI')) && !(collectionName === 'labels' && operationalModuleEnabled('FH'))) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
   return result;
 }
 
@@ -2468,7 +2532,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
       throw unconfirmedWrite(error,requestId);
     }
   }
-  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
+  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
   const batch = writeBatch(targetDb);
   buildRecordBatch(batch, {collectionName, data, uid, requestId}, targetDb);
   try {
@@ -2495,6 +2559,7 @@ async function commitOperationalMutationOnce(collectionName, data, uid, requestI
     }
     return {id: requestId, pendingFirestore: false};
   }
+  const db = collectionName === 'labels' ? await operationalDatabase('FH', uid) : identityDb;
   const reference = doc(db, collectionName, requestId);
   return runTransaction(db, async transaction => {
     const existing = await transaction.get(reference);
@@ -2505,7 +2570,7 @@ async function commitOperationalMutationOnce(collectionName, data, uid, requestI
       if (!same) throw Object.assign(new Error('O registro remoto mudou; a cópia local foi preservada.'), {code: 'stale-version'});
       return {id: requestId, pendingFirestore: false, alreadyCommitted: true};
     }
-    buildRecordBatch(transaction, {collectionName, data, uid, requestId});
+    buildRecordBatch(transaction, {collectionName, data, uid, requestId}, db);
     return {id: requestId, pendingFirestore: false};
   });
 }

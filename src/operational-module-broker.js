@@ -1,9 +1,11 @@
 import {config as fi, sessionEndpoint as fiEndpoint} from './firebase-config-fi.js';
 import {config as fj, sessionEndpoint as fjEndpoint} from './firebase-config-fj.js';
+import {config as fh, sessionEndpoint as fhEndpoint} from './firebase-config-fh.js';
 
 export const OPERATIONAL_MODULE_TARGETS = Object.freeze({
   FI: Object.freeze({config: fi, endpoint: fiEndpoint}),
-  FJ: Object.freeze({config: fj, endpoint: fjEndpoint})
+  FJ: Object.freeze({config: fj, endpoint: fjEndpoint}),
+  FH: Object.freeze({config: fh, endpoint: fhEndpoint})
 });
 const fail = code => Object.assign(new Error(code), {code});
 

@@ -1,0 +1,27 @@
+{
+  "name": "sahmt-fh-etiquetas",
+  "main": "worker.js",
+  "account_id": "f7b8a88b3a8fb51563a0b1943b4f03c0",
+  "compatibility_date": "2026-11-06",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "triggers": {
+    "crons": []
+  },
+  "vars": {
+    "MODULE_STATION": "FH",
+    "MODULE_PROJECT_ID": "sahmt-etiquetas-fh",
+    "MODULE_CUTOVER_ACTIVE": "false",
+    "FA_PUBLIC_API_KEY": "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA",
+    "ALLOWED_ORIGINS": "https://anestesiahmtforms.github.io"
+  }
+}
