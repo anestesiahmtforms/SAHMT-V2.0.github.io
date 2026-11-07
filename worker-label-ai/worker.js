@@ -219,7 +219,8 @@ async function readAuthorizedProfile(uid, idToken, fetchImpl, projectId = PROJEC
     throw new WorkerError(403, 'PERMISSION_DENIED', 'Seu perfil não tem permissão para ler etiquetas.');
   }
   const role = field(fields, 'role', 'stringValue');
-  const authorized = role === 'administrador_app' || profilePermission(fields, 'admin') || profilePermission(fields, 'labelsWrite') || profilePermission(fields, 'labelsManage');
+  const legacyAdminRoleAllowed = projectId !== 'sahmt-etiquetas-fh' && role === 'administrador_app';
+  const authorized = legacyAdminRoleAllowed || profilePermission(fields, 'admin') || profilePermission(fields, 'labelsWrite') || profilePermission(fields, 'labelsManage');
   if (!authorized) throw new WorkerError(403, 'PERMISSION_DENIED', 'Seu perfil não tem permissão para ler etiquetas.');
 }
 

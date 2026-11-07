@@ -176,6 +176,16 @@ test('labelsWrite, labelsManage, admin e papel administrador_app autorizam a lei
   }
 });
 
+test('FH accepts only permissions stored in FH and ignores the copied FA administrator role', async () => {
+  const tokensForUser = await validTokenPair({idClaims:fhClaims});
+  const roleOnly = createFixture({projectId:'sahmt-etiquetas-fh',profile:firestoreProfile({role:'administrador_app',permissions:{}})});
+  assert.equal((await roleOnly.request(tokensForUser)).status,403);
+  for (const permissions of [{admin:true},{labelsWrite:true},{labelsManage:true}]) {
+    const fixture=createFixture({projectId:'sahmt-etiquetas-fh',profile:firestoreProfile({role:'administrador_app',permissions})});
+    assert.equal((await fixture.request(tokensForUser)).status,200);
+  }
+});
+
 test('imagem inválida retorna 400 sem chamar a OpenAI', async () => {
   const fixture = createFixture();
   const tokensForUser = await validTokenPair();
