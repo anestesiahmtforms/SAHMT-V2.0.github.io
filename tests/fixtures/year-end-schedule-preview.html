@@ -12,11 +12,27 @@ const participants=yearEndParticipants({schemaVersion:1,cycle:'2026-2027',siglas
 let generation=0,dispose=()=>{};
 const params=new URL(location.href).searchParams;
 function mount(){
-  dispose();const ticket=++generation,uid=document.querySelector('#preview-user').value;
-  const name={four:'04',one:'01',two:'02'}[uid];
-  const sigla=params.get('sigla')||{four:'GH',one:'AB',two:'CD'}[uid],requireGroup=!['FR','AD','L2','LE'].includes(sigla),isAdmin=params.has('admin'),canParticipate=!params.has('viewer');
+  dispose();const ticket=++generation,selected=document.querySelector('#preview-user').value,uid=params.has('viewer')?'admin':selected;
+  const name={four:'04',one:'01',two:'02'}[selected],sigla=params.get('sigla')||{four:'GH',one:'AB',two:'CD'}[selected];
+  const requireGroup=!['FR','AD','L2','LE'].includes(sigla),isAdmin=params.has('admin'),canParticipate=!params.has('viewer');
   dispose=mountManagementHub(document.querySelector('#app'),{initialPanel:params.has('direct')?'yearEnd':'surveys',displayName:'PRÉVIA · Pessoa de exemplo '+name,access:{surveys:true,yearEndSchedule:true},isSurveySessionCurrent:()=>ticket===generation,onExit:()=>dispose(),
-    createYearEndRepository:async current=>({uid,open:async()=>{if(params.has('late'))await new Promise(r=>setTimeout(r,1500));if(params.has('resident')||params.has('substitute'))throw Object.assign(Error('YEAR_END_INELIGIBLE'),{code:'YEAR_END_INELIGIBLE'});return {sigla,requireGroup,isAdmin,canParticipate};},subscribe:cb=>{const notify=()=>cb({...(isAdmin?{rows:structuredClone(rows),participants:structuredClone(participants)}:{}),own:canParticipate?structuredClone(rows.find(r=>r.uid===uid)||null):null,totals:rows.reduce((totals,r)=>changeYearEndTotals(totals,null,r),emptyYearEndTotals()),fromCache:false});listeners.add(notify);notify();return()=>listeners.delete(notify);},save:async input=>{validateYearEndChoices(input,{requireGroup});await new Promise(r=>setTimeout(r,180));if(params.has('save-error'))throw Object.assign(Error('unavailable'),{code:'unavailable'});if(!current())throw Error('YEAR_END_SESSION_CHANGED');let row=rows.find(r=>r.uid===uid),updated=Boolean(row);if(row)Object.assign(row,input);else{row={uid,sigla,...input,position:rows.length+1,createdAt:Date.now()};rows.push(row);}for(const notify of listeners)notify();return {...row,updated};}})
+    createYearEndRepository:async current=>{
+      const saveChoices=async(targetUid,input)=>{
+        const person=participants.find(p=>p.uid===targetUid);if(!person)throw Object.assign(Error(),{code:'YEAR_END_INELIGIBLE'});
+        validateYearEndChoices(input,person);await new Promise(r=>setTimeout(r,180));
+        if(params.has('save-error'))throw Object.assign(Error('unavailable'),{code:'unavailable'});
+        if(!current())throw Error('YEAR_END_SESSION_CHANGED');
+        let row=rows.find(r=>r.uid===targetUid),updated=Boolean(row);
+        if(row)Object.assign(row,input);else{row={uid:targetUid,sigla:person.sigla,...input,position:rows.length+1,createdAt:Date.now()};rows.push(row);}
+        for(const notify of listeners)notify();return {...row,updated};
+      };
+      return {uid,
+        open:async()=>{if(params.has('late'))await new Promise(r=>setTimeout(r,1500));if(params.has('resident')||params.has('substitute'))throw Object.assign(Error('YEAR_END_INELIGIBLE'),{code:'YEAR_END_INELIGIBLE'});return {sigla,requireGroup,isAdmin,canParticipate};},
+        subscribe:cb=>{const notify=()=>cb({...(isAdmin?{rows:structuredClone(rows),participants:structuredClone(participants)}:{}),own:canParticipate?structuredClone(rows.find(r=>r.uid===uid)||null):null,totals:rows.reduce((totals,r)=>changeYearEndTotals(totals,null,r),emptyYearEndTotals()),fromCache:false});listeners.add(notify);notify();return()=>listeners.delete(notify);},
+        save:input=>saveChoices(uid,input),
+        saveFor:(targetUid,input)=>{if(!isAdmin)throw Object.assign(Error(),{code:'YEAR_END_ADMIN_REQUIRED'});return saveChoices(targetUid,input);}
+      };
+    }
   });
 }
 document.querySelector('#preview-user').addEventListener('change',mount);mount();

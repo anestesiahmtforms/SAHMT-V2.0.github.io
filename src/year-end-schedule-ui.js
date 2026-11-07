@@ -1,6 +1,7 @@
 import './year-end-schedule.css';
 import {YEAR_END_SHIFTS,YEAR_END_GROUPS,sortYearEndRegistrations,yearEndPendingParticipants,yearEndMessage} from './year-end-schedule.js';
 import {yearEndOptionIcon} from './year-end-icons.js';
+import {openYearEndScheduleEditor} from './year-end-schedule-editor.js';
 
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const label=(options,id)=>options.find(o=>o.id===id)?.label||'—';
@@ -12,9 +13,9 @@ const date=value=>{
 const options=(name,items,required=true)=>items.map(o=>`<label class="year-end-option"><input type="radio" name="${name}" value="${o.id}"${required?' required':''}><span class="year-end-option__content"><strong>${yearEndOptionIcon(o.id)}<span class="year-end-option__name">${h(o.label)}</span></strong><span class="year-end-dates">${h(o.dates)}</span>${o.detail?`<small>${h(o.detail)}</small>`:''}</span><span class="year-end-check" aria-hidden="true">✓</span></label>`).join('');
 
 export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,onConfirmed=()=>{},connectAccess=null}={}) {
-  let disposed=false,repository=null,participation=null,stop=()=>{},loadId=0,ready=false,busy=false,dirty=false,own=null,rows=[],participants=[],totals=null;
+  let disposed=false,repository=null,participation=null,stop=()=>{},closeEditor=()=>{},loadId=0,ready=false,busy=false,dirty=false,own=null,rows=[],participants=[],totals=null;
   const live=()=>!disposed&&isCurrent()&&root.isConnected;
-  const form=()=>root.querySelector('form');
+  const form=()=>root.querySelector('[data-year-end-form]');
   root.classList.add('year-end-host');
   const selection=()=>({plantao:form()?.querySelector('[name="plantao"]:checked')?.value,grupo:participation?.requireGroup?form()?.querySelector('[name="grupo"]:checked')?.value:null});
   const notice=(text,error=false)=>{
@@ -37,8 +38,8 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
     root.querySelector('[data-year-end-total]').textContent=rows.length+' '+(rows.length===1?'inscrição':'inscrições')+(ready?' · '+pending.length+' '+(pending.length===1?'pendente':'pendentes'):'');
     root.querySelector('[data-year-end-rows]').innerHTML=entries.length?entries.map(r=>{
       const classes=[r.pending?'year-end-pending':'',r.uid===repository?.uid?'year-end-own':''].filter(Boolean).join(' '),exempt=r.pending?!r.requireGroup:r.grupo===null;
-      return `<tr${classes?` class="${classes}"`:''}><td><span class="year-end-position">${r.pending?'—':h(r.position)+'º'}</span></td><th scope="row">${h(r.sigla||(r.pending?'Sem sigla':'—'))}${r.uid===repository?.uid?'<small class="year-end-you">Você</small>':''}</th><td><span class="year-end-tag year-end-tag--${r.pending?'pending':h(r.plantao)}">${r.pending?'Pendente':h(label(YEAR_END_SHIFTS,r.plantao))}</span></td><td>${exempt?'<span class="year-end-exempt">Dispensado</span>':r.pending?'Pendente':h(label(YEAR_END_GROUPS,r.grupo))}</td><td>${r.pending?'—':h(date(r.createdAt))}</td></tr>`;
-    }).join(''):`<tr><td colspan="5" class="year-end-empty">${ready?'As primeiras escolhas começam aqui. Confirme as suas para entrar na lista.':'Carregando inscrições…'}</td></tr>`;
+      return `<tr${classes?` class="${classes}"`:''}><td><span class="year-end-position">${r.pending?'—':h(r.position)+'º'}</span></td><th scope="row">${h(r.sigla||(r.pending?'Sem sigla':'—'))}${r.uid===repository?.uid?'<small class="year-end-you">Você</small>':''}</th><td><span class="year-end-tag year-end-tag--${r.pending?'pending':h(r.plantao)}">${r.pending?'Pendente':h(label(YEAR_END_SHIFTS,r.plantao))}</span></td><td>${exempt?'<span class="year-end-exempt">Dispensado</span>':r.pending?'Pendente':h(label(YEAR_END_GROUPS,r.grupo))}</td><td>${r.pending?'—':h(date(r.createdAt))}</td><td><button type="button" class="year-end-edit-button" data-year-end-edit="${h(r.uid)}" aria-label="Editar escolhas de ${h(r.sigla||'participante sem sigla')}"${participants.some(person=>person.uid===r.uid)?'':' disabled'}>EDITAR</button></td></tr>`;
+    }).join(''):`<tr><td colspan="6" class="year-end-empty">${ready?'As primeiras escolhas começam aqui. Confirme as suas para entrar na lista.':'Carregando inscrições…'}</td></tr>`;
   };
   const render=()=>{
     root.innerHTML=`<section class="year-end${participation.isAdmin?' year-end--administrator':''}" aria-label="Escolhas para a escala final de ano">
@@ -50,17 +51,19 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
       ${participation.isAdmin?`<div class="year-end-admin" data-year-end-admin role="region" aria-label="Informações da administração" tabindex="0">
       <section class="year-end-counts" aria-labelledby="year-end-counts-title"><span class="year-end-section-label">PARTICIPAÇÃO DA EQUIPE</span><h3 id="year-end-counts-title">Quantidade de escolhas</h3><p>Totais por opção, atualizados a cada confirmação.</p><div class="year-end-count-groups">${[['Plantões',[['Plantão Natal','plantaoNatal'],['Plantão Réveillon','plantaoReveillon'],['Plantão Carnaval','plantaoCarnaval']]],['Grupos de trabalho',[['Grupo Natal','grupoNatal'],['Grupo Réveillon','grupoReveillon']]]].map(([title,items])=>`<article><h4>${h(title)}</h4><dl>${items.map(([text,key])=>`<div><dt>${h(text)}</dt><dd data-year-end-count="${key}">—</dd></div>`).join('')}</dl></article>`).join('')}</div></section>
       <section class="year-end-ranking" aria-labelledby="year-end-ranking-title"><header><div><span class="year-end-section-label">ACESSO DO ADMINISTRADOR · ORDEM DE ESCOLHA</span><h3 id="year-end-ranking-title">Marcações da equipe</h3></div><span class="year-end-total" data-year-end-total>0 inscrições</span></header><p>Siglas em ordem de confirmação. Ao final, quem ainda não escolheu aparece como Pendente.</p>
-      <div class="year-end-table-wrap"><table><caption class="year-end-sr">Siglas da equipe em ordem de confirmação, seguidas das pendentes</caption><thead><tr><th scope="col">Posição</th><th scope="col">Sigla</th><th scope="col">Plantão</th><th scope="col">Grupo de trabalho</th><th scope="col">Confirmado em</th></tr></thead><tbody data-year-end-rows></tbody></table></div></section>
+      <p class="year-end-feedback" data-year-end-admin-feedback role="status" aria-live="polite"></p><div class="year-end-table-wrap"><table><caption class="year-end-sr">Siglas da equipe em ordem de confirmação, seguidas das pendentes</caption><thead><tr><th scope="col">Posição</th><th scope="col">Sigla</th><th scope="col">Plantão</th><th scope="col">Grupo de trabalho</th><th scope="col">Confirmado em</th><th scope="col">Controle</th></tr></thead><tbody data-year-end-rows></tbody></table></div></section>
       </div>`:''}
     </section>`;
     hydrate();paintForm();paintRows();
   };
   const failed=error=>{
+    closeEditor();
     ready=false;rows=[];participants=[];totals=null;own=null;dirty=false;participation=null;
     const excluded=error.code==='YEAR_END_INELIGIBLE';
     root.innerHTML=`<section class="year-end year-end-denied" role="alert"><h3>${excluded?'Acesso indisponível':'Não foi possível abrir a escala'}</h3><p>${h(yearEndMessage(error))}</p>${error.code==='YEAR_END_AUTH_REQUIRED'&&typeof connectAccess==='function'?'<button type="button" class="primary-button" data-year-end-connect>CONECTAR ESCALA COM GOOGLE</button>':''}${excluded?'':'<button type="button" class="secondary-button" data-year-end-retry>TENTAR NOVAMENTE</button>'}</section>`;
   };
   async function connect() {
+    closeEditor();
     const ticket=++loadId;stop();stop=()=>{};ready=false;busy=false;dirty=false;rows=[];participants=[];totals=null;own=null;participation=null;
     root.innerHTML='<p role="status">Conferindo sua participação na equipe…</p>';
     const current=()=>live()&&ticket===loadId;
@@ -89,6 +92,15 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
     finally{busy=false;if(live())paintForm();}
   };
   const click=event=>{
+    const edit=event.target.closest('[data-year-end-edit]');
+    if(edit&&participation?.isAdmin&&ready&&!busy){
+      const person=participants.find(p=>p.uid===edit.dataset.yearEndEdit);if(!person)return;
+      closeEditor();closeEditor=openYearEndScheduleEditor(root,{person,record:rows.find(r=>r.uid===person.uid),renderOptions:options,isCurrent:live,save:input=>repository.saveFor(person.uid,input),onSaved:result=>{
+        if(!live())return;
+        root.querySelector('[data-year-end-admin-feedback]').textContent=`Escolhas de ${person.sigla||'participante sem sigla'} ${result.updated?'atualizadas':'confirmadas'}.`;
+        if(result.uid===repository.uid){own=result;dirty=false;hydrate();paintForm();onConfirmed(result,participation);}
+      }});return;
+    }
     if(event.target.closest('[data-year-end-retry]'))void connect();
     const button=event.target.closest('[data-year-end-connect]');
     if(button&&typeof connectAccess==='function'){
@@ -97,5 +109,5 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
     }
   };
   root.addEventListener('change',change);root.addEventListener('submit',submit);root.addEventListener('click',click);void connect();
-  return ()=>{disposed=true;loadId++;stop();rows=[];participants=[];own=null;root.removeEventListener('change',change);root.removeEventListener('submit',submit);root.removeEventListener('click',click);root.replaceChildren();root.classList.remove('year-end-host');};
+  return ()=>{disposed=true;loadId++;stop();closeEditor();rows=[];participants=[];own=null;root.removeEventListener('change',change);root.removeEventListener('submit',submit);root.removeEventListener('click',click);root.replaceChildren();root.classList.remove('year-end-host');};
 }
