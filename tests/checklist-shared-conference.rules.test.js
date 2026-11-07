@@ -16,7 +16,8 @@ const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');
 function client(uid){
   const db=env.authenticatedContext(uid,{email_verified:true}).firestore();
   const body=source.slice(source.indexOf('function checklistAcknowledgementRequestId('),source.indexOf('function mergeWatchedRanges(')).replaceAll('export ','');
-  const submit=new Function('db','doc','runTransaction','serverTimestamp','assertOnlineOperation',body+'\nreturn createChecklistSignatureRequest;')(db,doc,runTransaction,serverTimestamp,()=>{});
+  const moduleDatabase=async(station,actor)=>{assert.equal(station,'FG');assert.equal(actor,uid);return db;};
+  const submit=new Function('db','doc','runTransaction','serverTimestamp','assertOnlineOperation','operationalDatabase',body+'\nreturn createChecklistSignatureRequest;')(db,doc,runTransaction,serverTimestamp,()=>{},moduleDatabase);
   return {db,submit};
 }
 test('simultaneous preceptors share one immutable daily acknowledgement visible to every authorized viewer',async()=>{
