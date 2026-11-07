@@ -1393,9 +1393,7 @@ async function loadModule(route) {
     if(!communicationFeatureEnabled||!current()){navigate('home');return;}
     const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();
     if(!current())return;
-    const adminMode=['compose','forward'].includes(location.hash.split('/')[2]);
-    if(adminMode&&!communicationAdminSession(session)){navigate('home');return;}
-    cleanupCurrentModule=mountCommunication(content,{client:createCommunicationClient({isCurrent:current}),adminMode,appSession:session,isCurrent:current,onBack:()=>navigate(adminMode?'management-hub':'home')});
+    cleanupCurrentModule=mountCommunication(content,{client:createCommunicationClient({isCurrent:current}),appSession:session,isCurrent:current,onBack:()=>navigate('home')});
     return;
   }
   if(route==='year-end-schedule'){

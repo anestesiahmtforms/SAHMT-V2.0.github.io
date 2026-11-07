@@ -1,24 +1,24 @@
 <!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Central FF — teste sintético local</title><style>body{margin:0;background:#eef3f6;font:16px system-ui}button,input,select,textarea{font:inherit}</style><main id="root"></main><script type="module">
 import {mountCommunication} from '../../src/communication-ui.js';
 import {mountManagementHub} from '../../src/management-hub.js';
-import {BUILTIN_GROUPS} from '../../communication/domain.js';
-const params=new URLSearchParams(location.search),admin=!params.has('common'),records=[],groups=[];let connected=!params.has('needs-google');window.calls=[];
+import '../../src/styles.css';
+const params=new URLSearchParams(location.search),admin=!params.has('common'),records=[];let connected=!params.has('needs-google');window.calls=[];
 const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=document.createElement('button');b.textContent='Confirmar Google (teste)';b.onclick=async()=>{connected=true;await onConnected();};host.append(b);return()=>b.remove();},enable:async permission=>{await permission;window.calls.push({action:'REGISTER_DEVICE'});},disable:async()=>{window.calls.push({action:'DISABLE_DEVICE'});},request:async(action,input={})=>{
  window.calls.push({action,input});
  if(action==='BOOTSTRAP'){if(!connected)throw Object.assign(Error('session'),{code:'COMM_SESSION_INVALID'});return {isAdmin:admin};}
- if(action==='DIRECTORY')return {items:[{uid:'fa-person',email:'synthetic@example.test',displayName:'Pessoa Sintética'}],cursor:null};
- if(action==='GROUPS')return {items:[...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})),...groups],cursor:null};
- if(action==='AREAS')return {items:[{id:'quality',name:'Qualidade',active:true}],cursor:null};
- if(action==='MESSAGES'||action==='INBOX')return {items:records,cursor:null};
- if(action==='SAVE_MESSAGE'){const m={...input.message,id:'one',version:1,...(input.source?{source:input.source}:{})};records.splice(0,records.length,m);return {message:m,dispatch:{status:'queueing'},pushQueued:true};}
+ if(action==='DIRECTORY')return input.cursor ?
+   {items:[{uid:'ff-resident',displayName:'Pessoa Residente',institutionalGroup:'resident'},{uid:'ff-substitute',displayName:'Pessoa Substituta',institutionalGroup:'substitute'}],cursor:null} :
+   {items:[{uid:'ff-person',displayName:'Pessoa da Equipe',institutionalGroup:'team'}],cursor:'ff-person'};
+ if(action==='INBOX')return {items:records,cursor:null};
+ if(action==='CREATE_EVENT'){
+   await new Promise(resolve=>setTimeout(resolve,80));
+   const m={id:input.id,title:input.title,message:input.description};records.splice(0,records.length,m);
+   return {message:m,dispatch:{status:'queueing'},pushQueued:true};
+ }
  if(action==='MESSAGE')return {message:records[0]};
- if(action==='SAVE_GROUP'){groups.push({...input,id:'group-one',version:1});return {saved:true};}
- if(action==='PREPARE')return {dispatch:{id:'one',title:records[0].title,category:records[0].category,status:'ready',batches:0,processed:0,accepted:0,failed:0,skipped:0,unknown:0,author:{email:'synthetic@example.test'}}};
- if(action==='SEND_BATCH')return {dispatch:{id:'one',title:records[0].title,status:'completed',batches:1,processed:1,accepted:1,failed:0,skipped:0,unknown:0,author:{email:'synthetic@example.test'}}};
- if(action==='HISTORY'||action==='AUDIT')return {items:[],cursor:null};
  throw Error('Unexpected synthetic operation '+action);
 }};
 const root=document.querySelector('#root');
-const mount=host=>mountCommunication(host,{client,adminMode:admin,onBack:()=>{host.textContent='Voltou para Governança';}});
+const mount=host=>mountCommunication(host,{client,adminMode:admin,onBack:()=>{if(params.has('hub'))host.closest('dialog').querySelector('[data-hub-back]').click();else host.textContent='Voltou para Governança';}});
 if(params.has('hub'))mountManagementHub(root,{communicationAllowed:admin,access:{groups:true,performance:true,records:true,results:true,surveys:true},isSurveySessionCurrent:()=>true,openCommunication:async host=>mount(host),onExit(){},onNavigate(){}});else mount(root);
 </script></html>

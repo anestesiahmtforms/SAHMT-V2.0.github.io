@@ -48,15 +48,25 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   return matches(m,localUid,p);
  }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
- async function saveMessage(input,a){
+ async function saveMessage(input,a,{event=false}={}){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
-  if(m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
+  if(!event&&m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
   if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await store.get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
   if(input.source)throw fail('COMM_SOURCE_UNSUPPORTED');const source=null;
   const saved=await store.transaction(async tx=>{
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
+   if(event&&old){
+    const sameNotice=old.status==='published'&&old.createdBy?.sourceUid===a.sourceUid&&
+     ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field]);
+    if(!sameNotice)throw fail('COMM_CONFLICT',409);
+    return {message:old,dispatch,alreadySent:true};
+   }
    if(dispatch)throw fail('COMM_MESSAGE_LOCKED',409);
    if((old?.version||0)!==input.version)throw fail('COMM_CONFLICT',409);
+   if(event&&m.audienceType==='USER'){
+    const recipient=await tx.get('users',m.audienceValue);
+    if(!activeProfile(recipient)||isSystemOwnerEmail(recipient.email)||!BUILTIN_GROUPS.some(group=>group.id===`institutional-${recipient.institutionalGroup}`))throw fail('COMM_INVALID_AUDIENCE');
+   }
    const firstPublish=m.status==='published'&&!old?.firstPublishedAt;
    const period=communicationUsagePeriod(now()),daily=firstPublish?await tx.get('communicationPublicationBudgets',period.day):null;
    const published=firstPublish?(Number.isSafeInteger(daily?.published)?daily.published:await tx.countPublished(period.startsAt,period.resetsAt)):null;
@@ -73,8 +83,21 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(firstPublish)tx.set('communicationPublicationBudgets',period.day,{published:published+1,at:now()});
    audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,record,automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
   });
+  if(saved.alreadySent)return saved;
   if(saved.dispatch){try{if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});return {...saved,pushQueued:true};}catch{return {...saved,pushQueued:false};}}
   return {...saved,pushQueued:false};
+ }
+ function createEvent(input,a){
+  const key=id(input.id),audience=input.audience;
+  if(!key.startsWith('event-'))throw fail('COMM_INVALID_ID');
+  if(!['ALL','USER'].includes(audience)&&!BUILTIN_GROUPS.some(group=>group.id===audience))throw fail('COMM_INVALID_AUDIENCE');
+  const publishAt=now();
+  return saveMessage({id:key,version:0,message:{
+   title:input.title,message:input.description,category:'COMUNICADO GERAL',priority:'NORMAL',
+   audienceType:['ALL','USER'].includes(audience)?audience:'GROUP',
+   audienceValue:audience==='ALL'?'':audience==='USER'?id(input.recipient):audience,
+   route:'home',status:'published',publishAt,expiresAt:publishAt+7*86400000,
+  }},a,{event:true});
  }
  async function urgentNotice(input,a){
   const fixed=urgentNoticeInput({noticeId:input.id||`urgent-${uuid()}`,title:input.message?.title,message:input.message?.message},now());
@@ -289,6 +312,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {message:m};
   }
   if(action==='SCHEDULE_RELEASE_NOTICE')return releaseNotice(input,a,ownProfile);
+  if(action==='CREATE_EVENT')return createEvent(input,a);
   if(action==='SAVE_MESSAGE')return operationalNoticeIdentity(a)?urgentNotice(input,a):saveMessage(input,a);
   if(action==='IMPORT_SOURCE')throw fail('COMM_SOURCE_UNSUPPORTED');
   if(['MESSAGES','GROUPS','HISTORY','AUDIT'].includes(action)){
@@ -297,7 +321,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(action==='GROUPS'&&!input.cursor)result.items.unshift(...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})));return result;
   }
   if(action==='DIRECTORY'){
-   const rows=await store.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access']}),page=rows.slice(0,PAGE_SIZE);
+   const rows=await store.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access','institutionalGroup']}),page=rows.slice(0,PAGE_SIZE);
    return {items:page.filter(user=>!isSystemOwnerEmail(user.email)),cursor:rows.length>PAGE_SIZE?page.at(-1)?.id||null:null};
   }
   if(action==='PUSH_DEVICE_DIRECTORY')return pushDeviceDirectory(input);

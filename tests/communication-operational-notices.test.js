@@ -30,6 +30,27 @@ function fixture({scheduleSource}={}){
 }
 const draft=()=>urgentNoticeInput({noticeId:'urgent-test',title:'Aviso de teste',message:'Descrição de teste'},NOW);
 
+test('a criação de evento respeita os públicos locais e o mesmo envio só publica uma vez',async()=>{
+ const f=fixture();
+ for(const [actor,group] of [[person,'team'],[other,'resident']]){
+  Object.assign(f.store.data.get('users/'+actor.sourceUid),{institutionalGroup:group,displayName:actor.email});
+  await f.call('REGISTER_DEVICE',{token:actor.uid+'x'.repeat(70)},actor);
+ }
+ const input={id:'event-test',title:'Evento de teste',description:'Veja https://example.test/video',audience:'institutional-team'};
+ const [first,again]=await Promise.all([f.call('CREATE_EVENT',input),f.call('CREATE_EVENT',input)]);
+ assert.equal(first.message.id,input.id);assert.equal(again.alreadySent,true);assert.equal(f.queued.length,1);
+ assert.equal((await f.call('INBOX',{},person)).items.length,1);
+ assert.equal((await f.call('INBOX',{},other)).items.length,0);
+ await f.deliver();assert.equal(f.sent.length,1);assert.match(f.sent[0].token,/^ff-person/);
+ await assert.rejects(f.call('CREATE_EVENT',{...input,audience:'ALL'}),{code:'COMM_CONFLICT'});
+ await assert.rejects(f.call('CREATE_EVENT',{...input,id:'event-area',audience:'AREA'}),{code:'COMM_INVALID_AUDIENCE'});
+ await assert.rejects(f.call('CREATE_EVENT',{...input,id:'event-denied'},other),{code:'COMM_FORBIDDEN'});
+ const direct=await f.call('CREATE_EVENT',{...input,id:'event-individual',audience:'USER',recipient:other.sourceUid});
+ assert.equal(direct.message.audienceValue,other.sourceUid);
+ const directory=await f.call('DIRECTORY');
+ assert.equal(directory.items.find(user=>user.uid===person.sourceUid).institutionalGroup,'team');
+});
+
 test('FJ cutover validates the current FJ release and retains the FA operator identity and FF deduplication',async()=>{
  const fj=memory();fj.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-500}}});
  const f=fixture({scheduleSource:fj});
