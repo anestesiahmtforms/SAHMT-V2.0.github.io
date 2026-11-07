@@ -23,7 +23,10 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
    if(cursor&&(!cursorMatch||!Number.isSafeInteger(Number(cursorMatch[1]))))throw fail('COMM_INVALID_INPUT');
    const query={
     from:[{collectionId:c}],limit,
-    where:{fieldFilter:{field:{fieldPath:'publishAt'},op:'LESS_THAN_OR_EQUAL',value:{integerValue:String(publishedBefore)}}},
+    where:{compositeFilter:{op:'AND',filters:[
+     {fieldFilter:{field:{fieldPath:'status'},op:'EQUAL',value:{stringValue:'published'}}},
+     {fieldFilter:{field:{fieldPath:'publishAt'},op:'LESS_THAN_OR_EQUAL',value:{integerValue:String(publishedBefore)}}},
+    ]}},
     orderBy:[{field:{fieldPath:'publishAt'},direction:'DESCENDING'},{field:{fieldPath:'__name__'},direction:'DESCENDING'}],
     ...(cursorMatch?{startAt:{values:[{integerValue:cursorMatch[1]},{referenceValue:name+'/'+c+'/'+id(cursorMatch[2])}],before:false}}:{}),
    };

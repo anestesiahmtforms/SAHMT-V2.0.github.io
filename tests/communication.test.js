@@ -129,6 +129,16 @@ test('source stores refuse writes and FF storage paths are fixed',async()=>{
  const urls=[],ff=createStore({getToken:async()=>'',fetchImpl:async url=>{urls.push(url);return Response.json({fields:{}});}});await ff.get('communicationMessages','one');assert.ok(urls[0].includes('/sahmt-comunicacao-ff/databases/comunicacao/'));
  await ff.get('communicationMessages','one',undefined,['title','message']);assert.deepEqual(new URL(urls[1]).searchParams.getAll('mask.fieldPaths'),['title','message']);
 });
+test('recent inbox queries only published notices in descending publication order',async()=>{
+ let query;
+ const ff=createStore({getToken:async()=>'',fetchImpl:async(_url,{body})=>{query=JSON.parse(body).structuredQuery;return Response.json([]);}});
+ await ff.page('communicationMessages',{cursor:`${NOW-1000}|old-notice`,publishedBefore:NOW,limit:5});
+ assert.deepEqual(query.where.compositeFilter.filters.map(({fieldFilter:{field,op}})=>[field.fieldPath,op]),[['status','EQUAL'],['publishAt','LESS_THAN_OR_EQUAL']]);
+ assert.equal(query.where.compositeFilter.filters[0].fieldFilter.value.stringValue,'published');
+ assert.equal(query.orderBy[0].direction,'DESCENDING');
+ assert.equal(query.startAt.values[0].integerValue,String(NOW-1000));
+ assert.match(query.startAt.values[1].referenceValue,/\/communicationMessages\/old-notice$/);
+});
 test('service worker shows the requested preview and opens only allowlisted same-origin module',async()=>{
  const events={},shown=[],opened=[];const self={location:{origin:'https://anestesiahmtforms.github.io'},addEventListener:(n,f)=>events[n]=f,registration:{showNotification:async(...a)=>shown.push(a)},clients:{matchAll:async()=>[],openWindow:async u=>opened.push(u)}};
  vm.runInNewContext(readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8'),{self,URL});let pending;

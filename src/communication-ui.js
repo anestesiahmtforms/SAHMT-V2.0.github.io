@@ -222,7 +222,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       status(result.pushQueued ? 'Evento enviado. Push na fila.' : 'Evento publicado na Home. Push sem confirmação.');
     } catch (error) {
       if (!active() || !form.isConnected) return;
-      const rejected = [400, 403, 413, 429].includes(error.status);
+      const rejected = !needsGoogle(error) && [400, 403, 413, 429].includes(error.status);
       if (rejected && !checkingPrevious) {
         clearPendingId();
         state.pending = undefined;
