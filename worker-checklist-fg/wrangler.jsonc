@@ -1,0 +1,30 @@
+{
+  "name": "sahmt-fg-checklist",
+  "main": "worker.js",
+  "account_id": "32d626bfc004f82f58be357bef26c66c",
+  "compatibility_date": "2026-11-07",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "triggers": {
+    "crons": []
+  },
+  "vars": {
+    "MODULE_STATION": "FG",
+    "MODULE_PROJECT_ID": "sahmt-checklist-fg",
+    "MODULE_CUTOVER_ACTIVE": "false",
+    "FA_PUBLIC_API_KEY": "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA",
+    "ALLOWED_ORIGINS": "https://anestesiahmtforms.github.io"
+  },
+  "placement": {
+    "region": "gcp:southamerica-east1"
+  }
+}

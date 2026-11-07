@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function moduleSession() {
+      return request.auth != null && request.auth.token.aud == 'sahmt-checklist-fg' &&
+        request.auth.token.get('sourceProjectId', '') == 'sahmt-17a16' &&
+        request.auth.token.get('moduleStation', '') == 'FG' &&
+        request.auth.token.get('moduleLeaseExpiresAt', 0) is int &&
+        request.time.toMillis() < request.auth.token.get('moduleLeaseExpiresAt', 0) * 1000 &&
+        request.auth.token.firebase.sign_in_provider == 'custom';
+    }
+    function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profilePath()); }
+    function profile() { return get(profilePath()).data; }
+    function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
+    function isAdmin() {
+      return activeUser() && ((profile().role == 'administrador_app') ||
+        (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
+    }
+    function can(permission) {
+      let p = profile();
+      let permissions = p.get('permissions', {});
+      return activeUser() && (p.get('role', '') == 'administrador_app' ||
+        permissions.get('admin', false) == true || permissions.get(permission, false) == true);
+    }
+    function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
+    function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    function checklistAccess() {
+      return can('checklistRead') || can('checklistWrite') || can('checklistSign') || can('checklistManage');
+    }
+    function validIsoDay(value) {
+      return value is string && (
+        value.matches('^\\d{4}-(01|03|05|07|08|10|12)-(0[1-9]|[12][0-9]|3[01])$') ||
+        value.matches('^\\d{4}-(04|06|09|11)-(0[1-9]|[12][0-9]|30)$') ||
+        value.matches('^\\d{4}-02-(0[1-9]|1[0-9]|2[0-9])$'));
+    }
+    function paddedDayPart(value) {
+      return value < 10 ? '0' + string(value) : string(value);
+    }
+    function serverSaoPauloDay() {
+      let localTime = request.time - duration.value(3, 'h');
+      return string(localTime.year()) + '-' + paddedDayPart(localTime.month()) + '-' + paddedDayPart(localTime.day());
+    }
+    match /users/{uid} {
+      function modulePermissionUpdate() {
+        let keys = ['checklistRead','checklistWrite','checklistSign','checklistManage'];
+        let permissions = request.resource.data.permissions;
+        return request.auth.uid != uid && isAdmin() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['permissions','updatedAt']) &&
+          request.resource.data.updatedAt == request.time && permissions is map &&
+          permissions.diff(resource.data.permissions).affectedKeys().hasOnly(keys) && permissions.keys().hasAll(keys) &&
+          permissions.checklistRead is bool && permissions.checklistWrite is bool && permissions.checklistSign is bool && permissions.checklistManage is bool;
+      }
+      allow read: if moduleSession() && activeUser() && (request.auth.uid == uid || isAdmin() || can('usersManage'));
+      allow update: if moduleSession() && modulePermissionUpdate();
+      allow create, delete: if false;
+    }
+    match /stations/{stationId} {
+      function validStationMaintenanceDate(value) {
+        return value is string && (value == '' ||
+          (value.matches('^\\d{4}-(0[1-9]|1[0-2])$') && !value.matches('^0000-.*$')) ||
+          (validIsoDay(value) && !value.matches('^0000-.*$') &&
+          (!value.matches('^\\d{4}-02-29$') ||
+           (int(value.split('-')[0]) % 4 == 0 &&
+            (int(value.split('-')[0]) % 100 != 0 || int(value.split('-')[0]) % 400 == 0)))));
+      }
+      function validStationMaintenance(value) {
+        return (value is string && value.size() <= 1000) ||
+          (value is map &&
+           value.keys().hasAll(['preventiveAnnual', 'electricalAnnual', 'calibrationSemiannual']) &&
+           value.keys().hasOnly(['preventiveAnnual', 'electricalAnnual', 'calibrationSemiannual']) &&
+           validStationMaintenanceDate(value.preventiveAnnual) &&
+           validStationMaintenanceDate(value.electricalAnnual) &&
+           validStationMaintenanceDate(value.calibrationSemiannual));
+      }
+      function stationTitleEditor() {
+        return request.auth.token.keys().hasAll(['email', 'email_verified']) &&
+          request.auth.token.email is string && request.auth.token.email_verified == true &&
+          request.auth.token.email.lower() in ['wx2064@gmail.com', 'marcio.henrique82@gmail.com',
+            'anestesiahmtforms@gmail.com', 'anestesiahmtforms2@gmail.com', 'anestesiahmtforms3@gmail.com',
+            'anestesiahmtforms4@gmail.com', 'anestesiahmtforms5@gmail.com'];
+      }
+      function validStation(data, stationId) {
+        return data.keys().hasAll(['id', 'name', 'qrCode', 'order', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['id', 'name', 'functionLabel', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'maintenanceCalibrationPeriod', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt', 'version']) &&
+          data.id == stationId && data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+          (!data.keys().hasAny(['functionLabel']) || (data.functionLabel is string && data.functionLabel.size() > 0 && data.functionLabel.size() <= 120)) &&
+          data.qrCode is string && data.qrCode.size() > 0 && data.qrCode.size() <= 300 &&
+          (!data.keys().hasAny(['start']) || validIsoDay(data.start)) &&
+          (!data.keys().hasAny(['end']) || validIsoDay(data.end)) &&
+          (!(data.keys().hasAny(['start']) && data.keys().hasAny(['end'])) || data.start <= data.end) &&
+          (!data.keys().hasAny(['maintenance']) || validStationMaintenance(data.maintenance)) &&
+          (!data.keys().hasAny(['maintenanceCalibrationPeriod']) ||
+           (data.maintenanceCalibrationPeriod is string && data.maintenanceCalibrationPeriod in ['annual', 'semiannual'])) &&
+          data.order is int && data.order >= 0 && data.order <= 9999 && data.active is bool &&
+          data.createdByUid is string && data.createdByUid.size() > 0 && data.createdByUid.size() <= 128 && data.createdAt is timestamp &&
+          data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;
+      }
+
+      allow read: if moduleSession() && (checklistAccess());
+      allow create: if moduleSession() && (can('checklistManage') && validStation(request.resource.data, stationId) &&
+        (!request.resource.data.keys().hasAny(['functionLabel']) || stationTitleEditor()) &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1);
+      allow update: if moduleSession() && (can('checklistManage') && validStation(request.resource.data, stationId) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['functionLabel']) || stationTitleEditor()) &&
+        request.resource.data.createdByUid == resource.data.createdByUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
+        request.resource.data.version == resource.data.version + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'functionLabel', 'qrCode', 'start', 'end', 'order', 'active', 'maintenance', 'maintenanceCalibrationPeriod', 'updatedByUid', 'updatedAt', 'version']));
+      allow delete: if moduleSession() && (false);
+    }
+    match /checklists/{checklistId} {
+      function stationValidForChecklist(stationId, day) {
+        let path = /databases/$(database)/documents/stations/$(stationId);
+        let station = get(path).data;
+        return stationId is string && stationId.matches('^[^/]{1,128}$') && validIsoDay(day) && exists(path) &&
+          station.active == true &&
+          (!station.keys().hasAny(['start']) || (validIsoDay(station.start) && station.start <= day)) &&
+          (!station.keys().hasAny(['end']) || (validIsoDay(station.end) && station.end >= day)) &&
+          (!(station.keys().hasAny(['start']) && station.keys().hasAny(['end'])) || station.start <= station.end);
+      }
+      function validChecklistRecord(data, checklistId) {
+        return data.keys().hasAll(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+          data.keys().hasOnly(['stationId', 'date', 'condition', 'status', 'occurrence', 'responsibleUid', 'responsibleName', 'responsibleEmail', 'active', 'id', 'clientMutationId', 'createdByUid', 'createdByName', 'updatedByUid', 'createdAt', 'updatedAt', 'version']) &&
+          data.id == checklistId && data.clientMutationId == checklistId && data.active == true && data.version == 1 &&
+          (!data.keys().hasAny(['createdByName']) || (data.createdByName is string && data.createdByName.size() > 0 && data.createdByName.size() <= 120 && data.createdByName == profile().displayName)) &&
+          data.createdByUid == request.auth.uid && data.updatedByUid == request.auth.uid &&
+          data.createdAt == request.time && data.updatedAt == request.time &&
+          data.stationId is string && stationValidForChecklist(data.stationId, data.date) &&
+          validIsoDay(data.date) && data.date == serverSaoPauloDay() && data.condition in ['SIM', 'NAO'] &&
+          ((data.condition == 'SIM' && data.status == 'COMPLETED' && data.occurrence == '') ||
+           (data.condition == 'NAO' && data.status == 'MAINTENANCE' && data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 500)) &&
+          data.responsibleUid == null && data.responsibleName == null && data.responsibleEmail == null;
+      }
+
+      allow read: if moduleSession() && (checklistAccess());
+      allow create: if moduleSession() && (can('checklistWrite') && validChecklistRecord(request.resource.data, checklistId));
+      allow update: if moduleSession() && (false);
+      allow delete: if moduleSession() && (false);
+    }
+    match /checklistSignatures/{signatureId} {
+      allow read: if moduleSession() && (can('checklistRead'));
+      allow write: if moduleSession() && (false);
+    }
+    match /checklistSignatureRequests/{requestId} {
+      function validChecklistSignatureRequest(data, requestId) {
+        let acknowledgement = data.get('recordKind', '') == 'ACKNOWLEDGEMENT';
+        let common = data.keys().hasAll(['id', 'day', 'revision', 'signerUid', 'declaration', 'justification', 'status']) &&
+          data.id == requestId && data.signerUid == request.auth.uid && data.declaration == true &&
+          validIsoDay(data.day) && data.day == serverSaoPauloDay() &&
+          data.revision is string && data.revision.matches('^[a-f0-9]{64}$') &&
+          data.justification is string && data.justification.size() >= 8 && data.justification.size() <= 500 &&
+          request.auth.token.email_verified == true && can('checklistSign');
+        let acknowledgementFields = data.keys().hasAll(['recordKind', 'signerName', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
+          data.keys().hasOnly(['id', 'day', 'revision', 'signerUid', 'signerName', 'signerSigla', 'declaration', 'justification', 'status', 'recordKind', 'acknowledgedAt', 'rotationSigla', 'rotationPosition']) &&
+          requestId == data.day && data.signerSigla is string && data.signerSigla.size() <= 20 && data.signerSigla == profile().get('sigla', '') &&
+          data.signerName is string && data.signerName.size() > 0 && data.signerName.size() <= 120 && data.signerName == profile().displayName &&
+          data.recordKind == 'ACKNOWLEDGEMENT' && data.justification == 'Declaro que tomei ciência das informações deste relatório.' &&
+          data.status == 'PENDING_VALIDATION' && data.acknowledgedAt == request.time &&
+          ((data.rotationSigla == null && data.rotationPosition == null) ||
+            (data.rotationSigla is string && data.rotationSigla.matches('^(?:[A-Z]{2}|L2)$') &&
+             data.rotationPosition is int && data.rotationPosition >= 1 && data.rotationPosition <= 30));
+        return common && acknowledgement && acknowledgementFields;
+      }
+
+      allow get: if moduleSession() && (signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
+        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage')));
+      allow list: if moduleSession() && (can('checklistManage'));
+      allow create: if moduleSession() && (validChecklistSignatureRequest(request.resource.data, requestId));
+      allow update, delete: if moduleSession() && (false);
+    }
+    match /checklistResponsibilities/{day} { allow read: if moduleSession() && (checklistAccess()); allow write: if moduleSession() && (false); }
+
+    match /fgPerformanceReceipts/{day} { allow read: if moduleSession() && checklistAccess(); allow write: if false; }
+    match /fgPerformanceLedger/{id} { allow read: if moduleSession() && checklistAccess() && (resource.data.uid == request.auth.uid || isAdmin()); allow write: if false; }
+    match /fgPerformanceSummaries/{uid} { allow read: if moduleSession() && checklistAccess(); allow write: if false; }
+    match /fgPerformanceRuntime/{id} { allow read: if moduleSession() && checklistAccess() && id == 'state'; allow write: if false; }
+    match /userCategories/{id} { allow read: if moduleSession() && activeUser() && (resource.data.uid == request.auth.uid || isAdmin()); allow write: if false; }
+    match /userCategoryDefinitions/{id} { allow read: if moduleSession() && checklistAccess(); allow write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

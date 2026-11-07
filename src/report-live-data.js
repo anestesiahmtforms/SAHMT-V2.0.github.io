@@ -95,7 +95,7 @@ export async function watchEventRecords({from, to, uid, sigla = '', isAdmin = fa
 /** Includes inactive stations so saved responses retain their catalog and maintenance context. */
 export async function watchChecklistStations(onNext, onError) {
   if (typeof onNext !== 'function') throw new Error('O cadastro de arsenais não está disponível.');
-  const {db, sdk} = await realtimeFirestore();
+  const {db, sdk} = await realtimeFirestore('FG');
   const scopedQuery = sdk.query(sdk.collection(db, 'stations'), sdk.orderBy('order', 'asc'), sdk.limit(201));
   return subscribeReport(sdk, scopedQuery, onNext, onError, snapshot => ({
     records: snapshot.docs.slice(0, 200).map(doc => ({...doc.data(), id: doc.id, hasPendingWrites: doc.metadata?.hasPendingWrites === true})),

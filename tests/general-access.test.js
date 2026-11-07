@@ -57,7 +57,7 @@ function profileInput(overrides = {}) {
   };
 }
 
-function harness({current = null, request = null, readError, commitError, writeError} = {}) {
+function harness({current = null, request = null, readError, commitError, writeError, fgEnabled = false} = {}) {
   const db = {};
   const reads = [];
   const writes = [];
@@ -66,6 +66,7 @@ function harness({current = null, request = null, readError, commitError, writeE
   let commitCount = 0;
   let timestampCount = 0;
   const context = vm.createContext({assertOnlineOperation(){},
+    operationalModuleEnabled: station => station === 'FG' && fgEnabled,
     db, withGeneralReadPermissions, FIRST_LOGIN_COHORTS,
     doc: (actualDb, collection, id) => {
       assert.equal(actualDb, db);
@@ -99,6 +100,15 @@ function harness({current = null, request = null, readError, commitError, writeE
   vm.runInContext(saveSource, context);
   return {save: context.saveUserProfile, reads, writes, queuedBatch, batchCount: () => batchCount, commitCount: () => commitCount};
 }
+
+test('FA administration preserves legacy Checklist grants after FG takes ownership',async()=>{
+  const current={...profileInput(),permissions:{checklistRead:false,checklistWrite:true,checklistSign:false,checklistManage:true},createdAt:'ORIGINAL'};
+  const f=harness({current,fgEnabled:true});
+  await f.save(profileInput({permissions:{checklistRead:true,checklistWrite:false,checklistSign:true,checklistManage:false,eventsWrite:true}}),'admin-fixture');
+  const permissions=f.writes[0].record.permissions;
+  for(const key of ['checklistRead','checklistWrite','checklistSign','checklistManage'])assert.equal(permissions[key],current.permissions[key]);
+  assert.equal(permissions.eventsWrite,true);
+});
 
 test('as duas permissões gerais são explícitas e a lista não pode ser ampliada por mutação', () => {
   assert.deepEqual(GENERAL_READ_PERMISSIONS, ['trainingsRead', 'notificationsRead']);

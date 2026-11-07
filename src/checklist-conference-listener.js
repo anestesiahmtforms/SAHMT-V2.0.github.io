@@ -58,5 +58,7 @@ export function createChecklistConferenceListener(options,onNext,onError,{sdk,db
 
 export async function watchChecklistConference(options,onNext,onError) {
   const [sdk,{db}]=await Promise.all([import('firebase/firestore'),import('./firebase.js')]);
-  return createChecklistConferenceListener(options,onNext,onError,{sdk,db});
+  const modules=await import('./operational-module-firebase.js');
+  const targetDb=modules.operationalModuleEnabled('FG')?await modules.getOperationalModuleDatabase('FG',options.uid,{realtime:true}):db;
+  return createChecklistConferenceListener(options,onNext,onError,{sdk,db:targetDb});
 }

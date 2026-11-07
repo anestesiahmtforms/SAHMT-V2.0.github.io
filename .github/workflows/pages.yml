@@ -79,6 +79,10 @@ jobs:
           npm run test:fh-rules
       - name: Verify isolated FA performance and event corrections
         run: node --test tests/fa-performance*.test.js
+      - name: Verify isolated FG Checklist, trusted validation and performance
+        run: |
+          npm run test:fg
+          npm run test:fg-rules
       - name: Verify FD manual updates and source read isolation
         run: node --test tests/fd-manual-refresh.test.js tests/fd-fixed-sync.test.js
       - name: Verify targeted updates and device confirmation security
@@ -158,6 +162,7 @@ jobs:
           VITE_FI_EVENTS_ENABLED: 'true'
           VITE_FJ_SCHEDULE_ENABLED: 'true'
           VITE_FH_LABELS_ENABLED: 'true'
+          VITE_FG_CHECKLIST_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENDPOINT: 'https://sahmt-ff-comunicacao.anestesiahmtforms6.workers.dev/v1/communication'
           VITE_COMMUNICATION_FF_VAPID_KEY: 'BCwEvcJsXxHrmqk5Vfi4cPgQrJgyvDbmlaTc_QL_d6i5dcYO5PcngL_FyHLQIsoPyBhGGssnaI-evX6rQgk0nP0'

@@ -15,6 +15,7 @@ function creatorHarness({exists = true, data = {}, error} = {}) {
   const reads = [];
   const context = {
     db: {},
+    operationalDatabase: async station => {assert.equal(station, 'FG'); return context.db;},
     doc: (_db, collection, id) => ({collection, id}),
     getDocFromServer: async (ref) => {
       reads.push(ref);
@@ -57,6 +58,7 @@ function recordsHarness({pending = [], stored = [], offline = false, confirmedId
   const pendingBefore = structuredClone(pending);
   const context = {
     db: {}, Date, navigator: {onLine: !offline},
+    operationalDatabase: async station => {assert.equal(station, 'FG'); assert.equal(offline, false); return context.db;},
     confirmedChecklistOutboxRequestIds: (records, operations, uid) => {
       assert.equal(uid, 'partition-fixture');
       assert.ok(Array.isArray(records));

@@ -1,0 +1,276 @@
+const SAHMT_V2_CHECKLIST_VALIDATION = Object.freeze({maxPendingPerRun: 20, maxStations: 200, maxDailyRecords: 1000});
+const SAHMT_V2_DC_ALIASES = Object.freeze({
+  segunda: ['CR', 'LH'], terca: ['CR', 'LH', 'AD'], quarta: ['CR', 'LH', 'AD'],
+  quinta: ['CR', 'LH'], sexta: ['CR', 'LA']
+});
+const SAHMT_V2_DC_FALLBACK = Object.freeze(['AD', 'CR', 'LA', 'LH']);
+
+function validateChecklistSignatureRequest_(request, options) {
+  options = options || {};
+  if (options.scienceOnly === true) checklistScienceAssertOperator_();
+  else evaluationAssertOperator_(true);
+  return checklistSourceTransaction_(function (transaction) {
+    const current = evaluationGet_('checklistSignatureRequests', request.id, transaction);
+    if (!current || current.status !== 'PENDING_VALIDATION') return {writes: [], result: 'DUPLICATE'};
+    if (options.scienceOnly === true) {
+      const activation = checklistScienceAssertOperator_(transaction);
+      if (current.recordKind !== 'ACKNOWLEDGEMENT' || !(current.acknowledgedAt instanceof Date) || current.acknowledgedAt < activation.activatedAt) {
+        return {writes: [], result: 'OUTSIDE_RELEASE'};
+      }
+    }
+    function reject(status, message) {
+      return {writes: [evaluationWrite_('checklistSignatureRequests', current.id, {status: status, validationMessage: message}, current, ['validatedAt'])], result: status};
+    }
+    const isAcknowledgement = current.recordKind === 'ACKNOWLEDGEMENT';
+    const expectedId = isAcknowledgement ? (current.id === current.day ? current.day : current.day + '_' + current.signerUid) : current.day + '_' + current.revision + '_' + current.signerUid;
+    if (!isValidDateKey(current.day) || !/^\d{4}-\d{2}-\d{2}$/.test(current.day) || current.day > checklistSaoPauloDay_() ||
+        !/^[a-f0-9]{64}$/.test(current.revision || '') || !current.signerUid ||
+        current.id !== expectedId || current.declaration !== true ||
+        String(current.justification || '').trim().length < 8 || String(current.justification || '').length > 500) {
+      return reject('REJECTED', 'Solicitação fora do contrato.');
+    }
+    if (current.recordKind && (!isAcknowledgement || current.justification !== 'Declaro que tomei ciência das informações deste relatório.' ||
+        typeof current.signerName !== 'string' || !current.signerName.trim() || current.signerName.length > 120 || !(current.acknowledgedAt instanceof Date) ||
+        !((current.rotationSigla === null && current.rotationPosition === null) ||
+          (typeof current.rotationSigla === 'string' && /^(?:[A-Z]{2}|L2)$/.test(current.rotationSigla) && Number.isInteger(current.rotationPosition) && current.rotationPosition >= 1 && current.rotationPosition <= 30)))) {
+      return reject('REJECTED', 'Declaração de ciência inválida.');
+    }
+    // The first shared daily acknowledgement owns the conference even while
+    // scoring awaits validation. Legacy private requests cannot replace it.
+    const shared = current.id === current.day ? current : evaluationGet_('checklistSignatureRequests', current.day, transaction);
+    if (shared && shared.id !== current.id) return reject('DUPLICATE', 'A conferência deste dia já foi registrada por ' + shared.signerName + '.');
+    const signer = evaluationGet_('users', current.signerUid, transaction);
+    if (!evaluationActiveProfile_(signer, current.signerUid) || !hasChecklistSignPermission_(signer)) {
+      return reject('REJECTED', 'Perfil do solicitante inativo ou sem permissão atual.');
+    }
+    if (isAcknowledgement && current.signerName !== signer.displayName) return reject('NEEDS_REVIEW', 'O nome do perfil mudou após a ciência; o registro foi preservado sem atribuir pontos.');
+    if (isAcknowledgement && !current.rotationSigla) return reject('NEEDS_REVIEW', 'O rodízio não estava confirmado no momento da ciência; o registro foi preservado sem atribuir pontos.');
+    let snapshot;
+    try { snapshot = readTrustedChecklistSnapshot_(current.day, transaction, {eventRotation: current.recordKind === 'ACKNOWLEDGEMENT'}); }
+    catch (error) {
+      if (error.status) throw error;
+      return reject('NEEDS_REVIEW', String(error && error.message || 'Dados indisponíveis para validar.').slice(0, 300));
+    }
+    const projection = evaluationGet_('checklistResponsibilities', current.day, transaction);
+    const projectionWrite = checklistResponsibilityProjectionWrite_(current.day, snapshot, projection);
+    if (snapshot.fingerprint !== current.revision) {
+      const result = reject(isAcknowledgement ? 'NEEDS_REVIEW' : 'STALE', isAcknowledgement
+        ? 'O relatório mudou após a ciência. O registro foi preservado sem atribuir pontos.'
+        : 'O Checklist mudou depois do pedido. Atualize e solicite nova revisão.');
+      result.writes.push(projectionWrite); return result;
+    }
+    if (isAcknowledgement && (!current.rotationSigla || !Number.isInteger(current.rotationPosition) ||
+        snapshot.responsible.sigla !== current.rotationSigla || snapshot.responsible.position !== current.rotationPosition)) {
+      return reject('NEEDS_REVIEW', 'O rodízio mudou após a ciência. O registro foi preservado sem atribuir pontos.');
+    }
+    const signatureId = current.day + '_' + snapshot.revision;
+    const existing = evaluationGet_('checklistSignatures', signatureId, transaction);
+    if (existing) return {writes: [projectionWrite, evaluationWrite_('checklistSignatureRequests', current.id, {
+      status: 'DUPLICATE', finalSignatureId: signatureId, pointsAwarded: 0, responsibleAdjustment: 0,
+      validationMessage: 'Esta revisão já possui assinatura válida.'
+    }, current, ['validatedAt'])], result: 'DUPLICATE'};
+    const signature = {
+      id: signatureId, date: current.day, checklistId: current.day,
+      responsibleUid: snapshot.responsible.responsibleUid, responsibleName: snapshot.responsible.responsibleName,
+      responsibleEmail: snapshot.responsible.responsibleEmail,
+      signerUid: current.signerUid, signerName: signer.displayName || '', signerEmail: signer.email || '',
+      declaration: true, snapshotValid: true, revision: snapshot.revision, snapshot: snapshot.snapshot,
+      acknowledgedAt: isAcknowledgement ? current.acknowledgedAt : null,
+      missing: snapshot.missing, justification: current.justification,
+      recordKind: isAcknowledgement ? 'ACKNOWLEDGEMENT' : 'LEGACY_SIGNATURE',
+      declarationText: isAcknowledgement ? 'Declaro que tomei ciência das informações deste relatório.' : 'Confirmação do relatório conforme fluxo anterior'
+    };
+    let transfer;
+    try {
+      transfer = evaluationApplyChecklistTransfer_(current.day, snapshot.responsible.responsibleUid, current.signerUid, signatureId, {transaction: transaction});
+    }
+    catch (error) {
+      if (error.status) throw error;
+      return reject('NEEDS_REVIEW', String(error && error.message || 'Pontuação pendente de revisão.').slice(0, 300));
+    }
+    const applied = transfer.status === 'APPLIED' && snapshot.responsible.responsibleUid !== current.signerUid;
+    transfer.writes.push(evaluationWrite_('checklistSignatures', signatureId, signature, null, ['signedAt']));
+    transfer.writes.push(projectionWrite);
+    transfer.writes.push(evaluationWrite_('checklistSignatureRequests', current.id, {
+      status: 'VALIDATED', finalSignatureId: signatureId, pointsAwarded: applied ? 1 : 0,
+      responsibleAdjustment: applied ? -1 : 0, evaluationStatus: transfer.status, validationMessage: ''
+    }, current, ['validatedAt']));
+    return {writes: transfer.writes, result: 'VALIDATED'};
+  });
+}
+
+function readTrustedChecklistSnapshot_(day, transaction, options) {
+  options = options || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '') || day > checklistSaoPauloDay_() || (!options.eventRotation && day !== checklistSaoPauloDay_())) {
+    throw new Error('O pedido não corresponde a uma data válida para esta modalidade.');
+  }
+  const getTrusted = function (collectionId, id, fields) { return transaction ? evaluationGet_(collectionId, id, transaction) : getFirestoreDocument_(collectionId, id, fields); };
+  const queryTrusted = function (collectionId, filters, order, maximum, fields) { return transaction ? evaluationQuery_(collectionId, filters, order, maximum, fields, transaction) : queryFirestore_(collectionId, filters, order, maximum, fields); };
+  const schedule = getTrusted('scheduleDays', day, ['positions', 'vacationLabel', 'highlights']);
+  if (!schedule) throw new Error('Escala do dia indisponível.');
+  const stations = queryTrusted('stations', [
+    firestoreFilter_('active', 'EQUAL', {booleanValue: true})
+  ], [{fieldPath: 'order', direction: 'ASCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxStations + 1,
+  ['active', 'start', 'end', 'order', 'name']);
+  const vacations = queryTrusted('vacations', [
+    firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
+    firestoreFilter_('start', 'LESS_THAN_OR_EQUAL', {stringValue: day}),
+    firestoreFilter_('end', 'GREATER_THAN_OR_EQUAL', {stringValue: day})
+  ], [{fieldPath: 'start', direction: 'ASCENDING'}], 101, ['active', 'start', 'end', 'siglas', 'label']);
+  const events = options.eventRotation ? [] : queryTrusted('events', [
+    firestoreFilter_('active', 'EQUAL', {booleanValue: true}),
+    firestoreFilter_('date', 'EQUAL', {stringValue: day})
+  ], [], 201, ['active', 'date', 'eventType', 'memberStatus', 'substitute']);
+  const contacts = queryTrusted('contacts', [
+    firestoreFilter_('active', 'EQUAL', {booleanValue: true})
+  ], [], 201, ['active', 'sigla', 'name']);
+  const records = queryTrusted('checklists', [
+    firestoreFilter_('date', 'EQUAL', {stringValue: day})
+  ], [{fieldPath: 'createdAt', direction: 'DESCENDING'}], SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords + 1,
+  ['date', 'createdAt', 'stationId', 'condition', 'occurrence']);
+  if (stations.length > SAHMT_V2_CHECKLIST_VALIDATION.maxStations || vacations.length > 100 || events.length > 200 ||
+      contacts.length > 200 || records.length > SAHMT_V2_CHECKLIST_VALIDATION.maxDailyRecords) {
+    throw new Error('O volume excede os limites seguros de validação.');
+  }
+  const activeStations = stations.filter(function (station) { return (!station.start || station.start <= day) && (!station.end || station.end >= day); });
+  if (!activeStations.length) throw new Error('Não há estações vigentes para o Checklist de hoje.');
+  const responseByStation = new Map();
+  records.forEach(function (record) {
+    if (!responseByStation.has(record.stationId)) responseByStation.set(record.stationId, record);
+  });
+  const entries = activeStations.map(function (station) {
+    const record = responseByStation.get(station.id) || null;
+    return {
+      stationId: station.id, stationName: station.name || station.id,
+      condition: record && record.condition || null, occurrence: record && record.occurrence || '',
+      responseId: record && record.id || null,
+      responseAt: record && record.createdAt instanceof Date ? record.createdAt.getTime() : null
+    };
+  });
+  const fingerprint = sha256Hex_(JSON.stringify({day: day, entries: entries.map(function (entry) {
+    return {stationId: entry.stationId, stationName: entry.stationName, condition: entry.condition,
+      occurrence: entry.occurrence, responseId: entry.responseId, responseAt: entry.responseAt};
+  })}));
+  const sharedRotation = options.eventRotation ? resolveChecklistRotationCore({schedule: schedule, day: day, vacations: vacations}) : null;
+  const selection = options.eventRotation
+    ? (sharedRotation && sharedRotation.complete && sharedRotation.sigla
+      ? {ok: true, sigla: sharedRotation.sigla, position: sharedRotation.position}
+      : {ok: false, reason: sharedRotation && sharedRotation.reason || 'Rodízio indisponível.'})
+    : selectChecklistResponsible_({schedule: schedule, day: day, vacations: vacations, events: events, contacts: contacts});
+  if (!selection.ok) throw new Error(selection.reason);
+  let matchedProfiles = queryTrusted('users', [firestoreFilter_('sigla', 'EQUAL', {stringValue: selection.sigla})], [], 2,
+    ['uid', 'active', 'access', 'displayName', 'email']);
+  const contactMatches = contacts.filter(function (contact) { return normalizeChecklistText_(contact.sigla) === selection.sigla; });
+  const responsibleContact = contactMatches.length === 1
+    ? getTrusted('contacts', contactMatches[0].id, ['active', 'sigla', 'name', 'email'])
+    : null;
+  // Independently available directory and profile identities must agree.
+  if (contactMatches.length > 1) throw new Error('Há contatos ambíguos para a sigla responsável.');
+  if (responsibleContact) {
+    const directoryEmail = String(responsibleContact.email || '').trim().toLowerCase();
+    if (responsibleContact.active !== true || normalizeChecklistText_(responsibleContact.sigla) !== selection.sigla ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(directoryEmail) ||
+        matchedProfiles.some(function (profile) { return String(profile.email || '').trim().toLowerCase() !== directoryEmail; })) {
+      throw new Error('Vínculo cadastral do responsável inconsistente.');
+    }
+  }
+  // Profiles do not require a duplicated sigla. Resolve only through the unique
+  // active, server-owned directory contact; never accept browser identity data.
+  if (!matchedProfiles.length && responsibleContact && responsibleContact.active === true &&
+      normalizeChecklistText_(responsibleContact.sigla) === selection.sigla) {
+    const trustedEmail = String(responsibleContact.email || '').trim().toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trustedEmail)) {
+      matchedProfiles = queryTrusted('users', [firestoreFilter_('email', 'EQUAL', {stringValue: trustedEmail})], [], 2,
+        ['uid', 'sigla', 'active', 'access', 'displayName', 'email']);
+      if (matchedProfiles.some(function (profile) {
+        return String(profile.email || '').trim().toLowerCase() !== trustedEmail ||
+          profile.sigla && normalizeChecklistText_(profile.sigla) !== selection.sigla;
+      })) throw new Error('Vínculo cadastral do responsável inconsistente.');
+    }
+  }
+  if (matchedProfiles.length !== 1 || matchedProfiles[0].active !== true || matchedProfiles[0].access !== true || !matchedProfiles[0].uid ||
+      transaction && matchedProfiles[0].uid !== matchedProfiles[0].id) {
+    throw new Error('Não há perfil ativo e único para a sigla responsável ' + selection.sigla + '.');
+  }
+  const responsible = {
+    responsibleUid: matchedProfiles[0].uid,
+    responsibleName: responsibleContact ? responsibleContact.name : matchedProfiles[0].displayName,
+    responsibleEmail: responsibleContact ? responsibleContact.email || '' : matchedProfiles[0].email || '',
+    position: selection.position, sigla: selection.sigla
+  };
+  const trustedSnapshot = {date: day, responsibleUid: responsible.responsibleUid,
+    responsibleName: responsible.responsibleName, responsibleEmail: responsible.responsibleEmail,
+    position: responsible.position, sigla: responsible.sigla, entries: entries};
+  return {fingerprint: fingerprint, revision: sha256Hex_(JSON.stringify(trustedSnapshot)),
+    snapshot: trustedSnapshot, responsible: responsible, missing: entries.filter(function (entry) { return !entry.condition; }).length};
+}
+
+function selectChecklistResponsible_({schedule, day, vacations, events, contacts}) {
+  const weekday = checklistWeekday_(day);
+  const away = new Set(checklistSiglas_(schedule.vacationLabel || '', weekday));
+  vacations.forEach(function (vacation) {
+    const values = Array.isArray(vacation.siglas) && vacation.siglas.length ? vacation.siglas : [vacation.label || ''];
+    values.forEach(function (value) { checklistSiglas_(value, weekday).forEach(function (sigla) { away.add(sigla); }); });
+  });
+  const replaced = new Set();
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (event.date !== day || event.active !== true || !String(event.substitute || '').trim()) continue;
+    if (normalizeChecklistText_(event.eventType) === 'ATRASO' || normalizeChecklistText_(event.memberStatus) === 'SUPORTE') continue;
+    const affected = eventMemberSiglas_(event, contacts, weekday);
+    if (!affected) return {ok: false, reason: 'Há substituição sem membro identificável na escala.'};
+    affected.forEach(function (sigla) { replaced.add(sigla); });
+  }
+  const positions = Array.isArray(schedule.positions) ? schedule.positions : [];
+  for (let i = 0; i < positions.length; i++) {
+    const item = positions[i];
+    const token = typeof item === 'string' ? item : item && (item.sigla || item.name || item.label) || '';
+    const available = checklistSiglas_(token, weekday).filter(function (sigla) { return !away.has(sigla) && !replaced.has(sigla); });
+    if (available.length) return {ok: true, sigla: available[0], position: i + 1};
+  }
+  return {ok: false, reason: 'Não há uma pessoa disponível na primeira posição da escala.'};
+}
+
+function eventMemberSiglas_(event, contacts, weekday) {
+  const value = String(event.memberStatus || '');
+  const member = normalizeChecklistText_(value);
+  const matched = contacts.filter(function (contact) { return normalizeChecklistText_(contact.name) === member; });
+  if (matched.length === 1 && matched[0].sigla) return checklistSiglas_(matched[0].sigla, weekday);
+  if (matched.length > 1) return null;
+  if (/^(?:DC|L2|[A-Z]{2})(?:[/-](?:DC|L2|[A-Z]{2}))*$/.test(value.trim().toUpperCase())) return checklistSiglas_(value, weekday);
+  return null;
+}
+
+function checklistSiglas_(value, weekday) {
+  const tokens = String(value || '').split('(')[0].toUpperCase().match(/(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*/g) || [];
+  const aliases = [];
+  tokens.forEach(function (token) {
+    token.split(/[/-]/).forEach(function (sigla) {
+      (sigla === 'DC' ? SAHMT_V2_DC_ALIASES[weekday] || SAHMT_V2_DC_FALLBACK : [sigla]).forEach(function (value) {
+        if (aliases.indexOf(value) < 0) aliases.push(value);
+      });
+    });
+  });
+  return aliases;
+}
+
+function checklistWeekday_(day) {
+  return ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'][new Date(day + 'T12:00:00Z').getUTCDay()];
+}
+
+function checklistSaoPauloDay_() { return Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd'); }
+
+function normalizeChecklistText_(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toUpperCase(); }
+
+function firestoreFilter_(fieldPath, op, value) { return {field: {fieldPath: fieldPath}, op: op, value: value}; }
+
+function hasChecklistSignPermission_(profile) {
+  return profile.role === 'administrador_app' || profile.permissions &&
+    (profile.permissions.admin === true || profile.permissions.checklistSign === true);
+}
+
+function checklistResponsibilityProjectionWrite_(day, snapshot, previous) {
+  return evaluationWrite_('checklistResponsibilities', day, {day: day, status: 'CONFIRMED', fingerprint: snapshot.fingerprint,
+    revision: snapshot.revision, responsible: {uid: snapshot.responsible.responsibleUid, name: snapshot.responsible.responsibleName || '',
+      sigla: snapshot.responsible.sigla, position: snapshot.responsible.position}, reason: ''}, previous, ['updatedAt']);
+}

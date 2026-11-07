@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
 const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-const start=main.indexOf("  if (!authLimited && ['occurrences','qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute))");
+const start=main.indexOf("  if (!authLimited && ['occurrences','qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute))");
 assert.ok(start>=0,'FC module footer lifecycle must be present');
 const code=main.slice(start,main.indexOf('  if(!authLimited)preloadOperationalDataWhenIdle',start));
 test('FA performance footer returns to Checklist',()=>{

@@ -93,14 +93,14 @@ export function continuityStateAction(sql,path,body){
   sql.exec('UPDATE continuity_pending SET state=? WHERE id=?',body.state,body.uid+':'+body.requestId);return response({code:'CONTINUITY_PENDING_UPDATED'});
  }
  if(path==='/continuity-drain'){
-  const retired=[...(body.excludeMigratedModules===true?["'events'","'scheduleReleases'"]:[]),...(body.excludeFhLabels===true?["'labels'"]:[])];
+  const retired=[...(body.excludeMigratedModules===true?["'events'","'scheduleReleases'"]:[]),...(body.excludeFhLabels===true?["'labels'"]:[]),...(body.excludeFgChecklist===true?["'checklists'"]:[])];
   const rows=sql.exec("SELECT content FROM continuity_pending WHERE state='pending'"+(retired.length?" AND json_extract(content,'$.collection') NOT IN ("+retired.join(',')+")":'')+" ORDER BY id LIMIT 10").toArray();
   return response({code:'CONTINUITY_DRAIN',operations:rows.map(row=>JSON.parse(row.content))});
  }
  if(path==='/continuity-module-audit'){
-  const counts={events:0,scheduleReleases:0,labels:0};
-  for(const row of sql.exec("SELECT json_extract(content,'$.collection') AS collection,COUNT(*) AS count FROM continuity_pending WHERE state='pending' AND json_extract(content,'$.collection') IN ('events','scheduleReleases','labels') GROUP BY json_extract(content,'$.collection')").toArray())counts[row.collection]=Number(row.count);
-  return response({code:'CONTINUITY_MODULE_AUDIT',counts,pendingMigrated:counts.events+counts.scheduleReleases,pendingLabels:counts.labels});
+  const counts={events:0,scheduleReleases:0,labels:0,checklists:0};
+  for(const row of sql.exec("SELECT json_extract(content,'$.collection') AS collection,COUNT(*) AS count FROM continuity_pending WHERE state='pending' AND json_extract(content,'$.collection') IN ('events','scheduleReleases','labels','checklists') GROUP BY json_extract(content,'$.collection')").toArray())counts[row.collection]=Number(row.count);
+  return response({code:'CONTINUITY_MODULE_AUDIT',counts,pendingMigrated:counts.events+counts.scheduleReleases,pendingLabels:counts.labels,pendingChecklists:counts.checklists});
  }
  if(path==='/continuity-commit'){
   const {collection,day,fields,now}=body;
@@ -149,8 +149,8 @@ export async function importContinuitySnapshot(request,env,now){
  const time=request.headers.get('X-Continuity-Time')||'',nonce=request.headers.get('X-Continuity-Nonce')||'',signature=request.headers.get('X-Continuity-Signature')||'';
  if(!/^\d{13}$/.test(time)||Math.abs(now-Number(time))>300000||! /^[A-Za-z0-9_-]{24,100}$/.test(nonce)||! /^[a-f0-9]{64}$/.test(signature))failure('CONTINUITY_IMPORT_DENIED',401);
  const body=await readChannelJson(request,CONTINUITY_MAX_BODY_BYTES);
- const auditOnly=body?.schemaVersion===1&&body.action==='module-audit'&&body.station==='FH'&&Object.keys(body).length===3;
- const secret=auditOnly?env.FH_MIGRATION_AUDIT_SECRET:env.CONTINUITY_IMPORT_SECRET;
+ const auditOnly=body?.schemaVersion===1&&body.action==='module-audit'&&['FH','FG'].includes(body.station)&&Object.keys(body).length===3;
+ const secret=auditOnly?(body.station==='FG'?env.FG_MIGRATION_AUDIT_SECRET:env.FH_MIGRATION_AUDIT_SECRET):env.CONTINUITY_IMPORT_SECRET;
  if(typeof secret!=='string'||secret.length<32)failure('CONTINUITY_IMPORT_NOT_CONFIGURED',503);
  const expected=await continuityRequestSignature(secret,JSON.stringify(body),time,nonce);
  let difference=0;for(let i=0;i<64;i++)difference|=expected.charCodeAt(i)^signature.charCodeAt(i);if(difference)failure('CONTINUITY_IMPORT_DENIED',401);
@@ -159,12 +159,13 @@ export async function importContinuitySnapshot(request,env,now){
   const nonceResponse=await internal(state(env),'continuity-import-nonce',{nonce,now});if(!nonceResponse.ok)return nonceResponse;
   if(body.action==='module-audit'){
    const audit=await internal(state(env),'continuity-module-audit',{});
-   return response({...await audit.json(),moduleSubmissionsRetired:env.FI_FJ_MODULES_RETIRED==='true',labelSubmissionsRetired:env.FH_MODULE_RETIRED==='true'},audit.status);
+   return response({...await audit.json(),moduleSubmissionsRetired:env.FI_FJ_MODULES_RETIRED==='true',labelSubmissionsRetired:env.FH_MODULE_RETIRED==='true',checklistSubmissionsRetired:env.FG_MODULE_RETIRED==='true'},audit.status);
   }
   if(body.action==='drain'){
    if(body.excludeMigratedModules!==undefined&&typeof body.excludeMigratedModules!=='boolean')failure('CONTINUITY_OPERATION_INVALID');
    if(body.excludeFhLabels!==undefined&&typeof body.excludeFhLabels!=='boolean')failure('CONTINUITY_OPERATION_INVALID');
-   const candidates=await (await internal(state(env),'continuity-drain',{excludeMigratedModules:env.FI_FJ_MODULES_RETIRED==='true'||body.excludeMigratedModules===true,excludeFhLabels:env.FH_MODULE_RETIRED==='true'||body.excludeFhLabels===true})).json(),operations=[];
+   if(body.excludeFgChecklist!==undefined&&typeof body.excludeFgChecklist!=='boolean')failure('CONTINUITY_OPERATION_INVALID');
+   const candidates=await (await internal(state(env),'continuity-drain',{excludeMigratedModules:env.FI_FJ_MODULES_RETIRED==='true'||body.excludeMigratedModules===true,excludeFhLabels:env.FH_MODULE_RETIRED==='true'||body.excludeFhLabels===true,excludeFgChecklist:env.FG_MODULE_RETIRED==='true'||body.excludeFgChecklist===true})).json(),operations=[];
    for(const operation of candidates.operations){
     const stub=env.OPERATIONAL_CHANNEL_STATE.get(env.OPERATIONAL_CHANNEL_STATE.idFromName(operation.collection+':'+operation.day));
     const actual=await (await internal(stub,'continuity-record-status',{uid:operation.uid,requestId:operation.requestId})).json();

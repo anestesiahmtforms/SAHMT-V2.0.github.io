@@ -46,6 +46,7 @@ function fixture(kind, {blockDisplay = true, blockSeed = true, automaticServer =
     setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timers.add(timer); return timer; },
     clearTimeout: timer => { clearTimeout(timer); timers.delete(timer); }
   });
+  ctx.checklistIdentityProfile=()=>ctx.session.profile;
   vm.runInContext(code, ctx);
   const controller = createLiveReportSession({subscribe: (scope, hooks) => ctx.subscribeLiveReport(kind, scope, hooks), onData: value => paints.push(value)});
   controller.start(scope);

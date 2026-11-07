@@ -42,6 +42,8 @@ test('title transaction preserves QR, maintenance, identity, dates and current c
   const original = structuredClone(stored);
   let writes=0;
   const ctx = {assertOnlineOperation(){},navigator:{onLine:true},normalizeChecklistStationTitle:checklist.normalizeChecklistStationTitle,db:{},doc:(_db,collection,id)=>({collection,id}),serverTimestamp:()=>'SERVER',runTransaction:async(_db,task)=>task({get:async()=>({exists:()=>true,data:()=>structuredClone(stored)}),update:(_ref,update)=>{stored={...stored,...update};writes++;}})};
+  ctx.operationalDatabase = async station => {assert.equal(station,'FG');return ctx.db;};
+  ctx.operationalModuleEnabled = station => station === 'FG';
   vm.runInNewContext(source.slice(start,end).replace('export ',''),ctx);
   const saved = await ctx.saveChecklistStationTitle(original.id,' Sala 14 ','manager');
   assert.deepEqual(stored,{...original,functionLabel:'Sala 14',updatedByUid:'manager',updatedAt:'SERVER',version:6});
