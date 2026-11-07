@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const source=await readFile(new URL('../src/data.js',import.meta.url),'utf8');
+test('FH interface uses its own profile and explicit false overrides inherited admin',async()=>{
+ const main=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
+ const code=main.slice(main.indexOf('function can(permission)'),main.indexOf('// Individual release'));
+ const context=vm.createContext({fhLabelsEnabled:true,session:{profile:{active:true,access:true,role:'administrador_app',permissions:{admin:true}},labelProfile:{active:true,access:true,permissions:{admin:true}}}});
+ vm.runInContext(code,context);assert.equal(context.can('labelsWrite'),true);
+ context.session.labelProfile.permissions.labelsWrite=false;assert.equal(context.can('labelsWrite'),false);
+ context.session.labelProfile=null;assert.equal(context.can('labelsWrite'),false);
+});
 function section(start,end){const a=source.indexOf(start),b=source.indexOf(end,a+1);assert.ok(a>=0&&b>a);return source.slice(a,b).replaceAll('export ','');}
 function fixture({deny=false}={}){
  const database={station:'FH'},calls=[],writes=[],mirrors=[],deliveries=[];

@@ -105,6 +105,7 @@ function preloadStartupReports(user, {explicit = false} = {}) {
   }
   window.setTimeout(() => startupReports.clear(), 30000);
 }
+const fhLabelsEnabled = import.meta.env.VITE_FH_LABELS_ENABLED === 'true';
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === (import.meta.env.VITE_FH_LABELS_ENABLED === 'true' ? 'https://sahmt-fh-etiquetas.sahmt-fh-f7b8a88b.workers.dev/v1/labels/extract' : 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract') &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
@@ -260,7 +261,7 @@ function reportAllowed(kind) {
   return session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) && reportPermissions[kind].some(can);
 }
 function reportPermissionKey(kind) {
-  if (kind === 'labels' && import.meta.env.VITE_FH_LABELS_ENABLED === 'true') return JSON.stringify([session.labelProfile?.active, session.labelProfile?.access,
+  if (kind === 'labels' && typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled) return JSON.stringify([session.labelProfile?.active, session.labelProfile?.access,
     String(session.labelProfile?.sigla || session.profile?.sigla || '').trim().toUpperCase(), session.labelProfile?.role,
     ...reportPermissions.labels.map(can)]);
   return JSON.stringify([session.profile?.role, session.profile?.active, session.profile?.access,
@@ -836,7 +837,7 @@ function managementUtilityCards() {
 }
 
 function can(permission) {
-  if (['labelsRead', 'labelsWrite', 'labelsManage'].includes(permission) && import.meta.env.VITE_FH_LABELS_ENABLED === 'true') {
+  if (['labelsRead', 'labelsWrite', 'labelsManage'].includes(permission) && typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled) {
     const moduleProfile = session.labelProfile;
     if (session.profile?.active !== true || session.profile?.access !== true || moduleProfile?.active !== true || moduleProfile?.access !== true) return false;
     return (moduleProfile.permissions?.[permission] ?? moduleProfile.permissions?.admin) === true;
