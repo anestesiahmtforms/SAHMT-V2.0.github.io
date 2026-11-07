@@ -1,4 +1,5 @@
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
+import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
 import {canUseVacationModule} from './vacations-2027-domain.js';
 import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance-client.js';
@@ -106,6 +107,7 @@ function preloadStartupReports(user, {explicit = false} = {}) {
   window.setTimeout(() => startupReports.clear(), 30000);
 }
 const fhLabelsEnabled = import.meta.env.VITE_FH_LABELS_ENABLED === 'true';
+const fgChecklistEnabled = import.meta.env.VITE_FG_CHECKLIST_ENABLED === 'true';
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === (import.meta.env.VITE_FH_LABELS_ENABLED === 'true' ? 'https://sahmt-fh-etiquetas.sahmt-fh-f7b8a88b.workers.dev/v1/labels/extract' : 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract') &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
@@ -119,6 +121,7 @@ const labels = {
   'year-end-schedule': ['ESCALA FINAL DE ANO', 'Confirme suas escolhas de plantão e grupo de trabalho.'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   'fa-performance': ['Desempenho FA', 'Checklist e eventos de escala'],
+  'fg-performance': ['Desempenho FG', 'Checklist'],
   'fc-performance': ['Desempenho FC', 'Pontuação das ações em FC'],
   'fd-performance': ['Desempenho FD', 'Ciência e sugestões dos indicadores'],
   'fe-performance': ['Desempenho FE', 'Pontuação por participação em pesquisas'],
@@ -148,7 +151,7 @@ const userPermissions = [
   ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências'],
   ['occurrencesAuditRead', 'Consultar auditoria de ocorrências'],
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
-];
+].filter(([permission])=>!fgChecklistEnabled||!['checklistRead','checklistWrite','checklistSign','checklistManage'].includes(permission));
 let session = {status: firebaseConfigured ? 'checking' : 'unconfigured'};
 const accountMode = createAccountMode();
 const yearEndStartup=createYearEndStartup({enabled:deployment.target==='FA'&&YEAR_END_STARTUP_ENABLED,
@@ -408,7 +411,7 @@ function invalidateChecklistSignature(message) {
 function checklistSignatureCurrent(scope, fingerprint) {
   const state = liveReports.get('checklist')?.snapshot();
   const result = reportPayloads.get('checklist')?.report;
-  return !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
+  return !checklistScienceDeadlinePassed(scope) && !(checklistConferenceLive?.key === scope.key && checklistConferenceLive.confirmation) &&
     reportScopeCurrent(scope) && state?.confirmed && !result?.truncated && !result?.historyIncomplete && !result?.localPending &&
     !reportPayloads.get('checklist')?.catalog?.truncated &&
     checklistReportContext?.fingerprint === fingerprint && checklistReportContext?.conferenceComplete === true &&
@@ -426,9 +429,10 @@ function checklistConferenceRotation(scope) {
 }
 function checklistConferenceCanOpen(scope) {
   const conference = checklistConferenceLive?.key === scope.key ? checklistConferenceLive : null;
-  return conference?.ready === true && !conference.confirmation && !conference.error &&
+  return !checklistScienceDeadlinePassed(scope) && conference?.ready === true && !conference.confirmation && !conference.error &&
     !conference.fromCache && !conference.hasPendingWrites;
 }
+function checklistScienceDeadlinePassed(scope){return typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&!isChecklistScienceOpen(scope.day);}
 function updateChecklistResponsibilityUI() {
   const state = reportStates.get('checklist'), scope = state?.scope;
   if (!scope || scope.warm || !reportScopeCurrent(scope) || scope.mode !== 'daily') return;
@@ -450,8 +454,9 @@ function updateChecklistResponsibilityUI() {
     prepare.classList?.toggle('checklist-confirmation-button--scheduled', confirmation?.kind === 'scheduled');
     prepare.classList?.toggle('checklist-confirmation-button--alternate', confirmation?.kind === 'alternate');
     prepare.classList?.toggle('checklist-confirmation-button--recorded', confirmation?.kind === 'recorded');
-    prepare.disabled = !checklistLocalConferenceCurrent(scope, checklistReportContext?.fingerprint) && (!checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint));
+    prepare.disabled = checklistScienceDeadlinePassed(scope) || !checklistLocalConferenceCurrent(scope, checklistReportContext?.fingerprint) && (!checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, checklistReportContext?.fingerprint));
     if (confirmation) prepare.title = 'Conferência registrada por ' + confirmation.signerName;
+    else if(checklistScienceDeadlinePassed(scope))prepare.title='Prazo de ciência encerrado às 23h59 (São Paulo).';
   }
   if (confirmation) {
     const dialog = document.querySelector('#checklist-confirmation-dialog');
@@ -532,7 +537,7 @@ async function subscribeLiveReportUnbounded(kind, scope, callbacks) {
   };
   if (scope.mode === 'daily') {
     void import('./checklist-conference-listener.js').then(module => current()
-      ? module.watchChecklistConference({...scope, ownSigla: session.profile?.sigla, readSignatures: can('checklistRead')}, payload => {
+      ? module.watchChecklistConference({...scope, ownSigla: checklistIdentityProfile()?.sigla, readSignatures: can('checklistRead')}, payload => {
         if (!current()) return;
         liveAuxiliarySources.add('conference');
         checklistConferenceLive = {...payload, key: scope.key};
@@ -811,9 +816,9 @@ function loginView() {
 function moduleCards() {
   const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], occurrences: ['occurrencesRead','occurrencesWrite','occurrencesAuditRead'], people: ['peopleManage'], admin: ['usersManage']};
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
-  const commonModules = commonUserActive ? ['management', ...(typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled ? ['labels'] : [])] : [];
+  const commonModules = commonUserActive ? ['management', ...(typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled ? ['labels'] : []), ...(typeof fgChecklistEnabled !== 'undefined' && fgChecklistEnabled ? ['checklist'] : [])] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fa-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
+  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
     && !['training', 'notifications', 'management-hub'].includes(route)
       && (route==='fd-performance'?fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session):route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
@@ -837,6 +842,11 @@ function managementUtilityCards() {
 }
 
 function can(permission) {
+  if (['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'].includes(permission) && typeof fgChecklistEnabled !== 'undefined' && fgChecklistEnabled) {
+    const moduleProfile = session.checklistProfile;
+    if (session.profile?.active !== true || session.profile?.access !== true || moduleProfile?.active !== true || moduleProfile?.access !== true || moduleProfile.uid !== session.user?.uid) return false;
+    return moduleProfile.role === 'administrador_app' || moduleProfile.permissions?.admin === true || moduleProfile.permissions?.[permission] === true;
+  }
   if (['labelsRead', 'labelsWrite', 'labelsManage'].includes(permission) && typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled) {
     const moduleProfile = session.labelProfile;
     if (session.profile?.active !== true || session.profile?.access !== true || moduleProfile?.active !== true || moduleProfile?.access !== true) return false;
@@ -851,6 +861,7 @@ function can(permission) {
 // Individual release is read from the authenticated FA profile. Read/write
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
+  if (route === 'fg-performance') return canManageChecklistPermissions();
   if (['management','qmentum','training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
   if (route === 'fd-performance') return fdPerformanceEnabled && fdPerformanceIdentityCanEnter(session);
@@ -863,6 +874,18 @@ function canOpenRestrictedModule(route) {
   return !!release && session.status === 'signed-in' && session.profile?.active === true
     && session.profile?.access === true && !!session.user?.uid && session.profile?.uid === session.user.uid
     && session.profile?.permissions?.[release] === true && session.profile?.permissions?.[readPermission] === true;
+}
+
+function canManageChecklistPermissions() {
+  const profile=session.checklistProfile;
+  return typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&session.profile?.active===true&&session.profile?.access===true&&
+    profile?.uid===session.user?.uid&&profile?.active===true&&profile?.access===true&&
+    (profile.role==='administrador_app'||profile.permissions?.admin===true);
+}
+
+function checklistIdentityProfile() {
+  if (typeof fgChecklistEnabled==='undefined'||!fgChecklistEnabled) return session.profile;
+  return session.checklistProfile?.uid===session.user?.uid?session.checklistProfile:null;
 }
 
 function vacationRankMarkup(sigla, classes, position) {
@@ -1110,7 +1133,8 @@ function shellView() {
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
   const checklistCalendar = '';
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
-  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button>${can('admin') ? '<button type="button" data-route="fa-performance">DESEMPENHO FA</button>' : ''}</div>` : '';
+  const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button>${typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&canManageChecklistPermissions()?'<button type="button" data-route="fg-performance">DESEMPENHO FG</button>':''}${can('admin')?'<button type="button" data-route="fa-performance">DESEMPENHO FA</button>':''}</div>` : '';
+  const checklistPermissionPanel = route==='checklist'&&typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&canManageChecklistPermissions()?'<details class="admin-user-list fg-checklist-permissions-panel"><summary>Permissões de Checklist</summary><button type="button" class="secondary-button" data-load-fg-checklist-directory>Atualizar usuários</button><div data-fg-checklist-directory role="status" aria-live="polite"></div></details>':'';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
   const labelReport = route === 'labels' && ['labelsRead','labelsWrite','labelsManage'].some(can) ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
@@ -1121,7 +1145,7 @@ function shellView() {
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
       </article>
       <section class="modules-section"><div class="module-grid">${moduleCards()}</div>${communicationFeatureEnabled&&!communicationDevicePushActive()?'<aside class="comm-home-banner" aria-label="Notificações institucionais"><span class="comm-banner-burst" aria-hidden="true">NOVO</span><div><strong>🔔 Ative os avisos do SAHMT</strong><p>Receba os avisos neste aparelho.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Ativar notificações ou ver mensagens">ABRIR</button>':''}${communicationFeatureEnabled?'<div class="comm-home-notices" data-comm-home-banners aria-live="polite"></div>':''}</section>
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelPermissionPanel}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}${checklistPermissionPanel}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelPermissionPanel}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline && route !== 'home' && route !== 'events' ? `<div class="notice profile-connection-notice" data-local-profile-notice role="status"><span>${session.validatingProfile ? 'Confirmando a conexão com o servidor… Sua sessão Firebase está ativa.' : 'Sua sessão Firebase está ativa. Usando o perfil local enquanto a conexão com o servidor é restabelecida.'}</span><button type="button" class="secondary-button" data-profile-reconnect ${session.validatingProfile ? 'disabled' : ''}>${session.validatingProfile ? 'Verificando…' : 'Reconectar'}</button><small data-profile-retry-message></small></div>` : ''}${session.status === 'auth-limited' && !session.validatingProfile && session.profileFailureCode ? `<p class="notice" data-profile-diagnostic role="status">Diagnóstico: <strong>${escapeHtml(session.profileFailureCode)}</strong>. ${session.profileFailureCode === 'LOCAL_PROFILE_UNAVAILABLE' ? 'Este aparelho não tem uma cópia local válida do perfil. Será necessária uma validação online quando o Firestore estiver disponível.' : session.profileFailureCode === 'LOCAL_STORAGE_UNAVAILABLE' ? 'O armazenamento local do navegador está indisponível.' : 'A validação online do perfil não foi concluída.'}</p>` : ''}${view}</main>
@@ -1414,6 +1438,18 @@ async function loadModule(route) {
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
       access:{vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:can('admin')&&canUseManagementPilot(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
+    return;
+  }
+  if(route === 'fg-performance'){
+    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
+    const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid&&canManageChecklistPermissions();
+    if(!current()){navigate('checklist');return;}
+    try{
+      const [{readFgPerformance},{mountFgPerformanceModule}]=await Promise.all([import('./fg-performance-data.js'),import('./fg-performance-ui.js')]);
+      if(!current())return;
+      const cleanup=mountFgPerformanceModule(content,{uid,isCurrent:current,load:subjectUid=>readFgPerformance({uid,subjectUid,isCurrent:current})});
+      if(current())cleanupCurrentModule=cleanup;else cleanup();
+    }catch{if(current())content.innerHTML='<p role="status">Não foi possível abrir o Desempenho FG.</p>';}
     return;
   }
   if(route === 'fa-performance'){
@@ -2194,7 +2230,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     const conferenceReadiness = checklistConferenceReadiness(day, applicableStations, records);
     checklistReportContext = {day, stations: applicableStations, latestByStation, priorByStation, fingerprint, scopeKey: scope.key,
       conferenceComplete: conferenceReadiness.ready};
-    checklistReportContext.localConferenceComplete = (isOfflineRuntimeForced() || !navigator.onLine) && localChecklistConferenceReady({day, today: todayInputValue(), stations: applicableStations, records, profile: session.profile, rotation: checklistRotationLive?.key === scope.key ? checklistRotationLive.rotation : null, incomplete: result.historyIncomplete || result.truncated});
+    checklistReportContext.localConferenceComplete = (isOfflineRuntimeForced() || !navigator.onLine) && localChecklistConferenceReady({day, today: todayInputValue(), stations: applicableStations, records, profile: checklistIdentityProfile(), rotation: checklistRotationLive?.key === scope.key ? checklistRotationLive.rotation : null, incomplete: result.historyIncomplete || result.truncated});
     const summary = summarizeChecklistDay(day, todayInputValue(), applicableStations, records);
     const resolvedRecordFor = (station) => resolveChecklistDayRecord(station, latestByStation.get(station.id), priorByStation.get(station.id), day, todayInputValue());
     const displayStations = sortChecklistStationsForDisplay(stations, resolvedRecordFor)
@@ -2237,8 +2273,9 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
     updateChecklistResponsibilityUI();
     if (prepareSignature) prepareSignature.title = signatureUnavailableReason || (dayMode !== 'today' ? 'Consulta histórica: a confirmação é feita no dia atual.' : '');
     const prepareChecklistConfirmation = async () => {
+      if(checklistScienceDeadlinePassed(scope)){updateChecklistResponsibilityUI();return;}
       if (!canPrepareSignature || !checklistConferenceCanOpen(scope) || !checklistSignatureCurrent(scope, fingerprint)) return;
-      const signerName = session.profile?.displayName || '';
+      const signerName = checklistIdentityProfile()?.displayName || '';
       content.querySelector('#checklist-preceptor-name').textContent = signerName || 'Nome de perfil indisponível';
       if (!confirmationDialog.open) confirmationDialog.showModal();
       content.querySelector('#checklist-confirmation-title')?.focus({preventScroll: true});
@@ -2291,7 +2328,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
         let submitting = false;
         confirm.addEventListener('click', async () => {
           if (submitting || !previewCurrent() || !checklistSignatureCurrent(scope, fingerprint)) return;
-          if (session.profile?.displayName !== signerName) {
+          if (checklistIdentityProfile()?.displayName !== signerName) {
             invalidateChecklistSignature('Seu perfil mudou. Reabra a conferência para confirmar sua identificação.');
             return;
           }
@@ -2300,7 +2337,7 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
           status.textContent = 'Registrando a conferência…';
           try {
             if (!previewCurrent() || !checklistSignatureCurrent(scope, fingerprint)) return;
-            if (session.profile?.displayName !== signerName) {
+            if (checklistIdentityProfile()?.displayName !== signerName) {
               invalidateChecklistSignature('Seu perfil mudou. Reabra a conferência para confirmar sua identificação.');
               return;
             }
@@ -2311,7 +2348,10 @@ async function loadDailyChecklist(stations, suppliedDay, suppliedResult = null, 
             }
             // The explicit confirmation keeps the existing acknowledgement contract and server-side scoring.
             const result = await signChecklistReport({day, revision: preview.revision, declaration: true, uid,
-              signerName, signerSigla: session.profile?.sigla || '', rotationSigla: rotation.sigla, rotationPosition: rotation.position});
+              signerName, signerSigla: checklistIdentityProfile()?.sigla || '', rotationSigla: rotation.sigla, rotationPosition: rotation.position});
+            if(typeof fgChecklistEnabled!=='undefined'&&fgChecklistEnabled&&result.signerUid===uid&&result.status==='PENDING_VALIDATION'){
+              void import('./fg-science-dispatch.js').then(({dispatchFgScience})=>dispatchFgScience({day,uid})).catch(()=>{});
+            }
             await removeOperationalDraft(uid, 'checklists', 'conference:' + day); checklistLocalIntent = null;
             pendingSyncBanner.confirmed(uid, 'conference:' + day);void updateOutboxStatus();
             if (!previewCurrent()) return;
@@ -2389,7 +2429,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   const dayIsToday = checklistDayMode(day, todayInputValue()) === 'today';
   const canWriteToday = can('checklistWrite') && dayIsToday && active && stationIsValidOn(station, day);
   const canManage = can('checklistManage');
-  const canEditTitle = canEditChecklistStationTitle(session.user, session.profile);
+  const canEditTitle = canEditChecklistStationTitle(session.user, checklistIdentityProfile());
   const showAnswers = canWriteToday && (fromQr || canManage);
   dialog.dataset.manualChecklist = showAnswers ? 'true' : 'false';
   const resultLabel = !active ? 'Inativo' : record?.condition === 'SIM' ? 'Conforme' : record?.condition === 'NAO' ? 'Não conforme' : 'Pendente de checagem';
@@ -2398,7 +2438,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
     if (title) title.textContent = `${label ? `${label} · ` : ''}${station.name || station.id || 'Checklist da estação'}`;
   };
   updateTitleDisplay();
-  const checkerSummary = checklistCheckerSummary(record, {uid: session.user?.uid, profileName: session.profile?.displayName, authName: session.user?.displayName});
+  const checkerSummary = checklistCheckerSummary(record, {uid: session.user?.uid, profileName: checklistIdentityProfile()?.displayName, authName: session.user?.displayName});
   const checkerMarkup = checkerSummary ? `<div class="checklist-station-checker-summary"><span>${checkerSummary.pending ? 'Checagem local' : 'Última checagem'}</span><strong data-checklist-checker-name>${escapeHtml(checkerSummary.name || 'Nome não disponível')}</strong><small>${checkerSummary.pending ? 'Horário local: ' : ''}${escapeHtml(checkerSummary.dateTime || 'Data e hora não disponíveis')}</small>${checkerSummary.pending ? `<small>${record?.provisionalShared ? 'Compartilhado · confirmação pendente' : checkerSummary.failed ? 'Falha na sincronização' : 'Aguardando sincronização'}</small>` : ''}</div>` : '';
   const inherited = record?.inherited ? `<small>Não conformidade herdada de ${escapeHtml(formatRecordDate(record.date))}.</small>` : '';
   const occurrence = record?.occurrence ? `<div class="checklist-station-justification"><strong>Justificativa</strong><p>${escapeHtml(record.occurrence)}</p></div>` : '';
@@ -2419,7 +2459,7 @@ function showChecklistStationBanner(station, record, day, stations, {fromQr = fa
   dialog.checklistStationBannerToken = maintenanceBannerToken;
   const maintenanceBannerCurrent = () => dialog.open && currentRoute() === 'checklist' && document.querySelector('#checklist-station-dialog') === dialog && dialog.checklistStationBannerToken === maintenanceBannerToken && session.user?.uid === maintenanceUid;
   const maintenanceBannerWritable = () => maintenanceBannerCurrent() && can('checklistManage');
-  const titleBannerWritable = () => maintenanceBannerCurrent() && canEditChecklistStationTitle(session.user, session.profile);
+  const titleBannerWritable = () => maintenanceBannerCurrent() && canEditChecklistStationTitle(session.user, checklistIdentityProfile());
   const titleInput = actions.querySelector('[data-checklist-title-input]');
   const titleSave = actions.querySelector('[data-checklist-title-save]');
   actions.querySelector('[data-checklist-title-edit]')?.addEventListener('click', () => {
@@ -2866,7 +2906,7 @@ async function loadMonthlyChecklist(stations, suppliedResult = null, scope = nul
 }
 
 async function saveChecklistAnswer(stationId, condition, day, occurrenceValue = '', {uid = session.user?.uid, isCurrent = () => true, forceQueue = false} = {}) {
-  const actorName = session.profile?.displayName;
+  const actorName = checklistIdentityProfile()?.displayName;
   const namedAuthor = typeof actorName === 'string' && actorName.length > 0 && actorName.length <= 120 ? {createdByName: actorName} : {};
   const sessionCurrent = () => Boolean(uid) && session.user?.uid === uid && can('checklistWrite') && isCurrent();
   if (!sessionCurrent()) return {ok: false, message: 'A sessão ou a permissão do Checklist foi alterada.'};
@@ -5101,7 +5141,7 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
-  if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fa-performance', 'fc-performance',
+  if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance',
     'fd-performance', 'fe-performance', 'people', 'admin', 'notifications', 'app-updates-control'].includes(requestedRoute)) {
     navigate('home');
     return;
@@ -5136,14 +5176,14 @@ async function render() {
     navigate('home');return;
   }
   if (deployment.target==='FA'&&['fd-performance','fe-performance'].includes(requestedRoute)){navigate('management-hub',{panel:requestedRoute==='fd-performance'?'fdPerformance':'fePerformance'});return;}
-  if (deployment.target === 'FB' && ['qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
+  if (deployment.target === 'FB' && ['qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
-  if (!authLimited && ['management', 'training', 'qmentum', 'fa-performance', 'fc-performance','fd-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if (!authLimited && ['management', 'training', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance','fd-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
@@ -5159,17 +5199,17 @@ async function render() {
     return;
   }
   if(authLimited){}
-  else if(['qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)){
+  else if(['qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
-    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fa-performance'?'DESEMPENHO FA':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
+    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fa-performance'?'DESEMPENHO FA':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
   }else app.innerHTML = shellView();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
-  if (!authLimited && ['occurrences','qmentum','fa-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
+  if (!authLimited && ['occurrences','qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR';
-      button.addEventListener('click',()=>requestedRoute==='fa-performance'?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
+      button.addEventListener('click',()=>['fa-performance','fg-performance'].includes(requestedRoute)?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
     });
   }
   if(!authLimited)preloadOperationalDataWhenIdle(session.user);
@@ -5181,6 +5221,13 @@ async function render() {
   }
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('[data-load-fh-label-directory]')?.addEventListener('click', event=>loadLabelPermissionDirectory(event.currentTarget.closest('.fh-label-permissions-panel')?.querySelector('[data-fh-label-directory]')));
+  document.querySelector('[data-load-fg-checklist-directory]')?.addEventListener('click',async event=>{
+    const container=event.currentTarget.closest('.fg-checklist-permissions-panel')?.querySelector('[data-fg-checklist-directory]'),actorUid=session.user?.uid;
+    const isCurrent=()=>currentRoute()==='checklist'&&session.user?.uid===actorUid&&canManageChecklistPermissions();
+    if(!container||!actorUid||!isCurrent())return;
+    const [{loadChecklistPermissionDirectory},{listChecklistModuleProfiles,saveChecklistModulePermissions}]=await Promise.all([import('./checklist-permissions-ui.js'),import('./data.js')]);
+    if(isCurrent())await loadChecklistPermissionDirectory(container,{actorUid,load:listChecklistModuleProfiles,save:saveChecklistModulePermissions,isCurrent});
+  });
   document.querySelector('[data-retry-fh-label-access]')?.addEventListener('click',()=>{
     if(session.status!=='signed-in'||!session.user?.uid)return;
     labelProfileLoadUid='';void loadOwnLabelModuleProfile(session.user.uid);
@@ -5308,6 +5355,10 @@ function bindLogin() {
 }
 
 function sessionChanged(next) {
+  if (next.status === 'signed-in' && next.user?.uid === session.user?.uid &&
+      next.accountMode !== session.accountMode && session.checklistProfileLoaded) {
+    next = {...next, checklistProfile:session.checklistProfile, checklistProfileLoaded:true, checklistProfileError:session.checklistProfileError};
+  }
   if (next.status === 'signed-in' && next.user?.uid === session.user?.uid &&
       next.accountMode !== session.accountMode && session.labelProfileLoaded) {
     next = {...next, labelProfile:session.labelProfile, labelProfileLoaded:true, labelProfileError:session.labelProfileError};
@@ -5556,6 +5607,26 @@ async function loadOwnLabelModuleProfile(uid) {
   }
   if (sequence === labelProfileLoadSequence && session.status === 'signed-in' && session.user?.uid === uid) await render();
 }
+let checklistProfileLoadUid = '';
+let checklistProfileLoadSequence = 0;
+async function loadOwnChecklistModuleProfile(uid) {
+  if (deployment.target !== 'FA' || !fgChecklistEnabled || !uid || checklistProfileLoadUid === uid) return;
+  checklistProfileLoadUid = uid;
+  const sequence = ++checklistProfileLoadSequence;
+  session = {...session, checklistProfile:null, checklistProfileLoaded:false, checklistProfileError:''};
+  void render();
+  try {
+    const {readChecklistModuleProfile} = await import('./data.js');
+    const profile = await readChecklistModuleProfile(uid);
+    if (sequence !== checklistProfileLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    session = {...session, checklistProfile:profile, checklistProfileLoaded:true, checklistProfileError:''};
+  } catch (error) {
+    if (sequence !== checklistProfileLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
+    session = {...session, checklistProfile:null, checklistProfileLoaded:true, checklistProfileError:String(error?.code || 'MODULE_SESSION_UNAVAILABLE')};
+    checklistProfileLoadUid = '';
+  }
+  if (sequence === checklistProfileLoadSequence && session.status === 'signed-in' && session.user?.uid === uid) await render();
+}
 watchSession(next=>{
   const blocked=targetedAppUpdates.blocked;
   targetedAppUpdates.setSession(next);
@@ -5567,8 +5638,16 @@ watchSession(next=>{
     labelProfileLoadSequence++;
     next = {...next, labelProfile: null, labelProfileLoaded: false};
   }
+  if (next.status === 'signed-in' && sameUser && session.checklistProfileLoaded) {
+    next = {...next, checklistProfile:session.checklistProfile, checklistProfileLoaded:true};
+  } else if (next.status !== 'signed-in' || !sameUser) {
+    checklistProfileLoadUid = '';
+    checklistProfileLoadSequence++;
+    next = {...next, checklistProfile:null, checklistProfileLoaded:false};
+  }
   sessionChanged(accountMode.update(next));
   if (next.status === 'signed-in' && next.offline !== true) void loadOwnLabelModuleProfile(next.user?.uid);
+  if (next.status === 'signed-in' && next.offline !== true) void loadOwnChecklistModuleProfile(next.user?.uid);
   if(blocked&&!targetedAppUpdates.blocked)void render();
 });
 

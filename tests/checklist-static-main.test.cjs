@@ -8,7 +8,7 @@ const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
 
 test('pré-carregamento de login não inicia mais o relatório do Checklist', () => {
   const start = source.indexOf('function preloadStartupReports(');
-  const end = source.indexOf('\nconst labelAiEnabled', start);
+  const end = source.indexOf('\n}', start) + 2;
   assert.ok(start >= 0 && end > start);
   const preloaded = [];
   const context = vm.createContext({

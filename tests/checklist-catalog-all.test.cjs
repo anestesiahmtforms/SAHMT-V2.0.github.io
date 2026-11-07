@@ -6,12 +6,12 @@ const {join} = require('node:path');
 const data = readFileSync(join(__dirname, '../src/data.js'), 'utf8');
 test('Checklist consulta os 28 arsenais ativos e inativos sem gravar cache local', async () => {
   const {readThroughSafeCache} = await import('../src/offline-cache.js');
-  let constraints, cacheKey;
+  let constraints, cacheKey; const destinations = [];
   const stations = Array.from({length: 28}, (_, i) => ({id: String(i), active: i < 23}));
   const ctx = vm.createContext({
     moduleCollections: {checklist: {name: 'checklistStations', order: 'order', direction: 'asc'}, events: {name: 'events', order: 'date', direction: 'desc'}},
     MAX_PAGE_SIZE: 50, SAFE_CACHE_MODULES: new Set(['checklist']), db: {}, isOfflineRuntimeForced: () => false, readThroughSafeCache, readSafeCache: async()=>null,
-    operationalDatabase: async station => {assert.equal(station, 'FI'); return {};},
+    operationalDatabase: async station => {destinations.push(station); return {};},
     where: (...args) => ({where: args}), orderBy: (...args) => ({order: args}), limit: value => ({limit: value}),
     collection: () => ({}), query: (_collection, ...args) => {constraints = args; return {};},
     getDocsFromServer: async () => ({docs: stations.map(item => ({id: item.id, data: () => item}))}),
@@ -24,6 +24,7 @@ test('Checklist consulta os 28 arsenais ativos e inativos sem gravar cache local
   assert.ok(!constraints.some(item => item.where));
   assert.equal(cacheKey, undefined);
   await ctx.listModuleRecords('events', 'user');
+  assert.deepEqual(destinations, ['FG', 'FI']);
   assert.ok(constraints.some(item => item.where?.[0] === 'active'));
   const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
   assert.ok(main.includes('sortChecklistStationsForDisplay(stations, resolvedRecordFor)'));

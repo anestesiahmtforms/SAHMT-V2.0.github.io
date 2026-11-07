@@ -7,6 +7,7 @@ function harness(initial = {}, options = {}) {
   let stored = structuredClone(initial);
   let writes = 0;
   const context = {assertOnlineOperation(){},
+    operationalDatabase: async station => {assert.equal(station, 'FG'); return context.db;}, operationalModuleEnabled: station => station === 'FG',
     navigator: {onLine: options.online !== false}, crypto: {randomUUID: () => 'new-station'}, db: {},
     serverTimestamp: () => 'SERVER_TIMESTAMP', doc: (_db, collection, id) => ({collection, id}),
     collection: () => ({}), query: () => ({}), where: () => ({}), limit: () => ({}),

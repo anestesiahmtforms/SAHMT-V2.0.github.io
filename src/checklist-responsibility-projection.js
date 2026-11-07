@@ -13,7 +13,9 @@ export async function getChecklistDayResponsible({day, uid, isAdmin = false}, so
         import('firebase/firestore'), import('./firebase.js')
       ]);
       if (!db) throw new Error('Sessão indisponível.');
-      const projection = await getDocFromServer(doc(db, 'checklistResponsibilities', day));
+      const modules = await import('./operational-module-firebase.js');
+      const targetDb = modules.operationalModuleEnabled('FG') ? await modules.getOperationalModuleDatabase('FG', uid, {realtime: true}) : db;
+      const projection = await getDocFromServer(doc(targetDb, 'checklistResponsibilities', day));
       return projection.exists() ? projection.data() : null;
     }};
   }

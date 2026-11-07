@@ -6,7 +6,8 @@ export const FIREBASE_PROJECTS = Object.freeze({
   FC: Object.freeze({projectId: 'indicadores---sahmt', appName: 'sahmt-indicators', databaseId: '(default)'}),
   FI: Object.freeze({projectId: 'sahmt-operacional-fi', appName: 'sahmt-fi-operacional', databaseId: '(default)'}),
   FJ: Object.freeze({projectId: 'sahmt-escala-fj', appName: 'sahmt-fj-escala', databaseId: '(default)'}),
-  FH: Object.freeze({projectId: 'sahmt-etiquetas-fh', appName: 'sahmt-fh-etiquetas', databaseId: '(default)'})
+  FH: Object.freeze({projectId: 'sahmt-etiquetas-fh', appName: 'sahmt-fh-etiquetas', databaseId: '(default)'}),
+  FG: Object.freeze({projectId: 'sahmt-checklist-fg', appName: 'sahmt-fg-checklist', databaseId: '(default)'})
 });
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);

@@ -1,7 +1,7 @@
 import {createPrivateKey, sign} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 
-export const DOMAIN_PROJECTS = Object.freeze({FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj', FH: 'sahmt-etiquetas-fh'});
+export const DOMAIN_PROJECTS = Object.freeze({FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj', FH: 'sahmt-etiquetas-fh', FG: 'sahmt-checklist-fg'});
 export const FA_PROJECT = 'sahmt-17a16';
 export const MODULE_LEASE_SECONDS = 300;
 export const fail = (code, status = 503) => Object.assign(new Error(code), {code, status});
@@ -93,7 +93,8 @@ export function canEnterModule(profile, actor, station) {
   const permissions = profile?.permissions || {};
   const modulePermissions = station === 'FI' ? ['eventsRead', 'eventsWrite', 'eventsCatalogManage'] :
     station === 'FJ' ? ['scheduleRead', 'scheduleWrite', 'eventsRead', 'eventsWrite', 'checklistSign'] :
-    station === 'FH' ? ['labelsRead', 'labelsWrite', 'labelsManage'] : [];
+    station === 'FH' ? ['labelsRead', 'labelsWrite', 'labelsManage'] :
+    station === 'FG' ? ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'] : [];
   return profile?.uid === actor.uid && String(profile.email || '').toLowerCase() === actor.email &&
     profile.active === true && profile.access === true &&
     (station === 'FH' ? modulePermissions.some(permission => (permissions[permission] ?? permissions.admin) === true) :

@@ -45,6 +45,7 @@ async function harness({kind='events',pendingRead}={}) {
     startupBannerActive:false,yearEndStartup:{setSession(){}},notice:'',labelManualConfirmation:{},scheduleOutboxRetry(){},preloadStartupReports(){},preloadOperationalDataWhenIdle(){},syncOutbox(){},
     revalidateOnlineSession(){},render:async()=>{renders++;}, normalizeAppFeatures:features=>({...features}),mockLite:{readAppFeatures:async()=>({...ctx.appFeatures})},console
   });
+  ctx.checklistIdentityProfile=()=>ctx.session.profile;
   ctx.can=permission=>ctx.session.status==='signed-in'&&ctx.session.profile.active!==false&&ctx.session.profile.access!==false&&ctx.session.profile.permissions?.[permission]===true;
   let helpers=source.slice(source.indexOf('// Report state is transient'),source.indexOf('const preloadedDataUsers ='));
   helpers=helpers.replace('subscribe: subscribeLiveReport,','subscribe: fakeSubscribe,');
@@ -275,6 +276,7 @@ function catalogAdapterHarness({catalogGate, scopeOwned=true}={}) {
     mockCache:{readSafeCache:async(uid,type,key)=>{reads.push({uid,type,key});return type==='stations'?(catalogGate?catalogGate.promise:{data:stations}):type==='checklists'?{data:initial}:null;},writeSafeCache:async(uid,type,key,data)=>{writes.push({uid,type,key,data});}},
     reportFingerprint:JSON.stringify,invalidateChecklistSignature(){},updateChecklistResponsibilityUI(){}
   });
+  ctx.checklistIdentityProfile=()=>ctx.session.profile;
   ctx.readFreshSafeCache=(...args)=>ctx.mockCache.readSafeCache(...args);
   let adapter=source.slice(source.indexOf('async function emitCachedOfflineReport('),source.indexOf('function receiveLiveReport('));
   adapter=adapter.replaceAll("import('./report-live-data.js')",'Promise.resolve(mockCatalog)').replaceAll("import('./checklist-report-listener.js')",'Promise.resolve(mockChecklist)').replaceAll("import('./outbox.js')",'Promise.resolve(mockCache)');

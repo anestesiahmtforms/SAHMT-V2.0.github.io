@@ -226,11 +226,13 @@ export async function watchChecklistReport(options, onNext, onError) {
   const [sdk, {db}, outbox] = await Promise.all([
     import('firebase/firestore'), import('./firebase.js'), import('./outbox.js')
   ]);
+  const modules = await import('./operational-module-firebase.js');
+  const targetDb = modules.operationalModuleEnabled('FG') ? await modules.getOperationalModuleDatabase('FG', options.uid, {realtime: true}) : db;
   const reconcileConfirmedOutbox = async records => {
     const unsettled = await outbox.listUnsettledOperations(options.uid);
     return reconcileConfirmedChecklistOutbox(records, unsettled, options.uid, outbox.removeQueuedOperation, requestId => {
       if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('sahmt-write-synced', {detail: {uid: options.uid, requestId, type: 'checklists', reconciled: true}}));
     });
   };
-  return createChecklistReportListener(options, onNext, onError, {sdk, db, writeSafeCache: outbox.writeSafeCache, reconcileConfirmedOutbox});
+  return createChecklistReportListener(options, onNext, onError, {sdk, db: targetDb, writeSafeCache: outbox.writeSafeCache, reconcileConfirmedOutbox});
 }

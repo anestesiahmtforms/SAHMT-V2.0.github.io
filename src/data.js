@@ -132,7 +132,7 @@ export async function listVacationsForDate(day, {pageSize = 100} = {}) {
 }
 
 export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} = {}) {
-  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : module === 'labels' ? await operationalDatabase('FH', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
+  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : module === 'labels' ? await operationalDatabase('FH', uid) : module === 'checklist' ? await operationalDatabase('FG', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
   if (module === 'checklist') return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
@@ -508,6 +508,36 @@ export async function listUserProfiles({pageSize = 200} = {}) {
   return result.docs.map((item) => ({id: item.id, ...item.data()})).filter(profile=>!isSystemOwnerEmail(profile.email)).slice(0,take);
 }
 
+/** Reads the independent Checklist profile using the current central identity. */
+export async function readChecklistModuleProfile(uid) {
+  if (!/^[^\s/]{1,128}$/.test(uid || '')) throw new Error('UID do perfil FG inválido.');
+  const moduleDb = await operationalDatabase('FG', uid);
+  const snapshot = await getDocFromServer(doc(moduleDb, 'users', uid));
+  return snapshot.exists() ? {id: snapshot.id, ...snapshot.data()} : null;
+}
+
+export async function listChecklistModuleProfiles(uid) {
+  const moduleDb = await operationalDatabase('FG', uid);
+  const rows = await getDocsFromServer(query(collection(moduleDb, 'users'), limit(401)));
+  if (rows.docs.length > 400) throw new Error('O cadastro de Checklist excedeu o limite seguro.');
+  return rows.docs.map(row => ({...row.data(), uid:row.id}));
+}
+
+export async function saveChecklistModulePermissions(targetUid, permissions, actorUid) {
+  assertOnlineOperation();
+  const keys=['checklistRead','checklistWrite','checklistSign','checklistManage'];
+  if (!/^[^\s/]{1,128}$/.test(targetUid || '') || !actorUid || targetUid===actorUid || !permissions ||
+      Object.keys(permissions).length!==keys.length || keys.some(key=>typeof permissions[key]!=='boolean')) throw new Error('Confira o usuário e as permissões de Checklist.');
+  const moduleDb=await operationalDatabase('FG',actorUid);
+  return runTransaction(moduleDb,async transaction=>{
+    const actor=await transaction.get(doc(moduleDb,'users',actorUid)),target=await transaction.get(doc(moduleDb,'users',targetUid));
+    const profile=actor.exists()?actor.data():null;
+    if (!profile || profile.active!==true || profile.access!==true || !(profile.role==='administrador_app' || profile.permissions?.admin===true)) throw Object.assign(new Error('A administração de Checklist recusou a alteração.'),{code:'permission-denied'});
+    if (!target.exists()) throw new Error('O perfil não está disponível em Checklist.');
+    transaction.update(doc(moduleDb,'users',targetUid),{permissions:{...target.data().permissions,...permissions},updatedAt:serverTimestamp()});
+  });
+}
+
 /** Reads the independent Etiquetas permission profile in FH using the current FA identity. */
 export async function readLabelModuleProfile(uid) {
   const targetUid = String(uid || '').trim();
@@ -614,6 +644,10 @@ export async function saveUserProfile(input, actorUid) {
   // General FA administration does not edit legacy label grants or the independent FH profile.
   for (const key of ['labelsRead', 'labelsWrite', 'labelsManage']) {
     if (current.exists() && typeof current.data().permissions?.[key] === 'boolean') permissions[key] = current.data().permissions[key];
+  }
+  if (operationalModuleEnabled('FG')) for (const key of ['checklistRead','checklistWrite','checklistSign','checklistManage']) {
+    if (current.exists() && typeof current.data().permissions?.[key] === 'boolean') permissions[key] = current.data().permissions[key];
+    else delete permissions[key];
   }
   const currentCohort = current.exists() ? current.data().firstLoginCohort : undefined;
   if (currentCohort !== undefined && !FIRST_LOGIN_COHORTS.includes(currentCohort)) {
@@ -1748,6 +1782,7 @@ export async function listLabelHistory(labelId, {pageSize = 20, uid} = {}) {
 export async function listChecklistStations({pageSize = 200, uid} = {}) {
   return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
     readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
+    const db = await operationalDatabase('FG', uid);
     const result = await getDocsFromServer(query(
       collection(db, 'stations'),
       orderBy('order', 'asc'),
@@ -1759,11 +1794,13 @@ export async function listChecklistStations({pageSize = 200, uid} = {}) {
 }
 
 export async function getChecklistStationByQr(qrValue, options = {}) {
+  const db = await operationalDatabase('FG', options.uid);
   return readChecklistQrStation(qrValue, {collection, query, where, limit, or, documentId, startAfter, getDocs: getDocsFromServer}, db, options);
 }
 
 export async function getLatestChecklistRecordForStation(stationId, day, {uid, isCurrent} = {}) {
   try {
+    const db = await operationalDatabase('FG', uid);
     return await readChecklistStationDay(stationId, day, {collection, query, where, orderBy, limit, startAfter, getDocs: getDocsFromServer}, db, {isCurrent});
   } catch (error) {
     if (!mayUseOfflineCache(error) || !uid) throw error;
@@ -1993,6 +2030,7 @@ export async function acknowledgeLearningActivity(activity, uid) {
 
 export async function saveChecklistStation(input, uid) {
   assertOnlineOperation();
+  const db = await operationalDatabase('FG', uid);
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para atualizar o catálogo do Checklist.');
   const name = String(input.name || '').trim().replace(/\s+/g, ' ');
@@ -2033,12 +2071,13 @@ export async function saveChecklistStation(input, uid) {
     transaction.set(ref, record);
     return record;
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
+  if (!operationalModuleEnabled('FG')) void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
   return result;
 }
 
 export async function getChecklistCreatorName(creatorUid) {
   if (typeof creatorUid !== 'string' || !/^[^/]{1,128}$/.test(creatorUid)) return '';
+  const db = await operationalDatabase('FG');
   const snapshot = await getDocFromServer(doc(db, 'users', creatorUid));
   if (!snapshot.exists()) return '';
   const name = snapshot.data().displayName;
@@ -2059,6 +2098,7 @@ export async function listChecklistRecords(day, uid, {pageSize = 200, stationIds
     historyIncomplete = !sameCatalog;
     stale = true;
   } else try {
+    const db = await operationalDatabase('FG', uid);
     const base = collection(db, 'checklists');
     const [currentResult, ...priorResults] = await Promise.all([
       getDocsFromServer(query(base, where('date', '==', day), orderBy('createdAt', 'desc'), limit(currentLimit))),
@@ -2125,6 +2165,7 @@ export async function listMonthlyChecklistRecords(month, uid, {pageSize = 2000, 
     historyIncomplete = !sameCatalog || truncated;
     stale = true;
   } else try {
+    const db = await operationalDatabase('FG', uid);
     const base = collection(db, 'checklists');
     const [result, ...priorResults] = await Promise.all([
       getDocsFromServer(query(base, where('date', '>=', from), where('date', '<=', to), orderBy('date', 'asc'), orderBy('createdAt', 'desc'), limit(maxRecords + 1))),
@@ -2185,6 +2226,7 @@ function checklistAcknowledgementRequestId(day, uid) {
 }
 
 export async function previewChecklistSignatureRequest({day, stations = [], records = [], uid} = {}) {
+  const db = await operationalDatabase('FG', uid);
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Não foi possível identificar o Checklist ou a sessão.');
   const latest = new Map();
   for (const record of records) if (!latest.has(record.stationId)) latest.set(record.stationId, record);
@@ -2210,6 +2252,7 @@ export async function previewChecklistSignatureRequest({day, stations = [], reco
 
 export async function createChecklistSignatureRequest({day, revision, declaration, uid, signerName, signerSigla = '', rotationSigla = null, rotationPosition = null} = {}) {
   assertOnlineOperation();
+  const db = await operationalDatabase('FG', uid);
   if (!uid || !/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !/^[a-f0-9]{64}$/.test(revision || '') || declaration !== true) {
     throw new Error('Atualize o relatório e confirme a declaração antes de solicitar a validação.');
   }
@@ -2498,7 +2541,7 @@ function canonicalValue(value) {
 }
 
 async function confirmCommittedMutation({collectionName, data, uid, requestId}) {
-  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
+  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
   const snapshot = await getDocFromServer(doc(db, collectionName, requestId));
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
@@ -2513,7 +2556,7 @@ export async function createOperationalRecord(collectionName,data,{uid,requestId
   const result=await persistOperationalMutation({id:requestId,online:true,
     sendRemote:()=>sendOperationalRecordInFirestore(collectionName,data,{uid,requestId}),
     onFailure:error=>operationalBackend.noteFailure(error,collectionName)});
-  if (!(collectionName === 'events' && operationalModuleEnabled('FI')) && !(collectionName === 'labels' && operationalModuleEnabled('FH'))) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
+  if (!(collectionName === 'events' && operationalModuleEnabled('FI')) && !(collectionName === 'labels' && operationalModuleEnabled('FH')) && !(collectionName === 'checklists' && operationalModuleEnabled('FG'))) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
   return result;
 }
 
@@ -2532,7 +2575,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
       throw unconfirmedWrite(error,requestId);
     }
   }
-  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
+  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
   const batch = writeBatch(targetDb);
   buildRecordBatch(batch, {collectionName, data, uid, requestId}, targetDb);
   try {
@@ -2559,7 +2602,7 @@ async function commitOperationalMutationOnce(collectionName, data, uid, requestI
     }
     return {id: requestId, pendingFirestore: false};
   }
-  const db = collectionName === 'labels' ? await operationalDatabase('FH', uid) : identityDb;
+  const db = collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : identityDb;
   const reference = doc(db, collectionName, requestId);
   return runTransaction(db, async transaction => {
     const existing = await transaction.get(reference);
@@ -2660,6 +2703,7 @@ export async function flushOutbox() {return 0;}
 
 export async function saveChecklistStationMaintenance(stationId, value, uid) {
   assertOnlineOperation();
+  const db = await operationalDatabase('FG', uid);
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para salvar a manutenção.');
   const maintenance = checklistMaintenanceForWrite(value);
@@ -2672,12 +2716,13 @@ export async function saveChecklistStationMaintenance(stationId, value, uid) {
     transaction.update(ref, update);
     return {...current.data(), ...update};
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
+  if (!operationalModuleEnabled('FG')) void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
   return result;
 }
 
 export async function saveChecklistStationTitle(stationId, value, uid) {
   assertOnlineOperation();
+  const db = await operationalDatabase('FG', uid);
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!navigator.onLine) throw new Error('Conecte-se para salvar o título.');
   const functionLabel = normalizeChecklistStationTitle(value);
@@ -2690,7 +2735,7 @@ export async function saveChecklistStationTitle(stationId, value, uid) {
     transaction.update(ref, update);
     return {...current.data(), ...update};
   });
-  void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
+  if (!operationalModuleEnabled('FG')) void globalThis.sahmtMirrorConfirmedSource?.('stations/'+stationId);
   return result;
 }
 

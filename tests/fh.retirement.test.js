@@ -12,5 +12,5 @@ test('FH retirement closes only labels and its catalog while preserving existing
 test('FH retired queues are excluded before the bounded drain and audits expose the label pending count',async()=>{
  const statements=[];const sql={exec:(query)=>{statements.push(query);return {toArray:()=>query.includes('GROUP BY')?[{collection:'labels',count:3}]:[]};}};
  await continuityStateAction(sql,'/continuity-drain',{excludeMigratedModules:true,excludeFhLabels:true});assert.match(statements[0],/NOT IN \('events','scheduleReleases','labels'\).*LIMIT 10/);
- const r=await continuityStateAction(sql,'/continuity-module-audit',{}),data=await r.json();assert.equal(data.pendingLabels,3);assert.equal(data.pendingMigrated,0);assert.match(statements[1],/IN \('events','scheduleReleases','labels'\)/);
+ const r=await continuityStateAction(sql,'/continuity-module-audit',{}),data=await r.json();assert.equal(data.pendingLabels,3);assert.equal(data.pendingMigrated,0);assert.match(statements[1],/IN \('events','scheduleReleases','labels','checklists'\)/);
 });
