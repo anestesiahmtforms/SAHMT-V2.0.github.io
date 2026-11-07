@@ -14,7 +14,7 @@
 .management-hub-dialog[data-panel=communication] .management-hub-content-panel{height:auto}
 .management-hub-dialog[data-panel=communication] .management-hub-body{display:block;overflow:auto}
 .management-hub-dialog[data-panel=communication] .communication{max-width:none;margin:0;padding:0}
-.communication--menu .comm-menu{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.communication--menu .comm-menu{grid-template-columns:minmax(0,1fr);gap:8px}
 .communication--menu .comm-menu button{min-height:56px;padding:10px;font-size:clamp(.75rem,2.8vw,.95rem);line-height:1.25;overflow-wrap:anywhere;min-width:0}
 .communication--menu .comm-menu button:last-child:nth-child(odd){grid-column:1/-1}
 
@@ -44,5 +44,60 @@
 @media(max-height:660px){.management-hub-dialog[data-panel=communication]:has(.communication--push-devices){gap:8px}.management-hub-dialog:has(.communication--push-devices) .management-hub-header{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:0;min-height:0;padding:6px 8px}.management-hub-dialog:has(.communication--push-devices) .management-hub-header>[data-hub-heading-icon],.management-hub-dialog:has(.communication--push-devices) .management-hub-user-row{display:none}}
 @media(max-height:420px){.communication--push-devices .comm-note{display:none}.communication--push-devices>.comm-heading{margin-bottom:4px}.comm-push-summary{margin-bottom:4px}}
 
-.communication--operational label{margin:8px 0}.communication--operational textarea{min-height:96px;height:clamp(96px,22dvh,160px)}.communication--operational .comm-note{margin:8px 0;font-size:.8rem;line-height:1.35}.communication--operational .comm-actions{margin:12px 0 0}.communication--operational .comm-status:not(:empty){padding:8px;margin-bottom:8px}
-@media(max-height:660px){.management-hub-dialog:has(.communication--operational) .management-hub-header{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:0;min-height:0;padding:6px 8px}.management-hub-dialog:has(.communication--operational) .management-hub-header>[data-hub-heading-icon],.management-hub-dialog:has(.communication--operational) .management-hub-user-row{display:none}}
+.management-hub-dialog[data-panel=communication]:has(.communication--compose) {
+  width: min(92vw, 560px);
+  gap: 8px;
+}
+.management-hub-dialog:has(.communication--compose) .management-hub-header {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
+  min-height: 0;
+  padding: 5px;
+}
+.management-hub-dialog:has(.communication--compose) :is([data-hub-heading-icon], .management-hub-user-row, .management-hub-footer) {
+  display: none;
+}
+.management-hub-dialog:has(.communication--compose) .management-hub-header h2 {
+  box-sizing: border-box;
+  min-height: 34px;
+  font-size: clamp(.85rem, 3.6vw, 1.2rem);
+  letter-spacing: .06em;
+}
+.management-hub-dialog[data-panel=communication]:has(.communication--compose) .management-hub-body {
+  overflow: hidden;
+  padding: 12px;
+}
+.communication--compose .comm-heading { margin: 0 0 8px; }
+.communication--compose .comm-heading h2 { font-size: clamp(1.05rem, 4.6vw, 1.4rem); }
+.communication--compose form { display: grid; gap: 7px; }
+.communication--compose label { min-width: 0; margin: 0; line-height: 1.3; font-size: .875rem; }
+.communication--compose input:not([type=checkbox]), .communication--compose select, .communication--compose textarea {
+  min-height: 40px;
+  margin-top: 2px;
+  padding: 6px 8px;
+  font-size: 16px;
+}
+.communication--compose textarea { height: clamp(64px, 17dvh, 132px); resize: none; }
+.comm-event-audience, .communication--compose .comm-actions { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 8px; }
+.communication--compose .comm-actions { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); margin: 8px 0 0; }
+.communication--compose .comm-actions button { min-height: 44px; padding: 6px; font-size: .75rem; line-height: 1.2; }
+.communication--compose button.comm-send-button {
+  min-height: 44px;
+  padding: 6px;
+  color: #fff;
+  background: #a92928;
+  border-color: #8e2121;
+}
+.communication--compose button.comm-send-button[data-sent] { background: #17623e; border-color: #145436; opacity: 1; cursor: default; }
+.comm-send-instruction { margin: 0; color: #852321; font-size: .73rem; font-weight: 850; line-height: 1.25; text-align: center; }
+.communication--compose .comm-status:not(:empty) { margin: 8px 0 0; padding: 6px 8px; font-size: .8rem; line-height: 1.25; }
+@media (max-height: 500px) {
+  .management-hub-dialog[data-panel=communication]:has(.communication--compose) .management-hub-body { padding: 7px; }
+  .communication--compose form { gap: 4px; }
+  .communication--compose label { line-height: 1.15; }
+  .communication--compose input:not([type=checkbox]), .communication--compose select { min-height: 36px; }
+  .communication--compose textarea { height: 48px; }
+  .communication--compose .comm-heading { margin-bottom: 5px; }
+  .communication--compose .comm-status:not(:empty) { margin-top: 5px; padding-block: 4px; }
+  .communication--compose .comm-actions { margin-top: 5px; }
+}

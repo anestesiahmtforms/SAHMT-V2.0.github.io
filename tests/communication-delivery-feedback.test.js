@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from '../src/communication-notice-text.js';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function homeHarness(request){
@@ -11,12 +12,21 @@ function homeHarness(request){
  const window={addEventListener:(n,fn)=>windowEvents.set(n,fn),removeEventListener:n=>windowEvents.delete(n)};
  const serviceWorker={addEventListener:(n,fn)=>workerEvents.set(n,fn),removeEventListener:n=>workerEvents.delete(n)};
  let disposed=false;
- const source=readFileSync(new URL('../src/communication-home-banners.js',import.meta.url),'utf8').replace('export function mountCommunicationHomeBanners','function mountCommunicationHomeBanners');
- const mount=vm.runInNewContext(source+'\nmountCommunicationHomeBanners;',{document,window,navigator:{serviceWorker},localStorage:{getItem:()=>null},Date:class extends Date{static now(){return clock;}},URL});
+ const source=readFileSync(new URL('../src/communication-home-banners.js',import.meta.url),'utf8').replace(/^import .*\r?\n/m,'').replace('export function mountCommunicationHomeBanners','function mountCommunicationHomeBanners');
+ const mount=vm.runInNewContext(source+'\nmountCommunicationHomeBanners;',{document,window,navigator:{serviceWorker},localStorage:{getItem:()=>null},Date:class extends Date{static now(){return clock;}},escapeHtml,linkedNoticeText});
  const cleanup=mount(root,{uid:'fixture-rl',client:{request,dispose(){disposed=true;}}});
  return {root,document,documentEvents,windowEvents,workerEvents,cleanup,get disposed(){return disposed;},advance:()=>clock+=3000};
 }
 const notice={id:'release-2026-11-04-RL-1',status:'published',title:'LIBERAÇÃO',message:'Você está Liberado!',category:'INFORMAÇÃO INSTITUCIONAL',publishAt:1};
+
+test('links colados na descrição chegam clicáveis na Home com parâmetros preservados',async()=>{
+ const h=homeHarness(async()=>({items:[{...notice,message:'Veja #/home ou (https://example.test/watch?v=abc&list=xyz). <img src=x>'}],cursor:null}));
+ await tick();
+ assert.match(h.root.innerHTML,/<a href="#\/home">#\/home<\/a>/);
+ assert.match(h.root.innerHTML,/<a href="https:\/\/example\.test\/watch\?v=abc&amp;list=xyz" target="_blank" rel="noopener noreferrer">/);
+ assert.doesNotMatch(h.root.innerHTML,/<img/);
+ h.cleanup();
+});
 
 test('a liberação aparece antes de terminar a leitura de páginas antigas',async()=>{
  let complete;let calls=0;

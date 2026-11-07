@@ -1,190 +1,360 @@
-import {CATEGORIES,ROUTES,ROLES} from '../communication/domain.js';
-import './communication.css';
-import {loadCommunicationPushDirectory} from './communication-push-directory.js';
+import {BUILTIN_GROUPS, ROUTES} from '../communication/domain.js';
 import {communicationEntryFromSession} from './communication-entry.js';
-import {operationalNoticeIdentity,urgentNoticeInput,newUrgentNoticeId} from './communication-operational-notices.js';
-import {COMMUNICATION_LIMITS,communicationLimitMessage} from './communication-usage.js';
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const date=v=>v?new Date(v).toLocaleString('pt-BR'):'';
-const local=v=>{const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
-const options=(values,value)=>values.map(v=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(v)}</option>`).join('');
-const routeNames={communications:'Central de Comunicação',home:'Início',management:'Operacional', 'management-hub':'Governança',training:'Treinamentos',events:'Eventos',labels:'Etiquetas',checklist:'Checklist',occurrences:'Ocorrências',qmentum:'Qmentum'};
-const routeOptions=(value)=>ROUTES.map(v=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(routeNames[v]||v)}</option>`).join('');
-const linkedText=value=>esc(value).replace(/https:\/\/[^\s<]+/g,raw=>{let url=raw,tail='';while(/[.,;:!?)]$/.test(url)){tail=url.slice(-1)+tail;url=url.slice(0,-1);}try{const parsed=new URL(url);if(parsed.protocol!=='https:')return raw;const internal=parsed.hostname==='anestesiahmtforms.github.io';return `<a href="${esc(url)}"${internal?'':' target="_blank" rel="noopener noreferrer"'}>${url}</a>${tail}`;}catch{return raw;}}).replace(/\r?\n/g,'<br>');
-const errors={COMM_CONFIG_REQUIRED:'A Central aguarda a configuração segura da Central de Comunicação.',COMM_FREE_PLAN_UNCONFIRMED:'Operação bloqueada: não foi possível confirmar a cota gratuita da Central de Comunicação sem faturamento.',COMM_SESSION_INVALID:'Confirme sua conta Google em Sincronização e reabra a Central.',COMM_IDENTITY_MISMATCH:'As sessões do app e da Central de Comunicação pertencem a identidades diferentes. Reconecte sua conta.',COMM_FORBIDDEN:'Sua identidade não tem autorização para esta ação.',COMM_CONFLICT:'Este registro mudou em outra sessão. Reabra para conferir a versão atual.',COMM_MESSAGE_LOCKED:'Este aviso já foi enviado ou está em processamento. Consulte as publicações e o histórico antes de criar outro.',COMM_DISPATCH_LOCKED:'Outro lote já está em processamento ou a tela está desatualizada. Consulte o histórico.',COMM_PUSH_QUEUE_UNAVAILABLE:'O aviso foi salvo, mas a fila automática do Push não está disponível. O aviso continua na Home; peça à administração para verificar o serviço.',COMM_FREE_QUOTA_EXHAUSTED:'Um limite de uso foi atingido. Consulte USO E LIMITES DIÁRIOS para identificar o bloqueio.',COMM_RATE_LIMIT:'Limite de ações por minuto atingido. Aguarde e tente novamente.',COMM_PUSH_UNSUPPORTED:'Push indisponível. No iPhone, use o PWA na tela inicial com iOS 16.4 ou posterior. A chave pública da Central de Comunicação também precisa estar configurada.',COMM_PUSH_PERMISSION:'A permissão não foi concedida. Você pode alterá-la nas configurações do navegador.',COMM_PUSH_DISABLED:'O envio Push está desativado nas Configurações da Central.',COMM_NOT_CURRENT:'O aviso precisa estar publicado e dentro da validade.',COMM_DEVICE_OWNER:'Este dispositivo está vinculado a outra conta. Desative as notificações na conta anterior primeiro.',COMM_DEVICE_LIMIT:'Limite de cinco dispositivos ativos por usuário.',COMM_INVALID_INPUT:'Confira os campos, as datas e os limites de tamanho.',COMM_INVALID_AUDIENCE:'O destinatário selecionado está inativo ou não existe.',COMM_SOURCE_UNSUPPORTED:'Esta origem não oferece encaminhamento de registro. Use o atalho da Central e redija o aviso.'};
-export function mountCommunication(root,{client,adminMode=false,appSession=null,isCurrent=()=>true,onBack=()=>{}}={}){
- let disposed=false,generation=0,authorized=false,bootstrapped=false,currentView='home',selectedMembers=new Set(),cleanupGoogle=()=>{},pushDirectoryController=null,pushDirectorySnapshot=null,recoveryDraft=null;
- const operationalMode=adminMode&&operationalNoticeIdentity(appSession?.user);
- let urgentSending=false;
- const active=()=>!disposed&&isCurrent();
- const render=(title,html,{menu=false,pushDevices=false}={})=>{
-  pushDirectoryController?.abort();pushDirectoryController=null;
-  generation++;root.classList.add('communication');root.classList.toggle('communication--menu',menu);root.classList.toggle('communication--push-devices',pushDevices);root.classList.toggle('communication--operational',operationalMode);
-  const embedded=root.closest('.management-hub-dialog'),heading=(menu||operationalMode)&&embedded?'':`<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
-  const navigation=adminMode?(menu||operationalMode?'':'<button type="button" data-home>CENTRAL DE COMUNICAÇÃO</button>'):'<button type="button" data-home>MENSAGENS RECEBIDAS</button><button type="button" data-back>VOLTAR</button>';
-  root.innerHTML=`${heading}<div class="comm-status" role="status" aria-live="polite"></div><section class="comm-content">${html}</section>${navigation?`<footer class="comm-actions">${navigation}</footer>`:''}`;
-  (root.querySelector('h2')||embedded?.querySelector('#management-hub-title'))?.focus({preventScroll:true});
- };
- const status=(message,error=false)=>{if(!active())return;const el=root.querySelector('.comm-status');el.textContent=message;el.dataset.error=String(error);};
- async function run(task){
-  const ticket=generation;const buttons=[...root.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
-  try{return await task();}catch(e){if(active()&&ticket===generation){if(['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(e.code))return recoverGoogle();status(e.name==='AbortError'?'Operação interrompida. Consulte o histórico antes de repetir um envio.':communicationLimitMessage(e)||errors[e.code]||'Não foi possível confirmar a operação. Confira a conexão e reabra esta tela.',true);}}
-  finally{if(active()&&ticket===generation)buttons.forEach(b=>b.disabled=false);}
- }
- function recoverGoogle(){
-  if(root.querySelector('[data-comm-urgent-form]'))try{recoveryDraft=urgentFormValue();}catch{}
-  else if(root.querySelector('[data-comm-form]'))try{recoveryDraft=formValue();}catch{}
-  pushDirectorySnapshot=null;
-  bootstrapped=false;cleanupGoogle();cleanupGoogle=()=>{};
-  render('Ativar notificações neste aparelho','<p>Confirme a mesma conta Google já aberta no SAHMT para conectar este aparelho à Central de Comunicação.</p><div data-comm-google></div><p class="comm-note">Depois da confirmação, você poderá habilitar as notificações. Nenhuma mensagem será enviada por esta confirmação.</p>');
-  const ticket=generation,host=root.querySelector('[data-comm-google]');
-  void client.connectGoogle(host,{onConnected:async()=>{if(active()&&generation===ticket){cleanupGoogle();cleanupGoogle=()=>{};await run(bootstrap);}},onError:()=>{if(active()&&generation===ticket)status('Não foi possível confirmar. Escolha a mesma conta Google já aberta no SAHMT e tente novamente.',true);}}).then(cleanup=>{if(active()&&generation===ticket)cleanupGoogle=cleanup;else cleanup?.();}).catch(()=>{if(active()&&generation===ticket)status('Não foi possível carregar o Google. Reabra esta tela para tentar novamente.',true);});
- }
- async function initialView(){
-  if(operationalMode){const draft=recoveryDraft;recoveryDraft=null;urgentForm(draft?{...draft.message,id:draft.id}:{});if(draft)status('Acesso confirmado. Seu texto foi preservado; revise antes de enviar.');}
-  else if(recoveryDraft&&adminMode){const draft=recoveryDraft;recoveryDraft=null;form({...draft.message,id:draft.id,version:draft.version,source:draft.source});status('Acesso confirmado. Seu texto foi preservado; revise antes de enviar.');}
-  else if(!adminMode&&location.hash.split('/')[2]==='message')await detail(decodeURIComponent(location.hash.split('/')[3]||''));
-  else await view('home');
- }
- async function bootstrap(){const data=await client.request('BOOTSTRAP');if(!active())return;authorized=data.isAdmin===true;if(adminMode&&!authorized){status(errors.COMM_FORBIDDEN,true);return;}bootstrapped=true;await initialView();}
- async function loadViewData(title,action,input={}){
-  render(title,'<p class="comm-loading" role="status">Carregando informações…</p>');
-  const ticket=generation;
-  try{const data=await client.request(action,input);return active()&&generation===ticket?data:null;}
-  catch(error){
-   if(!active()||generation!==ticket)return null;
-   if(['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)){recoverGoogle();return null;}
-   pushDirectorySnapshot=null;
-   root.querySelector('.comm-content').innerHTML='<p>Não foi possível carregar esta tela. Volte à Central e tente novamente.</p>';
-   status(error.name==='AbortError'?'Carregamento interrompido.':communicationLimitMessage(error)||errors[error.code]||'Confira a conexão e tente novamente.',true);return null;
+import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
+import {communicationLimitMessage} from './communication-usage.js';
+import './communication.css';
+
+const errors = {
+  COMM_SESSION_INVALID: 'Confirme sua conta Google e reabra a Central.',
+  COMM_FORBIDDEN: 'Sua conta não tem autorização para esta ação.',
+  COMM_INVALID_AUDIENCE: 'O destinatário não está disponível. Selecione novamente.',
+  COMM_INVALID_INPUT: 'Confira o título, a descrição e o público.',
+  COMM_PUSH_UNSUPPORTED: 'Push indisponível neste aparelho. No iPhone, abra o app instalado na tela inicial.',
+  COMM_PUSH_PERMISSION: 'Autorize as notificações nas configurações do aparelho ou navegador.',
+  COMM_DEVICE_LIMIT: 'Limite de cinco dispositivos ativos por usuário.',
+};
+const needsGoogle = error => ['COMM_SESSION_INVALID', 'COMM_IDENTITY_MISMATCH'].includes(error.code);
+const audienceOptions = [{id: 'ALL', name: 'TODOS'}, ...BUILTIN_GROUPS, {id: 'USER', name: 'INDIVIDUAL'}];
+
+export function mountCommunication(root, {client, adminMode = false, appSession = null, isCurrent = () => true, onBack = () => {}} = {}) {
+  let disposed = false;
+  let generation = 0;
+  let cleanupGoogle = () => {};
+  let composeState;
+  let directory;
+  const active = () => !disposed && isCurrent();
+  const dialog = root.closest('.management-hub-dialog');
+
+  async function pendingEventKey(payload) {
+    const uid = appSession?.user?.uid;
+    if (!uid) return '';
+    const fingerprint = JSON.stringify([payload.title, payload.description, payload.audience, payload.recipient]);
+    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
+    const hash = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
+    return `sahmt-ff-pending-event:${uid}:${hash}`;
   }
- }
- const adminMenu=()=>{currentView='home';render('CENTRAL DE COMUNICAÇÃO',`<div class="comm-menu">${[['new','CRIAR E ENVIAR AVISO'],['messages','COMUNICAÇÕES PUBLICADAS'],['pushDevices','DISPOSITIVOS E STATUS DO PUSH'],['groups','DESTINATÁRIOS E GRUPOS'],['history','HISTÓRICO DE ENVIOS'],['metrics','INDICADORES DE COMUNICAÇÃO'],['usage','USO E LIMITES DIÁRIOS'],['settings','CONFIGURAÇÕES']].map(([v,label])=>`<button type="button" data-view="${v}">${label}</button>`).join('')}</div>`,{menu:true});};
- async function pushDevices(force=false){
-  currentView='pushDevices';
-  render('Dispositivos e status do Push','<p class="comm-note">Lista única: todos com Push ativo primeiro, seguidos dos usuários sem Push ativo. Inclui quem não tem aparelho registrado.</p><p class="comm-push-summary" data-push-count aria-live="polite">Carregando lista completa…</p><div class="comm-push-directory" role="list" aria-label="Usuários, dispositivos e status do Push" aria-busy="true" tabindex="0"></div>',{pushDevices:true});
-  root.querySelector('footer.comm-actions').insertAdjacentHTML('afterbegin','<button type="button" data-first="pushDevices" disabled>ATUALIZAR LISTA</button>');
-  const ticket=generation,controller=new AbortController(),current=()=>active()&&generation===ticket;
-  pushDirectoryController=controller;
-  const list=root.querySelector('.comm-push-directory'),count=root.querySelector('[data-push-count]'),refresh=root.querySelector('[data-first="pushDevices"]');
-  const paintUsers=users=>{
-   const scroll=list.scrollTop,top=list.getBoundingClientRect().top,anchor=scroll>0?[...list.querySelectorAll('[data-comm-user]')].find(card=>card.getBoundingClientRect().bottom>top):null,anchorId=anchor?.dataset.commUser,offset=anchor?anchor.getBoundingClientRect().top-top:0;
-   list.innerHTML=users.map(user=>`<article class="comm-card" role="listitem" data-comm-user="${esc(user.uid)}"><h3>${esc(user.displayName||user.email||user.uid)}</h3><p>${esc([user.sigla,user.email].filter(Boolean).join(' · '))}</p>${user.devices.length?user.devices.map(device=>{const status={ACTIVE:'PUSH ATIVO',NOT_REGISTERED:'PUSH NÃO ATIVO',UNLINKED:'PUSH ATIVO · VÍNCULO NÃO CONFIRMADO'}[device.pushStatus]||'STATUS INDISPONÍVEL';const last=device.lastSeenAt?date(device.lastSeenAt):'não informada';return `<div class="comm-push-device"><div><strong>${esc(device.platform)} · ${esc(device.displayMode==='standalone'?'App instalado':device.displayMode==='browser'?'Navegador':'modo não informado')}${device.deviceId?' · '+esc(device.deviceId.slice(0,8)):''}</strong><small>${device.appVersion?'Versão '+esc(device.appVersion)+' · ':''}${device.loadedRelease?'compilação '+esc(device.loadedRelease)+' · ':''}Última conexão: ${esc(last)}${device.pushUpdatedAt?' · Push atualizado: '+esc(date(device.pushUpdatedAt)):''}</small></div><strong class="comm-push-status" data-status="${esc(device.pushStatus)}">${status}</strong></div>`;}).join(''):user.pushPending?'<p class="comm-push-empty">Consultando dispositivos e Push…</p>':'<p class="comm-push-empty">Nenhum aparelho registrado. Sem inscrição Push confirmada.</p>'}</article>`).join('')||'<p>Nenhum usuário ativo encontrado.</p>';
-   const nextAnchor=anchorId?[...list.querySelectorAll('[data-comm-user]')].find(card=>card.dataset.commUser===anchorId):null;
-   list.scrollTop=nextAnchor?list.scrollTop+nextAnchor.getBoundingClientRect().top-list.getBoundingClientRect().top-offset:scroll;
+
+  function render(title, content, {compose = false, menu = false} = {}) {
+    generation++;
+    root.classList.add('communication');
+    root.classList.toggle('communication--compose', compose);
+    root.classList.toggle('communication--menu', menu);
+    const hubHeading = dialog?.querySelector('#management-hub-title');
+    if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : 'CENTRAL DE COMUNICAÇÃO';
+    const heading = (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
+    const navigation = compose ? '<button type="button" data-home>CENTRAL DE COMUNICAÇÃO</button><button type="button" data-back>VOLTAR</button>' :
+      !adminMode ? '<button type="button" data-home>MENSAGENS RECEBIDAS</button><button type="button" data-back>VOLTAR</button>' : '';
+    root.innerHTML = `${heading}<section class="comm-content">${content}</section><div class="comm-status" role="status" aria-live="polite"></div>${navigation ? `<footer class="comm-actions">${navigation}</footer>` : ''}`;
+    (root.querySelector('h2') || hubHeading)?.focus({preventScroll: true});
+  }
+
+  function status(message, error = false) {
+    const element = root.querySelector('.comm-status');
+    if (!active() || !element) return;
+    element.textContent = message;
+    element.dataset.error = String(error);
+  }
+
+  function report(error, fallback = 'Confira a conexão e tente novamente.') {
+    status(communicationLimitMessage(error) || errors[error.code] || fallback, true);
+  }
+
+  function recoverGoogle() {
+    directory = undefined;
+    cleanupGoogle();
+    render('Conectar à Central de Comunicação', '<p>Confirme a mesma conta Google já aberta no SAHMT.</p><div data-comm-google></div>');
+    const ticket = generation;
+    const current = () => active() && generation === ticket;
+    void client.connectGoogle(root.querySelector('[data-comm-google]'), {
+      onConnected: async () => {
+        if (!current()) return;
+        cleanupGoogle();
+        cleanupGoogle = () => {};
+        await bootstrap();
+      },
+      onError: () => { if (current()) status('Escolha a mesma conta Google já aberta no SAHMT e tente novamente.', true); },
+    }).then(cleanup => {
+      if (current()) cleanupGoogle = cleanup;
+      else cleanup?.();
+    }).catch(() => { if (current()) status('Não foi possível carregar o Google. Reabra a Central.', true); });
+  }
+
+  function adminMenu() {
+    composeState = undefined;
+    render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button></div>', {menu: true});
+  }
+
+  async function loadDirectory() {
+    const users = new Map();
+    const cursors = new Set();
+    let cursor = '';
+    do {
+      const page = await client.request('DIRECTORY', {cursor});
+      for (const user of page.items) users.set(user.uid, user);
+      cursor = page.cursor;
+      if (!cursor) return [...users.values()];
+      if (!active() || cursors.has(cursor) || cursors.size >= 19) throw Error('Diretório incompleto');
+      cursors.add(cursor);
+    } while (cursor);
+  }
+
+  function setComposeControls(form, busy = Boolean(composeState.sending)) {
+    const {title, description, audienceType, audienceValue, send} = form.elements;
+    const locked = busy || Boolean(composeState.pending) || composeState.sent;
+    title.readOnly = description.readOnly = locked;
+    audienceType.disabled = locked;
+    audienceValue.disabled = locked || audienceType.value !== 'USER' || !form.dataset.recipientsReady;
+    send.disabled = busy || composeState.sent || (audienceType.value === 'USER' && !form.dataset.recipientsReady && !composeState.pending);
+    for (const button of root.querySelectorAll('footer button')) button.disabled = busy;
+  }
+
+  async function prepareRecipients(form, selected = '') {
+    const {audienceType, audienceValue} = form.elements;
+    audienceValue.required = audienceType.value === 'USER';
+    audienceValue.setAttribute('aria-busy', String(audienceValue.required));
+    if (!audienceValue.required) {
+      audienceValue.innerHTML = '<option value="">Selecione Individual</option>';
+      delete form.dataset.recipientsReady;
+      setComposeControls(form);
+      return;
+    }
+    audienceValue.innerHTML = '<option value="">Carregando destinatários…</option>';
+    delete form.dataset.recipientsReady;
+    setComposeControls(form);
+    const request = directory ??= loadDirectory();
+    try {
+      const users = await request;
+      if (!active() || !form.isConnected || audienceType.value !== 'USER') return;
+      const label = user => user.displayName?.trim() || user.email;
+      const groups = BUILTIN_GROUPS.map(group => {
+        const members = users.filter(user => `institutional-${user.institutionalGroup}` === group.id)
+          .sort((a, b) => label(a).localeCompare(label(b), 'pt-BR', {sensitivity: 'base'}));
+        if (!members.length) return '';
+        return `<optgroup label="${group.name}">${members.map(user => `<option value="${esc(user.uid)}">${esc(label(user))}</option>`).join('')}</optgroup>`;
+      }).join('');
+      audienceValue.innerHTML = `<option value="">${groups ? 'Selecione um destinatário' : 'Nenhum destinatário disponível'}</option>${groups}`;
+      audienceValue.value = [...audienceValue.options].some(option => option.value === selected) ? selected : '';
+      if (groups) form.dataset.recipientsReady = 'true';
+      setComposeControls(form);
+    } catch (error) {
+      if (directory === request) directory = undefined;
+      if (!active() || !form.isConnected || audienceType.value !== 'USER') return;
+      if (needsGoogle(error)) return reconnectCompose(form);
+      audienceValue.innerHTML = '<option value="">Lista indisponível</option>';
+      report(error, 'Escolha outro público e volte a Individual para recarregar.');
+    } finally {
+      audienceValue.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  function eventForm() {
+    composeState ??= {id: `event-${crypto.randomUUID()}`, title: '', description: '', audience: 'ALL', recipient: '', sent: false};
+    const state = composeState;
+    render('Criar e enviar evento', `<form data-comm-form>
+      <label>Título<input name="title" maxlength="120" required value="${esc(state.title)}"></label>
+      <label>Descrição do aviso<textarea name="description" maxlength="4000" required placeholder="Escreva o aviso e cole links de páginas ou vídeos.">${esc(state.description)}</textarea></label>
+      <div class="comm-event-audience">
+        <label>Público<select name="audienceType">${audienceOptions.map(({id, name}) => `<option value="${id}"${id === state.audience ? ' selected' : ''}>${name}</option>`).join('')}</select></label>
+        <label>Destinatário<select name="audienceValue" disabled><option value="">Selecione Individual</option></select></label>
+      </div>
+      <button name="send" class="comm-send-button" type="submit" aria-describedby="comm-send-instruction">ENVIAR</button>
+      <p id="comm-send-instruction" class="comm-send-instruction">TOQUE EM ENVIAR APENAS UMA UNICA VEZ</p>
+    </form>`, {compose: true});
+    const form = root.querySelector('[data-comm-form]');
+    if (state.pending) form.elements.send.textContent = 'CONFIRMAR ENVIO';
+    void prepareRecipients(form, state.recipient);
+  }
+
+  function composeValues(form) {
+    return {
+      id: composeState.id,
+      title: form.elements.title.value.trim(),
+      description: form.elements.description.value.trim(),
+      audience: form.elements.audienceType.value,
+      recipient: form.elements.audienceValue.value,
+    };
+  }
+
+  function reconnectCompose(form) {
+    Object.assign(composeState, composeValues(form));
+    recoverGoogle();
+  }
+
+  async function sendEvent(form) {
+    const state = composeState;
+    if (state.sending || state.sent || form.elements.send.disabled) return;
+    const payload = state.pending || composeValues(form);
+    if (!payload.title || !payload.description) return status('Preencha o título e a descrição.', true);
+    if (payload.audience === 'USER' && !payload.recipient) return status('Selecione um destinatário.', true);
+    Object.assign(state, payload, {sending: true, pending: payload});
+    setComposeControls(form, true);
+    form.elements.send.textContent = 'ENVIANDO…';
+    status('');
+    let storageKey;
+    let checkingPrevious = state.checkingPrevious;
+    const clearPendingId = () => {
+      if (storageKey) try { sessionStorage.removeItem(storageKey); } catch {}
+    };
+    try {
+      storageKey = await pendingEventKey(payload);
+      if (!active() || !form.isConnected) return;
+      if (storageKey) try {
+        const previousId = sessionStorage.getItem(storageKey);
+        if (previousId && /^event-[0-9a-f-]{36}$/.test(previousId)) {
+          payload.id = previousId;
+          state.id = previousId;
+          checkingPrevious = true;
+        }
+        sessionStorage.setItem(storageKey, payload.id);
+      } catch {}
+      const result = await client.request('CREATE_EVENT', payload);
+      if (!result.pushPending) clearPendingId();
+      if (!active() || !form.isConnected) return;
+      if (result.pushPending) {
+        state.checkingPrevious = true;
+        form.elements.send.textContent = 'CONFIRMAR ENVIO';
+        return status('Evento publicado. Confirme o Push.');
+      }
+      state.sent = true;
+      state.pending = undefined;
+      form.elements.send.textContent = 'ENVIADO';
+      form.elements.send.dataset.sent = 'true';
+      status(result.pushQueued ? 'Evento enviado. Push na fila.' : 'Evento publicado na Home. Push sem confirmação.');
+    } catch (error) {
+      if (!active() || !form.isConnected) return;
+      const rejected = !needsGoogle(error) && [400, 403, 413, 429].includes(error.status);
+      if (rejected && !checkingPrevious) {
+        clearPendingId();
+        state.pending = undefined;
+      } else state.checkingPrevious = true;
+      if (needsGoogle(error)) return recoverGoogle();
+      form.elements.send.textContent = state.pending ? 'CONFIRMAR ENVIO' : 'ENVIAR';
+      report(error, state.pending ? 'Envio sem confirmação. Confirme o mesmo evento.' : undefined);
+    } finally {
+      state.sending = false;
+      if (active() && form.isConnected) setComposeControls(form);
+    }
+  }
+
+  async function inbox(cursor = '') {
+    render('Mensagens recebidas', '<p>Carregando mensagens…</p>');
+    const ticket = generation;
+    try {
+      const data = await client.request('INBOX', {recent: true, cursor});
+      if (!active() || generation !== ticket) return;
+      const cards = data.items.map(item => `<article class="comm-card"><h3>${esc(item.title)}</h3><p>${esc(item.category)} · ${new Date(item.publishAt).toLocaleString('pt-BR')}</p><p>${esc(item.message.slice(0, 200))}${item.message.length > 200 ? '…' : ''}</p><button type="button" data-message="${esc(item.id)}">LER AVISO</button></article>`).join('');
+      render('Mensagens recebidas', `<div class="comm-actions"><button type="button" data-enable>HABILITAR NOTIFICAÇÕES NESTE APARELHO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div>${cards || '<p>Nenhuma mensagem nesta página.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMA PÁGINA</button>` : ''}`);
+    } catch (error) {
+      if (!active() || generation !== ticket) return;
+      if (needsGoogle(error)) return recoverGoogle();
+      root.querySelector('.comm-content').replaceChildren();
+      report(error);
+    }
+  }
+
+  async function detail(key) {
+    render('Aviso', '<p>Carregando aviso…</p>');
+    const ticket = generation;
+    try {
+      const {message} = await client.request('MESSAGE', {id: decodeURIComponent(key)});
+      if (!active() || generation !== ticket) return;
+      const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
+        `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
+      const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
+      render(message.title, `<article class="comm-card"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`);
+    } catch (error) {
+      if (!active() || generation !== ticket) return;
+      if (needsGoogle(error)) return recoverGoogle();
+      root.querySelector('.comm-content').replaceChildren();
+      report(error);
+    }
+  }
+
+  async function initialView() {
+    if (adminMode) return composeState ? eventForm() : adminMenu();
+    const [, , section, key] = location.hash.split('/');
+    return section === 'message' && key ? detail(key) : inbox();
+  }
+
+  async function bootstrap() {
+    render('Central de Comunicação', '<p>Confirmando acesso à Central de Comunicação…</p>');
+    const ticket = generation;
+    try {
+      const data = await client.request('BOOTSTRAP');
+      if (!active() || generation !== ticket) return;
+      if (adminMode && data.isAdmin !== true) return status(errors.COMM_FORBIDDEN, true);
+      await initialView();
+    } catch (error) {
+      if (!active() || generation !== ticket) return;
+      if (needsGoogle(error)) return recoverGoogle();
+      report(error);
+    }
+  }
+
+  async function toggleDevice(button, permission) {
+    const ticket = generation;
+    button.disabled = true;
+    try {
+      if (permission) await client.enable(permission);
+      else await client.disable();
+      if (active() && generation === ticket) status(permission ? 'Notificações habilitadas neste aparelho.' : 'Notificações desativadas neste aparelho.');
+    } catch (error) {
+      if (!active() || generation !== ticket) return;
+      if (needsGoogle(error)) return recoverGoogle();
+      report(error);
+    } finally {
+      if (active() && generation === ticket) button.disabled = false;
+    }
+  }
+
+  function click(event) {
+    const button = event.target.closest('button');
+    if (!button || button.disabled || button.type === 'submit') return;
+    if (button.hasAttribute('data-back')) return onBack();
+    if (button.hasAttribute('data-home')) return adminMode ? adminMenu() : void inbox();
+    if (button.hasAttribute('data-create-event')) return eventForm();
+    if (button.dataset.next) return void inbox(button.dataset.next);
+    if (button.dataset.message) return void detail(button.dataset.message);
+    if (button.hasAttribute('data-enable')) {
+      const permission = 'Notification' in window ? Notification.requestPermission() : Promise.resolve('denied');
+      return void toggleDevice(button, permission);
+    }
+    if (button.hasAttribute('data-disable')) void toggleDevice(button);
+  }
+
+  function submit(event) {
+    if (!event.target.matches('[data-comm-form]')) return;
+    event.preventDefault();
+    void sendEvent(event.target);
+  }
+
+  function change(event) {
+    if (event.target.name === 'audienceType') {
+      status('');
+      void prepareRecipients(event.target.form);
+    }
+  }
+
+  function cancelWhileSending(event) {
+    if (!composeState?.sending) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  root.addEventListener('click', click);
+  root.addEventListener('submit', submit);
+  root.addEventListener('change', change);
+  dialog?.addEventListener('cancel', cancelWhileSending, true);
+  if (communicationEntryFromSession(appSession, {adminMode})) void initialView();
+  else void bootstrap();
+  return () => {
+    disposed = true;
+    cleanupGoogle();
+    client.dispose();
+    root.removeEventListener('click', click);
+    root.removeEventListener('submit', submit);
+    root.removeEventListener('change', change);
+    dialog?.removeEventListener('cancel', cancelWhileSending, true);
+    root.replaceChildren();
   };
-  const summary=(users,at)=>(users.length===1?'1 usuário':`${users.length} usuários`)+(at?' · Atualizada às '+new Date(at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'');
-  if(force)pushDirectorySnapshot=null;
-  const snapshotAge=pushDirectorySnapshot?Date.now()-pushDirectorySnapshot.at:Infinity;
-  if(snapshotAge>=0&&snapshotAge<30000){
-   paintUsers(pushDirectorySnapshot.items);count.textContent=summary(pushDirectorySnapshot.items,pushDirectorySnapshot.at);list.setAttribute('aria-busy','false');refresh.disabled=false;pushDirectoryController=null;return;
-  }
-  try{
-   const users=await loadCommunicationPushDirectory({request:(action,input)=>client.request(action,input),isCurrent:current,signal:controller.signal,onProgress:({waiting,count:total,items})=>{if(current()){if(!waiting&&items)paintUsers(items);count.textContent=`Carregando lista completa… ${total} usuários encontrados.`;status(waiting?'Continuando o carregamento após o limite de consultas por minuto…':'');}}});
-   if(!current()||!users)return;
-   paintUsers(users);
-   pushDirectorySnapshot={items:users,at:Date.now()};
-   count.textContent=summary(users,pushDirectorySnapshot.at);
-   status('');
-  }catch(error){
-   if(!current())return;
-   if(['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)){recoverGoogle();return;}
-   count.textContent='Lista não concluída.';
-   status(error.name==='AbortError'?'Carregamento interrompido. Toque em ATUALIZAR LISTA para tentar novamente.':communicationLimitMessage(error)||errors[error.code]||'Não foi possível carregar a lista completa. Toque em ATUALIZAR LISTA para tentar novamente.',true);
-  }finally{if(current()){list.setAttribute('aria-busy','false');refresh.disabled=false;}if(pushDirectoryController===controller)pushDirectoryController=null;}
- }
- async function page(view,cursor='',{refresh=false}={}){
-  if(view==='pushDevices')return pushDevices(refresh);
-  currentView=view;
-  const action={messages:'MESSAGES',groups:'GROUPS',history:'HISTORY',inbox:'INBOX'}[view];
-  const titles={messages:'Avisos publicados e rascunhos',groups:'Destinatários e grupos',history:'Histórico de envios',inbox:'Mensagens recebidas'};
-  const data=await loadViewData(titles[view],action,{cursor});if(!data)return;
-  let html='';
-  if(view==='inbox')html='<div class="comm-actions"><button type="button" data-enable>HABILITAR NOTIFICAÇÕES NESTE APARELHO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div><p class="comm-note">O Push traz o título e um trecho do aviso. Ao abrir o app, o aviso completo permanece na Home até você fechar.</p>';
-  if(view==='groups')html='<div class="comm-actions"><button type="button" data-new-group>NOVO GRUPO</button><button type="button" data-directory>CONSULTAR USUÁRIOS ATIVOS</button></div>';
-  html+=data.items.map(item=>view==='groups'?`<article class="comm-card"><h3>${esc(item.name)}</h3><p>${item.builtin?'Cadastro institucional':item.memberUids.length+' participantes'} · ${item.active?'Ativo':'Inativo'}</p>${item.builtin?'<p>Vínculo confirmado pelo servidor; sem edição local.</p>':`<button type="button" data-group="${esc(item.id)}">EDITAR GRUPO</button>`}</article>`:view==='history'?dispatchCard(item):`<article class="comm-card"><span class="comm-badge">${esc(item.category)}</span><h3>${esc(item.title)}</h3><p>${esc(item.status)} · ${date(item.publishAt)}</p><p>${esc(item.message.slice(0,200))}${item.message.length>200?'…':''}</p><button type="button" data-message="${esc(item.id)}">${view==='inbox'?'LER AVISO':'VISUALIZAR / EDITAR'}</button></article>`).join('');
-  html+=data.items.length?'':'<p>Nenhum registro nesta página.</p>';
-  html+=`<div class="comm-actions"><button type="button" data-first="${view}">INÍCIO / ATUALIZAR</button>${data.cursor?`<button type="button" data-next="${esc(data.cursor)}" data-list="${view}">PRÓXIMA PÁGINA</button>`:''}</div>`;
-  render(titles[view],html);
-  if(view==='groups')root._commGroups=data.items;
- }
- function dispatchCard(d){return `<article class="comm-card"><h3>${esc(d.title)}</h3><p>${esc(d.category)} · ${date(d.createdAt)}</p><p>Autor: ${esc(d.author?.email)}<br>Público: ${esc(d.audienceType)} ${esc(d.audienceValue)}</p><p><strong>${esc(d.status)}</strong> · Processados: ${d.processed} · Aceitos pelo FCM: ${d.accepted} · Falhas: ${d.failed} · Ignorados: ${d.skipped} · Incertos: ${d.unknown}</p>${d.quotaBlocked?'<p role="alert">Cota do serviço esgotada neste lote. Consulte a auditoria antes de continuar; não há reenvio automático.</p>':''}<div class="comm-actions">${d.status==='ready'?`<button type="button" data-send="${esc(d.id)}" data-batches="${d.batches}">CONFIRMAR PRÓXIMO LOTE (ATÉ 3)</button>`:''}${d.status==='processing'?`<button type="button" data-reconcile="${esc(d.id)}">RECUPERAR APÓS 2 MINUTOS SEM REENVIAR</button>`:''}<button type="button" data-audit="${esc(d.id)}">ALTERAÇÕES E AUDITORIA</button></div></article>`;}
- function urgentForm(m={}){
-  currentView='new';
-  render('Criar aviso urgente',`<form data-comm-urgent-form data-notice-id="${esc(m.id||newUrgentNoticeId())}"><label>Título<input name="title" maxlength="120" required value="${esc(m.title||'')}"></label><label>Descrição do aviso<textarea name="message" maxlength="4000" rows="6" required>${esc(m.message||'')}</textarea></label><p class="comm-note">AVISO URGENTE · URGENT · Todos os usuários ativos<br><span data-usage-balance>Até ${COMMUNICATION_LIMITS.dailyPublications} novos avisos por dia.</span></p><div class="comm-actions"><button class="comm-send-button" type="submit">ENVIAR</button></div></form>`);
-  const ticket=generation,host=root.querySelector('[data-usage-balance]');
-  void client.request('USAGE').then(data=>{if(active()&&generation===ticket)host.textContent=`Hoje: ${data.publications.used}/${data.publications.limit} avisos publicados.`;}).catch(()=>{});
- }
- function urgentFormValue(){const form=root.querySelector('[data-comm-urgent-form]');return urgentNoticeInput({noticeId:form.dataset.noticeId,title:form.elements.title.value,message:form.elements.message.value});}
- function form(m={}){
-  currentView='new';
-  const appLinkRoute=(()=>{try{const u=new URL(m.linkUrl||'');return u.origin==='https://anestesiahmtforms.github.io'?decodeURIComponent(u.hash.split('/')[1]||''):'';}catch{return '';}})();
-  render(m.id?'Editar aviso':'Criar aviso',`<form data-comm-form><input type="hidden" name="id" value="${esc(m.id||'')}"><input type="hidden" name="version" value="${m.version||0}"><label>Título<input name="title" maxlength="120" required value="${esc(m.title||'')}"></label><label>Descrição do aviso<textarea name="message" maxlength="4000" rows="6" required placeholder="Escreva o aviso. Endereços HTTPS colados aqui ficam clicáveis.">${esc(m.message||'')}</textarea></label><div class="comm-actions"><button type="button" data-insert-app-link>INSERIR LINK DA PÁGINA SELECIONADA NA DESCRIÇÃO</button></div><div class="comm-columns"><label>Categoria<select name="category">${options(CATEGORIES,m.category)}</select></label><label>Prioridade<select name="priority">${options(['NORMAL','HIGH','URGENT'],m.priority)}</select></label><label>Público<select name="audienceType">${[['ALL','Todos os usuários ativos'],['USER','Usuário individual'],['ROLE','Função'],['GROUP','Grupo'],['AREA','Área institucional']].map(([v,l])=>`<option value="${v}" ${v===(m.audienceType||'ALL')?'selected':''}>${l}</option>`).join('')}</select></label><label>Destinatário<select name="audienceValue"><option value="${esc(m.audienceValue||'')}">${esc(m.audienceValue||'Todos')}</option></select><button type="button" data-load-targets>CARREGAR OPÇÕES</button><button type="button" data-more-targets hidden>MAIS OPÇÕES</button></label><label>Página de destino no app<select name="route">${routeOptions(m.route||'home')}</select></label><label class="comm-link-option"><input type="checkbox" name="attachLink" ${m.linkUrl?'checked':''}> Incluir botão de acesso no aviso</label><label>Texto do botão<input name="linkLabel" maxlength="60" value="${esc(m.linkLabel||'ABRIR DESTINO')}"></label><label>Link externo HTTPS (opcional)<input name="externalLink" type="url" inputmode="url" maxlength="2048" placeholder="https://exemplo.com/pagina" value="${esc(m.linkUrl&&!appLinkRoute?m.linkUrl:'')}"></label><p class="comm-note">Com o campo externo vazio, o botão abre a página interna selecionada. Um endereço externo preenchido será anexado automaticamente.</p><label>Publicação<input type="datetime-local" name="publishAt" required value="${local(m.publishAt||Date.now())}"></label><label>Validade<input type="datetime-local" name="expiresAt" required value="${local(m.expiresAt||Date.now()+7*86400000)}"></label></div><div class="comm-actions"><button type="button" data-preview>VISUALIZAR AVISO</button><button type="submit" value="draft">SALVAR RASCUNHO</button><button class="comm-send-button" type="submit" value="published">ENVIAR</button></div><div data-preview-content></div></form><p class="comm-note">Toque em ENVIAR uma vez: o aviso fica na Home e o Push é iniciado automaticamente para os aparelhos inscritos.</p>`);
-  root._commTargetCursor='';
- }
- const formValue=()=>{const f=new FormData(root.querySelector('[data-comm-form]')),page=f.get('route'),external=f.get('externalLink').trim(),attach=f.get('attachLink')==='on'||Boolean(external),linkUrl=attach?(external||`https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/${encodeURIComponent(page)}`):'';return {id:f.get('id')||undefined,version:Number(f.get('version')),message:{title:f.get('title'),message:f.get('message'),linkUrl,linkLabel:f.get('linkLabel'),category:f.get('category'),priority:f.get('priority'),audienceType:f.get('audienceType'),audienceValue:f.get('audienceValue'),route:page,publishAt:new Date(f.get('publishAt')).getTime(),expiresAt:new Date(f.get('expiresAt')).getTime(),status:'draft'}};};
- async function targets(more=false){
-  const f=root.querySelector('form'),type=f.elements.audienceType.value,select=f.elements.audienceValue;
-  if(type==='ALL'||type==='ROLE'){select.innerHTML=type==='ALL'?'<option value="">Todos os ativos</option>':options(ROLES,'');return;}
-  const data=await client.request({USER:'DIRECTORY',GROUP:'GROUPS',AREA:'AREAS'}[type],{cursor:more?root._commTargetCursor:''});if(!active()||!f.isConnected)return;
-  const html=data.items.map(p=>`<option value="${esc(type==='USER'?p.uid:p.id)}">${esc(p.displayName||p.name||p.title||p.email||p.id)}</option>`).join('');
-  if(more)select.insertAdjacentHTML('beforeend',html);else select.innerHTML=html;
-  root._commTargetCursor=data.cursor;root.querySelector('[data-more-targets]').hidden=!data.cursor;
- }
- async function detail(key){const data=await loadViewData('Aviso','MESSAGE',{id:key});if(!data)return;const m=data.message;if(adminMode)form(m);else{const link=m.linkUrl&&/^https:\/\//.test(m.linkUrl)?`<a class="comm-home-notice__destination" href="${esc(m.linkUrl)}"${m.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${esc(m.linkLabel||'ABRIR DESTINO')}</a>`:'';render(m.title,`<article class="comm-card"><p>${esc(m.category)} · ${date(m.publishAt)}</p><p class="comm-message">${linkedText(m.message)}</p>${link}<a href="#/${esc(m.route)}">ABRIR PÁGINA NO APP</a></article>`);}}
- async function metrics(){const month=root.querySelector('[name="month"]')?.value||new Date().toISOString().slice(0,7);const d=await loadViewData('Indicadores de comunicação','METRICS',{month});if(!d)return;render('Indicadores de comunicação',`<label>Histórico mensal<input type="month" name="month" value="${esc(month)}"></label><button type="button" data-metrics>CONSULTAR MÊS</button><div class="comm-columns">${[['total','Acumulado'],['monthly','Mês selecionado']].map(([key,label])=>`<article class="comm-card"><h3>${label}</h3>${[['published','Comunicações publicadas pela primeira vez'],['sent','Envios iniciados'],['accepted','Aceitos pelo provedor'],['failed','Falhas'],['unknown','Resultado incerto'],...(key==='total'?[['devices','Dispositivos inscritos ativos']]:[])].map(([k,l])=>`<p>${l}: <strong>${d[key][k]}</strong></p>`).join('')}<h4>Publicações por categoria</h4>${CATEGORIES.map(c=>`<p>${esc(c)}: ${d[key].categories[c]||0}</p>`).join('')}</article>`).join('')}</div>`);}
- async function settings(){const d=await loadViewData('Configurações','SETTINGS');if(!d)return;render('Configurações',`<p>Projeto: <strong>${esc(d.projectId)}</strong><br>Banco: ${esc(d.databaseId)}</p><p>Envio: ${d.settings.pushEnabled?'HABILITADO':'DESATIVADO'}</p><p>Limites internos: ${d.dailyPublicationLimit||COMMUNICATION_LIMITS.dailyPublications} novos avisos por dia e ${d.dailyRequestLimit} operações da Central por dia, com ${d.batchSize} dispositivos por lote manual. O serviço verifica o faturamento e a elegibilidade gratuita do projeto de comunicação a cada operação.</p><button type="button" data-toggle-push="${!d.settings.pushEnabled}">${d.settings.pushEnabled?'DESATIVAR':'HABILITAR'} ENVIO PUSH</button><p class="comm-note">Nenhuma opção nesta tela altera planos, faturamento ou permissões administrativas.</p>`);}
- async function groupForm(g={}){
-  selectedMembers=new Set(g.memberUids||[]);root._commGroup=g;
-  render('Editar grupo',`<form data-group-form><label>Nome do grupo<input name="name" maxlength="100" required value="${esc(g.name||'')}"></label><label><input type="checkbox" name="active" ${g.active!==false?'checked':''}> Grupo ativo</label><p data-member-count>${selectedMembers.size} selecionados (máximo 100)</p><div data-members></div><button type="button" data-members-next="">CARREGAR USUÁRIOS ATIVOS</button><button type="submit">SALVAR GRUPO</button></form>`);root._commGroup=g;
- }
- async function members(cursor=''){
-  const d=await client.request('DIRECTORY',{cursor});if(!active())return;
-  root.querySelector('[data-members]').innerHTML=d.items.map(p=>`<label class="comm-member"><input type="checkbox" data-member="${esc(p.uid)}" ${selectedMembers.has(p.uid)?'checked':''}> ${esc(p.displayName)} · ${esc(p.email)}</label>`).join('');const b=root.querySelector('[data-members-next]');b.dataset.membersNext=d.cursor||'';b.textContent=d.cursor?'PRÓXIMA PÁGINA':'VOLTAR AO INÍCIO';
- }
- async function audit(key,cursor=''){const d=await client.request('AUDIT',{id:key,cursor});if(!active())return;render('Histórico de alterações',d.items.map(r=>`<article class="comm-card"><strong>${esc(r.action)}</strong><p>${date(r.at)} · ${esc(r.email)}<br>UID: ${esc(r.uid)}</p><pre>${esc(JSON.stringify(r.detail,null,2))}</pre></article>`).join('')+(d.cursor?`<button type="button" data-audit="${esc(key)}" data-cursor="${esc(d.cursor)}">PRÓXIMA PÁGINA</button>`:''));}
- async function view(name){if(adminMode&&!authorized)return;if(operationalMode)return urgentForm();if(name==='forward')return form();if(name==='home')adminMode?adminMenu():await page('inbox');else if(name==='new')form();else if(name==='metrics')await metrics();else if(name==='usage')await usage();else if(name==='settings')await settings();else await page(name);}
- const click=event=>{
-  const b=event.target.closest('button');if(!b||b.disabled||b.type==='submit')return;
-  if(b.hasAttribute('data-back')){onBack();return;}
-  if(!bootstrapped){void run(bootstrap);return;}
-  // Permission must be requested synchronously within the user's activation (iOS).
-  if(b.hasAttribute('data-enable')){const permission='Notification'in window?Notification.requestPermission():Promise.resolve('denied');void run(async()=>{await client.enable(permission);status('Notificações habilitadas neste aparelho.');});return;}
-  if(b.hasAttribute('data-disable')){void run(async()=>{await client.disable();status('Notificações desativadas neste aparelho.');});return;}
-  void run(async()=>{
-   if(b.hasAttribute('data-home'))return view('home');
-   if(b.dataset.view)return view(b.dataset.view);
-   if(b.dataset.first)return page(b.dataset.first,'',{refresh:true});
-   if(b.dataset.next)return page(b.dataset.list,b.dataset.next);
-   if(b.dataset.message)return detail(b.dataset.message);
-   if(b.dataset.send){if(!confirm('Enviar manualmente este lote para até 3 dispositivos elegíveis? A aceitação pelo FCM não comprova entrega.'))return;const {dispatch}=await client.request('SEND_BATCH',{id:b.dataset.send,batches:Number(b.dataset.batches),confirmed:true});if(active())render('Resultado do lote',dispatchCard(dispatch));return;}
-   if(b.dataset.reconcile){if(!confirm('Marcar o lote interrompido como resultado incerto e continuar SEM reenviar os dispositivos já reservados?'))return;const {dispatch}=await client.request('RECONCILE',{id:b.dataset.reconcile,confirmed:true});if(active())render('Lote recuperado sem reenvio',dispatchCard(dispatch));return;}
-   if(b.dataset.audit)return audit(b.dataset.audit,b.dataset.cursor||'');
-   if(b.hasAttribute('data-load-targets'))return targets();if(b.hasAttribute('data-more-targets'))return targets(true);
-   if(b.hasAttribute('data-insert-app-link')){const f=root.querySelector('[data-comm-form]'),textarea=f.elements.message,url=`https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/${encodeURIComponent(f.elements.route.value)}`;textarea.setRangeText(url,textarea.selectionStart,textarea.selectionEnd,'end');textarea.focus();return;}
-   if(b.hasAttribute('data-preview')){const m=formValue().message,link=m.linkUrl?`<a class="comm-notice-link" href="${esc(m.linkUrl)}"${m.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${esc(m.linkLabel)}</a>`:'';root.querySelector('[data-preview-content]').innerHTML=`<article class="comm-card"><h3>${esc(m.title)}</h3><p class="comm-message">${linkedText(m.message)}</p>${link}<p>${esc(m.category)} · ${esc(m.audienceType)} · ${esc(m.audienceValue)}</p></article>`;return;}
-   if(b.hasAttribute('data-new-group'))return groupForm();
-   if(b.dataset.group)return groupForm(root._commGroups.find(g=>g.id===b.dataset.group));
-   if(b.hasAttribute('data-members-next'))return members(b.dataset.membersNext);
-   if(b.hasAttribute('data-directory')){const d=await client.request('DIRECTORY');if(active())render('Usuários ativos',d.items.map(p=>`<p>${esc(p.displayName)} · ${esc(p.email)} · ${esc(p.role)}</p>`).join('')+(d.cursor?`<button type="button" data-directory-cursor="${esc(d.cursor)}">PRÓXIMA PÁGINA</button>`:''));return;}
-   if(b.dataset.directoryCursor){const d=await client.request('DIRECTORY',{cursor:b.dataset.directoryCursor});if(active())render('Usuários ativos',d.items.map(p=>`<p>${esc(p.displayName)} · ${esc(p.email)} · ${esc(p.role)}</p>`).join('')+(d.cursor?`<button type="button" data-directory-cursor="${esc(d.cursor)}">PRÓXIMA PÁGINA</button>`:''));return;}
-   if(b.hasAttribute('data-metrics'))return metrics();
-   if(b.hasAttribute('data-toggle-push')){if(confirm('Confirmar alteração do envio automático de Push?')){await client.request('SAVE_SETTINGS',{pushEnabled:b.dataset.togglePush==='true'});return settings();}}
-  });
- };
- const submit=event=>{
-  event.preventDefault();
-  if(event.target.matches('[data-comm-urgent-form]')){
-   if(urgentSending)return;urgentSending=true;
-   const fields=[...event.target.querySelectorAll('input,textarea')];
-   void run(async()=>{const input=urgentFormValue();fields.forEach(field=>field.disabled=true);status('Enviando aviso…');const result=await client.request('SAVE_MESSAGE',input);if(active()){urgentForm();status(result.alreadySent?'Este aviso já foi enviado.':result.dispatch&&result.pushQueued!==false?'Aviso enviado. O Push foi iniciado automaticamente.':'Aviso enviado. Ele aparecerá na Home; confira se o Push está habilitado nas Configurações.');}}).finally(()=>{urgentSending=false;fields.forEach(field=>field.disabled=false);});return;
-  }
-  if(event.target.matches('[data-comm-form]'))void run(async()=>{const input=formValue();input.message.status=event.submitter?.value||'draft';const result=await client.request('SAVE_MESSAGE',input);if(active()){form(result.message);status(result.message.status==='published'?result.dispatch&&result.pushQueued!==false?'Aviso enviado. O Push foi iniciado automaticamente.':'Aviso enviado. Ele aparecerá na Home; confira se o Push está habilitado nas Configurações.':'Rascunho salvo.');}});else if(event.target.matches('[data-group-form]'))void run(async()=>{const f=event.target,g=root._commGroup||{};await client.request('SAVE_GROUP',{id:g.id,version:g.version||0,name:f.elements.name.value,active:f.elements.active.checked,memberUids:[...selectedMembers]});await page('groups');});
- };
- const change=event=>{if(event.target.dataset.member){event.target.checked?selectedMembers.add(event.target.dataset.member):selectedMembers.delete(event.target.dataset.member);root.querySelector('[data-member-count]').textContent=selectedMembers.size+' selecionados (máximo 100)';}if(event.target.name==='audienceType'){root.querySelector('[name="audienceValue"]').innerHTML='<option value="">Carregue as opções</option>';root._commTargetCursor='';}};
- root.addEventListener('click',click);root.addEventListener('submit',submit);root.addEventListener('change',change);
- const entry=communicationEntryFromSession(appSession,{adminMode});
- if(entry){authorized=entry.isAdmin;bootstrapped=true;void run(initialView);}
- else{render('Central de Comunicação','<p>Confirmando acesso à Central de Comunicação…</p>');void run(bootstrap);}
- return ()=>{disposed=true;pushDirectorySnapshot=null;recoveryDraft=null;pushDirectoryController?.abort();cleanupGoogle();client.dispose();root.removeEventListener('click',click);root.removeEventListener('submit',submit);root.removeEventListener('change',change);root.replaceChildren();delete root._commGroups;delete root._commGroup;delete root._commSource;};
 }

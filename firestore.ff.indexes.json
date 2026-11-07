@@ -1,7 +1,8 @@
 {
   "indexes": [
     {"collectionGroup":"communicationDevices","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"uid","order":"ASCENDING"}]},
-    {"collectionGroup":"communicationDevices","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"sourceUid","order":"ASCENDING"}]}
+    {"collectionGroup":"communicationDevices","queryScope":"COLLECTION","fields":[{"fieldPath":"active","order":"ASCENDING"},{"fieldPath":"sourceUid","order":"ASCENDING"}]},
+    {"collectionGroup":"communicationMessages","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"publishAt","order":"DESCENDING"}]}
   ],
   "fieldOverrides": [
     {"collectionGroup":"communicationDevices","fieldPath":"token","indexes":[]},
