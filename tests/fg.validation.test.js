@@ -7,14 +7,14 @@ import {planChecklistDailyPerformance} from '../fg-performance/daily-transfer.js
 const files=['Config.gs','PerformancePlan.gs','Firestore.gs','Performance.gs','ChecklistValidation.gs','ChecklistRotationCore.gs','Runtime.gs'];
 const source=(await Promise.all(files.map(name=>readFile(new URL('../apps-script-fg/'+name,import.meta.url),'utf8')))).join('\n');
 const plain=value=>JSON.parse(JSON.stringify(value));
-const day='2026-11-07',signatureId=day+'_'+'b'.repeat(64);
+const day='2026-11-06',signatureId=day+'_'+'b'.repeat(64);
 function fixture({self=false,categories=['EFETIVO']}={}){
   const scheduled={id:'scheduled',uid:'scheduled',email:'scheduled@example.test',displayName:'Scheduled',active:true,access:true,permissions:{checklistSign:true},_updateTime:'synthetic-version'};
   const signer=self?scheduled:{...scheduled,id:'author',uid:'author',email:'author@example.test',displayName:'Author'};
   const assignment={schemaVersion:1,identityStatus:'LINKED',uid:signer.uid,email:signer.email,memberCategories:categories};
-  const request={id:day,day,revision:'a'.repeat(64),signerUid:signer.uid,signerName:signer.displayName,signerSigla:'AA',declaration:true,justification:'Declaro que tomei ciência das informações deste relatório.',status:'PENDING_VALIDATION',recordKind:'ACKNOWLEDGEMENT',acknowledgedAt:new Date('2026-11-07T15:00:00Z'),rotationSigla:'BB',rotationPosition:1,_updateTime:'synthetic-version'};
+  const request={id:day,day,revision:'a'.repeat(64),signerUid:signer.uid,signerName:signer.displayName,signerSigla:'AA',declaration:true,justification:'Declaro que tomei ciência das informações deste relatório.',status:'PENDING_VALIDATION',recordKind:'ACKNOWLEDGEMENT',acknowledgedAt:new Date('2026-11-06T15:00:00Z'),rotationSigla:'BB',rotationPosition:1,_updateTime:'synthetic-version'};
   const snapshot={fingerprint:request.revision,revision:'b'.repeat(64),snapshot:{date:day},responsible:{responsibleUid:scheduled.uid,responsibleName:scheduled.displayName,responsibleEmail:scheduled.email,sigla:'BB',position:1},missing:0};
-  const rows=new Map([['users/'+signer.uid,signer],['users/scheduled',scheduled],['checklistSignatureRequests/'+day,request],['checklistScienceRuntime/state',{enabled:true,release:'fg-checklist-independent-v1',activatedAt:new Date('2026-11-07T14:00:00Z') }]]);
+  const rows=new Map([['users/'+signer.uid,signer],['users/scheduled',scheduled],['checklistSignatureRequests/'+day,request],['checklistScienceRuntime/state',{enabled:true,release:'fg-checklist-independent-v2',activatedAt:new Date('2026-11-06T14:00:00Z') }]]);
   rows.set('userCategories/'+createHash('sha256').update(JSON.stringify(signer.email)).digest('hex'),assignment);
   const context=vm.createContext({console,Date,Map,Session:{getEffectiveUser:()=>({getEmail:()=> 'sahmtcheck@gmail.com'})},PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'YES'})},ScriptApp:{getScriptId:()=> '1Uz0wbYwRtuRPUVfFgN09S4HM9e5a7QM8D-M9bzZvCI04eRLu5RcDfLJF'},Utilities:{formatDate:()=>day,computeDigest:(_algorithm,text)=>[...createHash('sha256').update(text).digest()],DigestAlgorithm:{SHA_256:'SHA_256'},Charset:{UTF_8:'UTF_8'}}});
   vm.runInContext(source,context);context.oscOwner_=()=>{};
@@ -103,13 +103,13 @@ test('real snapshot reader preserves consistent identity and the unique director
 
 function closingFixture(){
   const f=fixture();f.rows.delete('checklistSignatureRequests/'+day);
-  f.rows.set('fgPerformanceRuntime/state',{status:'ACTIVE',projectId:'sahmt-checklist-fg',rule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2',activatedAt:new Date('2026-11-07T14:00:00Z'),_updateTime:'runtime-version'});
+  f.rows.set('fgPerformanceRuntime/state',{status:'ACTIVE',projectId:'sahmt-checklist-fg',rule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2',activatedAt:new Date('2026-11-06T14:00:00Z'),_updateTime:'runtime-version'});
   f.context.Utilities.formatDate=(date,zone,format)=>{
     assert.equal(zone,'America/Sao_Paulo');const local=new Date(date.getTime()-3*3600000).toISOString();return format==='yyyy-MM-dd'?local.slice(0,10):local.slice(0,19).replace('T',' ');
   };
   f.context.evaluationQuery_=(collection,filters)=>[...f.rows.entries()].filter(([key])=>key.startsWith(collection+'/')).map(([,row])=>row).filter(row=>row[filters[0].field.fieldPath]===filters[0].value.stringValue);
   f.apply=()=>{for(const write of f.commits.at(-1)){const path=write.update.name.split('/documents/')[1],data=f.context.firestoreFieldsToJs_(write.update.fields);f.rows.set(path,{...f.rows.get(path),...data,_updateTime:'new-version'});}};
-  f.cutoff=new Date('2026-11-08T02:59:00Z');return f;
+  f.cutoff=new Date('2026-11-07T02:59:00Z');return f;
 }
 test('23:59 absence closes only the scheduled day with one atomic FG receipt, debit and summary',()=>{
   const f=closingFixture(),result=f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff);assert.equal(result.outcome,'NO_ACKNOWLEDGEMENT');
@@ -117,16 +117,16 @@ test('23:59 absence closes only the scheduled day with one atomic FG receipt, de
   assert.deepEqual(plain(paths),['fgPerformanceReceipts/'+day,'fgPerformanceLedger/'+day+'_debit','fgPerformanceSummaries/scheduled']);
   const debit=f.context.firestoreFieldsToJs_(writes[1].update.fields);assert.equal(debit.points,-1);assert.equal(debit.uid,'scheduled');
   f.apply();f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff);assert.equal(f.commits[1].length,0);
-  assert.throws(()=>f.context.apurarDiaEncerradoChecklistFG_('2026-11-06',f.cutoff),/FG_DAY_NOT_ELIGIBLE/);
+  assert.throws(()=>f.context.apurarDiaEncerradoChecklistFG_('2026-11-05',f.cutoff),/FG_DAY_NOT_ELIGIBLE/);
 });
 test('23:58:59 stays open, while 23:59:00 closes using São Paulo rather than UTC',()=>{
-  const f=closingFixture();assert.throws(()=>f.context.apurarDiaEncerradoChecklistFG_(day,new Date('2026-11-08T02:58:59.999Z')),/FG_DAY_NOT_ELIGIBLE/);
+  const f=closingFixture();assert.throws(()=>f.context.apurarDiaEncerradoChecklistFG_(day,new Date('2026-11-07T02:58:59.999Z')),/FG_DAY_NOT_ELIGIBLE/);
   assert.equal(f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff).outcome,'NO_ACKNOWLEDGEMENT');
 });
 test('pending on-time acknowledgement and settled transfer or zero receipt prevent another penalty',()=>{
   for(const previous of [null,{schemaVersion:1,day,outcome:'TRANSFER'},{schemaVersion:1,day,outcome:'SCHEDULED_USER_ACKNOWLEDGEMENT'}]){
     const f=closingFixture();if(previous)f.rows.set('fgPerformanceReceipts/'+day,previous);
-    else f.rows.set('checklistSignatureRequests/'+day,{...f.request,acknowledgedAt:new Date('2026-11-08T02:58:59.999Z')});
+    else f.rows.set('checklistSignatureRequests/'+day,{...f.request,acknowledgedAt:new Date('2026-11-07T02:58:59.999Z')});
     f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff);assert.equal(f.commits[0].length,0);
   }
 });
@@ -135,7 +135,26 @@ test('unresolved scheduled identity produces review without penalty',()=>{
   assert.equal(f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff).outcome,'NEEDS_REVIEW');assert.equal(f.commits[0].length,0);
 });
 test('activation after the deadline cannot penalize an already closed day retroactively',()=>{
-  const f=closingFixture();f.rows.get('checklistScienceRuntime/state').activatedAt=new Date('2026-11-08T02:59:00Z');
+  const f=closingFixture();f.rows.get('checklistScienceRuntime/state').activatedAt=new Date('2026-11-07T02:59:00Z');
   assert.equal(f.context.apurarDiaEncerradoChecklistFG_(day,f.cutoff).outcome,'OUTSIDE_RELEASE');
   assert.equal(f.commits[0].length,0);
+});
+test('an exempt day closes without reading the schedule or entering a scoring transaction',()=>{
+  const f=closingFixture();
+  for(const [exempt,instant] of [['2026-11-07','2026-11-08T02:59:00Z'],['2026-11-08','2026-11-09T02:59:00Z'],['2026-11-20','2026-11-21T02:59:00Z']]){
+    assert.equal(f.context.apurarDiaEncerradoChecklistFG_(exempt,new Date(instant)).outcome,'NON_SCORING_DAY');
+  }
+  assert.equal(f.commits.length,0);
+});
+test('native science records a national holiday with no points and no central group lookup',()=>{
+  const f=fixture(),holiday='2026-11-20';
+  f.context.Utilities.formatDate=()=>holiday;
+  const request={...f.request,id:holiday,day:holiday,acknowledgedAt:new Date(holiday+'T15:00:00Z')};
+  f.rows.set('checklistSignatureRequests/'+holiday,request);
+  const read=f.context.evaluationGet_;
+  f.context.evaluationGet_=(collection,id)=>{assert.notEqual(collection,'userCategories');return read(collection,id);};
+  assert.equal(f.context.validateChecklistSignatureRequest_(request,{scienceOnly:true}),'VALIDATED');
+  const paths=Array.from(f.commits[0],write=>write.update.name.split('/documents/')[1]);
+  assert.ok(paths.includes('fgPerformanceReceipts/'+holiday));
+  assert.ok(!paths.some(path=>path.startsWith('fgPerformanceLedger/')||path.startsWith('fgPerformanceSummaries/')));
 });

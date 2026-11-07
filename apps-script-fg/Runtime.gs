@@ -1,5 +1,5 @@
 const FG_NATIVE_SCRIPT_ID='1Uz0wbYwRtuRPUVfFgN09S4HM9e5a7QM8D-M9bzZvCI04eRLu5RcDfLJF';
-const FG_NATIVE_RELEASE='fg-checklist-independent-v1';
+const FG_NATIVE_RELEASE='fg-checklist-independent-v2';
 function fgNativeOwner_(){
   oscOwner_();
   if(SAHMT_V2_CONFIG.projectId!=='sahmt-checklist-fg'||ScriptApp.getScriptId()!==FG_NATIVE_SCRIPT_ID)throw Error('FG_NATIVE_IDENTITY_REQUIRED');
@@ -18,10 +18,12 @@ function verificarProntidaoChecklistFG(){
   evaluationGet_('userCategories','fg-migration-access-probe');probes.centralTeamRegistry=true;
   const signer={uid:'synthetic-author',email:'author@example.test',active:true,access:true},scheduled={uid:'synthetic-scheduled',email:'scheduled@example.test',active:true,access:true};
   const assignment={schemaVersion:1,identityStatus:'LINKED',uid:signer.uid,email:signer.email,memberCategories:['EFETIVO']};
-  const plan=planChecklistDailyPerformance({day:'2026-11-07',signatureId:'synthetic',signer:signer,scheduled:scheduled,assignment:assignment});
-  const own=planChecklistDailyPerformance({day:'2026-11-07',signatureId:'synthetic',signer:scheduled,scheduled:scheduled});
-  const absence=planChecklistDailyAbsence({day:'2026-11-07',closedThroughDay:'2026-11-07',eligibleFromDay:'2026-11-07',scheduled:scheduled});
-  if(plan.entries.length!==2||plan.entries.reduce(function(total,row){return total+row.points;},0)!==0||own.entries.length!==0||absence.entries.length!==1||absence.entries[0].points!==-1)throw Error('FG_PERFORMANCE_SELF_TEST_FAILED');
+  const workday='2026-11-06';
+  const plan=planChecklistDailyPerformance({day:workday,signatureId:'synthetic',signer:signer,scheduled:scheduled,assignment:assignment});
+  const own=planChecklistDailyPerformance({day:workday,signatureId:'synthetic',signer:scheduled,scheduled:scheduled});
+  const absence=planChecklistDailyAbsence({day:workday,closedThroughDay:workday,eligibleFromDay:workday,scheduled:scheduled});
+  const holiday=planChecklistDailyAbsence({day:'2026-11-20',closedThroughDay:'2026-11-20',eligibleFromDay:workday,scheduled:scheduled});
+  if(plan.entries.length!==2||plan.entries.reduce(function(total,row){return total+row.points;},0)!==0||own.entries.length!==0||absence.entries.length!==1||absence.entries[0].points!==-1||holiday.entries.length!==0)throw Error('FG_PERFORMANCE_SELF_TEST_FAILED');
   const result={code:'FG_CHECKLIST_PRONTO',probes:probes,performanceSelfTest:true,firestoreWrites:0,cutoverEnabled:sahmtV2Properties_().getProperty('FG_CUTOVER_ENABLED')==='YES'};
   console.log(JSON.stringify(result));return result;
 }
@@ -31,6 +33,11 @@ function validarCienciaChecklistFG(event){
     checklistScienceAssertOperator_();
     const cutoff=fgClaimScoringClock_(event);if(!cutoff)return {code:'FG_APURACAO_SOMENTE_2359'};
     const day=Utilities.formatDate(cutoff,'America/Sao_Paulo','yyyy-MM-dd');
+    const exemption=checklistScoringDayExemption(day);
+    if(exemption){
+      const result={code:'FG_APURACAO_DISPENSADA',day:day,reason:exemption};
+      console.log(JSON.stringify(result));return result;
+    }
     const request=evaluationGet_('checklistSignatureRequests',day);
     const outcome=fgAcknowledgementOnTime_(request,day,cutoff)&&request.status==='PENDING_VALIDATION'
       ?validateChecklistSignatureRequest_(request,{scienceOnly:true})

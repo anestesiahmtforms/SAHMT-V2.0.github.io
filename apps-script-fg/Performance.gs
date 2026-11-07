@@ -3,7 +3,7 @@ function evaluationApplyChecklistTransfer_(day,responsibleUid,signerUid,signatur
   const transaction=options&&options.transaction;if(!transaction)throw Error('FG_PERFORMANCE_TRANSACTION_REQUIRED');
   const previous=evaluationGet_('fgPerformanceReceipts',day,transaction),signer=evaluationGet_('users',signerUid,transaction),scheduled=evaluationGet_('users',responsibleUid,transaction);
   const email=String(signer&&signer.email||'').trim().toLowerCase();
-  const assignment=signerUid!==responsibleUid?evaluationGet_('userCategories',sha256Hex_(JSON.stringify(email)),transaction):null;
+  const assignment=signerUid!==responsibleUid&&!checklistScoringDayExemption(day)?evaluationGet_('userCategories',sha256Hex_(JSON.stringify(email)),transaction):null;
   const plan=planChecklistDailyPerformance({day:day,signatureId:signatureId,signer:signer,scheduled:scheduled,assignment:assignment,previous:previous});
   return {status:!plan.changed?'DUPLICATE':plan.receipt.outcome==='TRANSFER'?'APPLIED':'ZERO',writes:fgPerformancePlanWrites_(plan,transaction)};
 }
@@ -32,6 +32,8 @@ function fgAcknowledgementOnTime_(request,day,cutoff){
 function apurarDiaEncerradoChecklistFG_(day,cutoff){
   if(!isValidDateKey(day)||!(cutoff instanceof Date)||!Number.isFinite(cutoff.getTime())||
       Utilities.formatDate(cutoff,'America/Sao_Paulo','yyyy-MM-dd HH:mm:ss')!==day+' 23:59:00')throw Error('FG_DAY_NOT_ELIGIBLE_FOR_CLOSURE');
+  const exemption=checklistScoringDayExemption(day);
+  if(exemption)return {day:day,outcome:'NON_SCORING_DAY',exemption:exemption};
   return checklistSourceTransaction_(function(transaction){
     const activation=checklistScienceAssertOperator_(transaction);
     if(activation.activatedAt>=cutoff)return {writes:[],result:{day:day,outcome:'OUTSIDE_RELEASE'}};

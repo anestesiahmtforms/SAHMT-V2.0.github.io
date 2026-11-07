@@ -15,6 +15,7 @@ test('inactive FG never invents a confirmed zero or loads identities',async()=>{
 test('active FG reads its own ledger and preserves a confirmed zero without source fallback',async()=>{
   const f=fixture(),data=await loadFgPerformance({...f,uid:'u'});assert.equal(data.summary.total,0);assert.equal(data.ledger.length,0);assert.ok(f.reads.every(path=>!path.startsWith('faPerformance')));
   const html=fgPerformanceMarkup(data);assert.match(html,/Desempenho FG/);assert.match(html,/Member &lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+  assert.match(html,/sábados, domingos e feriados nacionais/);
 });
 test('incomplete directories and changed sessions reject the result',async()=>{
   await assert.rejects(loadFgPerformance({...fixture({incomplete:true}),uid:'u'}),/aguardando confirmação/);

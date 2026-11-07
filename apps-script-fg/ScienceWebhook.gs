@@ -22,7 +22,7 @@ function fgScienceHttp_(event){
   }catch(_){return ospJson_({code:'FG_WEBHOOK_DENIED'});}
   try{
     fgNativeOwner_();
-    if(request.action==='probe')return ospReply_(request.nonce,'FG_WEBHOOK_READY',secret);
+    if(request.action==='probe')return ospReply_(request.nonce,'FG_WEBHOOK_CALENDAR_READY',secret);
     if(request.action!=='settle'||!isValidDateKey(request.day)||!/^[^/\s\x00-\x1f]{1,128}$/.test(request.uid||''))throw Error('FG_WEBHOOK_SCOPE');
     const activation=checklistScienceAssertOperator_();
     const day=request.day;

@@ -1,21 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planChecklistDailyPerformance,planChecklistDailyAbsence} from '../fg-performance/daily-transfer.js';
+import {checklistScoringDayExemption,planChecklistDailyPerformance,planChecklistDailyAbsence} from '../fg-performance/daily-transfer.js';
 
 const signer = {uid:'signer',email:'signer@example.test',active:true,access:true};
 const scheduled = {uid:'scheduled',email:'scheduled@example.test',active:true,access:true};
 const assignment = {schemaVersion:1,identityStatus:'LINKED',uid:signer.uid,email:signer.email,memberCategories:['EFETIVO']};
-const input = () => ({day:'2026-11-07',signatureId:'accepted-signature',signer,scheduled,assignment});
-const closing=()=>({day:'2026-11-07',closedThroughDay:'2026-11-07',eligibleFromDay:'2026-11-07',scheduled});
+const input = () => ({day:'2026-11-06',signatureId:'accepted-signature',signer,scheduled,assignment});
+const closing=()=>({day:'2026-11-06',closedThroughDay:'2026-11-06',eligibleFromDay:'2026-11-06',scheduled});
+
+test('weekends and national holidays prohibit both transfers and absence debits with a scheduled person',()=>{
+  for(const [day,exemption] of [['2026-11-07','WEEKEND'],['2026-11-08','WEEKEND'],['2026-11-20','NATIONAL_HOLIDAY'],
+    ['2026-04-03','NATIONAL_HOLIDAY'],['2027-03-26','NATIONAL_HOLIDAY'],['2026-12-25','NATIONAL_HOLIDAY']]){
+    assert.equal(checklistScoringDayExemption(day),exemption);
+    const acknowledged=planChecklistDailyPerformance({...input(),day,assignment:null});
+    assert.equal(acknowledged.receipt.outcome,'NON_SCORING_DAY');
+    assert.deepEqual(acknowledged.entries,[]);
+    assert.deepEqual(planChecklistDailyAbsence({...closing(),day,closedThroughDay:day,eligibleFromDay:day}).entries,[]);
+  }
+});
+test('Carnaval and Corpus Christi are optional observances in the federal calendar',()=>{
+  for(const day of ['2026-02-17','2026-06-04','2026-11-06']){
+    assert.equal(checklistScoringDayExemption(day),null);
+    assert.equal(planChecklistDailyPerformance({...input(),day}).entries.length,2);
+  }
+});
 
 test('no acknowledgement creates only the scheduled users single daily debit',()=>{
   const plan=planChecklistDailyAbsence(closing());
-  assert.equal(plan.receipt.outcome,'NO_ACKNOWLEDGEMENT');assert.deepEqual(plan.entries.map(e=>[e.id,e.uid,e.points]),[['2026-11-07_debit','scheduled',-1]]);
+  assert.equal(plan.receipt.outcome,'NO_ACKNOWLEDGEMENT');assert.deepEqual(plan.entries.map(e=>[e.id,e.uid,e.points]),[['2026-11-06_debit','scheduled',-1]]);
   assert.equal(planChecklistDailyAbsence({...closing(),previous:plan.receipt}).changed,false);
 });
 test('absence cannot penalize an open day, a historical day before FG, or an unresolved scheduled identity',()=>{
-  assert.throws(()=>planChecklistDailyAbsence({...closing(),closedThroughDay:'2026-11-06'}),/FG_DAY_NOT_CLOSED/);
-  assert.throws(()=>planChecklistDailyAbsence({...closing(),eligibleFromDay:'2026-11-08'}),/FG_DAY_OUTSIDE_RELEASE/);
+  assert.throws(()=>planChecklistDailyAbsence({...closing(),closedThroughDay:'2026-11-05'}),/FG_DAY_NOT_CLOSED/);
+  assert.throws(()=>planChecklistDailyAbsence({...closing(),eligibleFromDay:'2026-11-07'}),/FG_DAY_OUTSIDE_RELEASE/);
   assert.throws(()=>planChecklistDailyAbsence({...closing(),scheduled:null}),/FG_SCHEDULED_USER_REQUIRED/);
   assert.equal(planChecklistDailyAbsence({...closing(),acknowledgementPresent:true}).changed,false);
 });
