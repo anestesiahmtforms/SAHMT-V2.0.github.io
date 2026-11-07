@@ -92,11 +92,12 @@
 .comm-send-instruction { margin: 0; color: #852321; font-size: .73rem; font-weight: 850; line-height: 1.25; text-align: center; }
 .communication--compose .comm-status:not(:empty) { margin: 8px 0 0; padding: 6px 8px; font-size: .8rem; line-height: 1.25; }
 @media (max-height: 500px) {
-  .management-hub-dialog[data-panel=communication]:has(.communication--compose) .management-hub-body { padding: 8px; }
-  .communication--compose form { gap: 5px; }
+  .management-hub-dialog[data-panel=communication]:has(.communication--compose) .management-hub-body { padding: 7px; }
+  .communication--compose form { gap: 4px; }
+  .communication--compose label { line-height: 1.15; }
   .communication--compose input:not([type=checkbox]), .communication--compose select { min-height: 36px; }
-  .communication--compose textarea { height: 56px; }
+  .communication--compose textarea { height: 48px; }
   .communication--compose .comm-heading { margin-bottom: 5px; }
-  .communication--compose .comm-status:not(:empty) { margin-top: 5px; }
+  .communication--compose .comm-status:not(:empty) { margin-top: 5px; padding-block: 4px; }
   .communication--compose .comm-actions { margin-top: 5px; }
 }

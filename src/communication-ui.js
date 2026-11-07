@@ -213,7 +213,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       if (result.pushPending) {
         state.checkingPrevious = true;
         form.elements.send.textContent = 'CONFIRMAR ENVIO';
-        return status('Evento publicado na Home. Toque em CONFIRMAR ENVIO para conferir o Push.');
+        return status('Evento publicado. Confirme o Push.');
       }
       state.sent = true;
       state.pending = undefined;
@@ -229,7 +229,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       } else state.checkingPrevious = true;
       if (needsGoogle(error)) return recoverGoogle();
       form.elements.send.textContent = state.pending ? 'CONFIRMAR ENVIO' : 'ENVIAR';
-      report(error, state.pending ? 'Envio sem confirmação. Toque em CONFIRMAR ENVIO para conferir o mesmo evento.' : undefined);
+      report(error, state.pending ? 'Envio sem confirmação. Confirme o mesmo evento.' : undefined);
     } finally {
       state.sending = false;
       if (active() && form.isConnected) setComposeControls(form);

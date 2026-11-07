@@ -45,7 +45,7 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
 test('ao reabrir após resposta perdida, o mesmo conteúdo retoma o ID original',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
-  const page=await browser.newPage();await page.goto(url+'?hub&lost-response');
+  const page=await browser.newPage({viewport:{width:320,height:460}});await page.goto(url+'?hub&lost-response');
   await open(page,'CENTRAL DE COMUNICAÇÃO');
   const fill=async()=>{
    await open(page,'CRIAR E ENVIAR EVENTO');
@@ -54,6 +54,7 @@ test('ao reabrir após resposta perdida, o mesmo conteúdo retoma o ID original'
    await open(page,'ENVIAR');
   };
   await fill();await page.getByRole('button',{name:'CONFIRMAR ENVIO'}).waitFor();
+  assert.equal(await page.locator('.communication--compose').evaluate(element=>element.getBoundingClientRect().bottom<=element.closest('[data-hub-body]').getBoundingClientRect().bottom),true);
   await open(page,'CENTRAL DE COMUNICAÇÃO');
   await fill();await page.getByRole('button',{name:'ENVIADO'}).waitFor();
   const ids=await page.evaluate(()=>window.calls.filter(call=>call.action==='CREATE_EVENT').map(call=>call.input.id));
