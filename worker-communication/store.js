@@ -14,9 +14,23 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
  }
  const path=(c,k)=>{checkCollection(c);id(k);return c+'/'+k;};
  async function get(c,k,transaction,fields){const q=new URLSearchParams();if(transaction)q.set('transaction',transaction);for(const field of fields||[])q.append('mask.fieldPaths',id(field));const d=await request('/'+path(c,k)+(q.size?'?'+q:''));return d?{...decodeFields(d.fields||{}),id:k}:null;}
- async function page(c,{cursor='',limit=20,filters=[],fields}={}){
+ async function page(c,{cursor='',limit=20,filters=[],fields,publishedBefore}={}){
   if(source)throw fail('COMM_SOURCE_DENIED',403);
-  checkCollection(c);if(cursor)id(cursor);if(!Number.isInteger(limit)||limit<1||limit>21)throw fail('COMM_INVALID_INPUT');
+  checkCollection(c);if(!Number.isInteger(limit)||limit<1||limit>21)throw fail('COMM_INVALID_INPUT');
+  if(publishedBefore!==undefined){
+   if(c!=='communicationMessages'||!Number.isSafeInteger(publishedBefore))throw fail('COMM_INVALID_INPUT');
+   const cursorMatch=cursor&&/^(\d{1,16})\|(.+)$/.exec(cursor);
+   if(cursor&&(!cursorMatch||!Number.isSafeInteger(Number(cursorMatch[1]))))throw fail('COMM_INVALID_INPUT');
+   const query={
+    from:[{collectionId:c}],limit,
+    where:{fieldFilter:{field:{fieldPath:'publishAt'},op:'LESS_THAN_OR_EQUAL',value:{integerValue:String(publishedBefore)}}},
+    orderBy:[{field:{fieldPath:'publishAt'},direction:'DESCENDING'},{field:{fieldPath:'__name__'},direction:'DESCENDING'}],
+    ...(cursorMatch?{startAt:{values:[{integerValue:cursorMatch[1]},{referenceValue:name+'/'+c+'/'+id(cursorMatch[2])}],before:false}}:{}),
+   };
+   const rows=await request(':runQuery',{structuredQuery:query});
+   return rows.filter(row=>row.document).map(({document})=>({...decodeFields(document.fields||{}),id:document.name.split('/').at(-1)}));
+  }
+  if(cursor)id(cursor);
   const clauses=filters.map(([field,value])=>({fieldFilter:{field:{fieldPath:field},op:'EQUAL',value:encodeFields({v:value}).v}}));
   const q={from:[{collectionId:c}],orderBy:[{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit,...(fields?{select:{fields:fields.map(fieldPath=>({fieldPath}))}}:{}),...(cursor?{startAt:{values:[{referenceValue:name+'/'+c+'/'+cursor}],before:false}}:{}),...(clauses.length?{where:clauses.length===1?clauses[0]:{compositeFilter:{op:'AND',filters:clauses}}}:{})};
   const d=await request(':runQuery',{structuredQuery:q});return d.filter(x=>x.document).map(({document:d})=>({...decodeFields(d.fields||{}),id:d.name.split('/').at(-1)}));

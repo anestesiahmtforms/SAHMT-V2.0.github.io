@@ -69,7 +69,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const seen = new Set();
     try {
       do {
-        const result = await client.request('INBOX', cursor ? {cursor} : {});
+        const result = await client.request('INBOX', cursor ? {recent: true, cursor} : {recent: true});
         if (!active()) return;
         for (const item of result.items || []) {
           if (typeof item?.id === 'string' && !seen.has(item.id)) {

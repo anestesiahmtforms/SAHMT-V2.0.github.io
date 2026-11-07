@@ -50,6 +50,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
  async function saveMessage(input,a,{event=false}={}){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
+  if(!event&&key.startsWith('event-'))throw fail('COMM_INVALID_ID');
   if(!event&&m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
   if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await store.get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
   if(input.source)throw fail('COMM_SOURCE_UNSUPPORTED');const source=null;
@@ -59,7 +60,11 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
     const sameNotice=old.status==='published'&&old.createdBy?.sourceUid===a.sourceUid&&
      ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field]);
     if(!sameNotice)throw fail('COMM_CONFLICT',409);
-    return {message:old,dispatch,alreadySent:true};
+    const mayStart=dispatch?.status==='queueing'&&isCurrentMessage(old,now())&&
+     (dispatch.enqueueStatus==='retry'||dispatch.enqueueStatus==='starting'&&dispatch.enqueueStartedAt<=now()-60000);
+    const nextDispatch=mayStart?{...dispatch,enqueueStatus:'starting',enqueueStartedAt:now()}:dispatch;
+    if(mayStart)tx.set('communicationDispatches',key,nextDispatch);
+    return {message:old,dispatch:nextDispatch,alreadySent:true,startPush:mayStart};
    }
    if(dispatch)throw fail('COMM_MESSAGE_LOCKED',409);
    if((old?.version||0)!==input.version)throw fail('COMM_CONFLICT',409);
@@ -77,12 +82,26 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    const record={...m,id:key,version:(old?.version||0)+1,createdAt:old?.createdAt||now(),createdBy:old?.createdBy||actorData(a),updatedAt:now(),updatedBy:actorData(a),firstPublishedAt:old?.firstPublishedAt||(firstPublish?now():null),source:source?.reference||old?.source||null};
    tx.set('communicationMessages',key,record);
    const settings=await tx.get('communicationSettings','main');
-   const automaticDispatch=m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:1,automatic:true}:null;
+   const automaticDispatch=m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:1,automatic:true,...(event?{enqueueStatus:'starting',enqueueStartedAt:now()}:{})}:null;
    if(automaticDispatch)tx.create('communicationDispatches',key,automaticDispatch);
    if(firstPublish)for(const [k,v]of [['total',total],[month,monthly]]){v.published++;v.categories[m.category]=(v.categories[m.category]||0)+1;tx.set('communicationMetrics',k,v);}
    if(firstPublish)tx.set('communicationPublicationBudgets',period.day,{published:published+1,at:now()});
    audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,record,automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
   });
+  if(event&&saved.dispatch){
+   if(saved.alreadySent&&!saved.startPush){
+    const pushPending=saved.dispatch.status==='queueing'&&saved.dispatch.enqueueStatus==='starting'&&isCurrentMessage(saved.message,now());
+    const pushQueued=saved.dispatch.enqueueStatus==='queued'||saved.dispatch.status!=='queueing';
+    return {...saved,pushPending,pushQueued};
+   }
+   let pushQueued=false;
+   try{await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});pushQueued=true;}catch{}
+   await store.transaction(async tx=>{
+    const dispatch=await tx.get('communicationDispatches',key);
+    if(dispatch?.enqueueStatus==='starting'&&dispatch.enqueueStartedAt===saved.dispatch.enqueueStartedAt)tx.set('communicationDispatches',key,{...dispatch,enqueueStatus:pushQueued?'queued':'retry'});
+   }).catch(()=>{});
+   return {...saved,pushQueued,pushPending:!pushQueued};
+  }
   if(saved.alreadySent)return saved;
   if(saved.dispatch){try{if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});return {...saved,pushQueued:true};}catch{return {...saved,pushQueued:false};}}
   return {...saved,pushQueued:false};
@@ -301,10 +320,12 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(action==='BOOTSTRAP')return {isAdmin:adminIdentity(a),projectId:FF.projectId,databaseId:FF.databaseId,batchSize:BATCH_SIZE};
   if(action==='REGISTER_DEVICE'||action==='DISABLE_DEVICE')return device(input,a,action==='REGISTER_DEVICE');
   if(action==='INBOX'){
-   const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:5,filters:[['status','published']]}),items=[];
+   const recent=input.recent===true;
+   const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:5,...(recent?{publishedBefore:now()}:{filters:[['status','published']]})}),items=[];
    if(!input.cursor){const pointer=await store.get('communicationReleaseInboxes',a.sourceUid);if(pointer?.messageId){const release=await store.get('communicationMessages',id(pointer.messageId));if(release?.audienceType==='USER'&&release.audienceValue===a.sourceUid&&isCurrentMessage(release,now()))items.push(release);}}
    for(const m of rows)if(!items.some(item=>item.id===m.id)&&isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
-   return {items,cursor:rows.length===5?rows.at(-1).id:null};
+   const last=rows.at(-1);
+   return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null};
   }
   if(action==='MESSAGE'){
    const m=await store.get('communicationMessages',id(input.id));

@@ -24,7 +24,7 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
    await form.getByLabel('Descrição do aviso').fill(description);
    await form.getByLabel('Público').selectOption('USER');await recipient.selectOption('ff-resident');
    assert.deepEqual(await recipient.locator('optgroup').evaluateAll(groups=>groups.map(group=>[group.label,group.textContent])),[['EQUIPE','Pessoa da Equipe'],['RESIDENTES','Pessoa Residente'],['SUBSTITUTOS','Pessoa Substituta']]);
-   await send.evaluate(button=>{button.click();button.click();});
+   await send.evaluate(button=>{button.click();button.click();button.closest('dialog').dispatchEvent(new Event('cancel',{cancelable:true}));});
    const sent=form.getByRole('button',{name:'ENVIADO',exact:true});await sent.waitFor();
    assert.equal(await sent.isDisabled(),true);
    assert.equal(beforeColor,'rgb(169, 41, 40)');
@@ -39,6 +39,25 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
    await page.locator('dialog[data-panel=home]').waitFor();
   }
   assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('ao reabrir após resposta perdida, o mesmo conteúdo retoma o ID original',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage();await page.goto(url+'?hub&lost-response');
+  await open(page,'CENTRAL DE COMUNICAÇÃO');
+  const fill=async()=>{
+   await open(page,'CRIAR E ENVIAR EVENTO');
+   await page.getByLabel('Título').fill('Mesmo evento');
+   await page.getByLabel('Descrição do aviso').fill('Mesmo texto');
+   await open(page,'ENVIAR');
+  };
+  await fill();await page.getByRole('button',{name:'CONFIRMAR ENVIO'}).waitFor();
+  await open(page,'CENTRAL DE COMUNICAÇÃO');
+  await fill();await page.getByRole('button',{name:'ENVIADO'}).waitFor();
+  const ids=await page.evaluate(()=>window.calls.filter(call=>call.action==='CREATE_EVENT').map(call=>call.input.id));
+  assert.equal(ids.length,2);assert.equal(ids[0],ids[1]);
  }finally{await browser.close();}
 });
 test('ordinary users see own inbox only; Governance hides administrative card entirely',async()=>{

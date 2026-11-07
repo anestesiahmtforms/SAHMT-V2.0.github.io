@@ -1,4 +1,4 @@
-import {BUILTIN_GROUPS} from '../communication/domain.js';
+import {BUILTIN_GROUPS, ROUTES} from '../communication/domain.js';
 import {communicationEntryFromSession} from './communication-entry.js';
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
 import {communicationLimitMessage} from './communication-usage.js';
@@ -23,14 +23,23 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   let composeState;
   let directory;
   const active = () => !disposed && isCurrent();
+  const dialog = root.closest('.management-hub-dialog');
+
+  async function pendingEventKey(payload) {
+    const uid = appSession?.user?.uid;
+    if (!uid) return '';
+    const fingerprint = JSON.stringify([payload.title, payload.description, payload.audience, payload.recipient]);
+    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint));
+    const hash = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
+    return `sahmt-ff-pending-event:${uid}:${hash}`;
+  }
 
   function render(title, content, {compose = false, menu = false} = {}) {
     generation++;
     root.classList.add('communication');
     root.classList.toggle('communication--compose', compose);
     root.classList.toggle('communication--menu', menu);
-    const embedded = root.closest('.management-hub-dialog');
-    const hubHeading = embedded?.querySelector('#management-hub-title');
+    const hubHeading = dialog?.querySelector('#management-hub-title');
     if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : 'CENTRAL DE COMUNICAÇÃO';
     const heading = (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
     const navigation = compose ? '<button type="button" data-home>CENTRAL DE COMUNICAÇÃO</button><button type="button" data-back>VOLTAR</button>' :
@@ -89,7 +98,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     } while (cursor);
   }
 
-  function setComposeControls(form, busy = false) {
+  function setComposeControls(form, busy = Boolean(composeState.sending)) {
     const {title, description, audienceType, audienceValue, send} = form.elements;
     const locked = busy || Boolean(composeState.pending) || composeState.sent;
     title.readOnly = description.readOnly = locked;
@@ -181,19 +190,44 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     setComposeControls(form, true);
     form.elements.send.textContent = 'ENVIANDO…';
     status('');
+    let storageKey;
+    let checkingPrevious = state.checkingPrevious;
+    const clearPendingId = () => {
+      if (storageKey) try { sessionStorage.removeItem(storageKey); } catch {}
+    };
     try {
-      const result = await client.request('CREATE_EVENT', payload);
+      storageKey = await pendingEventKey(payload);
       if (!active() || !form.isConnected) return;
+      if (storageKey) try {
+        const previousId = sessionStorage.getItem(storageKey);
+        if (previousId && /^event-[0-9a-f-]{36}$/.test(previousId)) {
+          payload.id = previousId;
+          state.id = previousId;
+          checkingPrevious = true;
+        }
+        sessionStorage.setItem(storageKey, payload.id);
+      } catch {}
+      const result = await client.request('CREATE_EVENT', payload);
+      if (!result.pushPending) clearPendingId();
+      if (!active() || !form.isConnected) return;
+      if (result.pushPending) {
+        state.checkingPrevious = true;
+        form.elements.send.textContent = 'CONFIRMAR ENVIO';
+        return status('Evento publicado na Home. Toque em CONFIRMAR ENVIO para conferir o Push.');
+      }
       state.sent = true;
       state.pending = undefined;
       form.elements.send.textContent = 'ENVIADO';
       form.elements.send.dataset.sent = 'true';
-      status(result.alreadySent ? 'Evento já publicado.' : result.pushQueued ? 'Evento enviado. Push na fila.' : 'Evento publicado na Home. Push sem confirmação.');
+      status(result.pushQueued ? 'Evento enviado. Push na fila.' : 'Evento publicado na Home. Push sem confirmação.');
     } catch (error) {
       if (!active() || !form.isConnected) return;
-      if (needsGoogle(error)) return recoverGoogle();
       const rejected = [400, 403, 413, 429].includes(error.status);
-      if (rejected) state.pending = undefined;
+      if (rejected && !checkingPrevious) {
+        clearPendingId();
+        state.pending = undefined;
+      } else state.checkingPrevious = true;
+      if (needsGoogle(error)) return recoverGoogle();
       form.elements.send.textContent = state.pending ? 'CONFIRMAR ENVIO' : 'ENVIAR';
       report(error, state.pending ? 'Envio sem confirmação. Toque em CONFIRMAR ENVIO para conferir o mesmo evento.' : undefined);
     } finally {
@@ -206,9 +240,9 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     render('Mensagens recebidas', '<p>Carregando mensagens…</p>');
     const ticket = generation;
     try {
-      const data = await client.request('INBOX', {cursor});
+      const data = await client.request('INBOX', {recent: true, cursor});
       if (!active() || generation !== ticket) return;
-      const cards = data.items.map(item => `<article class="comm-card"><h3>${esc(item.title)}</h3><p>${esc(item.message.slice(0, 200))}${item.message.length > 200 ? '…' : ''}</p><button type="button" data-message="${esc(item.id)}">LER AVISO</button></article>`).join('');
+      const cards = data.items.map(item => `<article class="comm-card"><h3>${esc(item.title)}</h3><p>${esc(item.category)} · ${new Date(item.publishAt).toLocaleString('pt-BR')}</p><p>${esc(item.message.slice(0, 200))}${item.message.length > 200 ? '…' : ''}</p><button type="button" data-message="${esc(item.id)}">LER AVISO</button></article>`).join('');
       render('Mensagens recebidas', `<div class="comm-actions"><button type="button" data-enable>HABILITAR NOTIFICAÇÕES NESTE APARELHO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div>${cards || '<p>Nenhuma mensagem nesta página.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMA PÁGINA</button>` : ''}`);
     } catch (error) {
       if (!active() || generation !== ticket) return;
@@ -225,8 +259,9 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       const {message} = await client.request('MESSAGE', {id: decodeURIComponent(key)});
       if (!active() || generation !== ticket) return;
       const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
-        `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}" target="_blank" rel="noopener noreferrer">${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
-      render(message.title, `<article class="comm-card"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}</article>`);
+        `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
+      const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
+      render(message.title, `<article class="comm-card"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`);
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
@@ -300,9 +335,16 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     }
   }
 
+  function cancelWhileSending(event) {
+    if (!composeState?.sending) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
   root.addEventListener('click', click);
   root.addEventListener('submit', submit);
   root.addEventListener('change', change);
+  dialog?.addEventListener('cancel', cancelWhileSending, true);
   if (communicationEntryFromSession(appSession, {adminMode})) void initialView();
   else void bootstrap();
   return () => {
@@ -312,6 +354,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     root.removeEventListener('click', click);
     root.removeEventListener('submit', submit);
     root.removeEventListener('change', change);
+    dialog?.removeEventListener('cancel', cancelWhileSending, true);
     root.replaceChildren();
   };
 }

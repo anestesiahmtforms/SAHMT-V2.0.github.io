@@ -51,6 +51,21 @@ test('a criação de evento respeita os públicos locais e o mesmo envio só pub
  assert.equal(directory.items.find(user=>user.uid===person.sourceUid).institutionalGroup,'team');
 });
 
+test('uma fila indisponível pode ser recuperada pelo mesmo evento sem publicar de novo',async()=>{
+ const f=fixture(),input={id:'event-recover',title:'Evento',description:'Teste',audience:'ALL'};
+ const enqueue=f.queue.send;
+ f.queue.send=async()=>{throw Error('Fila indisponível');};
+ const first=await f.call('CREATE_EVENT',input);
+ assert.equal(first.pushPending,true);
+ assert.equal(f.queued.length,0);
+ f.queue.send=enqueue;
+ const recovered=await f.call('CREATE_EVENT',input);
+ assert.equal(recovered.alreadySent,true);
+ assert.equal(recovered.pushQueued,true);
+ assert.equal(f.queued.length,1);
+ assert.equal(await f.store.countPublished(NOW-1000,NOW+1000),1);
+});
+
 test('FJ cutover validates the current FJ release and retains the FA operator identity and FF deduplication',async()=>{
  const fj=memory();fj.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-500}}});
  const f=fixture({scheduleSource:fj});
