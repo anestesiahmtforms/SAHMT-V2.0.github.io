@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const source=await readFile(new URL('../src/data.js',import.meta.url),'utf8');
+test('Home retains the Etiquetas entry while the independent FH profile is pending or unavailable',async()=>{
+ const main=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
+ const code=main.slice(main.indexOf('function moduleCards()'),main.indexOf('function hasOccurrencePermission()')).replaceAll('import.meta.env.BASE_URL','"/"');
+ const c=vm.createContext({fhLabelsEnabled:true,labels:{labels:['ETIQUETAS','Registros']},session:{status:'signed-in',profile:{active:true,access:true}},can:()=>false,featureEnabledForRoute:()=>true,appFeatures:{},escapeHtml:String});
+ vm.runInContext(code,c);assert.match(c.moduleCards(),/data-route="labels"/);
+ c.session.status='signed-out';assert.doesNotMatch(c.moduleCards(),/data-route="labels"/);
+});
 test('FH interface uses its own profile and explicit false overrides inherited admin',async()=>{
  const main=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
  const code=main.slice(main.indexOf('function can(permission)'),main.indexOf('// Individual release'));
