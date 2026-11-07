@@ -32,6 +32,10 @@ test('FH permission administrators change only Etiquetas permissions in FH',asyn
  await assertFails(setDoc(doc(manager,'users/privileged'),{...newProfile,uid:'privileged',permissions:{labelsRead:true,admin:true}}));
  await seed('users/role-only',{...member,uid:'role-only',role:'administrador_app',permissions:{labelsRead:true}});
  await assertFails(getDoc(doc(db('role-only'),'users/other')));
+ await assertSucceeds(updateDoc(doc(manager,'users/other'),{permissions:{labelsRead:false,labelsWrite:false,labelsManage:false}}));
+ await seed('users/revoked',{...member,uid:'revoked',role:'administrador_app',permissions:{admin:true,labelsRead:false,labelsWrite:false,labelsManage:false}});
+ await assertFails(getDoc(doc(db('revoked'),'labels/l1')));
+ await assertFails(getDoc(doc(db('revoked'),'users/member')));
 });
 test('FH catalog is managed locally and does not grant access to an events-only profile',async()=>{
  const catalog={id:'labelStaff',siglas:['AA'],active:true,createdByUid:'admin',updatedByUid:'admin',createdAt:serverTimestamp(),updatedAt:serverTimestamp(),version:1};

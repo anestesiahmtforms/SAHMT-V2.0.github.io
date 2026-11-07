@@ -546,7 +546,7 @@ export async function saveLabelModulePermissions(input, actorUid) {
   const actorSnapshot = await getDocFromServer(doc(moduleDb, 'users', actor));
   const actorProfile = actorSnapshot.exists() ? actorSnapshot.data() : {};
   if (actorProfile.active !== true || actorProfile.access !== true ||
-      !(actorProfile.permissions?.admin === true || actorProfile.permissions?.labelsManage === true)) {
+      (actorProfile.permissions?.labelsManage ?? actorProfile.permissions?.admin) !== true) {
     throw Object.assign(new Error('Somente um administrador de Etiquetas em FH pode alterar estas permissões.'), {code: 'permission-denied'});
   }
   const reference = doc(moduleDb, 'users', uid);

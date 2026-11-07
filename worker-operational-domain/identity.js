@@ -96,5 +96,6 @@ export function canEnterModule(profile, actor, station) {
     station === 'FH' ? ['labelsRead', 'labelsWrite', 'labelsManage'] : [];
   return profile?.uid === actor.uid && String(profile.email || '').toLowerCase() === actor.email &&
     profile.active === true && profile.access === true &&
-    (profile.role === 'administrador_app' || permissions.admin === true || modulePermissions.some(permission => permissions[permission] === true));
+    (station === 'FH' ? modulePermissions.some(permission => (permissions[permission] ?? permissions.admin) === true) :
+      (profile.role === 'administrador_app' || permissions.admin === true || modulePermissions.some(permission => permissions[permission] === true)));
 }

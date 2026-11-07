@@ -16,12 +16,12 @@ service cloud.firestore {
     function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
     function isAdmin() {
       let permissions = profile().get('permissions', {});
-      return activeUser() && (permissions.get('admin', false) == true || permissions.get('labelsManage', false) == true);
+      return activeUser() && permissions.get('labelsManage', permissions.get('admin', false)) == true;
     }
     function can(permission) {
       let p = profile();
       let permissions = p.get('permissions', {});
-      return activeUser() && (permissions.get('admin', false) == true || permissions.get(permission, false) == true);
+      return activeUser() && permissions.get(permission, permissions.get('admin', false)) == true;
     }
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }

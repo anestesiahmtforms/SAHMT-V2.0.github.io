@@ -220,7 +220,9 @@ async function readAuthorizedProfile(uid, idToken, fetchImpl, projectId = PROJEC
   }
   const role = field(fields, 'role', 'stringValue');
   const legacyAdminRoleAllowed = projectId !== 'sahmt-etiquetas-fh' && role === 'administrador_app';
-  const authorized = legacyAdminRoleAllowed || profilePermission(fields, 'admin') || profilePermission(fields, 'labelsWrite') || profilePermission(fields, 'labelsManage');
+  const fhPermission = name => field(field(fields, 'permissions', 'mapValue')?.fields, name, 'booleanValue') ?? profilePermission(fields, 'admin');
+  const authorized = projectId === 'sahmt-etiquetas-fh' ? (fhPermission('labelsWrite') === true || fhPermission('labelsManage') === true) :
+    legacyAdminRoleAllowed || profilePermission(fields, 'admin') || profilePermission(fields, 'labelsWrite') || profilePermission(fields, 'labelsManage');
   if (!authorized) throw new WorkerError(403, 'PERMISSION_DENIED', 'Seu perfil não tem permissão para ler etiquetas.');
 }
 

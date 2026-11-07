@@ -180,6 +180,8 @@ test('FH accepts only permissions stored in FH and ignores the copied FA adminis
   const tokensForUser = await validTokenPair({idClaims:fhClaims});
   const roleOnly = createFixture({projectId:'sahmt-etiquetas-fh',profile:firestoreProfile({role:'administrador_app',permissions:{}})});
   assert.equal((await roleOnly.request(tokensForUser)).status,403);
+  const revoked = createFixture({projectId:'sahmt-etiquetas-fh',profile:firestoreProfile({role:'administrador_app',permissions:{admin:true,labelsWrite:false,labelsManage:false}})});
+  assert.equal((await revoked.request(tokensForUser)).status,403);
   for (const permissions of [{admin:true},{labelsWrite:true},{labelsManage:true}]) {
     const fixture=createFixture({projectId:'sahmt-etiquetas-fh',profile:firestoreProfile({role:'administrador_app',permissions})});
     assert.equal((await fixture.request(tokensForUser)).status,200);
