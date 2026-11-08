@@ -25,7 +25,7 @@ export function createServiceTokenProvider({credentials,fetchImpl=fetch,now=Date
 /** accounts:lookup validates the signature against Firebase, then account state is checked on every request. */
 export async function verifyTrainingIdentity(authorization,{apiKey,projectId=TRAINING_PROJECT,fetchImpl=fetch,now=Date.now}={}) {
  const denied=()=>error('TRAINING_SESSION_INVALID',401);
- if(typeof apiKey!=='string'||!apiKey||![TRAINING_PROJECT,'sahmt-17a16'].includes(projectId))throw error('TRAINING_SERVICE_CONFIG_INVALID');
+ if(typeof apiKey!=='string'||!apiKey||![TRAINING_PROJECT,'sahmt-17a16','rotinas-8a617'].includes(projectId))throw error('TRAINING_SERVICE_CONFIG_INVALID');
  if(!/^Bearer [A-Za-z0-9_.-]{50,16000}$/.test(authorization||''))throw denied();
  const token=authorization.slice(7);let claims;
  try{const parts=token.split('.');if(parts.length!==3)throw Error();claims=JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8'));}catch{throw denied();}

@@ -44,29 +44,32 @@ test('daily finish preserves source read counts for the dedicated FG and FI proj
  assert.equal(result.readsByProject.FG,3);assert.equal(result.readsByProject.FI,4);
 });
 
-async function runScheduler({complete=false,performanceEnabled=true,performanceFails=false}={}){
+async function runScheduler({complete=false,performanceEnabled=true,performanceFails=false,scheduledTime=Date.parse('2026-12-01T05:00:00Z')}={}){
  const actions=[],pending=[],warnings=[];
- const scheduler=createFdScheduler({now:()=>time});
+ const scheduler=createFdScheduler({now:()=>scheduledTime});
  const config=JSON.parse(await readFile(new URL('../worker-fd-scheduler/wrangler.jsonc',import.meta.url),'utf8'));
  const binding={fetch:async(_url,init)=>{
-  const body=await verifySchedule(JSON.parse(init.body),secret,time);actions.push(body.action==='PERFORMANCE'?'PERFORMANCE:'+body.activity:body.action);
-  if(body.action==='PERFORMANCE')return performanceFails?new Response('private source failure',{status:503}):Response.json(body.activity==='PREPARE'?{complete:false,stages:['FA','FG','RENDER_0','PUBLISH']}:{status:'CONFIRMED'});
+  const body=await verifySchedule(JSON.parse(init.body),secret,scheduledTime);actions.push(body.action==='PERFORMANCE'?'PERFORMANCE:'+body.activity:body.action);
+  if(body.action==='PERFORMANCE')return performanceFails?new Response('private source failure',{status:503}):Response.json(body.activity==='PREPARE'?{complete:false,stages:['FD','FG','RENDER_0','PUBLISH']}:{status:'CONFIRMED'});
   if(body.action==='PLAN')return Response.json(complete?{complete:true,activities:[]}:{activities:['FA.events']});
   return Response.json({status:'CONFIRMED'});
  }};
  const env={FD_FIXED_REFRESH_ENABLED:'true',SAHMT_PERFORMANCE_ENABLED:performanceEnabled?'true':'false',FD_SCHEDULE_HMAC_SECRET:secret,FD_INDICATOR_EXECUTOR:binding};
  const warn=console.warn;console.warn=value=>warnings.push(value);
- try{await scheduler.scheduled({cron:config.triggers.crons[0],scheduledTime:time},env,{waitUntil:p=>pending.push(p)});await Promise.all(pending);}
+ try{await scheduler.scheduled({cron:config.triggers.crons[0],scheduledTime},env,{waitUntil:p=>pending.push(p)});await Promise.all(pending);}
  finally{console.warn=warn;}
  return {actions,warnings,scheduler,env};
 }
 
 test('daily scheduler signs PERFORMANCE before institutional source reads',async()=>{
- assert.deepEqual((await runScheduler()).actions,['PERFORMANCE:PREPARE','PERFORMANCE:FA','PERFORMANCE:FG','PERFORMANCE:RENDER_0','PERFORMANCE:PUBLISH','PLAN','ACTIVITY','FINISH']);
+ assert.deepEqual((await runScheduler()).actions,['PERFORMANCE:PREPARE','PERFORMANCE:FD','PERFORMANCE:FG','PERFORMANCE:RENDER_0','PERFORMANCE:PUBLISH','PLAN','ACTIVITY','FINISH']);
+});
+test('before December the scheduler does not call any performance stage',async()=>{
+ assert.deepEqual((await runScheduler({scheduledTime:Date.parse('2026-11-30T05:00:00Z')})).actions,['PLAN','ACTIVITY','FINISH']);
 });
 
 test('daily performance runs even when the institutional indicator window is already complete',async()=>{
- assert.deepEqual((await runScheduler({complete:true})).actions,['PERFORMANCE:PREPARE','PERFORMANCE:FA','PERFORMANCE:FG','PERFORMANCE:RENDER_0','PERFORMANCE:PUBLISH','PLAN']);
+ assert.deepEqual((await runScheduler({complete:true})).actions,['PERFORMANCE:PREPARE','PERFORMANCE:FD','PERFORMANCE:FG','PERFORMANCE:RENDER_0','PERFORMANCE:PUBLISH','PLAN']);
 });
 
 test('performance failure logs only a public code and allows institutional refresh without retries',async()=>{

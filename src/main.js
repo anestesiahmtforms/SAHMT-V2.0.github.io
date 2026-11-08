@@ -83,6 +83,7 @@ import {communicationFeatureEnabled,communicationDevicePushActive,communicationA
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
+import {isSahmtPerformanceAction} from '../worker-indicators/sahmt-performance-actions.js';
 const app = document.querySelector('#app');
 try {await discardLegacyOfflineData();}
 catch(error){
@@ -1431,10 +1432,10 @@ async function loadModule(route) {
         return participantOnly?{...result,isAdmin:false}:result;
       },
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),survey,action,response});},
-      performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');const ownPerformance=['GET_SAHMT_PERFORMANCE','LIST_SAHMT_HISTORY','LIST_SAHMT_PEOPLE','ADD_SAHMT_MANUAL','CORRECT_SAHMT_MANUAL','LIST_SAHMT_MANUAL'].includes(action);return callIndicatorsApi({uid,isCurrent:()=>currentHub()&&(ownPerformance||can('admin')),action,input,signal});},
+      performIndicators:async(action,input,signal)=>{const {callIndicatorsApi}=await import('./indicators-platform-client.js');return callIndicatorsApi({uid,isCurrent:()=>currentHub()&&(isSahmtPerformanceAction(action)||can('admin')),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),indicatorResults:can('admin')&&canUseManagementPilot(session),sahmtPerformance:canUseGovernanceHub(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
+      access:{vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),indicatorResults:can('admin')&&canUseManagementPilot(session),sahmtPerformance:googleProjectAuthEnabled&&canUseGovernanceHub(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fdPerformance:canOpenRestrictedModule('fd-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
     return;
   }

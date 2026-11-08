@@ -1,7 +1,8 @@
 import {scheduleWindow} from './schedule-envelope.js';
+import {SAHMT_START_ISO,SAHMT_START_TIME} from './sahmt-performance-period.js';
 
 const CATEGORIES=['OPERATIONS','MANAGEMENT','RECORDS','SURVEYS','NOTIFICATIONS','CONTINUING_EDUCATION'];
-const SOURCES=['FA','FG','FI','FB','FC','FE','ADMIN'];
+const SOURCES=['FD','FG','FI','FB','FC','FE','ADMIN'];
 const SOURCE_CATEGORY={FG:'OPERATIONS',FI:'OPERATIONS',FB:'MANAGEMENT',FC:'RECORDS',FE:'SURVEYS'};
 const SOURCE_UIDS=Object.keys(SOURCE_CATEGORY),LEASE_MS=600000;
 const fail=code=>{throw Object.assign(Error(code),{code,status:503});};
@@ -9,10 +10,10 @@ const safe=value=>typeof value==='string'&&/^[A-Za-z0-9_.@+:%-]{1,128}$/.test(va
 const rounded=value=>Math.round(value*100)/100;
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const totals=()=>Object.fromEntries(CATEGORIES.map(category=>[category,0]));
-const reads=value=>Object.fromEntries(Object.entries(value||{}).filter(([key,count])=>['FA','FG','FI','FB','FC','FE'].includes(key)&&Number.isSafeInteger(count)&&count>=0));
+const reads=value=>Object.fromEntries(Object.entries(value||{}).filter(([key,count])=>['FD','FG','FI','FB','FC','FE'].includes(key)&&Number.isSafeInteger(count)&&count>=0));
 const sumReads=values=>{const result={};for(const value of values)for(const [key,count]of Object.entries(reads(value)))result[key]=(result[key]||0)+count;return result;};
 const manifest=count=>[...SOURCES,...Array.from({length:Math.ceil(count/40)},(_,index)=>'RENDER_'+index),'PUBLISH'];
-const validConfig=value=>value?.schemaVersion===1&&value.projectId==='rotinas-8a617'&&value.enabled===true;
+const validConfig=value=>value?.schemaVersion===1&&value.projectId==='rotinas-8a617'&&value.enabled===true&&value.effectiveFrom===SAHMT_START_ISO;
 function validateMembers(members){
  if(!Array.isArray(members)||!members.length||members.length>500)fail('SAHMT_MEMBER_LIMIT');
  const seen=new Set(),mapped=Object.fromEntries(SOURCE_UIDS.map(source=>[source,new Set()]));
@@ -27,7 +28,7 @@ function cleanRows(rows,source,cutoff){
  if(!Array.isArray(rows)||rows.length>30000)fail('SAHMT_BATCH_LIMIT');
  return rows.map(row=>{
   const limit=source==='ADMIN'?2000000:1000000;
-  if(!row||typeof row.id!=='string'||!row.id||row.id.length>(source==='ADMIN'?128:512)||row.source!==source||!safe(row.uid)||!CATEGORIES.includes(row.category)||(source==='ADMIN'?!['NOTIFICATIONS','CONTINUING_EDUCATION'].includes(row.category):SOURCE_CATEGORY[source]!==row.category)||typeof row.points!=='number'||!Number.isFinite(row.points)||Math.abs(row.points)>limit||Math.abs(row.points*100-Math.round(row.points*100))>1e-6||!Number.isFinite(row.createdAt)||row.createdAt>=cutoff)fail('SAHMT_SOURCE_ROW_INVALID');
+  if(!row||typeof row.id!=='string'||!row.id||row.id.length>(source==='ADMIN'?128:512)||row.source!==source||!safe(row.uid)||!CATEGORIES.includes(row.category)||(source==='ADMIN'?!['NOTIFICATIONS','CONTINUING_EDUCATION'].includes(row.category):SOURCE_CATEGORY[source]!==row.category)||typeof row.points!=='number'||!Number.isFinite(row.points)||Math.abs(row.points)>limit||Math.abs(row.points*100-Math.round(row.points*100))>1e-6||!Number.isFinite(row.createdAt)||row.createdAt<SAHMT_START_TIME||row.createdAt>=cutoff)fail('SAHMT_SOURCE_ROW_INVALID');
   return {id:row.id,uid:row.uid,source,category:row.category,points:row.points,createdAt:row.createdAt,label:String(row.label||'Pontuação confirmada').slice(0,120)};
  });
 }
@@ -40,6 +41,7 @@ export function createSahmtDailyProcessor({store,sources,now=Date.now,uuid=()=>c
   if(!window||!Number.isSafeInteger(scheduledTime))fail('SAHMT_SCHEDULE_INVALID');
   if(scheduledTime>now()+5000||now()-scheduledTime>3600000)fail('SAHMT_SCHEDULE_EXPIRED');
   if(!['PREPARE',...SOURCES,'PUBLISH'].includes(stage)&&!/^RENDER_(?:[0-9]|1[0-2])$/.test(stage))fail('SAHMT_STAGE_INVALID');
+  if(scheduledTime<=SAHMT_START_TIME)return {complete:true,stages:[]};
   const batchId=window.id,stageId=batchId+'_'+stage,owner=uuid();if(!safe(owner))fail('SAHMT_STAGE_OWNER_INVALID');
   const claim=await store.transaction(async tx=>{
    const run=await tx.get('sahmtPerformanceRuns',batchId),old=await tx.get('sahmtDailyStages',stageId);
@@ -80,7 +82,7 @@ export function createSahmtDailyProcessor({store,sources,now=Date.now,uuid=()=>c
     await store.transaction(async tx=>{const current=await owned(tx),existing=await tx.get('sahmtDailyContexts',batchId);if(!existing)tx.create('sahmtDailyContexts',batchId,context);tx.set('sahmtDailyStages',stageId,{...current,status:'CONFIRMED',finishedAt:now(),result});});return result;
    }
    if(!context||!manifest(context.members.length).includes(stage))fail('SAHMT_STAGE_INCOMPLETE');
-   if(stage==='FA'){
+   if(stage==='FD'){
     const input=await sources.loadEligibility({cutoff:scheduledTime,members:context.members});
     attemptedReads=reads(input?.readsByProject);
     validateMembers(input?.members);
@@ -90,14 +92,14 @@ export function createSahmtDailyProcessor({store,sources,now=Date.now,uuid=()=>c
     if(!Array.isArray(input.eligibleUids)||eligible.size!==input.eligibleUids.length||input.members.some(member=>eligible.has(member.uid)!==(member.active&&member.access))||[...eligible].some(uid=>!original.has(uid)))fail('SAHMT_MEMBER_DIRECTORY_INCOMPLETE');
     return complete({members:input.members,eligibleUids:[...eligible],readsByProject:reads(input.readsByProject)});
    }
-   const fa=await store.get('sahmtDailyStages',batchId+'_FA');if(fa?.status!=='CONFIRMED')fail('SAHMT_STAGE_INCOMPLETE');
+   const population=await store.get('sahmtDailyStages',batchId+'_FD');if(population?.status!=='CONFIRMED')fail('SAHMT_STAGE_INCOMPLETE');
    if(SOURCES.includes(stage)){
     let input;
     if(stage==='ADMIN'){
      const manual=store.listAll?await store.listAll('sahmtPerformanceManual',[],30000):await store.list('sahmtPerformanceManual',[],1000);
      if(manual.length>30000)fail('SAHMT_BATCH_LIMIT');
-     input={complete:true,rows:manual.filter(row=>row.createdAt<scheduledTime).map(row=>({id:row.id,uid:row.uid,category:row.category,source:'ADMIN',points:row.points,createdAt:row.createdAt,label:row.kind==='CONTINUING_EDUCATION'?'Educação continuada':({ADVERSE_EVENT:'Evento adverso',MEETING:'Participação em reunião',INFRACTION:'Infração',PRAISE:'Elogio'})[row.kind]||'Lançamento administrativo'}))};
-    }else input=await sources.loadSource({source:stage,cutoff:scheduledTime,members:fa.members,fiPolicy:context.config.fiPolicy});
+     input={complete:true,periodsBySource:{ADMIN:{effectiveFrom:SAHMT_START_ISO}},rows:manual.filter(row=>row.createdAt>=SAHMT_START_TIME&&row.createdAt<scheduledTime).map(row=>({id:row.id,uid:row.uid,category:row.category,source:'ADMIN',points:row.points,createdAt:row.createdAt,label:row.kind==='CONTINUING_EDUCATION'?'Educação continuada':({ADVERSE_EVENT:'Evento adverso',MEETING:'Participação em reunião',INFRACTION:'Infração',PRAISE:'Elogio'})[row.kind]||'Lançamento administrativo'}))};
+    }else input=await sources.loadSource({source:stage,cutoff:scheduledTime,members:population.members,fiPolicy:context.config.fiPolicy,effectiveFrom:SAHMT_START_TIME});
     attemptedReads=reads(input?.readsByProject);if(input?.complete!==true)fail('SAHMT_SOURCE_INCOMPLETE');
     const rows=cleanRows(input.rows,stage,scheduledTime),chunks=await saveRows(rows);
     return complete({rowCount:rows.length,chunks,readsByProject:reads(input.readsByProject),periodsBySource:input.periodsBySource||{}});
@@ -109,7 +111,7 @@ export function createSahmtDailyProcessor({store,sources,now=Date.now,uuid=()=>c
     const chunkIds=checkpoints.flatMap(record=>record.chunks||[]),chunks=await getMany('sahmtDailyRows',chunkIds);
     if(chunks.some(chunk=>!Array.isArray(chunk?.rows)))fail('SAHMT_STAGE_INCOMPLETE');
     const all=chunks.flatMap(chunk=>chunk.rows);if(all.length!==rowCount)fail('SAHMT_STAGE_INCOMPLETE');
-    const known=new Map(fa.members.map(member=>[member.uid,member])),eligible=new Set(fa.eligibleUids),seen=new Set(),records=new Map();
+    const known=new Map(population.members.map(member=>[member.uid,member])),eligible=new Set(population.eligibleUids),seen=new Set(),records=new Map();
     const index=Number(stage.slice(7));for(const member of context.members.slice(index*40,(index+1)*40))if(eligible.has(member.uid))records.set(member.uid,{total:0,byCategory:totals(),rows:[]});
     for(const raw of all){
      const row=cleanRows([raw],raw.source,scheduledTime)[0],key=row.source+':'+row.id,member=known.get(row.uid);
@@ -134,13 +136,13 @@ export function createSahmtDailyProcessor({store,sources,now=Date.now,uuid=()=>c
    const renders=await getMany('sahmtDailyStages',manifest(context.members.length).filter(name=>name.startsWith('RENDER_')).map(name=>batchId+'_'+name));
    if(renders.some(record=>record?.status!=='CONFIRMED'))fail('SAHMT_STAGE_INCOMPLETE');
    const eligibleCount=renders.reduce((count,record)=>count+record.eligibleCount,0),maxima=renders.filter(record=>record.eligibleCount).map(record=>record.maxTotal);
-   if(eligibleCount!==fa.eligibleUids.length)fail('SAHMT_MEMBER_DIRECTORY_INCOMPLETE');
+   if(eligibleCount!==population.eligibleUids.length)fail('SAHMT_MEMBER_DIRECTORY_INCOMPLETE');
    const readsByProject=sumReads(checkpoints.map(record=>record.readsByProject)),periodsBySource=Object.assign({},...checkpoints.map(record=>record.periodsBySource||{}));
    await store.transaction(async tx=>{
     const current=await owned(tx),config=await tx.get('sahmtPerformanceRuntime','current'),previous=await tx.get('sahmtPerformanceReference','current');
     if(!validConfig(config)||JSON.stringify(config)!==JSON.stringify(context.config))fail('SAHMT_RUNTIME_CHANGED');
     if(previous?.cutoff>scheduledTime)fail('SAHMT_BATCH_SUPERSEDED');
-    tx.set('sahmtPerformanceReference','current',{schemaVersion:1,batchId,cutoff:scheduledTime,publishedAt:now(),maxTotal:maxima.length?Math.max(...maxima):0,eligibleCount,periodsBySource});
+    tx.set('sahmtPerformanceReference','current',{schemaVersion:1,batchId,cutoff:scheduledTime,publishedAt:now(),effectiveFrom:SAHMT_START_TIME,maxTotal:maxima.length?Math.max(...maxima):0,eligibleCount,periodsBySource});
     tx.set('sahmtPerformanceRuns',batchId,{batchId,cutoff:scheduledTime,status:'CONFIRMED',finishedAt:now(),rowCount,readsByProject});
     tx.set('sahmtDailyStages',stageId,{...current,status:'CONFIRMED',finishedAt:now(),result:{status:'CONFIRMED'}});
    });return {status:'CONFIRMED'};

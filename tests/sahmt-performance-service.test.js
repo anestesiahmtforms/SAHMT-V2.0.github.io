@@ -2,13 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSahmtDailyProcessor} from '../worker-indicators/sahmt-performance-daily.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
-const time=Date.parse('2026-11-08T05:00:00Z');
+const time=Date.parse('2026-12-01T05:00:00Z');
 async function fixture(){
  const {createSahmtPerformanceService}=await import('../worker-indicators/sahmt-performance-service.js');
  const store=vaccinationMemoryStore();let calls=0,clock=time+1000;
  const user={uid:'alice',admin:false},admin={uid:'admin',admin:true};
- store.seed('sahmtPerformanceRuntime','current',{schemaVersion:1,projectId:'rotinas-8a617',enabled:true});
- for(const uid of ['alice','bob'])store.seed('sahmtPerformanceMembers',uid,{uid,displayName:uid,active:true,access:true,sourceUids:{FG:uid,FI:uid,FB:uid,FC:uid,FE:uid}});
+ store.seed('sahmtPerformanceRuntime','current',{schemaVersion:1,projectId:'rotinas-8a617',enabled:true,effectiveFrom:'2026-12-01T03:00:00.000Z'});
+ for(const uid of ['alice','bob']){
+  store.seed('users',uid,{uid,active:true,access:true});
+  store.seed('sahmtPerformanceMembers',uid,{uid,displayName:uid,active:true,access:true,sourceUids:{FG:uid,FI:uid,FB:uid,FC:uid,FE:uid}});
+ }
  const sources={async load(){calls++;return {complete:true,rows:[{id:'credit',uid:'alice',source:'FG',category:'OPERATIONS',points:4,createdAt:time-1000,label:'Ciência'},{id:'debit',uid:'alice',source:'FI',category:'OPERATIONS',points:-1,createdAt:time-1000,label:'Atraso'},{id:'leader',uid:'bob',source:'FB',category:'MANAGEMENT',points:6,createdAt:time-1000,label:'Treinamento'}],readsByProject:{FG:1,FI:1,FB:1,FC:1,FE:1}};}};
  const service=createSahmtPerformanceService({store,sources,authorize:async(identity,manage)=>{if(manage&&!identity.admin)throw Object.assign(Error('denied'),{status:403});return {canManage:identity.admin};},now:()=>clock,uuid:()=>crypto.randomUUID()});
  const cached=new Map();
@@ -19,6 +22,12 @@ async function fixture(){
  const runDaily=async cutoff=>{const plan=await daily.execute(cutoff,'PREPARE');if(plan.complete||plan.status==='BUSY')return plan;for(const stage of plan.stages){const result=await daily.execute(cutoff,stage);if(result.status==='BUSY')return result;}};
  return {service:{...service,runDaily},store,user,admin,sources,get calls(){return calls;},set clock(v){clock=v;}};
 }
+test('before the global start the panel reports its date and rejects writes',async()=>{
+ const f=await fixture(),start=Date.parse('2026-12-01T03:00:00Z');f.clock=start-1;
+ assert.deepEqual(await f.service.execute('GET_SAHMT_PERFORMANCE',{},f.admin),{status:'SCHEDULED',uid:'admin',canManage:false,effectiveFrom:start});
+ await assert.rejects(f.service.execute('ADD_SAHMT_MANUAL',{requestId:'too-early',uid:'alice',category:'NOTIFICATIONS',kind:'PRAISE',points:1,reason:'Teste antes da vigência'},f.admin),e=>e.code==='SAHMT_PERFORMANCE_NOT_STARTED');
+ assert.equal((await f.store.list('sahmtPerformanceManual')).length,0);
+});
 test('daily batch preserves debits, computes maximum and opens without reading sources',async()=>{
  const f=await fixture();await f.service.runDaily(time);
  const result=await f.service.execute('GET_SAHMT_PERFORMANCE',{},f.user);
@@ -43,6 +52,11 @@ test('manual entries are admin-only, idempotent and pending until next daily bat
  f.clock=time+86400000+1000;await f.service.runDaily(time+86400000);
  assert.equal((await f.service.execute('GET_SAHMT_PERFORMANCE',{},f.user)).summary.total,5.5);
  await assert.rejects(f.service.execute('ADD_SAHMT_MANUAL',{...input,points:9},f.admin),e=>e.code==='SAHMT_MANUAL_REQUEST_CONFLICT');
+});
+test('a revoked FD recipient cannot receive a new manual award',async()=>{
+ const f=await fixture();
+ f.store.seed('users','alice',{uid:'alice',active:true,access:false});
+ await assert.rejects(f.service.execute('ADD_SAHMT_MANUAL',{requestId:'revoked',uid:'alice',category:'NOTIFICATIONS',kind:'PRAISE',points:1,reason:'Teste de acesso revogado'},f.admin),e=>e.code==='SAHMT_SUBJECT_UNAVAILABLE');
 });
 test('manual correction appends audit delta and protects concurrent versions',async()=>{
  const f=await fixture();const input={requestId:'original-1',uid:'alice',category:'NOTIFICATIONS',kind:'PRAISE',points:3,reason:'Elogio registrado pela administração'};

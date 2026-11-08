@@ -1,21 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
-const cutoff=Date.parse('2026-11-08T05:00:00Z'),batchId='2026-11-08_02';
-const stages=['FA','FG','FI','FB','FC','FE','ADMIN'];
+const cutoff=Date.parse('2026-12-01T05:00:00Z'),batchId='2026-12-01_02';
+const stages=['FD','FG','FI','FB','FC','FE','ADMIN'];
 const member=uid=>({uid,active:true,access:true,sourceUids:{FG:uid,FI:uid,FB:uid,FC:uid,FE:uid}});
 const row=(uid='u0',points=4,extra={})=>({id:'credit',uid,source:'FG',category:'OPERATIONS',points,createdAt:cutoff-1,label:'Ciência',...extra});
 async function fixture(count=2){
  const {createSahmtDailyProcessor}=await import('../worker-indicators/sahmt-performance-daily.js');
- const store=vaccinationMemoryStore(),calls={FA:0,FG:0,FI:0,FB:0,FC:0,FE:0};let clock=cutoff+1,sequence=0;
- store.seed('sahmtPerformanceRuntime','current',{schemaVersion:1,projectId:'rotinas-8a617',enabled:true,generation:1});
+ const store=vaccinationMemoryStore(),calls={FD:0,FG:0,FI:0,FB:0,FC:0,FE:0};let clock=cutoff+1,sequence=0;
+ store.seed('sahmtPerformanceRuntime','current',{schemaVersion:1,projectId:'rotinas-8a617',enabled:true,effectiveFrom:'2026-12-01T03:00:00.000Z',generation:1});
  for(let n=0;n<count;n++)store.seed('sahmtPerformanceMembers','u'+n,member('u'+n));
- const sources={async loadEligibility({members}){calls.FA++;return {members,eligibleUids:members.filter(m=>m.active&&m.access).map(m=>m.uid),readsByProject:{FA:count}};},async loadSource({source}){calls[source]++;return {complete:true,rows:source==='FG'?[row()]:[],readsByProject:{[source]:1},periodsBySource:{[source]:{cutoff}}};}};
+ const sources={async loadEligibility({members}){calls.FD++;return {members,eligibleUids:members.filter(m=>m.active&&m.access).map(m=>m.uid),readsByProject:{FD:count}};},async loadSource({source}){calls[source]++;return {complete:true,rows:source==='FG'?[row()]:[],readsByProject:{[source]:1},periodsBySource:{[source]:{cutoff}}};}};
  const engine=createSahmtDailyProcessor({store,sources,now:()=>clock,uuid:()=>String(++sequence)});
  return {engine,store,sources,calls,set clock(value){clock=value;}};
 }
 async function collect(f){const plan=await f.engine.execute(cutoff,'PREPARE');for(const stage of stages)await f.engine.execute(cutoff,stage);return plan;}
 async function finish(f){const plan=await collect(f);for(const stage of plan.stages.filter(s=>s.startsWith('RENDER_')))await f.engine.execute(cutoff,stage);return f.engine.execute(cutoff,'PUBLISH');}
+
+test('no batch runs before December and only manual entries from Brasília midnight count',async()=>{
+ const f=await fixture(),start=Date.parse('2026-12-01T03:00:00Z'),previous=cutoff-86400000;
+ f.clock=previous+1;
+ assert.deepEqual(await f.engine.execute(previous,'PREPARE'),{complete:true,stages:[]});
+ assert.equal(await f.store.get('sahmtPerformanceRuns','2026-11-30_02'),null);
+ assert.equal(f.calls.FD,0);
+ f.clock=cutoff+1;
+ for(const [id,createdAt,points] of [['old',start-1,99],['new',start,3]])f.store.seed('sahmtPerformanceManual',id,{uid:'u0',category:'CONTINUING_EDUCATION',kind:'CONTINUING_EDUCATION',points,createdAt});
+ await finish(f);
+ const summary=await f.store.get('sahmtPerformanceSummaries',batchId+'_u0');
+ assert.equal(summary.byCategory.CONTINUING_EDUCATION,3);
+ assert.equal((await f.store.get('sahmtPerformanceReference','current')).effectiveFrom,start);
+});
 
 test('daily stages publish signed totals and sanitized history only after all source checkpoints',async()=>{
  const f=await fixture();f.store.seed('sahmtPerformanceManual','debit',{uid:'u0',category:'NOTIFICATIONS',kind:'INFRACTION',points:-2,createdAt:cutoff-2,reason:'private reason'});
@@ -29,18 +43,18 @@ test('daily stages publish signed totals and sanitized history only after all so
 });
 
 test('concurrent source stages and repeated completed stages never reread sources',async()=>{
- const f=await fixture();await f.engine.execute(cutoff,'PREPARE');await f.engine.execute(cutoff,'FA');
+ const f=await fixture();await f.engine.execute(cutoff,'PREPARE');await f.engine.execute(cutoff,'FD');
  await Promise.all([f.engine.execute(cutoff,'FG'),f.engine.execute(cutoff,'FG')]);await f.engine.execute(cutoff,'FG');assert.equal(f.calls.FG,1);
 });
 
 test('failed source preserves prior publication and successful checkpoints survive recovery',async()=>{
  const f=await fixture(),before={batchId:'old',cutoff:cutoff-86400000};f.store.seed('sahmtPerformanceReference','current',before);
- await f.engine.execute(cutoff,'PREPARE');await f.engine.execute(cutoff,'FA');await f.engine.execute(cutoff,'FG');
+ await f.engine.execute(cutoff,'PREPARE');await f.engine.execute(cutoff,'FD');await f.engine.execute(cutoff,'FG');
  const source=f.sources.loadSource;f.sources.loadSource=async input=>{if(input.source==='FI')throw Object.assign(Error('private secret'),{readsByProject:{FI:8}});return source(input);};
  await assert.rejects(f.engine.execute(cutoff,'FI'));assert.deepEqual(await f.store.get('sahmtPerformanceReference','current'),before);
  const failed=await f.store.get('sahmtDailyStages',batchId+'_FI');assert.equal(failed.status,'FAILED');assert.equal(failed.code,'SAHMT_SOURCE_UNAVAILABLE');assert.equal(failed.readsByProject.FI,8);
  assert.equal((await f.store.get('sahmtPerformanceRuns',batchId)).status,'PARTIAL');
- f.sources.loadSource=source;await finish(f);assert.equal(f.calls.FA,1);assert.equal(f.calls.FG,1);assert.equal((await f.store.get('sahmtPerformanceRuns',batchId)).status,'CONFIRMED');
+ f.sources.loadSource=source;await finish(f);assert.equal(f.calls.FD,1);assert.equal(f.calls.FG,1);assert.equal((await f.store.get('sahmtPerformanceRuns',batchId)).status,'CONFIRMED');
 });
 
 test('more than forty users split render groups and the highest total includes later groups and zero users',async()=>{
@@ -53,7 +67,7 @@ test('more than forty users split render groups and the highest total includes l
 });
 
 test('expired source owner cannot overwrite the recovered stage or publish its rows',async()=>{
- const f=await fixture();await f.engine.execute(cutoff,'PREPARE');await f.engine.execute(cutoff,'FA');
+ const f=await fixture();await f.engine.execute(cutoff,'PREPARE');await f.engine.execute(cutoff,'FD');
  let release,started;const ready=new Promise(resolve=>started=resolve),hold=new Promise(resolve=>release=resolve);
  f.sources.loadSource=async()=>{started();await hold;return {complete:true,rows:[row('u0',999)],readsByProject:{FG:1}};};
  const stale=f.engine.execute(cutoff,'FG');await ready;f.clock=cutoff+600002;
@@ -88,7 +102,7 @@ test('central inactive users are ignored and administrative correction deltas su
 test('changed runtime generation and a newer publication stop publishing staged older work',async()=>{
  for(const change of ['generation','reference']){
   const f=await fixture();await collect(f);await f.engine.execute(cutoff,'RENDER_0');
-  if(change==='generation')f.store.seed('sahmtPerformanceRuntime','current',{schemaVersion:1,projectId:'rotinas-8a617',enabled:true,generation:2});
+  if(change==='generation')f.store.seed('sahmtPerformanceRuntime','current',{schemaVersion:1,projectId:'rotinas-8a617',enabled:true,effectiveFrom:'2026-12-01T03:00:00.000Z',generation:2});
   else f.store.seed('sahmtPerformanceReference','current',{batchId:'newer',cutoff:cutoff+86400000});
   await assert.rejects(f.engine.execute(cutoff,'PUBLISH'),change==='generation'?/SAHMT_RUNTIME_CHANGED/:/SAHMT_BATCH_SUPERSEDED/);
   assert.notEqual((await f.store.get('sahmtPerformanceReference','current'))?.batchId,batchId);

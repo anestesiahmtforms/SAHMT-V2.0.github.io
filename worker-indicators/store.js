@@ -94,7 +94,7 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
   }
  }
  async function finishReadReservation(id,reserved,actual){
-  if(!/^(FA|FB|FC|FE|FG|FI)_\d{4}-\d{2}-\d{2}$/.test(id)||!Number.isSafeInteger(reserved)||!Number.isSafeInteger(actual)||actual<1||actual>reserved)throw fail('INDICATOR_READ_SETTLEMENT_INVALID');
+  if(!/^F[ABCDEGI]_\d{4}-\d{2}-\d{2}$/.test(id)||!Number.isSafeInteger(reserved)||!Number.isSafeInteger(actual)||actual<1||actual>reserved)throw fail('INDICATOR_READ_SETTLEMENT_INVALID');
   // One atomic update; never retry an ambiguous response, which could refund twice.
   return request(':commit',{writes:[{transform:{document:name('indicatorReadBudgets',id),fieldTransforms:[{fieldPath:'chargedReads',increment:{integerValue:String(actual-reserved)}},{fieldPath:'confirmedReads',increment:{integerValue:String(actual)}},{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]}}]});
  }

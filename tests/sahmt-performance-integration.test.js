@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createIndicatorService} from '../worker-indicators/service.js';
 import {createIndicatorWorker} from '../worker-indicators/worker.js';
+import {verifyTrainingIdentity} from '../worker-training/google-auth.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
-const time=Date.parse('2026-11-08T05:00:00Z');
+const time=Date.parse('2026-12-01T05:00:00Z');
 const identity={uid:'member',email:'member@example.invalid',provider:'google.com',emailVerified:true};
 const profile={...identity,active:true,access:true,role:'usuario',permissions:{}};
 function fixture(){
@@ -12,9 +13,31 @@ function fixture(){
  const service=createIndicatorService({store,sources,sahmtEnabled:true,now:()=>time+1000});return {service,store,sources};
 }
 test('approved common user can read own FD summary while institutional indicators remain restricted',async()=>{
- const {service}=fixture();assert.equal((await service.execute('GET_SAHMT_PERFORMANCE',{},identity)).status,'PREPARING');
+ const {service,sources}=fixture();const profileReads=[];sources.profile=async project=>{profileReads.push(project);return profile;};
+ assert.equal((await service.execute('GET_SAHMT_PERFORMANCE',{},identity)).status,'PREPARING');
+ assert.deepEqual(profileReads,[]);
  await assert.rejects(service.execute('BOOTSTRAP',{year:2026},identity),e=>e.status===403);
  await assert.rejects(service.execute('ADD_SAHMT_MANUAL',{},identity),e=>e.status===403);
+});
+test('consolidated performance verifies FD tokens only, with a separate legacy issuer',async()=>{
+ const fd='rotinas-8a617',fa='sahmt-17a16',lookups=[];
+ const token=project=>{
+  const now=time/1000,claims={aud:project,iss:'https://securetoken.google.com/'+project,sub:identity.uid,email:identity.email,email_verified:true,exp:now+3600,iat:now,auth_time:now,firebase:{sign_in_provider:'google.com'}};
+  return 'eyJhbGciOiJSUzI1NiJ9.'+Buffer.from(JSON.stringify(claims)).toString('base64url')+'.c2ln';
+ };
+ const worker=createIndicatorWorker({
+  build:()=>({execute:async action=>({action})}),
+  verifyIdentity:(authorization,options)=>verifyTrainingIdentity(authorization,{...options,now:()=>time,fetchImpl:async url=>{
+   lookups.push(new URL(url).searchParams.get('key'));
+   return Response.json({users:[{localId:identity.uid,email:identity.email,emailVerified:true}]});
+  }})
+ });
+ const send=(project,action)=>worker.fetch(new Request('https://fd.invalid/v1/indicators',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json',Authorization:'Bearer '+token(project)},body:JSON.stringify({action,input:{}})}),{INDICATORS_ENABLED:'true',FD_WEB_API_KEY:'fd-key',FA_WEB_API_KEY:'fa-key'});
+ assert.equal((await send(fd,'GET_SAHMT_PERFORMANCE')).status,200);
+ assert.equal((await send(fa,'GET_SAHMT_PERFORMANCE')).status,401);
+ assert.equal((await send(fd,'BOOTSTRAP')).status,401);
+ assert.equal((await send(fa,'BOOTSTRAP')).status,200);
+ assert.deepEqual(lookups,['fd-key','fa-key']);
 });
 test('public user cannot run a daily batch; signed internal action needs correct shape',async()=>{
  const {service}=fixture();await assert.rejects(service.execute('PERFORMANCE',{scheduledTime:time},identity));

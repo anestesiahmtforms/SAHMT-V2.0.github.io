@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import {createSahmtPerformanceSources} from '../worker-indicators/sahmt-performance-sources.js';
 import {encodeFields} from '../worker-indicators/store.js';
 const cutoff='2026-11-07T05:00:00.000Z',at=Date.parse(cutoff)-1000;
-const projects={FA:'sahmt-17a16',FG:'sahmt-checklist-fg',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FI:'sahmt-operacional-fi'};
-const member={uid:'fa-person',active:true,access:true,sourceUids:{FG:'fg-person',FB:'fb-person',FC:'fc-person',FE:'fe-person',FI:'fi-person'}};
+const projects={FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FI:'sahmt-operacional-fi'};
+const member={uid:'fd-person',active:true,access:true,sourceUids:{FG:'fg-person',FB:'fb-person',FC:'fc-person',FE:'fe-person',FI:'fi-person'}};
 function fixture(source='FG'){
- const data=new Map(),calls=[],uid=source==='FA'?member.uid:member.sourceUids[source],put=(c,id,v)=>data.set(c+'/'+id,v);
+ const data=new Map(),calls=[],uid=source==='FD'?member.uid:member.sourceUids[source],put=(c,id,v)=>data.set(c+'/'+id,v);
  put('users',uid,{uid,active:true,access:true,sigla:'AA'});
  if(source==='FG'){
   put('fgPerformanceRuntime','state',{status:'ACTIVE',projectId:projects.FG,rule:'FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2',activatedAt:at-2000});
   put('fgPerformanceSummaries',uid,{uid,points:-1});
-  put('fgPerformanceLedger','debit',{uid,delta:-1,points:-1,sourceType:'CHECKLIST',sourceProjectId:projects.FG,createdAt:at});
+  put('fgPerformanceLedger','debit',{uid,delta:-1,points:-1,sourceType:'CHECKLIST',sourceProjectId:projects.FG,createdAt:at,day:'2026-11-07'});
  }else if(source==='FB'){
   put('fbPerformanceRuntime','current',{schemaVersion:1,projectId:projects.FB,enabled:true,mode:'FB_ONLY',effectiveFrom:at-2000});
   put('fbPerformanceReference','team',{status:'CONFIRMED',revision:3});
@@ -36,13 +36,15 @@ function fixture(source='FG'){
   const cursor=q.startAt?.values[0].referenceValue,rows=[...data].filter(([k])=>k.startsWith(q.from[0].collectionId+'/')).sort(([a],[b])=>a<b?-1:1).map(([k,v])=>doc(k,v)).filter(d=>!cursor||d.name>cursor).slice(0,q.limit);
   return Response.json(rows.length?rows.map(document=>({document,readTime:cutoff})):[{readTime:cutoff}]);
  };
- const create=(overrides={})=>createSahmtPerformanceSources({getAccessToken:async()=> 'source-token',fetchImpl,now:()=>Date.parse(cutoff)+1000,...overrides});
+ const relayFor=(project,direct)=>({path,body,cutoff})=>direct('https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/documents'+path+'?readTime='+cutoff,{body:body?JSON.stringify(body):null});
+ const fePerformanceRead=relayFor(projects.FE,fetchImpl);
+ const create=(overrides={})=>createSahmtPerformanceSources({getAccessToken:async()=> 'source-token',fetchImpl,fePerformanceRead,now:()=>Date.parse(cutoff)+1000,...overrides});
  const input={source,cutoff,members:[member],fiPolicy:{rule:'ATRASO_V1',effectiveFrom:at-2000,cutoffDay:'2026-11-01'}};
- return {data,put,calls,uid,fetchImpl,create,input};
+ return {data,put,calls,uid,fetchImpl,fePerformanceRead,create,input};
 }
 test('FG signed debits map only the explicit cross-project UID',async()=>{
  const f=fixture(),r=await f.create().loadSource(f.input);
- assert.deepEqual(r.rows,[{id:'FG:debit',uid:'fa-person',category:'OPERATIONS',source:'FG',points:-1,createdAt:at,label:'Checklist'}]);assert.equal(r.readsByProject.FG,4);
+ assert.deepEqual(r.rows,[{id:'FG:debit',uid:'fd-person',category:'OPERATIONS',source:'FG',points:-1,createdAt:at,label:'Checklist'}]);assert.equal(r.readsByProject.FG,4);
 });
 test('FB counts a frozen current award once, never adding its overwritten ledger projection',async()=>{
  const f=fixture('FB');f.put('fbPerformanceLedger','old',{points:999});const r=await f.create().loadSource(f.input);
@@ -53,11 +55,39 @@ test('FC validated current records awards reconcile the same published revision'
  f.put('fcPerformanceReference','team',{performanceStatus:'CONFIRMED',performanceRevision:1});await assert.rejects(f.create().loadSource(f.input),/SAHMT_SOURCE_FC_CONFIRMED_REVISION_REQUIRED/);
 });
 test('FE participation award read never requests anonymous answers',async()=>{
- const f=fixture('FE'),r=await f.create().loadSource(f.input);assert.equal(r.rows[0].points,1);assert.equal(r.rows[0].category,'SURVEYS');assert.ok(!JSON.stringify(f.calls).includes('Responses'));
+ const f=fixture('FE'),unavailable=()=>assert.fail('FD never uses a direct FE credential or fetch');
+ const r=await f.create({getAccessToken:unavailable,fetchImpl:unavailable}).loadSource(f.input);assert.equal(r.rows[0].points,1);assert.equal(r.rows[0].category,'SURVEYS');assert.equal(r.readsByProject.FE,4);assert.ok(!JSON.stringify(f.calls).includes('Responses'));
+ await assert.rejects(f.create({fePerformanceRead:undefined,getAccessToken:unavailable,fetchImpl:unavailable}).loadSource(f.input),/SAHMT_SOURCE_FE_AUTHORIZATION_REQUIRED/);
+});
+test('confirmed source totals reconcile their historical awards but publish only the current period',async()=>{
+ const f=fixture(),start=at-1000;
+ const debit=f.data.get('fgPerformanceLedger/debit');
+ f.put('fgPerformanceLedger','old',{...debit,delta:1,points:1,createdAt:start-1});
+ f.put('fgPerformanceLedger','late-old-day',{...debit,day:'2026-11-06'});
+ const r=await f.create().loadSource({...f.input,effectiveFrom:start});
+ assert.deepEqual(r.rows.map(row=>row.id),['FG:debit']);
+ assert.equal(r.periodsBySource.FG.effectiveFrom,new Date(start).toISOString());
+});
+test('a later correction does not pull a pre-period award into the new period',async()=>{
+ const f=fixture('FC'),start=at-1000;
+ f.put('fcPerformanceLedger','original',{awardId:'occurrence',uid:f.uid,category:'PERFORMANCE',awardVersion:1,createdAt:start-1});
+ const r=await f.create().loadSource({...f.input,effectiveFrom:start});
+ assert.deepEqual(r.rows,[]);
+ f.put('fcPerformanceLedger','original',{awardId:'occurrence',uid:f.uid,category:'PERFORMANCE',awardVersion:1,createdAt:start});
+ assert.equal((await f.create().loadSource({...f.input,effectiveFrom:start})).rows[0].createdAt,start);
+});
+test('a new FB training attempt counts its new-period score without importing the earlier best score',async()=>{
+ const f=fixture('FB'),start=at-1000,id='html_course_'+f.uid+'_TEST';
+ f.data.delete('fbPerformanceAwards/html_current');
+ f.put('fbPerformanceAwards',id,{uid:f.uid,category:'PERFORMANCE',modality:'TEST',sourceProjectId:projects.FB,points:4,updatedAt:at,revision:3,awardVersion:2,activityId:'course',correctionSupported:false});
+ f.put('htmlTrainingStates','state',{uid:f.uid,trainingId:'course',version:2,attempts:[{score:4,completedAt:start-1,acknowledgedAt:start-1},{score:2,completedAt:at,acknowledgedAt:start}]});
+ const r=await f.create().loadSource({...f.input,effectiveFrom:start});
+ assert.equal(r.rows[0].points,2);
+ assert.equal(r.rows[0].id,'FB:'+id);
 });
 test('FI applies the existing ATRASO fractions/multiples and ignores canceled events',async()=>{
  const f=fixture('FI');f.put('events','late2',{...f.data.get('events/late'),delayMultiple:3});f.put('events','canceled',{...f.data.get('events/late'),delayMultiple:6,status:'CANCELADO'});
- const r=await f.create().loadSource(f.input);assert.deepEqual(r.rows.map(row=>row.points),[-.5,-3]);assert.ok(r.rows.every(row=>row.uid==='fa-person'&&row.source==='FI'));
+ const r=await f.create().loadSource(f.input);assert.deepEqual(r.rows.map(row=>row.points),[-.5,-3]);assert.ok(r.rows.every(row=>row.uid==='fd-person'&&row.source==='FI'));
 });
 test('FI refuses missing policy, unknown official sigla and ambiguous sigla rather than matching email/name',async()=>{
  const f=fixture('FI');await assert.rejects(f.create().loadSource({...f.input,fiPolicy:null}),/SAHMT_SOURCE_FI_POLICY_REQUIRED/);
@@ -73,7 +103,7 @@ test('source authorization and historical snapshot refusal stay explicit failure
 });
 test('null/duplicate identity mappings fail before reading and source profile UID mismatch fails',async()=>{
  const f=fixture();for(const members of [[{...member,sourceUids:{...member.sourceUids,FG:null}}],[member,{...member,uid:'other-fa'}]])await assert.rejects(f.create().loadSource({...f.input,members}),/SAHMT_SOURCE_FG_IDENTITY_REQUIRED/);assert.equal(f.calls.length,0);
- f.put('users',f.uid,{uid:'fa-person',active:true,access:true});await assert.rejects(f.create().loadSource(f.input),/SAHMT_SOURCE_FG_IDENTITY_REQUIRED/);
+ f.put('users',f.uid,{uid:'fd-person',active:true,access:true});await assert.rejects(f.create().loadSource(f.input),/SAHMT_SOURCE_FG_IDENTITY_REQUIRED/);
 });
 test('late entries and unreconciled totals cannot publish a complete source',async()=>{
  const f=fixture();f.put('fgPerformanceLedger','debit',{...f.data.get('fgPerformanceLedger/debit'),createdAt:Date.parse(cutoff)});await assert.rejects(f.create().loadSource(f.input),/SAHMT_SOURCE_FG_CUTOFF_REQUIRED/);
@@ -91,15 +121,15 @@ test('FI malformed active event dates/times and future policy scope stay pending
  const f=fixture('FI');f.put('events','late',{...f.data.get('events/late'),createdAt:'invalid'});await assert.rejects(f.create().loadSource(f.input),/SAHMT_SOURCE_FI_EVENT_CONTRACT_REQUIRED/);
  await assert.rejects(f.create().loadSource({...f.input,fiPolicy:{...f.input.fiPolicy,cutoffDay:'2026-11-09'}}),/SAHMT_SOURCE_FI_POLICY_REQUIRED/);
 });
-test('FA population excludes revoked central leaders and rejects missing institutional mappings',async()=>{
- const f=fixture('FA');f.put('users','fa-person',{uid:'fa-person',active:false,access:false});f.put('users','active-person',{uid:'active-person',active:true,access:true});
- await assert.rejects(f.create().loadEligibility({cutoff,members:[member]}),/SAHMT_SOURCE_FA_DIRECTORY_REQUIRED/);
- const r=await f.create().loadEligibility({cutoff,members:[member,{...member,uid:'active-person'}]});assert.deepEqual(r.eligibleUids,['active-person']);assert.equal(r.members.find(m=>m.uid==='fa-person').active,false);
+test('FD population excludes revoked central leaders and rejects missing institutional mappings',async()=>{
+ const f=fixture('FD');f.put('users','fd-person',{uid:'fd-person',active:false,access:false});f.put('users','active-person',{uid:'active-person',active:true,access:true});
+ await assert.rejects(f.create().loadEligibility({cutoff,members:[member]}),/SAHMT_SOURCE_FD_DIRECTORY_REQUIRED/);
+ const r=await f.create().loadEligibility({cutoff,members:[member,{...member,uid:'active-person'}]});assert.deepEqual(r.eligibleUids,['active-person']);assert.equal(r.members.find(m=>m.uid==='fd-person').active,false);
 });
-test('one complete load fixes one shared cutoff across FA and every mapped source',async()=>{
- const fixtures=Object.fromEntries(['FA','FG','FI','FB','FC','FE'].map(source=>[projects[source],fixture(source)]));const fa=fixtures[projects.FA];fa.data.clear();fa.put('users','fa-person',{uid:'fa-person',active:true,access:true});
- const adapter=createSahmtPerformanceSources({getAccessToken:async()=> 'token',fetchImpl:(url,init)=>fixtures[new URL(url).pathname.split('/')[3]].fetchImpl(url,init),now:()=>Date.parse(cutoff)+1000});
- const r=await adapter.load({cutoff,members:[member],fiPolicy:fixtures[projects.FI].input.fiPolicy});assert.equal(r.complete,true);assert.deepEqual(r.eligibleUids,['fa-person']);assert.equal(r.rows.reduce((sum,row)=>sum+row.points,0),5.5);assert.deepEqual(Object.keys(r.readsByProject).sort(),['FA','FB','FC','FE','FG','FI']);
+test('one complete load fixes one shared cutoff across FD and every mapped source',async()=>{
+ const fixtures=Object.fromEntries(['FD','FG','FI','FB','FC','FE'].map(source=>[projects[source],fixture(source)]));const fd=fixtures[projects.FD];fd.data.clear();fd.put('users','fd-person',{uid:'fd-person',active:true,access:true});
+ const adapter=createSahmtPerformanceSources({getAccessToken:async()=> 'token',fetchImpl:(url,init)=>fixtures[new URL(url).pathname.split('/')[3]].fetchImpl(url,init),fePerformanceRead:fixtures[projects.FE].fePerformanceRead,now:()=>Date.parse(cutoff)+1000});
+ const r=await adapter.load({cutoff,members:[member],fiPolicy:fixtures[projects.FI].input.fiPolicy});assert.equal(r.complete,true);assert.deepEqual(r.eligibleUids,['fd-person']);assert.equal(r.rows.reduce((sum,row)=>sum+row.points,0),5.5);assert.deepEqual(Object.keys(r.readsByProject).sort(),['FB','FC','FD','FE','FG','FI']);
 });
 test('per-project hard cap rejects a collection that cannot prove its last page',async()=>{
  const f=fixture();f.data.delete('fgPerformanceLedger/debit');for(let n=0;n<5998;n++)f.put('fgPerformanceLedger',String(n).padStart(5,'0'),{uid:f.uid,points:1,delta:1,sourceType:'CHECKLIST',sourceProjectId:projects.FG,createdAt:at});await assert.rejects(f.create().loadSource(f.input),/SAHMT_SOURCE_FG_READ_BUDGET_REQUIRED/);
@@ -123,7 +153,7 @@ test('FG FB FC FE reject orphan awards and permit only explicitly inactive ident
  }
 });
 test('eligibility reserves once and settles once after its full paginated population scan',async()=>{
- const f=fixture('FA'),reservations=[],settlements=[];f.data.clear();f.put('users',member.uid,{uid:member.uid,active:true,access:true});const r=await f.create({readBudget:{reserve:async(source,count)=>{reservations.push([source,count]);return {count};},settle:async(_ticket,count)=>settlements.push(count)}}).loadEligibility({cutoff,members:[member]});assert.deepEqual(r.eligibleUids,[member.uid]);assert.deepEqual(reservations,[['FA',6000]]);assert.deepEqual(settlements,[1]);
+ const f=fixture('FD'),reservations=[],settlements=[];f.data.clear();f.put('users',member.uid,{uid:member.uid,active:true,access:true});const r=await f.create({readBudget:{reserve:async(source,count)=>{reservations.push([source,count]);return {count};},settle:async(_ticket,count)=>settlements.push(count)}}).loadEligibility({cutoff,members:[member]});assert.deepEqual(r.eligibleUids,[member.uid]);assert.deepEqual(reservations,[['FD',6000]]);assert.deepEqual(settlements,[1]);
 });
 test('source periods are explicit and keep each original activation boundary',async()=>{
  const f=fixture('FI'),r=await f.create().loadSource(f.input);assert.deepEqual(r.periodsBySource.FI,{effectiveFrom:new Date(at-2000).toISOString(),cutoffDay:'2026-11-01'});

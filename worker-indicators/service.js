@@ -1,5 +1,6 @@
 import {createScheduledRefresh} from './scheduled-refresh.js';
 import {createSahmtPerformanceService} from './sahmt-performance-service.js';
+import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
 import {createSahmtDailyProcessor} from './sahmt-performance-daily.js';
 import {createManualRefresh} from './refresh-operations.js';
 import {compileYear} from '../indicators-platform/domain/compiler.js';import {METRICS,PLATFORMS} from '../indicators-platform/domain/catalog.js';import {createFdPerformanceService} from './performance-service.js';
@@ -17,19 +18,19 @@ export function createIndicatorService({store,sources,performanceSources=null,no
  const manual=createManualRefresh({store,sources,now,uuid,authorize,freshTransaction,yearValid,localDate}),refresh=manual.refresh;
  const fixed=createScheduledRefresh({store,manual,budget:readBudget,now,enabled:fixedEnabled});
  const performance=createFdPerformanceService({store,authorize,freshTransaction,now});
- async function authorizeSahmt(identity,manage=false){
-  if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.provider!=='google.com'||identity.emailVerified!==true||typeof identity.email!=='string')fail('INDICATOR_UNAUTHENTICATED',401);
-  const profiles=await Promise.all(['FA','FD'].map(project=>sources.profile(project,identity.uid)));
-  if(profiles.some(p=>p?.uid!==identity.uid||p.email?.trim().toLowerCase()!==identity.email.trim().toLowerCase()||p.active!==true||p.access!==true))fail('INDICATOR_FORBIDDEN',403);
-  const canManage=profiles.every(admin);if(manage&&!canManage)fail('INDICATOR_FORBIDDEN',403);
+ function validateSahmtProfile(p,identity,manage){
+  if(p?.uid!==identity.uid||p.email?.trim().toLowerCase()!==identity.email.trim().toLowerCase()||p.active!==true||p.access!==true)fail('INDICATOR_FORBIDDEN',403);
+  const canManage=admin(p);if(manage&&!canManage)fail('INDICATOR_FORBIDDEN',403);
   return {canManage};
  }
- const consolidated=createSahmtPerformanceService({store,sources:performanceSources,authorize:authorizeSahmt,now,uuid,authorizeTransaction:async(tx,identity,manage)=>{
-  const p=await tx.get('users',identity.uid);if(p?.uid!==identity.uid||p.active!==true||p.access!==true||p.email?.trim().toLowerCase()!==identity.email.trim().toLowerCase()||manage&&!admin(p))fail('INDICATOR_FORBIDDEN',403);
- }});
+ async function authorizeSahmt(identity,manage=false){
+  if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.provider!=='google.com'||identity.emailVerified!==true||typeof identity.email!=='string')fail('INDICATOR_UNAUTHENTICATED',401);
+  return validateSahmtProfile(await store.get('users',identity.uid),identity,manage);
+ }
+ const consolidated=createSahmtPerformanceService({store,authorize:authorizeSahmt,now,authorizeTransaction:async(tx,identity,manage)=>validateSahmtProfile(await tx.get('users',identity.uid),identity,manage)});
  const daily=createSahmtDailyProcessor({store,sources:performanceSources,now,uuid});
  async function executeWithSahmt(action,input,identity){
-  if(['GET_SAHMT_PERFORMANCE','LIST_SAHMT_HISTORY','LIST_SAHMT_PEOPLE','ADD_SAHMT_MANUAL','CORRECT_SAHMT_MANUAL','LIST_SAHMT_MANUAL'].includes(action)){
+  if(isSahmtPerformanceAction(action)){
    if(!sahmtEnabled)fail('SAHMT_PERFORMANCE_PREPARING',503);
    return consolidated.execute(action,input,identity);
   }
