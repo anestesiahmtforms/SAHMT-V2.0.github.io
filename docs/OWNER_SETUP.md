@@ -4,7 +4,9 @@
 
 O SAHMT V2 usa Firebase Authentication + Firestore no plano Spark para suas operações. A leitura de Etiquetas por IA usa o Cloudflare Worker `sahmt-label-ai`, protegido por Firebase Auth e App Check; Firebase Cloud Functions e Blaze não são necessários. A chave OpenAI permanece somente como Secret Cloudflare. As demais callables e triggers em `functions/` são legado/testes de Emulator e não fazem parte do runtime publicado.
 
-A PWA e as Rules já estão publicadas. O que ainda depende de configuração do proprietário é o Apps Script V2 assíncrono. Sem essa integração, o PWA continua registrando dados operacionais no Firestore; validações confiáveis de assinatura do Checklist e pontos de Treinamentos/Gestão ficam pendentes, e relatórios não são sincronizados com Sheets.
+**Estado atualizado em 08/11/2026:** FA agora serve somente entrada, navegação e autenticação. Os fluxos centrais de Checklist, Treinamentos, Gestão, Forms e relatórios descritos neste documento foram retirados da operação FA. O proprietário confirmou a remoção de 20 acionadores na conta executora; os instaladores FA de validação/pontuação aposentados foram removidos do HEAD. Não reinstale os gatilhos descritos em seções históricas abaixo. Cada módulo precisa usar sua instância proprietária; os bindings e consumidores migrados ainda estão em revisão.
+
+As instruções abaixo foram escritas para um modelo anterior. Use-as apenas como histórico; não configure ou publique o Apps Script legado de FA como parte do runtime atual.
 
 ## 1. Restringir pasta e planilha
 
@@ -50,7 +52,7 @@ Use dados fictícios e confira idempotência/replay, conflito e falha para cada 
 - Gestão: aprovação por gestor autorizado, tentativa de autoaprovação, recusa justificada, claim divergente e repetição.
 - Relatórios: projeção de campos aprovada, upsert repetido, cursor, atraso e revarredura.
 
-Após IAM e homologação, instale apenas os gatilhos Spark necessários: `installChecklistValidationTrigger`, `installTrainingValidationTrigger`, `installManagementScoreValidationTrigger` e `installSahmtV2SparkReportTrigger`. Eles varrem o Firestore periodicamente; o PWA não espera por eles. O handler/instalador legado `syncQueue` foi removido do pacote V2 e não deve ser recriado.
+Não instale os antigos gatilhos de Checklist, Treinamentos, Gestão ou relatórios no projeto FA. Os instaladores de validação foram removidos do HEAD. O nome `installSahmtV2SparkReportTrigger` neste guia pertence ao procedimento histórico e requer verificação independente de seus consumidores antes de qualquer uso.
 
 ## 5. Configurar IA de Etiquetas no Cloudflare Worker
 

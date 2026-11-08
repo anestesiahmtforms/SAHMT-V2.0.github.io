@@ -1,5 +1,7 @@
 # Avaliação integrada: implantação e homologação
 
+> **Fluxo aposentado no FA em 08/11/2026.** Os processadores e instaladores centrais de Forms/avaliação/pontuação foram retirados do HEAD remoto após o proprietário confirmar a aposentadoria dos Forms antigos. Esta sequência é referência histórica; não execute instaladores, scripts de preparação ou ciclos desta página no projeto FA. As implantações versionadas antigas não foram alteradas e seus consumidores ainda precisam ser rastreados.
+
 ## Componentes separados
 
 O PWA consulta somente Firestore. Forms e Apps Script são processadores de escrita; não são dependências da abertura da tela. Rota `training`, flag `trainings` e permissões existentes permanecem. O nome apresentado é **Desempenho**. Em Gestão, **Avaliação dos Gestores** consulta exclusivamente GOVERNANCE; não altera o máximo ou percentual da equipe.

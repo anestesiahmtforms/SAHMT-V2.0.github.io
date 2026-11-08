@@ -61,7 +61,7 @@ test('banner recovers without FE login; team Governance opens only the two sched
   await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();await page.getByRole('button',{name:'CONECTAR ESCALA COM GOOGLE',exact:true}).waitFor();
   assert.equal(await page.locator('.year-end-startup:visible').count(),0);await page.getByRole('button',{name:'CONECTAR ESCALA COM GOOGLE',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-year-end-form] fieldset')?.disabled===false);assert.equal(await page.evaluate(()=>window.fixtureFeReady),true);
-  await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.locator('.year-end-startup:visible').waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),false);
+  await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),false);
   await assertTeamConsultations(page);
  }finally{await browser?.close();await preview.close();}
 });
@@ -113,19 +113,20 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.ok(versionLayout.badge.top>=versionLayout.header.top&&versionLayout.badge.right<=versionLayout.header.right&&versionLayout.header.right-versionLayout.badge.right<20);
   assert.ok(versionLayout.badge.bottom<=versionLayout.name.bottom&&versionLayout.badge.top<versionLayout.name.top);
   assert.equal(await page.locator('.startup-logo').count(),0,'authentication closes the logo without a timed animation');
-  assert.equal(await page.locator('.year-end-startup').isVisible(),false,'the Home opens before the campaign read finishes');
+  assert.equal(await page.locator('.year-end-startup').isVisible(),false,'the Home does not fetch FE campaign status');
+  await page.waitForTimeout(500);assert.deepEqual(preview.requests,[],'Home startup must not call the FE Worker');
   await page.evaluate(()=>{window.initialSchedule=document.querySelector('#schedule-date');});
-  preview.release();await page.locator('.year-end-startup:visible').waitFor();
-  assert.equal(await page.evaluate(()=>window.initialSchedule===document.querySelector('#schedule-date')),true,'campaign readiness must preserve the current page');
-  const campaign=await page.locator('.year-end-startup .boot-card').boundingBox();assert.ok(campaign.width<=330&&campaign.width>280);
-  assert.ok(await page.locator('.year-end-startup-burst').evaluate(title=>parseFloat(getComputedStyle(title).fontSize)>=24));
+  await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();preview.release();
+  await page.locator('.year-end-dialog[open]').waitFor();
+  assert.equal(await page.evaluate(()=>window.initialSchedule!==null),true,'Home had rendered before the user opened FE');
+  assert.ok(preview.requests.some(request=>request.action==='banner'),'opening the FE module is allowed to request its own status');
   await page.evaluate(()=>{window.initialCampaign=document.querySelector('.year-end-startup');location.hash='#/notifications';});
   await page.waitForFunction(()=>location.hash==='#/notifications'&&document.querySelector('.year-end-startup')===window.initialCampaign);
-  assert.equal(await page.locator('.year-end-startup').isVisible(),true);
+  assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   await page.evaluate(()=>location.hash='#/home');await page.locator('#schedule-date').waitFor();
-  await page.waitForTimeout(3500);assert.equal(await page.locator('.year-end-startup').count(),1);
+  await page.waitForTimeout(3500);assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   await mkdir('.local-preview',{recursive:true});await page.screenshot({path:`.local-preview/year-end-startup-${safari?'webkit':'chromium'}.png`,fullPage:true});
-  await page.getByRole('button',{name:'Fechar banner'}).click();await page.locator('#schedule-date').waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),false);
+  await page.locator('#schedule-date').waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),false);
   await page.reload();await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();await page.locator('[data-year-end-form]').waitFor();assert.equal(await page.locator('.year-end-startup').isVisible(),false,'the banner never covers its form');
   assert.equal(new URL(page.url()).hash,'#/year-end-schedule');assert.equal(await page.locator('.management-hub-dialog').count(),0);
   await page.locator('.year-end-dialog[open]').waitFor();
@@ -134,7 +135,7 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.equal(await page.locator('input[name="plantao"]').count(),3);assert.equal(await page.locator('input[name="grupo"]').count(),2);assert.equal(await page.locator('input[name="grupo"][value="carnaval"]').count(),0);
   await page.locator('input[name="plantao"][value="natal"]').check();const submit=page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true});assert.equal(await submit.isDisabled(),true);
   await page.locator('input[name="grupo"][value="reveillon"]').check();await submit.click();await page.getByText('Não foi possível conectar. Confira a internet e tente novamente.',{exact:true}).waitFor();assert.equal(preview.records.size,0);
-  await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.locator('.year-end-startup:visible').waitFor();
+  await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).waitFor();
   await page.goto(preview.url);await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();await page.locator('input[name="plantao"][value="carnaval"]').check();await page.locator('input[name="grupo"][value="reveillon"]').check();await page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true}).click();await page.getByText('Escolhas confirmadas!',{exact:true}).waitFor();assert.equal(preview.records.size,1);assert.equal(preview.records.get('team').plantao,'carnaval');
   assert.equal(await page.locator('.year-end-submit').textContent(),'CONFIRMA ESCOLHAS');
   await page.reload();await page.waitForFunction(()=>document.querySelector('input[name="plantao"][value="carnaval"]')?.checked===true);await compactLayout(page);
@@ -149,7 +150,7 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   await page.setViewportSize({width:1366,height:900});await page.goto(preview.url+'?account=admin#/year-end-schedule');await page.locator('[data-year-end-rows] tr').first().waitFor();assert.equal(await page.locator('[data-year-end-admin]').count(),1);assert.equal(await page.locator('[data-year-end-count="plantaoCarnaval"]').textContent(),'2');
   const before=await page.locator('.year-end-submit').boundingBox();const scrolled=await page.locator('[data-year-end-admin]').evaluate(el=>{el.scrollTop=el.scrollHeight;return el.scrollTop;});assert.ok(scrolled>0);assert.deepEqual(await page.locator('.year-end-submit').boundingBox(),before);
   await page.screenshot({path:`.local-preview/year-end-startup-admin-${safari?'webkit':'chromium'}.png`,fullPage:true});await page.setViewportSize({width:390,height:844});
-  preview.records.clear();await page.goto(preview.url);await page.locator('.year-end-startup').waitFor();await page.getByRole('button',{name:'Fechar banner'}).click();
+  preview.records.clear();await page.goto(preview.url);await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).waitFor();
   for(const account of ['resident','substitute']){await page.goto(preview.url+'?account='+account);await page.locator('#schedule-date').waitFor();assert.equal(await page.locator('.year-end-startup:visible').count(),0);await page.evaluate(()=>location.hash='#/year-end-schedule');await page.waitForFunction(()=>location.hash==='#/home');assert.equal(await page.locator('[data-year-end-form]').count(),0);assert.equal(await page.getByRole('button',{name:/Governança/}).isEnabled(),true);await page.evaluate(()=>location.hash='#/management-hub');await page.locator('.management-hub-dialog[data-panel=home]').waitFor();assert.equal(await page.locator('.management-hub-dialog [data-hub-item]:disabled').count(),3);await page.evaluate(()=>location.hash='#/management-hub/surveys');await page.waitForFunction(()=>document.querySelector('.management-hub-dialog')?.dataset.panel==='home');assert.equal(await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).count(),0);}
   assert.deepEqual(errors,[]);
  }catch(error){console.log('Year-end startup browser failure:',error.message);await mkdir('.local-preview',{recursive:true});await page?.screenshot({path:`.local-preview/year-end-startup-failure-${safari?'webkit':'chromium'}.png`,fullPage:true}).catch(()=>{});throw error;}

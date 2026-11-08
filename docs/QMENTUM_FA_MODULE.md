@@ -1,5 +1,7 @@
 # Indicadores obrigatórios QMENTUM — operação em FA
 
+> **Registro histórico, não instrução de operação atual.** A arquitetura definida em 08/11/2026 mantém FA apenas como entrada/navegação/autenticação e o QMENTUM em sua instância consumidora. O ciclo `reconciliarAvaliacaoSahmtV2` foi removido do HEAD FA, junto aos handlers de avaliação. As implantações Apps Script 45/55 seguem inalteradas até mapear os consumidores externos; não execute os passos históricos deste documento no FA.
+
 ## Estado em 15/10/2026
 
 Branch `codex/qmentum-fa`, worktree `C:\Users\SAHMTIA\.codex\worktrees\unificacao-fa\FIRESTORE`.
@@ -134,7 +136,7 @@ Ordem após autorização específica:
 - `qmentumParticipationReviews/{participationId}` recebe parecer imutável de gestor autorizado da unidade, diferente do autor. Aprovação não exige implementação da sugestão.
 - `QmentumParticipation.gs` revalida, em transação FA, o perfil, a concessão de unidade, a configuração, a análise revisada e os seis meses relevantes. Usa `evaluationApplyAwards_`, não escreve saldo do navegador. Modalidades existentes `ACKNOWLEDGEMENT` (1) e `SUGGESTION` (2).
 - O crédito é único por pessoa, unidade, indicador, trimestre e modalidade; regenerar a análise não multiplica os pontos. O ledger mantém auditoria de versões e preserva correções administrativas.
-- O processamento se integra a `reconciliarAvaliacaoSahmtV2`, antes da publicação do saldo. Não instala um novo timer nem depende de IA habilitada. A execução desse ciclo existente precisa ser conferida no ambiente remoto; até sua execução, a interface mostra validação pendente.
+- Este ponto descreve o ciclo legado FA e já não é válido: `reconciliarAvaliacaoSahmtV2` foi removida do HEAD. Verificar o fluxo de pontuação/participação diretamente na instância FC e nos deployments 45/55 antes de alterar consumidores.
 - Contas revogadas, análise desatualizada e pedidos inválidos não pontuam. Erros técnicos mantêm o pedido pendente para recuperação. Nenhum UID, texto de sugestão ou token é registrado em logs operacionais.
 - Gestão/Desempenho continuam inativos para usuários comuns nesta liberação. A regra de pontuação fica preparada para os participantes que receberem acesso ao módulo futuramente.
 

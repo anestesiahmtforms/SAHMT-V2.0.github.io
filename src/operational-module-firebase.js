@@ -2,6 +2,8 @@ import {deployment} from './deployment-context.js';
 import {FIREBASE_PROJECTS, normalizeFirebaseWebConfig, resolveFirebaseProjectApp} from './firebase-projects.js';
 import {OPERATIONAL_MODULE_TARGETS, createOperationalModuleExchange} from './operational-module-broker.js';
 import {createOperationalModuleSession} from './operational-module-session.js';
+import {bindOperationalSessionRoute} from './operational-session-route.js';
+import {currentRoute} from './router.js';
 
 const env = import.meta.env || {};
 const instances = new Map();
@@ -35,7 +37,9 @@ async function getInstance(station) {
       const session = createOperationalModuleSession({station, faAuth, targetAuth: auth,
         subscribeSource: listener => authSdk.onAuthStateChanged(faAuth, listener),
         exchange, signIn: authSdk.signInWithCustomToken, signOut: authSdk.signOut});
-      return {app, auth, faAuth, session};
+      const stopRoute = bindOperationalSessionRoute({station, session, readRoute:currentRoute,
+        subscribe:listener=>{window.addEventListener('hashchange',listener);return()=>window.removeEventListener('hashchange',listener);}});
+      return {app, auth, faAuth, session, stopRoute};
     })();
     instances.set(station, pending);
     pending.catch(() => {if (instances.get(station) === pending) instances.delete(station);});
@@ -49,7 +53,7 @@ export async function getOperationalModuleDatabase(station, uid, {realtime = fal
   const expectedUid = uid || instance.faAuth.currentUser?.uid;
   await instance.session.ensure(expectedUid);
   const sdk = realtime ? await import('firebase/firestore') : await import('firebase/firestore/lite');
-  if (instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser?.uid !== expectedUid)
+  if (!instance.session.isActive() || instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser?.uid !== expectedUid)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
   return sdk.getFirestore(instance.app);
 }
@@ -59,12 +63,12 @@ export async function getOperationalModuleIdToken(station, uid) {
   const expectedUid = uid || instance.faAuth.currentUser?.uid;
   const user = await instance.session.ensure(expectedUid);
   const token = await user.getIdToken();
-  if (instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser !== user)
+  if (!instance.session.isActive() || instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser !== user)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
   return token;
 }
 
 export async function disposeOperationalModuleSessions() {
   const current = [...instances.values()]; instances.clear();
-  await Promise.allSettled(current.map(async pending => (await pending).session.dispose()));
+  await Promise.allSettled(current.map(async pending => {const instance=await pending;instance.stopRoute();await instance.session.dispose();}));
 }

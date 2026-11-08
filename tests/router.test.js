@@ -16,6 +16,19 @@ test('rota desconhecida não altera a navegação atual', () => {
   assert.equal(location.hash, '#/offline');
 });
 
+test('retired INFORMAÇÕES links return to Home and cannot be opened by navigation',async()=>{
+ location.hash='#/notifications';assert.equal(currentRoute(),'home');
+ location.hash='#/people';await navigate('notifications');assert.equal(location.hash,'#/people');
+});
+
+test('link antigo de pontuação FA retorna à entrada sem reabrir o módulo aposentado', async () => {
+  location.hash = '#/fa-performance';
+  assert.equal(currentRoute(), 'home');
+  location.hash = '#/home';
+  await navigate('fa-performance');
+  assert.equal(location.hash, '#/home');
+});
+
 test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Escala',()=>{
   navigate('occurrences');
   assert.equal(location.hash,'#/occurrences');

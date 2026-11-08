@@ -3,7 +3,7 @@ export const DEFAULT_APP_FEATURES = Object.freeze({
   labels: true,
   trainings: true,
   management: true,
-  notifications: true,
+  notifications: false,
   occurrences: false,
   esg: false,
   innovation: false
@@ -22,7 +22,7 @@ export function normalizeAppFeatures(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(DEFAULT_APP_FEATURES).map(([key, fallback]) => [
     key,
-    typeof source[key] === 'boolean' ? source[key] : fallback
+    key === 'notifications' ? false : typeof source[key] === 'boolean' ? source[key] : fallback
   ]));
 }
 

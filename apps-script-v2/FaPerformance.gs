@@ -43,40 +43,9 @@ function faPerformanceAssertLease_(token){const raw=faPerformanceHttp_('/faPerfo
 function faPerformanceRelease_(token){
  try{const raw=faPerformanceHttp_('/faPerformanceRuntime/lease');if(!raw||faPerformanceFields_(raw.fields||{}).token!==token)return;const write=faPerformanceWrite_('faPerformanceRuntime','lease',{token:token,expiresAt:0});write.currentDocument={updateTime:raw.updateTime};faPerformanceHttp_(':commit',{writes:[write]});}catch(_){console.log(JSON.stringify({code:'FA_LEASE_RELEASE_PENDING'}));}
 }
-function instalarDesempenhoFaV1(){
- faPerformanceIdentity_();const lease=faPerformanceAcquire_();
- try{
-  const existing=faPerformanceHttp_('/faPerformanceRuntime/current');let r;
-  if(existing)r=faPerformanceRuntime_(existing);
-  else{
-   r={schemaVersion:1,projectId:FA_PERFORMANCE.project,mode:'FA_ONLY',enabled:true,effectiveFrom:new Date().toISOString(),historyImported:0,automaticExternalSync:false};
-   const write=faPerformanceWrite_('faPerformanceRuntime','current',r);write.currentDocument={exists:false};faPerformanceHttp_(':commit',{writes:[write]});
-  }
-  PropertiesService.getScriptProperties().setProperty('SAHMT_FA_PERFORMANCE_MODE','FA_ONLY');
-  if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='executarDesempenhoFaV1'))ScriptApp.newTrigger('executarDesempenhoFaV1').timeBased().everyMinutes(15).create();
-  const result={code:'FA_PERFORMANCE_INSTALLED',effectiveFrom:r.effectiveFrom,historyImported:0,automaticExternalSync:false,triggers:ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='executarDesempenhoFaV1').length};console.log(JSON.stringify(result));return result;
- }finally{faPerformanceRelease_(lease);}
-}
+
 function faPerformanceOnly_(){return PropertiesService.getScriptProperties().getProperty('SAHMT_FA_PERFORMANCE_MODE')==='FA_ONLY';}
-function iniciarDesempenhoFaV1(){instalarDesempenhoFaV1();return executarDesempenhoFaV1();}
-function executarDesempenhoFaV1(){
- faPerformanceIdentity_();const lease=faPerformanceAcquire_();
- try{
-  const runtime=faPerformanceRuntime_(faPerformanceHttp_('/faPerformanceRuntime/current')),effectiveFrom=Date.parse(runtime.effectiveFrom);
-  const snapshot={},read=(c,n)=>faPerformanceRead_(c,n,snapshot),profiles=read('users',400),contacts=read('contacts',500);
-  const events=read('events',10000).filter(e=>e.documentCreatedAt>=effectiveFrom);
-  const signatures=read('checklistSignatures',10000).map(s=>Object.assign(s,{snapshotValid:!!s.snapshot&&s.snapshot.date===s.date&&s.snapshot.responsibleUid===s.responsibleUid&&s.id===s.date+'_'+s.revision&&s.revision===checklistStoredSnapshotRevision_(s.snapshot)}));
-  const requests=read('checklistSignatureRequests',10000),previousAwards=read('faPerformanceAwards',20000),now=Date.parse(snapshot.readTime);
-  const projection=FaPerformanceDomain.projectFaPerformance({events:events,signatures:signatures,requests:requests,profiles:profiles,contacts:contacts,previousAwards:previousAwards,effectiveFrom:effectiveFrom,cutoffDay:new Date(effectiveFrom-10800000).toISOString().slice(0,10),now:now,complete:true});
-  const previous=faPerformanceHttp_('/faPerformanceReference/team'),revision=(previous&&faPerformanceFields_(previous.fields).revision||0)+1;
-  faPerformanceAssertLease_(lease);faPerformanceHttp_(':commit',{writes:[faPerformanceWrite_('faPerformanceReference','team',{status:'PENDING',revision:revision,startedAt:now})]});
-  const ledgerByAward=new Map(projection.ledger.map(l=>[l.awardId,l])),groups=[];
-  projection.awards.forEach(a=>{const writes=[faPerformanceWrite_('faPerformanceAwards',a.id,Object.assign({},a,{revision:revision}))],l=ledgerByAward.get(a.id);if(l)writes.push(faPerformanceWrite_('faPerformanceLedger',l.id,l));groups.push(writes);});
-  Object.keys(projection.totals).forEach(uid=>{const p=profiles.find(p=>p.uid===uid);groups.push([faPerformanceWrite_('faPerformanceSummaries',uid,{uid:uid,displayName:String(p.displayName||p.sigla||uid).slice(0,120),total:projection.totals[uid],revision:revision,updatedAt:now})]);});
-  // Keep each award and its audit delta in the same atomic commit, including retries.
-  for(let offset=0;offset<groups.length;offset+=150){faPerformanceAssertLease_(lease);const state=faPerformanceRuntime_(faPerformanceHttp_('/faPerformanceRuntime/current'));if(state.effectiveFrom!==runtime.effectiveFrom)throw Error('FA_ACTIVATION_CHANGED');faPerformanceHttp_(':commit',{writes:groups.slice(offset,offset+150).flat()});}
-  const final=faPerformanceRuntime_(faPerformanceHttp_('/faPerformanceRuntime/current'));if(final.effectiveFrom!==runtime.effectiveFrom)throw Error('FA_ACTIVATION_CHANGED');
-  faPerformanceAssertLease_(lease);faPerformanceHttp_(':commit',{writes:[faPerformanceWrite_('faPerformanceReference','team',{status:'CONFIRMED',revision:revision,maxPerformance:projection.maxPerformance,eligibleCount:Object.keys(projection.totals).length,pending:projection.pending,confirmedAt:now})]});
-  const report={code:'FA_PERFORMANCE_CYCLE',revision:revision,summaries:Object.keys(projection.totals).length,awards:projection.awards.length,changes:projection.ledger.length,pending:projection.pending,automaticExternalSync:false};console.log(JSON.stringify(report));return report;
- }finally{faPerformanceRelease_(lease);}
-}
+
+
+
+// FA is the entry shell. Its former performance producer is retired.

@@ -8,7 +8,7 @@ test('flags padrão mantêm módulos publicados ativos e ESG/Inovação inativos
     labels: true,
     trainings: true,
     management: true,
-    notifications: true,
+    notifications: false,
     occurrences: false,
     esg: false,
     innovation: false
@@ -21,7 +21,7 @@ test('normaliza apenas valores booleanos reconhecidos sem alterar os padrões re
     labels: true,
     trainings: true,
     management: true,
-    notifications: true,
+    notifications: false,
     occurrences: false,
     esg: true,
     innovation: false
@@ -39,6 +39,11 @@ test('mapeia flags aos caminhos de módulos e deixa rotas fixas inalteradas', ()
   for (const route of ['home', 'events', 'people', 'admin', 'offline', 'unknown']) {
     assert.equal(featureEnabledForRoute(route, features), true, `${route} não possui feature flag`);
   }
+});
+
+test('legacy app configuration cannot reactivate the retired information module',()=>{
+ assert.equal(normalizeAppFeatures({notifications:true}).notifications,false);
+ assert.equal(featureEnabledForRoute('notifications',{notifications:true}),false);
 });
 test('consolidated management and performance entry require their FA permissions',()=>{
  const profile={active:true,access:true,permissions:{managementRead:true,trainingsRead:true}};

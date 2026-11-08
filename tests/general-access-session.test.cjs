@@ -28,7 +28,7 @@ function harness({route = 'labels', permissions = {}, status = 'signed-in', acti
     },
     offline: false
   };
-  const ctx = vm.createContext({updateOutboxStatus: async () => {},googleProjectAuthEnabled:false,pendingSyncBanner:{reset(){}},
+  const ctx = vm.createContext({homeScheduleCache:{clear(){}},updateOutboxStatus: async () => {},googleProjectAuthEnabled:false,pendingSyncBanner:{reset(){}},
     session, connectionRecovery:null, deniedOperationalModules: new Set(), cleanupCurrentModule: null, currentRoute: () => route, document, navigator: {onLine: false},
     appFeatures: {labels: true, trainings: true, notifications: true}, appFeaturesUid: session.user.uid,
     appFeaturesLoadSequence: 0, DEFAULT_APP_FEATURES: {labels: true, trainings: true, notifications: true},
@@ -68,6 +68,14 @@ test('sessionChanged: recusa de módulo de outra conta não bloqueia a conta seg
   const next = h.next(); next.user.uid = 'fictional-user-b'; next.profile.uid = next.user.uid;
   h.ctx.sessionChanged(next);
   assert.equal(h.ctx.deniedOperationalModules.size, 0);
+});
+
+test('logout, revocation and identity change purge the presentation cache of the former user',()=>{
+ for(const change of [next=>next.status='signed-out',next=>next.status='blocked',next=>{next.user.uid='new-user';next.profile.uid='new-user';}]){
+  const h=harness(),cleared=[];h.ctx.homeScheduleCache={clear:uid=>cleared.push(uid)};
+  const next=h.next();change(next);h.ctx.sessionChanged(next);
+  assert.deepEqual(cleared,['fictional-user-a']);
+ }
 });
 
 test('server-confirmed FB session clears the local lock and redraws identical-profile management',()=>{
@@ -142,7 +150,7 @@ test('sessionChanged: ordem das permissões não transforma a concessão em reco
   assertPreserved(h);
 });
 
-for (const route of ['home', 'training', 'notifications']) {
+for (const route of ['home', 'training']) {
   test(`sessionChanged: concessão das consultas reconstrói ${route} para disponibilizar o novo acesso`, () => {
     const h = harness({route});
     h.ctx.sessionChanged(grantReads(h.next()));

@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createOperationalModuleSession} from '../src/operational-module-session.js';
+import {bindOperationalSessionRoute} from '../src/operational-session-route.js';
 
 function fixture({signInDelay, exchangeError, claimsOverride, station = 'FJ'} = {}) {
   let clock = 1800000000000, listener;
   const timers = new Map(), calls = {exchange: 0, signIn: 0, signOut: 0};
   const source = uid => ({uid, getIdToken: async () => 'synthetic-fa-proof-' + uid});
-  const projectId = station === 'FH' ? 'sahmt-etiquetas-fh' : 'sahmt-escala-fj';
+  const projectId = {FI:'sahmt-operacional-fi',FJ:'sahmt-escala-fj',FH:'sahmt-etiquetas-fh',FG:'sahmt-checklist-fg'}[station];
   const faAuth = {currentUser: source('alice')}, targetAuth = {currentUser: null, app: {options: {projectId}}};
   const session = createOperationalModuleSession({station, faAuth, targetAuth,
     subscribeSource: callback => {listener = callback; return () => {listener = null;};},
@@ -102,4 +103,106 @@ test('wrong module, UID or lease claims cannot establish a destination session',
     await assert.rejects(f.session.ensure('alice'), /MODULE_SESSION_INVALID/);
     assert.equal(f.targetAuth.currentUser, null); await f.session.dispose();
   }
+});
+
+test('returning to Home cancels renewal and reentry requires a fresh exchange',async()=>{
+ const f=fixture();await f.session.ensure('alice');
+ const lateRenewal=[...f.timers.values()].find(t=>t.delay===240000);
+ await f.session.setActive(false);
+ assert.equal(f.timers.size,0);assert.equal(f.targetAuth.currentUser,null);
+ await lateRenewal.callback();assert.equal(f.calls.exchange,1);
+ await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+ await f.session.setActive(true);await f.session.ensure('alice');
+ assert.equal(f.calls.exchange,2);await f.session.dispose();
+});
+
+test('Home during a pending signin cannot erase a rapidly reopened session',async()=>{
+ let release;const f=fixture({signInDelay:new Promise(r=>release=r)});
+ const old=f.session.ensure('alice');const rejected=assert.rejects(old,/MODULE_SOURCE_SESSION_CHANGED/);
+ for(let i=0;i<30&&!f.calls.signIn;i++)await Promise.resolve();
+ const pause=f.session.setActive(false);void f.session.setActive(true);
+ const next=f.session.ensure('alice');release();
+ await rejected;await pause;assert.equal((await next).uid,'alice');
+ assert.equal(f.calls.exchange,2);assert.equal(f.targetAuth.currentUser.uid,'alice');await f.session.dispose();
+});
+
+test('route subscription prevents Home exchanges and reopening stays lazy until explicitly requested',async()=>{
+ const f=fixture();let route='home',listener,removed=0;
+ const stop=bindOperationalSessionRoute({station:'FJ',session:f.session,readRoute:()=>route,
+  subscribe:callback=>{listener=callback;return()=>removed++;}});
+ await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+ assert.equal(f.calls.exchange,0);
+ route='schedule';listener();assert.equal(f.calls.exchange,0);
+ await f.session.ensure('alice');assert.equal(f.calls.exchange,1);
+ route='home';listener();assert.equal(f.session.isActive(),false);
+ assert.equal([...f.timers.values()].some(t=>t.delay===240000),false);
+ await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+ route='events';listener();assert.equal(f.calls.exchange,1);
+ await f.session.ensure('alice');assert.equal(f.calls.exchange,2);
+ stop();assert.equal(removed,1);await f.session.dispose();
+});
+
+test('shared schedule dependencies survive direct navigation but unrelated sessions stop renewing',async()=>{
+ for(const station of ['FI','FJ']){
+  const f=fixture({station});let route='schedule',update;
+  const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:fn=>{update=fn;return()=>{};}});
+  await f.session.ensure('alice');const timer=[...f.timers.values()].find(t=>t.delay===240000);
+  route='events';update();await f.session.ensure('alice');assert.equal(f.calls.exchange,1);
+  route='checklist';update();await f.session.ensure('alice');assert.equal(f.calls.exchange,1);
+  route='qmentum';update();await timer.callback();
+  await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+  assert.equal(f.calls.exchange,1);assert.equal(f.timers.size,0);
+  route='schedule';update();await f.session.ensure('alice');assert.equal(f.calls.exchange,2);
+  stop();await f.session.dispose();
+ }
+});
+
+test('FH and FG are suspended outside their own consumers including direct cross-module navigation',async()=>{
+ for(const [station,first,shared,unrelated] of [['FH','labels','admin','events'],['FG','checklist','fg-performance','labels']]){
+  const f=fixture({station});let route=first,update;
+  const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:fn=>{update=fn;return()=>{};}});
+  await f.session.ensure('alice');route=shared;update();await f.session.ensure('alice');assert.equal(f.calls.exchange,1);
+  route=unrelated;update();await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+  assert.equal(f.timers.size,0);assert.equal(f.calls.exchange,1);
+  route=first;update();assert.equal(f.calls.exchange,1);await f.session.ensure('alice');assert.equal(f.calls.exchange,2);
+  stop();await f.session.dispose();
+ }
+});
+
+test('unknown routes and stations cannot keep a session active',async()=>{
+ for(const [station,route] of [['FJ','unknown'],['FJ','year-end-schedule'],['FJ','people'],['FI','communications'],['FH','offline'],['FG','management-hub'],['FB','schedule'],['toString','schedule']]){
+  const f=fixture();const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:()=>()=>{}});
+  await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+  assert.equal(f.calls.exchange,0);stop();await f.session.dispose();
+ }
+});
+
+test('direct route change invalidates a delayed signin before reentry in a shared consumer',async()=>{
+ let release,route='schedule',update;
+ const f=fixture({signInDelay:new Promise(r=>release=r)});
+ const stop=bindOperationalSessionRoute({station:'FJ',session:f.session,readRoute:()=>route,subscribe:fn=>{update=fn;return()=>{};}});
+ const old=f.session.ensure('alice');const rejected=assert.rejects(old,/MODULE_SOURCE_SESSION_CHANGED/);
+ for(let i=0;i<30&&!f.calls.signIn;i++)await Promise.resolve();
+ route='labels';update();route='events';update();const next=f.session.ensure('alice');release();
+ await rejected;assert.equal((await next).uid,'alice');assert.equal(f.targetAuth.currentUser.uid,'alice');
+ assert.equal(f.calls.exchange,2);stop();await f.session.dispose();
+});
+
+test('a canceled renewal already queued before route departure cannot refresh the reopened session',async()=>{
+ const f=fixture();await f.session.ensure('alice');
+ const stale=[...f.timers.values()].find(t=>t.delay===240000);
+ await f.session.setActive(false);await f.session.setActive(true);await f.session.ensure('alice');
+ assert.equal(f.calls.exchange,2);await stale.callback();assert.equal(f.calls.exchange,2);
+ await f.session.dispose();
+});
+
+test('Pessoas uses only FI and leaving for Home stops its renewal',async()=>{
+ for(const station of ['FI','FJ','FH','FG']){
+  const f=fixture({station});let route='people',update;
+  const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:fn=>{update=fn;return()=>{};}});
+  if(station==='FI')await f.session.ensure('alice');else await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+  assert.equal(f.calls.exchange,station==='FI'?1:0);
+  route='home';update();assert.equal(f.session.isActive(),false);assert.equal([...f.timers.values()].some(t=>t.delay===240000),false);
+  stop();await f.session.dispose();
+ }
 });

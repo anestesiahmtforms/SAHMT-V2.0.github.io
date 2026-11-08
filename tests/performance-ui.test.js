@@ -59,13 +59,9 @@ test('summary arriving before its award updates cannot confirm a mismatched visi
 test('award consistency ignores other subjects and categories while preserving decimal totals',()=>{const input=state(.3,1);input.awards=[{uid:'person-a',category:'PERFORMANCE',points:.1},{uid:'person-a',category:'PERFORMANCE',points:.2},{uid:'person-b',category:'PERFORMANCE',points:100},{uid:'person-a',category:'GOVERNANCE',points:100}];assert.equal(performance(input).confirmed,true);});
 test('cosmetic profile edits preserve drafts while administration changes still invalidate them',()=>{const first={status:'signed-in',user:{uid:'person-a'},profile:{active:true,access:true,role:'anestesiologista',displayName:'Nome fictício inicial',sigla:'FA',permissions:{trainingsRead:true}}};const next=structuredClone(first);next.profile.displayName='Nome fictício atualizado';next.profile.sigla='FB';assert.equal(evaluationSessionCanPreserve(first,next),true);next.profile.role='administrador_app';assert.equal(evaluationSessionCanPreserve(first,next),false);});
 
-test('idle preloading warms the evaluation UI instead of the legacy training player',async()=>{
-  const vm=await import('node:vm'),source=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
-  const start=source.indexOf('function preloadOperationalDataWhenIdle('),end=source.indexOf('function escapeHtml(',start);assert.ok(start>=0&&end>start);
-  const imports=[],context=vm.createContext({deployment:{target:'FA'},todayInputValue:()=> '2026-10-19',session:{status:'signed-in',user:{uid:'person-a'},profile:{role:'anestesiologista',permissions:{trainingsRead:true}},offline:false},navigator:{onLine:true},preloadedDataUsers:new Set(),scheduledDataPreloads:new Set(),startupBannerActive:true,window:{setTimeout:()=>{}},console,Promise,fakeImport:async name=>{imports.push(name);return {};}});
-  const fn=source.slice(start,end).replaceAll('import.meta.env.PROD','false').replace(/import\((['"])([^'"]+)\1\)/g,'fakeImport("$2")');vm.runInContext(fn,context);context.preloadOperationalDataWhenIdle({uid:'person-a'});await tick();
-  assert.ok(imports.includes('./performance-ui.js'));assert.equal(imports.includes('./training.js'),false);assert.deepEqual(imports,['./data.js','./performance-ui.js']);
-  context.preloadOperationalDataWhenIdle({uid:'person-a'});await tick();assert.equal(imports.length,2);
+test('Home does not preload data or performance modules before the user opens a module',async()=>{
+  const source=await readFile(new URL('../src/main.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/preloadOperationalDataWhenIdle/);
 });
 test('offline network errors remain offline instead of pretending a fatal data failure',()=>{assert.equal(evaluationFailureState({code:'unavailable',message:'Failed to get document because client is offline'},{online:false}),'offline');assert.equal(evaluationFailureState({code:'firestore/unavailable'},{online:true}),'offline');});
 test('permission and authentication revocations remain fatal even offline',()=>{for(const error of [{code:'permission-denied'},{code:'unauthenticated'},{message:'Seu acesso foi revogado.'}])assert.equal(evaluationFailureState(error,{online:false}),'blocked');});

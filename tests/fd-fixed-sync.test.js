@@ -45,7 +45,7 @@ test('FD automatic activity retries never re-read sources; manual interval remai
  now+=600001;await manual.refresh(2026,'operations',actor,'FA.events');assert.equal(loads,2);assert.equal((await store.get('indicatorJobs','budget_operations_2026-11-02')).attempts,1);
 });
 test('FD exhausted daily source budget prevents network reads and preserves source-unavailable semantics',async()=>{
- const store=vaccinationMemoryStore(),now=()=>Date.parse('2026-11-02T15:00:00Z'),budget=createSourceReadBudget({store,now,limits:{FA:1}});await budget.reserve('FA',1);let calls=0;
+ const store=vaccinationMemoryStore(),now=()=>Date.parse('2026-11-02T15:00:00Z'),budget=createSourceReadBudget({store,now,limits:{FI:1}});await budget.reserve('FI',1);let calls=0;
  const source=createIndicatorSources({getAccessToken:async()=> 'token',readBudget:budget,fetchImpl:async()=>{calls++;return Response.json([]);}});
  const result=await source.load('operations',2026,'FA.events');assert.equal(calls,0);assert.equal(result.budgetExceeded,true);assert.equal(result.sources.FA.events.status,'unavailable');
 });

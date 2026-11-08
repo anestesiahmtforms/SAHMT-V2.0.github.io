@@ -1,5 +1,7 @@
 # Variante do inventário para a fonte nativa preservada
 
+> **Arquivo remoto aposentado em 08/11/2026.** `ManagementMigrationInventoryNative` foi removido do HEAD Apps Script FA após confirmação de que nenhuma função externa o chamava. Os exemplos de handlers e diferenças abaixo descrevem uma variante antiga e não devem ser executados ou restaurados.
+
 `apps-script/ManagementMigrationInventoryNative.gs` é uma variante local separada.
 Sua função pública é `consultarInventarioMigracaoGestaoNativaSahmtV2`. Não altera
 `ManagementMigrationInventory.gs` nem os 12 módulos originais. A variante foi adicionada isoladamente ao editor em 9/10/2026, com backup cifrado e readback dos 17 arquivos.

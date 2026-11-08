@@ -3,7 +3,7 @@ import {validateYearEndChoices} from '../../src/year-end-schedule.js';
 import {emptyYearEndTotals,changeYearEndTotals} from '../../src/year-end-schedule-totals.js';
 
 export async function createYearEndStartupPreview({holdAuthentication=false,statusFailures=0,requireSecondaryConnect=false}={}){
- const base='/SAHMT-V2.0.github.io/',records=new Map(),held=[];
+ const base='/SAHMT-V2.0.github.io/',records=new Map(),held=[],requests=[];
  let hold=true,failSave=true,authHeld=holdAuthentication;const authWaiters=[];
  const stubs={
   'app-updates-targeted-firebase.js':'export async function recordAppInstallation(){}',
@@ -37,7 +37,7 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
   if(path!==base+'__year-end-fixture')return next();
   res.setHeader('Content-Type','application/json');
   try{
-   let body='';for await(const chunk of req){body+=chunk;if(body.length>2000)throw Error('TOO_LARGE');}const {uid,action,input}=JSON.parse(body);
+   let body='';for await(const chunk of req){body+=chunk;if(body.length>2000)throw Error('TOO_LARGE');}const {uid,action,input}=JSON.parse(body);requests.push({uid,action});
    const shiftOnly=['shift-only','mode-owner'].includes(uid);
    const participation={sigla:shiftOnly?'FR':uid==='admin'?'ZZ':'AB',requireGroup:!shiftOnly,canParticipate:true,isAdmin:['admin','mode-owner'].includes(uid)};
    if(!['team','shift-only','admin','mode-owner'].includes(uid))throw Object.assign(Error('YEAR_END_INELIGIBLE'),{code:'YEAR_END_INELIGIBLE'});
@@ -60,5 +60,5 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
  const release=()=>{hold=false;for(const resolve of held.splice(0))resolve();};
  const releaseAuthentication=()=>{authHeld=false;for(const resolve of authWaiters.splice(0))resolve();};
  try{await server.listen();}catch(error){release();await server.close();throw error;}
- return {server,records,release,releaseAuthentication,url:`http://127.0.0.1:${server.httpServer.address().port}${base}tests/year-end-startup.html`,async close(){releaseAuthentication();release();await server.close();}};
+ return {server,records,requests,release,releaseAuthentication,url:`http://127.0.0.1:${server.httpServer.address().port}${base}tests/year-end-startup.html`,async close(){releaseAuthentication();release();await server.close();}};
 }

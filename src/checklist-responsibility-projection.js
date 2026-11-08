@@ -26,7 +26,7 @@ export async function getChecklistDayResponsible({day, uid, isAdmin = false}, so
     return {...preview.responsible, responsibleUid: preview.responsible.uid};
   }
   const [schedule, vacations, contacts] = await Promise.all([
-    sources.readSchedule(day, uid), sources.listVacationsForDate(day), sources.listContactCatalog({pageSize: 200})
+    sources.readSchedule(day, uid), sources.listVacationsForDate(day), sources.listContactCatalog({pageSize: 200, uid})
   ]);
   if (!schedule || schedule.stale) throw new Error('A escala precisa ser conferida online.');
   const events = [];

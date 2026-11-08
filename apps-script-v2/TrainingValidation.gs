@@ -45,15 +45,6 @@ function validatePendingTrainingCompletions() {
   });
 }
 
-function installTrainingValidationTrigger() {
-  listPendingTrainingCompletions_();
-  const existing = ScriptApp.getProjectTriggers().filter(function (trigger) {
-    return trigger.getHandlerFunction() === 'validatePendingTrainingCompletions';
-  });
-  if (!existing.length) ScriptApp.newTrigger('validatePendingTrainingCompletions').timeBased().everyMinutes(5).create();
-  return {installed: true, existing: existing.length > 0};
-}
-
 function listPendingTrainingCompletions_() {
   const properties = PropertiesService.getScriptProperties();
   const cursor = properties.getProperty(evaluationCursorProperty_(SAHMT_V2_TRAINING_VALIDATION.cursorProperty));

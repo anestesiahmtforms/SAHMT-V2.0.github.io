@@ -2,11 +2,11 @@
 
 Reconstrução técnica do PWA SAHMT: um único shell mobile-first, Firebase Authentication como sessão única e Firestore como fonte operacional V2. A V1 permanece intacta.
 
-## Operação consolidada no FA
+## Arquitetura atual — revisão de 08/11/2026
 
-Gestão, treinamentos, Desempenho, Ocorrências e QMENTUM utilizam `sahmt-17a16`. O cliente principal não inicializa sessões FB/FC. Referências históricas da migração permanecem nos recibos para auditoria e deduplicação. Worker e Apps Script continuam necessários aos processos próprios de FA.
+O ecossistema está distribuído entre FA–FJ. Gestão/treinamentos usam FB; Registros/QMENTUM, FC; Indicadores e o consolidado SAHMT, FD; Enquetes, FE; Comunicação, FF; Checklist, FG; Etiquetas, FH; Operacional, FI; Escala, FJ. FA deve servir exclusivamente para entrada, navegação e autenticação, com cache local de apresentação. Pontuação, Forms e rotinas operacionais centrais foram aposentados. Dependências remotas legadas ainda precisam de verificação antes da exclusão completa.
 
-Consulte a [revisão de 16/10/2026](docs/REVISAO_FA_POS_DESINTEGRACAO_20261016.md) para o escopo da limpeza, evidências atuais e limites. Os relatos datados anteriores neste README são históricos.
+Consulte a [matriz de arquitetura e auditoria](docs/ECOSYSTEM_AUDIT_20261108.md) para evidências, limites e prioridades. A [revisão de 16/10/2026](docs/REVISAO_FA_POS_DESINTEGRACAO_20261016.md) e os relatos datados abaixo são históricos e não são instruções para restaurar a consolidação no FA.
 
 ## Modelo
 

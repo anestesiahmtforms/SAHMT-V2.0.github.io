@@ -30,16 +30,6 @@ function validatePendingChecklistSignatureRequests() {
   }
 }
 
-function installChecklistValidationTrigger() {
-  evaluationAssertOperator_(true);
-  listPendingChecklistSignatureRequests_();
-  const existing = ScriptApp.getProjectTriggers().filter(function (trigger) {
-    return trigger.getHandlerFunction() === 'validatePendingChecklistSignatureRequests';
-  });
-  if (!existing.length) ScriptApp.newTrigger('validatePendingChecklistSignatureRequests').timeBased().everyMinutes(5).create();
-  return {installed: true, existing: existing.length > 0};
-}
-
 function listPendingChecklistSignatureRequests_() {
   const body = {structuredQuery: {
     from: [{collectionId: 'checklistSignatureRequests'}],

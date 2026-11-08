@@ -1,6 +1,5 @@
 import {getFirestore} from 'firebase/firestore/lite';
 import {assertOnlineOperation, unconfirmedWrite} from './online-only.js';
-import {notificationReference} from './notification-domain.js';
 import {managementDataProject, managementDataGeneration, managementDatabase as managementFullDatabase, managementProfileCollection, managementProfileData} from './management-domain-store.js';
 import {checklistMaintenanceForWrite} from './checklist-maintenance.js';
 import {readChecklistQrStation} from './checklist-static.js';
@@ -208,118 +207,8 @@ export async function saveAppFeatures(input, actorUid) {
   return features;
 }
 
-export async function listNotifications(profile, options = {}) {
-  // Each deployment reads its own database and existing user profile. The
-  // independent Google session does not issue or renew authorization leases.
-  return listIdentityNotifications(profile, options);
-}
-async function listIdentityNotifications(profile, {pageSize = 100, canManage = false} = {}) {
-  const uid = profile?.uid;
-  if (!uid) return [];
-  const now = Timestamp.now();
-  if (canManage) {
-    const snapshot = await getDocsFromServer(query(collection(db, 'notifications'), where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))));
-    const nowMs = now.toMillis();
-    return snapshot.docs.map((item) => ({id: item.id, ...item.data()})).filter((item) => {
-      const start = typeof item.startAt?.toMillis === 'function' ? item.startAt.toMillis() : new Date(item.startAt).getTime();
-      const end = typeof item.endAt?.toMillis === 'function' ? item.endAt.toMillis() : new Date(item.endAt).getTime();
-      return start <= nowMs && end >= nowMs;
-    });
-  }
-  const [memberAreas, managedAreas, groups] = await Promise.all([
-    getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50))),
-    getDocsFromServer(query(collection(db, 'managementAreas'), where('active', '==', true), where('managerUids', 'array-contains', uid), limit(50))),
-    getDocsFromServer(query(collection(db, 'notificationGroups'), where('active', '==', true), where('memberUids', 'array-contains', uid), limit(50)))
-  ]);
-  const targets = new Map();
-  const addTarget = (type, value) => targets.set(JSON.stringify([type, value]), {type, value});
-  addTarget('ALL', '');
-  addTarget('USER', uid);
-  if (profile.role) addTarget('ROLE', profile.role);
-  if (profile.sigla) addTarget('SIGLA', profile.sigla);
-  for (const area of [...memberAreas.docs, ...managedAreas.docs]) addTarget('MANAGEMENT_AREA', area.id);
-  for (const group of groups.docs) addTarget('GROUP', group.id);
-  const targetList = [...targets.values()];
-  const batchSize = 30;
-  const snapshots = await Promise.all(Array.from({length: Math.ceil(targetList.length / batchSize)}, (_, index) => {
-    const batch = targetList.slice(index * batchSize, (index + 1) * batchSize);
-    const audienceFilters = batch.map(({type: audienceType, value}) => and(
-      where('audienceType', '==', audienceType), where('audienceValue', '==', value)
-    ));
-    const audienceFilter = audienceFilters.length === 1 ? audienceFilters[0] : or(...audienceFilters);
-    return getDocsFromServer(query(
-      collection(db, 'notifications'), and(where('active', '==', true), where('startAt', '<=', now), where('endAt', '>=', now), audienceFilter),
-      orderBy('priority', 'desc'), limit(Math.min(100, Math.max(1, pageSize)))
-    ));
-  }));
-  const nowMs = now.toMillis();
-  const byId = new Map();
-  for (const snapshot of snapshots) for (const item of snapshot.docs) {
-    const notification = {id: item.id, ...item.data()};
-    const startsAt = typeof notification.startAt?.toMillis === 'function' ? notification.startAt.toMillis() : new Date(notification.startAt).getTime();
-    const endsAt = typeof notification.endAt?.toMillis === 'function' ? notification.endAt.toMillis() : new Date(notification.endAt).getTime();
-    if (Number.isFinite(startsAt) && startsAt <= nowMs && Number.isFinite(endsAt) && endsAt >= nowMs) byId.set(item.id, notification);
-  }
-  const notifications = [...byId.values()].sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0) || dateSortValue(b.createdAt) - dateSortValue(a.createdAt)).slice(0, Math.min(100, Math.max(1, pageSize)));
-  const ids = notifications.map((item) => item.id);
-  const receiptResults = await Promise.all(Array.from({length: Math.ceil(ids.length / 30)}, (_, index) => {
-    const group = ids.slice(index * 30, index * 30 + 30);
-    return getDocsFromServer(query(
-      collection(db, 'users', uid, 'notificationReads'), where('notificationId', 'in', group)
-    ));
-  }));
-  const readIds = new Set(receiptResults.flatMap((result) => result.docs.map((receipt) => receipt.id)));
-  return notifications.map((item) => ({...item, read: readIds.has(item.id)}));
-}
-
-export async function markNotificationRead(notificationId, uid) {
-  assertOnlineOperation();
-  if (!notificationId || !uid) throw new Error('Comunicado ou usuário inválido.');
-  const reference=notificationReference(notificationId);
-  if(reference.target==='FB'&&managementDataProject!=='FB')throw Error('NOTIFICATION_DESTINATION_DISABLED');
-  notificationId=reference.id;
-  const target=reference.target==='FB'?await managementDatabase(uid):db;
-  const ref = reference.target==='FB'?doc(target,'notificationReceipts',uid,'reads',notificationId):doc(target, 'users', uid, 'notificationReads', notificationId);
-  try {
-    await setDoc(ref, {id: notificationId, notificationId, uid, readAt: serverTimestamp()});
-    return true;
-  } catch (error) {
-    const confirmed = await getDocFromServer(ref).catch(() => null);
-    const receipt = confirmed?.exists() ? confirmed.data() : null;
-    if (receipt?.id === notificationId && receipt.notificationId === notificationId && receipt.uid === uid) return false;
-    throw error;
-  }
-}
-
-export async function createNotification(input, uid) {
-  assertOnlineOperation();
-  const title = String(input.title || '').trim();
-  const message = String(input.message || '').trim();
-  const audienceType = String(input.audienceType || 'ALL');
-  const audienceValue = String(input.audienceValue || '').trim();
-  const startAt = String(input.startAt || '');
-  const endAt = String(input.endAt || '');
-  const priority = Number(input.priority || 0);
-  const startDate = startAt ? new Date(`${startAt}T00:00:00-03:00`) : null;
-  const endDate = endAt ? new Date(`${endAt}T23:59:59.999-03:00`) : null;
-  if (!uid || !title || title.length > 120 || !message || message.length > 1200 || !startDate || !endDate || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate ||
-      !['ALL', 'ROLE', 'USER', 'SIGLA', 'MANAGEMENT_AREA', 'GROUP'].includes(audienceType) || !Number.isInteger(priority) || priority < 0 || priority > 5) {
-    throw new Error('Confira título, mensagem, público, datas e prioridade.');
-  }
-  const id = crypto.randomUUID();
-  const target=managementDataProject==='FB'&&audienceType==='MANAGEMENT_AREA'?await managementDatabase(uid):db;
-  await setDoc(doc(target, 'notifications', id), {
-    id, title, message, type: String(input.type || 'INFO'), audienceType,
-    audienceValue: audienceType === 'ALL' ? '' : audienceValue,
-    createdAt: serverTimestamp(), createdByUid: uid,
-    updatedAt: serverTimestamp(), updatedByUid: uid,
-    startAt: startDate, endAt: endDate,
-    active: true, priority, actionRoute: String(input.actionRoute || ''), version: 1
-  });
-  return id;
-}
-
-export async function listContactCatalog({pageSize = 200} = {}) {
+export async function listContactCatalog({pageSize = 200, uid} = {}) {
+  const db = await getOperationalModuleDatabase('FI', uid);
   const result = await getDocsFromServer(query(
     collection(db, 'contacts'),
     orderBy('sigla', 'asc'),
@@ -330,7 +219,8 @@ export async function listContactCatalog({pageSize = 200} = {}) {
 
 export async function syncEventMemberDirectory(uid) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  const contacts = await listContactCatalog({pageSize: 200});
+  const db = await getOperationalModuleDatabase('FI', uid);
+  const contacts = await listContactCatalog({pageSize: 200, uid});
   const batch = writeBatch(db);
   for (const contact of contacts) {
     const sigla = String(contact.sigla || '').trim().toUpperCase();
@@ -377,6 +267,7 @@ export async function saveLabelStaffSiglas(values, uid) {
 
 export async function saveContact(input, actorUid) {
   assertOnlineOperation();
+  if (!actorUid) throw new Error('A sessão expirou. Entre novamente.');
   const sigla = String(input.sigla || '').trim().toUpperCase();
   const name = String(input.name || '').trim();
   const whatsAppLink = String(input.whatsAppLink || '').trim();
@@ -386,6 +277,7 @@ export async function saveContact(input, actorUid) {
   if (whatsAppLink && !/^https:\/\/(?:wa\.me\/\d+|api\.whatsapp\.com\/send\?phone=\d+)$/.test(whatsAppLink)) {
     throw new Error('O link de WhatsApp deve usar um endereço wa.me ou api.whatsapp.com com telefone numérico.');
   }
+  const db = await getOperationalModuleDatabase('FI', actorUid);
   const ref = doc(db, 'contacts', sigla);
   const current = await getDocFromServer(ref);
   const record = {
@@ -410,8 +302,6 @@ export async function saveContact(input, actorUid) {
     updatedByUid: actorUid, updatedAt: serverTimestamp()
   });
   await batch.commit();
-  void globalThis.sahmtMirrorConfirmedSource?.('contacts/'+sigla);
-  void globalThis.sahmtMirrorConfirmedSource?.('eventMembers/'+sigla);
   return {id: sigla, ...record};
 }
 
@@ -428,6 +318,7 @@ export async function updateContactRegistrationFields(records, actorUid) {
     }
     siglas.add(record.sigla);
   }
+  const db = await getOperationalModuleDatabase('FI', actorUid);
   await runTransaction(db, async (transaction) => {
     const snapshots = await Promise.all(records.map((record) => transaction.get(doc(db, 'contacts', record.sigla))));
     const missing = records.filter((_, index) => !snapshots[index].exists()).map((record) => record.sigla);

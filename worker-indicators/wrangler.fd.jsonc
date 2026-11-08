@@ -12,7 +12,6 @@
     "INDICATORS_ENABLED": "true",
     "FD_FIXED_REFRESH_ENABLED": "true",
     "SAHMT_PERFORMANCE_ENABLED": "false",
-    "OPERATIONAL_EVENTS_SOURCE_PROJECT": "FA",
     "FA_WEB_API_KEY": "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"
   },
   "triggers": {

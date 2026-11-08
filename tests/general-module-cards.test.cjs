@@ -112,7 +112,7 @@ function renderHarness(session, route='management') {
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
     liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),
     labelReportLoad: 0, labelReportLoadingMore: false, labelReportState: 'idle',
-    scheduleGridObserver:null, cleanupLabelMedia: null, cleanupCurrentModule: null, cleanupDocumentTraining:null, cleanupUserInspection:null, startupBannerActive: false, yearEndStartup:{visible:false,status:'inactive'},
+    scheduleGridObserver:null, cleanupLabelMedia: null, cleanupCurrentModule: null, cleanupDocumentTraining:null, cleanupUserInspection:null, startupBannerActive: false, yearEndStartup:{visible:false,status:'inactive',setSession(){}},
     stopChecklistQrScanner() {}, currentRoute: () => route,
     app: {innerHTML: '', querySelectorAll: () => []}, notice: '', labels: {management: ['Gestão']},
     navigate: target => navigations.push(target), shellView: () => { shells.push('shell'); return ''; },
@@ -245,7 +245,7 @@ test('administradores preservam os cartões e os controles administrativos exist
     assert.equal(h.context.canOpenRestrictedModule('training'), true);
     assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);
     assert.match(h.ui.actionForm('training'), /id="training-catalog-form"/);
-    assert.match(h.ui.actionForm('notifications'), /data-module-form="notifications"/);
+    assert.equal(h.ui.actionForm('notifications'), '');
   }
 });
 
@@ -331,13 +331,13 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista']) {
     await h.ui.loadModule('notifications');
     assert.deepEqual(h.imports, []);
     assert.deepEqual(h.queries, []);
-    assert.match(h.content.innerHTML, /ainda não tem acesso/);
+    assert.deepEqual(h.navigations, ['home']);
   });
 }
-test('Informações fica somente em Gestão para administrador; o cartão de ocorrências depende da flag', () => {
+test('Informações permanece removido inclusive para administrador; o cartão de ocorrências depende da flag', () => {
   const h = harness({session:approved({}, 'administrador_app')});
-  assert.match(h.ui.managementUtilityCards(), /data-route="notifications"/);
-  assert.match(h.ui.managementUtilityCards(), /<strong>INFORMAÇÕES<\/strong>/);
+  assert.doesNotMatch(h.ui.managementUtilityCards(), /data-route="notifications"/);
+  assert.doesNotMatch(h.ui.managementUtilityCards(), /<strong>INFORMAÇÕES<\/strong>/);
   assert.doesNotMatch(h.ui.moduleCards(), /data-route="notifications"/);
   assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
 });

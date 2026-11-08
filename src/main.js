@@ -1,3 +1,4 @@
+import {homeScheduleCache} from './home-entry-cache.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
@@ -21,7 +22,6 @@ import {trainingActivityId, trainingParticipationState, paintTrainingButton} fro
 import {renderCatalogFolders} from './catalog-folders.js';
 import {renderManagementDocumentFolders, renderManagementDocumentCard, bindManagementDocumentAccessPanels} from './management-document-folders.js';
 import {installMaterialViewer} from './material-viewer.js';
-import {updateInformationBanner} from './information-banner.js';
 import {createStartupReportCache} from './startup-report-cache.js';
 import {createReportRuntime} from './report-runtime.js';
 import {mergeReportPendingRecords} from './report-pending.js';
@@ -57,7 +57,6 @@ import {isFirestoreCacheFallbackError} from './offline-cache.js';
 import {isOfflineOperationAuthorized} from './offline-outbox-policy.js';
 import {operationalBackend} from './operational-backend.js';
 import {installOperationalDrafts} from './offline-form-drafts.js';
-import {prepareOperationalData} from './offline-preparation.js';
 import {inspectOfflineReadiness, operationalAssetsReady, inspectDeviceStorage} from './offline-readiness.js';
 import {localChecklistConferenceReady} from './offline-checklist-conference.js';
 import {projectPendingSchedule} from './offline-schedule-overlay.js';
@@ -121,14 +120,12 @@ const labels = {
   'management-hub': ['Governança', 'Áreas de governança'],
   'year-end-schedule': ['ESCALA FINAL DE ANO', 'Confirme suas escolhas de plantão e grupo de trabalho.'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
-  'fa-performance': ['Desempenho FA', 'Checklist e eventos de escala'],
   'fg-performance': ['Desempenho FG', 'Checklist'],
   'fc-performance': ['Desempenho FC', 'Pontuação das ações em FC'],
   'fd-performance': ['Desempenho FD', 'Ciência e sugestões dos indicadores'],
   'fe-performance': ['Desempenho FE', 'Pontuação por participação em pesquisas'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
-  notifications: ['INFORMAÇÕES', 'Comunicados do SAHMT'],
   occurrences: ['REGISTRO DE OCORRÊNCIAS', 'Relato de ocorrências e não conformidades'],
   people: ['Pessoas', 'Contatos e cadastros da equipe'],
   admin: ['Administração', 'Usuários e configurações'],
@@ -148,7 +145,7 @@ const userPermissions = [
   ['trainingsRead', 'Consultar desempenho'], ['trainingsManage', 'Gerenciar materiais legados'],
   ['documentsManage', 'Gerenciar documentos'], ['qualityManage', 'Gerenciar qualidade'], ['equipmentManage', 'Gerenciar equipamentos'], ['peopleManage', 'Gerenciar pessoas'],
   ['financeRead', 'Consultar financeiro'], ['financeWrite', 'Registrar financeiro'], ['financeManage', 'Administrar financeiro'],
-  ['notificationsRead', 'Consultar notificações'], ['notificationsManage', 'Gerenciar notificações'],
+
   ['occurrencesRead', 'Consultar registros de ocorrências'], ['occurrencesWrite', 'Registrar ocorrências'],
   ['occurrencesAuditRead', 'Consultar auditoria de ocorrências'],
   ['usersManage', 'Gerenciar acessos'], ['admin', 'Acesso administrativo total']
@@ -229,7 +226,6 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
-let cleanupCommunicationHomeBanners = null;
 let cleanupDocumentTraining = null;
 let cleanupUserInspection = null;
 let evaluationModuleGeneration = 0;
@@ -679,77 +675,6 @@ async function startReportLive(kind, options = {}) {
   return pending;
 }
 
-const preloadedDataUsers = new Set();
-const scheduledDataPreloads = new Set();
-
-function preloadOperationalDataWhenIdle(user) {
-  if (deployment.target === 'FB') return;
-  if (!user?.uid || !navigator.onLine || session.offline) return;
-  const uid = user.uid;
-  const profile = session.profile || {};
-  const permissions = profile.permissions || {};
-  const elevated = profile.role === 'administrador_app' || permissions.admin === true;
-  const allows = (names) => elevated || names.some((name) => permissions[name] === true);
-  const canUseData = allows([
-    'scheduleWrite', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'labelsRead', 'labelsWrite', 'labelsManage',
-    'managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite',
-    'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage',
-    'checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage', 'trainingsRead', 'trainingsManage',
-    'notificationsRead', 'notificationsManage', 'peopleManage', 'usersManage'
-  ]);
-  const modules = [];
-  if (canUseData) modules.push('data');
-  if (allows(['trainingsRead', 'trainingsManage'])) modules.push('training');
-  if (allows(['equipmentManage'])) modules.push('equipment');
-  if (allows(['labelsWrite', 'labelsManage'])) modules.push('label-camera');
-  if (!modules.length) return;
-  const preloadKey = `${uid}:${todayInputValue()}:${modules.join(',')}`;
-  if (preloadedDataUsers.has(preloadKey) || scheduledDataPreloads.has(preloadKey)) return;
-  scheduledDataPreloads.add(preloadKey);
-  const preload = async () => {
-    try {
-      if (session.status !== 'signed-in' || session.user?.uid !== uid || session.offline || !navigator.onLine) return;
-      if (import.meta.env.PROD && 'serviceWorker' in navigator && !navigator.serviceWorker.controller) {
-        await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise((resolve) => window.setTimeout(resolve, 2000))
-        ]).catch(() => {});
-        if (session.status !== 'signed-in' || session.user?.uid !== uid || session.offline || !navigator.onLine) return;
-      }
-      preloadedDataUsers.add(preloadKey);
-      const imports = [];
-      if (modules.includes('data')) imports.push(import('./data.js'));
-      if (modules.includes('training')) imports.push(import('./performance-ui.js'));
-      if (modules.includes('equipment')) imports.push(import('./equipment.js'));
-      if (modules.includes('label-camera')) imports.push(import('./label-camera.js'));
-      void Promise.all(imports).catch((error) => {
-        preloadedDataUsers.delete(preloadKey);
-        console.warn('[SAHMT] Pré-carregamento de ações adiado:', error.code || error.message);
-      });
-    } finally {
-      scheduledDataPreloads.delete(preloadKey);
-    }
-  };
-  if (startupBannerActive) void preload();
-  else if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(preload, {timeout: 1800});
-  else window.setTimeout(preload, 700);
-}
-
-async function prepareOfflineEssentials(user) {
-  const uid = user?.uid, day = todayInputValue();
-  const current = () => session.status === 'signed-in' && session.user?.uid === uid && !session.offline && !isOfflineRuntimeForced() && navigator.onLine;
-  if (!uid || !current()) return [];
-  const [data, lite, {pruneLocalReadCache}] = await Promise.all([import('./data.js'), import('./data-lite.js'), import('./outbox.js')]);
-  const result = await prepareOperationalData({uid, day, allows: names => names.some(can), readCache: readFreshSafeCache, isCurrent: current, loaders: {
-    appFeatures: () => lite.readAppFeatures(uid), schedule: () => lite.readSchedule(day, uid),
-    contacts: () => lite.listActiveContacts({uid}), vacations: () => lite.listVacationsForDate(day, {uid}),
-    eventCatalog: () => data.getEventCatalog(uid), eventMembers: () => data.listEventMembers({uid}),
-    labelStaff: () => data.listLabelStaffSiglas({uid}), stations: () => data.listChecklistStations({uid})
-  }});
-  await pruneLocalReadCache(uid).catch(() => {});
-  return result;
-}
-
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (char) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
 }
@@ -815,15 +740,15 @@ function loginView() {
 }
 
 function moduleCards() {
-  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], notifications: ['notificationsRead', 'notificationsManage'], occurrences: ['occurrencesRead','occurrencesWrite','occurrencesAuditRead'], people: ['peopleManage'], admin: ['usersManage']};
+  const permissionFor = {events: ['eventsRead', 'eventsWrite', 'eventsCatalogManage'], labels: ['labelsRead', 'labelsWrite', 'labelsManage'], management: ['admin'], checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'], training: ['trainingsRead', 'trainingsManage'], occurrences: ['occurrencesRead','occurrencesWrite','occurrencesAuditRead'], people: ['peopleManage'], admin: ['usersManage']};
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
   const commonModules = commonUserActive ? ['management', ...(typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled ? ['labels'] : []), ...(typeof fgChecklistEnabled !== 'undefined' && fgChecklistEnabled ? ['checklist'] : [])] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
-    && !['training', 'notifications', 'management-hub'].includes(route)
+  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
+    && !['training', 'management-hub'].includes(route)
       && (route==='fd-performance'?fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session):route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
-    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',notifications:'NO',people:'PS',admin:'AD','fd-performance':'FD','fe-performance':'FE'}[route]}</span>`}
+    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD','fd-performance':'FD','fe-performance':'FE'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
 }
@@ -836,7 +761,7 @@ function hasOccurrencePermission() {
 }
 
 function managementUtilityCards() {
-  return [['people', 'peopleManage'], ['admin', 'usersManage'], ['notifications', 'admin']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route]) => {
+  return [['people', 'peopleManage'], ['admin', 'usersManage']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route]) => {
     const [title, subtitle] = labels[route];
     return `<button class="module-card" data-route="${route}">${managementAreaIcon({id:'utility-'+route})}<span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
   }).join('')+(can('admin')?'<button type="button" class="module-card" data-app-update-panel>'+managementAreaIcon({id:'utility-admin'})+'<span><strong>CONTROLE DE ATUALIZAÇÕES</strong><small>Todos os usuários, individual e confirmações por aparelho</small></span><span class="arrow" aria-hidden="true">›</span></button>':'');
@@ -863,7 +788,7 @@ function can(permission) {
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
   if (route === 'fg-performance') return canManageChecklistPermissions();
-  if (['management','qmentum','training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'].includes(route) && !can('admin')) return false;
+  if (['management','qmentum','training','fb-performance','fc-performance','fd-performance','fe-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
   if (route === 'fd-performance') return fdPerformanceEnabled && fdPerformanceIdentityCanEnter(session);
   if (route === 'fe-performance') return fePerformanceEnabled && session.status==='signed-in' && session.profile?.active===true && session.profile?.access===true && session.profile?.uid===session.user?.uid;
@@ -1111,9 +1036,7 @@ function actionForm(route) {
     <div class="form-grid"><label>Área de Gestão<select name="managementAreaId" id="activity-area" required><option value="">Carregando áreas…</option></select></label><label>Título<input name="title" required maxlength="160"></label>
     <label>Prazo<input name="dueAt" type="date"></label><label>Prioridade<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>${can('managementManage') ? '<label>UID(s) de responsáveis da equipe · um por linha<textarea name="responsibleUids" rows="3" maxlength="2600" placeholder="UID Firebase cadastrado como membro da área" required></textarea></label><label>Participantes da equipe · um UID por linha<textarea name="participantUids" rows="2" maxlength="13000" placeholder="Opcional · podem comentar, não iniciar ou concluir"></textarea></label><label class="contact-active-field"><input name="pointsEnabled" type="checkbox"> Pontuar quando o responsável concluir (exige um único responsável)</label>' : ''}</div>
     <label>Descrição<textarea name="description" rows="3" maxlength="1200"></textarea></label><button class="primary-button" type="submit">Criar atividade</button></form></details>`;
-  if (route === 'notifications' && can('admin')) return `<details class="quick-form" open><summary>Novo comunicado</summary><form data-module-form="notifications">
-    <div class="form-grid"><label>Título<input name="title" required maxlength="120"></label><label>Tipo<select name="type"><option value="INFO">Informação</option><option value="WARNING">Atenção</option><option value="ACTION">Ação</option></select></label><label>Público<select name="audienceType" id="notification-audience"><option value="ALL">Todos</option><option value="ROLE">Função</option><option value="USER">UID</option><option value="SIGLA">Sigla</option><option value="MANAGEMENT_AREA">Área de Gestão</option><option value="GROUP">Grupo</option></select></label><label id="notification-audience-value-wrap" hidden>Identificador do público<input name="audienceValue" maxlength="128"></label><label>Início<input name="startAt" type="date" required value="${todayInputValue()}"></label><label>Fim<input name="endAt" type="date" required value="${todayInputValue()}"></label><label>Prioridade<select name="priority"><option value="0">Normal</option><option value="1">Baixa</option><option value="2">Média</option><option value="3">Alta</option><option value="4">Urgente</option><option value="5">Crítica</option></select></label><label>Ação ao abrir<select name="actionRoute"><option value="">Nenhuma</option><option value="events">Eventos</option><option value="labels">Etiquetas</option><option value="management">Gestão</option><option value="checklist">Checklist</option><option value="training">Desempenho</option></select></label></div>
-    <label>Mensagem<textarea name="message" rows="3" required maxlength="1200"></textarea></label><button class="primary-button" type="submit">Publicar comunicado</button></form></details>`;
+
   if (route === 'people' && can('peopleManage')) return `<details class="quick-form" open><summary>Cadastro de contato</summary><form data-module-form="people">
     <div class="form-grid"><label>Sigla<input name="sigla" required pattern="(?:[A-Z]{2}|L2)" maxlength="2" autocomplete="off"></label><label>Nome<input name="name" required maxlength="120"></label>
     <label>Função<input name="role" maxlength="80"></label><label>Telefone<input name="phone" type="tel" maxlength="40"></label><label>E-mail<input name="email" type="email" maxlength="200"></label><label>Link WhatsApp<input name="whatsAppLink" type="url" maxlength="250" placeholder="https://wa.me/5511999999999"></label><label>CRM<input name="crm" maxlength="40"></label><label>Data de entrada<input name="entryDate" maxlength="32" placeholder="DD/MM/AAAA"></label></div>
@@ -1140,12 +1063,13 @@ function shellView() {
   const labelReport = route === 'labels' && ['labelsRead','labelsWrite','labelsManage'].some(can) ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-label-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
   const labelPermissionPanel = route === 'labels' && can('labelsManage') ? `<details class="admin-user-list fh-label-permissions-panel"><summary>Permissões de Etiquetas · FH</summary><p class="record-meta">Este painel administra apenas as permissões de Etiquetas armazenadas no projeto FH. O login e a identidade continuam em FA.</p><button type="button" class="secondary-button" data-load-fh-label-directory>Atualizar lista de usuários FH</button><div data-fh-label-directory role="status" aria-live="polite"></div></details>` : '';
-  const view = route === 'home' ? `<section class="content-grid">
+  const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
       <article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
-        <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
+        <div id="schedule-content" class="schedule-content"><p class="loading">${route === 'home' ? 'Abrindo cópia deste aparelho…' : 'Carregando escala…'}</p></div>
+        <button type="button" class="secondary-button" data-route="${route === 'home' ? 'schedule' : 'home'}">${route === 'home' ? 'Abrir Escala' : 'Voltar para entrada'}</button>
       </article>
-      <section class="modules-section"><div class="module-grid">${moduleCards()}</div>${communicationFeatureEnabled&&!communicationDevicePushActive()?'<aside class="comm-home-banner" aria-label="Notificações institucionais"><span class="comm-banner-burst" aria-hidden="true">NOVO</span><div><strong>🔔 Ative os avisos do SAHMT</strong><p>Receba os avisos neste aparelho.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Ativar notificações ou ver mensagens">ABRIR</button>':''}${communicationFeatureEnabled?'<div class="comm-home-notices" data-comm-home-banners aria-live="polite"></div>':''}</section>
+      <section class="modules-section"><div class="module-grid">${route === 'home' ? moduleCards() : ''}</div>${communicationFeatureEnabled?'<aside class="comm-home-banner" aria-label="Central de Comunicação"><div><strong>🔔 Central de Comunicação</strong><p>Avisos e mensagens institucionais.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Abrir Central de Comunicação">ABRIR</button></aside>':''}${route==='home'&&canUseYearEndSchedule(session)?'<aside class="comm-home-banner" aria-label="Escala Final de Ano"><div><strong>ESCALA FINAL DE ANO</strong><p>Confirme suas escolhas de plantão e grupo de trabalho.</p></div><button type="button" class="secondary-button" data-route="year-end-schedule" aria-label="ESCALA FINAL DE ANO">ABRIR</button></aside>':''}</section>
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}${checklistPermissionPanel}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelPermissionPanel}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
@@ -1158,6 +1082,31 @@ function shellView() {
 }
 
 async function loadHome() {
+  const dateInput=document.querySelector('#schedule-date'),content=document.querySelector('#schedule-content');
+  if(!dateInput||!content)return;
+  const uid=session.user?.uid;let disposed=false,suspended=false;
+  dateInput.value=localDateKey();
+  const draw=()=>{
+    if(disposed||suspended||!content.isConnected||session.status!=='signed-in'||session.user?.uid!==uid)return;
+    const cached=homeScheduleCache.read(uid,dateInput.value);
+    if(!cached){content.innerHTML='<p class="empty-state">Sem cópia local para esta data. Abra a Escala para consultar.</p>';return;}
+    const view=buildScheduleView(cached.schedule,dateInput.value,cached.vacations,[]);
+    const saved=new Date(cached.savedAt).toLocaleString('pt-BR');
+    content.innerHTML='<p class="record-meta" data-home-cache-status>Cópia deste aparelho · '+escapeHtml(saved)+'</p>'+(view.positions.length?renderSchedulePositionGrid(view,{mode:'home',schedule:cached.schedule,eventsWritable:false}):'<p class="empty-state">A última escala salva não contém posições.</p>');
+    fitSchedulePositionGrid(content);
+  };
+  document.querySelector('#schedule-previous')?.addEventListener('click',()=>{dateInput.value=shiftDateKey(dateInput.value,-1);draw();});
+  document.querySelector('#schedule-next')?.addEventListener('click',()=>{dateInput.value=shiftDateKey(dateInput.value,1);draw();});
+  document.querySelector('#schedule-today')?.addEventListener('click',()=>{dateInput.value=localDateKey();draw();});
+  dateInput.addEventListener('change',draw);
+  const cleanup=()=>{disposed=true;};
+  cleanup.suspend=()=>{suspended=true;};
+  cleanup.resumeLocal=cleanup.resume=()=>{if(disposed)return;suspended=false;draw();};
+  cleanupCurrentModule=cleanup;
+  draw();
+}
+
+async function loadSchedule() {
   const dateInput = document.querySelector('#schedule-date');
   const content = document.querySelector('#schedule-content');
   if (!dateInput || !content) return;
@@ -1165,11 +1114,13 @@ async function loadHome() {
   let requestSequence = 0;
   let suspended = false, disposed = false, needsServerResume = false;
   const homeUid = session.user.uid;
+  const scheduleCurrent = () => !disposed && !suspended && content.isConnected && session.status === 'signed-in' && session.user?.uid === homeUid && currentRoute() === 'schedule';
   let contacts = [];
   let contactsCacheAt = 0;
   let contactsRequest = null;
   const vacationsCache = new Map();
   const renderSchedule = (schedule, selectedDate, selectedVacations, selectedContacts) => {
+    if (!scheduleCurrent()) return;
     if (globalThis.sahmtProjectSharedSchedule) schedule=globalThis.sahmtProjectSharedSchedule(schedule,{uid:session.user?.uid,day:selectedDate});
     if (!schedule) {
       content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
@@ -1192,7 +1143,8 @@ async function loadHome() {
     }));
   };
   const render = async ({localOnly = false} = {}) => {
-    if (disposed || suspended || !content.isConnected || session.user?.uid !== homeUid) return;
+    if (!scheduleCurrent()) return;
+    if(currentRoute()!=='schedule')return;
     const requestId = ++requestSequence;
     const selectedDate = dateInput.value;
     if (!selectedDate) return;
@@ -1203,9 +1155,9 @@ async function loadHome() {
     let schedulePending = true;
     let scheduleError = false;
     let contactsError = false;
-    let vacationsError = false;
+    let vacationsError = false, vacationsReady = false, snapshotSaved = false;
     const draw = () => {
-      if (requestId !== requestSequence || !content.isConnected) return;
+      if (requestId !== requestSequence || !scheduleCurrent()) return;
       const messages = [];
       if (schedulePending && schedule) messages.push('<p class="sync-state">Atualizando a escala…</p>');
       if (scheduleError && schedule) messages.push('<p class="sync-state">Não foi possível atualizar; exibindo a última escala salva.</p>');
@@ -1221,24 +1173,27 @@ async function loadHome() {
         content.innerHTML = `${messages.join('')}<p class="empty-state">Não foi possível carregar a escala.</p>`;
         return;
       }
+      if(!snapshotSaved&&!schedulePending&&!scheduleError&&!vacationsError&&vacationsReady&&session.user?.uid===homeUid&&currentRoute()==='schedule'){
+        homeScheduleCache.write(homeUid,selectedDate,{schedule,vacations:selectedVacations});snapshotSaved=true;
+      }
       renderSchedule(schedule, selectedDate, selectedVacations, selectedContacts);
     };
     try {
       try {
-        const cachedSchedule = await readCachedSchedule(session.user.uid, selectedDate, {localOnly});
-        if (cachedSchedule && requestId === requestSequence && content.isConnected) {
+        const cachedSchedule = await readCachedSchedule(homeUid, selectedDate, {localOnly});
+        if (cachedSchedule && requestId === requestSequence && scheduleCurrent()) {
           schedule = cachedSchedule;
           draw();
         }
       } catch {}
-      if (requestId !== requestSequence || disposed || suspended || !content.isConnected) return;
+      if (requestId !== requestSequence || !scheduleCurrent()) return;
       if (localOnly) {schedulePending = false; scheduleError = !schedule; draw(); return;}
       const {readSchedule, listActiveContacts, listVacationsForDate} = await import('./data-lite.js');
-      if (requestId !== requestSequence || disposed || suspended || !content.isConnected) return;
+      if (requestId !== requestSequence || !scheduleCurrent()) return;
       const readContacts = () => {
         if (contactsCacheAt && Date.now() - contactsCacheAt < 30_000) return Promise.resolve(contacts);
-        if (!contactsRequest) contactsRequest = listActiveContacts({uid: session.user.uid, pageSize: 200, onRefresh: items => {
-          if (requestId !== requestSequence || !content.isConnected) return;
+        if (!contactsRequest) contactsRequest = listActiveContacts({uid: homeUid, pageSize: 200, independent:true,onRefresh: items => {
+          if (requestId !== requestSequence || !scheduleCurrent()) return;
           contacts = items; selectedContacts = items; contactsCacheAt = Date.now(); draw();
         }})
           .then((items) => { contacts = items; contactsCacheAt = Date.now(); return items; })
@@ -1248,8 +1203,8 @@ async function loadHome() {
       const readVacations = () => {
         const cached = vacationsCache.get(selectedDate);
         if (cached && Date.now() - cached.at < 30_000) return Promise.resolve(cached.items);
-        return listVacationsForDate(selectedDate, {uid: session.user.uid, onRefresh: items => {
-          if (requestId !== requestSequence || !content.isConnected) return;
+        return listVacationsForDate(selectedDate, {uid: homeUid, independent:true, onRefresh: items => {
+          if (requestId !== requestSequence || !scheduleCurrent()) return;
           selectedVacations = items; vacationsCache.set(selectedDate, {items, at: Date.now()}); draw();
         }}).then((items) => {
           vacationsCache.set(selectedDate, {items, at: Date.now()});
@@ -1257,41 +1212,41 @@ async function loadHome() {
           return items;
         });
       };
-      void readSchedule(selectedDate, session.user.uid, {onRefresh: value => {
-        if (requestId !== requestSequence || !content.isConnected) return;
+      void readSchedule(selectedDate, homeUid, {independent:true,onRefresh: value => {
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
         schedule = value; schedulePending = false; draw();
       }}).then((value) => {
-        if (requestId !== requestSequence || !content.isConnected) return;
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
         schedule = value;
         schedulePending = false;
         draw();
       }).catch(() => {
-        if (requestId !== requestSequence || !content.isConnected) return;
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
         schedulePending = false;
-        scheduleError = true;
+        scheduleError = true;homeScheduleCache.clear(homeUid);
         draw();
       });
       void readContacts().then((items) => {
-        if (requestId !== requestSequence || !content.isConnected) return;
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
         contacts = items;
         selectedContacts = items;
         draw();
       }).catch(() => {
-        if (requestId !== requestSequence || !content.isConnected) return;
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
         contactsError = true;
         draw();
       });
       void readVacations().then((items) => {
-        if (requestId !== requestSequence || !content.isConnected) return;
-        selectedVacations = items;
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
+        selectedVacations = items;vacationsReady=true;
         draw();
       }).catch(() => {
-        if (requestId !== requestSequence || !content.isConnected) return;
-        vacationsError = true;
+        if (requestId !== requestSequence || !scheduleCurrent()) return;
+        vacationsError = true;homeScheduleCache.clear(homeUid);
         draw();
       });
     } catch (error) {
-      if (requestId !== requestSequence || !content.isConnected) return;
+      if (requestId !== requestSequence || !scheduleCurrent()) return;
       schedulePending = false;
       scheduleError = true;
       draw();
@@ -1310,7 +1265,7 @@ async function loadHome() {
     void render();
   });
   dateInput.addEventListener('change', render);
-  dateInput.addEventListener('sahmt-shared-refresh',()=>{const uid=session.user?.uid,day=dateInput.value;void readCachedSchedule(uid,day).then(value=>{if(value&&session.user?.uid===uid&&dateInput.isConnected&&dateInput.value===day)renderSchedule(value,day,vacationsCache.get(day)?.items||[],contacts);});});
+  dateInput.addEventListener('sahmt-shared-refresh',()=>{if(!scheduleCurrent())return;const uid=homeUid,day=dateInput.value;void readCachedSchedule(uid,day).then(value=>{if(value&&scheduleCurrent()&&dateInput.isConnected&&dateInput.value===day)renderSchedule(value,day,vacationsCache.get(day)?.items||[],contacts);});});
   const cleanup = () => {disposed = true; requestSequence++;};
   cleanup.suspend = () => {suspended = true; needsServerResume = true; requestSequence++; contactsRequest = null;};
   cleanup.resumeLocal = () => {
@@ -1388,6 +1343,7 @@ function showScheduleContacts(contacts, context = {}) {
 
 const readConsultationsAccess=createConsultationsAccessReader({request:async options=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi(options);}});
 async function loadModule(route) {
+  if (route === 'notifications') {navigate('home');return;}
   if(route==='communications'){
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid;
@@ -1449,18 +1405,6 @@ async function loadModule(route) {
       const cleanup=mountFgPerformanceModule(content,{uid,isCurrent:current,load:subjectUid=>readFgPerformance({uid,subjectUid,isCurrent:current})});
       if(current())cleanupCurrentModule=cleanup;else cleanup();
     }catch{if(current())content.innerHTML='<p role="status">Não foi possível abrir o Desempenho FG.</p>';}
-    return;
-  }
-  if(route === 'fa-performance'){
-    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
-    const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid&&can('admin');
-    if(!current()){navigate('checklist');return;}
-    try{
-      const [{auth},{readFaPerformance},{mountFaPerformanceModule}]=await Promise.all([import('./firebase-auth.js'),import('./fa-performance-client.js'),import('./fa-performance-ui.js')]);
-      if(!current())return;
-      const cleanup=mountFaPerformanceModule(content,{uid,isCurrent:current,load:subjectUid=>readFaPerformance({auth,subjectUid,isCurrent:current})});
-      if(current())cleanupCurrentModule=cleanup;else cleanup();
-    }catch{if(current())content.innerHTML='<p role="status">Não foi possível abrir o Desempenho FA.</p>';}
     return;
   }
   if(route === 'fc-performance'){
@@ -1529,7 +1473,7 @@ async function loadModule(route) {
     navigate('home');
     return;
   }
-  const contentPermissions = {training: ['trainingsRead', 'trainingsManage'], notifications: ['admin']};
+  const contentPermissions = {training: ['trainingsRead', 'trainingsManage']};
   if (contentPermissions[route] && !contentPermissions[route].some(can)) {
     content.innerHTML = '<p class="empty-state" role="status">Seu perfil ainda não tem acesso ao conteúdo desta área. Peça ao administrador para liberar a consulta.</p>';
     return;
@@ -1697,7 +1641,7 @@ async function loadModule(route) {
   if (route === 'people') {
     try {
       const {listContactCatalog} = await import('./data.js');
-      const contacts = await listContactCatalog();
+      const contacts = await listContactCatalog({uid: session.user.uid});
       content.innerHTML = `${contacts.length ? `<ul class="record-list">${contacts.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.sigla)} · ${escapeHtml(item.name)}</strong><button class="secondary-button" type="button" data-contact-edit="${escapeHtml(item.sigla)}">Editar</button></div><small>${escapeHtml(item.role || '')}${item.phone ? ` · ${escapeHtml(item.phone)}` : ''}</small><small class="record-meta">${item.active ? 'Ativo' : 'Inativo'}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum contato cadastrado. Use o formulário acima para criar o catálogo inicial.</p>'}<button class="secondary-button" type="button" id="sync-event-members">Atualizar siglas de Eventos</button><p id="event-members-sync-status" class="record-meta" role="status" aria-live="polite"></p>`;
       content.querySelector('#sync-event-members')?.addEventListener('click', async (event) => {
         const button = event.currentTarget;
@@ -1728,36 +1672,7 @@ async function loadModule(route) {
     }
     return;
   }
-  if (route === 'notifications') {
-    try {
-      const {listNotifications} = await import('./data.js');
-      const items = await listNotifications(session.profile, {canManage: can('notificationsManage')});
-      const canAcknowledge = can('notificationsRead') && !can('notificationsManage');
-      const unreadCount = items.filter((item) => !item.read).length;
-      content.innerHTML = items.length ? `${canAcknowledge ? `<p class="sync-state" id="notification-read-summary">${unreadCount} comunicado(s) não lido(s).</p>` : ''}<ul class="record-list notification-list">${items.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.title)}</strong><small class="record-meta">${escapeHtml(item.type || 'INFO')} · prioridade ${escapeHtml(item.priority)}</small></div><p>${escapeHtml(item.message)}</p><small>${escapeHtml(interactionDateTime(item.createdAt))}${can('notificationsManage') ? ` · Público: ${escapeHtml(item.audienceType)}${item.audienceValue ? ` (${escapeHtml(item.audienceValue)})` : ''}` : ''}</small>${item.actionRoute ? `<button class="secondary-button" type="button" data-notification-route="${escapeHtml(item.actionRoute)}">Abrir área</button>` : ''}${canAcknowledge ? `<button class="secondary-button" type="button" data-notification-read="${escapeHtml(item.id)}" ${item.read ? 'disabled' : ''}>${item.read ? 'Lido' : 'Marcar como lido'}</button>` : ''}</li>`).join('')}</ul>` : '<p class="empty-state">Não há comunicados ativos para sua sessão.</p>';
-      content.querySelectorAll('[data-notification-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.notificationRoute)));
-      content.querySelectorAll('[data-notification-read]').forEach((button) => button.addEventListener('click', async () => {
-        button.disabled = true;
-        try {
-          const {markNotificationRead} = await import('./data.js');
-          await markNotificationRead(button.dataset.notificationRead, session.user.uid);
-          button.textContent = 'Lido';
-          const remaining = content.querySelectorAll('[data-notification-read]:not(:disabled)').length;
-          const summary = content.querySelector('#notification-read-summary');
-          if (summary) summary.textContent = `${remaining} comunicado(s) não lido(s).`;
-        } catch (error) {
-          button.disabled = false;
-          const message = document.createElement('small');
-          message.className = 'form-error';
-          message.textContent = error.message || 'Não foi possível confirmar a leitura.';
-          button.after(message);
-        }
-      }));
-    } catch (error) {
-      content.innerHTML = `<p class="empty-state">Não foi possível carregar os comunicados. ${escapeHtml(error.message || '')}</p>`;
-    }
-    return;
-  }
+
   try {
     const managementCatalogWasLocal = route === 'management' && (session.offline === true || isOfflineRuntimeForced());
     const data = await import('./data.js');
@@ -1967,7 +1882,7 @@ async function loadAdminModule(content) {
     }
     const permissions = userPermissions.map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="permission" value="${id}" ${['trainingsRead', 'notificationsRead'].includes(id) ? 'checked' : ''} ${['admin', 'usersManage'].includes(id) && !can('admin') ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('');
     const featureSettings = can('admin') ? `<section class="admin-user-form panel"><h3>Disponibilidade dos módulos</h3><p>Ative ou oculte áreas na Home sem editar o código. As regras de acesso do Firestore continuam valendo mesmo para uma área oculta.</p><form id="app-feature-form"><fieldset><legend>Módulos do SAHMT</legend><div class="permission-grid">${[
-      ['checklist', 'Checklist'], ['labels', 'Etiquetas'], ['trainings', 'Desempenho'], ['management', 'Gestão'], ['notifications', 'Notificações'],
+      ['checklist', 'Checklist'], ['labels', 'Etiquetas'], ['trainings', 'Desempenho'], ['management', 'Gestão'],
       ['esg', 'ESG · preparado'], ['innovation', 'Inovação · preparada']
     ].map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="feature" value="${id}" ${configuredFeatures[id] ? 'checked' : ''} ${['esg', 'innovation'].includes(id) ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('')}</div></fieldset><p class="record-meta">ESG e Inovação ficam desativadas enquanto não houver uma área publicada. Eventos, Pessoas, Administração, Home e Sincronização permanecem disponíveis conforme as permissões.</p><div class="admin-user-actions"><button class="secondary-button" type="submit">Salvar disponibilidade</button></div><p id="app-feature-status" class="record-meta" role="status" aria-live="polite"></p></form></section>` : '';
     const entries = profiles.map((profile) => {
@@ -4065,13 +3980,7 @@ async function bindModuleForm(route) {
         await render();
         return;
       }
-      if (route === 'notifications') {
-        const {createNotification} = await import('./data.js');
-        await createNotification(values, session.user.uid);
-        notice = 'Comunicado publicado no Firestore.';
-        await render();
-        return;
-      }
+
       let collectionName; let record;
       if (route === 'events') {
         // FormData omits disabled controls. V1 locks automatically completed
@@ -4302,22 +4211,7 @@ async function bindModuleForm(route) {
       if (button.isConnected) button.disabled = false;
     });
   }
-  if (route === 'notifications') {
-    const form = document.querySelector('[data-module-form="notifications"]');
-    const audience = form?.elements.audienceType;
-    const updateAudience = () => {
-      const isAll = audience?.value === 'ALL';
-      const wrapper = form?.querySelector('#notification-audience-value-wrap');
-      if (wrapper) wrapper.hidden = isAll;
-      if (form?.elements.audienceValue) {
-        form.elements.audienceValue.required = !isAll;
-        form.elements.audienceValue.disabled = isAll;
-        if (isAll) form.elements.audienceValue.value = '';
-      }
-    };
-    audience?.addEventListener('change', updateAudience);
-    updateAudience();
-  }
+
   if (route === 'people') {
     const form = document.querySelector('[data-module-form="people"]');
     document.querySelector('#contact-reset')?.addEventListener('click', () => {
@@ -4357,7 +4251,7 @@ function bindContactImport() {
       const {parseContactImportCsv, compareContactImportRows} = await import('./contact-import.js');
       const {listContactCatalog} = await import('./data.js');
       const parsed = parseContactImportCsv(await file.text());
-      const contacts = await listContactCatalog();
+      const contacts = await listContactCatalog({uid: session.user.uid});
       if (generation !== previewGeneration || !sameFile(fileInput.files?.[0], file)) throw new Error('O arquivo mudou durante a conferência. Confira novamente antes de atualizar.');
       const comparison = compareContactImportRows(parsed, contacts);
       if (comparison.missing.length) throw new Error(`Siglas sem cadastro correspondente no V2: ${comparison.missing.join(', ')}. Nenhum dado foi gravado.`);
@@ -5103,7 +4997,7 @@ async function render() {
   // Captured draft fields are already queued independently of the outgoing DOM.
   // IndexedDB completion must not hold the navigation hostage.
   void operationalDrafts.flush();
-  if (session.status !== 'signed-in') updateInformationBanner(null);
+
   for (const kind of ['events', 'labels', 'checklist']) { const scope = liveReports.get(kind)?.snapshot().scope; if (scope?.warm !== true && (scope || reportStates.has(kind) || reportPayloads.has(kind))) closeReportLive(kind, 'render'); }
   labelReportLoad++;
   labelReportLoadingMore = false;
@@ -5121,11 +5015,6 @@ async function render() {
     try {void Promise.resolve(cleanup()).catch(()=>console.warn('[SAHMT] Encerramento do módulo pendente; navegação mantida.'));}
     catch {console.warn('[SAHMT] Não foi possível encerrar o módulo anterior; navegação mantida.');}
   }
-  if (typeof cleanupCommunicationHomeBanners !== 'undefined' && cleanupCommunicationHomeBanners) {
-    const cleanup = cleanupCommunicationHomeBanners;
-    cleanupCommunicationHomeBanners = null;
-    cleanup();
-  }
   if(document.querySelector('.required-app-update[open]'))return;
   if (startupBannerActive || session.status==='checking' || session.status==='loading-profile') {
     if (app.querySelector('.startup-logo')) return;
@@ -5140,8 +5029,11 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
-  if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance',
-    'fd-performance', 'fe-performance', 'people', 'admin', 'notifications', 'app-updates-control'].includes(requestedRoute)) {
+  if(requestedRoute!=='year-end-schedule')yearEndStartup.setSession({...session,status:'signed-out'});
+  if(!authLimited&&requestedRoute==='labels'&&!session.labelProfileLoaded)void loadOwnLabelModuleProfile(session.user?.uid);
+  if(!authLimited&&requestedRoute==='checklist'&&!session.checklistProfileLoaded)void loadOwnChecklistModuleProfile(session.user?.uid);
+  if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance',
+    'fd-performance', 'fe-performance', 'people', 'admin', 'app-updates-control'].includes(requestedRoute)) {
     navigate('home');
     return;
   }
@@ -5167,6 +5059,7 @@ async function render() {
   if(!authLimited&&requestedRoute==='year-end-schedule'&&!canUseYearEndSchedule(session)){
     navigate('home');return;
   }
+  if(!authLimited&&requestedRoute==='year-end-schedule')yearEndStartup.setSession(session);
   // A pending profile is not an authorization denial. Keep the requested route
   // in the restricted shell until the profile can grant or deny access.
   if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)&&canUseVacationModule(session)&&!['surveys','vacations2027'].includes(location.hash.split('/')[2])){navigate('management-hub',{panel:'surveys'});return;}
@@ -5175,14 +5068,14 @@ async function render() {
     navigate('home');return;
   }
   if (deployment.target==='FA'&&['fd-performance','fe-performance'].includes(requestedRoute)){navigate('management-hub',{panel:requestedRoute==='fd-performance'?'fdPerformance':'fePerformance'});return;}
-  if (deployment.target === 'FB' && ['qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
+  if (deployment.target === 'FB' && ['qmentum','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
-  if (!authLimited && ['management', 'training', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance','fd-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance','fd-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
@@ -5198,20 +5091,19 @@ async function render() {
     return;
   }
   if(authLimited){}
-  else if(['qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)){
+  else if(['qmentum','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
-    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fa-performance'?'DESEMPENHO FA':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
+    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
   }else app.innerHTML = shellView();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
-  if (!authLimited && ['occurrences','qmentum','fa-performance','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
+  if (!authLimited && ['occurrences','qmentum','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR';
-      button.addEventListener('click',()=>['fa-performance','fg-performance'].includes(requestedRoute)?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
+      button.addEventListener('click',()=>['fg-performance'].includes(requestedRoute)?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
     });
   }
-  if(!authLimited)preloadOperationalDataWhenIdle(session.user);
   if(!authLimited&&['people','admin','notifications'].includes(requestedRoute)){
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR';
@@ -5248,16 +5140,8 @@ async function render() {
     return;
   }
   void updateOutboxStatus();
-  if (currentRoute() === 'home') {
-    await loadHome();
-    const host = app.querySelector('[data-comm-home-banners]');
-    if (typeof communicationFeatureEnabled !== 'undefined' && communicationFeatureEnabled && host && session.status === 'signed-in' && !authLimited && current()) {
-      const uid = session.user.uid;
-      const isCurrentHome = () => current() && currentRoute() === 'home' && session.status === 'signed-in' && session.user?.uid === uid;
-      const [{mountCommunicationHomeBanners}, {createCommunicationClient}] = await Promise.all([import('./communication-home-banners.js'), import('./communication-client.js')]);
-      if (!isCurrentHome() || !host.isConnected) return;
-      cleanupCommunicationHomeBanners = mountCommunicationHomeBanners(host, {client:createCommunicationClient({isCurrent:isCurrentHome}), uid, isCurrent:isCurrentHome});
-    }
+  if (['home','schedule'].includes(currentRoute())) {
+    if(currentRoute()==='home')await loadHome();else await loadSchedule();
   } else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);
@@ -5269,7 +5153,7 @@ async function render() {
 
   }
   if(!current())return;
-  updateInformationBanner(featureEnabledForRoute('notifications', appFeatures) && can('notificationsRead') ? {...session.profile, uid:session.user.uid} : null);
+
   void updateOutboxStatus();
 }
 
@@ -5384,9 +5268,10 @@ function sessionChanged(next) {
     presentationWithoutGeneralReads(session) === presentationWithoutGeneralReads(next) &&
     generalReadPermissions.some((key) => session.profile?.permissions?.[key] !== true && next.profile?.permissions?.[key] === true) &&
     generalReadPermissions.every((key) => session.profile?.permissions?.[key] === next.profile?.permissions?.[key] || next.profile?.permissions?.[key] === true);
-  const preserveCurrentModule = !modeChanged && onlyGeneralReadGrant && !refreshManagementMenu && !['home', 'training', 'notifications'].includes(currentRoute());
+  const preserveCurrentModule = !modeChanged && onlyGeneralReadGrant && !refreshManagementMenu && !['home', 'training'].includes(currentRoute());
   const unchangedPresentation = previousPresentation === nextPresentation;
   const userChanged = session.user?.uid !== next.user?.uid;
+  if(userChanged||['signed-out','blocked','profile-missing','access-pending'].includes(next.status))homeScheduleCache.clear(session.user?.uid);
   if (next.status === 'signed-in' && next.offline === false && next.profile?.active === true && next.profile?.access === true) {
     onlineValidationRequired = false;
     if (!operationalBackend.snapshot().code) backendFailureDisplayed = false;
@@ -5413,17 +5298,14 @@ function sessionChanged(next) {
   }
   startupBannerActive=['checking','loading-profile'].includes(next.status)||(['signed-in','auth-limited'].includes(next.status)&&next.validatingProfile===true);
   session = next;
-  yearEndStartup.setSession(next);
   connectionRecovery?.sessionChanged();
   if (globalThis.sahmtProvisionalChannelEnabled) window.dispatchEvent(new CustomEvent('sahmt-channel-session'));
   setOfflineRuntimeMode(next.status !== 'signed-in' || next.offline === true || !navigator.onLine || onlineValidationRequired || backendFailureDisplayed);
   if (profileBecameLocal) {cleanupCurrentModule?.setOnline?.(false); liveReports.setOnline(false);}
   if (profileRevalidated && navigator.onLine) {document.querySelector?.('[data-local-profile-notice]')?.remove(); cleanupCurrentModule?.setOnline?.(true); liveReports.setOnline(true);for(const kind of reconnectReports)liveReports.refresh(kind,'profile-online');}
   if (next.status === 'signed-in' && !next.offline && (wasOffline || userChanged)) {
-    preloadOperationalDataWhenIdle(next.user); preloadStartupReports(next.user);
+    preloadStartupReports(next.user);
   }
-  if (next.status === 'signed-in' && userChanged) {
-    }
   notice = '';
   const connectionChanged = profileBecameLocal || profileRevalidated || profileValidationChanged;
   if ((!unchangedPresentation || connectionChanged || modeChanged) && !preserveCurrentModule && !preserveEvaluationModule) void render();
@@ -5596,6 +5478,7 @@ async function loadOwnLabelModuleProfile(uid) {
   void render();
   try {
     const {readLabelModuleProfile} = await import('./data.js');
+    if(currentRoute()!=='labels'||session.user?.uid!==uid){labelProfileLoadUid='';return;}
     const profile = await readLabelModuleProfile(uid);
     if (sequence !== labelProfileLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
     session = {...session, labelProfile: profile, labelProfileLoaded: true, labelProfileError:''};
@@ -5616,6 +5499,7 @@ async function loadOwnChecklistModuleProfile(uid) {
   void render();
   try {
     const {readChecklistModuleProfile} = await import('./data.js');
+    if(currentRoute()!=='checklist'||session.user?.uid!==uid){checklistProfileLoadUid='';return;}
     const profile = await readChecklistModuleProfile(uid);
     if (sequence !== checklistProfileLoadSequence || session.status !== 'signed-in' || session.user?.uid !== uid) return;
     session = {...session, checklistProfile:profile, checklistProfileLoaded:true, checklistProfileError:''};
@@ -5645,8 +5529,8 @@ watchSession(next=>{
     next = {...next, checklistProfile:null, checklistProfileLoaded:false};
   }
   sessionChanged(accountMode.update(next));
-  if (next.status === 'signed-in' && next.offline !== true) void loadOwnLabelModuleProfile(next.user?.uid);
-  if (next.status === 'signed-in' && next.offline !== true) void loadOwnChecklistModuleProfile(next.user?.uid);
+  if (next.status === 'signed-in' && next.offline !== true && currentRoute()==='labels') void loadOwnLabelModuleProfile(next.user?.uid);
+  if (next.status === 'signed-in' && next.offline !== true && currentRoute()==='checklist') void loadOwnChecklistModuleProfile(next.user?.uid);
   if(blocked&&!targetedAppUpdates.blocked)void render();
 });
 

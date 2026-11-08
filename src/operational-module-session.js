@@ -10,7 +10,7 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
   if (!projectId || targetAuth?.app?.options?.projectId !== projectId || !faAuth ||
       [subscribeSource, exchange, signIn, signOut, now, setTimer, clearTimer].some(value => typeof value !== 'function') ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60000) throw fail('MODULE_SESSION_CONFIG_INVALID');
-  let disposed = false, generation = 0, observedSource = faAuth.currentUser;
+  let disposed = false, active = true, generation = 0, observedSource = faAuth.currentUser;
   let boundSource = null, boundUser = null, leaseUntil = 0, renewal, pending, tail = Promise.resolve();
   const controllers = new Set();
   const enqueue = operation => {const work = tail.then(operation); tail = work.catch(() => {}); return work;};
@@ -29,13 +29,14 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
     reconcileSource();
     const source = faAuth.currentUser, owner = generation;
     if (disposed) return Promise.reject(fail('MODULE_SESSION_DISPOSED'));
+    if (!active) return Promise.reject(fail('MODULE_SESSION_INACTIVE'));
     if (!source || typeof uid !== 'string' || !uid || uid !== source.uid) return Promise.reject(fail('MODULE_SOURCE_SESSION_REQUIRED'));
     if (!force && boundSource === source && boundUser === targetAuth.currentUser && boundUser?.uid === uid && leaseUntil > now() + 30000)
       return Promise.resolve(boundUser);
     if (pending?.source === source && pending.generation === owner) return pending.promise;
     const controller = new AbortController(); controllers.add(controller);
     let timer, timedOut = false;
-    const live = () => !disposed && !timedOut && owner === generation && faAuth.currentUser === source;
+    const live = () => active && !disposed && !timedOut && owner === generation && faAuth.currentUser === source;
     const assertLive = () => {if (!live()) throw fail('MODULE_SOURCE_SESSION_CHANGED');};
     const work = enqueue(async () => {
       let signedUser;
@@ -56,7 +57,10 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
             !Number.isSafeInteger(expiry) || expiry * 1000 <= now() + 30000 || expiry * 1000 > now() + 330000)
           throw fail('MODULE_SESSION_INVALID');
         clearLease(); boundSource = source; boundUser = signedUser; leaseUntil = expiry * 1000;
-        renewal = setTimer(() => ensure(uid, {force: true}).catch(() => {}), Math.max(1000, leaseUntil - now() - 60000));
+        renewal = setTimer(() => {
+          if (!live() || boundUser !== signedUser) return;
+          return ensure(uid, {force: true}).catch(() => {});
+        }, Math.max(1000, leaseUntil - now() - 60000));
         return signedUser;
       } catch (error) {
         clearLease();
@@ -75,7 +79,16 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
     pending = record;
     return record.promise;
   };
-  return Object.freeze({ensure, async dispose() {
+  return Object.freeze({ensure, isActive: () => active && !disposed, setActive(value) {
+    if (typeof value !== 'boolean') throw fail('MODULE_SESSION_ACTIVITY_INVALID');
+    if (disposed || value === active) return Promise.resolve();
+    active = value;
+    if (active) return Promise.resolve();
+    generation++; clearLease();
+    for (const controller of controllers) controller.abort();
+    // Use the same queue as signin: cleanup must finish before reentry.
+    return enqueue(clearTarget);
+  }, async dispose() {
     if (!disposed) {
       disposed = true; generation++; clearLease(); unsubscribe?.();
       for (const controller of controllers) controller.abort();

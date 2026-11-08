@@ -47,7 +47,7 @@ async function harness({kind='events',pendingRead}={}) {
   });
   ctx.checklistIdentityProfile=()=>ctx.session.profile;
   ctx.can=permission=>ctx.session.status==='signed-in'&&ctx.session.profile.active!==false&&ctx.session.profile.access!==false&&ctx.session.profile.permissions?.[permission]===true;
-  let helpers=source.slice(source.indexOf('// Report state is transient'),source.indexOf('const preloadedDataUsers ='));
+  let helpers=source.slice(source.indexOf('// Report state is transient'),source.indexOf('function escapeHtml('));
   helpers=helpers.replace('subscribe: subscribeLiveReport,','subscribe: fakeSubscribe,');
   vm.runInContext(helpers+'\nglobalThis.testReports={liveReports,reportStates,reportPayloads,reportWaiters,reportPaintKeys,setContext:value=>checklistReportContext=value,setResponsibility:value=>checklistResponsibilityLive=value,getContext:()=>checklistReportContext,setConference:value=>checklistConferenceLive=value,setRotation:value=>checklistRotationLive=value};',ctx);
   const sessions=source.slice(source.indexOf('function sessionChanged('),source.indexOf("window.addEventListener('hashchange'"));

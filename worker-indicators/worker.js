@@ -12,7 +12,7 @@ function runtime(env){
   let fePerformanceRead;
   try{fePerformanceRead=createFePerformanceReader({endpoint:env.FE_PERFORMANCE_READ_URL,secret:env.FE_PERFORMANCE_READ_SECRET});}catch{}
   const getAccessToken=indicatorServiceToken({credentials}),store=createFirestoreStore({getAccessToken}),readBudget=createSourceReadBudget({store});
-  const sources=createIndicatorSources({getAccessToken,pageSize:1000,readBudget,eventProject:env.OPERATIONAL_EVENTS_SOURCE_PROJECT||'FA'});
+  const sources=createIndicatorSources({getAccessToken,pageSize:1000,readBudget});
   const performanceSources=createSahmtPerformanceSources({getAccessToken,readBudget,fePerformanceRead});
   runtimes.set(env,createIndicatorService({store,sources,performanceSources,readBudget,fixedEnabled:env.FD_FIXED_REFRESH_ENABLED==='true',sahmtEnabled:env.SAHMT_PERFORMANCE_ENABLED==='true'}));
  }

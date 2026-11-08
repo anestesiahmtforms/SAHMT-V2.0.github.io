@@ -63,12 +63,12 @@ const limited=()=>({status:'auth-limited',user,profile:{uid:user.uid,active:fals
 function harness({route='management',target='FB',session=authorized()}={}){
   const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[];
   const ctx=vm.createContext({googleProjectAuthEnabled:true,
-    app,document:app,session,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
+    app,document:app,session,loadOwnLabelModuleProfile(){},loadOwnChecklistModuleProfile(){},readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
     deployment:{target,faBase:'/SAHMT-V2.0.github.io/',externalManagementEnabled:true},rememberModuleNavigation(){},
     evaluationModuleGeneration:0,googleAccessPanel:null,scheduleGridObserver:null,operationalDrafts:{flush(){},restore(){}},
     updateInformationBanner(){},liveReports:new Map(),reportStates:new Map(),reportPayloads:new Map(),
     labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
-    cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive'},
+    cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive',setSession(){}},
     loginView:()=>'<main>Login</main>',bindLogin(){},canUseVacationModule,canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
     canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,forwardingButton:()=>'',communicationAdminSession:()=>false,

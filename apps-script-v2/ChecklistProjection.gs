@@ -42,13 +42,6 @@ function writeCurrentChecklistResponsibilityProjection_() {
   });
 }
 
-function installChecklistResponsibilityTrigger() {
-  evaluationAssertOperator_(true);
-  const existing = ScriptApp.getProjectTriggers().some(function (trigger) { return trigger.getHandlerFunction() === 'refreshChecklistResponsibilityProjection'; });
-  if (!existing) ScriptApp.newTrigger('refreshChecklistResponsibilityProjection').timeBased().everyMinutes(5).create();
-  return {installed: true, existing: existing};
-}
-
 // Prepare the current projection independently of signatures: participants must
 // be able to see the trusted responsible person before requesting a signature.
 // Historical projections use only accepted immutable snapshots, never live guesses.

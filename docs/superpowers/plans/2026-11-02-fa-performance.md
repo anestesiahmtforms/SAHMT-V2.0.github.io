@@ -1,4 +1,6 @@
-# Desempenho FA Implementation Plan
+# Desempenho FA — plano histórico, recurso aposentado
+
+> Em 08/11/2026, o proprietário confirmou que FA não pontua. Os instaladores e pontos de entrada `instalarDesempenhoFaV1`, `iniciarDesempenhoFaV1` e `executarDesempenhoFaV1` foram retirados do HEAD remoto, sem alterar implantações Web App versionadas. As tarefas abaixo são mantidas apenas para contexto; não reimplementar nem publicar este fluxo em FA.
 
 > **For agentic workers:** Use superpowers:executing-plans task-by-task. Preserve the approved production authorization.
 

@@ -4,12 +4,12 @@ test('QMENTUM opens directly from Registro de Indicadores and is absent from Cli
  assert.doesNotMatch(main,/qmentum-open/);
  assert.match(hub,/label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'/);
  assert.doesNotMatch(hub,/label:'Indicadores Qmentum'|indicators:\{title:/);
- assert.match(main,/!\['people', 'admin', 'occurrences', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'\]\.includes\(route\)/);
+ assert.match(main,/!\['people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'\]\.includes\(route\)/);
  assert.match(router,/'qmentum'/);
 });
 test('direct route uses the independent FC services and preserves the common-user administrative pause',()=>{
  const body=main.slice(main.indexOf("if(route === 'qmentum')"),main.indexOf("if (['management', 'training'].includes(route)"));
  assert.match(body,/import\('\.\/fc-module-firebase\.js'\)/);assert.match(body,/import\('\.\/fc-module-session\.js'\)/);assert.match(body,/getIndicatorsAuth\(\),db=getIndicatorsFirestore\(\)/);assert.doesNotMatch(body,/indicatorsDb|ensureProject|signIn/);
  assert.match(body,/session\.user\?\.uid===uid&&canOpenRestrictedModule\('qmentum'\)/);
- assert.match(main,/\['management', 'training', 'qmentum', 'fa-performance', 'fg-performance', 'fc-performance','fd-performance','fe-performance'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
+ assert.match(main,/\['management', 'training', 'qmentum', 'fg-performance', 'fc-performance','fd-performance','fe-performance'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
 });
