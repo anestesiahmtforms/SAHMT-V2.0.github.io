@@ -17,6 +17,39 @@ const helpers = ['canManageScheduleEvents', 'canReadScheduleEvents', 'actionForm
   'showScheduleContacts', 'launchEventSupport', 'launchEventFromSchedule', 'chooseEventScheduleMember',
   'setEventTypeContext', 'resetEventEditor', 'beginEventEdit', 'reportScopeCurrent'].map(fn).join('\n');
 
+test('daily event cards retain the original design and separate labels from long values inside Escala', async () => {
+  const browser = await chromium.launch({channel:'msedge', headless:true});
+  try {
+    const page = await browser.newPage();
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({width, height:844});
+      await page.setContent('<!doctype html><meta charset="utf-8"><style>'+css+'</style><main class="app-shell--events" id="frame"><dialog open id="schedule-contact-dialog" data-panel="event-report-dialog"><section open id="event-report-dialog" class="event-report event-report-dialog" data-schedule-panel><header class="event-report-dialog__header"><h2>RELATÓRIO DIÁRIO</h2></header><div id="event-report-results" class="module-content"></div></section></dialog></main>');
+      await page.addScriptTag({content:`(()=>{
+        let eventReportMode='daily',eventReportStale=false,eventReportCursor=null,loadedEventReportRecords=[];
+        const eventReportSourceRecords=[{id:'preview',version:1,date:'2026-11-08',memberStatus:'Profissional de demonstração com nome extenso',eventType:'Pessoal',description:'Descrição de demonstração com detalhes suficientes para ocupar várias linhas no cartão.',shift:'Integral',substitute:'Profissional substituto de demonstração',payer:'Pagador de demonstração',creditor:'Credor de demonstração',amountToPay:2000,createdByName:'Responsável de demonstração com nome extenso'}];
+        const can=()=>true,escapeHtml=s=>String(s??''),formatRecordDate=s=>s,interactionDateTime=()=>'',todayInputValue=()=> '2026-11-08';
+        const confirmedLiveReportRecords=r=>r,liveReports={get:()=>({snapshot:()=>({scope:{}})})},reportScopeCurrent=()=>true;
+        const reconcileReportMarkup=(el,html)=>el.innerHTML=html;
+        ${fn('renderEventReportRecords')}
+        renderEventReportRecords();})();
+      `});
+      const design = () => page.locator('.event-daily-record').evaluate(card => {
+        const style=getComputedStyle(card),field=getComputedStyle(card.querySelector('.label-record-field'));
+        return {display:style.display,padding:style.padding,borderRadius:style.borderRadius,background:style.backgroundImage,fieldDisplay:field.display,fieldGap:field.gap,labelFont:getComputedStyle(card.querySelector('.label-record-field>span')).fontSize,valueFont:getComputedStyle(card.querySelector('.label-record-field>strong')).fontSize,indexPosition:getComputedStyle(card.querySelector('.label-record-index')).position};
+      });
+      const original = await design();
+      await page.locator('#frame').evaluate(el=>el.className='app-shell--schedule');
+      assert.deepEqual(await design(), original, 'Escala must retain the previous daily-card design at '+width+'px');
+      const overlapping = await page.locator('.label-record-field,.label-record-responsible').evaluateAll(rows=>rows.some(row=>{
+        const label=row.querySelector('span').getBoundingClientRect(),value=row.querySelector('strong').getBoundingClientRect();
+        return label.right>value.left+1 || label.bottom>row.getBoundingClientRect().bottom+1 || value.bottom>row.getBoundingClientRect().bottom+1;
+      }));
+      assert.equal(overlapping, false, 'daily-card text must not overlap at '+width+'px');
+      if(process.env.EVENT_DAILY_PREVIEW_PATH&&width===390)await page.screenshot({path:process.env.EVENT_DAILY_PREVIEW_PATH});
+    }
+  } finally {await browser.close();}
+});
+
 test('Escala keeps contact, member choice, entry and reports inside one accessible modal', {timeout: 45000}, async () => {
   const browser = await chromium.launch({channel: 'msedge', headless: true});
   try {
