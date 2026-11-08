@@ -1,3 +1,4 @@
+import {createFePerformanceReadHandler,FE_PERFORMANCE_READ_PATH} from './performance-read.js';
 import {createTrainingWorker} from '../worker-training/worker.js';
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
@@ -22,7 +23,13 @@ function buildSurveyService(env){
 }
 export function createFeSurveyWorker(options={}){
  const service=createTrainingWorker({buildSurveyService,...options});
+ const tokens=new WeakMap();
+ const performanceRead=createFePerformanceReadHandler({getAccessToken(env){
+  if(!tokens.has(env))tokens.set(env,feServiceToken({credentials:JSON.parse(env.FE_SERVICE_ACCOUNT_JSON)}));
+  return tokens.get(env)();
+ }});
  return {fetch(request,env,ctx){
+  if(new URL(request.url).pathname===FE_PERFORMANCE_READ_PATH)return performanceRead(request,env);
   if(new URL(request.url).pathname!=='/v1/institutional-surveys')return Response.json({code:'SURVEY_ROUTE_UNKNOWN'},{status:404,headers:{'Cache-Control':'no-store'}});
   return service.fetch(request,env,ctx);
  }};
