@@ -198,7 +198,7 @@ test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Dese
   const session = approved();
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['management-hub']);
+  assert.deepEqual(visibleRoutes(h), ['schedule', 'management-hub']);
   assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
   assert.equal(h.context.canOpenRestrictedModule('management'), false);
   assert.equal(h.context.canOpenRestrictedModule('training'), false);
@@ -231,7 +231,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
   const session = approved({trainingsRead: false, notificationsRead: false, labelsWrite: true});
   const before = structuredClone(session);
   const h = harness({session});
-  assert.deepEqual(visibleRoutes(h), ['labels', 'management-hub']);
+  assert.deepEqual(visibleRoutes(h), ['schedule', 'labels', 'management-hub']);
   assert.equal(h.ui.can('trainingsRead'), false);
   assert.equal(h.ui.can('notificationsRead'), false);
   assert.deepEqual(session, before);
@@ -240,7 +240,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
 test('administradores preservam os cartões e os controles administrativos existentes', () => {
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
-    assert.deepEqual(visibleRoutes(h), ['labels', 'management-hub', 'checklist']);
+    assert.deepEqual(visibleRoutes(h), ['checklist', 'schedule', 'labels', 'management-hub']);
     assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
     assert.equal(h.context.canOpenRestrictedModule('training'), true);
     assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);
@@ -267,7 +267,7 @@ test('o acesso comum aos cartões exige sessão aprovada e ambos os indicadores 
 
 test('o menu Gestão permanece disponível quando os destinos estão desativados', () => {
   const common = harness({session: approved(), appFeatures: {management: false, trainings: false, notifications: false}});
-  assert.deepEqual(visibleRoutes(common), ['management-hub']);
+  assert.deepEqual(visibleRoutes(common), ['schedule', 'management-hub']);
   assert.doesNotMatch(cardMarkup(common, 'management-hub'), /disabled/);
   assert.equal(common.context.canOpenRestrictedModule('management'), false);
   assert.equal(common.context.canOpenRestrictedModule('training'), false);
@@ -275,13 +275,13 @@ test('o menu Gestão permanece disponível quando os destinos estão desativados
   const admin = harness({session: approved({}, 'administrador_app'), appFeatures: {management: false, trainings: false, notifications: false}});
   assert.equal(visibleRoutes(admin).includes('training'), false);
   assert.equal(visibleRoutes(admin).includes('notifications'), false);
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), ['management-hub']);
-  assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['management-hub']);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {trainings: false}})), ['schedule', 'management-hub']);
+  assert.deepEqual(visibleRoutes(harness({appFeatures: {notifications: false}})), ['schedule', 'management-hub']);
 });
 
 test('permissões de leitura existentes permitem consultar sem mostrar formulários de gestão', () => {
   const h = harness({session: approved({trainingsRead: true, notificationsRead: true})});
-  assert.deepEqual(visibleRoutes(h), ['management-hub']);
+  assert.deepEqual(visibleRoutes(h), ['schedule', 'management-hub']);
   assert.equal(h.ui.can('trainingsRead'), true);
   assert.equal(h.ui.can('notificationsRead'), true);
   assert.equal(h.ui.can('trainingsManage'), false);
