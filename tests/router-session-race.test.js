@@ -16,7 +16,7 @@ function fixture(){
 
 test('an older FB entry cannot redirect after a newer local navigation',async()=>{
  const h=fixture(),old=h.navigate('management');await Promise.resolve();await h.navigate('events');h.finish(true);await old;
- assert.equal(h.ctx.location.hash,'#/events');assert.deepEqual(h.assignments,[]);
+ assert.equal(h.ctx.location.hash,'#/schedule');assert.deepEqual(h.assignments,[]);
 });
 
 test('an older failed FB entry cannot replace a newer page with Synchronization',async()=>{

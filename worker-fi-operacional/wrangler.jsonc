@@ -1,7 +1,7 @@
 {
   "name": "sahmt-fi-operacional",
   "account_id": "948f85652861c7c25506625091d2120d",
-  "main": "../worker-operational-domain/worker.js",
+  "main": "retired.js",
   "compatibility_date": "2026-11-06",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,

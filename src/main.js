@@ -2437,8 +2437,7 @@ function ensureChecklistDailyReportOpen(day) {
   if (dayControl) dayControl.hidden = false;
   if (monthControl) monthControl.hidden = true;
   const dialog = document.querySelector('#checklist-report-dialog');
-  if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
-  else if (dialog && !dialog.open) dialog.showModal();
+  if (dialog && !dialog.open) dialog.showModal();
 }
 
 function showChecklistStationBanner(station, record, day, stations, {fromQr = false} = {}) {
@@ -2914,8 +2913,7 @@ async function loadMonthlyChecklist(stations, suppliedResult = null, scope = nul
       const reportDayInput = document.querySelector('#checklist-report-day');
       if (reportDayInput) reportDayInput.value = day;
       const dialog = document.querySelector('#checklist-report-dialog');
-      if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
-  else if (dialog && !dialog.open) dialog.showModal();
+      if (dialog && !dialog.open) dialog.showModal();
       const title = document.querySelector('#checklist-report-title');
       if (title) title.textContent = 'RELATÓRIO DIÁRIO - CHECKLIST';
       document.querySelector('#checklist-day-control').hidden = false;
