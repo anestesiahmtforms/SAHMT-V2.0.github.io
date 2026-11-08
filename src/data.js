@@ -131,7 +131,7 @@ export async function listVacationsForDate(day, {pageSize = 100} = {}) {
 }
 
 export async function listModuleRecords(module, uid, {pageSize = MAX_PAGE_SIZE} = {}) {
-  const moduleDb = module === 'events' ? await operationalDatabase('FI', uid) : module === 'labels' ? await operationalDatabase('FH', uid) : module === 'checklist' ? await operationalDatabase('FG', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
+  const moduleDb = module === 'events' ? await operationalDatabase('FJ', uid) : module === 'labels' ? await operationalDatabase('FH', uid) : module === 'checklist' ? await operationalDatabase('FG', uid) : ['management','training'].includes(module) ? await managementDatabase(uid) : db;
   const config = moduleCollections[module];
   if (!config) throw new Error('Módulo de dados desconhecido.');
   if (module === 'checklist') return readThroughSafeCache({uid, kind: 'stations', id: 'all', localFirst: true,
@@ -208,7 +208,7 @@ export async function saveAppFeatures(input, actorUid) {
 }
 
 export async function listContactCatalog({pageSize = 200, uid} = {}) {
-  const db = await getOperationalModuleDatabase('FI', uid);
+  const db = await getOperationalModuleDatabase('FJ', uid);
   const result = await getDocsFromServer(query(
     collection(db, 'contacts'),
     orderBy('sigla', 'asc'),
@@ -219,7 +219,7 @@ export async function listContactCatalog({pageSize = 200, uid} = {}) {
 
 export async function syncEventMemberDirectory(uid) {
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  const db = await getOperationalModuleDatabase('FI', uid);
+  const db = await getOperationalModuleDatabase('FJ', uid);
   const contacts = await listContactCatalog({pageSize: 200, uid});
   const batch = writeBatch(db);
   for (const contact of contacts) {
@@ -277,7 +277,7 @@ export async function saveContact(input, actorUid) {
   if (whatsAppLink && !/^https:\/\/(?:wa\.me\/\d+|api\.whatsapp\.com\/send\?phone=\d+)$/.test(whatsAppLink)) {
     throw new Error('O link de WhatsApp deve usar um endereço wa.me ou api.whatsapp.com com telefone numérico.');
   }
-  const db = await getOperationalModuleDatabase('FI', actorUid);
+  const db = await getOperationalModuleDatabase('FJ', actorUid);
   const ref = doc(db, 'contacts', sigla);
   const current = await getDocFromServer(ref);
   const record = {
@@ -318,7 +318,7 @@ export async function updateContactRegistrationFields(records, actorUid) {
     }
     siglas.add(record.sigla);
   }
-  const db = await getOperationalModuleDatabase('FI', actorUid);
+  const db = await getOperationalModuleDatabase('FJ', actorUid);
   await runTransaction(db, async (transaction) => {
     const snapshots = await Promise.all(records.map((record) => transaction.get(doc(db, 'contacts', record.sigla))));
     const missing = records.filter((_, index) => !snapshots[index].exists()).map((record) => record.sigla);
@@ -351,11 +351,11 @@ export async function updateContactRegistrationFields(records, actorUid) {
 
 export async function listEventMembers({uid} = {}) {
   return readThroughSafeCache({uid, kind: 'eventMembers', id: 'all', localFirst: true, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-  const db = await operationalDatabase('FI', uid);
+  const db = await operationalDatabase('FJ', uid);
   const [directoryResult, contactsResult, siglasResult] = await Promise.allSettled([
     getDocsFromServer(query(collection(db, 'eventMembers'), limit(200))),
     getDocsFromServer(query(collection(db, 'contacts'), where('active', '==', true), orderBy('sigla', 'asc'), limit(200))),
-    operationalModuleEnabled('FI') ? getDocFromServer(doc(db, 'appConfig', 'labelStaff')).then(snapshot =>
+    operationalModuleEnabled('FJ') ? getDocFromServer(doc(db, 'appConfig', 'labelStaff')).then(snapshot =>
       snapshot.exists() && snapshot.data().active === true && Array.isArray(snapshot.data().siglas) ? snapshot.data().siglas : []) : listLabelStaffSiglas({uid})
   ]);
   if (directoryResult.status === 'rejected' && contactsResult.status === 'rejected' && siglasResult.status === 'rejected') {
@@ -1375,7 +1375,7 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
   let nextCursor = null;
   if (!stale) {
     try {
-      const db = await operationalDatabase('FI', uid);
+      const db = await operationalDatabase('FJ', uid);
       const visibility = isAdmin
         ? []
         : String(sigla || '').trim()
@@ -1453,7 +1453,7 @@ export async function listEventRecords({from, to, uid, sigla = '', isAdmin = fal
 export async function getEventCatalog(uid) {
   return readThroughSafeCache({uid, kind: 'eventCatalogs', id: 'operational', localFirst: true,
     readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-    const db = await operationalDatabase('FI', uid);
+    const db = await operationalDatabase('FJ', uid);
     const snapshot = await getDocFromServer(doc(db, 'eventCatalogs', 'operational'));
     const catalog = snapshot.exists()
       ? {id: snapshot.id, ...snapshot.data()}
@@ -1465,7 +1465,7 @@ export async function getEventCatalog(uid) {
 export async function saveEventCatalog(input, uid) {
   assertOnlineOperation();
   if (!uid) throw new Error('A sessão expirou. Entre novamente.');
-  const db = await operationalDatabase('FI', uid);
+  const db = await operationalDatabase('FJ', uid);
   const {payers, creditors} = validateEventCatalog({
     payers: parseCatalogValues(input.payers, 'Pagadores'),
     creditors: parseCatalogValues(input.creditors, 'Credores')
@@ -1485,12 +1485,12 @@ export async function saveEventCatalog(input, uid) {
     };
     transaction.set(ref, saved);
   });
-  if (!operationalModuleEnabled('FI')) void globalThis.sahmtMirrorConfirmedSource?.('eventCatalogs/operational');
+  if (!operationalModuleEnabled('FJ')) void globalThis.sahmtMirrorConfirmedSource?.('eventCatalogs/operational');
   return saved;
 }
 
 async function confirmCommittedEventEdit(eventId, updates, uid, requestId, version) {
-  const db = await operationalDatabase('FI', uid);
+  const db = await operationalDatabase('FJ', uid);
   const [snapshot, historySnapshot] = await Promise.all([
     getDocFromServer(doc(db, 'events', eventId)),
     getDocFromServer(doc(db, 'events', eventId, 'history', String(version)))
@@ -1505,7 +1505,7 @@ async function confirmCommittedEventEdit(eventId, updates, uid, requestId, versi
 
 export async function listEventHistory(eventId, {pageSize = 20} = {}) {
   if (!eventId) throw new Error('Selecione um evento para consultar o histórico.');
-  const db = await operationalDatabase('FI');
+  const db = await operationalDatabase('FJ');
   const result = await getDocsFromServer(query(
     collection(db, 'events', eventId, 'history'),
     orderBy('version', 'desc'),
@@ -1518,7 +1518,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
   assertOnlineOperation();
   if (!eventId || !uid) throw new Error('A sessão expirou. Entre novamente.');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('A versão deste evento não está disponível. Atualize o relatório antes de editar.');
-  const db = await operationalDatabase('FI', uid);
+  const db = await operationalDatabase('FJ', uid);
   const ref = doc(db, 'events', eventId);
   const fields = ['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay'];
   const updates = Object.fromEntries(fields.map((field) => [field, input[field]]));
@@ -1549,7 +1549,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
       };
       transaction.update(ref, {...updates, updatedByName, updatedByUid: uid, updatedAt: serverTimestamp(), version});
       transaction.set(historyRef, historyEntry);
-      if (operationalModuleEnabled('FI')) stageEventProjection(transaction, db, eventId, version, uid);
+      if (operationalModuleEnabled('FJ')) stageEventProjection(transaction, db, eventId, version, uid);
     });
   } catch (error) {
     if (error.code === 'stale-version') throw error;
@@ -1559,7 +1559,7 @@ export async function updateEventRecord(eventId, input, uid, expectedVersion, re
     if (!['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code) && navigator.onLine) throw error;
     throw unconfirmedWrite(error,requestId);
   }
-  if(!unchanged && !operationalModuleEnabled('FI'))void globalThis.sahmtMirrorConfirmedSource?.('events/'+eventId);
+  if(!unchanged && !operationalModuleEnabled('FJ'))void globalThis.sahmtMirrorConfirmedSource?.('events/'+eventId);
   return {id: eventId, pendingFirestore: false, unchanged};
 }
 
@@ -2412,7 +2412,7 @@ function buildRecordBatch(batch, {collectionName, data, uid, requestId}, databas
     collectionName, data, uid, requestId, now: serverTimestamp(),
     recordRef: doc(database, collectionName, requestId)
   });
-  if (collectionName === 'events' && operationalModuleEnabled('FI')) stageEventProjection(batch, database, requestId, 1, uid);
+  if (collectionName === 'events' && operationalModuleEnabled('FJ')) stageEventProjection(batch, database, requestId, 1, uid);
 }
 
 function stageEventProjection(batch, database, eventId, version, uid) {
@@ -2432,7 +2432,7 @@ function canonicalValue(value) {
 }
 
 async function confirmCommittedMutation({collectionName, data, uid, requestId}) {
-  const db = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
+  const db = collectionName === 'events' ? await operationalDatabase('FJ', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : collectionName === 'activities' ? await managementDatabase(uid) : identityDb;
   const snapshot = await getDocFromServer(doc(db, collectionName, requestId));
   if (!snapshot.exists()) return false;
   const saved = snapshot.data();
@@ -2447,7 +2447,7 @@ export async function createOperationalRecord(collectionName,data,{uid,requestId
   const result=await persistOperationalMutation({id:requestId,online:true,
     sendRemote:()=>sendOperationalRecordInFirestore(collectionName,data,{uid,requestId}),
     onFailure:error=>operationalBackend.noteFailure(error,collectionName)});
-  if (!(collectionName === 'events' && operationalModuleEnabled('FI')) && !(collectionName === 'labels' && operationalModuleEnabled('FH')) && !(collectionName === 'checklists' && operationalModuleEnabled('FG'))) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
+  if (!(collectionName === 'events' && operationalModuleEnabled('FJ')) && !(collectionName === 'labels' && operationalModuleEnabled('FH')) && !(collectionName === 'checklists' && operationalModuleEnabled('FG'))) void confirmOperationalSheetDelivery(collectionName,requestId,uid);
   return result;
 }
 
@@ -2466,7 +2466,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
       throw unconfirmedWrite(error,requestId);
     }
   }
-  const targetDb = collectionName === 'events' ? await operationalDatabase('FI', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
+  const targetDb = collectionName === 'events' ? await operationalDatabase('FJ', uid) : collectionName === 'labels' ? await operationalDatabase('FH', uid) : collectionName === 'checklists' ? await operationalDatabase('FG', uid) : collectionName === 'activities' ? await managementDatabase(uid) : db;
   const batch = writeBatch(targetDb);
   buildRecordBatch(batch, {collectionName, data, uid, requestId}, targetDb);
   try {
@@ -2484,7 +2484,7 @@ async function sendOperationalRecordInFirestore(collectionName, data, {uid, requ
 
 async function commitOperationalMutationOnce(collectionName, data, uid, requestId) {
   if (collectionName === 'events') {
-    const db = await operationalDatabase('FI', uid);
+    const db = await operationalDatabase('FJ', uid);
     const batch = writeBatch(db);
     buildRecordBatch(batch, {collectionName, data, uid, requestId}, db);
     try {await batch.commit();}
@@ -2512,8 +2512,8 @@ async function commitOperationalMutationOnce(collectionName, data, uid, requestI
 async function createScheduledEvent(data, {uid, requestId}) {
   const day = data.date;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('A data da escala do evento é inválida.');
-  if (operationalModuleEnabled('FI')) {
-    const targetDb = await operationalDatabase('FI', uid), batch = writeBatch(targetDb);
+  if (operationalModuleEnabled('FJ')) {
+    const targetDb = await operationalDatabase('FJ', uid), batch = writeBatch(targetDb);
     buildRecordBatch(batch, {collectionName: 'events', data, uid, requestId}, targetDb);
     await batch.commit();
     return {id: requestId, pendingFirestore: false, projectionQueued: true};

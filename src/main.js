@@ -294,9 +294,9 @@ function makeReportScope(kind, {warm = false, append = false, suppliedDay} = {})
 function reportScopeCurrent(scope) {
   if (!scope || !reportAllowed(scope.kind) || session.user.uid !== scope.uid || reportPermissionKey(scope.kind) !== scope.permissionKey) return false;
   if (scope.warm) return true;
-  if (currentRoute() !== scope.kind || !scope.targetNode?.isConnected) return false;
+  if ((scope.kind === 'events' ? !['events', 'schedule'].includes(currentRoute()) : currentRoute() !== scope.kind) || !scope.targetNode?.isConnected) return false;
   const prefix = scope.kind === 'events' ? 'event' : scope.kind === 'labels' ? 'label' : 'checklist';
-  if (!document.querySelector('#' + prefix + '-report-dialog')?.open) return false;
+  if (scope.kind === 'events' && currentRoute() === 'schedule' ? !eventReportOpen || !document.querySelector('#schedule-contact-dialog')?.open : !document.querySelector('#' + prefix + '-report-dialog')?.open) return false;
   if ((scope.kind === 'events' ? eventReportMode : scope.kind === 'labels' ? labelReportMode : checklistReportMode) !== scope.mode) return false;
   const target = document.querySelector(scope.kind === 'checklist' ? '#module-content' : '#' + prefix + '-report-results');
   if (target !== scope.targetNode) return false;
@@ -744,7 +744,7 @@ function moduleCards() {
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
   const commonModules = commonUserActive ? ['management', ...(typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled ? ['labels'] : []), ...(typeof fgChecklistEnabled !== 'undefined' && fgChecklistEnabled ? ['checklist'] : [])] : [];
   const moduleIcons = {events: 'assets/modules/operacional.jpg', labels: 'assets/sahmt-logo.png', management: 'assets/selo-qga-accredited-qmentum-diamond.png', checklist: 'assets/modules/checklist.svg', training: 'assets/modules/desempenho.svg'};
-  return Object.entries(labels).filter(([route]) => !['people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
+  return Object.entries(labels).filter(([route]) => !['events', 'people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance', 'fd-performance', 'fe-performance'].includes(route)
     && !['training', 'management-hub'].includes(route)
       && (route==='fd-performance'?fdPerformanceEnabled&&fdPerformanceIdentityCanEnter(session):route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
@@ -893,6 +893,14 @@ function fitSchedulePositionGrid(container) {
   }
 }
 
+function canManageScheduleEvents() {
+  return featureEnabledForRoute('events', appFeatures) && can('eventsWrite') && (can('admin') || session.profile?.role === 'gestor');
+}
+
+function canReadScheduleEvents() {
+  return featureEnabledForRoute('events', appFeatures) && (can('eventsRead') || can('eventsWrite'));
+}
+
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
   const highlightedSiglas = new Set(mode === 'home' ? visibleScheduleReleaseSiglas(schedule.highlights?.siglas, session.profile?.sigla) : []);
   const releaseTimes = mode === 'home' ? schedule.highlights?.releaseTimes || {} : {};
@@ -928,13 +936,13 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       : '';
     const actionLabel = eventMode
       ? (eventsWritable ? `Lançar evento pela sigla ${position.sigla}` : `Sigla ${position.sigla}`)
-      : (hasContact ? `Abrir contato da sigla ${position.sigla}` : canLaunchEvent ? `Lançar evento pela sigla ${position.sigla}` : `Contato não cadastrado para ${position.sigla}`);
+      : (currentRoute() === 'schedule' ? `Abrir ações da sigla ${position.sigla}` : hasContact ? `Abrir contato da sigla ${position.sigla}` : canLaunchEvent ? `Lançar evento pela sigla ${position.sigla}` : `Contato não cadastrado para ${position.sigla}`);
     const title = eventMode
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
-    const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent;
+    const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent && !(currentRoute() === 'schedule' && canReadScheduleEvents());
     return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${provisionalRelease ? ' sigla-token--provisional' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(provisionalRelease ? title + ' · Liberação provisória; confirmação pendente' : title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
-  }).join('')}${eventMode ? renderEventSupportTile(eventsWritable) : ''}</div>`;
+  }).join('')}${eventsWritable && (eventMode || currentRoute() === 'schedule') ? renderEventSupportTile(true) : ''}</div>`;
 }
 
 function renderEventSupportTile(eventsWritable) {
@@ -996,7 +1004,7 @@ function labelConfirmationFadeStyle(confirmation) {
 
 function actionForm(route) {
   if (route === 'events') {
-    if (!can('eventsWrite')) return '';
+    if (!canManageScheduleEvents()) return '';
     return `<dialog class="event-launch-dialog" id="event-launch-dialog" aria-labelledby="event-launch-title"><header><div><h3 id="event-launch-title" tabindex="-1" autofocus>LANÇAMENTO DO EVENTO</h3></div></header><form data-module-form="events" autocomplete="on" novalidate>
     <div class="form-grid"><label><span>Data do Evento</span><input name="eventDate" type="date" required value="${todayInputValue()}"></label>
     <div class="event-member-field" data-event-field="memberStatus"><input name="memberSigla" type="hidden"><label class="event-member-control"><span>MEMBRO AUSENTE/ATRASADO</span><input name="memberStatus" maxlength="160" readonly placeholder="Selecione uma sigla na escala"></label></div>
@@ -1053,8 +1061,9 @@ function shellView() {
   const checklistVisual = route === 'checklist' ? `<div class="checklist-visual-frame"><figure class="checklist-visual"><figcaption>Arsenal Anestésico</figcaption><img src="${import.meta.env.BASE_URL}assets/carrinho-anestesia-checklist-v2.jpg" alt="Arsenal anestésico com indicadores dos itens de verificação" loading="lazy" decoding="async"></figure></div>` : '';
   const utilityCards = route === 'management' ? managementUtilityCards() : '';
   const managementUtilities = utilityCards ? `<section class="management-utilities" aria-label="Outras áreas de Gestão"><div class="module-grid">${utilityCards}</div></section>` : '';
-  const eventReport = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title" tabindex="-1" autofocus>RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2></header><p id="event-report-sync" class="label-report-sync" role="status" aria-live="polite">Atualizando</p><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer event-report-footer" id="event-report-footer" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
+  const eventReport = ['events', 'schedule'].includes(route) && canReadScheduleEvents() ? `<div class="event-report-launchers" aria-label="Abrir relatórios de eventos"><button type="button" data-event-report-launch="daily">RELATÓRIO DIÁRIO</button><button type="button" data-event-report-launch="monthly">RELATÓRIO MENSAL</button></div><dialog class="event-report event-report-dialog" id="event-report-dialog" aria-label="Relatórios de eventos"><header class="event-report-dialog__header"><h2 id="event-report-dialog-title" tabindex="-1" autofocus>RELATÓRIO ${eventReportMode === 'daily' ? 'DIÁRIO' : 'MENSAL'}</h2></header><p id="event-report-sync" class="label-report-sync" role="status" aria-live="polite">Atualizando</p><div id="event-day-control" class="report-period event-day-control" ${!eventReportOpen || eventReportMode !== 'daily' ? 'hidden' : ''}><label>Data do relatório<input type="date" id="event-report-day" value="${todayInputValue()}"></label></div><div id="event-month-control" class="report-period event-month-control" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="event-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="event-report-results" class="module-content" aria-live="polite" ${eventReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer event-report-footer" id="event-report-footer" ${!eventReportOpen || eventReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-events-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
   const eventSchedule = route === 'events' && (can('eventsRead') || can('eventsWrite')) ? `<section class="event-schedule panel" aria-label="Escala de Eventos"><header class="event-schedule-heading"><label class="date-picker">DATA<input type="date" id="event-schedule-date" value="${todayInputValue()}"></label></header><nav class="schedule-day-nav" aria-label="Navegar pela escala de Eventos"><button class="secondary-button" id="event-schedule-previous" type="button">Anterior</button><button class="primary-button" id="event-schedule-today" type="button">Hoje</button><button class="secondary-button" id="event-schedule-next" type="button">Próximo</button></nav><div id="event-schedule-content" class="schedule-content" aria-live="polite"><p class="loading">Carregando escala…</p></div></section>` : '';
+  const scheduleEventPanels = route === 'schedule' ? eventPanelsMarkup(actionForm('events'), eventReport) : '';
   const checklistCalendar = '';
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
@@ -1071,12 +1080,12 @@ function shellView() {
       </article>
       <section class="modules-section"><div class="module-grid">${route === 'home' ? moduleCards() : ''}</div>${communicationFeatureEnabled?'<aside class="comm-home-banner" aria-label="Central de Comunicação"><div><strong>🔔 Central de Comunicação</strong><p>Avisos e mensagens institucionais.</p></div><button type="button" class="secondary-button" data-route="communications" aria-label="Abrir Central de Comunicação">ABRIR</button></aside>':''}${route==='home'&&canUseYearEndSchedule(session)?'<aside class="comm-home-banner" aria-label="Escala Final de Ano"><div><strong>ESCALA FINAL DE ANO</strong><p>Confirme suas escolhas de plantão e grupo de trabalho.</p></div><button type="button" class="secondary-button" data-route="year-end-schedule" aria-label="ESCALA FINAL DE ANO">ABRIR</button></aside>':''}</section>
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}${checklistPermissionPanel}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelPermissionPanel}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
-  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
+  return `<div class="app-shell${route === 'home' ? ' app-shell--home' : route === 'schedule' ? ' app-shell--schedule' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     <header class="topbar"><div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button><div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'home' ? '<h2 class="home-header-scale">ESCALA</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div></header>
    <main class="main-content">${route === 'home' || route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<div class="page-title${route === 'labels' ? ' page-title--labels' : route === 'checklist' ? ' page-title--checklist' : ''}">${route === 'labels' || route === 'checklist' ? '' : '<p class="eyebrow">GESTÃO RESPONSÁVEL</p>'}<h1>${route === 'checklist' ? 'CHECKLIST' : escapeHtml(title)}</h1></div>`}${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}${session.status === 'auth-limited' ? `<p class="notice" role="status">${session.validatingProfile ? 'Login Firebase confirmado. Verificando seu perfil e suas permissões.' : 'Login Firebase confirmado. O perfil não pôde ser validado; o app permanece em modo restrito, sem dados nem ações do servidor.'}</p>` : session.offline && route !== 'home' && route !== 'events' ? `<div class="notice profile-connection-notice" data-local-profile-notice role="status"><span>${session.validatingProfile ? 'Confirmando a conexão com o servidor… Sua sessão Firebase está ativa.' : 'Sua sessão Firebase está ativa. Usando o perfil local enquanto a conexão com o servidor é restabelecida.'}</span><button type="button" class="secondary-button" data-profile-reconnect ${session.validatingProfile ? 'disabled' : ''}>${session.validatingProfile ? 'Verificando…' : 'Reconectar'}</button><small data-profile-retry-message></small></div>` : ''}${session.status === 'auth-limited' && !session.validatingProfile && session.profileFailureCode ? `<p class="notice" data-profile-diagnostic role="status">Diagnóstico: <strong>${escapeHtml(session.profileFailureCode)}</strong>. ${session.profileFailureCode === 'LOCAL_PROFILE_UNAVAILABLE' ? 'Este aparelho não tem uma cópia local válida do perfil. Será necessária uma validação online quando o Firestore estiver disponível.' : session.profileFailureCode === 'LOCAL_STORAGE_UNAVAILABLE' ? 'O armazenamento local do navegador está indisponível.' : 'A validação online do perfil não foi concluída.'}</p>` : ''}${view}</main>
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><div class="checklist-qr-tools"><div class="checklist-qr-zoom" role="group" aria-label="Ampliação do QR"><button type="button" data-checklist-qr-zoom="1" aria-pressed="false">1×</button><button type="button" data-checklist-qr-zoom="2" aria-pressed="true">2×</button></div><button id="checklist-qr-camera-switch" type="button" hidden disabled>Trocar câmera</button></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
-    <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details"><h3 id="schedule-contact-heading">Contato</h3></div><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></dialog>
-    <dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>
+    <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details" data-schedule-panel><h3 id="schedule-contact-heading">Contato</h3></div>${scheduleEventPanels}<form method="dialog" data-schedule-close><button class="secondary-button" type="submit">Fechar</button></form></dialog>
+    ${route === 'schedule' ? '' : `<dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>`}
     <footer class="app-footer">By Francisco Tadeu da Mota Albuquerque</footer>
   </div>`;
 }
@@ -1123,17 +1132,20 @@ async function loadSchedule() {
     if (!scheduleCurrent()) return;
     if (globalThis.sahmtProjectSharedSchedule) schedule=globalThis.sahmtProjectSharedSchedule(schedule,{uid:session.user?.uid,day:selectedDate});
     if (!schedule) {
-      content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>';
+      content.innerHTML = '<p class="empty-state">Nenhuma escala publicada para esta data.</p>' + (canManageScheduleEvents() ? `<div class="siglas-grid schedule-siglas-grid">${renderEventSupportTile(true)}</div>` : '');
+      bindEventSupportButton(content, selectedDate);
       return;
     }
     const scheduleView = buildScheduleView(schedule, selectedDate, selectedVacations, selectedContacts);
-    const grid = scheduleView.positions.length ? renderSchedulePositionGrid(scheduleView, {mode: 'home', schedule, eventsWritable: can('eventsWrite')}) : '';
+    const grid = scheduleView.positions.length ? renderSchedulePositionGrid(scheduleView, {mode: 'home', schedule, eventsWritable: canManageScheduleEvents()}) : '';
     content.innerHTML = grid || '<p class="empty-state">A escala está publicada sem itens.</p>';
     fitSchedulePositionGrid(content);
+    bindEventSupportButton(content, selectedDate);
     content.querySelectorAll('[data-schedule-position-index]').forEach((button) => button.addEventListener('click', () => {
       const position = scheduleView.positions[Number(button.dataset.schedulePositionIndex)];
       if (position) showScheduleContacts(position.contacts || [], {
         sigla: position.sigla,
+        position,
         date: selectedDate,
         groupSiglas: position.contacts.map((contact) => String(contact.sigla || '').toUpperCase()),
         highlightedSiglas: Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : [],
@@ -1266,7 +1278,7 @@ async function loadSchedule() {
   });
   dateInput.addEventListener('change', render);
   dateInput.addEventListener('sahmt-shared-refresh',()=>{if(!scheduleCurrent())return;const uid=homeUid,day=dateInput.value;void readCachedSchedule(uid,day).then(value=>{if(value&&scheduleCurrent()&&dateInput.isConnected&&dateInput.value===day)renderSchedule(value,day,vacationsCache.get(day)?.items||[],contacts);});});
-  const cleanup = () => {disposed = true; requestSequence++;};
+  const cleanup = () => {disposed = true; requestSequence++; scheduleMemberChoice?.(null); scheduleMemberChoice = null;};
   cleanup.suspend = () => {suspended = true; needsServerResume = true; requestSequence++; contactsRequest = null;};
   cleanup.resumeLocal = () => {
     if (disposed || !suspended || !content.isConnected || session.user?.uid !== homeUid) return;
@@ -1278,6 +1290,96 @@ async function loadSchedule() {
   };
   cleanupCurrentModule = cleanup;
   await render();
+}
+
+let scheduleEventContext = {};
+let scheduleMemberChoice = null;
+
+function eventPanelsMarkup(form, report) {
+  const panel = markup => markup.replace(/^.*?(?=<dialog)/s, '').replace('<dialog ', '<section hidden data-schedule-panel ').replace(/<\/dialog>$/, '</section>');
+  return panel(form) + panel(report) + '<section hidden data-schedule-panel id="schedule-event-choice"><h3 tabindex="-1">Escolha o anestesiologista</h3><div id="schedule-event-choice-options" class="event-schedule-choice-options"></div><button type="button" class="secondary-button" data-schedule-choice-cancel>Voltar</button></section>';
+}
+
+function showSchedulePanel(id) {
+  const dialog = document.querySelector('#schedule-contact-dialog');
+  const panel = document.getElementById(id);
+  if (!dialog || !panel) return;
+  dialog.querySelectorAll('[data-schedule-panel]').forEach(item => { item.hidden = item !== panel; });
+  dialog.dataset.panel = id;
+  dialog.querySelector('[data-schedule-close]').hidden = id !== 'schedule-contact-details';
+  const heading = panel.querySelector('h2, h3');
+  if (heading) {
+    if (!heading.id) heading.id = id + '-heading';
+    heading.tabIndex = -1;
+    dialog.setAttribute('aria-labelledby', heading.id);
+  }
+  if (!dialog.open) dialog.showModal();
+  heading?.focus({preventScroll: true});
+}
+
+async function finishScheduleEventSave(message) {
+  resetEventEditor();
+  const status = document.querySelector('[data-release-status]');
+  if (status) status.textContent = message;
+  scheduleEventContext.onRelease?.();
+  if (eventReportOpen) await loadEventReport({force: true});
+}
+
+async function openScheduleEventReport(mode) {
+  if (!canReadScheduleEvents() || !['daily', 'monthly'].includes(mode)) return;
+  eventReportMode = mode;
+  eventReportOpen = true;
+  const day = scheduleEventContext.date || document.querySelector('#schedule-date')?.value || todayInputValue();
+  document.querySelector('#event-report-day').value = day;
+  document.querySelector('#event-report-month').value = day.slice(0, 7);
+  document.querySelector('#event-report-dialog-title').textContent = mode === 'daily' ? 'RELATÓRIO DIÁRIO' : 'RELATÓRIO MENSAL';
+  document.querySelector('#event-day-control').hidden = mode !== 'daily';
+  document.querySelector('#event-month-control').hidden = mode !== 'monthly';
+  document.querySelector('#event-report-footer').hidden = mode !== 'monthly';
+  document.querySelector('#event-report-results').hidden = false;
+  showSchedulePanel('event-report-dialog');
+  await loadEventReport();
+}
+
+function bindScheduleEventPanels() {
+  const dialog = document.querySelector('#schedule-contact-dialog');
+  if (!dialog) return;
+  eventReportOpen = false;
+  scheduleEventContext = {};
+  const finishChoice = value => { const resolve = scheduleMemberChoice; scheduleMemberChoice = null; resolve?.(value); };
+  const back = () => {
+    if (dialog.dataset.panel === 'event-launch-dialog') { resetEventEditor(); return; }
+    finishChoice(null);
+    eventReportOpen = false;
+    closeReportLive('events');
+    showSchedulePanel('schedule-contact-details');
+  };
+  dialog.addEventListener('cancel', event => {
+    if (dialog.dataset.panel !== 'schedule-contact-details') { event.preventDefault(); back(); }
+  });
+  dialog.addEventListener('close', () => { finishChoice(null); eventReportOpen = false; closeReportLive('events'); });
+  dialog.querySelectorAll('[data-schedule-panel] form[method="dialog"]').forEach(form => form.addEventListener('submit', event => { event.preventDefault(); if (form.closest('#event-launch-dialog')) resetEventEditor(); else back(); }));
+  dialog.querySelector('[data-schedule-choice-cancel]')?.addEventListener('click', back);
+  document.querySelector('#event-report-day')?.addEventListener('change', loadEventReport);
+  document.querySelector('#event-report-month')?.addEventListener('change', loadEventReport);
+  document.querySelector('#share-events-pdf')?.addEventListener('click', () => shareReportPdf('events'));
+  document.querySelector('#event-edit-cancel')?.addEventListener('click', resetEventEditor);
+}
+
+function chooseScheduleEventMember(sigla, choices) {
+  const options = document.querySelector('#schedule-event-choice-options');
+  if (!options) return Promise.resolve(null);
+  scheduleMemberChoice?.(null);
+  options.replaceChildren();
+  document.querySelector('#schedule-event-choice h3').textContent = `Escolha o anestesiologista · ${sigla}`;
+  for (const choice of choices) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'secondary-button';
+    button.textContent = `${choice.name || choice.sigla} · ${choice.sigla}`;
+    button.addEventListener('click', () => { const resolve = scheduleMemberChoice; scheduleMemberChoice = null; resolve?.(choice); });
+    options.append(button);
+  }
+  return new Promise(resolve => { scheduleMemberChoice = resolve; showSchedulePanel('schedule-event-choice'); });
 }
 
 function showScheduleContacts(contacts, context = {}) {
@@ -1338,7 +1440,16 @@ function showScheduleContacts(contacts, context = {}) {
       if (status) status.textContent = 'Não foi possível salvar a liberação. Confira a conexão e sua permissão para editar a escala.';
     }
   }));
-  dialog.showModal();
+  if (currentRoute() === 'schedule') {
+    scheduleEventContext = context;
+    const actions = document.createElement('div');
+    actions.className = 'schedule-event-actions';
+    actions.innerHTML = (canManageScheduleEvents() && context.position ? '<button class="primary-button" type="button" data-schedule-event-launch>Lançar evento de escala</button>' : '') + (canReadScheduleEvents() ? '<button class="secondary-button" type="button" data-event-report-launch="daily">Relatório diário</button><button class="secondary-button" type="button" data-event-report-launch="monthly">Relatório mensal</button>' : '');
+    content.append(actions);
+    actions.querySelector('[data-schedule-event-launch]')?.addEventListener('click', () => void launchEventFromSchedule(context.date, context.position));
+    actions.querySelectorAll('[data-event-report-launch]').forEach(button => button.addEventListener('click', () => void openScheduleEventReport(button.dataset.eventReportLaunch)));
+    showSchedulePanel('schedule-contact-details');
+  } else if (!dialog.open) dialog.showModal();
 }
 
 const readConsultationsAccess=createConsultationsAccessReader({request:async options=>{const {callVacationsApi}=await import('./vacations-2027-client.js');return callVacationsApi(options);}});
@@ -2326,7 +2437,8 @@ function ensureChecklistDailyReportOpen(day) {
   if (dayControl) dayControl.hidden = false;
   if (monthControl) monthControl.hidden = true;
   const dialog = document.querySelector('#checklist-report-dialog');
-  if (dialog && !dialog.open) dialog.showModal();
+  if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
+  else if (dialog && !dialog.open) dialog.showModal();
 }
 
 function showChecklistStationBanner(station, record, day, stations, {fromQr = false} = {}) {
@@ -2802,7 +2914,8 @@ async function loadMonthlyChecklist(stations, suppliedResult = null, scope = nul
       const reportDayInput = document.querySelector('#checklist-report-day');
       if (reportDayInput) reportDayInput.value = day;
       const dialog = document.querySelector('#checklist-report-dialog');
-      if (dialog && !dialog.open) dialog.showModal();
+      if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
+  else if (dialog && !dialog.open) dialog.showModal();
       const title = document.querySelector('#checklist-report-title');
       if (title) title.textContent = 'RELATÓRIO DIÁRIO - CHECKLIST';
       document.querySelector('#checklist-day-control').hidden = false;
@@ -2951,7 +3064,7 @@ async function loadDailyEventEditNotes(records, target) {
 }
 
 function beginEventEdit(item) {
-  if (eventReportMode !== 'daily' || !can('admin')) return;
+  if (eventReportMode !== 'daily' || !can('admin') || !canManageScheduleEvents()) return;
   const form = document.querySelector('[data-module-form="events"]');
   if (!form || !item) return;
   const status = document.querySelector('#event-form-status');
@@ -2986,7 +3099,8 @@ function beginEventEdit(item) {
     title.setAttribute('tabindex', '-1');
     title.setAttribute('autofocus', '');
   }
-  if (dialog && !dialog.open) dialog.showModal();
+  if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
+  else if (dialog && !dialog.open) dialog.showModal();
   title?.focus({preventScroll: true});
 }
 
@@ -3013,7 +3127,8 @@ function resetEventEditor() {
     title.setAttribute('autofocus', '');
     title.setAttribute('tabindex', '-1');
   }
-  if (dialog?.open) dialog.close();
+  if (currentRoute() === 'schedule') showSchedulePanel(eventReportOpen ? 'event-report-dialog' : 'schedule-contact-details');
+  else if (dialog?.open) dialog.close();
 }
 
 function updateLabelReportSync() {
@@ -3224,7 +3339,7 @@ async function shareReportPdf(kind) {
   if (!button || !target || !records.length) return;
   const period = isLabel
     ? (labelReportMode === 'daily' ? document.querySelector('#label-report-day')?.value : document.querySelector('#label-report-month')?.value)
-    : (eventReportMode === 'daily' ? document.querySelector('#event-schedule-date')?.value : document.querySelector('#event-report-month')?.value);
+    : (eventReportMode === 'daily' ? document.querySelector('#event-report-day')?.value : document.querySelector('#event-report-month')?.value);
   const mode = isLabel ? labelReportMode : eventReportMode;
   const pdfRecords = isLabel && mode === 'monthly'
     ? [...records].sort((left, right) => String(left.date || '').localeCompare(String(right.date || '')) || reportTimestamp(left.createdAt) - reportTimestamp(right.createdAt))
@@ -3983,6 +4098,7 @@ async function bindModuleForm(route) {
 
       let collectionName; let record;
       if (route === 'events') {
+        if (!canManageScheduleEvents()) throw Object.assign(new Error('Permissão de lançamento revogada.'), {code: 'permission-denied'});
         // FormData omits disabled controls. V1 locks automatically completed
         // controls, so read their values directly before validating/saving.
         for (const name of ['memberStatus', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay']) {
@@ -4001,6 +4117,7 @@ async function bindModuleForm(route) {
           notice = result.pendingFirestore
             ? 'Edição salva neste aparelho com a versão base. Será enviada quando a conexão voltar; se o registro mudar, o rascunho ficará para comparação.'
             : 'Evento atualizado no Firestore.';
+          if (currentRoute() === 'schedule') { await finishScheduleEventSave(notice); notice = ''; return; }
           await render();
           return;
         }
@@ -4093,6 +4210,10 @@ async function bindModuleForm(route) {
       notice = result.pendingFirestore
         ? 'Registro salvo neste aparelho. Confirme o envio na área Sincronização quando o serviço voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
+      if (route === 'events' && currentRoute() === 'schedule') {
+        await finishScheduleEventSave(result.pendingFirestore ? notice : 'Evento confirmado no Firestore.');
+        notice = ''; return;
+      }
       if (manualLabelEntry || cameraLabelEntry) {
         if (manualLabelEntry) updateLabelManualConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
         else updateLabelCameraConfirmation(result.pendingFirestore ? 'pending' : 'confirmed', actorUid);
@@ -4783,7 +4904,8 @@ function bindEventSupportButton(content, day) {
 }
 
 function launchEventSupport(day) {
-  if (!can('eventsWrite') || !featureEnabledForRoute('events', appFeatures)) return;
+  if (currentRoute() === 'schedule' && canManageScheduleEvents()) showScheduleContacts([], {sigla: 'SUPORTE', date: day});
+  if (!canManageScheduleEvents()) return;
   const form = document.querySelector('[data-module-form="events"]');
   if (!form) return;
   resetEventEditor();
@@ -4797,12 +4919,15 @@ function launchEventSupport(day) {
   const status = document.querySelector('#event-form-status');
   if (status) status.textContent = 'Evento de Suporte iniciado. Selecione o substituto e o turno.';
   const dialog = document.querySelector('#event-launch-dialog');
-  if (dialog && !dialog.open) dialog.showModal();
+  if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
+  else if (dialog && !dialog.open) dialog.showModal();
   document.querySelector('#event-launch-title')?.focus({preventScroll: true});
 }
 
 async function launchEventFromSchedule(day, position) {
-  if (!can('eventsWrite')) return;
+  if (!canManageScheduleEvents()) return;
+  const actorUid = session.user?.uid;
+  const entryForm = document.querySelector('[data-module-form="events"]');
   const scheduleSigla = String(position.sigla || '').trim().toUpperCase();
   const scheduledSiglas = [...new Set((position.siglas?.length ? position.siglas : [scheduleSigla])
     .map((sigla) => String(sigla || '').trim().toUpperCase()).filter((sigla) => /^(?:[A-Z]{2}|L2)$/.test(sigla)))];
@@ -4812,6 +4937,7 @@ async function launchEventFromSchedule(day, position) {
     selected = await chooseEventScheduleMember(scheduleSigla, choices);
     if (!selected) return;
   }
+  if (session.user?.uid !== actorUid || !canManageScheduleEvents() || !entryForm?.isConnected) return;
   const form = document.querySelector('[data-module-form="events"]');
   if (!form) return;
   resetEventEditor();
@@ -4838,7 +4964,8 @@ async function launchEventFromSchedule(day, position) {
     ? `Sigla ${memberSigla} selecionada. O nome precisa ser conferido no cadastro de Pessoas.`
     : '';
   const dialog = document.querySelector('#event-launch-dialog');
-  if (dialog && !dialog.open) dialog.showModal();
+  if (currentRoute() === 'schedule') showSchedulePanel('event-launch-dialog');
+  else if (dialog && !dialog.open) dialog.showModal();
   // Não forçar foco programático no <select>: no Safari/iOS isso pode consumir o primeiro toque.
 }
 
@@ -4851,6 +4978,7 @@ function setEventTypeContext(form, context) {
 }
 
 function chooseEventScheduleMember(scheduleSigla, choices) {
+  if (currentRoute() === 'schedule') return chooseScheduleEventMember(scheduleSigla, choices);
   const dialog = document.querySelector('#event-schedule-choice-dialog');
   const options = document.querySelector('#event-schedule-choice-options');
   if (!dialog || !options) return Promise.resolve(null);
@@ -5141,7 +5269,13 @@ async function render() {
   }
   void updateOutboxStatus();
   if (['home','schedule'].includes(currentRoute())) {
-    if(currentRoute()==='home')await loadHome();else await loadSchedule();
+    if(currentRoute()==='home')await loadHome();else {
+      bindScheduleEventPanels();
+      await bindModuleForm('events');
+      if (!current()) return;
+      void loadEventEntryCatalog();
+      await loadSchedule();
+    }
   } else {
     const route = currentRoute();
     if (route === 'events') await bindModuleForm(route);

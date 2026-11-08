@@ -161,7 +161,7 @@ jobs:
         run: node scripts/prepare-app-publication.mjs
       - name: Build PWA
         env:
-          VITE_FI_EVENTS_ENABLED: 'true'
+          VITE_FI_EVENTS_ENABLED: 'false'
           VITE_FJ_SCHEDULE_ENABLED: 'true'
           VITE_FH_LABELS_ENABLED: 'true'
           VITE_FG_CHECKLIST_ENABLED: 'true'

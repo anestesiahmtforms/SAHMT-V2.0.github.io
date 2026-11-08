@@ -53,12 +53,12 @@ export async function applyEventProjection(event, store) {
 }
 
 export async function drainEventProjections({station, store, secret, fetchImpl = fetch} = {}) {
-  requireSecret(secret);
+  if (station === 'FI') requireSecret(secret);
   const items = await store.listPending(); let completed = 0, failed = 0;
   for (const item of items) {
     try {
-      if (station === 'FJ') await applyEventProjection(item.data, store);
-      else if (station === 'FI') {
+      if (station === 'FJ' && item.collection !== 'eventProjectionOutbox') await applyEventProjection(item.data, store);
+      else if (station === 'FI' || station === 'FJ') {
         const source = await store.get('events', item.data.eventId);
         if (!source || !Number.isSafeInteger(item.data.version) || source.data.version < item.data.version) throw fail('DOMAIN_PROJECTION_SOURCE_UNAVAILABLE');
         let before = {};
@@ -67,18 +67,23 @@ export async function drainEventProjections({station, store, secret, fetchImpl =
           if (archived?.data.sourceKey !== 'events/' + item.data.eventId || typeof archived.data.snapshotJson !== 'string' ||
               archived.data.snapshotJson.length > 512000) throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');
           let snapshot;try {snapshot = JSON.parse(archived.data.snapshotJson);}catch {throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');}
-          if (snapshot.name !== 'projects/sahmt-operacional-fi/databases/(default)/documents/events/' + item.data.eventId) throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');
+          const archiveRoots = station === 'FJ' ? ['sahmt-escala-fj', 'sahmt-operacional-fi'] : ['sahmt-operacional-fi'];
+          if (!archiveRoots.some(project => snapshot.name === 'projects/' + project + '/databases/(default)/documents/events/' + item.data.eventId)) throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');
           before = decodeFields(snapshot.fields || {});
         }
         const event = normalizeProjectionEvent({eventId: item.data.eventId, version: source.data.version, date: source.data.date || before.date,
           active: source.data.active, scheduleSigla: source.data.scheduleSigla || '', memberSigla: source.data.memberSigla || '',
-          actorUid: source.data.updatedByUid || source.data.createdByUid || (source.data.sheetDeleted === true ? 'native:fi-sheet' : '')});
+          actorUid: source.data.updatedByUid || source.data.createdByUid || (source.data.sheetDeleted === true ? 'native:' + station.toLowerCase() + '-sheet' : '')});
+        let reply;
+        if (station === 'FJ') reply = await applyEventProjection(event, store);
+        else {
         const body = JSON.stringify(event);
         const response = await fetchImpl(ENDPOINT, {method: 'POST', body, headers: projectionHeaders(body, secret),
           redirect: 'manual', signal: AbortSignal.timeout(20000)});
-        const reply = await boundedJson(response, 8192);
+        reply = await boundedJson(response, 8192);
         if (!response.ok || reply.eventId !== event.eventId || !Number.isSafeInteger(reply.version) || reply.version < event.version ||
             !['APPLIED', 'ALREADY_APPLIED', 'WAITING_SCHEDULE'].includes(reply.status)) throw fail('DOMAIN_PROJECTION_DELIVERY_UNAVAILABLE');
+        }
         await store.transaction(async transaction => {
           const current = await transaction.get('eventProjectionOutbox', item.id);
           if (current?.data.status === 'PENDING') transaction.completeOutbox(item.id, reply.version);
@@ -87,7 +92,7 @@ export async function drainEventProjections({station, store, secret, fetchImpl =
       completed++;
     } catch (error) {
       failed++;
-      if (station === 'FI') await store.transaction(async transaction => {
+      if (station === 'FI' || item.collection === 'eventProjectionOutbox') await store.transaction(async transaction => {
         const current = await transaction.get('eventProjectionOutbox', item.id);
         if (current?.data.status === 'PENDING') transaction.deferOutbox(item.id);
       }).catch(() => {});

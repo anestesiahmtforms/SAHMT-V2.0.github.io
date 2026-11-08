@@ -32,9 +32,9 @@ export async function readSchedule(day, uid, {onRefresh, independent = false} = 
 }
 
 export async function listActiveContacts({uid, pageSize = 200, onRefresh, independent = false} = {}) {
-  if(independent&&!operationalModuleEnabled('FI'))throw Object.assign(new Error('Módulo Eventos indisponível.'),{code:'MODULE_DISABLED'});
+  if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Eventos indisponível.'),{code:'MODULE_DISABLED'});
   return readThroughSafeCache({uid, kind: 'contacts', id: 'active', localFirst: true, onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-    const targetDb = operationalModuleEnabled('FI') ? await getOperationalModuleDatabase('FI', uid) : db;
+    const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
     const result = await getDocs(query(
       collection(targetDb, 'contacts'),
       where('active', '==', true),

@@ -121,7 +121,8 @@ export async function watchChecklistResponsibility(options, onNext, onError) {
   responsibilityScope(options);
   const [sdk, {db}] = await Promise.all([import('firebase/firestore'), import('./firebase.js')]);
   const modules = await import('./operational-module-firebase.js');
-  const [scheduleDb, eventDb] = await Promise.all(['FJ', 'FI'].map(station => modules.operationalModuleEnabled(station)
-    ? modules.getOperationalModuleDatabase(station, options.uid, {realtime: true}) : db));
+  const scheduleDb = modules.operationalModuleEnabled('FJ')
+    ? await modules.getOperationalModuleDatabase('FJ', options.uid, {realtime: true}) : db;
+  const eventDb = scheduleDb;
   return createChecklistResponsibilityListener(options, onNext, onError, {sdk, db, scheduleDb, eventDb});
 }

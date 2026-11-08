@@ -4,6 +4,17 @@ import {projectionHeaders, verifyProjectionRequest, applyEventProjection, drainE
 const secret = 'synthetic'.repeat(8), now = 1800000000000;
 const event = {eventId: 'event', version: 2, date: '2026-11-06', active: true, scheduleSigla: 'AA', memberSigla: 'BB', actorUid: 'member'};
 const body = JSON.stringify(event);
+test('FJ consumes its own event outbox without a cross-project request or shared secret', async () => {
+  const store = memoryStore();
+  store.documents.set('events/event', {...event, updatedByUid:'member'});
+  store.documents.set('eventProjectionOutbox/event-2', {status:'PENDING'});
+  store.listPending = async () => [{id:'event-2', collection:'eventProjectionOutbox', data:{eventId:'event', version:2, status:'PENDING'}}];
+  const result = await drainEventProjections({station:'FJ', store, fetchImpl:async () => {throw Error('UNEXPECTED_REMOTE_PROJECTION');}});
+  assert.equal(result.completed, 1);
+  assert.equal(store.documents.get('eventProjectionOutbox/event-2').status, 'DONE');
+  assert.deepEqual(store.documents.get('scheduleDays/' + event.date).highlights.events, ['EVENTO:AA:BB:event']);
+  assert.deepEqual(store.documents.get('scheduleDays/' + event.date).highlights.releaseTimes, {AA:now});
+});
 function memoryStore() {
   const documents = new Map([['scheduleDays/' + event.date, {id: event.date, version: 1, highlights: {events: [], siglas: ['AA'], releaseTimes: {AA: now}}}]]);
   return {documents, get: async (collection, id) => documents.has(collection + '/' + id) ? {data: documents.get(collection + '/' + id)} : null,

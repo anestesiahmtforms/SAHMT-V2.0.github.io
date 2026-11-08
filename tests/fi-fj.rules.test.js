@@ -26,10 +26,11 @@ before(async () => {
 beforeEach(async () => {
   for (const station of ['FI', 'FJ']) {
     await environments[station].clearFirestore();
-    await seed(station, 'users/member', member);
+    await seed(station, 'users/member', {...member, ...(station === 'FJ' ? {role:'gestor'} : {})});
     await seed(station, 'users/admin', {...member, uid: 'admin', email: 'admin@example.test', displayName: 'Admin', permissions: {admin: true}});
   }
   await seed('FI', 'eventCatalogs/operational', catalog);
+  await seed('FJ', 'eventCatalogs/operational', catalog);
   await seed('FJ', 'scheduleDays/2026-11-06', {id: '2026-11-06', date: '2026-11-06', positions: [{position: 1, sigla: 'AA'}],
     highlights: {siglas: [], events: [], releaseTimes: {}}, version: 1});
 });
@@ -50,8 +51,9 @@ test('only destination custom sessions derived from FA may access each module', 
     await assertFails(updateDoc(doc(db(station), 'users/member'), {permissions: {admin: true}}));
   }
 });
-test('FI creates events with an atomic projection request and refuses forged projection versions', async () => {
-  const database = db('FI'), batch = writeBatch(database);
+for (const station of ['FI', 'FJ']) {
+test(station + ' creates events with an atomic projection request and refuses forged projection versions', async () => {
+  const database = db(station), batch = writeBatch(database);
   batch.set(doc(database, 'events/event'), eventRecord());
   batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()});
   await assertSucceeds(batch.commit());
@@ -60,13 +62,13 @@ test('FI creates events with an atomic projection request and refuses forged pro
   await assertFails(setDoc(doc(database, 'eventProjectionOutbox/event-2'), {eventId: 'event', version: 2, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()}));
   await assertFails(getDoc(doc(database, 'labels/other-module')));
 });
-test('event corrections require a matching immutable history entry', async () => {
-  const database = db('FI');
+test(station + ' event corrections require a matching immutable history entry', async () => {
+  const database = db(station);
   const creation = writeBatch(database);
   creation.set(doc(database, 'events/event'), eventRecord());
   creation.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()});
   await assertSucceeds(creation.commit());
-  const adminDb = db('FI', 'admin');
+  const adminDb = db(station, 'admin');
   await assertFails(updateDoc(doc(adminDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2,
     updatedByUid: 'admin', updatedByName: 'Admin', updatedAt: serverTimestamp()}));
   const current = (await getDoc(doc(database, 'events/event'))).data();
@@ -81,6 +83,15 @@ test('event corrections require a matching immutable history entry', async () =>
   await assertSucceeds(batch.commit());
   await assertFails(updateDoc(doc(adminDb, 'events/event/history/2'), {actorName: 'Changed'}));
 });
+}
+test('FJ common users cannot launch events even with a legacy eventsWrite grant', async () => {
+  await seed('FJ', 'users/member', member);
+  const database = db('FJ'), batch = writeBatch(database);
+  batch.set(doc(database, 'events/event'), eventRecord());
+  batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
+  await assertFails(batch.commit());
+});
+
 test('FJ preserves release highlights and blocks direct event-marker injection', async () => {
   const reference = doc(db('FJ'), 'scheduleDays/2026-11-06');
   await assertSucceeds(updateDoc(reference, {'highlights.siglas': ['AA'], 'highlights.releaseTimes': {AA: 1800000000000},

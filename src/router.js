@@ -5,12 +5,14 @@ const routes = new Set(['communications', 'home', 'schedule', 'events', 'labels'
 let navigationGeneration=0;
 
 export function currentRoute() {
-  const route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';
+  let route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';
+  if (route === 'events') route = 'schedule';
   if (deployment.target === 'FB') return ['management','training','qmentum','fg-performance', 'fc-performance','fd-performance','fe-performance','app-updates-control'].includes(route) ? route : 'management';
   return routes.has(route) ? route : 'home';
 }
 
 export async function navigate(route, {panel} = {}) {
+  if (route === 'events') route = 'schedule';
   if (!routes.has(route)) return;
   const generation=++navigationGeneration,sourceHash=location.hash;
   const isCurrent=()=>generation===navigationGeneration&&location.hash===sourceHash;

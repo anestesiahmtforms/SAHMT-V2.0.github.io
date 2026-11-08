@@ -143,7 +143,7 @@ test('route subscription prevents Home exchanges and reopening stays lazy until 
 });
 
 test('shared schedule dependencies survive direct navigation but unrelated sessions stop renewing',async()=>{
- for(const station of ['FI','FJ']){
+ for(const station of ['FJ']){
   const f=fixture({station});let route='schedule',update;
   const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:fn=>{update=fn;return()=>{};}});
   await f.session.ensure('alice');const timer=[...f.timers.values()].find(t=>t.delay===240000);
@@ -170,7 +170,7 @@ test('FH and FG are suspended outside their own consumers including direct cross
 });
 
 test('unknown routes and stations cannot keep a session active',async()=>{
- for(const [station,route] of [['FJ','unknown'],['FJ','year-end-schedule'],['FJ','people'],['FI','communications'],['FH','offline'],['FG','management-hub'],['FB','schedule'],['toString','schedule']]){
+ for(const [station,route] of [['FJ','unknown'],['FJ','year-end-schedule'],['FI','people'],['FI','communications'],['FH','offline'],['FG','management-hub'],['FB','schedule'],['toString','schedule']]){
   const f=fixture();const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:()=>()=>{}});
   await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
   assert.equal(f.calls.exchange,0);stop();await f.session.dispose();
@@ -196,12 +196,12 @@ test('a canceled renewal already queued before route departure cannot refresh th
  await f.session.dispose();
 });
 
-test('Pessoas uses only FI and leaving for Home stops its renewal',async()=>{
+test('Pessoas uses only FJ and leaving for Home stops its renewal',async()=>{
  for(const station of ['FI','FJ','FH','FG']){
   const f=fixture({station});let route='people',update;
   const stop=bindOperationalSessionRoute({station,session:f.session,readRoute:()=>route,subscribe:fn=>{update=fn;return()=>{};}});
-  if(station==='FI')await f.session.ensure('alice');else await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
-  assert.equal(f.calls.exchange,station==='FI'?1:0);
+  if(station==='FJ')await f.session.ensure('alice');else await assert.rejects(f.session.ensure('alice'),/MODULE_SESSION_INACTIVE/);
+  assert.equal(f.calls.exchange,station==='FJ'?1:0);
   route='home';update();assert.equal(f.session.isActive(),false);assert.equal([...f.timers.values()].some(t=>t.delay===240000),false);
   stop();await f.session.dispose();
  }

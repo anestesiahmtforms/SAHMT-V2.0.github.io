@@ -24,7 +24,7 @@ test('Checklist consulta os 28 arsenais ativos e inativos sem gravar cache local
   assert.ok(!constraints.some(item => item.where));
   assert.equal(cacheKey, undefined);
   await ctx.listModuleRecords('events', 'user');
-  assert.deepEqual(destinations, ['FG', 'FI']);
+  assert.deepEqual(destinations, ['FG', 'FJ']);
   assert.ok(constraints.some(item => item.where?.[0] === 'active'));
   const main = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
   assert.ok(main.includes('sortChecklistStationsForDisplay(stations, resolvedRecordFor)'));

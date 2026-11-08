@@ -9,7 +9,7 @@ const env = import.meta.env || {};
 const instances = new Map();
 // Only the deployment configuration can choose these destinations.
 export const operationalModuleEnabled = station => deployment.target === 'FA' &&
-  (station === 'FI' ? env.VITE_FI_EVENTS_ENABLED === 'true' : station === 'FJ' ? env.VITE_FJ_SCHEDULE_ENABLED === 'true' : station === 'FH' ? env.VITE_FH_LABELS_ENABLED === 'true' : station === 'FG' && env.VITE_FG_CHECKLIST_ENABLED === 'true');
+  (station === 'FJ' ? env.VITE_FJ_SCHEDULE_ENABLED === 'true' : station === 'FH' ? env.VITE_FH_LABELS_ENABLED === 'true' : station === 'FG' && env.VITE_FG_CHECKLIST_ENABLED === 'true');
 
 async function getInstance(station) {
   if (!operationalModuleEnabled(station)) throw Object.assign(new Error('MODULE_DISABLED'), {code: 'MODULE_DISABLED'});

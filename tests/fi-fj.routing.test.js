@@ -8,8 +8,8 @@ function section(begin, end) {
   assert.ok(start >= 0 && finish > start); return source.slice(start, finish).replaceAll('export ', '');
 }
 function fixture({deny = false} = {}) {
-  const database = {station: 'FI'}, writes = [], calls = [];
-  const context = vm.createContext({console, operationalModuleEnabled: station => station === 'FI',
+  const database = {station: 'FJ'}, writes = [], calls = [];
+  const context = vm.createContext({console, operationalModuleEnabled: station => station === 'FJ',
     operationalDatabase: async (station, uid) => {calls.push({station, uid}); if (deny) throw Error('MODULE_ACCESS_DENIED'); return database;},
     stageOperationalWrite: (batch, {recordRef, data, uid, requestId, now}) => batch.set(recordRef, {...data, id: requestId, createdByUid: uid, updatedAt: now}),
     serverTimestamp: () => 'SERVER_TIMESTAMP', doc: (db, ...path) => ({db, path: path.join('/')}),
@@ -25,7 +25,7 @@ test('migrated event and durable projection request commit together only in FI',
   const f = fixture();
   const result = await f.context.createScheduledEvent({date: '2026-11-06', scheduleSigla: 'AA', memberSigla: 'BB'}, {uid: 'member', requestId: 'event'});
   assert.equal(result.projectionQueued, true);
-  assert.deepEqual(f.calls, [{station: 'FI', uid: 'member'}]);
+  assert.deepEqual(f.calls, [{station: 'FJ', uid: 'member'}]);
   assert.deepEqual(f.writes.map(write => write.ref.path), ['events/event', 'eventProjectionOutbox/event-1']);
   assert.equal(f.writes[1].data.actorUid, 'member'); assert.equal(f.writes[1].data.version, 1);
   assert.ok(f.writes.every(write => write.ref.db === f.database));

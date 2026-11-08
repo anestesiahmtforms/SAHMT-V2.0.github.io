@@ -240,7 +240,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
 test('administradores preservam os cartões e os controles administrativos existentes', () => {
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
-    assert.deepEqual(visibleRoutes(h), ['events', 'labels', 'management-hub', 'checklist']);
+    assert.deepEqual(visibleRoutes(h), ['labels', 'management-hub', 'checklist']);
     assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
     assert.equal(h.context.canOpenRestrictedModule('training'), true);
     assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);

@@ -18,6 +18,7 @@ const OSC = Object.freeze({
 
 function oscFail_(code) { const error = new Error(code); error.safeCode = code; throw error; }
 function oscOwner_() {
+  if (sahmtV2Properties_().getProperty('FI_RETIRED') === 'YES') oscFail_('FI_APOSENTADO');
   if (String(Session.getEffectiveUser().getEmail()).toLowerCase() !== 'anestesiahmtforms9@gmail.com') oscFail_('CONTROLE_EXECUTOR_INVALIDO');
 }
 function oscBook_() {

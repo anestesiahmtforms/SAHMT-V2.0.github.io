@@ -34,7 +34,9 @@ test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Es
   assert.equal(location.hash,'#/occurrences');
   assert.equal(currentRoute(),'occurrences');
   navigate('events');
-  assert.equal(currentRoute(),'events');
+  assert.equal(currentRoute(),'schedule');
+  assert.equal(location.hash,'#/schedule');
+  location.hash='#/events';assert.equal(currentRoute(),'schedule');
 });
 
 test('Desempenho FD e FE têm rotas próprias no PWA',()=>{

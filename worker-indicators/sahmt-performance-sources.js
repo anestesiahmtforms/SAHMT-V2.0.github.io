@@ -7,9 +7,9 @@ import {projectFbPerformance} from '../fb-performance/domain.js';
 // Firestore readTime has a one-hour ordinary retention window. Older recovery
 // needs configured PITR (minute-aligned cutoff, up to seven days); a refusal
 // stays HISTORICAL_SNAPSHOT_REQUIRED and MUST NOT fall back to a current read.
-// FI has no native award producer. Its explicitly approved FD fiPolicy reuses
+// FI is the retained ledger source ID; its data now lives in FJ. Its explicitly approved FD fiPolicy reuses
 // the existing ATRASO_V1 algorithm on official FI profiles/events only.
-export const SAHMT_PERFORMANCE_PROJECTS=Object.freeze({FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FI:'sahmt-operacional-fi',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120'});
+export const SAHMT_PERFORMANCE_PROJECTS=Object.freeze({FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FI:'sahmt-escala-fj',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120'});
 export const SAHMT_PERFORMANCE_SOURCE_MANIFEST=Object.freeze({
  FG:Object.freeze({category:'OPERATIONS',runtime:'fgPerformanceRuntime/state',entries:'fgPerformanceLedger',summaries:'fgPerformanceSummaries',kind:'SIGNED_DELTA'}),
  FI:Object.freeze({category:'OPERATIONS',entries:'events',kind:'ATRASO_V1_APPROVED_SNAPSHOT'}),
@@ -40,7 +40,7 @@ export function createSahmtPerformanceSources({getAccessToken,fetchImpl=fetch,fe
  function context(cutoff){const ms=timestamp(cutoff);if(!Number.isFinite(ms)||ms>now())throw Error('SAHMT_SOURCE_CUTOFF_REQUIRED');return {cutoff:new Date(ms).toISOString(),ms,readsByProject:{},periodsBySource:{},reservations:{}};}
  async function reservation(ctx,source){
   if(!Object.hasOwn(ctx.reservations,source)){
-   let ticket=null;try{if(readBudget){ticket=await readBudget.reserve(source,6000);if(!Number.isSafeInteger(ticket?.count)||ticket.count<1||ticket.count>6000)fail(source,'READ_BUDGET');}}catch{fail(source,'READ_BUDGET');}
+   let ticket=null;try{if(readBudget){ticket=await readBudget.reserve(source==='FI'?'FJ':source,6000);if(!Number.isSafeInteger(ticket?.count)||ticket.count<1||ticket.count>6000)fail(source,'READ_BUDGET');}}catch{fail(source,'READ_BUDGET');}
    ctx.reservations[source]={ticket,count:ticket?.count||6000,settled:false};
   }
   return ctx.reservations[source];

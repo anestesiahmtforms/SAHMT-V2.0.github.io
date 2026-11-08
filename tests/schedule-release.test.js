@@ -47,7 +47,7 @@ test('a Home mostra marca e horário somente à própria pessoa liberada, inclus
   const session = {profile: {sigla: 'CR'}};
   const render = runInNewContext(source.slice(source.indexOf('function vacationRankMarkup'), source.indexOf('function renderLabelManualConfirmation')) + '\nrenderSchedulePositionGrid;', {
     formatScheduleReleaseTime, visibleScheduleReleaseSiglas, escapeHtml: value => String(value), can: () => true,
-    featureEnabledForRoute: () => true, appFeatures: {}, session
+    featureEnabledForRoute: () => true, currentRoute: () => 'home', appFeatures: {}, session
   });
   const position = (sigla, siglas) => ({sigla, siglas, vacationParts: [], vacationPositions: {}, contacts: [{sigla}]});
   const view = {positions: [position('AB', ['AB']), position('CR/LH', ['CR', 'LH']), position('DC', ['CR', 'LH'])], vacationPositions: {}};

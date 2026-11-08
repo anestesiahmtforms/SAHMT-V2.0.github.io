@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createSahmtPerformanceSources} from '../worker-indicators/sahmt-performance-sources.js';
 import {encodeFields} from '../worker-indicators/store.js';
 const cutoff='2026-11-07T05:00:00.000Z',at=Date.parse(cutoff)-1000;
-const projects={FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FI:'sahmt-operacional-fi'};
+const projects={FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FI:'sahmt-escala-fj'};
 const member={uid:'fd-person',active:true,access:true,sourceUids:{FG:'fg-person',FB:'fb-person',FC:'fc-person',FE:'fe-person',FI:'fi-person'}};
 function fixture(source='FG'){
  const data=new Map(),calls=[],uid=source==='FD'?member.uid:member.sourceUids[source],put=(c,id,v)=>data.set(c+'/'+id,v);

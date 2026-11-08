@@ -1,5 +1,5 @@
 /** FG transaction boundary. FI/FJ are read-only inputs and never write targets. */
-const FG_EXTERNAL_COLLECTIONS = Object.freeze({scheduleDays:'sahmt-escala-fj',vacations:'sahmt-escala-fj',events:'sahmt-operacional-fi',contacts:'sahmt-operacional-fi',userCategories:'sahmt-17a16'});
+const FG_EXTERNAL_COLLECTIONS = Object.freeze({scheduleDays:'sahmt-escala-fj',vacations:'sahmt-escala-fj',events:'sahmt-escala-fj',contacts:'sahmt-escala-fj',userCategories:'sahmt-17a16'});
 const FG_WRITABLE_COLLECTIONS = Object.freeze(['checklistSignatureRequests','checklistSignatures','checklistResponsibilities','checklistScienceRuntime','fgPerformanceRuntime','fgPerformanceReceipts','fgPerformanceLedger','fgPerformanceSummaries']);
 const FG_TRANSACTIONS = new Map();
 function fgCheckId_(id){if(typeof id!=='string'||!id||id.length>200||/[\s/\x00-\x1f]/.test(id)||['.','..'].includes(id))throw Error('FG_DOCUMENT_ID_INVALID');}

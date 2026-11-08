@@ -74,7 +74,7 @@ export async function watchEventRecords({from, to, uid, sigla = '', isAdmin = fa
   if (!Number.isSafeInteger(count + page)) throw new Error('Informe um limite válido para acompanhar o relatório.');
   const member = String(sigla || '').trim().toUpperCase();
   const admin = isAdmin === true;
-  const {db, sdk} = await realtimeFirestore('FI', uid);
+  const {db, sdk} = await realtimeFirestore('FJ', uid);
   const base = [sdk.where('active', '==', true), sdk.where('date', '>=', from), sdk.where('date', '<=', to)];
   // The full SDK requires field filters and an OR filter to be enclosed by one composite AND.
   const filters = admin ? base : member ? [sdk.and(...base, sdk.or(

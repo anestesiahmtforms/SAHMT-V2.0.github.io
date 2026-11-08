@@ -92,7 +92,7 @@ export function serviceIdentity(credentials, station, {fetchImpl = fetch, now = 
 export function canEnterModule(profile, actor, station) {
   const permissions = profile?.permissions || {};
   const modulePermissions = station === 'FI' ? ['eventsRead', 'eventsWrite', 'eventsCatalogManage', 'peopleManage'] :
-    station === 'FJ' ? ['scheduleRead', 'scheduleWrite', 'eventsRead', 'eventsWrite', 'checklistSign'] :
+    station === 'FJ' ? ['scheduleRead', 'scheduleWrite', 'eventsRead', 'eventsWrite', 'eventsCatalogManage', 'peopleManage', 'checklistSign'] :
     station === 'FH' ? ['labelsRead', 'labelsWrite', 'labelsManage'] :
     station === 'FG' ? ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage'] : [];
   return profile?.uid === actor.uid && String(profile.email || '').toLowerCase() === actor.email &&

@@ -8,7 +8,7 @@ const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');
 const names=['listContactCatalog','syncEventMemberDirectory','saveContact','updateContactRegistrationFields'];
 const code=names.map(name=>{const start=source.indexOf('export async function '+name+'(');const end=source.indexOf('\nexport ',start+1);return source.slice(start,end).replace('export ','');}).join('\n');
 function fixture({deny=false,missing=false,failCommit=false}={}){
- const calls=[],reads=[],writes=[],mirrors=[],fi={project:'FI'},fa={project:'FA'};
+ const calls=[],reads=[],writes=[],mirrors=[],fi={project:'FJ'},fa={project:'FA'};
  const current={sigla:'AA',name:'Anterior',active:true,createdByUid:'original',createdAt:'original-time',role:'staff',phone:'',email:'',whatsAppLink:'',crm:'',entryDate:''};
  const snap={id:'AA',exists:()=>!missing,data:()=>current};
  const ref=(db,collection,id)=>({db,collection,id});
@@ -26,27 +26,27 @@ function fixture({deny=false,missing=false,failCommit=false}={}){
  });vm.runInContext(code,ctx);return {ctx,calls,reads,writes,mirrors,current};
 }
 const input={sigla:'AA',name:'Atual',active:true,email:'person@example.test',phone:'123',whatsAppLink:''};
-test('Pessoas reads its full contact fields from FI with the current actor',async()=>{
+test('Pessoas reads its full contact fields from FJ with the current actor',async()=>{
  const f=fixture();const rows=await f.ctx.listContactCatalog({uid:'actor'});
  assert.equal(rows[0].id,'AA');assert.equal(rows[0].createdByUid,'original');
- assert.deepEqual(f.calls,[{station:'FI',uid:'actor'}]);
+ assert.deepEqual(f.calls,[{station:'FJ',uid:'actor'}]);
 });
-test('saveContact writes contact and event directory only in FI and preserves original authorship',async()=>{
+test('saveContact writes contact and event directory only in FJ and preserves original authorship',async()=>{
  const f=fixture();await f.ctx.saveContact(input,'actor');
- assert.deepEqual(f.calls,[{station:'FI',uid:'actor'}]);assert.equal(f.writes.length,2);
+ assert.deepEqual(f.calls,[{station:'FJ',uid:'actor'}]);assert.equal(f.writes.length,2);
  assert.deepEqual(f.writes.map(w=>w.r.collection),['contacts','eventMembers']);
  assert.equal(f.writes[0].v.createdByUid,'original');assert.equal(f.writes[0].v.createdAt,'original-time');assert.equal(f.writes[0].v.updatedByUid,'actor');assert.equal(f.mirrors.length,0);
 });
-test('registration import updates the two FI collections in one transaction and missing contact aborts all',async()=>{
+test('registration import updates the two FJ collections in one transaction and missing contact aborts all',async()=>{
  const f=fixture();await f.ctx.updateContactRegistrationFields([input],'actor');
  assert.equal(f.writes.length,2);assert.equal(f.writes[0].v.role,'staff');assert.equal(f.writes[0].v.createdAt,'original-time');
  const absent=fixture({missing:true});await assert.rejects(absent.ctx.updateContactRegistrationFields([input],'actor'));assert.equal(absent.writes.length,0);
 });
-test('directory sync reads FI contacts and writes only FI eventMembers',async()=>{
+test('directory sync reads FJ contacts and writes only FJ eventMembers',async()=>{
  const f=fixture();assert.equal(await f.ctx.syncEventMemberDirectory('actor'),1);
  assert.equal(f.writes.length,1);assert.equal(f.writes[0].r.collection,'eventMembers');assert.equal(f.writes[0].v.updatedByUid,'actor');assert.equal(f.mirrors.length,0);
 });
-test('FI denial and commit errors cannot fall back, mirror or claim success',async()=>{
+test('FJ denial and commit errors cannot fall back, mirror or claim success',async()=>{
  for(const invoke of [c=>c.listContactCatalog({uid:'actor'}),c=>c.saveContact(input,'actor'),c=>c.updateContactRegistrationFields([input],'actor'),c=>c.syncEventMemberDirectory('actor')]){
   const f=fixture({deny:true});await assert.rejects(invoke(f.ctx),/MODULE_ACCESS_DENIED/);assert.equal(f.reads.length,0);assert.equal(f.writes.length,0);assert.equal(f.mirrors.length,0);
  }
@@ -54,11 +54,11 @@ test('FI denial and commit errors cannot fall back, mirror or claim success',asy
   const f=fixture({failCommit:true});await assert.rejects(invoke(f.ctx),/COMMIT_FAILED/);assert.equal(f.writes.length,0);assert.equal(f.mirrors.length,0);
  }
 });
-test('FI accepts only an active matching local profile with peopleManage, never an unrelated grant',()=>{
+test('FJ accepts only an active matching local profile with peopleManage, never an unrelated grant',()=>{
  const actor={uid:'actor',email:'person@example.test'},profile={...actor,active:true,access:true,permissions:{peopleManage:true}};
- assert.equal(canEnterModule(profile,actor,'FI'),true);
- for(const patch of [{active:false},{access:false},{uid:'other'},{permissions:{usersManage:true}}])assert.equal(canEnterModule({...profile,...patch},actor,'FI'),false);
- assert.equal(canEnterModule(profile,actor,'FJ'),false);
+ assert.equal(canEnterModule(profile,actor,'FJ'),true);
+ for(const patch of [{active:false},{access:false},{uid:'other'},{permissions:{usersManage:true}}])assert.equal(canEnterModule({...profile,...patch},actor,'FJ'),false);
+ assert.equal(canEnterModule(profile,actor,'FH'),false);
 });
 
 test('invalid contact and import inputs perform no destination lookup or writes',async()=>{
@@ -67,12 +67,12 @@ test('invalid contact and import inputs perform no destination lookup or writes'
  }
 });
 
-test('FI session endpoint admits a people-only local grant after checking the current FA access gate',async()=>{
+test('FJ session endpoint admits a people-only local grant after checking the current FA access gate',async()=>{
  const urls=[],actor={uid:'actor',email:'person@example.test'};
  const worker=createOperationalDomainWorker({verify:async()=>actor,createService:()=>({accessToken:async()=>'synthetic',customToken:()=> 'synthetic-custom-token'}),
  fetchImpl:async url=>{urls.push(url);return Response.json({name:url.replace('https://firestore.googleapis.com/v1/',''),fields:{uid:{stringValue:actor.uid},email:{stringValue:actor.email},active:{booleanValue:true},access:{booleanValue:true},permissions:{mapValue:{fields:{peopleManage:{booleanValue:true}}}}}});}});
  const response=await worker.fetch(new Request('https://worker.test/v1/session',{method:'POST',headers:{Origin:'https://example.test',Authorization:'Bearer synthetic-proof','Content-Type':'application/json'},body:'{}'}),
- {MODULE_STATION:'FI',MODULE_PROJECT_ID:'sahmt-operacional-fi',MODULE_CUTOVER_ACTIVE:'true',ALLOWED_ORIGINS:'https://example.test',MODULE_SERVICE_ACCOUNT_JSON:'{}'});
+ {MODULE_STATION:'FJ',MODULE_PROJECT_ID:'sahmt-escala-fj',MODULE_CUTOVER_ACTIVE:'true',ALLOWED_ORIGINS:'https://example.test',MODULE_SERVICE_ACCOUNT_JSON:'{}'});
  assert.equal(response.status,200);assert.equal((await response.json()).uid,actor.uid);
- assert.equal(urls.length,2);assert.match(urls[0],/projects\/sahmt-17a16\/.*\/users\/actor$/);assert.match(urls[1],/projects\/sahmt-operacional-fi\/.*\/users\/actor$/);
+ assert.equal(urls.length,2);assert.match(urls[0],/projects\/sahmt-17a16\/.*\/users\/actor$/);assert.match(urls[1],/projects\/sahmt-escala-fj\/.*\/users\/actor$/);
 });

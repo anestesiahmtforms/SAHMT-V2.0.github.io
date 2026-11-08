@@ -1,8 +1,8 @@
 import {decodeFields} from './store.js';
-export const PROJECTS=Object.freeze({FA:'sahmt-17a16',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FH:'sahmt-etiquetas-fh',FI:'sahmt-operacional-fi'});
+export const PROJECTS=Object.freeze({FA:'sahmt-17a16',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FD:'rotinas-8a617',FG:'sahmt-checklist-fg',FH:'sahmt-etiquetas-fh',FJ:'sahmt-escala-fj'});
 const flags=['active','sheetDeleted','pendingSync','syncFailed','syncConflict','stale'];
 // Preserve legacy activity IDs, but always read operational data from its owner.
-export const OPERATIONAL_SOURCE_ROUTES=Object.freeze({checklists:'FG',labels:'FH',events:'FI'});
+export const OPERATIONAL_SOURCE_ROUTES=Object.freeze({checklists:'FG',labels:'FH',events:'FJ'});
 export const SOURCE_MANIFEST=Object.freeze({
  management:[
   ['FB','activities',['status','dueAt','completedAt','managementAreaId',...flags]],['FB','actionPlans',['status','dueAt','completedAt','managementAreaId',...flags]],['FB','actionPlanItems',['status','dueAt','completedAt','managementAreaId',...flags]],['FB','maintenanceRecords',['status','dueAt','completedAt','managementAreaId',...flags]],

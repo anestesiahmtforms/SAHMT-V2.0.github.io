@@ -5,7 +5,7 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
   const projectId = DOMAIN_PROJECTS[station];
   if (!projectId || typeof getAccessToken !== 'function') throw fail('DOMAIN_STORE_CONFIG_INVALID');
   const prefix = `projects/${projectId}/databases/(default)/documents`, root = 'https://firestore.googleapis.com/v1/' + prefix;
-  const readable = station === 'FI' ? ['events', 'eventProjectionOutbox', 'operationalSheetArchives'] : ['scheduleDays', 'eventProjections'];
+  const readable = station === 'FI' ? ['events', 'eventProjectionOutbox', 'operationalSheetArchives'] : ['scheduleDays', 'eventProjections', 'events', 'eventProjectionOutbox', 'operationalSheetArchives'];
   const name = (collection, id) => {
     if (!readable.includes(collection) || !/^[A-Za-z0-9_-]{1,180}$/.test(id || '')) throw fail('DOMAIN_STORE_PATH_DENIED', 400);
     return prefix + '/' + collection + '/' + id;
@@ -28,8 +28,10 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
     return {id, data: decodeFields(document.fields || {}), updateTime: document.updateTime};
   }
   async function listPending() {
-    const collection = station === 'FI' ? 'eventProjectionOutbox' : 'eventProjections';
-    const status = station === 'FI' ? 'PENDING' : 'WAITING_SCHEDULE';
+    const queued = await listPendingCollection('eventProjectionOutbox', 'PENDING');
+    return station === 'FI' ? queued : [...queued, ...await listPendingCollection('eventProjections', 'WAITING_SCHEDULE')];
+  }
+  async function listPendingCollection(collection, status) {
     const result = await request(':runQuery', {structuredQuery: {from: [{collectionId: collection}],
       where: {fieldFilter: {field: {fieldPath: 'status'}, op: 'EQUAL', value: {stringValue: status}}},
       orderBy: [{field: {fieldPath: 'updatedAt'}, direction: 'ASCENDING'}], limit: 10}});
@@ -37,7 +39,7 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
     return result.filter(item => item.document).map(item => {
       const document = item.document, id = document.name.split('/').at(-1);
       if (document.name !== name(collection, id)) throw fail('DOMAIN_STORE_RESPONSE_INVALID');
-      return {id, data: decodeFields(document.fields || {}), updateTime: document.updateTime};
+      return {id, collection, data: decodeFields(document.fields || {}), updateTime: document.updateTime};
     });
   }
   async function transaction(callback) {
@@ -58,12 +60,12 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
               updateMask: {fieldPaths: ['highlights.events', 'version', 'updatedByUid']}, updateTransforms: transform('updatedAt'), currentDocument: {exists: true}});
           },
           completeOutbox(id, version) {
-            if (station !== 'FI' || !Number.isSafeInteger(version) || version < 1) throw fail('DOMAIN_STORE_PATH_DENIED', 403);
+            if (!['FI', 'FJ'].includes(station) || !Number.isSafeInteger(version) || version < 1) throw fail('DOMAIN_STORE_PATH_DENIED', 403);
             writes.push({update: {name: name('eventProjectionOutbox', id), fields: encodeFields({status: 'DONE', processedVersion: version})},
               updateMask: {fieldPaths: ['status', 'processedVersion']}, updateTransforms: transform('processedAt'), currentDocument: {exists: true}});
           },
           deferOutbox(id) {
-            if (station !== 'FI') throw fail('DOMAIN_STORE_PATH_DENIED', 403);
+            if (!['FI', 'FJ'].includes(station)) throw fail('DOMAIN_STORE_PATH_DENIED', 403);
             writes.push({transform: {document: name('eventProjectionOutbox', id),
               fieldTransforms: [...transform('updatedAt'), ...transform('lastAttemptAt')]}, currentDocument: {exists: true}});
           }});
