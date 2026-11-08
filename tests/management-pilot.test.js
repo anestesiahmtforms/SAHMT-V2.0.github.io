@@ -21,10 +21,10 @@ test('station performance belongs only to its FD or FE parent panel',()=>{
  assert.equal(panels.fdPerformance.parent,'results');
  assert.equal(panels.fePerformance.parent,'surveys');
  assert.equal(panels.home.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
- assert.equal(panels.surveys.items.some(item=>item.label==='Desempenho FE'&&item.panel==='fePerformance'),true);
+ assert.equal(panels.surveys.items.some(item=>item.label==='Desempenho FE'&&item.panel==='fePerformance'),false);
  assert.equal(panels.records.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
  assert.doesNotMatch(hub({surveys:true},'surveys').body.innerHTML,/Desempenho FE/);
- assert.match(hub({surveys:true,fePerformance:true},'surveys').body.innerHTML,/Desempenho FE/);
+ assert.doesNotMatch(hub({surveys:true,fePerformance:true},'surveys').body.innerHTML,/Desempenho FE/);assert.equal(panels.sahmtPerformance.parent,'results');
  for(const name of ['fdPerformance','fePerformance'])assert.equal(hub({},name).dialog.dataset.panel,'home');
 });
 
@@ -32,8 +32,8 @@ test('common users do not see performance and deep links cannot open paused subp
  for(const initialPanel of ['home','records','indicators','results','surveys','institutional','climateForm','stressForm','vacations2027']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);}
  const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.doesNotMatch(h.body.innerHTML,/ disabled /);
 });
-test('Governança header uses the existing Diamond seal while retaining all five destinations',()=>{
- const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.equal(h.heading.textContent,'Governança');assert.ok(h.root.innerHTML.includes('</header><div class="management-hub-content-panel">'));assert.match(h.headingIcon.innerHTML,/img[^>]+selo-qga-accredited-qmentum-diamond\.png[^>]+alt="Diamond Qmentum"/);assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);
+test('Governança header uses the existing Diamond seal while concentrating performance inside Indicators',()=>{
+ const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.equal(h.heading.textContent,'Governança');assert.ok(h.root.innerHTML.includes('</header><div class="management-hub-content-panel">'));assert.match(h.headingIcon.innerHTML,/img[^>]+selo-qga-accredited-qmentum-diamond\.png[^>]+alt="Diamond Qmentum"/);assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);
 });
 test('Registro de Indicadores opens QMENTUM directly and the old folder link returns to Registros',()=>{
  const h=hub({records:true,qmentum:true},'indicators');assert.equal(h.dialog.dataset.panel,'records');assert.match(h.body.innerHTML,/Registro de Indicadores/);assert.doesNotMatch(h.body.innerHTML,/Indicadores Qmentum/);
@@ -52,7 +52,7 @@ test('Governance keeps the live synchronization control visible in its modal hea
  const h=hub({records:true},'home',syncStatusElement);
  assert.equal(h.syncHost.child,syncStatusElement);
  assert.match(h.root.innerHTML,/<header[^>]*>.*identity-card__user-row.*data-hub-sync.*<\/header>/);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'2'}}):null}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});
  assert.equal(h.dialog.dataset.panel,'records');
  assert.equal(h.syncHost.child,syncStatusElement);
  syncStatusElement.innerHTML='<button class="sync-status-button--synced">✓</button>';
@@ -80,7 +80,7 @@ test('Governance opens for every approved identity without granting protected de
 test('schedule access opens its menu while other survey panels retain their previous gate',()=>{
  const h=hub({yearEndSchedule:true},'home');
  assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'4'}}):null}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'3'}}):null}});
  assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/management-hub-button--festive/);
  assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
@@ -90,8 +90,8 @@ test('schedule access opens its menu while other survey panels retain their prev
 test('performance buttons are absent when their administrator access is denied',()=>{
  assert.doesNotMatch(hub({groups:true,records:true,surveys:true}).body.innerHTML,/management-hub-label">Desempenho/);
  assert.doesNotMatch(hub({records:true},'records').body.innerHTML,/Desempenho FC/);
- assert.match(hub({records:true,fcPerformance:true},'records').body.innerHTML,/Desempenho FC/);
- assert.match(hub({performance:true}).body.innerHTML,/management-hub-label">Desempenho/);
+ assert.doesNotMatch(hub({records:true,fcPerformance:true},'records').body.innerHTML,/Desempenho FC/);
+ assert.doesNotMatch(hub({performance:true}).body.innerHTML,/management-hub-label">Desempenho/);
 });
 
 test('vacation-only access opens FE without allowing survey forms or performance',()=>{
@@ -99,4 +99,4 @@ test('vacation-only access opens FE without allowing survey forms or performance
  for(const panel of ['professional','epidemiological','climateForm','institutional','results','records'])assert.equal(hub({vacations2027:true},panel).dialog.dataset.panel,'home');
 });
 
-test('team consultations show only the two schedules and block institutional deep links',()=>{const access={surveys:true,institutionalSurveys:false,yearEndSchedule:true,vacations2027:true};const h=hub(access,'surveys');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,2);assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.doesNotMatch(h.body.innerHTML,/PESQUISAS INSTITUCIONAIS|CADASTRO PROFISSIONAL|CADASTRO EPIDEMIOLÓGICO|Desempenho FE/);for(const panel of ['institutional','climateForm','stressForm','professional','epidemiological'])assert.equal(hub(access,panel).dialog.dataset.panel,'home');const admin=hub({...access,institutionalSurveys:true,fePerformance:true},'surveys');assert.equal((admin.body.innerHTML.match(/data-hub-item=/g)||[]).length,6);});
+test('team consultations show only the two schedules and block institutional deep links',()=>{const access={surveys:true,institutionalSurveys:false,yearEndSchedule:true,vacations2027:true};const h=hub(access,'surveys');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,2);assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.doesNotMatch(h.body.innerHTML,/PESQUISAS INSTITUCIONAIS|CADASTRO PROFISSIONAL|CADASTRO EPIDEMIOLÓGICO|Desempenho FE/);for(const panel of ['institutional','climateForm','stressForm','professional','epidemiological'])assert.equal(hub(access,panel).dialog.dataset.panel,'home');const admin=hub({...access,institutionalSurveys:true,fePerformance:true},'surveys');assert.equal((admin.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);});

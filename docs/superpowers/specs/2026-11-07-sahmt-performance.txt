@@ -1,0 +1,48 @@
+DESEMPENHO - SAHMT — proposta para implementação
+Data: 07/11/2026. Base consultada: main 4abcd09085c6d17e0912218c7c0115acaec1ebe9.
+Estado: especificação aprovada pelo usuário em 07/11/2026; implementação preparada em cópia isolada; produção ainda não ativada.
+
+OBJETIVO
+Reunir, em Indicadores, o desempenho individual de cada usuário e reduzir as leituras nas instâncias de origem por meio de uma única apuração diária, às 02h00 de America/Sao_Paulo.
+
+TELA
+Adicionar o botão DESEMPENHO - SAHMT dentro de INDICADORES - SAHMT. Abrir o contêiner no padrão atual do aplicativo, com primeiro bloco de título e identificação e segundo bloco de conteúdo. No topo do segundo bloco: pontuação total, porcentagem relativa e data da última apuração concluída. Abaixo, seis botões para consultar os valores e lançamentos de cada origem:
+1. ATIVIDADES OPERACIONAIS: Checklist (FG) e atividades de eventos de escala (FI), com valores positivos e negativos.
+2. TREINAMENTOS E GESTÃO: pontuações de Gestão (FB).
+3. ATIVIDADES DE REGISTROS: pontuações de Registros (FC).
+4. ATIVIDADES EM ENQUETES: pontuações de Enquetes e Consultas (FE).
+5. NOTIFICAÇÕES: entrada manual do administrador para eventos adversos, participação em reuniões do serviço, infrações e elogios.
+6. EDUCAÇÃO CONTINUADA: entrada manual do administrador, conforme esclarecimento do usuário.
+Retirar os botões antigos de desempenho das páginas principais dos módulos e concentrar a consulta no novo painel. O usuário confirmou que os acessos devem ser reunidos no novo painel. Os conteúdos e atividades que dão origem aos pontos permanecem acessíveis. Educação Continuada terá preenchimento manual pelo administrador, conforme esclarecimento explícito do usuário.
+
+CÁLCULO
+Somar os lançamentos válidos das seis categorias, preservando o sinal. Percentual = total do usuário / maior total entre usuários elegíveis * 100. Considerar usuários ativos e com acesso autorizado; esse critério é uma proposta de implementação. Usar o mesmo lote diário para o numerador e o denominador. Havendo maior total positivo, um saldo negativo produz percentual negativo. Se o maior total for zero ou negativo, mostrar percentual indisponível e explicar que não há referência positiva para comparação. Não limitar saldos negativos a zero.
+Preservar o período atualmente definido em cada fonte; identificar divergências de período antes de publicar o consolidado. Não criar pontuações ou regras de concessão novas para atividades cuja fonte ainda não tenha lançamentos confirmados.
+
+APURAÇÃO DIÁRIA E ECONOMIA
+Executar uma tarefa no servidor às 02h00 de Brasília, inclusive sem usuários com o aplicativo aberto. Em um agendador que opere em UTC, isso corresponde a 05h00 UTC para a configuração atual. O usuário autorizou expressamente cancelar a agenda de coleta atual das 00h00 e 12h00. A nova rotina das 02h00 substituirá essa agenda e deverá discriminar as etapas de coleta de indicadores e de consolidação de desempenho, respeitando o orçamento de leituras compartilhado.
+Consultar as fontes uma vez por lote diário, com paginação, campos mínimos, limites de leitura e controle persistente de execução. Nunca fazer a consolidação cruzada ao abrir o painel ou cada categoria. Não utilizar listeners nem temporizadores que consultem continuamente os bancos de origem.
+Gravar o resultado em Indicadores (FD), separado por usuário e lote. Publicar uma referência ao novo lote apenas depois que todas as fontes e a comparação da equipe estiverem completas. Usar IDs determinísticos e exclusão mútua para evitar processamento duplicado ou pontuação duplicada. Uma repetição de entrega do agendador não inicia nova apuração se o lote já estiver concluído.
+Em falha, conservar a última apuração completa e informar sua data; não apresentar uma fonte indisponível como saldo zero. Registrar diagnóstico de falha e leituras por projeto sem expor dados pessoais nos logs. Caso uma execução precise de recuperação técnica, retomar a mesma competência, com checkpoints; não criar uma segunda apuração do dia. Usar corte comum às 02h00, com versões ou lançamentos imutáveis que permitam reconstruir os valores nesse corte. Se uma fonte só expuser saldo mutável sem histórico, resolver seu contrato antes de publicar um lote como completo.
+O painel pode ler o consolidado e carregar o histórico materializado em FD, paginado sob demanda, com cache vinculado ao usuário e ao lote. Aberturas não provocam leituras cruzadas em FG, FI, FB, FC ou FE. Leituras necessárias à autorização continuam sendo realizadas. Distinguir visualmente: nenhuma apuração disponível, última apuração desatualizada, fonte incompleta e lançamento manual aguardando apuração.
+
+IDENTIDADE, FONTES E PRIVACIDADE
+Vincular os UIDs das diferentes instâncias pelo diretório institucional autorizado; não presumir igualdade de UIDs nem associar pessoas apenas por nome ou e-mail. Verificar as fontes reais de FG e FI na versão atual: a integração antiga ainda contém referências operacionais a FA. Tratar associações ausentes ou ambíguas como pendências diagnosticadas, sem omitir usuários silenciosamente de um lote apresentado como completo.
+Consultar lançamentos ou saldos já validados de cada domínio. Não somar simultaneamente um saldo e seus lançamentos. Preservar a origem de ajustes e impedir contagem duplicada de dados migrados. Ocorrências automáticas de FC permanecem em Registros; Notificações manuais são uma categoria distinta e não reproduzem automaticamente os mesmos pontos.
+Cada usuário consulta seus próprios dados. A referência de comparação informa apenas o maior valor, sem identificar outra pessoa. As entradas manuais exigem autorização administrativa no servidor. Não ampliar a exposição de relatos anônimos nem transportar textos clínicos, respostas privadas ou evidências desnecessárias para o consolidado.
+
+LANÇAMENTOS MANUAIS
+O administrador seleciona a pessoa e a categoria, informa o valor e a justificativa em formulário administrativo do próprio painel. Em Notificações, seleciona também o tipo de ocorrência. Registrar identificador idempotente, administrador responsável e data do servidor. Guardar histórico auditável de correções; não apagar o lançamento original. A gravação confirma o lançamento pendente, e sua inclusão no total ocorre na próxima apuração diária. As validações existentes de perfil e sessão continuam valendo no servidor. Restringir justificativas e histórico administrativo conforme autorização; o consolidado individual recebe somente os campos necessários à consulta do usuário.
+
+ABORDAGENS CONSIDERADAS
+A. Consolidado diário no servidor, recomendado: atende à apuração com aplicativo fechado e compartilha os resultados entre usuários, reduzindo as leituras nas origens. Exige armazenamento do consolidado e integração de autorização e identidade.
+B. Cálculo ao abrir o painel: dispensaria o consolidado persistente, mas repetiria leituras por usuário e não atenderia ao horário único solicitado.
+C. Cache diário apenas no navegador: reduziria consultas no mesmo aparelho, mas repetiria o trabalho entre aparelhos e dependeria de aplicativo aberto.
+A é a única das três que atende integralmente aos requisitos. O usuário aprovou esta proposta em 07/11/2026.
+
+VALIDAÇÃO PREVISTA
+Verificar soma com débitos e créditos, percentuais e ausência de referência positiva; associação de identidades e duplicatas de migração; autorização de entradas manuais e consultas próprias; apuração diária única, virada do dia/ano e repetição de entrega; preservação do último lote em falhas parciais; ausência de consultas cruzadas na abertura; paginação; navegação, cabeçalho e rolagem em celular. Executar os testes relevantes de Indicadores e dos domínios afetados e a compilação do aplicativo.
+
+LIMITES E DECISÕES PENDENTES
+Esta proposta não ativa faturamento nem cria uma nova política de pontuação. As regras de concessão vêm das fontes existentes. Os valores manuais ficam a cargo do administrador. A configuração e ativação do agendamento precisam ser verificadas no ambiente publicado; testes locais não comprovam uma tarefa ativa em produção.
+As interpretações de retirada dos botões, usuários elegíveis e percentual sem maior saldo positivo foram aprovadas com esta especificação.

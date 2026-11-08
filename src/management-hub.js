@@ -2,6 +2,7 @@ import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 import './fd-performance.css';
 import './fe-performance.css';
+import './sahmt-performance.css';
 
 const paths={
  groups:'M3 7h18v14H3zM7 7V3h10v4M7 12h10M7 16h7',
@@ -22,7 +23,6 @@ const icon=kind=>'<svg class="management-hub-icon" viewBox="0 0 24 24" fill="non
 const panels={
  home:{title:'Governança',icon:'groups',items:[
   {label:'Grupos de Gestão',icon:'groups',route:'management',access:'groups'},
-  {label:'Desempenho',icon:'performance',route:'training',access:'performance'},
   {label:'Registros',icon:'records',panel:'records',access:'records'},
   {label:'INDICADORES - SAHMT',icon:'results',panel:'results',access:'results'},
   {label:'Enquetes e Consultas',icon:'surveys',panel:'surveys',access:'surveys'},
@@ -31,8 +31,7 @@ const panels={
  communication:{title:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',parent:'home'},
  records:{title:'Registros',icon:'records',parent:'home',items:[
   {label:'Registros de Ocorrências',icon:'occurrence',route:'occurrences',access:'occurrences'},
-  {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'},
-  {label:'Desempenho FC',icon:'performance',route:'fc-performance',access:'fcPerformance'}
+  {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'}
  ]},
  results:{title:'INDICADORES - SAHMT',icon:'results',parent:'home',message:'Os indicadores consolidados do SAHMT serão exibidos nesta área.'},
  surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',items:[
@@ -40,10 +39,10 @@ const panels={
   {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'surveys'},
   {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'surveys'},
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
-  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'},
-  {label:'Desempenho FE',icon:'performance',panel:'fePerformance',access:'fePerformance'}
+  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'}
  ]},
  fdPerformance:{title:'Desempenho FD',icon:'performance',parent:'results'},
+ sahmtPerformance:{title:'DESEMPENHO - SAHMT',icon:'performance',parent:'results'},
  fePerformance:{title:'Desempenho FE',icon:'performance',parent:'surveys'},
  yearEnd:{title:'Escala Final de Ano',icon:'festive',parent:'surveys'},
  vacations2027:{title:'Escala de Férias 2027',icon:'calendar',parent:'surveys'},
@@ -95,12 +94,22 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    const current=()=>!disposed&&ticket===renderId&&panel==='yearEnd'&&isSurveySessionCurrent();
    void import('./year-end-schedule-ui.js').then(({mountYearEndSchedule})=>{if(!current())return;cleanupYearEnd=mountYearEndSchedule(body,{isCurrent:current,onConfirmed:onYearEndConfirmed,connectAccess:connectYearEndAccess,createRepository:current=>createYearEndRepository(current)});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a escala. Volte e tente novamente.</p>';});
   }
+  if(panel==='sahmtPerformance'&&access.sahmtPerformance===true){
+   body.innerHTML='<div data-hub-sahmt-performance><p role="status">Carregando desempenho…</p></div>';
+   const host=body.querySelector('[data-hub-sahmt-performance]'),current=()=>!disposed&&ticket===renderId&&panel==='sahmtPerformance'&&isSurveySessionCurrent();
+   void Promise.all([import('./sahmt-performance-ui.js'),import('./sahmt-performance-client.js')]).then(([ui,client])=>{
+    if(!current())return;
+    const request=client.createSahmtPerformanceRequest({uid:performanceUid,isCurrent:current,transport:({action,input,signal})=>performIndicators(action,input,signal)});
+    const onOpenTraining=access.performance===true?()=>{if(current())onNavigate('training');}:undefined;
+    const stop=ui.mountSahmtPerformance(host,{request,isCurrent:current,onOpenTraining});cleanupIndicators=()=>{stop();request.dispose();};
+   }).catch(()=>{if(current())host.innerHTML='<p role="alert">Não foi possível abrir seu desempenho. Volte e tente novamente.</p>';});
+  }
   if(panel==='results'&&access.results===true){
-   body.innerHTML=(access.fdPerformance===true?'<button type="button" class="management-hub-button" data-hub-fd-performance><span class="management-hub-label">Desempenho FD</span><span aria-hidden="true">›</span></button>':'')+'<div class="management-indicators-host" data-hub-indicators><p role="status">Carregando indicadores…</p></div>';
+   body.innerHTML=(access.sahmtPerformance===true?'<button type="button" class="management-hub-button" data-hub-sahmt-performance><span class="management-hub-medallion">'+icon('performance')+'</span><span class="management-hub-label">DESEMPENHO - SAHMT</span><span aria-hidden="true">›</span></button>':'')+(access.indicatorResults!==false?'<div class="management-indicators-host" data-hub-indicators><p role="status">Carregando indicadores…</p></div>':'');
    const host=body.querySelector('[data-hub-indicators]');
    const current=()=>!disposed&&ticket===renderId&&panel==='results'&&isSurveySessionCurrent();
-   void import('../indicators-platform/ui.js').then(({mountIndicatorsPlatform})=>{
-    if(!current())return;
+   if(host)void import('../indicators-platform/ui.js').then(({mountIndicatorsPlatform})=>{
+    if(!current()||!host)return;
     cleanupIndicators=mountIndicatorsPlatform(host,{request:performIndicators,isCurrent:current,onBack:()=>goBack()});
    }).catch(()=>{if(current())host.innerHTML='<div class="management-hub-empty" role="alert"><p>Não foi possível abrir os indicadores. Confira a conexão e tente novamente.</p><button type="button" data-hub-indicators-retry>TENTAR NOVAMENTE</button></div>';});
   }
@@ -139,6 +148,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  };
  const goBack=()=>{const parent=panels[panel].parent;if(parent){panel=parent;render();}else onExit();};
  const click=event=>{
+  if(event.target.closest('[data-hub-sahmt-performance]')){if(panel==='results'&&access.sahmtPerformance===true){panel='sahmtPerformance';render();}return;}
   if(event.target.closest('[data-hub-fd-performance]')){if(panel==='results'&&access.fdPerformance===true){panel='fdPerformance';render();}return;}
   if(event.target.closest('[data-hub-indicators-retry]')){if(panel==='results'&&access.results===true)render();return;}
   const survey=event.target.closest('[data-survey-panel]');

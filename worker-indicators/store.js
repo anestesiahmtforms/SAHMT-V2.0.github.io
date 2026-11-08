@@ -78,10 +78,25 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
   }
   throw fail('TRAINING_STORE_CONFLICT',409);
  }
+ async function listAll(collection,filters=[],max=30000){
+  if(!safe(collection)||!Array.isArray(filters)||!Number.isInteger(max)||max<1||max>30000)throw fail('TRAINING_STORE_QUERY_INVALID',400);
+  const clauses=filters.map(f=>{if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(f.field)||!['EQUAL','ARRAY_CONTAINS'].includes(f.op))throw fail('TRAINING_STORE_QUERY_INVALID',400);return {fieldFilter:{field:{fieldPath:f.field},op:f.op,value:encode(f.value)}};});
+  let cursor=null;const rows=[];
+  for(;;){
+   const take=Math.min(2000,max-rows.length);if(take<1)throw fail('TRAINING_STORE_QUERY_TRUNCATED');
+   const data=await request(':runQuery',{structuredQuery:{from:[{collectionId:collection}],...(clauses.length?{where:clauses.length===1?clauses[0]:{compositeFilter:{op:'AND',filters:clauses}}}:{}),orderBy:[{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit:take,...(cursor?{startAt:{values:[{referenceValue:cursor}],before:false}}:{})}});
+   if(!Array.isArray(data)||data.some(row=>row.error))throw fail('TRAINING_STORE_UNAVAILABLE');
+   const documents=data.filter(row=>row.document).map(row=>row.document);
+   if(documents.length>take||documents.some((doc,index)=>!doc.name?.startsWith(name(collection,'a').slice(0,-1))||cursor&&doc.name<=cursor||index&&doc.name<=documents[index-1].name))throw fail('TRAINING_STORE_UNAVAILABLE');
+   rows.push(...documents.map(doc=>({...decodeFields(doc.fields||{}),id:doc.name.split('/').at(-1)})));
+   if(documents.length<take)return rows;
+   cursor=documents.at(-1).name;
+  }
+ }
  async function finishReadReservation(id,reserved,actual){
-  if(!/^(FA|FB|FC|FE)_\d{4}-\d{2}-\d{2}$/.test(id)||!Number.isSafeInteger(reserved)||!Number.isSafeInteger(actual)||actual<1||actual>reserved)throw fail('INDICATOR_READ_SETTLEMENT_INVALID');
+  if(!/^(FA|FB|FC|FE|FG|FI)_\d{4}-\d{2}-\d{2}$/.test(id)||!Number.isSafeInteger(reserved)||!Number.isSafeInteger(actual)||actual<1||actual>reserved)throw fail('INDICATOR_READ_SETTLEMENT_INVALID');
   // One atomic update; never retry an ambiguous response, which could refund twice.
   return request(':commit',{writes:[{transform:{document:name('indicatorReadBudgets',id),fieldTransforms:[{fieldPath:'chargedReads',increment:{integerValue:String(actual-reserved)}},{fieldPath:'confirmedReads',increment:{integerValue:String(actual)}},{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]}}]});
  }
- return {get,getMany,list,transaction,finishReadReservation};
+ return {get,getMany,list,listAll,transaction,finishReadReservation};
 }

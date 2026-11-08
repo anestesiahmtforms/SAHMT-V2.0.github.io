@@ -1,0 +1,86 @@
+.sahmt-performance {
+  --sp-ink: #12354a;
+  --sp-muted: #526a79;
+  --sp-line: #c9d9e2;
+  --sp-accent: #0a6574;
+  color: var(--sp-ink);
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  max-width: 1050px;
+  margin-inline: auto;
+  padding: clamp(.8rem, 2.4vw, 1.5rem);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+.sahmt-performance *, .sahmt-performance *::before, .sahmt-performance *::after { box-sizing: border-box; }
+.sahmt-performance p, .sahmt-performance h3 { margin: 0; }
+.sahmt-performance button, .sahmt-performance input, .sahmt-performance select, .sahmt-performance textarea { font: inherit; }
+.sahmt-performance button { min-height: 44px; cursor: pointer; border: 1px solid var(--sp-line); border-radius: 10px; padding: .75rem 1rem; color: var(--sp-ink); background: #fff; font-weight: 700; }
+.sahmt-performance button:hover { border-color: var(--sp-accent); background: #f1f8fa; }
+.sahmt-performance button:focus-visible, .sahmt-performance input:focus-visible, .sahmt-performance select:focus-visible, .sahmt-performance textarea:focus-visible { outline: 3px solid #16789b; outline-offset: 3px; }
+.sahmt-performance button:disabled, .sahmt-performance fieldset:disabled { opacity: .65; cursor: wait; }
+.sp-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+.sp-summary article { display: grid; align-content: start; gap: .45rem; border-radius: 16px; padding: clamp(1rem, 3vw, 1.5rem); }
+.sp-total { background: #0c475d; color: #fff; }
+.sp-relative { background: #eaf4f6; border: 1px solid #c5dfe5; }
+.sp-summary article > span { font-size: .92rem; font-weight: 700; }
+.sp-summary article > strong { font-size: clamp(1.7rem, 5vw, 2.8rem); line-height: 1.15; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.sp-summary small { font-size: .8rem; line-height: 1.5; }
+.sp-total small { color: #d9edf3; }
+.sp-relative small { color: var(--sp-muted); }
+.sp-batch { display: grid; gap: .35rem; font-size: .85rem; color: var(--sp-muted); line-height: 1.5; }
+.sp-schedule { color: var(--sp-muted); line-height: 1.5; }
+.sahmt-performance .sp-refresh { justify-self: start; padding: .35rem .1rem; min-height: 36px; border: 0; border-radius: 3px; color: var(--sp-accent); font-size: .85rem; text-decoration: underline; text-underline-offset: .2em; }
+.sp-categories { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.sahmt-performance .sp-category { display: flex; gap: .85rem; align-items: center; text-align: left; padding: 1.1rem; min-height: 105px; box-shadow: 0 2px 5px #10384d06; }
+.sp-category-copy { display: grid; gap: .45rem; flex: 1; min-width: 0; }
+.sp-category-copy strong { font-size: .82rem; letter-spacing: .025em; line-height: 1.5; }
+.sp-category-copy small { font-size: .75rem; font-weight: 400; color: var(--sp-muted); line-height: 1.4; }
+.sp-category-score { display: grid; gap: .2rem; text-align: right; font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.sp-category-score small { font-size: .68rem; font-weight: 400; color: var(--sp-muted); }
+.sp-category > span:last-child { font-size: 1.5rem; color: #658392; }
+.sp-warning { border-left: 3px solid #b1780b; padding: .7rem .8rem; background: #fff6df; color: #674808; border-radius: 4px; }
+.sp-empty { padding: 1.5rem 1rem; border: 1px dashed var(--sp-line); border-radius: 12px; display: grid; gap: 1rem; line-height: 1.6; }
+.sp-empty button { justify-self: start; }
+.sp-history { display: grid; gap: .85rem; }
+.sahmt-performance .sp-back { justify-self: start; color: var(--sp-accent); }
+.sp-history-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .4rem; }
+.sp-history-title h3 { font-size: 1rem; line-height: 1.5; }
+.sp-history-title > strong { font-size: 1.2rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sp-history > p { font-size: .85rem; color: var(--sp-muted); line-height: 1.5; }
+.sp-history-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--sp-line); border-radius: 12px; overflow: hidden; }
+.sp-history-list li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem; background: #fff; }
+.sp-history-list li + li { border-top: 1px solid var(--sp-line); }
+.sp-history-list li > div { display: grid; gap: .4rem; min-width: 0; }
+.sp-history-list li strong { font-size: .9rem; line-height: 1.5; }
+.sp-history-list small { color: var(--sp-muted); font-size: .75rem; }
+.sp-history-list li > span { font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.sp-debit { color: #a53532; }
+.sp-credit { color: #096858; }
+.sp-admin { padding: 1.2rem; border: 1px solid var(--sp-line); border-radius: 14px; background: #f6fafb; display: grid; gap: .9rem; }
+.sp-admin h3 { font-size: 1rem; }
+.sp-admin p { color: var(--sp-muted); font-size: .85rem; line-height: 1.6; }
+.sp-admin fieldset { min-width: 0; padding: 0; margin: 0; border: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.sp-admin label { min-width: 0; display: grid; gap: .5rem; font-size: .85rem; font-weight: 700; }
+.sp-admin label[hidden] { display: none; }
+.sp-admin input, .sp-admin select, .sp-admin textarea { min-width: 0; width: 100%; background: #fff; color: var(--sp-ink); border: 1px solid #9bb6c7; border-radius: 8px; padding: .7rem; min-height: 44px; }
+.sp-admin textarea { resize: vertical; }
+.sp-form-wide { grid-column: 1 / -1; }
+.sahmt-performance .sp-admin button[type=submit] { background: var(--sp-accent); color: #fff; border-color: var(--sp-accent); }
+.sp-message { line-height: 1.6; font-size: .9rem; }
+.sp-message:empty { display: none; }
+.sp-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 620px) {
+  .sp-categories, .sp-admin fieldset { grid-template-columns: minmax(0, 1fr); }
+  .sp-summary { gap: .6rem; }
+  .sp-summary article { padding: 1rem .8rem; }
+  .sp-summary article > span { font-size: .83rem; }
+  .sp-summary small { font-size: .72rem; }
+  .sahmt-performance .sp-category { min-height: 90px; padding: .9rem; }
+  .sp-history-title { align-items: start; flex-direction: column; gap: .35rem; }
+  .sp-admin { padding: 1rem; }
+}
+
+.management-hub-body>[data-hub-sahmt-performance]{height:auto;min-height:64px;width:calc(100% - 32px);margin:12px 16px 20px}
+.management-hub-dialog[data-panel="sahmtPerformance"] .management-hub-body{display:block;overflow:auto;min-height:0}

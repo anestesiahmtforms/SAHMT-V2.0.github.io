@@ -85,6 +85,8 @@ jobs:
           npm run test:fg-rules
       - name: Verify FD manual updates and source read isolation
         run: node --test tests/fd-manual-refresh.test.js tests/fd-fixed-sync.test.js
+      - name: Verify consolidated daily SAHMT performance and administrator entries
+        run: npm run test:sahmt-performance
       - name: Verify targeted updates and device confirmation security
         run: |
           node --test tests/app-publication.test.js tests/app-updates-control-route.test.js tests/app-updates-targeted.test.js tests/app-updates-admin-lifecycle.test.js

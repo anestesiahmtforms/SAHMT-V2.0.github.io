@@ -1,4 +1,4 @@
-export const SOURCE_READ_LIMITS=Object.freeze({FA:6000,FB:6000,FC:6000,FE:6000,FI:6000});
+export const SOURCE_READ_LIMITS=Object.freeze({FA:6000,FB:6000,FC:6000,FE:6000,FG:6000,FI:6000});
 const formatter=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'});
 export function billingDay(now){const p=formatter.formatToParts(now);return ['year','month','day'].map(k=>p.find(v=>v.type===k).value).join('-');}
 export function createSourceReadBudget({store,now=Date.now,limits=SOURCE_READ_LIMITS}){

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Desempenho SAHMT · prévia</title><link rel="stylesheet" href="../../src/sahmt-performance.css"><style>body{margin:0;background:#f0f5f8;font-family:Arial,sans-serif;color:#12354a}.preview-shell{max-width:1100px;margin:20px auto;background:#fff;border:1px solid #d3e0e7;border-radius:16px;overflow:hidden}.preview-header{background:#0c475d;color:white;padding:24px}.preview-header p{font-size:12px;letter-spacing:.1em}.preview-header h1{font-size:22px;margin:.5rem 0}.preview-header small{color:#d9edf3}@media(max-width:620px){.preview-shell{margin:0;border:0;border-radius:0}.preview-header{padding:20px}.preview-header h1{font-size:19px}}</style></head>
+<body><main class="preview-shell"><header class="preview-header"><p>INDICADORES · SAHMT</p><h1>DESEMPENHO - SAHMT</h1><small>Marina de Oliveira · Meu desempenho</small></header><div id="app"></div></main>
+<script type="module">
+import {mountSahmtPerformance} from '../../src/sahmt-performance-ui.js';
+const params=new URLSearchParams(location.search);
+const snapshot={status:'READY',uid:'u1',canManage:!params.has('readOnly'),batchId:'2026-11-07',cutoff:'2026-11-07T05:00:00Z',updatedAt:'2026-11-07T05:12:00Z',stale:params.has('stale'),summary:{total:87.5,percentage:70,byCategory:{OPERATIONS:42,MANAGEMENT:25,RECORDS:12.5,SURVEYS:10,NOTIFICATIONS:-7,CONTINUING_EDUCATION:5}}};
+window.calls=[];let current=true,failOnce=params.has('saveError');
+window.invalidate=()=>{current=false;cleanup();};
+const request=async(action,input)=>{
+ window.calls.push({action,input});
+ if(action==='GET_SAHMT_PERFORMANCE'){
+  if(params.has('late'))return new Promise(resolve=>{window.releaseLate=()=>resolve(snapshot);});
+  if(params.has('preparing'))return {status:'PREPARING'};
+  if(params.has('unavailable'))throw Error('UNAVAILABLE');
+  return snapshot;
+ }
+ if(action==='LIST_SAHMT_PEOPLE')return {people:[{uid:'u1',displayName:'Marina de Oliveira'},{uid:'u2',displayName:'André Costa'}]};
+ if(action==='LIST_SAHMT_HISTORY'){
+  if(params.has('historyLate'))return new Promise(resolve=>{window.releaseHistory=()=>resolve({batchId:snapshot.batchId,rows:[{id:'late',label:'Histórico tardio',points:15,source:'FG',createdAt:snapshot.cutoff}],nextCursor:null});});
+  return {batchId:params.has('batchChanged')&&input.cursor?'new-batch':snapshot.batchId,rows:input.cursor?[{id:'c',label:'Revisão de checklist',source:'FG',points:2,createdAt:'2026-11-04T13:30:00Z'}]:[{id:'a',label:'Checklist confirmado',source:'FG',points:5,createdAt:'2026-11-06T14:00:00Z'},{id:'b',label:'Ajuste de atividade operacional',source:'FI',points:-3,createdAt:'2026-11-05T15:30:00Z'}],nextCursor:input.cursor?null:'page-2'};
+ }
+ if(action==='ADD_SAHMT_MANUAL'){if(failOnce){failOnce=false;throw Error('NETWORK');}return {status:'PENDING'};}
+ throw Error('UNSUPPORTED_ACTION');
+};
+const cleanup=mountSahmtPerformance(document.querySelector('#app'),{request,isCurrent:()=>current});
+</script></body></html>
