@@ -20,11 +20,11 @@ export async function google(url,token,body,method=body===undefined?'GET':'POST'
  demand(r.ok,'RELEASE_GOOGLE_'+r.status+'_'+(data.error?.status||'ERROR'));
  return data;
 }
-export async function cloudflare(station){
+export async function cloudflare(station,{profile}={}){
  const target=targets[station];demand(target,'RELEASE_STATION_INVALID');
  const env={...process.env,CLOUDFLARE_AUTH_USE_KEYRING:'true',WRANGLER_SEND_METRICS:'false',WRANGLER_WRITE_LOGS:'false'};
  for(const key of ['CLOUDFLARE_API_TOKEN','CLOUDFLARE_API_KEY','CLOUDFLARE_EMAIL'])delete env[key];
- const credential=JSON.parse(execFileSync(process.execPath,[resolve('node_modules/wrangler/bin/wrangler.js'),'auth','token','--json'],{cwd:resolve('.local-preview',station.toLowerCase()+'-cloudflare'),env,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:40000}));
+ const credential=JSON.parse(execFileSync(process.execPath,[resolve('node_modules/wrangler/bin/wrangler.js'),'auth','token','--json',...(profile?['--profile',profile]:[])],{cwd:profile?process.cwd():resolve('.local-preview',station.toLowerCase()+'-cloudflare'),env,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:40000}));
  demand(credential.type==='oauth'&&typeof credential.token==='string','RELEASE_OAUTH_INVALID');
  const base='/accounts/'+target.account;
  const request=async(path,{method='GET',body,raw=false,missing=false}={})=>{
