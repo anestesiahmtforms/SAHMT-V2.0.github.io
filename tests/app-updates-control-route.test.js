@@ -21,7 +21,7 @@ function harness({target='FA',route='app-updates-control',session=authorized(),l
   stopChecklistQrScanner(){},cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,
   isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,renderOnlineGate:()=>{app.innerHTML='Online gate';},loginView:()=>'Login',bindLogin(){},
   can:permission=>ctx.session.profile?.role==='administrador_app'||ctx.session.profile?.permissions?.[permission]===true,
-  canUseYearEndSchedule:()=>false,canUseGovernanceHub:()=>false,deniedOperationalModules:new Set(),notice:'',
+  yearEndStartup:{setSession(){}},canUseYearEndSchedule:()=>false,canUseGovernanceHub:()=>false,deniedOperationalModules:new Set(),notice:'',
   canOpenRestrictedModule:()=>false,hasOccurrencePermission:()=>false,featureEnabledForRoute:()=>true,appFeatures:{},
   shellView:()=>'Shell',bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},updateOutboxStatus(){},loadHome(){},loadModule(){},bindModuleForm(){},
   loadPanel:loadPanel||(async()=>({openAppUpdatePanel:async options=>{panels.push(options);const cleanup=()=>cleanups.push(options);return cleanup;}}))

@@ -13,6 +13,7 @@ const operationalDrafts={flush(){}},liveReports=new Map(),reportStates=new Map()
 const updateInformationBanner=()=>{},stopChecklistQrScanner=()=>{},isOfflineRuntimeForced=()=>false,bindLogin=()=>{},bindProfileRetryControl=()=>{};
 const can=permission=>session.profile.role==='administrador_app'||session.profile.permissions[permission]===true;
 const canUseYearEndSchedule=()=>false,canUseGovernanceHub=()=>false,canOpenRestrictedModule=()=>true,hasOccurrencePermission=()=>false,featureEnabledForRoute=()=>true;
+const yearEndStartup={setSession(){}};
 const loginView=()=>'<main>Login</main>',shellView=()=>'<main class="main-content"><div id="module-content"></div></main>';
 const preloadOperationalDataWhenIdle=()=>{},updateOutboxStatus=()=>{},bindModuleForm=()=>{},renderOnlineGate=()=>{app.textContent='Online gate';};
 const loadHome=()=>{app.textContent='Home';};
