@@ -38,7 +38,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivities: async (...args) => { queries.push({name: 'listLearningActivities', args}); return []; },
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
-  const context = vm.createContext({isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
+  const context = vm.createContext({googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     session, appFeatures, secondaryDomainProjects,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,communicationAdminSession:()=>false,
@@ -106,7 +106,7 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) 
 
 function renderHarness(session, route='management') {
   const navigations = [], loads = [], shells = [];
-  const context = vm.createContext({isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
+  const context = vm.createContext({googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     deployment:{target:'FA',externalManagementEnabled:false},googleAccessPanel:null,
     operationalDrafts:{flush:async()=>{},restore:async()=>{}},deniedOperationalModules:new Set(),
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,

@@ -62,7 +62,7 @@ const authorized=()=>({status:'signed-in',user,profile:{uid:user.uid,email:user.
 const limited=()=>({status:'auth-limited',user,profile:{uid:user.uid,active:false,access:false,permissions:{}},offline:true,validatingProfile:true});
 function harness({route='management',target='FB',session=authorized()}={}){
   const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[];
-  const ctx=vm.createContext({
+  const ctx=vm.createContext({googleProjectAuthEnabled:true,
     app,document:app,session,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
     deployment:{target,faBase:'/SAHMT-V2.0.github.io/',externalManagementEnabled:true},rememberModuleNavigation(){},
     evaluationModuleGeneration:0,googleAccessPanel:null,scheduleGridObserver:null,operationalDrafts:{flush(){},restore(){}},
