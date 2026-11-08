@@ -9,7 +9,8 @@ test('Apps Script starts disabled, with no trigger or external call on file load
 });
 test('human review stays gated by FC config and needs no external AI, key or scheduler',()=>{
  for(const enabled of [false,true]){let queries=0;const c=vm.createContext({Date,QMENTUM_DATA_PROJECT_:'indicadores---sahmt',SAHMT_V2_CONFIG:{projectId:'sahmt-17a16',databaseId:'(default)'},sahmtV2Properties_:()=>({getProperty:()=>null}),LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},firestoreRequest_:()=>{queries++;return[];},UrlFetchApp:{fetch:()=>{throw Error('EXTERNAL_AI_FORBIDDEN');}}});vm.runInContext(wrapper,c);c.qmServerGet_=()=>({enabled});const r=c.validarRevisoesQmentumV1();assert.equal(r.code,enabled?'QMENTUM_REVIEWS_VALIDATED':'QMENTUM_CONFIG_REQUIRED');assert.equal(queries,enabled?1:0);}
- const code=readFileSync(new URL('../apps-script-v2/FormsEvaluation.gs',import.meta.url),'utf8');assert.ok(code.indexOf("step('qmentumReviews'")<code.indexOf("step('qmentumParticipations'"));
+ const code=readFileSync(new URL('../apps-script-v2/FormsEvaluation.gs',import.meta.url),'utf8');
+ assert.doesNotMatch(code,/function reconciliarAvaliacaoSahmtV2\s*\(/);
 });
 test('human approval still requires a pending request, fresh grant and current factual signature',()=>{
  for(const scenario of ['APPROVE','REVOKED','STALE','DISABLED','UNIT_INACTIVE']){
