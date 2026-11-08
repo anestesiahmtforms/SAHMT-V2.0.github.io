@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "triggers": {"crons": ["* * * * *"]},
+  "triggers": {"crons": []},
   "placement": {"region": "gcp:southamerica-east1"},
   "observability": {"enabled": true, "redact_query_string": true, "logs": {"enabled": true, "head_sampling_rate": 1}, "traces": {"enabled": true, "head_sampling_rate": 0.01}},
   "vars": {"MODULE_STATION": "FI", "MODULE_PROJECT_ID": "sahmt-operacional-fi", "MODULE_CUTOVER_ACTIVE": "false", "ALLOWED_ORIGINS": "https://anestesiahmtforms.github.io"}
