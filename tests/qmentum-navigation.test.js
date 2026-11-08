@@ -13,4 +13,3 @@ test('direct route uses the independent FC services and preserves the common-use
  assert.match(body,/session\.user\?\.uid===uid&&canOpenRestrictedModule\('qmentum'\)/);
  assert.match(main,/\['management', 'training', 'qmentum', 'fg-performance', 'fc-performance','fd-performance','fe-performance'\]\.includes\(requestedRoute\) && !canOpenRestrictedModule\(requestedRoute\)/);
 });
-
