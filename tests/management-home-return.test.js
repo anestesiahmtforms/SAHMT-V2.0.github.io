@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import vm f
 const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const start=main.indexOf("  if (!authLimited && ['occurrences','qmentum','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute))");
 assert.ok(start>=0,'FC module footer lifecycle must be present');
-const code=main.slice(start,main.indexOf("  document.querySelector('[data-load-fh-label-directory]')",start));
+const code=main.slice(start,main.indexOf("  document.querySelector('[data-retry-fh-label-access]')",start));
 test('FG performance footer returns to Checklist',()=>{
  const calls=[],events=new Map(),button={textContent:'Home',removeAttribute(){},addEventListener:(name,fn)=>events.set(name,fn)};
  vm.runInNewContext(code,{authLimited:false,requestedRoute:'fg-performance',app:{querySelectorAll:()=>[button]},document:{querySelectorAll:()=>[],querySelector:()=>null},bindProfileRetryControl(){},navigate:(...args)=>calls.push(args)});events.get('click')();assert.equal(calls[0][0],'checklist');
