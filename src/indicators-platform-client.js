@@ -1,4 +1,4 @@
-import {isSahmtPerformanceAction} from '../worker-indicators/sahmt-performance-actions.js';
+import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
 
 const fdEndpoint='https://sahmt-indicators.anestesiahmtforms4.workers.dev/v1/indicators';
 const indicatorEndpoint=import.meta.env?.VITE_FD_PERFORMANCE_ENABLED==='true'?fdEndpoint:'https://sahmt-indicators.anestesiahmtforms.workers.dev/v1/indicators';

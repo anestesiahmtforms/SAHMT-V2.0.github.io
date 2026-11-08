@@ -83,7 +83,7 @@ import {communicationFeatureEnabled,communicationDevicePushActive,communicationA
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
-import {isSahmtPerformanceAction} from '../worker-indicators/sahmt-performance-actions.js';
+import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
 const app = document.querySelector('#app');
 try {await discardLegacyOfflineData();}
 catch(error){

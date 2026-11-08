@@ -1,6 +1,6 @@
 import {createScheduledRefresh} from './scheduled-refresh.js';
 import {createSahmtPerformanceService} from './sahmt-performance-service.js';
-import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
+import {isSahmtPerformanceAction} from '../src/sahmt-performance-actions.js';
 import {createSahmtDailyProcessor} from './sahmt-performance-daily.js';
 import {createManualRefresh} from './refresh-operations.js';
 import {compileYear} from '../indicators-platform/domain/compiler.js';import {METRICS,PLATFORMS} from '../indicators-platform/domain/catalog.js';import {createFdPerformanceService} from './performance-service.js';

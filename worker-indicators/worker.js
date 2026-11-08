@@ -1,7 +1,7 @@
 import {createSourceReadBudget} from './read-budget.js';
 import {verifySchedule} from './schedule-envelope.js';
 import {createSahmtPerformanceSources} from './sahmt-performance-sources.js';
-import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
+import {isSahmtPerformanceAction} from '../src/sahmt-performance-actions.js';
 import {createFePerformanceReader} from '../worker-fe-surveys/performance-read.js';
 import {FD_PROJECT,indicatorServiceToken} from './auth.js';import {createFirestoreStore} from './store.js';import {createIndicatorSources} from './sources.js';import {createIndicatorService} from './service.js';import {verifyTrainingIdentity} from '../worker-training/google-auth.js';import {Buffer} from 'node:buffer';
 import {stationAwareWorker} from '../worker-station-forwarding/forward.js';

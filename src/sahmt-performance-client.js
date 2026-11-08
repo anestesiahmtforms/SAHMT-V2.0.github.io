@@ -1,5 +1,5 @@
 import {callIndicatorsApi} from './indicators-platform-client.js';
-import {isSahmtPerformanceAction} from '../worker-indicators/sahmt-performance-actions.js';
+import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
 
 export function createSahmtPerformanceRequest({uid, isCurrent = () => true, transport = callIndicatorsApi} = {}) {
   const controller = new AbortController();
