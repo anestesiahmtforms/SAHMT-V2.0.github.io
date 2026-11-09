@@ -2515,3 +2515,42 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .app-shell--home>.app-footer>span{color:#bdd2de;font-size:.59rem;line-height:1.1}
 @media(max-width:480px){.app-shell--home>.home-top-stack{gap:3px}.app-shell--home .home-logo-stage{width:64px;height:64px}.app-shell--home .home-logo-stage>img{width:43px;height:43px}.app-shell--home .home-identity-topbar .identity-card{padding:8px 10px}.app-shell--home .home-identity-topbar .app-version{top:2px;right:6px}.app-shell--home>.app-footer .home-welcome{border-radius:14px}}
 @media(max-height:600px){.app-shell--home .home-logo-stage{width:56px;height:56px}.app-shell--home .home-logo-stage>img{width:40px;height:40px}}
+
+/* Home refinement: enlarged animated logo and balanced horizontal identity strip. */
+.app-shell--home>.home-top-stack{width:100%;gap:clamp(8px,1.4dvh,14px);padding-top:max(8px,env(safe-area-inset-top))}
+.app-shell--home .home-logo-stage{width:clamp(180px,27dvh,250px);height:clamp(180px,27dvh,250px);max-width:90vw}
+.app-shell--home .home-logo-stage>img{width:clamp(132px,20dvh,186px);height:clamp(132px,20dvh,186px);max-width:76vw;max-height:76vw;padding:10px;border-radius:28px}
+.app-shell--home .home-logo-stage .home-welcome__orbit{inset:3px}
+.app-shell--home .home-logo-stage .home-welcome__orbit--inner{inset:clamp(22px,3.4dvh,34px)}
+.app-shell--home .home-logo-stage .home-welcome__pulse{width:10px;height:10px;top:11%;right:11%}
+.app-shell--home .home-logo-stage .home-welcome__glint{top:-55px;right:-38px;width:170px;height:270px}
+.app-shell--home .home-identity-topbar .identity-card{grid-template-columns:minmax(0,1.45fr) minmax(105px,.8fr) minmax(120px,1fr);grid-template-rows:auto;gap:8px 14px;align-items:center}
+.app-shell--home .home-identity-topbar .identity-card__user-row{grid-column:1;grid-row:1}
+.app-shell--home .home-identity-topbar .sync-pill{grid-column:2;grid-row:1;justify-self:center;min-width:0}
+.app-shell--home .home-identity-topbar .account-mode{grid-column:3;grid-row:1;justify-content:flex-end;min-width:0}
+.app-shell--home .home-identity-topbar .identity-card:has(.account-mode){grid-template-rows:auto}
+.app-shell--home .home-identity-topbar .identity-card__user{font-size:clamp(.72rem,1.5vw,.95rem)}
+.app-shell--home .home-identity-topbar .account-mode select{max-width:100%;min-width:0}
+@media(max-width:600px){
+  .app-shell--home>.home-top-stack{gap:clamp(5px,1dvh,10px)}
+  .app-shell--home .home-logo-stage{width:clamp(156px,25dvh,205px);height:clamp(156px,25dvh,205px)}
+  .app-shell--home .home-logo-stage>img{width:clamp(116px,18.5dvh,154px);height:clamp(116px,18.5dvh,154px);padding:8px;border-radius:24px}
+  .app-shell--home .home-identity-topbar .identity-card{grid-template-columns:minmax(0,1fr) minmax(90px,.7fr);grid-template-rows:auto auto;gap:7px 10px;padding:9px 12px}
+  .app-shell--home .home-identity-topbar .identity-card__user-row{grid-column:1;grid-row:1}
+  .app-shell--home .home-identity-topbar .sync-pill{grid-column:2;grid-row:1;justify-self:end}
+  .app-shell--home .home-identity-topbar .account-mode{grid-column:1/-1;grid-row:2;justify-content:flex-start}
+}
+@media(max-width:360px){
+  .app-shell--home .home-logo-stage{width:clamp(142px,23dvh,176px);height:clamp(142px,23dvh,176px)}
+  .app-shell--home .home-logo-stage>img{width:clamp(106px,17dvh,132px);height:clamp(106px,17dvh,132px)}
+  .app-shell--home .home-identity-topbar .identity-card{gap:6px 7px;padding:8px 9px}
+}
+@media(max-height:600px){
+  .app-shell--home .home-logo-stage{width:clamp(120px,25dvh,155px);height:clamp(120px,25dvh,155px)}
+  .app-shell--home .home-logo-stage>img{width:clamp(90px,18.5dvh,116px);height:clamp(90px,18.5dvh,116px);padding:6px;border-radius:20px}
+  .app-shell--home>.home-top-stack{gap:4px}
+}
+@media(prefers-reduced-motion:reduce){
+  .app-shell--home .home-logo-stage .home-welcome__orbit--outer{animation:none}
+}
+
