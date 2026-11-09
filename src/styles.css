@@ -2554,3 +2554,53 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   .app-shell--home .home-logo-stage .home-welcome__orbit--outer{animation:none}
 }
 
+/* Home visual balance: framed logo, taller welcome panel and more compact module tiles. */
+.app-shell--home .home-logo-stage{
+  width:clamp(126px,19dvh,175px);
+  height:clamp(126px,19dvh,175px);
+  max-width:90vw;
+  padding:clamp(8px,1.5dvh,14px);
+  border:1px solid #b1ebf455;
+  border-radius:22px;
+  background:radial-gradient(ellipse at 84% 14%,#1eb7c434,transparent 35%),linear-gradient(116deg,#103652 0%,#105071 55%,#166879 100%);
+  box-shadow:0 16px 38px #02132445,inset 0 1px #ffffff1a;
+}
+.app-shell--home .home-logo-stage>img{
+  width:clamp(92px,14dvh,130px);
+  height:clamp(92px,14dvh,130px);
+  max-width:100%;
+  max-height:100%;
+  padding:8px;
+  border-radius:22px;
+}
+.app-shell--home .home-logo-stage .home-welcome__orbit{inset:5px}
+.app-shell--home .home-logo-stage .home-welcome__orbit--inner{inset:clamp(20px,3dvh,28px)}
+.app-shell--home .home-logo-stage .home-welcome__glint{top:-28px;right:-22px;width:120px;height:190px}
+.app-shell--home>.app-footer .home-welcome{
+  min-height:clamp(112px,15dvh,160px);
+  padding:clamp(16px,2.5dvh,26px) clamp(14px,3vw,28px);
+}
+.app-shell--home .home-identity-topbar{width:var(--home-width);max-width:var(--home-width)}
+.app-shell--home .home-identity-topbar .identity-card{width:100%;min-height:clamp(58px,8dvh,76px)}
+.app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){min-height:76px}
+@media(max-width:600px){
+  .app-shell--home .home-logo-stage{width:clamp(109px,17.5dvh,144px);height:clamp(109px,17.5dvh,144px);padding:7px;border-radius:19px}
+  .app-shell--home .home-logo-stage>img{width:clamp(80px,13dvh,108px);height:clamp(80px,13dvh,108px);padding:7px;border-radius:18px}
+  .app-shell--home>.app-footer .home-welcome{min-height:clamp(116px,17dvh,150px);padding:clamp(15px,2.5dvh,22px) 14px}
+  .app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){min-height:66px;padding-block:10px;gap:10px}
+  .app-shell--home .module-card::before{margin-block:-10px}
+}
+@media(max-width:360px){
+  .app-shell--home .home-logo-stage{width:clamp(99px,16dvh,124px);height:clamp(99px,16dvh,124px)}
+  .app-shell--home .home-logo-stage>img{width:clamp(73px,12dvh,92px);height:clamp(73px,12dvh,92px)}
+  .app-shell--home .home-identity-topbar .identity-card{width:100%}
+  .app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){min-height:62px;padding-block:8px}
+  .app-shell--home .module-card::before{margin-block:-8px}
+}
+@media(max-height:600px){
+  .app-shell--home .home-logo-stage{width:clamp(92px,19dvh,116px);height:clamp(92px,19dvh,116px)}
+  .app-shell--home .home-logo-stage>img{width:clamp(68px,14dvh,86px);height:clamp(68px,14dvh,86px)}
+  .app-shell--home>.app-footer .home-welcome{min-height:104px;padding-block:12px}
+  .app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){min-height:60px}
+}
+
