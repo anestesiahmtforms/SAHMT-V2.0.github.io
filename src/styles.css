@@ -2506,12 +2506,12 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .app-shell--home .home-identity-topbar .identity-card__user-row{grid-column:1;grid-row:1;display:flex;align-items:center;gap:10px;min-width:0;padding:0}
 .app-shell--home .home-identity-topbar .identity-card__user{overflow:hidden;color:#fff;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(.72rem,2.2vw,.9rem);font-weight:850}
 .app-shell--home .home-identity-topbar .sync-pill{justify-self:end;grid-column:2;grid-row:1;color:#e1edf5}
-.app-shell--home .home-identity-topbar .app-version{position:static;grid-column:2;grid-row:2;justify-self:end;color:#f5d691;font-size:.62rem}
+.app-shell--home .home-identity-topbar .app-version{position:absolute;top:5px;right:10px;color:#f5d691;font-size:.62rem}
 .app-shell--home .home-identity-topbar .identity-card:has(.account-mode){grid-template-rows:auto auto}
 .app-shell--home .home-identity-topbar .account-mode{grid-column:1;grid-row:2;justify-content:flex-start;color:#d7e5ef}
 .app-shell--home>.app-footer .home-welcome{justify-content:flex-start;width:100%;min-height:0;margin:0;padding:clamp(8px,1.3dvh,13px) clamp(12px,2.4vw,22px);border-color:#b1ebf455;border-radius:16px;text-align:left}
 .app-shell--home>.app-footer .home-welcome h1{font-size:clamp(1rem,3.8vw,1.65rem)}
 .app-shell--home>.app-footer .home-welcome__copy>p{font-size:clamp(.68rem,1.8vw,.82rem)}
 .app-shell--home>.app-footer>span{color:#bdd2de;font-size:.59rem;line-height:1.1}
-@media(max-width:480px){.app-shell--home>.home-top-stack{gap:3px}.app-shell--home .home-logo-stage{width:64px;height:64px}.app-shell--home .home-logo-stage>img{width:43px;height:43px}.app-shell--home .home-identity-topbar .identity-card{padding:8px 10px}.app-shell--home>.app-footer .home-welcome{border-radius:14px}}
+@media(max-width:480px){.app-shell--home>.home-top-stack{gap:3px}.app-shell--home .home-logo-stage{width:64px;height:64px}.app-shell--home .home-logo-stage>img{width:43px;height:43px}.app-shell--home .home-identity-topbar .identity-card{padding:8px 10px}.app-shell--home .home-identity-topbar .app-version{top:2px;right:6px}.app-shell--home>.app-footer .home-welcome{border-radius:14px}}
 @media(max-height:600px){.app-shell--home .home-logo-stage{width:56px;height:56px}.app-shell--home .home-logo-stage>img{width:40px;height:40px}}
