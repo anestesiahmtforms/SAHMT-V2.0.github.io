@@ -237,13 +237,13 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
   assert.deepEqual(session, before);
 });
 
-test('administradores preservam os cartões e os controles administrativos existentes', () => {
+test('administradores preservam os cartões sem duplicar os atalhos da Central FI em Gestão', () => {
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
     assert.deepEqual(visibleRoutes(h), ['checklist', 'schedule', 'labels', 'management-hub']);
     assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
     assert.equal(h.context.canOpenRestrictedModule('training'), true);
-    assert.match(h.ui.managementUtilityCards(), /data-route="admin"/);
+    assert.equal(h.ui.managementUtilityCards(), '');
     assert.match(h.ui.actionForm('training'), /id="training-catalog-form"/);
     assert.equal(h.ui.actionForm('notifications'), '');
   }

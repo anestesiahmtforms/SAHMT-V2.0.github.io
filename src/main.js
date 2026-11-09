@@ -775,11 +775,8 @@ function hasOccurrencePermission() {
 }
 
 function managementUtilityCards() {
-  if(typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&!can('admin'))return '';
-  return [['people', 'peopleManage'], ['admin', 'usersManage']].filter(([route, permission]) => can(permission) && featureEnabledForRoute(route, appFeatures)).map(([route]) => {
-    const [title, subtitle] = labels[route];
-    return `<button class="module-card" data-route="${route}">${managementAreaIcon({id:'utility-'+route})}<span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;
-  }).join('')+(can('admin')?'<button type="button" class="module-card" data-app-update-panel>'+managementAreaIcon({id:'utility-admin'})+'<span><strong>CONTROLE DE ATUALIZAÇÕES</strong><small>Todos os usuários, individual e confirmações por aparelho</small></span><span class="arrow" aria-hidden="true">›</span></button>':'');
+  // Pessoas, Administração and update controls are accessed through the FI Central.
+  return '';
 }
 
 function can(permission) {
