@@ -76,6 +76,7 @@ import {installAppUpdatePrompt} from './app-updates.js';
 import './app-updates.css';
 import {installTargetedAppUpdates} from './app-updates-targeted.js';
 import {APP_VERSION} from './app-version.js';
+import {getDailyHomeWelcomeMessage,millisecondsUntilHomeWelcomeChange} from './home-welcome.js';
 import './app-updates-targeted.css';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationDevicePushActive,communicationAdminSession} from './communication-link.js';
@@ -84,6 +85,18 @@ import {loadCommunicationModules,preloadCommunicationModules} from './communicat
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 import {isSahmtPerformanceAction} from './sahmt-performance-actions.js';
 const app = document.querySelector('#app');
+let homeWelcomeMessageTimer=null;
+function syncHomeWelcomeMessage(){
+  if(homeWelcomeMessageTimer!==null)window.clearTimeout(homeWelcomeMessageTimer);
+  homeWelcomeMessageTimer=null;
+  const target=document.querySelector('[data-home-welcome-message]');
+  if(!target)return;
+  const now=new Date();
+  target.textContent=getDailyHomeWelcomeMessage(now);
+  homeWelcomeMessageTimer=window.setTimeout(syncHomeWelcomeMessage,millisecondsUntilHomeWelcomeChange(now));
+}
+window.addEventListener('focus',syncHomeWelcomeMessage);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncHomeWelcomeMessage();});
 try {await discardLegacyOfflineData();}
 catch(error){
   app.innerHTML='<main class="login-gate"><section class="login-card"><h1>Atualização necessária</h1><p>Feche outras abas do SAHMT e reabra para concluir a remoção das pendências antigas.</p><button type="button" id="retry-cleanup">Tentar novamente</button></section></main>';
@@ -1087,7 +1100,7 @@ function shellView() {
     <dialog class="checklist-qr-dialog" id="checklist-qr-dialog" aria-label="Leitor QR do Checklist"><div class="checklist-qr-container"><div class="checklist-qr-stage"><video id="checklist-qr-video" playsinline muted hidden></video><div class="checklist-qr-focus" id="checklist-qr-focus" hidden aria-hidden="true"></div></div><div class="checklist-qr-tools"><div class="checklist-qr-zoom" role="group" aria-label="Ampliação do QR"><button type="button" data-checklist-qr-zoom="1" aria-pressed="false">1×</button><button type="button" data-checklist-qr-zoom="2" aria-pressed="true">2×</button></div><button id="checklist-qr-camera-switch" type="button" hidden disabled>Trocar câmera</button></div><p id="checklist-qr-status" role="status" aria-live="polite" hidden></p><button class="secondary-button" id="checklist-qr-close" type="button" autofocus>Voltar</button></div></dialog><dialog class="checklist-station-dialog" id="checklist-station-dialog" aria-labelledby="checklist-station-title"><div id="checklist-station-actions" class="checklist-station-banner-actions"><section class="checklist-station-block checklist-station-block--status" aria-labelledby="checklist-station-title"><header><h3 id="checklist-station-title" tabindex="-1">Checklist da estação</h3></header><section id="checklist-station-result" class="checklist-station-result"></section><div id="checklist-station-responses"></div><div id="checklist-station-checker"></div></section><div id="checklist-station-controls"></div></div><p id="checklist-station-status" role="status" aria-live="polite"></p><form method="dialog" class="checklist-station-footer"><button class="secondary-button" id="checklist-station-close" type="submit">Voltar</button></form></dialog>
     <dialog class="schedule-contact-dialog" id="schedule-contact-dialog" aria-labelledby="schedule-contact-heading"><div id="schedule-contact-details" data-schedule-panel><h3 id="schedule-contact-heading">Contato</h3></div>${scheduleEventPanels}<form method="dialog" data-schedule-close><button class="secondary-button" type="submit">Fechar</button></form></dialog>
     ${route === 'schedule' ? '' : `<dialog class="schedule-contact-dialog" id="event-schedule-choice-dialog" aria-labelledby="event-schedule-choice-title"><h3 id="event-schedule-choice-title">Escolha o anestesiologista</h3><p class="record-meta">Esta posição da escala reúne mais de uma sigla.</p><div id="event-schedule-choice-options" class="event-schedule-choice-options"></div><form method="dialog"><button class="secondary-button" type="submit" value="cancel">Cancelar</button></form></dialog>`}
-    <footer class="app-footer">${route === 'home' ? `<section class="home-welcome" aria-labelledby="home-welcome-title"><div class="home-welcome__copy"><span class="home-welcome__eyebrow"><i aria-hidden="true"></i> SAHMT · AMBIENTE INTEGRADO</span><h1 id="home-welcome-title">Seu dia começa <span>em sintonia.</span></h1><p>Conexão, cuidado e organização para sua rotina.</p></div><span class="home-welcome__glint" aria-hidden="true"></span></section>` : ''}${route === 'schedule' ? '<button type="button" class="secondary-button schedule-home-button" data-route="home">HOME</button>' : ''}<span>By Francisco Tadeu da Mota Albuquerque</span></footer>
+    <footer class="app-footer">${route === 'home' ? `<section class="home-welcome" aria-labelledby="home-welcome-title"><div class="home-welcome__copy"><span class="home-welcome__eyebrow"><i aria-hidden="true"></i> SAHMT · AMBIENTE INTEGRADO</span><h1 id="home-welcome-title">Seu dia começa <span>em sintonia.</span></h1><p data-home-welcome-message aria-live="polite">${getDailyHomeWelcomeMessage()}</p></div><span class="home-welcome__glint" aria-hidden="true"></span></section>` : ''}${route === 'schedule' ? '<button type="button" class="secondary-button schedule-home-button" data-route="home">HOME</button>' : ''}<span>By Francisco Tadeu da Mota Albuquerque</span></footer>
   </div>`;
 }
 
@@ -5223,6 +5236,7 @@ async function render() {
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
   }else app.innerHTML = shellView();
+  syncHomeWelcomeMessage();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
   if (!authLimited && ['occurrences','qmentum','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {

@@ -2667,3 +2667,9 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   filter:drop-shadow(0 0 6px #8ccaffbf);
 }
 
+/* Give the daily Home message enough visual weight for its welcome panel. */
+.app-shell--home>.app-footer .home-welcome__copy{display:grid;gap:clamp(5px,1dvh,9px)}
+.app-shell--home>.app-footer .home-welcome__eyebrow{font-size:clamp(.65rem,2vw,.76rem)}
+.app-shell--home>.app-footer .home-welcome h1{margin:0;font-size:clamp(1.25rem,5vw,1.75rem);line-height:1.08;letter-spacing:-.045em}
+.app-shell--home>.app-footer .home-welcome__copy>p{margin:0;color:#d0e8ef;font-size:clamp(.88rem,3vw,1rem);font-weight:650;line-height:1.4}
+
