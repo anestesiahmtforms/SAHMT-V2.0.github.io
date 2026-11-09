@@ -18,8 +18,14 @@ export function planAppPublication({metadata,deployedRevision,sourceRevision,com
  const match=/^V(\d{1,3})\.(\d{1,6})$/.exec(metadata.appVersion||'');if(!match)fail('STATE_INVALID');
  if(sourceRevision===deployedRevision)return validateAppPublication({schema:1,appVersion:metadata.appVersion,sourceRevision,release});
  if(comparison!=='ahead')fail('REVISION_NOT_NEWER');
- const minor=Number(match[2])+1;if(minor>999999||!Number.isSafeInteger(now)||now<=0)fail('VERSION_INVALID');
- return validateAppPublication({schema:1,appVersion:'V'+Number(match[1])+'.'+minor,sourceRevision,release:Math.max(now,release+1)});
+ const currentMajor=Number(match[1]),currentMinor=Number(match[2]);
+ const floor=/^V(\d{1,3})\.(\d{1,6})$/.exec(seed.appVersion);
+ const floorMajor=Number(floor[1]),floorMinor=Number(floor[2]);
+ const belowFloor=currentMajor<floorMajor||(currentMajor===floorMajor&&currentMinor<floorMinor);
+ const major=Math.max(currentMajor,floorMajor);
+ const minor=belowFloor?floorMinor:currentMinor+1;
+ if(minor>999999||!Number.isSafeInteger(now)||now<=0)fail('VERSION_INVALID');
+ return validateAppPublication({schema:1,appVersion:'V'+major+'.'+minor,sourceRevision,release:Math.max(now,release+1)});
 }
 
 export async function prepareAppPublication({sourceRevision,repository,token,fetchImpl=fetch,now=Date.now()}){
