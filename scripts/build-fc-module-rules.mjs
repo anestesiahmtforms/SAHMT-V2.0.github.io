@@ -21,10 +21,14 @@ const replacements=[
     function activeUser() { return hasProfile() && profile().uid == request.auth.uid && profile().active == true && profile().access == true; }
     function profileCan(permission) { return activeUser() && profile().permissions is map && profile().permissions.keys().hasAny([permission]) && profile().permissions[permission] == true; }
     function signedFromFc() { return activeUser(); }
-    function canCatalog() { return profileCan('occurrencesCatalogRead'); }
+    function canCatalog() { return profileCan('occurrencesCatalogRead') || canWrite(); }
     function canWrite() { return profileCan('occurrencesWrite'); }
     function canRead() { return profileCan('occurrencesRead'); }
     function canAudit() { return profileCan('occurrencesAuditRead'); }`],
+  ["data.keys().hasOnly(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&",
+   "data.keys().hasOnly(['schemaVersion','id','source','sourceId','originProjectId','uid','formId','points','status','createdAt']) &&"],
+  ['data.sourceId == reportId && data.uid == request.auth.uid &&',
+   "data.sourceId == reportId && data.uid == request.auth.uid &&\n        data.get('originProjectId', 'indicadores---sahmt') == 'indicadores---sahmt' &&"],
   [`    // Preserve the existing bounded read probe used by the indicators pilot.
     match /indicators/{indicatorId} {
       allow list: if database == '(default)' && request.auth != null &&

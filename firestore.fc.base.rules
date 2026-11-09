@@ -32,7 +32,7 @@ service cloud.firestore {
     function profile() { return get(profilePath(request.auth.uid)).data; }
     function activeUser() { return hasProfile() && profile().uid == request.auth.uid && profile().active == true && profile().access == true; }
     function profileCan(permission) { return activeUser() && profile().permissions is map && profile().permissions.keys().hasAny([permission]) && profile().permissions[permission] == true; }
-    function canCatalog() { return profileCan('occurrencesCatalogRead'); }
+    function canCatalog() { return profileCan('occurrencesCatalogRead') || canWrite(); }
     function canWrite() { return profileCan('occurrencesWrite'); }
     function canRead() { return profileCan('occurrencesRead'); }
     function canAudit() { return profileCan('occurrencesAuditRead'); }
@@ -73,10 +73,11 @@ service cloud.firestore {
         data.anonymous is bool && data.createdAt == request.time;
     }
     function validScoreClaim(reportId, data) {
-      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&
+      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','originProjectId','uid','formId','points','status','createdAt']) &&
         data.keys().hasAll(['schemaVersion','id','source','sourceId','uid','formId','points','status','createdAt']) &&
         data.schemaVersion == 1 && data.id == reportId && data.source == 'REGISTRO_OCORRENCIA' &&
         data.sourceId == reportId && data.uid == request.auth.uid &&
+        data.get('originProjectId', 'indicadores---sahmt') == 'indicadores---sahmt' &&
         data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
         data.points == 2 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
     }
