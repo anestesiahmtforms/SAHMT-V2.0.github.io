@@ -2,7 +2,7 @@ import {before, beforeEach, after, test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {initializeTestEnvironment, assertSucceeds, assertFails} from '@firebase/rules-unit-testing';
-import {doc, setDoc, getDoc, updateDoc, writeBatch, serverTimestamp} from 'firebase/firestore';
+import {collection, doc, getDocs, setDoc, getDoc, updateDoc, writeBatch, serverTimestamp} from 'firebase/firestore';
 import {fiEmulatorPort,assertFiEmulator} from './helpers/fi-emulator-address.js';
 
 const projects = {FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj'};
@@ -63,26 +63,34 @@ test(station + ' creates events with an atomic projection request and refuses fo
   await assertFails(setDoc(doc(database, 'eventProjectionOutbox/event-2'), {eventId: 'event', version: 2, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()}));
   await assertFails(getDoc(doc(database, 'labels/other-module')));
 });
-test(station + ' event corrections require a matching immutable history entry', async () => {
+}
+for (const [station, editor] of [['FI', 'admin'], ['FJ', 'admin'], ['FJ', 'operator']]) {
+test(station + ' event corrections by ' + editor + ' require a matching immutable history entry', async () => {
   const database = db(station);
   const creation = writeBatch(database);
   creation.set(doc(database, 'events/event'), eventRecord());
   creation.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()});
   await assertSucceeds(creation.commit());
-  const adminDb = db(station, 'admin');
-  await assertFails(updateDoc(doc(adminDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2,
-    updatedByUid: 'admin', updatedByName: 'Admin', updatedAt: serverTimestamp()}));
+  if (editor === 'operator') {
+    await seed('FJ', 'users/operator', {...member, uid: editor, sigla: 'ZZ', role: 'gestor',
+      permissions: {eventsWrite: true, eventsManage: true}});
+  }
+  const editorDb = db(station, editor);
+  const editorName = editor === 'admin' ? 'Admin' : 'Member';
+  await assertSucceeds(getDocs(collection(editorDb, 'events')));
+  await assertFails(updateDoc(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2,
+    updatedByUid: editor, updatedByName: editorName, updatedAt: serverTimestamp()}));
   const current = (await getDoc(doc(database, 'events/event'))).data();
   const fields = ['date','memberSigla','scheduleSigla','memberStatus','eventType','description','delayMultiple','substitute','shift','payer','creditor','amountToPay','status'];
   const previous = Object.fromEntries(fields.map(field => [field, current[field] ?? null]));
   const next = {...previous, delayMultiple: 2, amountToPay: 200};
-  const batch = writeBatch(adminDb);
-  batch.update(doc(adminDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2, updatedByUid: 'admin', updatedByName: 'Admin', updatedAt: serverTimestamp()});
-  batch.set(doc(adminDb, 'events/event/history/2'), {id: '2', eventId: 'event', version: 2, requestId: 'correction',
-    actorUid: 'admin', actorName: 'Admin', changedFields: ['delayMultiple','amountToPay'], before: previous, after: next, createdAt: serverTimestamp()});
-  batch.set(doc(adminDb, 'eventProjectionOutbox/event-2'), {eventId: 'event', version: 2, actorUid: 'admin', status: 'PENDING', updatedAt: serverTimestamp()});
+  const batch = writeBatch(editorDb);
+  batch.update(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2, updatedByUid: editor, updatedByName: editorName, updatedAt: serverTimestamp()});
+  batch.set(doc(editorDb, 'events/event/history/2'), {id: '2', eventId: 'event', version: 2, requestId: 'correction',
+    actorUid: editor, actorName: editorName, changedFields: ['delayMultiple','amountToPay'], before: previous, after: next, createdAt: serverTimestamp()});
+  batch.set(doc(editorDb, 'eventProjectionOutbox/event-2'), {eventId: 'event', version: 2, actorUid: editor, status: 'PENDING', updatedAt: serverTimestamp()});
   await assertSucceeds(batch.commit());
-  await assertFails(updateDoc(doc(adminDb, 'events/event/history/2'), {actorName: 'Changed'}));
+  await assertFails(updateDoc(doc(editorDb, 'events/event/history/2'), {actorName: 'Changed'}));
 });
 }
 test('FJ common users cannot launch events even with a legacy eventsWrite grant', async () => {
@@ -91,6 +99,11 @@ test('FJ common users cannot launch events even with a legacy eventsWrite grant'
   batch.set(doc(database, 'events/event'), eventRecord());
   batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
   await assertFails(batch.commit());
+  await seed('FJ', 'users/member', {...member, role: 'gestor', permissions: {...member.permissions, eventsManage: true}});
+  const delegated = writeBatch(database);
+  delegated.set(doc(database, 'events/event'), eventRecord());
+  delegated.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
+  await assertSucceeds(delegated.commit());
 });
 
 test('FJ preserves release highlights and blocks direct event-marker injection', async () => {

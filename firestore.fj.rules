@@ -27,6 +27,13 @@ service cloud.firestore {
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
     function canLaunchEvent() { return can('eventsWrite') && (isAdmin() || profile().get('role', '') == 'gestor'); }
+    function canEditEvents() {
+      let p = profile();
+      let grants = p.get('permissions', {});
+      return p.active == true && p.access == true &&
+        (p.role == 'administrador_app' || grants.get('admin', false) == true ||
+          (p.role == 'gestor' && grants.get('eventsWrite', false) == true && grants.get('eventsManage', false) == true));
+    }
     match /users/{uid} {
       allow read: if moduleSession() && (activeUser() && (request.auth.uid == uid || isAdmin()));
       allow write: if false;
@@ -181,7 +188,6 @@ service cloud.firestore {
         let updatedEvent = getAfter(parentPath).data;
         let changedKeys = before.diff(after).affectedKeys();
         return exists(parentPath) && existsAfter(parentPath) &&
-          can('admin') &&
           fields is list && fields.size() > 0 && fields.size() <= 13 &&
           fields.hasOnly(['date', 'memberSigla', 'scheduleSigla', 'memberStatus', 'eventType', 'description', 'delayMultiple', 'substitute', 'shift', 'payer', 'creditor', 'amountToPay', 'status']) &&
           fields.toSet().size() == fields.size() &&
@@ -206,7 +212,7 @@ service cloud.firestore {
         return existsAfter(historyPath);
       }
       function eventRecordReadAccess(data) {
-        return isAdmin() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
+        return canEditEvents() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
           (data.createdByUid == request.auth.uid ||
            (profile().sigla is string && profile().sigla != '' &&
             (data.get('memberSigla', '') == profile().sigla || data.get('scheduleSigla', '') == profile().sigla))));
@@ -218,7 +224,7 @@ service cloud.firestore {
       allow read: if moduleSession() && (eventRecordReadAccess(resource.data));
       allow create: if moduleSession() && (canLaunchEvent() && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
         eventProjectionExistsAfter(eventId, request.resource.data.version) && validEventRecord(request.resource.data, eventId, false));
-      allow update: if moduleSession() && (can('eventsWrite') && can('admin') && updateActorIsSelf() &&
+      allow update: if moduleSession() && (canEditEvents() && updateActorIsSelf() &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
@@ -228,7 +234,7 @@ service cloud.firestore {
       allow delete: if false;
       match /history/{version} {
         allow read: if moduleSession() && (exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data));
-        allow create: if moduleSession() && (can('eventsWrite') && can('admin') && validEventHistoryEntry(request.resource.data, eventId, version));
+        allow create: if moduleSession() && (canEditEvents() && validEventHistoryEntry(request.resource.data, eventId, version));
         allow update, delete: if false;
       }
     }

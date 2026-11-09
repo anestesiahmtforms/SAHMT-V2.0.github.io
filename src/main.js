@@ -146,13 +146,13 @@ const labels = {
   offline: ['Acesso', 'Conexão e acesso aos projetos']
 };
 const userRoles = [
-  ['coordenador', 'Coordenador'], ['conselho_diretor', 'Conselho Diretor'], ['gestor', 'Gestor'],
+  ['coordenador', 'Coordenador'], ['conselho_diretor', 'Conselho Diretor'], ['gestor', 'Gestor Operacional'],
   ['anestesiologista', 'Anestesiologista'], ['residente', 'Residente'], ['temporario', 'Temporário'],
   ['administrador_app', 'Administrador do App']
 ];
 const userPermissions = [
   ['scheduleRead', 'Consultar escala'], ['scheduleWrite', 'Liberar siglas na escala'],
-  ['eventsRead', 'Consultar eventos'], ['eventsWrite', 'Registrar eventos'], ['eventsCatalogManage', 'Gerenciar catálogo de Eventos'],
+  ['eventsRead', 'Consultar eventos'], ['eventsWrite', 'Registrar eventos'], ['eventsManage', 'Lançar e editar eventos da Escala'], ['eventsCatalogManage', 'Gerenciar catálogo de Eventos'],
   ['checklistRead', 'Consultar checklist'], ['checklistWrite', 'Registrar checklist'], ['checklistSign', 'Assinar checklist'], ['checklistManage', 'Gerenciar estações'],
   ['managementModuleEnabled', 'Liberar botão Gestão'], ['performanceModuleEnabled', 'Liberar botão Desempenho'],
   ['managementRead', 'Consultar Gestão'], ['managementActivityWrite', 'Gerenciar atividades'], ['managementIndicatorsRead', 'Consultar indicadores'], ['managementIndicatorsWrite', 'Gerenciar indicadores'], ['managementPlansManage', 'Gerenciar planos de ação'], ['managementManage', 'Administrar áreas'],
@@ -279,7 +279,7 @@ function reportPermissionKey(kind) {
     String(session.labelProfile?.sigla || session.profile?.sigla || '').trim().toUpperCase(), session.labelProfile?.role,
     ...reportPermissions.labels.map(can)]);
   return JSON.stringify([session.profile?.role, session.profile?.active, session.profile?.access,
-    String(session.profile?.sigla || '').trim().toUpperCase(), can('admin'), ...reportPermissions[kind].map(can)]);
+    String(session.profile?.sigla || '').trim().toUpperCase(), kind === 'events' ? canEditScheduleEvents() : can('admin'), ...reportPermissions[kind].map(can)]);
 }
 function makeReportScope(kind, {warm = false, append = false, suppliedDay} = {}) {
   const mode = warm ? 'daily' : kind === 'events' ? eventReportMode : kind === 'labels' ? labelReportMode : checklistReportMode;
@@ -299,7 +299,7 @@ function makeReportScope(kind, {warm = false, append = false, suppliedDay} = {})
   const loadedLimit = append && samePeriod && cursor?.nextLimit ? cursor.nextLimit : samePeriod ? previous.loadedLimit : pageSize;
   const targetNode = warm ? null : document.querySelector(kind === 'checklist' ? '#module-content' : '#' + prefix + '-report-results');
   const scope = {kind, module: kind, uid: session.user.uid, mode, day: mode === 'daily' ? day : from, month: mode === 'monthly' ? month : day.slice(0, 7), from, to, pageSize, loadedLimit,
-    sigla: String((kind === 'labels' ? session.labelProfile?.sigla : '') || session.profile?.sigla || '').trim().toUpperCase(), isAdmin: kind === 'labels' ? can('labelsManage') : can('admin'), canManage: can('labelsManage'), canWrite: can('labelsWrite'),
+    sigla: String((kind === 'labels' ? session.labelProfile?.sigla : '') || session.profile?.sigla || '').trim().toUpperCase(), isAdmin: kind === 'labels' ? can('labelsManage') : kind === 'events' ? canEditScheduleEvents() : can('admin'), canManage: can('labelsManage'), canWrite: can('labelsWrite'),
     permissionKey, authorized: reportAllowed(kind), warm, targetNode, target: targetNode,
     sourceKeys: kind === 'checklist' ? ['catalog', 'report'] : ['report']};
   scope.key = JSON.stringify([kind, scope.uid, mode, from, to, permissionKey, loadedLimit]);
@@ -909,6 +909,10 @@ function fitSchedulePositionGrid(container) {
 
 function canManageScheduleEvents() {
   return featureEnabledForRoute('events', appFeatures) && can('eventsWrite') && (can('admin') || session.profile?.role === 'gestor');
+}
+
+function canEditScheduleEvents() {
+  return canManageScheduleEvents() && can('eventsManage');
 }
 
 function canReadScheduleEvents() {
@@ -2002,6 +2006,7 @@ async function loadAdminModule(content) {
       const active = profile.active === true && profile.access === true;
       const self = profile.uid === session.user.uid;
       const permissionSummary = Object.keys(profile.permissions || {}).filter((key) => profile.permissions[key] === true).length;
+      const roleLabel = userRoles.find(([id]) => id === profile.role)?.[1] || profile.role;
       const privileged = profile.role === 'administrador_app' || profile.permissions?.admin === true || profile.permissions?.usersManage === true;
       const editControl = self ? '<span class="record-meta">Perfil atual</span>' : privileged && !can('admin') ? '<span class="record-meta">Edição restrita a administrador</span>' : `<button type="button" class="secondary-button" data-edit-user="${escapeHtml(profile.uid)}">Editar</button>`;
       const cohort = firstLoginCohortForDisplay(profile.firstLoginCohort);
@@ -2012,7 +2017,7 @@ async function loadAdminModule(content) {
       const fhProfile=labelProfiles.find(row=>row.uid===profile.uid);
       const fhPermissions=fhProfile?.permissions||{};
       const fhControl=can('labelsManage')?`<details class="fh-label-permissions"><summary>Permissões de Etiquetas · FH${fhProfile?'':' · incluir no FH'}</summary>${labelProfileLoadFailed?'<p role="status">Não foi possível consultar as permissões no FH. Atualize a tela antes de tentar novamente.</p>':`<fieldset><legend>Acesso independente em FH</legend>${[['labelsRead','Consultar etiquetas'],['labelsWrite','Registrar e editar etiquetas'],['labelsManage','Administrar Etiquetas e permissões']].map(([key,title])=>`<label class="permission-option"><input type="checkbox" data-fh-label-permission="${key}" ${(fhPermissions[key]??fhPermissions.admin)===true?'checked':''}><span>${title}</span></label>`).join('')}</fieldset><button type="button" class="secondary-button" data-save-fh-label-permissions="${escapeHtml(profile.uid)}" ${self?'disabled':''}>Salvar permissões em FH</button><small data-fh-permission-status="${escapeHtml(profile.uid)}">Apenas os três acessos de Etiquetas são gravados no projeto FH. As permissões do FA não são alteradas por este controle.</small>`}</details>`:'';
-      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, profile.role, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões gerais${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button><button class="secondary-button" type="button" data-user-app-updates="${escapeHtml(profile.uid)}">Atualização do aparelho</button>` : ''}${cohortControl}${fhControl}</article>`;
+      return `<article class="user-profile-row" data-admin-user-row data-search="${escapeHtml(`${profile.displayName || ''} ${profile.email || ''} ${profile.sigla || ''} ${profile.uid || ''} ${roleLabel || ''} ${membershipSummary}`.toLowerCase())}"><div><strong>${escapeHtml(profile.displayName || profile.email || profile.uid)}</strong><small>${escapeHtml([profile.sigla, roleLabel, profile.email].filter(Boolean).join(' · '))}</small><small>${active ? 'Acesso ativo' : 'Acesso bloqueado'} · ${permissionSummary} permissões gerais${self ? ' · sua conta' : ''}</small><small>Categorias: ${escapeHtml(membershipSummary)}</small>${cohortSummary}<code>${escapeHtml(profile.uid || '')}</code></div>${editControl}${can('admin') ? `<button class="secondary-button" type="button" data-inspect-user="${escapeHtml(profile.uid)}">Consultar como usuário</button><button class="secondary-button" type="button" data-user-app-updates="${escapeHtml(profile.uid)}">Atualização do aparelho</button>` : ''}${cohortControl}${fhControl}</article>`;
     }).join('');
     const requestEntries = accessRequests.map((request) => `<article class="user-profile-row"><div><strong>${escapeHtml(request.displayName || request.email)}</strong><small>${escapeHtml(request.email)} · Solicitação pendente</small></div><button type="button" class="secondary-button" data-review-access="${escapeHtml(request.uid)}">Configurar acesso</button></article>`).join('');
     content.innerHTML = `<p class="admin-auth-note">Este painel gerencia perfis e configurações SAHMT no Firestore. No fluxo normal, a pessoa entra com Google e toca em “Solicitar acesso ao SAHMT”; o pedido aparece abaixo com UID, e-mail e nome preenchidos. Não é necessário pedir nem copiar o UID por mensagem. Isso não cria contas Google nem senhas; nenhuma busca em planilha ou chamada ao Apps Script participa do acesso. As permissões de Etiquetas ficam separadas em FH e são editadas no controle próprio de cada perfil abaixo.</p>
@@ -2981,7 +2986,7 @@ function renderEventReportRecords({append = false} = {}) {
   const recordMarkup = (item, index = records.indexOf(item)) => {
     const confirmed = !item.pendingEdit && !item.pendingSync && !item.pendingFirestore && !item.syncFailed && !item.syncConflict && !item.hasPendingWrites;
     const showHistory = eventReportMode === 'daily' && confirmed;
-    const canEdit = eventReportMode === 'daily' && can('admin') && confirmed;
+    const canEdit = eventReportMode === 'daily' && canEditScheduleEvents() && confirmed;
     const registration = eventReportMode === 'daily' ? `<small class="event-registration">Responsável pelo registro: ${escapeHtml(item.createdByName || item.createdByUid || 'Não informado')} · ${escapeHtml(interactionDateTime(item.createdAt) || 'Horário indisponível')}</small>` : '';
     const status = item.provisionalShared ? 'Compartilhado · confirmação pendente' : item.pendingEdit && item.syncFailed ? 'Rascunho de edição não confirmado' : item.pendingEdit ? 'Edição aguardando confirmação' : item.syncFailed ? 'Registro recusado pelo Firestore' : item.pendingFirestore ? 'Aguardando confirmação do Firestore' : '';
     const amount = item.amountToPay != null && item.amountToPay !== '' ? `<small class="record-meta">Valor: R$ ${Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small>` : '';
@@ -3064,7 +3069,7 @@ async function loadDailyEventEditNotes(records, target) {
 }
 
 function beginEventEdit(item) {
-  if (eventReportMode !== 'daily' || !can('admin') || !canManageScheduleEvents()) return;
+  if (eventReportMode !== 'daily' || !canEditScheduleEvents()) return;
   const form = document.querySelector('[data-module-form="events"]');
   if (!form || !item) return;
   const status = document.querySelector('#event-form-status');
@@ -4109,6 +4114,7 @@ async function bindModuleForm(route) {
         const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
+          if (!can('eventsManage')) throw Object.assign(new Error('Permissão de edição revogada.'), {code: 'permission-denied'});
           const {updateEventRecord} = await import('./data.js');
           if (session.user?.uid !== actorUid) return;
           const result = await updateEventRecord(values.editEventId, eventRecord, actorUid, Number(values.editEventVersion));

@@ -12,7 +12,7 @@ function fn(name) {
   return (source.slice(start - 6, start) === 'async ' ? 'async ' : '') + source.slice(start, end);
 }
 const reportMarkup = source.slice(source.indexOf('  const eventReport ='), source.indexOf('\n  const eventSchedule ='));
-const helpers = ['canManageScheduleEvents', 'canReadScheduleEvents', 'actionForm', 'eventPanelsMarkup',
+const helpers = ['canManageScheduleEvents', 'canEditScheduleEvents', 'canReadScheduleEvents', 'actionForm', 'eventPanelsMarkup',
   'showSchedulePanel', 'openScheduleEventReport', 'bindScheduleEventPanels', 'chooseScheduleEventMember',
   'showScheduleContacts', 'launchEventSupport', 'launchEventFromSchedule', 'chooseEventScheduleMember',
   'setEventTypeContext', 'resetEventEditor', 'beginEventEdit', 'reportScopeCurrent'].map(fn).join('\n');
@@ -27,7 +27,7 @@ test('daily event cards retain the original design and separate labels from long
       await page.addScriptTag({content:`(()=>{
         let eventReportMode='daily',eventReportStale=false,eventReportCursor=null,loadedEventReportRecords=[];
         const eventReportSourceRecords=[{id:'preview',version:1,date:'2026-11-08',memberStatus:'Profissional de demonstração com nome extenso',eventType:'Pessoal',description:'Descrição de demonstração com detalhes suficientes para ocupar várias linhas no cartão.',shift:'Integral',substitute:'Profissional substituto de demonstração',payer:'Pagador de demonstração',creditor:'Credor de demonstração',amountToPay:2000,createdByName:'Responsável de demonstração com nome extenso'}];
-        const can=()=>true,escapeHtml=s=>String(s??''),formatRecordDate=s=>s,interactionDateTime=()=>'',todayInputValue=()=> '2026-11-08';
+        const canEditScheduleEvents=()=>true,escapeHtml=s=>String(s??''),formatRecordDate=s=>s,interactionDateTime=()=>'',todayInputValue=()=> '2026-11-08';
         const confirmedLiveReportRecords=r=>r,liveReports={get:()=>({snapshot:()=>({scope:{}})})},reportScopeCurrent=()=>true;
         const reconcileReportMarkup=(el,html)=>el.innerHTML=html;
         ${fn('renderEventReportRecords')}
@@ -57,7 +57,7 @@ test('Escala keeps contact, member choice, entry and reports inside one accessib
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.setContent('<!doctype html><meta charset="utf-8"><style>' + css + '</style><main class="app-shell--schedule"><button id="open">Sigla AB/CD</button><input id="schedule-date" value="2026-11-08"><dialog id="schedule-contact-dialog" class="schedule-contact-dialog"><div id="schedule-contact-details" data-schedule-panel></div><form method="dialog" data-schedule-close><button>Fechar</button></form></dialog></main>');
     await page.addScriptTag({content: `
-      let session={status:'signed-in',user:{uid:'one'},profile:{role:'gestor',permissions:{eventsRead:true,eventsWrite:true}}};
+      let session={status:'signed-in',user:{uid:'one'},profile:{role:'gestor',permissions:{eventsRead:true,eventsWrite:true,eventsManage:true}}};
       let appFeatures={},route='schedule',eventReportOpen=false,eventReportMode='daily',scheduleEventContext={},scheduleMemberChoice=null;
       let loadedEventMembers=[{sigla:'AB',name:'Ana'},{sigla:'CD',name:'Carlos'}];
       let reads=0,closes=0;const todayInputValue=()=> '2026-11-08', currentRoute=()=>route;
@@ -73,7 +73,7 @@ test('Escala keeps contact, member choice, entry and reports inside one accessib
       document.querySelector('#open').onclick=()=>showScheduleContacts([{sigla:'AB',name:'Ana'}],{sigla:'AB/CD',date:'2026-10-14',position:{sigla:'AB/CD',siglas:['AB','CD']}});
       window.fixture={support:()=>launchEventSupport('2026-10-14'),reads:()=>reads,closes:()=>closes,
         common:()=>{session.profile={role:'anestesiologista',permissions:{eventsRead:true,eventsWrite:true}};},
-        administrator:()=>{session.profile={role:'administrador_app',permissions:{}};},
+        operator:()=>{session.profile={role:'gestor',permissions:{eventsRead:true,eventsWrite:true,eventsManage:true}};},
         canManage:()=>canManageScheduleEvents(),edit:()=>beginEventEdit({id:'event-1',date:'2026-10-14',eventType:'Pessoal',memberSigla:'AB',memberStatus:'Ana',version:1}),
         scopeCurrent:()=>reportScopeCurrent({kind:'events',uid:'one',permissionKey:'allowed',mode:eventReportMode,day:document.querySelector('#event-report-day').value,month:document.querySelector('#event-report-month').value,targetNode:document.querySelector('#event-report-results')})};
     `});
@@ -107,7 +107,7 @@ test('Escala keeps contact, member choice, entry and reports inside one accessib
     assert.equal(await page.getByRole('button', {name: 'Lançar evento de escala'}).count(), 0);
     assert.equal(await page.evaluate(() => fixture.canManage()), false);
     await page.getByRole('button', {name: 'Relatório diário', exact: true}).click();
-    await page.evaluate(() => { fixture.administrator(); fixture.edit(); });
+    await page.evaluate(() => { fixture.operator(); fixture.edit(); });
     assert.equal(await page.locator('[name="editEventId"]').inputValue(), 'event-1');
     await page.locator('#event-edit-cancel').click();
     assert.equal(await page.locator('#event-report-dialog').isVisible(), true);

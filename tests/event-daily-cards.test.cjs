@@ -5,7 +5,7 @@ const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
 const source = readFileSync(join(__dirname, '../src/main.js'), 'utf8');
 function deferred() {let resolve, reject; const promise = new Promise((a,b) => {resolve=a; reject=b;}); return {promise, resolve, reject};}
-function setup({mode = 'daily', pending = false, admin = true, flags = {}, history} = {}) {
+function setup({mode = 'daily', pending = false, admin = true, manager = false, flags = {}, history} = {}) {
   const panel = {hidden: true, isConnected: true, dataset: {}, innerHTML: ''};
   const button = {dataset: {eventHistory: 'event-1'}, setAttribute(name, value) {this[name] = value;}, click() {return this.onclick?.();}};
   const target = {isConnected: true, innerHTML: '', querySelector: selector => selector.startsWith('[data-event-history-panel=') ? panel : null, querySelectorAll: selector => selector === '[data-event-history]' && target.innerHTML.includes('data-event-history=') ? [button] : []};
@@ -17,7 +17,7 @@ function setup({mode = 'daily', pending = false, admin = true, flags = {}, histo
     session:{user:{uid:'admin'}}, liveReports:{get:()=>({snapshot:()=>({scope})})}, reportScopeCurrent:()=>owned,
     confirmedLiveReportRecords: records=>records.filter(item=>!item.pendingEdit&&!item.pendingSync&&!item.pendingFirestore&&!item.syncFailed&&!item.syncConflict&&!item.hasPendingWrites&&!item.metadata?.hasPendingWrites),
     reconcileReportMarkup(node,html) {node.innerHTML=html;},
-    navigator: {onLine: true}, can: () => admin, escapeHtml: String, formatRecordDate: String, interactionDateTime: () => '30/09/2026 12:00', todayInputValue: () => '2026-09-30', CSS: {escape: String}, beginEventEdit() {}, loadEventReport() {},
+    navigator: {onLine: true}, canEditScheduleEvents: () => admin || manager, escapeHtml: String, formatRecordDate: String, interactionDateTime: () => '30/09/2026 12:00', todayInputValue: () => '2026-09-30', CSS: {escape: String}, beginEventEdit() {}, loadEventReport() {},
     mockData: {listEventHistory: async (...args) => {reads++; return history ? history(...args) : [{version: 2, actorName: 'Editor', changedFields: ['eventType'], before: {eventType: 'Pessoal'}, after: {eventType: 'Férias'}}];}}
   });
   const helpers = source.slice(source.indexOf('function renderEventReportRecords('), source.indexOf('function beginEventEdit(')).replaceAll("await import('./data.js')", 'mockData');
@@ -42,6 +42,7 @@ test('pendente não oferece edição nem histórico confirmado; usuário comum n
   const pending = setup({pending: true}).target.innerHTML;
   assert.match(pending, /Aguardando confirmação/); assert.doesNotMatch(pending, /data-event-edit=|data-event-history=/);
   assert.doesNotMatch(setup({admin: false}).target.innerHTML, /data-event-edit=/);
+  assert.match(setup({admin: false, manager: true}).target.innerHTML, /data-event-edit=/);
 });
 test('mensal preserva a apresentação compacta e não busca histórico', () => {
   const {target, reads} = setup({mode: 'monthly'});
