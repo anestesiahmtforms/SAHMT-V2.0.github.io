@@ -1813,16 +1813,6 @@ async function loadModule(route) {
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
       reportDialog?.addEventListener('close', () => { checklistReportOpen = false; closeReportLive('checklist'); stopChecklistQrScanner(false); });
-      const reportRefresh = document.createElement('button');
-      reportRefresh.type = 'button';
-      reportRefresh.className = 'secondary-button';
-      reportRefresh.textContent = 'Atualizar relatório';
-      reportRefresh.setAttribute('aria-label', 'Consultar novamente o relatório do Checklist');
-      reportRefresh.onclick = () => {
-        if (!checklistReportOpen || currentRoute() !== 'checklist') return;
-        void retryLiveReport('checklist');
-      };
-      document.querySelector('#checklist-day-control')?.append(reportRefresh);
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
         const value = day && day <= todayInputValue() ? day : todayInputValue();
