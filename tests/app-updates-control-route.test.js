@@ -38,13 +38,13 @@ test('the Management control button in FB navigates to the principal FA app',asy
  assert.equal(h.panels.length,0,'FB must not read or request updates in its own database');
 });
 
-test('the FA control route stays in FA with cutover active and exits through Management',async()=>{
+test('the FA control route stays in FA with cutover active and returns to the FI Central',async()=>{
  const h=harness();await h.render();
  assert.equal(h.ctx.currentRoute(),'app-updates-control');
  assert.deepEqual(h.assignments,[]);assert.equal(h.panels.length,1);
  assert.equal(h.panels[0].target,'FA');assert.equal(h.panels[0].isCurrent(),true);
  await h.panels[0].onExit();
- assert.deepEqual(h.assignments,['/SAHMT-V2.0.github.io/gestao/#/management']);
+ assert.deepEqual(h.assignments,[]);assert.equal(h.ctx.location.hash,'#/fi-control');
 });
 
 test('a direct control hash in FB forwards to FA before reading any receipts',async()=>{

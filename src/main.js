@@ -78,6 +78,7 @@ import {installTargetedAppUpdates} from './app-updates-targeted.js';
 import {APP_VERSION} from './app-version.js';
 import {getDailyHomeWelcomeMessage,millisecondsUntilHomeWelcomeChange} from './home-welcome.js';
 import './app-updates-targeted.css';
+import {renderFiAdminDialog, mountFiAdminDialog} from './fi-admin-dialog.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationDevicePushActive,communicationAdminSession} from './communication-link.js';
 import './communication.css';
@@ -1070,6 +1071,10 @@ function actionForm(route) {
 function shellView() {
   const route = currentRoute();
   if(route==='year-end-schedule'&&session.status==='signed-in')return '<main class="year-end-entry" id="module-content"><p role="status">Preparando a escala…</p></main>';
+  if(['people','admin'].includes(route)&&session.status==='signed-in')return renderFiAdminDialog({
+    title:labels[route][0],displayName:session.profile?.displayName||session.user.displayName||'Usuário',
+    body:(notice?`<p class="notice" role="status">${escapeHtml(notice)}</p>`:'')+actionForm(route)+'<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'
+  });
   const profile = session.profile;
   const modeSelector = route === 'home' && session.accountMode ? `<label class="account-mode">Modo de uso <select data-account-mode><option value="administrator"${session.accountMode === 'administrator' ? ' selected' : ''}>ADMINISTRADOR</option><option value="team"${session.accountMode === 'team' ? ' selected' : ''}>EQUIPE</option></select></label>` : '';
   const title = route === 'home' ? 'SAHMT' : labels[route]?.[0] || 'SAHMT';
@@ -5182,17 +5187,17 @@ async function render() {
       session.profile?.active===true&&session.profile?.access===true&&!session.offline&&!session.validatingProfile&&can('admin');
     if(!authorized()){navigate('home');return;}
     if(deployment.target!=='FA'){navigate('app-updates-control');return;}
-    // Principal app receipts belong to FA even when the entry button is in FB.
-    app.innerHTML='<main class="main-content"><p role="status">Abrindo o controle de atualizações do app principal…</p><button type="button" class="secondary-button" data-control-return>VOLTAR PARA GESTÃO</button></main>';
+    // Principal app receipts remain in FA; administrative panels return to FI.
+    app.innerHTML='<main class="main-content"><p role="status">Abrindo o controle de atualizações do app principal…</p><button type="button" class="secondary-button" data-control-return>VOLTAR</button></main>';
     const isCurrent=()=>current()&&authorized();
-    const exit=()=>isCurrent()?navigate('management'):undefined;
+    const exit=()=>isCurrent()?navigate('fi-control'):undefined;
     document.querySelector('[data-control-return]')?.addEventListener('click',exit);
     try{
       const {openAppUpdatePanel}=await import('./app-updates-targeted-admin.js');
       if(!isCurrent())return;
       const cleanup=await openAppUpdatePanel({actorUid,target:'FA',isCurrent,onExit:exit});
       if(isCurrent())cleanupUserInspection=cleanup;else cleanup();
-    }catch{if(isCurrent())app.querySelector('[role="status"]').textContent='Não foi possível abrir o controle de atualizações. Volte para Gestão e tente novamente.';}
+    }catch{if(isCurrent())app.querySelector('[role="status"]').textContent='Não foi possível abrir o controle de atualizações. Volte à Central Administrativa e tente novamente.';}
     return;
   }
   if(!authLimited&&requestedRoute==='year-end-schedule'&&!canUseYearEndSchedule(session)){
@@ -5244,12 +5249,14 @@ async function render() {
       button.addEventListener('click',()=>['fg-performance'].includes(requestedRoute)?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
     });
   }
-  if(!authLimited&&['people','admin','notifications'].includes(requestedRoute)){
+  if(!authLimited&&requestedRoute==='notifications'){
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR';
       button.addEventListener('click',()=>navigate('management'));
     });
   }
+  const fiAdminDialog=document.querySelector('[data-fi-admin-dialog]');
+  if(!authLimited&&fiAdminDialog)cleanupCurrentModule=mountFiAdminDialog(fiAdminDialog,{isCurrent:current,onExit:()=>navigate('fi-control')});
   if(!authLimited)document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.route)));
   document.querySelector('[data-retry-fh-label-access]')?.addEventListener('click',()=>{
     if(session.status!=='signed-in'||!session.user?.uid)return;

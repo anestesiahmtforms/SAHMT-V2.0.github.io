@@ -1,0 +1,19 @@
+.fi-admin-dialog[open]{
+  box-sizing:border-box;position:fixed;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  width:min(96vw,1080px);height:min(92dvh,900px);max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);
+  margin:auto;padding:0;border:0;border-radius:20px;overflow:hidden;background:var(--paper,#fffaf0);color:var(--text,#173b50);box-shadow:0 18px 60px #0006;
+}
+.fi-admin-dialog::backdrop{background:#092638db}
+.fi-admin-dialog[open]>header{min-width:0;padding:18px 24px;border-bottom:1px solid #173b5026;background:var(--paper,#fffaf0)}
+.fi-admin-dialog[open]>header h1,.fi-admin-dialog[open]>header h2{margin:8px 0;font-size:clamp(1.2rem,3vw,1.65rem);line-height:1.2;overflow-wrap:anywhere}
+.fi-admin-dialog[open]>header p{margin:6px 0}
+.fi-admin-dialog[open]>.fi-admin-dialog__body{box-sizing:border-box;min-height:0;min-width:0;padding:20px 24px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;overflow-wrap:anywhere;-webkit-overflow-scrolling:touch}
+.fi-admin-dialog[open]>footer{display:flex;justify-content:flex-end;flex-shrink:0;margin:0;padding:14px 24px max(14px,env(safe-area-inset-bottom));border-top:1px solid #173b5026;background:var(--paper,#fffaf0)}
+.fi-admin-dialog[open]>footer>button{min-height:44px;min-width:140px;max-width:100%}
+body:has(.fi-admin-dialog[open]){overflow:hidden}
+@media(max-width:600px){
+  .fi-admin-dialog[open]{width:calc(100vw - 16px);height:calc(100dvh - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:14px}
+  .fi-admin-dialog[open]>header,.fi-admin-dialog[open]>.fi-admin-dialog__body{padding:14px 16px}
+  .fi-admin-dialog[open]>footer{padding:12px 16px max(12px,env(safe-area-inset-bottom))}
+  .fi-admin-dialog[open]>footer>button{width:100%}
+}

@@ -7,7 +7,7 @@ import {chromium,webkit} from 'playwright';
 const engine=process.env.SAHMT_BROWSER_ENGINE==='webkit'?webkit:chromium;
 const base='/SAHMT-V2.0.github.io/';
 
-test('Management crosses FB to FA to display principal app receipts with cutover active',{timeout:60000},async()=>{
+test('legacy FB update entry reads FA receipts and returns to the FI Central',{timeout:60000},async()=>{
  const [main,router,prefix]=await Promise.all(['src/main.js','src/router.js','tests/app-updates-control.fixture.js'].map(path=>readFile(path,'utf8')));
  const render=main.slice(main.indexOf('async function render() {'),main.indexOf('function renderOnlineGate()'));
  const click=main.slice(main.lastIndexOf("document.addEventListener('click',async event=>{"),main.indexOf('const targetedAppUpdates='));
@@ -22,7 +22,8 @@ test('Management crosses FB to FA to display principal app receipts with cutover
   }
   if(path==='/__control-runtime.js'){
    const source=runtime.replaceAll("import('./management-entry-session.js')",'fixtureManagementSession()')
-    .replaceAll("await import('./app-updates-targeted-admin.js')",'await fixturePanel()').replaceAll('import.meta.env.BASE_URL',"'/'");
+    .replaceAll("await import('./app-updates-targeted-admin.js')",'await fixturePanel()')
+    .replaceAll("import('./fi-control-","import('/src/fi-control-").replaceAll("import('./fi-control.css')","import('/src/fi-control.css')").replaceAll('import.meta.env.BASE_URL',"'/'");
    res.setHeader('Content-Type','text/javascript');res.end(source);return;
   }
   if(path!=='/__control-updates')return next();
@@ -49,9 +50,9 @@ test('Management crosses FB to FA to display principal app receipts with cutover
   await page.locator('[data-request-update]').click();await saved;await page.getByText('Consulta confirmada no servidor.',{exact:true}).waitFor();
   assert.equal(requests.length,1);assert.equal(requests[0].target,'FA');assert.deepEqual(requests[0].uids,['member']);
   await page.locator('[data-close-updates]').click();await page.locator('[data-panel-close]').click();
-  await page.waitForURL(origin+base+'gestao/#/management');await page.locator('[data-app-update-panel]').waitFor();
+  await page.waitForURL(origin+base+'#/fi-control');assert.equal(await page.locator('.app-updates-command').count(),0);
   const before=reads.length;await page.evaluate(()=>sessionStorage.setItem('control-fixture-role','anestesiologista'));
-  await page.goto(origin+base+'#/app-updates-control');await page.waitForURL(origin+base+'#/home');
+  await page.goto(origin+base+'?fixture=denied#/app-updates-control');await page.waitForURL(origin+base+'?fixture=denied#/home');
   assert.equal(await page.locator('.app-updates-command').count(),0);assert.equal(reads.length,before);
   assert.deepEqual(errors,[]);await context.close();
  }finally{await browser?.close();await server.close();}

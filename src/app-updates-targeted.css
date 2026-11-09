@@ -1,3 +1,4 @@
+@import './fi-admin-dialog.css';
 .required-app-update,.admin-app-updates{box-sizing:border-box;width:min(94vw,680px);max-height:90dvh;border:0;border-radius:20px;background:#fffaf0;color:#173b50;padding:24px;box-shadow:0 18px 60px #0006;overflow:auto}
 .required-app-update::backdrop,.admin-app-updates::backdrop{background:#092638db}
 .required-app-update{width:min(94vw,480px);text-align:center}

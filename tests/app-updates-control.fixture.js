@@ -6,6 +6,7 @@ const {rememberModuleNavigation,rememberManagementReturn}=await import('/src/mod
 const repairAppFiles=()=>false,staleModuleFailure=()=>false;
 const fixtureManagementSession=async()=>({ensureManagementSession:async()=>true});
 const app=document.querySelector('#app');
+const fiAdminControlEnabled=true;
 let session={status:'signed-in',offline:false,user:{uid:'fixture-admin'},profile:{uid:'fixture-admin',active:true,access:true,role:sessionStorage.getItem('control-fixture-role')||'administrador_app',permissions:{}}};
 let evaluationModuleGeneration=0,googleAccessPanel=null,scheduleGridObserver=null,labelReportLoad=0,labelReportLoadingMore=false,labelReportState='idle';
 let cleanupLabelMedia=null,cleanupDocumentTraining=null,cleanupUserInspection=null,cleanupCurrentModule=null,startupBannerActive=false,onlineValidationRequired=false,notice='';
