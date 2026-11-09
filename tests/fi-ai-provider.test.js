@@ -13,3 +13,13 @@ test('missing key disables provider and refusal/incomplete responses are rejecte
  const p=mod.createOpenAIProvider({apiKey:'synthetic',fetchImpl:async()=>new Response(JSON.stringify(payload))});await assert.rejects(p.generate({kind:'search',query:'x',context:[]}),/PROVIDER/);
  }
 });
+test('an upstream redirect is refused without forwarding the API key',async()=>{
+ let calls=0;
+ const provider=mod.createOpenAIProvider({apiKey:'synthetic',fetchImpl:async(_url,options)=>{
+  calls++;
+  assert.equal(options.redirect,'manual');
+  return new Response(null,{status:307,headers:{Location:'https://example.test/redirect'}});
+ }});
+ await assert.rejects(provider.generate({kind:'search',query:'x',context:[]}),/PROVIDER_UNAVAILABLE/);
+ assert.equal(calls,1);
+});

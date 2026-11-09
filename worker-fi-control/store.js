@@ -18,7 +18,7 @@ export function createFiStore({projectId,getAccessToken,allowedCollections=FI_CO
  const validCollection=c=>typeof c==='string'&&(allowedCollections.includes(c)||(allowedCollections.includes('users')&&/^users\/[^/\s]{1,128}\/appInstallations$/.test(c))||(projectId===FI_PROJECTS.FC&&allowedCollections.includes('qmentumUnits')&&/^qmentumUnits\/[A-Za-z0-9_-]{1,80}\/months$/.test(c)));
  const name=(c,id)=>{if(!validCollection(c)||!segment(id))throw fiError('FI_STORE_PATH_DENIED',400);return `${prefix}/${c}/${id}`;};
  async function call(suffix,body){
-  let response;try{response=await fetchImpl(root+suffix,{method:'POST',headers:{Authorization:'Bearer '+await getAccessToken(),'Content-Type':'application/json'},body:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw fiError('FI_STORE_UNAVAILABLE');}
+  let response;try{response=await fetchImpl(root+suffix,{method:'POST',headers:{Authorization:'Bearer '+await getAccessToken(),'Content-Type':'application/json'},body:JSON.stringify(body),redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw fiError('FI_STORE_UNAVAILABLE');}
   const result=await boundedJson(response,3*1024*1024);
   if(!response.ok)throw fiError([409,412].includes(response.status)||result.error?.status==='ABORTED'?'FI_STORE_CONFLICT':'FI_STORE_UNAVAILABLE',[409,412].includes(response.status)||result.error?.status==='ABORTED'?409:503);
   return result;

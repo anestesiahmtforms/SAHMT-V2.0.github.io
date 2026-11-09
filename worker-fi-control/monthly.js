@@ -7,7 +7,7 @@ function validSnapshot(s,period){
 function validPlan(p,s){
  const ids=new Set(s.indicators.map(i=>i.id)),techIds=new Set((s.technicalMetrics||[]).map(i=>i.id));
  const text=v=>typeof v==='string'&&v.length>0&&v.length<=4000;
- return p&&text(p.summary)&&Array.isArray(p.actions)&&p.actions.length<=30&&p.actions.every(a=>['HIGH','MEDIUM','LOW'].includes(a.priority)&&['ownerSuggested','dueSuggested','successMetric','action'].every(k=>text(a[k]))&&validateEvidence(a.evidence,ids))&&Array.isArray(p.technicalRecommendations)&&p.technicalRecommendations.length<=20&&p.technicalRecommendations.every(r=>text(r.proposal)&&text(r.validation)&&validateEvidence(r.evidence,techIds));
+ return p&&text(p.summary)&&Array.isArray(p.actions)&&p.actions.length>0&&p.actions.length<=30&&p.actions.every(a=>['HIGH','MEDIUM','LOW'].includes(a.priority)&&['ownerSuggested','dueSuggested','successMetric','action'].every(k=>text(a[k]))&&validateEvidence(a.evidence,ids))&&Array.isArray(p.technicalRecommendations)&&p.technicalRecommendations.length<=20&&p.technicalRecommendations.every(r=>text(r.proposal)&&text(r.validation)&&validateEvidence(r.evidence,techIds));
 }
 export function createMonthlyService({store,sourceProvider,modelProvider,now=Date.now,config={},budget=createAiBudget({store,now,config})}){
  const leaseMs=Number.isSafeInteger(config.monthlyLeaseMs)&&config.monthlyLeaseMs>0?Math.min(config.monthlyLeaseMs,300000):120000;
