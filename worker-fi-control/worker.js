@@ -8,6 +8,7 @@ import {createFiSourceProvider,SOURCE_COLLECTIONS} from './sources.js';
 import {createFiReadBudget,createFiRequestQuota} from './read-budget.js';
 const origin='https://anestesiahmtforms.github.io';
 const isAdmin=actor=>actor.profile?.role==='administrador_app'||actor.profile?.permissions?.admin===true;
+const publicControlActions=new Set(['search','service.status']);
 const pilotActions=new Set(['search','monthly.generate','monthly.list','service.status']);
 const adminReadActions=new Set(['people.list','admin.users.list','admin.requests.list','admin.categories.list','admin.features.get','updates.users','updates.read']);
 export const pilotAccess=(actor,settings,action,now=Date.now())=>isAdmin(actor)&&pilotActions.has(action)&&
@@ -75,6 +76,7 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
    const actor=await (verifyActor||createFiActorVerifier({store:rt.store,fetchImpl:requestFetch}))(request,env);
    const body=await boundedJson(request,196608);
    if(!body||Array.isArray(body)||Object.keys(body).some(k=>!['action','input'].includes(k))||typeof body.action!=='string'||!/^[a-z][A-Za-z0-9.]{0,80}$/.test(body.action)||!body.input||Array.isArray(body.input)||typeof body.input!=='object')throw fiError('FI_INPUT_INVALID',400);
+   if(!publicControlActions.has(body.action)&&!isAdmin(actor))throw fiError('FI_FORBIDDEN',403);
    let pilot;
    if(pilotRoute){
     pilot=await rt.store.get('fiControlConfig','pilot');

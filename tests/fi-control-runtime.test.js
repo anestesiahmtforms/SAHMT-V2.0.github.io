@@ -22,6 +22,16 @@ test('FI rejects origin, authentication and unknown input before service executi
  assert.equal(executions,0);
  const r=await worker.fetch(request(),enabled);assert.equal(r.status,200);assert.deepEqual(await r.json(),{ok:true});assert.equal(executions,1);
 });
+test('FI leaves search open but denies administrative actions to delegated non-admin accounts',async()=>{
+ const dispatched=[];
+ const worker=createFiControlWorker({verifyActor:async()=>({...actor,profile:{...actor.profile,permissions:{peopleManage:true,usersManage:true}}}),buildServices:()=>({dispatch:async(_actor,action)=>{dispatched.push(action);return {ok:true};}})});
+ const env={FI_CONTROL_ENABLED:'true'};
+ for(const action of ['people.list','admin.users.list','updates.read','monthly.generate','monthly.list']){
+  assert.equal((await worker.fetch(request({action,input:{}}),env)).status,403);
+ }
+ assert.equal((await worker.fetch(request(),env)).status,200);
+ assert.deepEqual(dispatched,['search']);
+});
 test('pilot admits only its active administrator, rejects writes, and requires App Check',async()=>{
  const admin={...actor,profile:{...actor.profile,permissions:{admin:true}}};
  const settings={schemaVersion:1,uid:actor.uid,expiresAt:1001};

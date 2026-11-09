@@ -47,9 +47,9 @@ async function secureRules(token){
 }
 let stage='PREFLIGHT';
 try{
- const modes=['--apply-pilot','--apply-disabled','--apply-production'].filter(mode=>process.argv.includes(mode));
+ const modes=['--apply-pilot','--apply-disabled','--apply-production','--update-production'].filter(mode=>process.argv.includes(mode));
  demand(modes.length===1,'FI_DEPLOY_MODE_REQUIRED');
- const pilot=modes[0]==='--apply-pilot',production=modes[0]==='--apply-production';
+ const pilot=modes[0]==='--apply-pilot',updating=modes[0]==='--update-production',production=updating||modes[0]==='--apply-production';
  const target=JSON.parse(await readFile(config,'utf8'));
  demand(target.name===worker&&target.account_id===account&&['FI_CONTROL_ENABLED','FI_AI_ENABLED','FI_MONTHLY_ENABLED'].every(k=>target.vars[k]==='false')&&target.vars.FI_REQUIRE_APP_CHECK==='true','FI_DEPLOY_CONFIG_INVALID');
  const token=await firebaseCliAccountToken(owner);
@@ -82,7 +82,7 @@ try{
  const scripts=await cf(path+'/workers/scripts');
  if(scripts.some(item=>item.id===worker)){
   const health=await json(endpoint+'/health');
-  demand(health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false,'FI_WORKER_EXISTS_REVIEW_REQUIRED');
+  demand(health.projectId===project&&health.controlEnabled===updating&&health.aiEnabled===updating&&health.monthlyEnabled===updating,'FI_WORKER_EXISTS_REVIEW_REQUIRED');
  }
  const secretPath=path+'/workers/scripts/'+worker+'/secrets';
  const priorSecrets=scripts.some(item=>item.id===worker)?await cf(secretPath):[];
