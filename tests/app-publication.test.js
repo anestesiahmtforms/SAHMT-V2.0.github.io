@@ -1,19 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planAppPublication,prepareAppPublication,assertAppPublicationCurrent} from '../scripts/lib/app-publication.js';
+import {planAppPublication,prepareAppPublication,assertAppPublicationCurrent,validateAppPublication} from '../scripts/lib/app-publication.js';
 import {build} from 'esbuild';
 const old='8ca87a6e2382bf26ad15c6ca1e0b334cd25e378d',next='a'.repeat(40),release=1793453478943;
-const legacy={schema:1,appVersion:'V3.0',targets:{FA:release,FB:release}};
+const legacy={schema:1,appVersion:'V3.4',targets:{FA:release,FB:release}};
 const metadata={...legacy,appVersion:'V2.72',sourceRevision:old};
 const input={metadata,deployedRevision:old,sourceRevision:next,comparison:'ahead',now:release+100};
 
-test('the first publication reaches V3.0 and later publications advance one minor version',()=>{
- assert.deepEqual(planAppPublication(input),{schema:1,appVersion:'V3.0',sourceRevision:next,release:release+100});
- assert.equal(planAppPublication({...input,metadata:legacy}).appVersion,'V3.1');
- assert.equal(planAppPublication({...input,metadata:{...metadata,appVersion:'V3.0'}}).appVersion,'V3.1');
- assert.equal(planAppPublication({...input,metadata:{...metadata,appVersion:'V3.1'}}).appVersion,'V3.2');
- assert.deepEqual(planAppPublication({...input,sourceRevision:old,comparison:'identical'}),{schema:1,appVersion:'V2.72',sourceRevision:old,release});
- assert.equal(planAppPublication({...input,now:release-1}).release,release+1);
+test('every publication uses V3.4 internally and externally with no version counter',()=>{
+ assert.deepEqual(planAppPublication(input),{schema:1,appVersion:'V3.4',sourceRevision:next,release:release+100});
+ assert.equal(planAppPublication({...input,metadata:legacy}).appVersion,'V3.4');
+ for(const appVersion of ['V3.0','V3.1','V3.2','V3.3','V3.4','V3.5','V4.0'])assert.equal(planAppPublication({...input,metadata:{...metadata,appVersion}}).appVersion,'V3.4');
+ assert.deepEqual(planAppPublication({...input,metadata:{...metadata,appVersion:'V3.4'},sourceRevision:old,comparison:'identical'}),{schema:1,appVersion:'V3.4',sourceRevision:old,release});
+ assert.throws(()=>planAppPublication({...input,now:release-1}),/PUBLICATION_TIME_INVALID/);
+ assert.throws(()=>validateAppPublication({...planAppPublication(input),appVersion:'V3.5'}),/VERSION_NOT_APPROVED/);
+});
+
+test('successive updates keep the same version and use their publication time without incrementing it',()=>{
+ let state={...metadata,appVersion:'V3.4'},deployedRevision=old;
+ for(const [index,character]of ['a','b','c'].entries()){
+  const now=release+(index+1)*1000,sourceRevision=character.repeat(40);
+  const plan=planAppPublication({metadata:state,deployedRevision,sourceRevision,comparison:'ahead',now});
+  assert.equal(plan.appVersion,'V3.4');assert.equal(plan.release,now);
+  state={schema:1,appVersion:plan.appVersion,sourceRevision,targets:{FA:now,FB:now}};deployedRevision=sourceRevision;
+ }
 });
 
 test('stale, unproven or diverged publication state never assigns a new version',()=>{
@@ -34,7 +44,7 @@ function remote({meta=metadata,compare='ahead',failedFirst=false,deployed=old}={
 
 test('only successful deployments count; preparation is read-only and fixed to the app repository',async()=>{
  const fixture=remote({failedFirst:true});const plan=await prepareAppPublication({sourceRevision:next,repository:'anestesiahmtforms/SAHMT-V2.0.github.io',token:'fixture-token',fetchImpl:fixture.fetchImpl,now:release+100});
- assert.equal(plan.appVersion,'V3.0');assert.ok(fixture.calls.every(call=>!call.options.method||call.options.method==='GET'));
+ assert.equal(plan.appVersion,'V3.4');assert.ok(fixture.calls.every(call=>!call.options.method||call.options.method==='GET'));
  assert.ok(fixture.calls.filter(call=>new URL(call.url).hostname==='api.github.com').every(call=>call.options.headers.Authorization==='Bearer fixture-token'));
  await assert.rejects(prepareAppPublication({sourceRevision:next,repository:'other/repo',fetchImpl:()=>assert.fail('foreign repository')}));
 });
@@ -45,13 +55,13 @@ test('preparation fails closed on mismatched CDN metadata and unavailable source
  await assert.rejects(prepareAppPublication({sourceRevision:next,repository:'anestesiahmtforms/SAHMT-V2.0.github.io',fetchImpl:async()=>new Response('{}',{status:503}),now:release+100}),/PUBLICATION/);
 });
 
-test('the version embedded by the build is the same value written in actual device receipts',async()=>{
- const result=await build({stdin:{contents:"export {APP_VERSION} from './src/app-version.js';export {createTargetedAppUpdates} from './src/app-updates-targeted.js';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'browser',define:{'import.meta.env':JSON.stringify({VITE_APP_VERSION:'V2.23',VITE_APP_RELEASE:'123'})}});
+test('a build override cannot change the approved label or actual device receipts',async()=>{
+ const result=await build({stdin:{contents:"export {APP_VERSION} from './src/app-version.js';export {createTargetedAppUpdates} from './src/app-updates-targeted.js';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'browser',define:{'import.meta.env':JSON.stringify({VITE_APP_VERSION:'V9.99',VITE_APP_RELEASE:'123'})}});
  const module=await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64')),records=[];
- assert.equal(module.APP_VERSION,'V2.23');
+ assert.equal(module.APP_VERSION,'V3.4');
  const controller=module.createTargetedAppUpdates({target:'FA',release:123,deviceId:'fixture',platform:'Android',displayMode:'standalone',record:value=>records.push(value),enforce:()=>{}});
  controller.setSession({status:'signed-in',user:{uid:'fixture'},profile:{uid:'fixture'},offline:false});await new Promise(setImmediate);
- assert.equal(records[0].appVersion,'V2.23');assert.equal(records[0].loadedRelease,123);
+ assert.equal(records[0].appVersion,'V3.4');assert.equal(records[0].loadedRelease,123);
 });
 
 test('maintenance recovery requires a 404 and the exact previously verified successful deployment',async()=>{
@@ -59,17 +69,17 @@ test('maintenance recovery requires a 404 and the exact previously verified succ
  const options={sourceRevision:next,repository:'anestesiahmtforms/SAHMT-V2.0.github.io',now:1794000000000};
  const fixture=(deployed,status)=>{const original=remote({deployed}).fetchImpl;return (url,init)=>new URL(url).pathname.endsWith('/tools/app-release.json')?Promise.resolve(new Response('{}',{status})):original(url,init);};
  const plan=await prepareAppPublication({...options,fetchImpl:fixture(baseline,404)});
- assert.equal(plan.appVersion,'V3.0');assert.equal(plan.release,options.now);
+ assert.equal(plan.appVersion,'V3.4');assert.equal(plan.release,options.now);
  await assert.rejects(prepareAppPublication({...options,fetchImpl:fixture(old,404)}),/SOURCE_HTTP_404/);
  await assert.rejects(prepareAppPublication({...options,fetchImpl:fixture(baseline,503)}),/SOURCE_HTTP_503/);
  const live=remote({deployed:baseline,meta:{schema:1,sourceRevision:baseline,appVersion:'V2.45',targets:{FA:1793900000000,FB:1793900000000}}});
- assert.equal((await prepareAppPublication({...options,fetchImpl:live.fetchImpl})).appVersion,'V3.0');
+ assert.equal((await prepareAppPublication({...options,fetchImpl:live.fetchImpl})).appVersion,'V3.4');
 });
 
 test('a deploy-only retry cannot publish an obsolete artifact after another revision has advanced production',async()=>{
  const plan=planAppPublication(input),options={repository:'anestesiahmtforms/SAHMT-V2.0.github.io'};
  await assert.doesNotReject(assertAppPublicationCurrent({...options,plan,fetchImpl:remote().fetchImpl}));
- const published={schema:1,sourceRevision:next,appVersion:'V3.0',targets:{FA:plan.release,FB:plan.release}};
+ const published={schema:1,sourceRevision:next,appVersion:'V3.4',targets:{FA:plan.release,FB:plan.release}};
  await assert.doesNotReject(assertAppPublicationCurrent({...options,plan,fetchImpl:remote({meta:published,deployed:next}).fetchImpl}));
  const other='b'.repeat(40),newer={...published,sourceRevision:other};
  await assert.rejects(assertAppPublicationCurrent({...options,plan,fetchImpl:remote({meta:newer,deployed:other,compare:'behind'}).fetchImpl}),/PUBLICATION/);

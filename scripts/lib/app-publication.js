@@ -7,6 +7,7 @@ const fail=code=>{throw Error('APP_PUBLICATION_'+code);};
 
 export function validateAppPublication(value){
  if(value?.schema!==1||!/^V\d{1,3}\.\d{1,6}$/.test(value.appVersion||'')||!sha(value.sourceRevision)||!Number.isSafeInteger(value.release)||value.release<=0)fail('PLAN_INVALID');
+ if(seed.versionPolicy!=='fixed'||value.appVersion!==seed.appVersion)fail('VERSION_NOT_APPROVED');
  return value;
 }
 export function planAppPublication({metadata,deployedRevision,sourceRevision,comparison,now=Date.now()}){
@@ -18,14 +19,10 @@ export function planAppPublication({metadata,deployedRevision,sourceRevision,com
  const match=/^V(\d{1,3})\.(\d{1,6})$/.exec(metadata.appVersion||'');if(!match)fail('STATE_INVALID');
  if(sourceRevision===deployedRevision)return validateAppPublication({schema:1,appVersion:metadata.appVersion,sourceRevision,release});
  if(comparison!=='ahead')fail('REVISION_NOT_NEWER');
- const currentMajor=Number(match[1]),currentMinor=Number(match[2]);
- const floor=/^V(\d{1,3})\.(\d{1,6})$/.exec(seed.appVersion);
- const floorMajor=Number(floor[1]),floorMinor=Number(floor[2]);
- const belowFloor=currentMajor<floorMajor||(currentMajor===floorMajor&&currentMinor<floorMinor);
- const major=Math.max(currentMajor,floorMajor);
- const minor=belowFloor?floorMinor:currentMinor+1;
- if(minor>999999||!Number.isSafeInteger(now)||now<=0)fail('VERSION_INVALID');
- return validateAppPublication({schema:1,appVersion:'V'+major+'.'+minor,sourceRevision,release:Math.max(now,release+1)});
+ if(!Number.isSafeInteger(now)||now<=release)fail('PUBLICATION_TIME_INVALID');
+ // The version is fixed. Cache provenance uses the actual publication timestamp,
+ // never a hidden version counter or an automatically incremented number.
+ return validateAppPublication({schema:1,appVersion:seed.appVersion,sourceRevision,release:now});
 }
 
 export async function prepareAppPublication({sourceRevision,repository,token,fetchImpl=fetch,now=Date.now()}){
