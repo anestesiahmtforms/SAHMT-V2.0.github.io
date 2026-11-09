@@ -67,9 +67,7 @@ test('banner recovers without FE login; team Governance opens only the two sched
 });
 
 async function openYearEnd(page){
- await page.evaluate(()=>location.hash='#/management-hub/surveys');
- await page.locator('.management-hub-dialog[data-panel="surveys"]').waitFor();
- await page.getByRole('button',{name:'ESCALA FINAL DE ANO',exact:true}).click();
+ await page.evaluate(()=>location.hash='#/year-end-schedule');
 }
 
 async function assertTeamConsultations(page){
