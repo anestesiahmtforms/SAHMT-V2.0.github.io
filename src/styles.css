@@ -2492,3 +2492,26 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 @media(max-width:360px){.app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){gap:9px;padding-inline:12px}.app-shell--home .module-card::before{margin-left:-12px}.app-shell--home .module-card .module-icon{flex-basis:41px;width:41px;height:41px}.app-shell--home .module-card strong{font-size:.86rem}.app-shell--home .module-card small{font-size:.61rem}}
 @media(max-height:600px){.app-shell--home{--home-gap:11px}.app-shell--home .home-welcome__emblem{width:74px}.app-shell--home .module-grid{grid-auto-rows:minmax(70px,1fr)}.app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){min-height:70px}}
 @media(prefers-reduced-motion:reduce){.app-shell--home .module-card,.app-shell--home .home-welcome__orbit--outer,.app-shell--home .home-welcome__eyebrow i{transition:none;animation:none}}
+
+/* Home composition: animated mark, legacy account header, welcome message. */
+.app-shell--home>.home-top-stack{position:relative;z-index:2;display:grid;justify-items:center;gap:clamp(3px,.8dvh,8px);width:100%;padding-top:max(5px,env(safe-area-inset-top))}
+.app-shell--home .home-logo-stage{position:relative;display:grid;place-items:center;width:clamp(66px,10dvh,90px);height:clamp(66px,10dvh,90px);overflow:visible}
+.app-shell--home .home-logo-stage>img{z-index:1;width:clamp(44px,7dvh,62px);height:clamp(44px,7dvh,62px);padding:6px;border:1px solid #ffffff96;border-radius:17px;background:linear-gradient(145deg,#fff,#d8eef1);box-shadow:0 8px 22px #061b3270,0 0 26px #90eaf252}
+.app-shell--home .home-logo-stage .home-welcome__orbit{inset:2px}
+.app-shell--home .home-logo-stage .home-welcome__orbit--inner{inset:12px}
+.app-shell--home .home-logo-stage .home-welcome__pulse{top:12%;right:12%;width:7px;height:7px}
+.app-shell--home .home-logo-stage .home-welcome__glint{top:-35px;right:-24px;height:160px;width:105px}
+.app-shell--home .home-identity-topbar{position:relative;top:auto;display:block;width:var(--home-width);min-height:0;margin:0;padding:0;background:transparent;box-shadow:none}
+.app-shell--home .home-identity-topbar .identity-card{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;gap:5px 12px;width:100%;min-height:0;margin:0;padding:clamp(9px,1.4dvh,14px) clamp(12px,2.4vw,22px);border:1px solid #efca82a8;border-radius:16px;background:linear-gradient(110deg,#263b59 0%,#34405b 52%,#584d47 100%);box-shadow:0 5px 0 #17263d,0 11px 24px #020e1b4d,inset 0 1px #ffffff24;color:#fff}
+.app-shell--home .home-identity-topbar .identity-card__user-row{grid-column:1;grid-row:1;display:flex;align-items:center;gap:10px;min-width:0;padding:0}
+.app-shell--home .home-identity-topbar .identity-card__user{overflow:hidden;color:#fff;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(.72rem,2.2vw,.9rem);font-weight:850}
+.app-shell--home .home-identity-topbar .sync-pill{justify-self:end;grid-column:2;grid-row:1;color:#e1edf5}
+.app-shell--home .home-identity-topbar .app-version{position:static;grid-column:2;grid-row:2;justify-self:end;color:#f5d691;font-size:.62rem}
+.app-shell--home .home-identity-topbar .identity-card:has(.account-mode){grid-template-rows:auto auto}
+.app-shell--home .home-identity-topbar .account-mode{grid-column:1;grid-row:2;justify-content:flex-start;color:#d7e5ef}
+.app-shell--home>.app-footer .home-welcome{justify-content:flex-start;width:100%;min-height:0;margin:0;padding:clamp(8px,1.3dvh,13px) clamp(12px,2.4vw,22px);border-color:#b1ebf455;border-radius:16px;text-align:left}
+.app-shell--home>.app-footer .home-welcome h1{font-size:clamp(1rem,3.8vw,1.65rem)}
+.app-shell--home>.app-footer .home-welcome__copy>p{font-size:clamp(.68rem,1.8vw,.82rem)}
+.app-shell--home>.app-footer>span{color:#bdd2de;font-size:.59rem;line-height:1.1}
+@media(max-width:480px){.app-shell--home>.home-top-stack{gap:3px}.app-shell--home .home-logo-stage{width:64px;height:64px}.app-shell--home .home-logo-stage>img{width:43px;height:43px}.app-shell--home .home-identity-topbar .identity-card{padding:8px 10px}.app-shell--home>.app-footer .home-welcome{border-radius:14px}}
+@media(max-height:600px){.app-shell--home .home-logo-stage{width:56px;height:56px}.app-shell--home .home-logo-stage>img{width:40px;height:40px}}
