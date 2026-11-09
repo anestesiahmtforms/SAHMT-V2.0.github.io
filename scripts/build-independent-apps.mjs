@@ -16,6 +16,7 @@ const shellRelease=publication?.release||Date.now(),appVersion=publication?.appV
 for (const target of faOnly?['FA']:['FA', 'FB']) {
   const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target, VITE_APP_RELEASE:String(shellRelease),VITE_APP_VERSION:appVersion};
   if (target === 'FB') Object.assign(env, {
+    VITE_FI_ADMIN_ENABLED:'false', VITE_FI_PILOT_ENABLED:'false',
     VITE_MANAGEMENT_FIREBASE_ENABLED:'false', VITE_INDICATORS_FIREBASE_ENABLED:'false',
     VITE_FIREBASE_PROJECT_AUTH_ENABLED:'false', VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED:'false',
     VITE_OPERATIONAL_CONTINUITY_ENABLED:'false', VITE_OPERATIONAL_CHANNEL_REALTIME_ENABLED:'false',
