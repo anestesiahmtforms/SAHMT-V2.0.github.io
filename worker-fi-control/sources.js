@@ -55,6 +55,7 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
    const groups=documentGroupsFromAccess(access,actor.email),faGroups=documentGroupsFromAccess(faAccess,actor.email),areaById=new Map(areas.map(area=>[area.id,area]));
    for(const collection of ['documents','scopedDocuments']){
    const docs=await fb.list(collection,[],301);
+   const authorized=new Map();
    for(const d of docs){
     if(d.deleted===true||d.trashed===true)continue;
     const area=d.managementAreaId?areaById.get(d.managementAreaId):null;
@@ -69,8 +70,21 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
     if(collection==='documents'&&(!(permission(p,'managementRead','documentsManage')||manages)||!(permission(gate,'managementRead','documentsManage')||faManages)))continue;
     // Only passive previews may be opened from search; forms/quizzes never become actionable.
     const url=preview(d.materialPdfUrl||d.driveUrl);
-    rows.push(record('FB',collection,d,{kind:'document',audience,category:d.category,classificationVerified:true,folderActive:area?.active!==false,sourceAllowedUids:[actor.uid],title:String(d.title||'Documento'),text:compact(d.title,d.description,d.category),url}));
+    const result=record('FB',collection,d,{kind:'document',audience,category:d.category,classificationVerified:true,folderActive:area?.active!==false,sourceAllowedUids:[actor.uid],title:String(d.title||'Documento'),text:compact(d.title,d.description,d.category),url});
+    if(canReadRecord(actor,result))authorized.set(d.id,{document:d,result});
    }
+   if(collection==='scopedDocuments'){
+    for(const {document,result} of authorized.values()){
+     if(result.url||!document.driveFileId||document.id!==`evaluation_${document.driveFileId}`)continue;
+     const paired=authorized.get(`pdf_${document.id}`);
+     if(!paired||paired.result.audience!==result.audience||paired.result.active!==result.active)continue;
+     const pdf=paired.document;
+     if(['audienceGroup','category','managementAreaId'].some(field=>document[field]!==pdf[field]))continue;
+     if(!pdf.driveFileId||pdf.driveUrl!==`https://drive.google.com/file/d/${pdf.driveFileId}/view`)continue;
+     result.url=preview(pdf.driveUrl);
+    }
+   }
+   rows.push(...Array.from(authorized.values(),entry=>entry.result));
    }
   }
   if(permission(p,'trainingsRead','trainingsManage')&&permission(gate,'trainingsRead','trainingsManage')){
