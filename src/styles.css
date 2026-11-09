@@ -2618,3 +2618,32 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   }
 }
 
+/* Fix mobile identity panel: stretch the card and its topbar to the same width as the Home tiles. */
+.app-shell--home>.home-top-stack>.home-identity-topbar{
+  display:block;
+  box-sizing:border-box;
+  width:var(--home-width)!important;
+  max-width:var(--home-width)!important;
+  min-width:0;
+  justify-self:center;
+}
+.app-shell--home .home-identity-topbar>.identity-card{
+  display:grid;
+  box-sizing:border-box;
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0;
+  justify-self:stretch;
+  align-self:stretch;
+}
+@media(max-width:600px){
+  .app-shell--home>.home-top-stack>.home-identity-topbar,
+  .app-shell--home .home-identity-topbar>.identity-card{
+    width:var(--home-width)!important;
+    max-width:var(--home-width)!important;
+  }
+  .app-shell--home .home-identity-topbar>.identity-card{
+    grid-template-columns:minmax(0,1fr) auto;
+  }
+}
+
