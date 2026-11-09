@@ -29,10 +29,10 @@ test('offline refresh reads local data without attempting online recovery',async
  const h=fixture();assert.equal(typeof h.ctx.retryLiveReport,'function');h.ctx.navigator.onLine=false;
  assert.equal(await h.ctx.retryLiveReport('checklist'),true);assert.deepEqual(h.calls,[['open','checklist',true,true]]);
 });
-test('both checklist refresh controls use the connection recovery action',()=>{
+test('report error retry uses connection recovery and Checklist has no manual refresh control',()=>{
  assert.match(source,/retry\.onclick = \(\) => retryLiveReport\(kind\)/);
- const start=source.indexOf('reportRefresh.onclick =');
- assert.match(source.slice(start,source.indexOf("document.querySelector('.checklist-report-periods')",start)),/retryLiveReport\('checklist'\)/);
+ assert.doesNotMatch(source,/id="checklist-report-refresh"/);
+ assert.doesNotMatch(source,/reportRefresh\.onclick\s*=/);
 });
 test('repeated taps share one connection recovery and one remote subscription',async()=>{
  const h=fixture();let release;
