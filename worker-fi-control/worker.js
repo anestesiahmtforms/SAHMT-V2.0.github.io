@@ -8,6 +8,9 @@ import {createFiSourceProvider,SOURCE_COLLECTIONS} from './sources.js';
 import {createFiReadBudget,createFiRequestQuota} from './read-budget.js';
 const origin='https://anestesiahmtforms.github.io';
 const isAdmin=actor=>actor.profile?.role==='administrador_app'||actor.profile?.permissions?.admin===true;
+const pilotActions=new Set(['search','monthly.generate','monthly.list','service.status']);
+export const pilotAccess=(actor,settings,action,now=Date.now())=>isAdmin(actor)&&pilotActions.has(action)&&
+ settings?.schemaVersion===1&&settings.uid===actor.uid&&Number.isSafeInteger(settings.expiresAt)&&settings.expiresAt>now;
 const searchReadPlan=Object.fromEntries(Object.entries({FA:4,FB:1700,FJ:430,FH:210,FG:320,FF:105}).map(([alias,limit])=>[FI_PROJECTS[alias],limit]));
 function boundedFetch(fetchImpl){
  let calls=0;
@@ -25,17 +28,18 @@ function runtime(env,fetchImpl=fetch){
  return {store,sources,projections};
 }
 export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch}={}){
- const createServices=buildServices||(async(env,rt,requestFetch)=>{
+ const createServices=buildServices||(async(env,rt,requestFetch,pilot)=>{
   const settings=await rt.store.get('fiControlConfig','runtime');if(settings?.enabled!==true)throw fiError('FI_NOT_READY');
-  const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
-  const buildAi=readBudget=>createFiAiService({store:rt.store,sourceProvider:createFiSourceProvider({stores:rt.sources(readBudget)}),modelProvider,config:{monthlyBudgetMicros:settings.monthlyBudgetMicros,dailyUserLimit:settings.dailyUserLimit}});
+  const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'||pilot?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
+  const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
+  const buildAi=(readBudget,provider=modelProvider)=>createFiAiService({store:rt.store,sourceProvider:createFiSourceProvider({stores:rt.sources(readBudget)}),modelProvider:provider,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}});
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
   const quota=createFiRequestQuota({store:rt.store});
   const readBudget=createFiReadBudget({store:rt.store});
   async function boundedSearch(actor,input){
    await quota.consume(actor.uid);
    const lease=await readBudget.open(searchReadPlan);
-   try{return await buildAi(lease).search(actor,input);}finally{await lease.finish().catch(()=>{});}
+   try{return await buildAi(lease,pilot?{enabled:false}:modelProvider).search(actor,input);}finally{await lease.finish().catch(()=>{});}
   }
   return {async dispatch(actor,action,input){
    if(action==='search')return boundedSearch(actor,input);
@@ -47,28 +51,34 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
      .filter(row=>Array.isArray(row.units)&&row.units.length>0&&row.units.every(unit=>units.has(unit)))
      .sort((a,b)=>b.period.localeCompare(a.period));
    }
-   if(action==='service.status')return {station:'FI',purpose:'ADMINISTRATIVE_CONTROL_AND_AI',aiEnabled:modelProvider.enabled,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',...(isAdmin(actor)?{monthlyBudgetMicros:settings.monthlyBudgetMicros||0}:{} )};
+   if(action==='service.status')return {station:'FI',purpose:'ADMINISTRATIVE_CONTROL_AND_AI',aiEnabled:modelProvider.enabled,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',pilot:!!pilot,...(isAdmin(actor)?{monthlyBudgetMicros:monthlyBudgetMicros||0}:{} )};
    return admin.execute({actor,action,input});
   }};
  });
  return {async fetch(request,env){
   const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',Vary:'Origin'},json=(data,status=200)=>Response.json(data,{status,headers});
   const url=new URL(request.url);
-  if(url.pathname==='/health'&&request.method==='GET')return json({station:'FI',projectId:FI_PROJECTS.FI,purpose:'ADMINISTRATIVE_CONTROL_AND_AI',controlEnabled:env.FI_CONTROL_ENABLED==='true',aiEnabled:env.FI_AI_ENABLED==='true'&&!!env.OPENAI_API_KEY,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true'});
+  if(url.pathname==='/health'&&request.method==='GET')return json({station:'FI',projectId:FI_PROJECTS.FI,purpose:'ADMINISTRATIVE_CONTROL_AND_AI',controlEnabled:env.FI_CONTROL_ENABLED==='true',aiEnabled:env.FI_AI_ENABLED==='true'&&!!env.OPENAI_API_KEY,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',pilotEnabled:env.FI_PILOT_ENABLED==='true'});
   if(request.headers.get('Origin')!==origin)return json({code:'FI_ORIGIN_DENIED'},403);
   Object.assign(headers,{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type, X-Firebase-AppCheck'});
-  if(url.pathname!=='/v1/control'||url.search)return json({code:'FI_NOT_FOUND'},404);
+  const pilotRoute=url.pathname==='/v1/pilot';
+  if((!pilotRoute&&url.pathname!=='/v1/control')||url.search)return json({code:'FI_NOT_FOUND'},404);
   if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
   if(request.method!=='POST')return json({code:'FI_METHOD_DENIED'},405);
   try{
    if(!request.headers.get('Content-Type')?.startsWith('application/json'))throw fiError('FI_INPUT_INVALID',400);
    if(Number(request.headers.get('Content-Length'))>196608)throw fiError('FI_BODY_LIMIT',413);
-   if(env.FI_CONTROL_ENABLED==='false')throw fiError('FI_NOT_READY');
+   if(pilotRoute?env.FI_PILOT_ENABLED!=='true'||env.FI_REQUIRE_APP_CHECK!=='true':env.FI_CONTROL_ENABLED!=='true')throw fiError('FI_NOT_READY');
    const requestFetch=boundedFetch(fetchImpl),rt=verifyActor&&buildServices?null:runtime(env,requestFetch);
    const actor=await (verifyActor||createFiActorVerifier({store:rt.store,fetchImpl:requestFetch}))(request,env);
    const body=await boundedJson(request,196608);
    if(!body||Array.isArray(body)||Object.keys(body).some(k=>!['action','input'].includes(k))||typeof body.action!=='string'||!/^[a-z][A-Za-z0-9.]{0,80}$/.test(body.action)||!body.input||Array.isArray(body.input)||typeof body.input!=='object')throw fiError('FI_INPUT_INVALID',400);
-   return json(await (await createServices(env,rt,requestFetch)).dispatch(actor,body.action,body.input));
+   let pilot;
+   if(pilotRoute){
+    pilot=await rt.store.get('fiControlConfig','pilot');
+    if(!pilotAccess(actor,pilot,body.action))throw fiError('FI_FORBIDDEN',403);
+   }
+   return json(await (await createServices(env,rt,requestFetch,pilot)).dispatch(actor,body.action,body.input));
   }catch(error){
    const code=/^[A-Z0-9_]{1,100}$/.test(error.code||error.message||'')?(error.code||error.message):'FI_UNAVAILABLE';
    const status=[400,401,403,404,409,413,429,503].includes(error.status)?error.status:code==='FORBIDDEN'?403:/INVALID|REQUIRED$/.test(code)?400:503;

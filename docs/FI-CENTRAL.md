@@ -10,6 +10,8 @@ A análise mensal consulta resultados revisados ou fechados do QMENTUM no FC, co
 
 ## Ativação
 
+O piloto usa o endereço `#/fi-control` no PWA FA quando `VITE_FI_PILOT_ENABLED=true` e `VITE_FI_ADMIN_ENABLED=false`. Ele exige o App Check do domínio publicado e uma única conta administrativa vinculada, com concessão temporária. Execute `node scripts/prepare-fi-pilot.mjs` para preparar a concessão e `node scripts/deploy-fi-control.mjs --apply-pilot` para publicar o serviço restrito. A busca do piloto é convencional. Somente a geração manual de análise usa a chave, limitada a US$ 0,25 e três chamadas por dia. O piloto mantém as alterações administrativas e a execução agendada desativadas.
+
 1. Conferir `node scripts/fi-control-release.mjs --check-drift` antes da troca. Se houver divergência, revisar e reconciliar os dados de origem antes de transferir a autoridade de escrita.
 2. Confirmar as regras FI e o Worker desativado com `node scripts/deploy-fi-control.mjs --apply-disabled`. A conta de serviço deve existir como segredo Cloudflare.
 3. Homologar a sessão FA e o App Check com contas autorizadas. Conferir um efetivo, um usuário comum e um administrador, incluindo revogação de grupo, consulta de item inativo e projeção para FA/FJ. Aplicar a mudança do PWA após essa validação.

@@ -126,6 +126,7 @@ const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
 const firstLoginCohortAdminUiEnabled = deployment.target === 'FA' && firstLoginCohortAdminEnabled();
 const fiAdminControlEnabled=import.meta.env.VITE_FI_ADMIN_ENABLED==='true';
+const fiPilotEnabled=import.meta.env.VITE_FI_PILOT_ENABLED==='true';
 const labels = {
   communications: ['CENTRAL DE COMUNICAÇÃO', 'Comunicação institucional'],
   events: ['Operacional', 'Eventos, escala e férias'],
@@ -5156,15 +5157,19 @@ async function render() {
   }
   const requestedRoute = currentRoute();
   if(!authLimited&&requestedRoute==='fi-control'){
-    if(!fiAdminControlEnabled||session.accountMode==='team'||session.profile?.active!==true||session.profile?.access!==true){navigate('home');return;}
+    const pilot=!fiAdminControlEnabled&&typeof fiPilotEnabled!=='undefined'&&fiPilotEnabled;
+    if((!fiAdminControlEnabled&&!pilot)||session.accountMode==='team'||session.profile?.active!==true||session.profile?.access!==true){navigate('home');return;}
     if(deployment.target!=='FA'){navigate('fi-control');return;}
     const uid=session.user.uid,isCurrent=()=>current()&&session.status==='signed-in'&&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
     app.innerHTML='<main class="main-content"><div id="fi-control-content"><p role="status">Abrindo a Central de Controle Administrativo e IA…</p></div></main>';
     try{
       const [{mountFiControl},{fiControlRequest}]=await Promise.all([import('./fi-control-ui.js'),import('./fi-control-client.js'),import('./fi-control.css')]);
       if(!isCurrent())return;
-      cleanupCurrentModule=mountFiControl(document.querySelector('#fi-control-content'),{request:(action,input)=>fiControlRequest(action,input,uid),isCurrent,onNavigate:navigate,profile:session.profile});
-    }catch{if(isCurrent())document.querySelector('#fi-control-content').textContent='Não foi possível abrir a Central. Volte e tente novamente.';}
+      const request=(action,input)=>fiControlRequest(action,input,uid,{pilot});
+      if(pilot)await request('service.status',{});
+      if(!isCurrent())return;
+      cleanupCurrentModule=mountFiControl(document.querySelector('#fi-control-content'),{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot});
+    }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Central indisponível para esta sessão.</p><button type="button" class="secondary-button">Voltar à Home</button>';host.querySelector('button').addEventListener('click',()=>navigate('home'));}}
     return;
   }
   if(requestedRoute!=='year-end-schedule')yearEndStartup.setSession({...session,status:'signed-out'});

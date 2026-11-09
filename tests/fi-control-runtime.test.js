@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createFiControlWorker} from '../worker-fi-control/worker.js';
+import {createFiControlWorker,pilotAccess} from '../worker-fi-control/worker.js';
 import {createFiActorVerifier} from '../worker-fi-control/identity.js';
 import {createFiStore} from '../worker-fi-control/store.js';
 import {createFiControlRequest} from '../src/fi-control-client.js';
@@ -13,11 +13,22 @@ const request=(body={action:'search',input:{query:'protocolo'}},headers={})=>new
 test('FI rejects origin, authentication and unknown input before service execution',async()=>{
  let executions=0;
  const worker=createFiControlWorker({verifyActor:async r=>{if(r.headers.get('Authorization')!=='Bearer proof')throw Object.assign(Error('FI_UNAUTHENTICATED'),{status:401});return actor;},buildServices:()=>({dispatch:async()=>{executions++;return {ok:true};}})});
- assert.equal((await worker.fetch(request({}, {Origin:'https://evil.test'}),{})).status,403);
- assert.equal((await worker.fetch(request(undefined,{Authorization:''}),{})).status,401);
- assert.equal((await worker.fetch(request({action:'search',input:{},uid:'other'}),{})).status,400);
+ const enabled={FI_CONTROL_ENABLED:'true'};
+ assert.equal((await worker.fetch(request({}, {Origin:'https://evil.test'}),enabled)).status,403);
+ assert.equal((await worker.fetch(request(undefined,{Authorization:''}),enabled)).status,401);
+ assert.equal((await worker.fetch(request({action:'search',input:{},uid:'other'}),enabled)).status,400);
  assert.equal(executions,0);
- const r=await worker.fetch(request(),{});assert.equal(r.status,200);assert.deepEqual(await r.json(),{ok:true});assert.equal(executions,1);
+ const r=await worker.fetch(request(),enabled);assert.equal(r.status,200);assert.deepEqual(await r.json(),{ok:true});assert.equal(executions,1);
+});
+test('pilot admits only its active administrator, rejects writes, and requires App Check',async()=>{
+ const admin={...actor,profile:{...actor.profile,permissions:{admin:true}}};
+ const settings={schemaVersion:1,uid:actor.uid,expiresAt:1001};
+ assert.equal(pilotAccess(admin,settings,'monthly.generate',1000),true);
+ for(const [candidate,action,time] of [[actor,'search',1000],[{...admin,uid:'other'},'search',1000],[admin,'people.save',1000],[admin,'search',1001]])assert.equal(pilotAccess(candidate,settings,action,time),false);
+ const worker=createFiControlWorker({verifyActor:()=>{throw Error('MUST_NOT_AUTH');},buildServices:()=>{throw Error('MUST_NOT_BUILD');}});
+ const pilot=new Request('https://fi.test/v1/pilot',request());
+ assert.equal((await worker.fetch(pilot,{FI_PILOT_ENABLED:'true',FI_REQUIRE_APP_CHECK:'false'})).status,503);
+ assert.equal((await worker.fetch(request(),{FI_PILOT_ENABLED:'true'})).status,503);
 });
 test('FI health exposes readiness without credentials or personal details and schedule is disabled by default',async()=>{
  const worker=createFiControlWorker({buildServices:()=>{throw Error('MUST_NOT_BUILD');}});

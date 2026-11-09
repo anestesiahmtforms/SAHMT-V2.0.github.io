@@ -47,7 +47,8 @@ async function secureRules(token){
 }
 let stage='PREFLIGHT';
 try{
- demand(process.argv.includes('--apply-disabled'),'FI_DEPLOY_MODE_REQUIRED');
+ const pilot=process.argv.includes('--apply-pilot');
+ demand(pilot!==process.argv.includes('--apply-disabled'),'FI_DEPLOY_MODE_REQUIRED');
  const target=JSON.parse(await readFile(config,'utf8'));
  demand(target.name===worker&&target.account_id===account&&['FI_CONTROL_ENABLED','FI_AI_ENABLED','FI_MONTHLY_ENABLED'].every(k=>target.vars[k]==='false')&&target.vars.FI_REQUIRE_APP_CHECK==='true','FI_DEPLOY_CONFIG_INVALID');
  const token=await firebaseCliAccountToken(owner);
@@ -58,6 +59,10 @@ try{
  const store=createFiStore({projectId:project,getAccessToken});
  const marker=await store.get('fiControlMigrations','initial');
  demand(marker?.sourceDeletes===0&&marker?.counts?.plannedDocuments>0,'FI_IMPORT_NOT_READY');
+ if(pilot){
+  const plan=await store.get('fiControlConfig','pilot');
+  demand(plan?.schemaVersion===1&&typeof plan.uid==='string'&&plan.expiresAt>Date.now()&&plan.monthlyBudgetMicros===250000,'FI_PILOT_NOT_READY');
+ }
  stage='RULES';
  const ruleset=await secureRules(token);
  console.log(JSON.stringify({stage,ruleset,readbackVerified:true}));
@@ -78,23 +83,27 @@ try{
   demand(health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false,'FI_WORKER_EXISTS_REVIEW_REQUIRED');
  }
  stage='DEPLOY_DISABLED';
- run(['deploy','--config',config]);
+ run(['deploy','--config',config,...(pilot?['--var','FI_PILOT_ENABLED:true']:[])]);
  stage='STORE_WORKER_CREDENTIAL';
  run(['secret','bulk','--config',config],JSON.stringify({FI_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)}));
  stage='VERIFY_DEPLOYMENT';
  const secrets=await cf(path+'/workers/scripts/'+worker+'/secrets');
- demand(secrets.some(item=>item.name==='FI_SERVICE_ACCOUNT_JSON'&&item.type==='secret_text'),'FI_SECRET_READBACK_FAILED');
+ demand(secrets.some(item=>item.name==='FI_SERVICE_ACCOUNT_JSON'&&item.type==='secret_text')&&(!pilot||secrets.some(item=>item.name==='OPENAI_API_KEY'&&item.type==='secret_text')),'FI_SECRET_READBACK_FAILED');
  let verified=false;
  for(let attempt=0;attempt<5&&!verified;attempt++){
   try{
    const health=await json(endpoint+'/health');
    const blocked=await fetch(endpoint+'/v1/control',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{"action":"search","input":{"query":"teste"}}',redirect:'error',signal:AbortSignal.timeout(10000)});
-   verified=health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false&&blocked.status===503&&(await blocked.json()).code==='FI_NOT_READY';
+   verified=health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false&&health.pilotEnabled===pilot&&blocked.status===503&&(await blocked.json()).code==='FI_NOT_READY';
   }catch{}
   if(!verified)await new Promise(resolve=>setTimeout(resolve,2000));
  }
  demand(verified,'FI_API_READBACK_FAILED');
- const report={project,worker,endpoint,ruleset,controlEnabled:false,aiEnabled:false,monthlyEnabled:false,firestoreBillingEnabled:false,cloudCredentialInstalled:true,serviceCredentialValidatedLocally:true,source:await readFile('worker-fi-control/worker.js','utf8').then(s=>createHash('sha256').update(s).digest('hex')),at:new Date().toISOString()};
+ if(pilot){
+  const unauthenticated=await fetch(endpoint+'/v1/pilot',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{"action":"service.status","input":{}}',redirect:'error',signal:AbortSignal.timeout(10000)});
+  demand(unauthenticated.status===403&&(await unauthenticated.json()).code==='FI_APP_CHECK_REQUIRED','FI_PILOT_AUTH_GUARD_FAILED');
+ }
+ const report={project,worker,endpoint,ruleset,controlEnabled:false,aiEnabled:false,monthlyEnabled:false,pilotEnabled:pilot,firestoreBillingEnabled:false,cloudCredentialInstalled:true,serviceCredentialValidatedLocally:true,source:await readFile('worker-fi-control/worker.js','utf8').then(s=>createHash('sha256').update(s).digest('hex')),at:new Date().toISOString()};
  await writeFile(`${directory}/deployment.json`,JSON.stringify(report,null,2)+'\n');
  console.log(JSON.stringify(report));
 }catch(error){
