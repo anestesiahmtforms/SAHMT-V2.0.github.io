@@ -63,7 +63,8 @@
   .app-shell--home .home-logo-stage{height:64px;min-height:0}
   .app-shell--home .home-logo-stage>img{width:50px;height:50px}
   .app-shell--home .home-identity-topbar>.identity-card{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;min-height:50px;padding:7px 9px}
-  .app-shell--home .home-identity-topbar .account-mode{grid-column:1/-1;grid-row:2;justify-content:flex-start}
+  .app-shell--home .home-identity-topbar .account-mode{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:auto minmax(0,1fr);justify-content:flex-start;gap:5px;font-size:.62rem;white-space:nowrap}
+  .app-shell--home .home-identity-topbar .account-mode select{box-sizing:border-box;width:100%;max-width:100%;min-width:0;min-height:30px;height:30px;padding:3px 5px;font-size:.65rem}
   .app-shell--home>.main-content{grid-column:2;grid-row:1/3;width:100%!important;padding:0 0 6px}
   .app-shell--home>.app-footer{grid-column:1;grid-row:2;width:100%;padding-bottom:0}
   .app-shell--home>.app-footer .home-welcome{padding:8px 10px}
