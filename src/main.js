@@ -1822,7 +1822,7 @@ async function loadModule(route) {
         if (!checklistReportOpen || currentRoute() !== 'checklist') return;
         void retryLiveReport('checklist');
       };
-      document.querySelector('.checklist-report-periods')?.append(reportRefresh);
+      document.querySelector('#checklist-day-control')?.append(reportRefresh);
       const reportDay = document.querySelector('#checklist-report-day');
       const updateDayControls = (day) => {
         const value = day && day <= todayInputValue() ? day : todayInputValue();
