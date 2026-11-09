@@ -1,6 +1,6 @@
 # Proposta de IA para o SAHMT
 
-Data: 09/11/2026. Estado: proposta para revisão, sem implementação ou publicação.
+Data: 09/11/2026. A proposta original abaixo foi aprovada. A situação e as alterações de escopo estão em [Central FI](../../FI-CENTRAL.md).
 
 ## Objetivo e requisitos definidos pelo proprietário
 

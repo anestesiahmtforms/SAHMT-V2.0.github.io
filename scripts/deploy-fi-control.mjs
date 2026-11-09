@@ -28,8 +28,9 @@ async function secureRules(token){
  const options={token},current=await json(firebase+'/'+releaseName,{token,missing:true});
  if(current)demand(current.name===releaseName&&current.rulesetName.startsWith(`projects/${project}/rulesets/`),'FI_RULES_TARGET_MISMATCH');
  const old=current?await json(firebase+'/'+current.rulesetName,options):null;
- const content=await readFile('firestore.fi-control.rules','utf8'),name='firestore.fi-control.rules';
- if(old?.source?.files?.length===1&&old.source.files[0].content===content)return current.rulesetName;
+ const normalize=value=>value.replaceAll('\r\n','\n');
+ const content=normalize(await readFile('firestore.fi-control.rules','utf8')),name='firestore.fi-control.rules';
+ if(old?.source?.files?.length===1&&typeof old.source.files[0].content==='string'&&normalize(old.source.files[0].content)===content)return current.rulesetName;
  const backup=await sealPrivateJson({current,old});
  await writeFile(`${directory}/rules-before.dpapi.json`,JSON.stringify(backup),{flag:'wx'}).catch(error=>{if(error.code!=='EEXIST')throw error;});
  await openPrivateJson(JSON.parse(await readFile(`${directory}/rules-before.dpapi.json`,'utf8')));
@@ -72,15 +73,28 @@ try{
  const [identity,accountInfo,domain]=await Promise.all([cf('/user'),cf(path),cf(path+'/workers/subdomain')]);
  demand(identity.email===owner&&accountInfo.id===account&&domain.subdomain===subdomain,'FI_CF_TARGET_MISMATCH');
  const scripts=await cf(path+'/workers/scripts');
- demand(scripts.every(item=>item.id!==worker),'FI_WORKER_EXISTS_REVIEW_REQUIRED');
+ if(scripts.some(item=>item.id===worker)){
+  const health=await json(endpoint+'/health');
+  demand(health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false,'FI_WORKER_EXISTS_REVIEW_REQUIRED');
+ }
  stage='DEPLOY_DISABLED';
  run(['deploy','--config',config]);
+ stage='STORE_WORKER_CREDENTIAL';
+ run(['secret','bulk','--config',config],JSON.stringify({FI_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)}));
  stage='VERIFY_DEPLOYMENT';
- const health=await json(endpoint+'/health');
- demand(health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false,'FI_HEALTH_READBACK_FAILED');
- const blocked=await fetch(endpoint+'/v1/control',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{"action":"search","input":{"query":"teste"}}',redirect:'error',signal:AbortSignal.timeout(10000)});
- demand(blocked.status===503&&(await blocked.json()).code==='FI_NOT_READY','FI_API_DENIAL_FAILED');
- const report={project,worker,endpoint,ruleset,controlEnabled:false,aiEnabled:false,monthlyEnabled:false,firestoreBillingEnabled:false,cloudCredentialInstalled:false,serviceCredentialValidatedLocally:true,source:await readFile('worker-fi-control/worker.js','utf8').then(s=>createHash('sha256').update(s).digest('hex')),at:new Date().toISOString()};
+ const secrets=await cf(path+'/workers/scripts/'+worker+'/secrets');
+ demand(secrets.some(item=>item.name==='FI_SERVICE_ACCOUNT_JSON'&&item.type==='secret_text'),'FI_SECRET_READBACK_FAILED');
+ let verified=false;
+ for(let attempt=0;attempt<5&&!verified;attempt++){
+  try{
+   const health=await json(endpoint+'/health');
+   const blocked=await fetch(endpoint+'/v1/control',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{"action":"search","input":{"query":"teste"}}',redirect:'error',signal:AbortSignal.timeout(10000)});
+   verified=health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false&&blocked.status===503&&(await blocked.json()).code==='FI_NOT_READY';
+  }catch{}
+  if(!verified)await new Promise(resolve=>setTimeout(resolve,2000));
+ }
+ demand(verified,'FI_API_READBACK_FAILED');
+ const report={project,worker,endpoint,ruleset,controlEnabled:false,aiEnabled:false,monthlyEnabled:false,firestoreBillingEnabled:false,cloudCredentialInstalled:true,serviceCredentialValidatedLocally:true,source:await readFile('worker-fi-control/worker.js','utf8').then(s=>createHash('sha256').update(s).digest('hex')),at:new Date().toISOString()};
  await writeFile(`${directory}/deployment.json`,JSON.stringify(report,null,2)+'\n');
  console.log(JSON.stringify(report));
 }catch(error){

@@ -10,7 +10,7 @@ function memoryStore() {
  const get=async(c,id)=>structuredClone(data.get(`${c}/${id}`)??null);
  return {data,get,transaction(fn){const run=queue.then(async()=>{const writes=[];const result=await fn({get,set:async(c,id,v)=>writes.push([`${c}/${id}`,structuredClone(v)]),create:async(c,id,v)=>{if(data.has(`${c}/${id}`))throw Error('EXISTS');writes.push([`${c}/${id}`,structuredClone(v)]);}});for(const [k,v]of writes)data.set(k,v);return result;});queue=run.catch(()=>{});return run;}};
 }
-const snapshot={schemaVersion:1,source:'FD',period:'2026-10',signature:'fd-v1',complete:true,missingSources:[],updatedAt:1793577600000,indicators:[{id:'i1',label:'Adesão',value:82,unit:'%',target:90,previous:80}],technicalMetrics:[]};
+const snapshot={schemaVersion:1,source:'FC',units:['a'],period:'2026-10',signature:'fc-v1',complete:true,missingSources:[],updatedAt:1793577600000,indicators:[{id:'i1',label:'Adesão',value:82,unit:'%',target:90,previous:80}],technicalMetrics:[]};
 const plan={summary:'Adesão abaixo da meta.',actions:[{priority:'HIGH',ownerSuggested:'Coordenação',dueSuggested:'2026-11-30',evidence:['i1'],successMetric:'Adesão ≥90%',action:'Revisar treinamento.'}],technicalRecommendations:[]};
 function setup({records=[record('public')],config={},provider,clock=()=>1794225600000,snap=snapshot}={}){
  assert.equal(typeof createFiAiService,'function','AI service must exist');
@@ -24,7 +24,7 @@ test('filters administrative, third party, notification author, unknown and ambi
  const {service,calls}=setup({records});
  const result=await service.search({...admin,memberCategories:['ADMINISTRADOR']},{query:'protocolo',uid:'u2',memberCategories:['EFETIVO']});
  assert.deepEqual(result.results.map(r=>r.id).sort(),['own','public']);
- assert.deepEqual(calls[0].context.map(r=>r.id).sort(),['own','public']);
+ assert.deepEqual(calls[0].context.map(r=>r.id).sort(),['public']);
  const effective=await service.search(actor,{query:'protocolo'});
  assert.deepEqual(effective.results.map(r=>r.id).sort(),['legacy','own','public','restricted']);
 });
@@ -45,15 +45,15 @@ test('parallel reservations cannot exceed budget and uncertain failures retain c
  await Promise.all(Array.from({length:10},()=>service.search(actor,{query:'protocolo'})));
  assert.ok(calls>0&&calls<10);const budget=await store.get('fiAiBudget','2026-11');assert.ok(budget.committedMicros<=10000&&budget.committedMicros>0);
 });
-test('monthly requires admin and rejects incomplete FD data instead of treating missing as zero',async()=>{
+test('monthly requires admin and rejects incomplete data instead of treating missing as zero',async()=>{
  const {service,calls}=setup({snap:{...snapshot,complete:false,missingSources:['FH']}});
  await assert.rejects(service.monthly(actor,{period:'2026-10',requestId:'r1'}),/FORBIDDEN/);
  const result=await service.monthly(admin,{period:'2026-10',requestId:'r1'});assert.equal(result.status,'incomplete');assert.deepEqual(result.missingSources,['FH']);assert.equal(calls.length,0);
 });
-test('monthly is idempotent by FD signature and preserves proposed action structure',async()=>{
+test('monthly is idempotent by QMENTUM signature and preserves proposed action structure',async()=>{
  const {service,calls}=setup();const results=await Promise.all([service.monthly(admin,{period:'2026-10',requestId:'r1'}),service.monthly(admin,{period:'2026-10',requestId:'r2'})]);
  assert.equal(calls.length,1);assert.ok(results.some(r=>r.status==='complete'));
- const cached=await service.monthly(admin,{period:'2026-10',requestId:'r3',indicators:[{id:'fake',value:0}]});assert.equal(cached.status,'complete');assert.deepEqual(cached.report.actions,plan.actions);assert.equal(calls.length,1);assert.equal(cached.signature,'fd-v1');
+ const cached=await service.monthly(admin,{period:'2026-10',requestId:'r3',indicators:[{id:'fake',value:0}]});assert.equal(cached.status,'complete');assert.deepEqual(cached.report.actions,plan.actions);assert.equal(calls.length,1);assert.equal(cached.signature,'fc-v1');
 });
 test('expired monthly lease cannot publish stale model output',async()=>{
  let time=1794225600000;const {service,store}=setup({clock:()=>time,config:{monthlyLeaseMs:1000},provider:{enabled:true,generate:async()=>{time+=2000;return {data:plan,usage:{inputTokens:10,outputTokens:10}};}}});

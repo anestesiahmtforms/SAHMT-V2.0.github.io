@@ -15,7 +15,7 @@ async function tokenStore(alias,collections){const token=await firebaseCliAccoun
 async function accounts(token,alias,users,field){const result=[];for(let n=0;n<users.length;n+=40){const values=users.slice(n,n+40).map(u=>field==='email'?u.email:u.id);const r=await api(`https://identitytoolkit.googleapis.com/v1/projects/${FI_PROJECTS[alias]}/accounts:lookup`,token,{[field]:values});for(const a of r.data.users||[])result.push({localId:a.localId,email:a.email,emailVerified:a.emailVerified===true,disabled:a.disabled===true});}return result;}
 async function saveReport(name,value){await writeFile('docs/superpowers/reports/'+name,JSON.stringify(value,null,2)+'\n');console.log(JSON.stringify(value));}
 try{
- requireValue(['--capture','--apply-import'].includes(mode),'FI_RELEASE_MODE_INVALID');await mkdir(directory,{recursive:true});
+ requireValue(['--capture','--apply-import','--check-drift'].includes(mode),'FI_RELEASE_MODE_INVALID');await mkdir(directory,{recursive:true});
  const FI=await tokenStore('FI',['users','contacts','eventMembers','memberCategoryAssignments','appConfig','fiAdminUsers','fiAdminIdentityLinks','fiControlConfig','fiControlMigrations']);
  const meta=await api('https://cloudresourcemanager.googleapis.com/v1/projects/'+project,FI.token);requireValue(meta.data.projectId===project,'FI_RELEASE_TARGET_MISMATCH');
  const root=`https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
@@ -36,6 +36,21 @@ try{
   const backup={capturedAt:new Date().toISOString(),snapshot,plan,configuration:{databases:dbs.data,indexes:indexes.data,releases:releases.data,script:script.status===200?script.data:null,deployments:deployments.status===200?deployments.data:null}};
   const envelope=await sealPrivateJson(backup);await writeFile(resolve(directory,'migration-capture.dpapi.json'),JSON.stringify(envelope));const verified=await openPrivateJson(JSON.parse(await readFile(resolve(directory,'migration-capture.dpapi.json'),'utf8')));requireValue(digest(verified)===digest(backup),'FI_BACKUP_VERIFICATION_FAILED');
   await saveReport('2026-11-09-fi-migration-preview.json',{code:'FI_MIGRATION_PREVIEW',projectId:project,counts:plan.counts,sourceDeletes:0,cloudMutations:0,backupVerified:true,snapshotDigest:digest(snapshot),databases:dbs.data.databases.map(d=>({name:d.name,locationId:d.locationId})),oldIndexes:indexes.data.indexes?.length??null,moreIndexes:!!indexes.data.nextPageToken,appsScriptStatus:script.status,appsScriptDeploymentsStatus:deployments.status,capturedAt:backup.capturedAt});
+ }else if(mode==='--check-drift'){
+  const saved=await openPrivateJson(JSON.parse(await readFile(resolve(directory,'migration-capture.dpapi.json'),'utf8')));
+  const marker=await FI.store.get('fiControlMigrations','initial');
+  requireValue(marker?.snapshotDigest===digest(saved.snapshot),'FI_MIGRATION_MARKER_MISMATCH');
+  const [FA,FJ]=await Promise.all([tokenStore('FA',['users','userCategories','appConfig']),tokenStore('FJ',['contacts'])]);
+  const [users,contacts,categories,appConfig]=await Promise.all([FA.store.list('users',[],1001),FJ.store.list('contacts',[],401),FA.store.list('userCategories',[],1001),FA.store.get('appConfig','app')]);
+  const compare=(original,current)=>{
+   const old=new Map(original.map(row=>[row.id,digest(row)]));
+   const latest=new Map(current.map(row=>[row.id,digest(row)]));
+   return {added:[...latest.keys()].filter(id=>!old.has(id)).length,removed:[...old.keys()].filter(id=>!latest.has(id)).length,modified:[...latest].filter(([id,hash])=>old.has(id)&&old.get(id)!==hash).length};
+  };
+  const changes={users:compare(saved.snapshot.users,users),contacts:compare(saved.snapshot.contacts,contacts),categories:compare(saved.snapshot.categories,categories),appConfig:digest(appConfig)!==digest(saved.snapshot.appConfig)};
+  const drift=changes.appConfig||[changes.users,changes.contacts,changes.categories].some(group=>Object.values(group).some(Boolean));
+  console.log(JSON.stringify({code:drift?'FI_SOURCE_DRIFT':'FI_SOURCE_UNCHANGED',changes}));
+  if(drift)process.exitCode=2;
  }else{
   const saved=await openPrivateJson(JSON.parse(await readFile(resolve(directory,'migration-capture.dpapi.json'),'utf8'))),plan=planFiControlMigration(saved.snapshot);
   requireValue(Date.now()-Date.parse(saved.capturedAt)<3600000,'FI_CAPTURE_STALE');requireValue(plan.documents.length<449,'FI_ATOMIC_IMPORT_LIMIT');

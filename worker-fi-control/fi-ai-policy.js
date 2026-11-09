@@ -15,7 +15,7 @@ export function canReadRecord(actor,r) {
  if(r.kind!=='document'||!['GENERAL','RESTRICTED'].includes(r.audience)) return false;
  const category=normalize(r.category);
  const legacy=/DOCUMENTOS? ADMINISTRATIV|ADMINISTRATIVE|ORGANOGRAMA|ORGANOGRAM/.test(category)||/ORGANOGRAMA/.test(normalize(r.title));
- if(!legacy&&!categories.has(category)) return false;
+ if(!legacy&&!categories.has(category)&&!(r.classificationVerified===true&&category.length>0&&category.length<=80)) return false;
  const restricted=r.audience==='RESTRICTED'||legacy;
  if(restricted) return actor.memberCategories?.includes('EFETIVO')===true && r.sourceAccess==='EXPLICIT' && r.sourceAllowedUids?.includes(actor.uid)===true;
  return true;

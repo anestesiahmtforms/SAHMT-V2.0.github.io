@@ -11,6 +11,7 @@ const email = value => String(value || '').trim().toLowerCase();
 const uidValid = value => typeof value === 'string' && /^[^\s/]{1,128}$/.test(value);
 const admin = actor => actor.profile.role === 'administrador_app' || actor.profile.permissions?.admin === true;
 const version = row => Number.isSafeInteger(row?.version) && row.version >= 0 ? row.version : 0;
+const getMany=(reader,keys)=>reader.getMany?reader.getMany(keys):Promise.all(keys.map(([collection,id])=>reader.get(collection,id)));
 function authorize(actor,action) {
   const p=actor?.profile,l=actor?.identityLink;
   if(!uidValid(actor?.uid)||!uidValid(actor?.fiUid)||!l||l.active!==true||l.faUid!==actor.uid||l.fiUid!==actor.fiUid||email(l.email)!==email(actor.email)||!email(actor.email)||p?.uid!==actor.fiUid||email(p.email)!==email(actor.email)||p.active!==true||p.access!==true) fail('FI_ADMIN_FORBIDDEN',403);
@@ -48,7 +49,7 @@ export function createFiAdminService({store,projections={},now=Date.now}) {
     try {
       const target=projections[job.target];if(!target)fail('FI_ADMIN_PROJECTION_UNAVAILABLE',503);
       await target.transaction(async tx=>{
-        const snapshots=await Promise.all(job.writes.map(w=>tx.get(w.collection,w.id)));
+        const snapshots=await getMany(tx,job.writes.map(w=>[w.collection,w.id]));
         for(let i=0;i<job.writes.length;i++) {
           const w=job.writes[i],old=snapshots[i];
           if(w.email&&email(old?.email)!==email(w.email))fail('FI_ADMIN_PROJECTION_IDENTITY_MISMATCH',409);
@@ -98,7 +99,7 @@ export function createFiAdminService({store,projections={},now=Date.now}) {
       const rows=input.records;if(!Array.isArray(rows)||!rows.length||rows.length>200||new Set(rows.map(r=>r?.sigla)).size!==rows.length)fail('FI_ADMIN_CONTACT_IMPORT_INVALID');
       const records=rows.map(contactInput);
       return commit(actor,action,'FJ',async(tx,time)=>{
-        const old=await Promise.all(records.map(r=>tx.get('contacts',r.sigla)));
+        const old=await getMany(tx,records.map(r=>['contacts',r.sigla]));
         old.forEach((row,i)=>{if(!row)fail('FI_ADMIN_CONTACT_MISSING',409);expectVersion(row,rows[i].expectedVersion);});
         const writes=[];
         for(let i=0;i<records.length;i++) {
@@ -111,7 +112,7 @@ export function createFiAdminService({store,projections={},now=Date.now}) {
     if(action==='people.sync') {
       const rows=await list(store,'contacts',200);
       return commit(actor,action,'FJ',async tx=>{
-        const records=await Promise.all(rows.map(r=>tx.get('contacts',r.sigla)));
+        const records=await getMany(tx,rows.map(r=>['contacts',r.sigla]));
         if(records.some(r=>!r))fail('FI_ADMIN_STALE_VERSION',409);
         return {value:{count:records.length},writes:records.flatMap(contactWrites)};
       });
@@ -175,11 +176,11 @@ export function createFiAdminService({store,projections={},now=Date.now}) {
     if(['updates.request','updates.cancel','updates.batch'].includes(action)) {
       const uids=action==='updates.batch'?input.uids:[input.uid];
       if(input.target!=='FA'||!Array.isArray(uids)||!uids.length||uids.length>200||new Set(uids).size!==uids.length||uids.some(id=>!uidValid(id))||(action!=='updates.cancel'&&(!Number.isSafeInteger(input.minimumRelease)||input.minimumRelease<=0)))fail('FI_ADMIN_UPDATE_INVALID');
-      const targets=await Promise.all(uids.map(id=>projections.FA?.get('users',id)));
+      const targets=await getMany(projections.FA,uids.map(id=>['users',id]));
       if(targets.some(p=>!p||p.active!==true||p.access!==true||isSystemOwnerEmail(p.email)))fail('FI_ADMIN_UPDATE_TARGET_INVALID',409);
       const requestId=crypto.randomUUID();
       return commit(actor,action,'FA',async(tx,time)=>{
-        const old=await Promise.all(uids.map(id=>tx.get('fiAdminUpdateRequests',id)));
+        const old=await getMany(tx,uids.map(id=>['fiAdminUpdateRequests',id]));
         const request=action==='updates.cancel'?null:{id:requestId,target:'FA',minimumRelease:input.minimumRelease,requestedByUid:actor.uid,requestedAt:time};
         const writes=[];
         for(let i=0;i<uids.length;i++) {

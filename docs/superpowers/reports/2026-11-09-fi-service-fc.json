@@ -1,0 +1,17 @@
+{
+  "code": "FI_CONTROL_SERVICE_PREPARED",
+  "projectId": "sahmt-operacional-fi",
+  "serviceEmail": "fi-control-worker@sahmt-operacional-fi.iam.gserviceaccount.com",
+  "billingEnabled": false,
+  "checked": [
+    {
+      "station": "FC",
+      "projectId": "indicadores---sahmt",
+      "role": "projects/indicadores---sahmt/roles/sahmtFiControlSourceReader",
+      "readOnly": true
+    }
+  ],
+  "credentialsEncryptedLocally": true,
+  "entityDeletesGranted": false,
+  "at": "2026-11-09T12:08:36.394Z"
+}

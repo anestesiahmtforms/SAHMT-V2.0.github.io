@@ -20,13 +20,15 @@ export function createFiAiService({store,sourceProvider,modelProvider,now=Date.n
   const base={results,coverage:Array.isArray(sourceProvider.coverage)?structuredClone(sourceProvider.coverage):[],ai:{status:'no_results'}};
   if(!results.length)return base;
   if(modelProvider?.enabled!==true)return {...base,ai:{status:'disabled'}};
+  const modelResults=results.filter(r=>['document','general'].includes(r.kind));
+  if(!modelResults.length)return {...base,ai:{status:'local_only'}};
   const reservation=await budget.reserve(actor.uid);
   if(!reservation)return {...base,ai:{status:'budget_exhausted'}};
   try {
-   const response=await modelProvider.generate({kind:'search',query:query.trim(),context:results.map(r=>({id:r.id,title:r.title,text:r.snippet}))});
+   const response=await modelProvider.generate({kind:'search',query:query.trim(),context:modelResults.map(r=>({id:r.id,title:r.title,text:r.snippet}))});
    await budget.settle(reservation,response.usage);
    const data=response.data;
-   if(typeof data?.answer!=='string'||data.answer.length>10000||!validateEvidence(data.citations,new Set(results.map(r=>r.id))))throw Error('ANSWER_INVALID');
+   if(typeof data?.answer!=='string'||data.answer.length>10000||!validateEvidence(data.citations,new Set(modelResults.map(r=>r.id))))throw Error('ANSWER_INVALID');
    return {...base,ai:{status:'complete',answer:data.answer,citations:[...new Set(data.citations)]}};
   }catch(error){await budget.settle(reservation,error.usage);return {...base,ai:{status:'unavailable'}};}
  }};
