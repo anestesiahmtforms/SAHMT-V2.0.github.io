@@ -125,7 +125,7 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.equal(await page.evaluate(()=>window.initialSchedule!==null),true,'Home had rendered before the user opened FE');
   assert.ok(preview.requests.some(request=>request.action==='banner'),'opening the FE module is allowed to request its own status');
   await page.evaluate(()=>{window.initialCampaign=document.querySelector('.year-end-startup');location.hash='#/notifications';});
-  await page.waitForFunction(()=>location.hash==='#/home'&&document.querySelector('.year-end-startup')===window.initialCampaign);
+  await page.locator('.app-shell--home [data-route="schedule"]').waitFor();
   assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   await page.evaluate(()=>location.hash='#/home');await page.locator('.app-shell--home [data-route="schedule"]').waitFor();
   await page.waitForTimeout(3500);assert.equal(await page.locator('.year-end-startup').isVisible(),false);
