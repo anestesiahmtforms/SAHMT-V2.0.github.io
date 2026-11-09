@@ -9,10 +9,13 @@ const browserOptions={headless:true,...(process.env.CI||safari?{}:{channel:'msed
 const pageOptions=safari?{isMobile:true,hasTouch:true,deviceScaleFactor:3}:{};
 
 test('administrator can scroll document folders while the return footer stays visible', {timeout:120000},async()=>{
- const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FB'}),'import.meta.env.VITE_HTML_TRAINING_ENDPOINT':'""'},server:{host:'127.0.0.1',port:0}});
  const main=await readFile('src/main.js','utf8');
- const activityTemplate=main.slice(main.indexOf("  if (route === 'management' && (can('managementActivityWrite')"),main.indexOf("  if (route === 'notifications'",main.indexOf("  if (route === 'management' && (can('managementActivityWrite')")));
+ const activityStart=main.indexOf("  if (route === 'management' && (can('managementActivityWrite')");
+ const activityEnd=main.indexOf("  if (route === 'people'",activityStart);
+ assert.ok(activityStart>=0&&activityEnd>activityStart,'activity form boundaries must exist before evaluating the fixture');
+ const activityTemplate=main.slice(activityStart,activityEnd);
  const activityForm=Function('can','route',activityTemplate+'return "";')(()=>true,'management');
+ const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FB'}),'import.meta.env.VITE_HTML_TRAINING_ENDPOINT':'""'},server:{host:'127.0.0.1',port:0}});
  server.middlewares.use('/admin-scroll-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><dialog class="management-area-dialog"><header class="management-area-dialog__header"><h2>Área</h2></header><div class="management-area-dialog__body"><div class="management-area-detail" id="root"></div></div><footer class="management-area-dialog__footer"><button>VOLTAR</button></footer></dialog><script type="module" src="/tests/html-training-ui.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
