@@ -35,6 +35,19 @@ test('source retrieval includes inactive material in inactive folders but never 
  const fb=store({users:[sourceProfile],evaluationRuntime:fbRuntime,managementAreas:[{id:'folder',active:false}],documents:[{id:'archived',title:'Protocolo antigo',category:'Protocolos',managementAreaId:'folder',active:false,version:1,driveUrl:'https://docs.google.com/forms/d/formId/viewform'}]});
  const rows=await createFiSourceProvider({stores:{FA:fa,FB:fb}}).searchRecords(actor);assert.equal(rows.length,1);assert.equal(rows[0].active,false);assert.equal(rows[0].folderActive,false);assert.ok(!rows[0].url.includes('viewform'));
 });
+test('inactive form records link to their authorized PDF twin for consultation',async()=>{
+ const fa=store({users:[{...sourceProfile,id:actor.uid,uid:actor.uid}],documentAccessEmails:documentAccess(['GENERAL'])});
+ const base={title:'Protocolo antigo',category:'Protocolos',managementAreaId:'folder',audienceGroup:'GENERAL',active:false,version:1};
+ const form={...base,id:'evaluation_formArchiveId1',driveFileId:'formArchiveId1',driveUrl:'https://docs.google.com/forms/d/formArchiveId1/viewform'};
+ const pdf={...base,id:'pdf_'+form.id,driveFileId:'passiveArchiveId1',driveUrl:'https://drive.google.com/file/d/passiveArchiveId1/view'};
+ const getRows=override=>createFiSourceProvider({stores:{FA:fa,FB:store({users:[sourceProfile],evaluationRuntime:fbRuntime,managementAreas:[{id:'folder',active:false}],documentAccessEmails:documentAccess(['GENERAL']),scopedDocuments:[form,{...pdf,...override}]})}}).searchRecords(actor);
+ const formResult=rows=>rows.find(r=>r.id.endsWith('.'+form.id));
+ const result=formResult(await getRows());
+ assert.equal(result.url,'https://drive.google.com/file/d/passiveArchiveId1/preview');
+ assert.equal(result.active,false);assert.equal(result.folderActive,false);
+ assert.equal(formResult(await getRows({audienceGroup:'RESTRICTED'})).url,'');
+ assert.equal(formResult(await getRows({trashed:true})).url,'');
+});
 test('monthly reads only approved QMENTUM aggregates for units in the current FC grant',async()=>{
  const month=(period,ratio)=>({id:period,schemaVersion:1,period,unitId:'a',status:'REVIEWED',definitionVersion:2,version:3,updatedAt:123,results:{QM01:{indicatorId:'QM01',status:'VALID',sourceMode:'CALCULATED',definitionVersion:2,inputVersion:3,populationKey:'surgical',ratio,target:.95,targetValidated:false}}});
  const fc=store({users:[sourceProfile],qmentumAccess:[{id:sourceProfile.uid,uid:sourceProfile.uid,active:true,role:'reviewer',units:['a','b']}],qmentumConfig:[{id:'current',enabled:true}],qmentumUnits:[{id:'a',unitId:'a',active:true},{id:'b',unitId:'b',active:true}], 'qmentumUnits/a/months':[month('2026-10',0),month('2026-09',.8)]});
