@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {chr
 const base=process.env.SAHMT_HUB_PREVIEW_URL||'http://127.0.0.1:5187/SAHMT-V2.0.github.io/tests/fixtures/sahmt-performance-hub-preview.html';
 test('common user opens standard two-block hub panel and returns without loading institutional sources',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base);await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).click();await page.locator('[data-sp-total]').waitFor();
+ await page.goto(base);assert.equal(await page.locator('[data-hub-body] button').count(),1);assert.equal(await page.locator('[data-hub-indicators]').count(),0);assert.deepEqual(await page.evaluate(()=>window.calls),[]);await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).click();await page.locator('[data-sp-total]').waitFor();
  assert.equal(await page.locator('#management-hub-title').textContent(),'DESEMPENHO - SAHMT');assert.equal(await page.locator('[data-sp-category]').count(),6);
  assert.equal(await page.locator('.management-hub-header').count(),1);assert.equal(await page.locator('.management-hub-content-panel').count(),1);
  await page.getByRole('button',{name:/ATIVIDADES OPERACIONAIS/}).click();await page.getByText('Nenhum lançamento confirmado nesta categoria.').waitFor();

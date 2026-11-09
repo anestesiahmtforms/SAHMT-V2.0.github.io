@@ -4,7 +4,7 @@ import {firebaseCliAccountToken} from './lib/firebase-cli-account-token.js';
 
 // Read-only infrastructure inventory. Never collect credentials or user responses.
 const targets=[
- {station:'FD',project:'rotinas-8a617',email:'anestesiahmtforms4@gmail.com',runtime:'fdPerformanceRuntime'},
+ {station:'FD',project:'rotinas-8a617',email:'anestesiahmtforms4@gmail.com',runtime:'sahmtPerformanceRuntime'},
  {station:'FE',project:'outros-48120',email:'anestesiahmtforms5@gmail.com',runtime:'fePerformanceRuntime'}
 ];
 const report={capturedAt:new Date().toISOString(),cloudMutations:0,secretValuesRecorded:false,projects:[]};

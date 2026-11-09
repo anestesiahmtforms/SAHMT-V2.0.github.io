@@ -16,7 +16,7 @@ const compile=async entry=>(await build({entryPoints:[entry],bundle:true,format:
 const [targetSource,controllerSource]=await Promise.all([compile('worker-indicators/worker.js'),compile('worker-fd-scheduler/worker.js')]);
 if(GOOGLE_PROJECT_CONFIG.FD.config.projectId!=='rotinas-8a617'||!GOOGLE_PROJECT_CONFIG.FD.config.apiKey)throw Error('FD_WEB_CONFIG_INVALID');
 const performanceEnabled=process.argv.includes('--enable-performance')||targetSettings.bindings.some(b=>b.name==='SAHMT_PERFORMANCE_ENABLED'&&b.text==='true');
-const preflight={code:'FD_FIXED_SYNC_READY',cronUTC:FD_FIXED_CRON,timesBrasilia:['02:00'],sourceReadLimitPerProject:6000,sourceReadLimits:SOURCE_READ_LIMITS,performanceEnabled,manualPreserved:true,paidChanges:0,targetSha256:hash(targetSource),schedulerSha256:hash(controllerSource)};
+const preflight={code:'FD_FIXED_SYNC_READY',cronUTC:FD_FIXED_CRON,timesBrasilia:['02:00'],sourceReadLimitPerProject:6000,sourceReadLimits:SOURCE_READ_LIMITS,performanceEnabled,legacyPlatformRemoved:true,paidChanges:0,targetSha256:hash(targetSource),schedulerSha256:hash(controllerSource)};
 if(!process.argv.includes('--apply')){console.log(JSON.stringify(preflight));process.exit(0);}
 // No remote mutation, including schedule suspension, occurs before relay proof.
 if((controllerSettings?.bindings||[]).some(b=>['FE_PERFORMANCE_READ_SECRET','FE_PERFORMANCE_READ_URL'].includes(b.name)))throw Error('FE_RELAY_SCHEDULER_BINDING_FORBIDDEN');

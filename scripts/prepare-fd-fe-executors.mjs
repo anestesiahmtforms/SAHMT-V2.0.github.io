@@ -11,10 +11,8 @@ if(!account){demand(station==='FE','RELEASE_FD_EXECUTOR_MISSING');account=await 
 demand(account.email===sa&&!account.disabled,'RELEASE_SERVICE_IDENTITY_INVALID');
 const permissions=['datastore.databases.get','datastore.entities.create','datastore.entities.get','datastore.entities.list','datastore.entities.update'];
 const specs=station==='FD'?[
- {project:'sahmt-17a16',email:'anestesiahmtforms@gmail.com',role:'sahmtIndicatorSourceReader',permissions:['datastore.entities.get','datastore.entities.list']},
  {project:'sahmt-gestao-5ae66',email:'anestesiahmtforms2@gmail.com',role:'sahmtIndicatorSourceReader',permissions:['datastore.entities.get','datastore.entities.list']},
  {project:'indicadores---sahmt',email:'anestesiahmtforms3@gmail.com',role:'sahmtIndicatorSourceReader',permissions:['datastore.entities.get','datastore.entities.list']},
- {project:'outros-48120',email:'anestesiahmtforms5@gmail.com',role:'sahmtIndicatorSnapshotReader',permissions:['datastore.entities.get']},
  {...target,role:'sahmtIndicatorCompiler',permissions}
 ]:[{...target,role:'sahmtFeSurveyWorker',permissions},{project:'sahmt-gestao-5ae66',email:'anestesiahmtforms2@gmail.com',role:'sahmtFeMembershipReader',permissions:['datastore.entities.get']}];
 const checked=[];

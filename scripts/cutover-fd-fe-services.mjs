@@ -2,8 +2,8 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createFaCloudflareClient} from './lib/fa-cloudflare-client.js';
 import {targets,demand,cloudflare,unprotect,protect,report} from './lib/fd-fe-release.js';
-const station=process.argv[2],target=targets[station];demand(target,'RELEASE_STATION_INVALID');
-const worker=station==='FD'?'sahmt-indicators':'sahmt-html-training';
+const station=process.argv[2],target=targets[station];demand(station==='FE'&&target,'RELEASE_STATION_INVALID');
+const worker='sahmt-html-training';
 const client=await createFaCloudflareClient();demand(client.accountId==='1851e9f4cd5f026371beaa2c5a85f1b8','RELEASE_CENTRAL_ACCOUNT_MISMATCH');
 const path='/workers/scripts/'+worker,before=await unprotect(worker+'-central-before');
 const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])])):value;
@@ -26,9 +26,6 @@ if(hash(live)!==hash(files))await client.request(path,{method:'PUT',body:form});
 const after=await client.request(path+'/settings'),afterModules=await modules(await client.request(path,{raw:true}));
 demand(hash(afterModules)===hash(files),'RELEASE_FORWARD_READBACK_FAILED');
 demand(hash(normalize(after.bindings))===hash(normalize(settings.bindings)),'RELEASE_EXISTING_BINDINGS_CHANGED');
-if(station==='FD'){
- const fd=await cloudflare('FD');
- await fd.request('/workers/scripts/'+target.worker+'/schedules',{method:'PUT',body:[]});
-}
-const result={station,centralWorker:worker,originalModulePreserved:true,otherBindingsPreserved:true,forwardedActions:station==='FD'?'all indicator actions':['SUBMIT','GET_PERFORMANCE'],otherRoutesUnchanged:true,newCron:null,manualFdUpdates:station==='FD',centralFdCronNoop:station==='FD',at:new Date().toISOString(),billingChanges:0};
+
+const result={station,centralWorker:worker,originalModulePreserved:true,otherBindingsPreserved:true,forwardedActions:['SUBMIT','GET_PERFORMANCE'],otherRoutesUnchanged:true,newCron:null,at:new Date().toISOString(),billingChanges:0};
 await report('2026-11-01-'+station.toLowerCase()+'-cutover',result);console.log(JSON.stringify(result));

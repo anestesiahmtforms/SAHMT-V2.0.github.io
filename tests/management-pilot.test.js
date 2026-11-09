@@ -18,7 +18,7 @@ test('station performance belongs only to its FD or FE parent panel',()=>{
  const source=readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8');
  const metadata=source.slice(source.indexOf('const panels='),source.indexOf('// Surveys reuse'));
  const panels=vm.runInNewContext(metadata+';panels');
- assert.equal(panels.fdPerformance.parent,'results');
+ assert.equal(panels.fdPerformance,undefined);
  assert.equal(panels.fePerformance.parent,'surveys');
  assert.equal(panels.home.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
  assert.equal(panels.surveys.items.some(item=>item.label==='Desempenho FE'&&item.panel==='fePerformance'),false);

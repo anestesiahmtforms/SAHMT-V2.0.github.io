@@ -10,7 +10,7 @@ const credentials=await unprotect(station+'-service-key');
 const getAccessToken=(station==='FD'?indicatorServiceToken:feServiceToken)({credentials});
 const token=await getAccessToken();
 // Read-only probes prove the actual service key works; they create no points.
-const reads=station==='FD'?[[target.project,'fdPerformanceRuntime/current'],['sahmt-17a16','users/sahmt-fd-executor-access-probe-v1']]:[[target.project,'fePerformanceRuntime/current'],['sahmt-gestao-5ae66','users/sahmt-fe-executor-access-probe-v1']];
+const reads=station==='FD'?[[target.project,'sahmtPerformanceRuntime/current']]:[[target.project,'fePerformanceRuntime/current'],['sahmt-gestao-5ae66','users/sahmt-fe-executor-access-probe-v1']];
 for(const [project,path] of reads){const r=await fetch('https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/documents/'+path,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});await r.body?.cancel();demand([200,404].includes(r.status),'RELEASE_EXECUTOR_READ_'+r.status);}
 const bundle=await build({entryPoints:[target.entry],bundle:true,format:'esm',platform:'node',target:'es2022',external:['node:*'],write:false,minify:false});
 demand(bundle.outputFiles.length===1,'RELEASE_BUNDLE_INVALID');

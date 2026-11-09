@@ -1,5 +1,5 @@
 const ORIGIN='https://anestesiahmtforms.github.io';
-const targets={FD:'https://sahmt-indicators.anestesiahmtforms4.workers.dev',FE:'https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev'};
+const targets={FE:'https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev'};
 async function action(request){
  if(Number(request.headers.get('Content-Length'))>32768)return null;
  const reader=request.clone().body?.getReader();if(!reader)return null;
@@ -11,17 +11,17 @@ export function stationForwarder(legacy,station,fetchImpl=fetch){
  return {
   async fetch(request,env,ctx){
    const path=new URL(request.url).pathname;
-   const candidate=station==='FD'?path==='/v1/indicators':path==='/v1/institutional-surveys';
+   const candidate=path==='/v1/institutional-surveys';
    let forward=candidate&&request.headers.get('Origin')===ORIGIN&&['POST','OPTIONS'].includes(request.method);
    // Keep the existing epidemiological report authorization and bootstrap in central.
-   if(forward&&station==='FE')forward=request.method==='POST'&&['SUBMIT','GET_PERFORMANCE'].includes(await action(request));
+   if(forward)forward=request.method==='POST'&&['SUBMIT','GET_PERFORMANCE'].includes(await action(request));
    if(!forward)return legacy.fetch(request,env,ctx);
    const headers=new Headers();for(const name of ['Origin','Content-Type','Authorization']){const value=request.headers.get(name);if(value)headers.set(name,value);}
    try{return await fetchImpl(new Request(targets[station]+path,{method:request.method,headers,body:request.body,redirect:'manual',signal:AbortSignal.timeout(25000),duplex:'half'}));}
-   catch{return Response.json({code:station==='FD'?'INDICATOR_UNAVAILABLE':'SURVEY_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'no-store','Access-Control-Allow-Origin':ORIGIN,Vary:'Origin'}});}
+   catch{return Response.json({code:'SURVEY_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'no-store','Access-Control-Allow-Origin':ORIGIN,Vary:'Origin'}});}
   },
-  // The FD compiler cron is installed on the FD account during cutover.
-  async scheduled(event,env,ctx){if(station!=='FD'&&legacy.scheduled)return legacy.scheduled(event,env,ctx);}
+  // Preserve the training Worker's schedule.
+  async scheduled(event,env,ctx){if(legacy.scheduled)return legacy.scheduled(event,env,ctx);}
  };
 }
 export function stationAwareWorker(legacy,station){

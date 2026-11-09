@@ -44,17 +44,12 @@ jobs:
           npm run test:dosimetry
           npm run test:biosafety-manual
           npm run test:registration
-          npm run test:indicators-platform
-          npm run build:indicators-platform
-          npm run test:indicators-platform-rules
           npm run test:vaccination-rules
       - name: Validate authenticated survey participation and session bridge
         run: npm run test:survey-session
-      - name: Validate isolated FD and FE performance
+      - name: Validate isolated FE performance
         run: |
-          npm run test:fd-performance
           npm run test:fe-performance
-          npm run test:fd-performance-rules
           npm run test:fe-performance-rules
       - name: Validate authenticated FE vacations and simulation rules
         run: node --test tests/vacations-2027.test.js tests/vacations-2027.workerd.test.js
@@ -83,8 +78,6 @@ jobs:
         run: |
           npm run test:fg
           npm run test:fg-rules
-      - name: Verify FD manual updates and source read isolation
-        run: node --test tests/fd-manual-refresh.test.js tests/fd-fixed-sync.test.js
       - name: Verify consolidated daily SAHMT performance and administrator entries
         run: npm run test:sahmt-performance
       - name: Verify targeted updates and device confirmation security

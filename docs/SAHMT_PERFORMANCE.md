@@ -6,6 +6,10 @@ As seis categorias são Operacionais (FG/FI), Treinamentos e Gestão (FB), Regis
 
 O percentual é `total pessoal / maior total elegível × 100`. Débitos e percentuais negativos são preservados. Sem maior total positivo, a comparação é indisponível. A vigência de todas as categorias começa em **01/12/2026 às 00h00 de Brasília**. A primeira apuração elegível é **01/12/2026 às 02h00**. Uma fonte que tenha começado depois só contribui a partir da própria ativação.
 
+## Limpeza da Plataforma de Indicadores (09/11/2026)
+
+O módulo INDICADORES - SAHMT contém exclusivamente DESEMPENHO - SAHMT. A Plataforma de Indicadores, o painel legado de ciência e sugestões FD, os compiladores de métricas, suas rotas, o transporte com token FA e as consultas automáticas institucionais foram removidos. O Worker FD aceita apenas ações SAHMT e o agendador privado executa somente etapas PERFORMANCE. FG, FJ (origem FI), FB, FC e o relay FE continuam necessários para a pontuação consolidada. Os registros de QMENTUM e os indicadores internos dos Grupos de Gestão pertencem a módulos distintos.
+
 ## Rotina diária
 
 O cron privado é `0 5 * * *`, equivalente a 02h00 em America/Sao_Paulo. Substitui as agendas antigas de 00h00 e 12h00. A tarefa usa envelopes HMAC e service binding; a rota interna não aceita uma requisição pública de usuário para iniciar apuração.

@@ -1,6 +1,5 @@
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
-import './fd-performance.css';
 import './fe-performance.css';
 import './sahmt-performance.css';
 
@@ -41,7 +40,6 @@ const panels={
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
   {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'}
  ]},
- fdPerformance:{title:'Desempenho FD',icon:'performance',parent:'results'},
  sahmtPerformance:{title:'DESEMPENHO - SAHMT',icon:'performance',parent:'results'},
  fePerformance:{title:'Desempenho FE',icon:'performance',parent:'surveys'},
  yearEnd:{title:'Escala Final de Ano',icon:'festive',parent:'surveys'},
@@ -75,7 +73,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
    if(item.access==='communication'&&!communicationAllowed)return '';
    if(panel==='surveys'&&access.institutionalSurveys===false&&(restrictedSurveyPanels.includes(item.panel)||item.panel==='fePerformance'))return '';
-   if(['performance','faPerformance','fcPerformance','fdPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
+   if(['performance','faPerformance','fcPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const allowed=itemAllowed(item);
    return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
@@ -105,30 +103,23 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    }).catch(()=>{if(current())host.innerHTML='<p role="alert">Não foi possível abrir seu desempenho. Volte e tente novamente.</p>';});
   }
   if(panel==='results'&&access.results===true){
-   body.innerHTML=(access.sahmtPerformance===true?'<button type="button" class="management-hub-button" data-hub-sahmt-performance><span class="management-hub-medallion">'+icon('performance')+'</span><span class="management-hub-label">DESEMPENHO - SAHMT</span><span aria-hidden="true">›</span></button>':'')+(access.indicatorResults!==false?'<div class="management-indicators-host" data-hub-indicators><p role="status">Carregando indicadores…</p></div>':'');
-   const host=body.querySelector('[data-hub-indicators]');
-   const current=()=>!disposed&&ticket===renderId&&panel==='results'&&isSurveySessionCurrent();
-   if(host)void import('../indicators-platform/ui.js').then(({mountIndicatorsPlatform})=>{
-    if(!current()||!host)return;
-    cleanupIndicators=mountIndicatorsPlatform(host,{request:performIndicators,isCurrent:current,onBack:()=>goBack()});
-   }).catch(()=>{if(current())host.innerHTML='<div class="management-hub-empty" role="alert"><p>Não foi possível abrir os indicadores. Confira a conexão e tente novamente.</p><button type="button" data-hub-indicators-retry>TENTAR NOVAMENTE</button></div>';});
+   body.innerHTML='<div class="management-hub-grid">'+(access.sahmtPerformance===true?'<button type="button" class="management-hub-button" data-hub-sahmt-performance><span class="management-hub-medallion">'+icon('performance')+'</span><span class="management-hub-label">DESEMPENHO - SAHMT</span><span aria-hidden="true">›</span></button>':'')+'</div>';
   }
   if(panel==='institutional'&&institutionalAllowed()){
    const surveyCard=(kind,url,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+(kind==='climate'?'climateForm':'stressForm')+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
   }
-  if(['fdPerformance','fePerformance'].includes(panel)&&access[panel]===true){
+  if(panel==='fePerformance'&&access.fePerformance===true){
    const activePanel=panel;
    body.innerHTML='<div data-hub-performance><p role="status">Carregando desempenho…</p></div>';
    const host=body.querySelector('[data-hub-performance]');
    const current=()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent();
-   const fd=panel==='fdPerformance';
-   const modules=fd?Promise.all([import('./fd-performance-data.js'),import('./fd-performance-ui.js')]):Promise.all([import('./fe-performance-data.js'),import('./fe-performance-ui.js')]);
+   const modules=Promise.all([import('./fe-performance-data.js'),import('./fe-performance-ui.js')]);
    void modules.then(([data,ui])=>{
     if(!current())return;
     const uid=performanceUid;
-    const repository=fd?data.createFdPerformanceRepository({uid,isCurrent:current,request:(action,input)=>performIndicators(action,input)}):data.createFePerformanceRepository({uid,isCurrent:current,request:()=>performSurvey(undefined,'GET_PERFORMANCE')});
-    cleanupIndicators=(fd?ui.mountFdPerformanceModule:ui.mountFePerformanceModule)(host,{repository,isCurrent:current});
+    const repository=data.createFePerformanceRepository({uid,isCurrent:current,request:()=>performSurvey(undefined,'GET_PERFORMANCE')});
+    cleanupIndicators=ui.mountFePerformanceModule(host,{repository,isCurrent:current});
    }).catch(()=>{if(current())host.innerHTML='<p role="status">Não foi possível confirmar seu desempenho. Confira a conexão e tente novamente.</p>';});
   }
   if(['climateForm','stressForm'].includes(panel)&&climateEnabled&&institutionalAllowed()){
@@ -149,8 +140,6 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const goBack=()=>{const parent=panels[panel].parent;if(parent){panel=parent;render();}else onExit();};
  const click=event=>{
   if(event.target.closest('[data-hub-sahmt-performance]')){if(panel==='results'&&access.sahmtPerformance===true){panel='sahmtPerformance';render();}return;}
-  if(event.target.closest('[data-hub-fd-performance]')){if(panel==='results'&&access.fdPerformance===true){panel='fdPerformance';render();}return;}
-  if(event.target.closest('[data-hub-indicators-retry]')){if(panel==='results'&&access.results===true)render();return;}
   const survey=event.target.closest('[data-survey-panel]');
   if(survey){if(panel==='institutional'&&climateEnabled&&access.surveys===true&&['climateForm','stressForm'].includes(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}
   const button=event.target.closest('[data-hub-item]');if(!button||button.disabled)return;

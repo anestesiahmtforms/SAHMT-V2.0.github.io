@@ -383,7 +383,7 @@ test('Governança admite todos os perfis aprovados e mantém contas não aprovad
  }
  assert.deepEqual(pilot,before);
  const common=harness({session:approved(),route:'management-hub'});await common.ui.loadModule('management-hub');
- assert.deepEqual(common.imports,['./management-hub.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,true);assert.equal(access.sahmtPerformance,true);assert.equal(access.indicatorResults,false);assert.equal(access.institutionalSurveys,false);assert.equal(access.surveys,true);
+ assert.deepEqual(common.imports,['./management-hub.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,true);assert.equal(access.sahmtPerformance,true);assert.equal(access.indicatorResults,undefined);assert.equal(access.institutionalSurveys,false);assert.equal(access.surveys,true);
  const direct=renderHarness(approved(),'management-hub');await direct.context.runRender();
  assert.deepEqual(direct.navigations,[]);assert.deepEqual(direct.loads,['management-hub']);
 });
@@ -456,7 +456,7 @@ test('troca de tela encerra observação de treinamentos e consulta administrati
 
 test('todas as rotas de desempenho exigem administrador mesmo com liberação individual',()=>{
  for(const session of [approved(),individuallyReleased({managementModuleEnabled:true,performanceModuleEnabled:true,trainingsRead:true}),approved({},'gestor')]){
-  const h=harness({session}); for(const route of ['training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'])assert.equal(h.context.canOpenRestrictedModule(route),false);
+  const h=harness({session}); for(const route of ['training','fa-performance','fb-performance','fc-performance','fe-performance'])assert.equal(h.context.canOpenRestrictedModule(route),false);
  }
- for(const session of [approved({},'administrador_app'),approved({admin:true})]){session.profile.uid=session.user.uid;const h=harness({session});h.context.fcPerformanceEnabled=true;h.context.fdPerformanceEnabled=true;h.context.fePerformanceEnabled=true;h.context.fdPerformanceIdentityCanEnter=()=>true;for(const route of ['training','fa-performance','fb-performance','fc-performance','fd-performance','fe-performance'])assert.equal(h.context.canOpenRestrictedModule(route),true,route);}
+ for(const session of [approved({},'administrador_app'),approved({admin:true})]){session.profile.uid=session.user.uid;const h=harness({session});h.context.fcPerformanceEnabled=true;h.context.fdPerformanceEnabled=true;h.context.fePerformanceEnabled=true;h.context.fdPerformanceIdentityCanEnter=()=>true;for(const route of ['training','fa-performance','fb-performance','fc-performance','fe-performance'])assert.equal(h.context.canOpenRestrictedModule(route),true,route);}
 });

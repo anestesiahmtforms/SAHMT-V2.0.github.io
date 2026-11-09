@@ -40,7 +40,7 @@ test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Es
 });
 
 test('Desempenho FD e FE têm rotas próprias no PWA',()=>{
- navigate('fd-performance');assert.equal(location.hash,'#/fd-performance');assert.equal(currentRoute(),'fd-performance');
+ location.hash='#/fd-performance';assert.equal(currentRoute(),'home');
  navigate('fe-performance');assert.equal(location.hash,'#/fe-performance');assert.equal(currentRoute(),'fe-performance');
 });
 
@@ -60,7 +60,7 @@ test('voltar aos painéis de Governança usa a rota local sem recarregar FA', ()
   assert.equal(location.hash, '#/management-hub');
 });
 test('station performance has an internal panel URL under its module container',()=>{
- for(const panel of ['fdPerformance','fePerformance']){
+ for(const panel of ['fePerformance']){
   navigate('management-hub',{panel});
   assert.equal(location.hash,'#/management-hub/'+panel);
   assert.equal(currentRoute(),'management-hub');
