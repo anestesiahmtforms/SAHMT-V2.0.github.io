@@ -10,6 +10,8 @@ A análise mensal consulta resultados revisados ou fechados do QMENTUM no FC, co
 
 ## Ativação
 
+A liberação geral mantém a versão V3.4. O comando `node scripts/fi-production-cutover.mjs --rules` prepara a proteção contra gravações de administração por clientes antigos em FA e FJ. `--freeze` ativa a proteção e verifica os dados de origem outra vez. `--activate` habilita as gravações em FI e o orçamento inicial de US$ 2 por mês, até cinco chamadas ao modelo por usuário por dia. `--thaw` reabre os clientes antigos se a troca for interrompida antes de as gravações em FI serem ativadas. O Worker de produção é publicado com `node scripts/deploy-fi-control.mjs --apply-production`. A implantação conserva App Check e só usa o segredo OpenAI já cadastrado no Worker FI.
+
 O piloto usa o endereço `#/fi-control` no PWA FA quando `VITE_FI_PILOT_ENABLED=true` e `VITE_FI_ADMIN_ENABLED=false`. Ele exige o App Check do domínio publicado e uma única conta administrativa vinculada, com concessão temporária. Execute `node scripts/prepare-fi-pilot.mjs` para preparar a concessão e `node scripts/deploy-fi-control.mjs --apply-pilot` para publicar o serviço restrito. A busca do piloto é convencional. Somente a geração manual de análise usa a chave, limitada a US$ 0,25 e três chamadas por dia. O piloto mantém as alterações administrativas e a execução agendada desativadas.
 
 1. Conferir `node scripts/fi-control-release.mjs --check-drift` antes da troca. Se houver divergência, revisar e reconciliar os dados de origem antes de transferir a autoridade de escrita.

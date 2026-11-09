@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {createFiControlWorker,pilotAccess} from '../worker-fi-control/worker.js';
 import {createFiActorVerifier} from '../worker-fi-control/identity.js';
 import {createFiStore} from '../worker-fi-control/store.js';
 import {createFiControlRequest} from '../src/fi-control-client.js';
 import {createFiReadBudget,createFiRequestQuota} from '../worker-fi-control/read-budget.js';
+import {addFiCutoverRules} from '../scripts/lib/fi-cutover-rules.js';
 
 const origin='https://anestesiahmtforms.github.io';
 const actor={uid:'fa-user',fiUid:'fi-user',email:'person@example.test',profile:{uid:'fi-user',email:'person@example.test',active:true,access:true}};
@@ -29,6 +31,17 @@ test('pilot admits only its active administrator, rejects writes, and requires A
  const pilot=new Request('https://fi.test/v1/pilot',request());
  assert.equal((await worker.fetch(pilot,{FI_PILOT_ENABLED:'true',FI_REQUIRE_APP_CHECK:'false'})).status,503);
  assert.equal((await worker.fetch(request(),{FI_PILOT_ENABLED:'true'})).status,503);
+});
+test('cutover gates legacy administration without gating profile self edits, receipts or operations',async()=>{
+ const read=name=>readFile(new URL('../'+name,import.meta.url),'utf8');
+ const fa=addFiCutoverRules(await read('firestore.fa.fi-fj-retired.rules'),'FA');
+ const fj=addFiCutoverRules(await read('firestore.fj.rules'),'FJ');
+ assert.match(fa,/allow update: if \(fiLegacyAdminWritable_\(\) && mayManageUser\(uid\)\) \|\| \(fiLegacyAdminWritable_\(\) && adminFirstLoginCohortUpdate\(uid\)\) \|\| \(activeUser\(\)/);
+ assert.match(fa,/allow create, update: if activeUser\(\) && request.auth.uid == uid && validAppInstallation_/);
+ assert.match(fa,/allow update: if fiLegacyAdminWritable_\(\) && validAccessRequestApproval/);
+ assert.match(fj,/allow create, update: if fiLegacyAdminWritable_\(\) && moduleSession\(\).*validEventMember/);
+ assert.match(fj,/allow create: if moduleSession\(\) && \(validProjectionRequest\(\)\)/);
+ assert.throws(()=>addFiCutoverRules(fa,'FA'),/FI_RULES_ALREADY_PATCHED/);
 });
 test('FI health exposes readiness without credentials or personal details and schedule is disabled by default',async()=>{
  const worker=createFiControlWorker({buildServices:()=>{throw Error('MUST_NOT_BUILD');}});

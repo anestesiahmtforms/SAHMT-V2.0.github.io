@@ -47,8 +47,9 @@ async function secureRules(token){
 }
 let stage='PREFLIGHT';
 try{
- const pilot=process.argv.includes('--apply-pilot');
- demand(pilot!==process.argv.includes('--apply-disabled'),'FI_DEPLOY_MODE_REQUIRED');
+ const modes=['--apply-pilot','--apply-disabled','--apply-production'].filter(mode=>process.argv.includes(mode));
+ demand(modes.length===1,'FI_DEPLOY_MODE_REQUIRED');
+ const pilot=modes[0]==='--apply-pilot',production=modes[0]==='--apply-production';
  const target=JSON.parse(await readFile(config,'utf8'));
  demand(target.name===worker&&target.account_id===account&&['FI_CONTROL_ENABLED','FI_AI_ENABLED','FI_MONTHLY_ENABLED'].every(k=>target.vars[k]==='false')&&target.vars.FI_REQUIRE_APP_CHECK==='true','FI_DEPLOY_CONFIG_INVALID');
  const token=await firebaseCliAccountToken(owner);
@@ -59,8 +60,9 @@ try{
  const store=createFiStore({projectId:project,getAccessToken});
  const marker=await store.get('fiControlMigrations','initial');
  demand(marker?.sourceDeletes===0&&marker?.counts?.plannedDocuments>0,'FI_IMPORT_NOT_READY');
- if(pilot){
-  const plan=await store.get('fiControlConfig','pilot');
+ let plan;
+ if(pilot||production){
+  plan=await store.get('fiControlConfig','pilot');
   demand(plan?.schemaVersion===1&&typeof plan.uid==='string'&&plan.expiresAt>Date.now()&&plan.monthlyBudgetMicros===250000,'FI_PILOT_NOT_READY');
  }
  stage='RULES';
@@ -82,19 +84,26 @@ try{
   const health=await json(endpoint+'/health');
   demand(health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false,'FI_WORKER_EXISTS_REVIEW_REQUIRED');
  }
- stage='DEPLOY_DISABLED';
- run(['deploy','--config',config,...(pilot?['--var','FI_PILOT_ENABLED:true']:[])]);
- stage='STORE_WORKER_CREDENTIAL';
- run(['secret','bulk','--config',config],JSON.stringify({FI_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)}));
+ const secretPath=path+'/workers/scripts/'+worker+'/secrets';
+ const priorSecrets=scripts.some(item=>item.id===worker)?await cf(secretPath):[];
+ const has=(rows,name)=>rows.some(item=>item.name===name&&item.type==='secret_text');
+ if(production)demand(has(priorSecrets,'OPENAI_API_KEY')&&has(priorSecrets,'FI_SERVICE_ACCOUNT_JSON'),'FI_PRODUCTION_SECRETS_MISSING');
+ stage='DEPLOY_WORKER';
+ const overrides=production?['FI_CONTROL_ENABLED:true','FI_AI_ENABLED:true','FI_MONTHLY_ENABLED:true','FI_MONTHLY_ADMIN_UID:'+plan.uid]:pilot?['FI_PILOT_ENABLED:true']:[];
+ run(['deploy','--config',config,...overrides.flatMap(value=>['--var',value])]);
+ if(!has(priorSecrets,'FI_SERVICE_ACCOUNT_JSON')){
+  stage='STORE_WORKER_CREDENTIAL';
+  run(['secret','bulk','--config',config],JSON.stringify({FI_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)}));
+ }
  stage='VERIFY_DEPLOYMENT';
- const secrets=await cf(path+'/workers/scripts/'+worker+'/secrets');
- demand(secrets.some(item=>item.name==='FI_SERVICE_ACCOUNT_JSON'&&item.type==='secret_text')&&(!pilot||secrets.some(item=>item.name==='OPENAI_API_KEY'&&item.type==='secret_text')),'FI_SECRET_READBACK_FAILED');
+ const secrets=await cf(secretPath);
+ demand(has(secrets,'FI_SERVICE_ACCOUNT_JSON')&&(!(pilot||production)||has(secrets,'OPENAI_API_KEY')),'FI_SECRET_READBACK_FAILED');
  let verified=false;
  for(let attempt=0;attempt<5&&!verified;attempt++){
   try{
    const health=await json(endpoint+'/health');
    const blocked=await fetch(endpoint+'/v1/control',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{"action":"search","input":{"query":"teste"}}',redirect:'error',signal:AbortSignal.timeout(10000)});
-   verified=health.projectId===project&&health.controlEnabled===false&&health.aiEnabled===false&&health.monthlyEnabled===false&&health.pilotEnabled===pilot&&blocked.status===503&&(await blocked.json()).code==='FI_NOT_READY';
+   verified=health.projectId===project&&health.controlEnabled===production&&health.aiEnabled===production&&health.monthlyEnabled===production&&health.pilotEnabled===pilot&&blocked.status===(production?403:503)&&(await blocked.json()).code===(production?'FI_APP_CHECK_REQUIRED':'FI_NOT_READY');
   }catch{}
   if(!verified)await new Promise(resolve=>setTimeout(resolve,2000));
  }
@@ -103,7 +112,7 @@ try{
   const unauthenticated=await fetch(endpoint+'/v1/pilot',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},body:'{"action":"service.status","input":{}}',redirect:'error',signal:AbortSignal.timeout(10000)});
   demand(unauthenticated.status===403&&(await unauthenticated.json()).code==='FI_APP_CHECK_REQUIRED','FI_PILOT_AUTH_GUARD_FAILED');
  }
- const report={project,worker,endpoint,ruleset,controlEnabled:false,aiEnabled:false,monthlyEnabled:false,pilotEnabled:pilot,firestoreBillingEnabled:false,cloudCredentialInstalled:true,serviceCredentialValidatedLocally:true,source:await readFile('worker-fi-control/worker.js','utf8').then(s=>createHash('sha256').update(s).digest('hex')),at:new Date().toISOString()};
+ const report={project,worker,endpoint,ruleset,controlEnabled:production,aiEnabled:production,monthlyEnabled:production,pilotEnabled:pilot,firestoreBillingEnabled:false,cloudCredentialInstalled:true,serviceCredentialValidatedLocally:true,source:await readFile('worker-fi-control/worker.js','utf8').then(s=>createHash('sha256').update(s).digest('hex')),at:new Date().toISOString()};
  await writeFile(`${directory}/deployment.json`,JSON.stringify(report,null,2)+'\n');
  console.log(JSON.stringify(report));
 }catch(error){
