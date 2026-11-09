@@ -5236,7 +5236,7 @@ async function render() {
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fd-performance'?'DESEMPENHO FD':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
   }else app.innerHTML = shellView();
-  syncHomeWelcomeMessage();
+  if(typeof syncHomeWelcomeMessage==='function')syncHomeWelcomeMessage();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
   if (!authLimited && ['occurrences','qmentum','fg-performance','fc-performance','fd-performance','fe-performance'].includes(requestedRoute)) {
