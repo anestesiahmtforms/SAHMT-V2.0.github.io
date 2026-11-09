@@ -2604,3 +2604,17 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   .app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){min-height:60px}
 }
 
+/* Align the framed logo panel to the exact Home content width. */
+.app-shell--home .home-logo-stage{
+  box-sizing:border-box;
+  width:var(--home-width);
+  max-width:var(--home-width);
+  justify-self:center;
+}
+@media(max-width:600px){
+  .app-shell--home .home-logo-stage{
+    width:var(--home-width);
+    max-width:var(--home-width);
+  }
+}
+
