@@ -11,7 +11,10 @@ export function createFiReadBudget({store,now=Date.now,limit=10000}){
    const old=await tx.get('fiSourceBudgets',key),totals={...old?.totals},allowed={};
    for(const [project,maximum] of planned){
     const used=totals[project]||0;
-    if(used+maximum<=limit){totals[project]=used+maximum;allowed[project]=maximum;}
+    // Individual reads still have to fit in the lease. A source can use the remaining
+    // daily allowance even when it cannot reserve its entire worst-case read plan.
+    const available=Math.min(maximum,limit-used);
+    if(available>0){totals[project]=used+available;allowed[project]=available;}
    }
    if(Object.keys(allowed).length)tx.set('fiSourceBudgets',key,{totals,updatedAt:now()});
    return allowed;

@@ -34,14 +34,24 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
   const settings=await rt.store.get('fiControlConfig','runtime');if(settings?.enabled!==true)throw fiError('FI_NOT_READY');
   const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'||pilot?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
   const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
-  const buildAi=(readBudget,provider=modelProvider)=>createFiAiService({store:rt.store,sourceProvider:createFiSourceProvider({stores:rt.sources(readBudget)}),modelProvider:provider,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}});
+  const buildAi=(lease,provider=modelProvider,finishReads)=>{
+   const sourceProvider=createFiSourceProvider({stores:rt.sources(lease)});
+   if(finishReads){
+    const {searchRecords}=sourceProvider;
+    sourceProvider.searchRecords=async actor=>{
+     try{return await searchRecords(actor);}finally{await finishReads();}
+    };
+   }
+   return createFiAiService({store:rt.store,sourceProvider,modelProvider:provider,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}});
+  };
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
   const quota=createFiRequestQuota({store:rt.store});
   const readBudget=createFiReadBudget({store:rt.store});
   async function boundedSearch(actor,input){
    await quota.consume(actor.uid);
    const lease=await readBudget.open(searchReadPlan);
-   try{return await buildAi(lease,pilot?{enabled:false}:modelProvider).search(actor,input);}finally{await lease.finish().catch(()=>{});}
+   const finishReads=()=>lease.finish().catch(()=>{});
+   try{return await buildAi(lease,pilot?{enabled:false}:modelProvider,finishReads).search(actor,input);}finally{await finishReads();}
   }
   return {async dispatch(actor,action,input){
    if(action==='search')return boundedSearch(actor,input);

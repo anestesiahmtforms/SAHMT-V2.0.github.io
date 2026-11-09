@@ -8,7 +8,7 @@ const record = (id, extra={}) => ({id,schemaVersion:1,source:'FC',kind:'general'
 function memoryStore() {
  const data=new Map(); let queue=Promise.resolve();
  const get=async(c,id)=>structuredClone(data.get(`${c}/${id}`)??null);
- return {data,get,transaction(fn){const run=queue.then(async()=>{const writes=[];const result=await fn({get,set:async(c,id,v)=>writes.push([`${c}/${id}`,structuredClone(v)]),create:async(c,id,v)=>{if(data.has(`${c}/${id}`))throw Error('EXISTS');writes.push([`${c}/${id}`,structuredClone(v)]);}});for(const [k,v]of writes)data.set(k,v);return result;});queue=run.catch(()=>{});return run;}};
+ return {data,get,transaction(fn){const run=queue.then(async()=>{const writes=[];const result=await fn({get,getMany:keys=>Promise.all(keys.map(([c,id])=>get(c,id))),set:async(c,id,v)=>writes.push([`${c}/${id}`,structuredClone(v)]),create:async(c,id,v)=>{if(data.has(`${c}/${id}`))throw Error('EXISTS');writes.push([`${c}/${id}`,structuredClone(v)]);}});for(const [k,v]of writes)data.set(k,v);return result;});queue=run.catch(()=>{});return run;}};
 }
 const snapshot={schemaVersion:1,source:'FC',units:['a'],period:'2026-10',signature:'fc-v1',complete:true,missingSources:[],updatedAt:1793577600000,indicators:[{id:'i1',label:'Adesão',value:82,unit:'%',target:90,previous:80}],technicalMetrics:[]};
 const plan={summary:'Adesão abaixo da meta.',actions:[{priority:'HIGH',ownerSuggested:'Coordenação',dueSuggested:'2026-11-30',evidence:['i1'],successMetric:'Adesão ≥90%',action:'Revisar treinamento.'}],technicalRecommendations:[]};
@@ -39,6 +39,17 @@ test('inactive documents and inactive folders remain discoverable read-only with
  const result=await service.search(actor,{query:'protocolo'});assert.equal(result.results.length,2);assert.ok(result.results.every(r=>r.readOnly===true&&r.actionsAllowed===false));
 });
 test('conventional search survives zero budget and provider disabled',async()=>{const {service,calls}=setup({config:{monthlyBudgetMicros:0}});const r=await service.search(actor,{query:'segurança'});assert.equal(r.results.length,1);assert.equal(r.ai.status,'budget_exhausted');assert.equal(calls.length,0);});
+test('search prioritizes Regimento in the title and ignores incidental Portuguese words',async()=>{
+ const records=[record('a',{title:'Ata da reunião',text:'Discussão sobre o regimento'}),record('b',{title:'Treinamento da equipe',text:'Ações de melhoria'}),record('c',{title:'Regimento Interno',text:'Regimento interno'}),record('d',{title:'Regimento',text:'Regimento'})];
+ const {service}=setup({records,provider:{enabled:false}});
+ assert.deepEqual((await service.search(actor,{query:'Regimento'})).results.map(r=>r.id),['d','c','a']);
+ assert.deepEqual((await service.search(actor,{query:'Me mostre os regimentos'})).results.map(r=>r.id),['c','d','a']);
+});
+test('a failed AI budget check keeps authorized search results',async()=>{
+ const service=createFiAiService({store:{transaction:async()=>{throw Error('OFFLINE');}},sourceProvider:{searchRecords:async()=>[record('public')]},modelProvider:{enabled:true,generate:()=>assert.fail('Model called without a reservation')},config:{monthlyBudgetMicros:100000}});
+ const result=await service.search(actor,{query:'protocolo'});
+ assert.equal(result.ai.status,'unavailable');assert.equal(result.results.length,1);
+});
 test('unknown citations are rejected without publishing a generated answer',async()=>{const {service}=setup({provider:{enabled:true,generate:async()=>({data:{answer:'secret',citations:['hidden']},usage:{inputTokens:10,outputTokens:10}})}});const r=await service.search(actor,{query:'protocolo'});assert.equal(r.ai.status,'unavailable');assert.equal(JSON.stringify(r).includes('secret'),false);});
 test('parallel reservations cannot exceed budget and uncertain failures retain charged reservation',async()=>{
  let calls=0;const {service,store}=setup({config:{monthlyBudgetMicros:10000},provider:{enabled:true,generate:async()=>{calls++;throw Error('timeout');}}});

@@ -29,6 +29,17 @@ test('duplicate email mapping fails closed instead of assuming same UIDs',async(
  const fj=store({users:[sourceProfile,{...sourceProfile,id:'duplicate',uid:'duplicate'}],events:[{id:'secret',createdByUid:'source-a',active:true,eventType:'Pessoal',version:1}]});
  assert.deepEqual(await createFiSourceProvider({stores:{FJ:fj}}).searchRecords(actor),[]);
 });
+test('an unavailable training collection does not discard authorized documents',async()=>{
+ const profile={...sourceProfile,permissions:{...sourceProfile.permissions,trainingsRead:true}};
+ const fa=store({users:[{...profile,id:actor.uid,uid:actor.uid}],documentAccessEmails:documentAccess(['GENERAL'])});
+ const fb=store({users:[profile],evaluationRuntime:fbRuntime,documentAccessEmails:documentAccess(['GENERAL']),scopedDocuments:[{id:'public',title:'Manual interno',category:'Protocolos',audienceGroup:'GENERAL'}]});
+ const sources=createFiSourceProvider({stores:{FA:fa,FB:{...fb,list:(collection,...args)=>{
+  if(collection==='trainings')throw Object.assign(Error('READ_LIMIT'),{code:'FI_SOURCE_READ_BUDGET'});
+  return fb.list(collection,...args);
+ }}}});
+ assert.deepEqual((await sources.searchRecords(actor)).map(row=>row.id),['FB.scopedDocuments.public']);
+ assert.ok(sources.coverage.some(row=>row.source==='FB.trainings'&&row.status==='UNAVAILABLE'));
+});
 
 test('source retrieval includes inactive material in inactive folders but never emits an interactive form link',async()=>{
  const fa=store({users:[{...sourceProfile,id:'fa-a',uid:'fa-a'}],documentAccessEmails:[{id:actor.email,email:actor.email,active:true,groups:['GENERAL']}]});

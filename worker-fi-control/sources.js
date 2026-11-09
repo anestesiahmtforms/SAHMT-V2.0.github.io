@@ -4,6 +4,7 @@ import {QMENTUM_INDICATORS} from '../src/qmentum-catalog.js';
 import {isCurrentMessage} from '../communication/domain.js';
 import {SAHMT_START_ISO} from '../worker-indicators/sahmt-performance-period.js';
 export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','evaluationRuntime'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events']});
+const FB_CATALOG_QUERY_LIMIT=301;
 const admin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const permission=(p,...names)=>admin(p)||names.some(n=>p?.permissions?.[n]===true);
 const eq=(field,value)=>({field,op:'EQUAL',value});
@@ -37,9 +38,17 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   return p.uid===p.id&&String(p.email||'').toLowerCase()===actor.email&&p.active===true&&p.access===true?p:null;
  }
  const record=(source,collection,row,details)=>({schemaVersion:1,id:`${source}.${collection}.${row.id}`,source,active:row.active!==false,title:row.title||'',text:'',url:'#/home',version:version(row),sourceAccess:'EXPLICIT',...details});
+ function unavailable(source,error){
+  const detail=error.code==='FI_SOURCE_READ_BUDGET'?'Uma fonte atingiu o limite diário de consulta.':error.code==='FI_STORE_QUERY_LIMIT'?'Uma fonte excedeu a quantidade que a pesquisa pode verificar nesta versão.':undefined;
+  coverage.push({source,status:'UNAVAILABLE',...(detail?{detail}:{})});
+ }
  async function scope(source,fn){
   if(!stores[source]){coverage.push({source,status:'NOT_CONFIGURED'});return [];}
-  try{const value=await fn(stores[source]);coverage.push({source,status:'AVAILABLE'});return value;}catch(error){coverage.push({source,status:'UNAVAILABLE',...(error.code==='FI_SOURCE_READ_BUDGET'?{detail:'Uma fonte atingiu o limite diário de consulta.'}:error.code==='FI_STORE_QUERY_LIMIT'?{detail:'Uma fonte excedeu a quantidade que a pesquisa pode verificar nesta versão.'}:{})});return [];}
+  try{const value=await fn(stores[source]);coverage.push({source,status:'AVAILABLE'});return value;}catch(error){unavailable(source,error);return [];}
+ }
+ async function catalogList(fb,collection){
+  try{return await fb.list(collection,[],FB_CATALOG_QUERY_LIMIT);}
+  catch(error){unavailable(`FB.${collection}`,error);return [];}
  }
  async function documents(actor){return scope('FB',async fb=>{
   const p=await identity('FB',actor);if(!p||!permission(p,'managementRead','documentsManage','qualityManage','trainingsRead','trainingsManage'))return [];
@@ -50,11 +59,11 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   const rows=[];
   if(permission(p,'managementRead','documentsManage','qualityManage')&&permission(gate,'managementRead','documentsManage','qualityManage')){
    const assignmentId=actor.memberCategories?.includes('EFETIVO')?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(actor.email)))),v=>v.toString(16).padStart(2,'0')).join(''):'';
-   const [access,faAccess,areas,assignment]=await Promise.all([fb.get('documentAccessEmails',actor.email),fa.get('documentAccessEmails',actor.email),fb.list('managementAreas',[],301),assignmentId?fa.get('userCategories',assignmentId):null]);
+   const [access,faAccess,areas,assignment]=await Promise.all([fb.get('documentAccessEmails',actor.email),fa.get('documentAccessEmails',actor.email),catalogList(fb,'managementAreas'),assignmentId?fa.get('userCategories',assignmentId):null]);
    const effective=assignment?.schemaVersion===1&&assignment.identityStatus==='LINKED'&&assignment.uid===actor.uid&&assignment.email===actor.email&&assignment.memberCategories?.includes('EFETIVO');
    const groups=documentGroupsFromAccess(access,actor.email),faGroups=documentGroupsFromAccess(faAccess,actor.email),areaById=new Map(areas.map(area=>[area.id,area]));
    for(const collection of ['documents','scopedDocuments']){
-   const docs=await fb.list(collection,[],301);
+   const docs=await catalogList(fb,collection);
    const authorized=new Map();
    for(const d of docs){
     if(d.deleted===true||d.trashed===true)continue;
@@ -88,11 +97,11 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
    }
   }
   if(permission(p,'trainingsRead','trainingsManage')&&permission(gate,'trainingsRead','trainingsManage')){
-   for(const d of await fb.list('trainings',[],301)){
+   for(const d of await catalogList(fb,'trainings')){
     if(d.deleted===true||d.trashed===true)continue;
     rows.push(record('FB','trainings',d,{kind:'general',audience:'GENERAL',sourceAllowedUids:[actor.uid],text:compact(d.title,d.description),url:''}));
    }
-   for(const d of await fb.list('learningActivities',[],301)){
+   for(const d of await catalogList(fb,'learningActivities')){
     if(d.deleted===true||d.trashed===true||d.showInTraining!==true||!['ACTIVE','INACTIVE'].includes(d.status))continue;
     const audience=d.audienceType==='ALL'&&d.audienceValue===''||d.audienceType==='ROLE'&&d.audienceValue===p.role||d.audienceType==='USER'&&d.audienceValue===p.uid;
     if(!audience)continue;

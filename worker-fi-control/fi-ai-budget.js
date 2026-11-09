@@ -10,7 +10,7 @@ export function createAiBudget({store,now,config={}}) {
    if(!limit)return null;
    const timestamp=now(), day=new Date(timestamp).toISOString().slice(0,10),month=day.slice(0,7),id=crypto.randomUUID(),quotaId=`${day}_${encodeURIComponent(uid)}`;
    return store.transaction(async tx=>{
-    const budget=await tx.get('fiAiBudget',month),daily=await tx.get('fiAiQuota',quotaId);
+    const [budget,daily]=await tx.getMany([['fiAiBudget',month],['fiAiQuota',quotaId]]);
     const committed=budget?.committedMicros??0,count=daily?.count??0;
     if(!Number.isSafeInteger(committed)||committed<0||!Number.isSafeInteger(count)||count<0||committed+RESERVATION_MICROS>limit||count>=quota)return null;
     await tx.set('fiAiBudget',month,{committedMicros:committed+RESERVATION_MICROS,updatedAt:timestamp});
@@ -23,7 +23,7 @@ export function createAiBudget({store,now,config={}}) {
    if(!reservation||!Number.isSafeInteger(usage?.inputTokens)||!Number.isSafeInteger(usage?.outputTokens)||usage.inputTokens<0||usage.outputTokens<0)return;
    const cost=Math.ceil(usage.inputTokens*0.1+usage.outputTokens*0.5);
    await store.transaction(async tx=>{
-    const entry=await tx.get('fiAiReservations',reservation.id),budget=await tx.get('fiAiBudget',reservation.month);
+    const [entry,budget]=await tx.getMany([['fiAiReservations',reservation.id],['fiAiBudget',reservation.month]]);
     if(entry?.status!=='reserved'||!budget)return;
     await tx.set('fiAiBudget',reservation.month,{...budget,committedMicros:Math.max(0,budget.committedMicros-entry.reservedMicros+cost),updatedAt:now()});
     await tx.set('fiAiReservations',reservation.id,{...entry,status:'settled',actualMicros:cost,updatedAt:now()});

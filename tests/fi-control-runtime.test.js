@@ -92,7 +92,8 @@ test('source read reservations and shared daily request quotas remain bounded un
  const store=budgetStore(),budget=createFiReadBudget({store,limit:10});
  const project='sahmt-gestao-5ae66',leases=await Promise.all([budget.open({[project]:8}),budget.open({[project]:8})]);
  const ticket=leases[0].reserve(project,8);assert.throws(()=>leases[1].reserve(project,8),/FI_SOURCE_READ_BUDGET/);
- leases[0].settle(ticket,2);leases[0].settle(ticket,2);await leases[0].finish();await leases[0].finish();
+ const partial=leases[1].reserve(project,2);leases[1].settle(partial,1);await leases[1].finish();
+ leases[0].settle(ticket,1);leases[0].settle(ticket,1);await leases[0].finish();await leases[0].finish();
  const full=await budget.open({[project]:8});full.reserve(project,8);assert.throws(()=>full.reserve(project,1),/FI_SOURCE_READ_BUDGET/);
  const quota=createFiRequestQuota({store:budgetStore(),dailyLimit:2,userLimit:2});const requests=await Promise.allSettled([quota.consume('a'),quota.consume('b'),quota.consume('c')]);assert.equal(requests.filter(r=>r.status==='fulfilled').length,2);
 });

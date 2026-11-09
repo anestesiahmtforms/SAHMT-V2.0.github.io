@@ -15,3 +15,10 @@ test('search view escapes source text and rejects external or script links',()=>
  const result=renderFiResults({results:[{id:'1',title:'<script>bad</script>',snippet:'<img>',url:'javascript:alert(1)'},{id:'2',title:'Doc',snippet:'Descrição',url:'#/management'}],ai:{status:'disabled'}});
  assert.ok(!result.includes('<script>'));assert.ok(!result.includes('javascript:'));assert.ok(result.includes('href="#/management"'));
 });
+test('empty search distinguishes an unavailable source from no permitted matches',()=>{
+ assert.match(renderFiResults({results:[]}),/materiais disponíveis para sua conta/);
+ const partial=renderFiResults({results:[],coverage:[{source:'FB.scopedDocuments',status:'UNAVAILABLE',detail:'Uma fonte atingiu o limite diário de consulta.'}]});
+ assert.match(partial,/Não houve resultados nas fontes consultadas/);
+ assert.match(partial,/limite diário/);
+ assert.doesNotMatch(partial,/materiais disponíveis para sua conta/);
+});
