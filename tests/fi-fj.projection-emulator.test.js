@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {createModuleStore} from '../worker-operational-domain/module-store.js';
 import {applyEventProjection} from '../worker-operational-domain/projection-runtime.js';
 import {encodeFields} from '../worker-training/firestore.js';
+import {fiEmulatorPort,assertFiEmulator} from './helpers/fi-emulator-address.js';
 
-const root = 'http://127.0.0.1:18516/v1/projects/sahmt-escala-fj/databases/(default)/documents';
+const root = `http://127.0.0.1:${fiEmulatorPort}/v1/projects/sahmt-escala-fj/databases/(default)/documents`;
 const headers = {Authorization: 'Bearer owner', 'Content-Type': 'application/json'};
 const paths = ['scheduleDays/2026-11-07', 'scheduleDays/2026-11-08', 'eventProjections/emulator-projection'];
 let commits = 0, injectConflict = false;
-before(() => {if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:18516') throw Error('LOCAL_PROJECTION_EMULATOR_REQUIRED');});
+before(assertFiEmulator);
 const fetchLocal = async (url, options) => {
   const prefix = 'https://firestore.googleapis.com/v1/projects/sahmt-escala-fj/databases/(default)/documents';
   assert.ok(url.startsWith(prefix));

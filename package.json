@@ -4,6 +4,7 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "test:fi-control": "node --test tests/fi-admin-adapter.test.js tests/fi-admin-service.test.js tests/fi-ai-provider.test.js tests/fi-ai.test.js tests/fi-control-runtime.test.js tests/fi-control-migration.test.js tests/fi-control-ui.test.js tests/fi-sources.test.js",
     "test:sahmt-performance": "node --test tests/sahmt-daily-schedule.test.js tests/sahmt-performance-budget-store.test.js tests/sahmt-performance-config.test.js tests/sahmt-performance-daily.test.js tests/sahmt-performance-integration.test.js tests/sahmt-performance-recovery-window.test.js tests/sahmt-performance-service.test.js tests/sahmt-performance-sources.test.js tests/sahmt-performance-ui-client.test.js tests/sahmt-performance-ui.test.js tests/sahmt-platform-retirement.test.js",
     "test:fg": "node --test tests/fg.activation.test.js tests/fg.apps-script.test.js tests/fg.performance.test.js tests/fg.performance-data.test.js tests/fg.routing.test.js tests/fg.session.test.js tests/fg.validation.test.js tests/fg.retirement.test.js tests/fg.source-freeze.test.js tests/fg.audit.test.js tests/fg.clock.test.js tests/fg.science-relay.test.js",
     "test:fg-rules": "firebase emulators:exec --config firebase.fg.test.json --project demo-sahmt-fg --only firestore --non-interactive \"node --test --test-concurrency=1 tests/fg.rules.test.js\"",

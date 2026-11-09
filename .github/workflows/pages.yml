@@ -64,6 +64,8 @@ jobs:
           npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain
+      - name: Verify FI control
+        run: npm run test:fi-control
       - name: Verify isolated FI and FJ modules
         run: |
           npm run test:fi-fj
@@ -155,6 +157,7 @@ jobs:
       - name: Build PWA
         env:
           VITE_FI_EVENTS_ENABLED: 'false'
+          VITE_FI_ADMIN_ENABLED: ${{ vars.VITE_FI_ADMIN_ENABLED || 'false' }}
           VITE_FJ_SCHEDULE_ENABLED: 'true'
           VITE_FH_LABELS_ENABLED: 'true'
           VITE_FG_CHECKLIST_ENABLED: 'true'

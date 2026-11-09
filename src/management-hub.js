@@ -25,7 +25,8 @@ const panels={
   {label:'Registros',icon:'records',panel:'records',access:'records'},
   {label:'INDICADORES - SAHMT',icon:'results',panel:'results',access:'results'},
   {label:'Enquetes e Consultas',icon:'surveys',panel:'surveys',access:'surveys'},
-  {label:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',panel:'communication',access:'communication'}
+  {label:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',panel:'communication',access:'communication'},
+  {label:'CENTRAL ADMINISTRATIVA E IA',icon:'groups',route:'fi-control',access:'fiControl'}
  ]},
  communication:{title:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',parent:'home'},
  records:{title:'Registros',icon:'records',parent:'home',items:[
@@ -72,6 +73,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
    if(item.access==='communication'&&!communicationAllowed)return '';
+   if(item.access==='fiControl'&&access.fiControl!==true)return '';
    if(panel==='surveys'&&access.institutionalSurveys===false&&(restrictedSurveyPanels.includes(item.panel)||item.panel==='fePerformance'))return '';
    if(['performance','faPerformance','fcPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const allowed=itemAllowed(item);

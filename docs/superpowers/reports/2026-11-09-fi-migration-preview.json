@@ -1,0 +1,25 @@
+{
+  "code": "FI_MIGRATION_PREVIEW",
+  "projectId": "sahmt-operacional-fi",
+  "counts": {
+    "profiles": 58,
+    "contacts": 31,
+    "categories": 57,
+    "plannedDocuments": 295
+  },
+  "sourceDeletes": 0,
+  "cloudMutations": 0,
+  "backupVerified": true,
+  "snapshotDigest": "16a64ce360dbad1aed86c04f642ab78fc9efa40751d5b1eb9708dd9363ab3a63",
+  "databases": [
+    {
+      "name": "projects/sahmt-operacional-fi/databases/(default)",
+      "locationId": "southamerica-east1"
+    }
+  ],
+  "oldIndexes": null,
+  "moreIndexes": false,
+  "appsScriptStatus": 403,
+  "appsScriptDeploymentsStatus": 403,
+  "capturedAt": "2026-11-09T11:24:09.179Z"
+}
