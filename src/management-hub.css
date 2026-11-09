@@ -63,3 +63,9 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-dialog[data-panel="surveys"] .management-hub-grid{grid-template-rows:none;grid-auto-rows:minmax(80px,1fr)}
 
 .management-hub-dialog[data-panel="results"] .management-hub-grid{flex:0 0 auto;grid-auto-rows:minmax(80px,110px)}
+
+.management-hub-dialog[data-panel="records"]{inset:0;width:min(92vw,560px);height:fit-content;max-height:calc(100dvh - 24px);margin:auto;gap:14px}
+.management-hub-dialog[data-panel="records"] .management-hub-content-panel{height:auto}
+.management-hub-dialog[data-panel="records"] .management-hub-body{overflow-y:auto}
+.management-hub-dialog[data-panel="records"] .management-hub-grid{flex:0 0 auto;grid-template-rows:repeat(2,minmax(64px,auto));grid-auto-rows:auto;gap:12px}
+.management-hub-dialog[data-panel="records"] .management-hub-button{height:auto;min-height:64px;padding:12px 14px;font-size:.92rem}

@@ -12,6 +12,7 @@ const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export ','');
 const shell=main.slice(main.indexOf('function shellView() {'),main.indexOf('async function loadHome()'));
 const cards=main.slice(main.indexOf('function moduleCards() {'),main.indexOf('function hasOccurrencePermission()'));
+const occurrencePermission=main.slice(main.indexOf('function hasOccurrencePermission()'),main.indexOf('function managementUtilityCards()'));
 const render=main.slice(main.indexOf('async function render() {'),main.indexOf('async function updateOutboxStatus()'));
 const hubLoader=main.slice(main.indexOf('async function loadModule(route) {'),main.indexOf("  if(route === 'qmentum'){",main.indexOf('async function loadModule(route) {')))+"\nloaded.push(route);}";
 
@@ -70,7 +71,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive',setSession(){}},
     loginView:()=>'<main>Login</main>',bindLogin(){},canUseVacationModule,canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
-    canOpenRestrictedModule:()=>true,hasOccurrencePermission:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
+    canOpenRestrictedModule:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,forwardingButton:()=>'',communicationAdminSession:()=>false,
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
@@ -78,7 +79,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     managementUtilityCards:()=>'',can:permission=>session.profile?.role==='administrador_app'||session.profile?.permissions?.[permission]===true,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
     mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};}
   });
-  const code=(router+'\n'+cards+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
+  const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replace("await import('./management-hub.js')",'await Promise.resolve({mountManagementHub:mountHub})');
   vm.runInContext(code,ctx);
   return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
@@ -139,4 +140,27 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
 });
 
 test('residents and substitutes can open Governance without opening consultations',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],false);}});
-test('administrators retain every Governance destination without requiring team affiliation',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);});
+test('administrators retain every Governance destination without requiring team affiliation',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','occurrences','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);});
+
+test('administrator opens Occurrences with registration enabled while the general feature is disabled',async()=>{
+ const session=authorized(),content={isConnected:true,innerHTML:''},opened=[];
+ const auth={currentUser:{uid:session.user.uid}},db={};
+ const ctx=vm.createContext({route:'occurrences',session,content,evaluationModuleGeneration:0,
+  currentRoute:()=> 'occurrences',can:key=>session.profile.role==='administrador_app'||session.profile.permissions[key]===true,
+  canUseManagementPilot,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
+  moduleFirebase:{getIndicatorsAuth:()=>auth,getIndicatorsFirestore:()=>db,waitForIndicatorsSession:async()=>{}},
+  moduleSession:{waitForFcModuleSession:async()=>auth},
+  moduleUi:{mountOccurrenceModule:(root,options)=>{opened.push(options);return ()=>{};}}
+ });
+ const begin=main.indexOf("  if (route === 'occurrences') {");
+ const end=main.indexOf("  if (route === 'management' && hasFinanceOnlyManagementAccess",begin);
+ const branch=main.slice(begin,end).replace("import('./fc-module-firebase.js')",'moduleFirebase')
+  .replace("import('./fc-module-session.js')",'moduleSession').replace("import('./occurrences-ui.js')",'moduleUi');
+ vm.runInContext(occurrencePermission,ctx);
+ await vm.runInContext('(async()=>{'+branch+'})()',ctx);
+ assert.equal(opened.length,1);assert.equal(opened[0].permissions.occurrencesWrite,true);
+ assert.equal(opened[0].permissions.occurrencesRead,undefined);assert.equal(opened[0].isCurrent(),true);
+ session.profile.role='anestesiologista';assert.equal(ctx.hasOccurrencePermission(),false);
+ assert.equal(opened[0].isCurrent(),false);
+ session.profile.role='administrador_app';session.profile.active=false;assert.equal(ctx.hasOccurrencePermission(),false);
+});

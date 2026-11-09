@@ -471,7 +471,7 @@ html:has(.app-shell--events),body:has(.app-shell--events){overflow:hidden;oversc
 .app-shell--labels .label-action-grid button{min-width:0;min-height:clamp(48px,7dvh,60px);padding:8px;white-space:normal;font-size:clamp(.68rem,2vw,.88rem);font-weight:900}
 .app-shell--labels .label-camera-load-status{flex:0 0 auto;margin:0;padding:8px 10px;border:1px solid #e7b5b5;border-radius:10px;background:#fff1f0;color:#842b2b;font-size:.78rem;font-weight:750;text-align:center}
 .app-shell--labels #label-camera-open{border-color:#115fa0;background:linear-gradient(145deg,#2377b9,#10518c);color:#fff;box-shadow:0 3px 0 #0b3e6d}
-.app-shell--labels #label-manual-open{border-color:#c6d8df;background:#fff;color:#164b73;box-shadow:0 3px 0 #c5d5da}
+.app-shell--labels #label-manual-open{border:2px solid #fff;background:linear-gradient(145deg,#9367d4,#6534a0)!important;color:#fff!important;border-color:#fff!important;font-weight:950;letter-spacing:.035em}
 .app-shell--labels #label-ai-status{margin:0;min-height:1.25em;font-size:.76rem}
 .app-shell--labels .label-report-launchers{margin:0}
 .app-shell--labels .label-report-dialog .record-list{margin:0}
@@ -748,9 +748,9 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .event-report-dialog__header h2{line-height:1.15}
 .event-report .event-day-control,.event-report .event-month-control{align-items:stretch;gap:10px;margin:0}
 .event-report-launchers{align-items:stretch;gap:10px}
-.event-report-launchers button{min-height:clamp(58px,8dvh,70px)!important;padding:12px 14px!important;border-width:2px!important;border-radius:999px!important;font-size:clamp(.72rem,2.8vw,.9rem)!important;letter-spacing:.045em!important;box-shadow:0 6px 0 rgba(9,39,67,.32),0 11px 18px rgba(8,24,39,.22),inset 0 2px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(8,25,40,.16)!important}
-.event-report-launchers button:active{transform:translateY(3px) scale(.99)!important;box-shadow:0 2px 0 rgba(9,39,67,.3),0 4px 8px rgba(8,24,39,.16),inset 0 2px 4px rgba(8,25,40,.16)!important}
-@media(max-width:520px){.event-report-launchers button{min-height:56px!important;padding:10px 8px!important;font-size:clamp(.64rem,2.8vw,.78rem)!important}.event-report-dialog__header{min-height:46px}}
+.event-report-launchers button,.app-shell--labels #label-manual-open{min-height:clamp(58px,8dvh,70px)!important;padding:12px 14px!important;border-width:2px!important;border-radius:999px!important;font-size:clamp(.72rem,2.8vw,.9rem)!important;letter-spacing:.045em!important;box-shadow:0 6px 0 rgba(9,39,67,.32),0 11px 18px rgba(8,24,39,.22),inset 0 2px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(8,25,40,.16)!important}
+.event-report-launchers button:active,.app-shell--labels #label-manual-open:active{transform:translateY(3px) scale(.99)!important;box-shadow:0 2px 0 rgba(9,39,67,.3),0 4px 8px rgba(8,24,39,.16),inset 0 2px 4px rgba(8,25,40,.16)!important}
+@media(max-width:520px){.event-report-launchers button,.app-shell--labels #label-manual-open{min-height:56px!important;padding:10px 8px!important;font-size:clamp(.64rem,2.8vw,.78rem)!important}.event-report-dialog__header{min-height:46px}}
 
 
 /* Bloco unificado de data e navegação de Eventos */
@@ -900,7 +900,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .identity-card{flex:0 0 90%;width:90%;max-width:90%;margin-inline:auto}
 
 /* Modais do ecossistema: 90% da tela, fixos e sem barra visível. */
-.app-shell dialog:not(:where(#checklist-station-dialog,.management-area-dialog,.management-document-dialog,.management-hub-dialog[data-panel="communication"])){position:fixed!important;inset:5vh 5vw!important;inset:5dvh 5vw!important;width:90vw!important;height:90vh!important;height:90dvh!important;max-width:90vw!important;max-height:90vh!important;max-height:90dvh!important;margin:0!important;box-sizing:border-box;overflow:auto!important;overscroll-behavior:contain;scrollbar-width:none}
+.app-shell dialog:not(:where(#checklist-station-dialog,.management-area-dialog,.management-document-dialog,.management-hub-dialog[data-panel="communication"],.management-hub-dialog[data-panel="records"])){position:fixed!important;inset:5vh 5vw!important;inset:5dvh 5vw!important;width:90vw!important;height:90vh!important;height:90dvh!important;max-width:90vw!important;max-height:90vh!important;max-height:90dvh!important;margin:0!important;box-sizing:border-box;overflow:auto!important;overscroll-behavior:contain;scrollbar-width:none}
 .app-shell dialog::-webkit-scrollbar,.app-shell dialog *::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
 .app-shell dialog *{scrollbar-width:none}
 
@@ -1274,7 +1274,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--labels .label-action-grid button{width:100%;min-height:0;height:100%;padding:7px;border-radius:14px;font-size:clamp(.72rem,2.6vw,.92rem)}
 .app-shell--labels .label-action-grid #label-camera-open{display:flex;align-items:center;justify-content:center;gap:14px;border-radius:28px;background:linear-gradient(145deg,#2377b9,#10518c);box-shadow:inset 0 0 0 2px #ffffff55,0 4px 0 #0b3e6d}
 .app-shell--labels .label-action-grid #label-camera-open::before{content:"";display:block;flex:0 0 auto;width:clamp(48px,8dvh,68px);aspect-ratio:1;border:5px solid #fff;border-radius:50%;background:radial-gradient(circle at 38% 35%,#bddfff 0 9%,#4085bc 12% 25%,#123c64 30% 57%,#071e35 60% 100%);box-shadow:0 0 0 4px #ffffff35,inset 0 0 0 2px #081e30}
-.app-shell--labels .label-action-grid #label-manual-open{border-radius:13px}
+.app-shell--labels .label-action-grid #label-manual-open,.app-shell--labels .label-report-launchers button{display:flex;align-items:center;justify-content:center;gap:clamp(8px,2vw,14px)}
+.app-shell--labels .label-action-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:1.15em;font-size:clamp(24px,4dvh,34px);line-height:1}
 .app-shell--labels .label-camera-label{min-width:0;line-height:1.2}
 .app-shell--labels .label-action-grid #label-camera-open.label-camera--has-status{position:relative;padding-inline:14px 82px}
 .app-shell--labels .label-camera-confirmation{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:grid;justify-items:center;gap:2px;box-sizing:border-box;width:60px;padding:6px 4px;border:1px solid #fff;border-radius:12px;background:#e5fff0;color:#167b3d;line-height:1;white-space:nowrap;pointer-events:none}
@@ -1304,6 +1305,12 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
  .app-shell--labels .label-report-launchers{gap:4px;padding:5px}
  .app-shell--labels .label-report-launchers button{min-height:34px;padding:4px}
  .app-shell--labels .labels-home-button{min-height:34px}
+}
+
+@media(orientation:landscape) and (max-height:520px){
+ .app-shell--labels .module-view--labels{overflow-y:auto;justify-content:flex-start}
+ .app-shell--labels .module-view--labels>.label-workspace{flex:0 0 auto;min-height:180px;max-height:none}
+ .app-shell--labels .label-report-launchers{flex:0 0 auto;min-height:140px;max-height:none}
 }
 
 /* Registro de etiqueta: campos ordenados, estados claros e modal fixo sem rolagem. */
