@@ -59,7 +59,14 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   const rows=[];
   if(permission(p,'managementRead','documentsManage','qualityManage')&&permission(gate,'managementRead','documentsManage','qualityManage')){
    const assignmentId=actor.memberCategories?.includes('EFETIVO')?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(actor.email)))),v=>v.toString(16).padStart(2,'0')).join(''):'';
-   const [access,faAccess,areas,assignment]=await Promise.all([fb.get('documentAccessEmails',actor.email),fa.get('documentAccessEmails',actor.email),catalogList(fb,'managementAreas'),assignmentId?fa.get('userCategories',assignmentId):null]);
+   const [access,areas,restrictedGrants]=await Promise.all([
+    fb.get('documentAccessEmails',actor.email),
+    catalogList(fb,'managementAreas'),
+    assignmentId?fa.getMany([['documentAccessEmails',actor.email],['userCategories',assignmentId]]).catch(error=>{
+     unavailable('FB.restrictedDocuments',error);return [];
+    }):[]
+   ]);
+   const [faAccess,assignment]=restrictedGrants;
    const effective=assignment?.schemaVersion===1&&assignment.identityStatus==='LINKED'&&assignment.uid===actor.uid&&assignment.email===actor.email&&assignment.memberCategories?.includes('EFETIVO');
    const groups=documentGroupsFromAccess(access,actor.email),faGroups=documentGroupsFromAccess(faAccess,actor.email),areaById=new Map(areas.map(area=>[area.id,area]));
    for(const collection of ['documents','scopedDocuments']){
@@ -75,7 +82,10 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
     const audience=legacyRestricted||d.audienceGroup==='RESTRICTED'?'RESTRICTED':'GENERAL';
     const manages=canManageManagementDocuments(p,area||{id:''},p.uid),faManages=canManageManagementDocuments(gate,area||{id:''},actor.uid);
     if(audience==='RESTRICTED'&&(!effective||!(manages||groups.includes('RESTRICTED'))||!(faManages||faGroups.includes('RESTRICTED'))))continue;
-    if(collection==='scopedDocuments'&&(!(manages||permission(p,'managementRead')&&groups.includes(d.audienceGroup))||!(faManages||permission(gate,'managementRead')&&faGroups.includes(d.audienceGroup))))continue;
+    if(collection==='scopedDocuments'&&!(manages||permission(p,'managementRead')&&groups.includes(d.audienceGroup)))continue;
+    // FB owns the general catalogue after cutover. Restricted documents still
+    // require both sources' current grants and the effective member category.
+    if(collection==='scopedDocuments'&&audience==='RESTRICTED'&&!(faManages||permission(gate,'managementRead')&&faGroups.includes(d.audienceGroup)))continue;
     if(collection==='documents'&&(!(permission(p,'managementRead','documentsManage')||manages)||!(permission(gate,'managementRead','documentsManage')||faManages)))continue;
     // Only passive previews may be opened from search; forms/quizzes never become actionable.
     const url=preview(d.materialPdfUrl||d.driveUrl);

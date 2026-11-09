@@ -29,6 +29,16 @@ test('duplicate email mapping fails closed instead of assuming same UIDs',async(
  const fj=store({users:[sourceProfile,{...sourceProfile,id:'duplicate',uid:'duplicate'}],events:[{id:'secret',createdByUid:'source-a',active:true,eventType:'Pessoal',version:1}]});
  assert.deepEqual(await createFiSourceProvider({stores:{FJ:fj}}).searchRecords(actor),[]);
 });
+test('general catalogue honors the active FB grant even without a legacy FA document grant',async()=>{
+ const fa=store({users:[{...sourceProfile,id:actor.uid,uid:actor.uid}]});
+ const docs=[
+  {id:'general',title:'Dor perioperatória',category:'Protocolos',audienceGroup:'GENERAL',active:false},
+  {id:'restricted',title:'Regimento',category:'Documentos administrativos',audienceGroup:'RESTRICTED'}
+ ];
+ const rows=grants=>createFiSourceProvider({stores:{FA:fa,FB:store({users:[sourceProfile],evaluationRuntime:fbRuntime,documentAccessEmails:documentAccess(grants),scopedDocuments:docs})}}).searchRecords(actor);
+ assert.deepEqual((await rows(['GENERAL','RESTRICTED'])).map(r=>[r.id,r.active]),[['FB.scopedDocuments.general',false]]);
+ assert.deepEqual(await rows([]),[]);
+});
 test('an unavailable training collection does not discard authorized documents',async()=>{
  const profile={...sourceProfile,permissions:{...sourceProfile.permissions,trainingsRead:true}};
  const fa=store({users:[{...profile,id:actor.uid,uid:actor.uid}],documentAccessEmails:documentAccess(['GENERAL'])});
