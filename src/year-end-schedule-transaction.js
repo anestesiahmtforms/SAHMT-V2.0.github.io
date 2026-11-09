@@ -3,7 +3,7 @@ import {YEAR_END_TOTAL_KEYS,readYearEndTotals,changeYearEndTotals} from './year-
 
 // A bounded retry handles a counter advanced between the transaction snapshot
 // and rules evaluation. Real permission failures are never retried blindly.
-export async function writeYearEndChoices({api,db,ownRef,totalsRef,uid,sigla,choices,ensure}) {
+export async function writeYearEndChoices({api,db,ownRef,totalsRef,uid,sigla,choices,ensure,adminEditRef,actorUid}) {
   for(let attempt=0;attempt<8;attempt++) {
     let attemptedTotals=null;
     try {
@@ -14,6 +14,7 @@ export async function writeYearEndChoices({api,db,ownRef,totalsRef,uid,sigla,cho
         const totals=readYearEndTotals(summary.data());
         attemptedTotals=totals;
         const next=changeYearEndTotals(totals,prior.exists()?prior.data():null,choices),stamp=api.serverTimestamp();
+        if(adminEditRef)tx.set(adminEditRef,{actorUid,targetUid:uid,updatedAt:stamp});
         if(prior.exists()) {
           const record=prior.data();
           if(!Number.isSafeInteger(record.position)||record.position<1)throw yearEndError('YEAR_END_CORRUPT_ORDER');

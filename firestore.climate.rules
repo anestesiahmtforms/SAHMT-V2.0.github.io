@@ -59,8 +59,36 @@ service cloud.firestore {
     function yearEndSigla() {
       return yearEndPolicy().siglasByUid[request.auth.uid];
     }
+    function yearEndTargetMember(uid) {
+      let p = get(/databases/$(database)/documents/users/$(uid)).data;
+      let key = hashing.sha256('"' + p.get('email', '').lower() + '"').toHexString().lower();
+      let category = get(/databases/$(database)/documents/userCategories/$(key)).data;
+      let policy = yearEndPolicy();
+      let sigla = policy.get('siglasByUid', {}).get(uid, '');
+      return p.uid == uid && p.active == true && p.access == true &&
+        category.schemaVersion == 1 && category.identityStatus == 'LINKED' && category.uid == uid &&
+        category.email == p.email.lower() && category.memberCategories is list &&
+        category.memberCategories.hasAll(['EFETIVO']) && category.memberCategories.hasOnly(['EFETIVO', 'ADMINISTRADOR', 'GESTOR']) &&
+        category.memberCategories.size() == category.memberCategories.toSet().size() &&
+        policy.schemaVersion == 1 && policy.cycle == '2026-2027' && policy.siglasByUid is map &&
+        !policy.get('excludedUids', []).hasAny([uid]) &&
+        (sigla == null || (sigla is string && sigla.matches('^([A-Z]{2}|L2)$')));
+    }
+    function yearEndFreshAdminEdit(uid) {
+      let path = /databases/$(database)/documents/yearEndSchedules/2026-2027/adminEdits/$(request.auth.uid);
+      return existsAfter(path) && getAfter(path).data.actorUid == request.auth.uid &&
+        getAfter(path).data.targetUid == uid && getAfter(path).data.updatedAt == request.time &&
+        (!exists(path) || get(path).data.get('updatedAt', null) != request.time);
+    }
+    function yearEndWriter(uid) {
+      let edit = /databases/$(database)/documents/yearEndSchedules/2026-2027/adminEdits/$(request.auth.uid);
+      // A changed marker must pass its own administrator/target rule in this commit.
+      return yearEndWritesReady() && (yearEndFreshAdminEdit(uid) ||
+        (request.auth.uid == uid && yearEndMember() &&
+          (!existsAfter(edit) || getAfter(edit).data.updatedAt != request.time || getAfter(edit).data.targetUid == uid)));
+    }
     function yearEndRecord(d, uid) {
-      let sigla = yearEndSigla();
+      let sigla = yearEndPolicy().siglasByUid[uid];
       return d.keys().hasOnly(['uid', 'sigla', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
         d.keys().hasAll(['uid', 'sigla', 'plantao', 'grupo', 'position', 'createdAt', 'updatedAt']) &&
         d.uid == uid && d.sigla == sigla && d.plantao in ['natal', 'reveillon', 'carnaval'] &&
@@ -90,13 +118,25 @@ service cloud.firestore {
       let path = /databases/$(database)/documents/yearEndSchedules/2026-2027/summary/totals;
       return exists(path) && yearEndTotalsChange(get(path).data, getAfter(path).data, previous, next, added);
     }
-    function yearEndPairedRegistration(before, after) {
-      let own = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(request.auth.uid);
+    function yearEndPairedRegistrationFor(before, after, uid) {
+      let own = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(uid);
       let present = exists(own);
       let previous = present ? get(own).data : {};
       let next = getAfter(own).data;
-      return yearEndRecord(next, request.auth.uid) &&
+      return yearEndRecord(next, uid) &&
         yearEndTotalsChange(before, after, previous, next, present ? 0 : 1);
+    }
+    function yearEndPairedRegistration(before, after) {
+      return yearEndPairedRegistrationFor(before, after, request.auth.uid);
+    }
+    function yearEndAdminSummaryChange() {
+      let edit = /databases/$(database)/documents/yearEndSchedules/2026-2027/adminEdits/$(request.auth.uid);
+      return existsAfter(edit) && yearEndFreshAdminEdit(getAfter(edit).data.targetUid);
+    }
+    function yearEndAdminTargetChanged(uid) {
+      let target = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(uid);
+      return existsAfter(target) && getAfter(target).data.uid == uid && getAfter(target).data.updatedAt == request.time &&
+        (!exists(target) || get(target).data.get('updatedAt', null) != request.time);
     }
     match /users/{uid} {
       allow get: if yearEndReader() && request.auth.uid == uid;
@@ -105,11 +145,11 @@ service cloud.firestore {
     match /yearEndSchedules/{cycle}/registrations/{uid} {
       allow get: if cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));
       allow list: if cycle == '2026-2027' && yearEndAdmin();
-      allow create: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
+      allow create: if cycle == '2026-2027' && yearEndWriter(uid) &&
         yearEndRecord(request.resource.data, uid) &&
         request.resource.data.createdAt == request.time && yearEndPairedTotals({}, request.resource.data, 1) &&
         request.resource.data.position == getAfter(/databases/$(database)/documents/yearEndSchedules/2026-2027/summary/totals).data.totalRegistrations;
-      allow update: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
+      allow update: if cycle == '2026-2027' && yearEndWriter(uid) &&
         yearEndRecord(request.resource.data, uid) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'sigla', 'updatedAt']) &&
         yearEndPairedTotals(resource.data, request.resource.data, 0);
@@ -122,8 +162,17 @@ service cloud.firestore {
     match /yearEndSchedules/{cycle}/summary/{id} {
       allow get: if cycle == '2026-2027' && id == 'totals' && yearEndReader();
       allow list, create, delete: if false;
-      allow update: if cycle == '2026-2027' && id == 'totals' && yearEndMember() && yearEndWritesReady() &&
-        yearEndPairedRegistration(resource.data, request.resource.data);
+      allow update: if cycle == '2026-2027' && id == 'totals' && yearEndWritesReady() &&
+        (yearEndAdminSummaryChange() || (yearEndMember() && yearEndPairedRegistration(resource.data, request.resource.data)));
+    }
+    match /yearEndSchedules/{cycle}/adminEdits/{uid} {
+      allow get: if cycle == '2026-2027' && yearEndAdmin();
+      allow list, delete: if false;
+      allow create, update: if cycle == '2026-2027' && request.auth.uid == uid && yearEndWritesReady() &&
+        yearEndAdmin() && request.resource.data.keys().hasOnly(['actorUid', 'targetUid', 'updatedAt']) &&
+        request.resource.data.keys().hasAll(['actorUid', 'targetUid', 'updatedAt']) &&
+        request.resource.data.actorUid == request.auth.uid && request.resource.data.updatedAt == request.time &&
+        yearEndTargetMember(request.resource.data.targetUid) && yearEndAdminTargetChanged(request.resource.data.targetUid);
     }
     match /yearEndSchedules/{cycle}/policy/{id} {
       allow get: if cycle == '2026-2027' && id == 'participation' && yearEndAdmin();
