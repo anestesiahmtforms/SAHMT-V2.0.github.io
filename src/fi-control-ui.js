@@ -10,11 +10,12 @@ export function renderFiControl({profile={},pilot=false,searchOnly=false}={}){
  const home='<button type="button" data-fi-nav="home">Voltar à Home</button>';
  if(!searchOnly&&!admin(profile))return `<section class="fi-control"><p>Acesso reservado a administradores.</p>${home}</section>`;
  const title=searchOnly?'Buscar no ecossistema':'Central Administrativa';
+ const centralShortcut=searchOnly&&admin(profile)?'<button type="button" data-fi-nav="fi-control">CENTRAL ADMINISTRATIVA</button>':'';
  const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>':'';
  const search=searchOnly||pilot?`<section class="fi-control-panel"><h2>Pesquisar no app</h2><p>Inclui materiais inativos em modo de consulta, conforme suas permissões.</p><form data-fi-search><label>O que você procura?<input name="query" type="search" maxlength="1000" required autocomplete="off" placeholder="Ex.: protocolo de segurança"></label><button type="submit">Pesquisar</button></form><p data-fi-status role="status" aria-live="polite"></p><div data-fi-results></div></section>`:'';
  const month=previousMonth();
  const monthly=!searchOnly?`<section class="fi-control-panel"><h2>Análise mensal e plano de ação</h2><p>Resultados dos indicadores e propostas para revisão da administração.</p><form data-fi-monthly><label>Mês de referência<input name="period" type="month" value="${month}" max="${month}" required></label><button type="submit">Gerar análise</button><button type="button" data-fi-history>Consultar análises</button></form><div data-fi-monthly-results aria-live="polite"></div></section>`:'';
- return `<section class="fi-control"><header class="fi-control-heading"><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':searchOnly?'PESQUISA':'CENTRAL'}</span><h1>${title}</h1></header><nav class="fi-control-navigation" aria-label="Navegação">${navigation}${home}</nav>${search}${monthly}</section>`;
+ return `<section class="fi-control"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':searchOnly?'PESQUISA':'CENTRAL'}</span><h1>${title}</h1></div>${centralShortcut}</header><nav class="fi-control-navigation" aria-label="Navegação">${navigation}${home}</nav>${search}${monthly}</section>`;
 }
 export function renderFiResults(data){
  const results=Array.isArray(data?.results)?data.results:[];
