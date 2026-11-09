@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 
-test('Governance opens indicators directly and the update notice works above mobile dialogs',{timeout:120000},async()=>{
+test('Governance exposes only consolidated performance and the update notice works above mobile dialogs',{timeout:120000},async()=>{
  await mkdir('.local-preview',{recursive:true});
  const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',optimizeDeps:{noDiscovery:true,entries:[]},server:{host:'127.0.0.1',port:0}});
  server.middlewares.use('/updates-fixture',(req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;font-family:system-ui}*{box-sizing:border-box}</style><label>Rascunho<input id="draft"></label><button id="open-hub">Governança</button><div id="root"></div><script type="module" src="/tests/app-updates.fixture.js"></script></html>');});
  await server.listen();let browser;
  try{
-  browser=await chromium.launch({headless:true});
+  browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});
   for(const fallback of [false,true]){
    const context=await browser.newContext({viewport:{width:390,height:844}});
    if(fallback)await context.addInitScript(()=>{HTMLElement.prototype.showPopover=undefined;});
@@ -21,12 +21,15 @@ test('Governance opens indicators directly and the update notice works above mob
    await page.getByLabel('Rascunho').fill('Texto em andamento');
    await page.getByRole('button',{name:'Governança',exact:true}).click();
    await page.getByRole('button',{name:/INDICADORES - SAHMT/}).click();
-   await page.getByRole('heading',{name:'Plataforma de indicadores',exact:true}).waitFor();
-   assert.equal(await page.getByRole('tab').count(),4);
-   assert.equal(await page.locator('iframe').count(),0,'indicators must not wait for external hosting');
-   assert.equal(await page.locator('#management-hub-title').textContent(),'INDICADORES - SAHMT');
-   assert.deepEqual(await page.evaluate(()=>window.indicatorCalls.map(c=>c.action)),['BOOTSTRAP']);
-   await page.getByRole('button',{name:/Indicador demonstrativo/}).waitFor();
+   await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).waitFor();
+   assert.equal(await page.locator('[data-hub-body] button').count(),1);
+   assert.deepEqual(await page.evaluate(()=>window.indicatorCalls),[]);
+   await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).click();
+   await page.locator('[data-sp-total]').waitFor();
+   assert.equal(await page.locator('[data-sp-category]').count(),6);
+   assert.equal(await page.locator('iframe').count(),0);
+   assert.equal(await page.locator('#management-hub-title').textContent(),'DESEMPENHO - SAHMT');
+   assert.deepEqual(await page.evaluate(()=>window.indicatorCalls.map(c=>c.action)),['GET_SAHMT_PERFORMANCE']);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
    await page.evaluate(()=>window.offerUpdate());
    await page.getByRole('button',{name:'Atualizar agora',exact:true}).waitFor();
@@ -48,26 +51,28 @@ test('Governance opens indicators directly and the update notice works above mob
    await page.evaluate(()=>window.closeHub());
    assert.equal(await page.getByLabel('Rascunho').inputValue(),'Texto em andamento');
 
-   // Authentication failures are visible and recover without leaving Governance.
+   // Failed authentication is recoverable inside the retained performance panel.
    await page.evaluate(()=>{window.indicatorFailure=true;window.openHub();});
    await page.getByRole('button',{name:/INDICADORES - SAHMT/}).click();
-   await page.getByRole('heading',{name:'Não foi possível carregar os indicadores'}).waitFor();
-   assert.match(await page.getByRole('alert').textContent(),/acesso não está autorizado/);
+   await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).click();
+   await page.getByText('Não foi possível consultar a apuração. Tente novamente.',{exact:true}).waitFor();
    await page.evaluate(()=>window.indicatorFailure=false);
-   await page.getByRole('button',{name:'TENTAR NOVAMENTE',exact:true}).click();
-   await page.getByRole('heading',{name:'Plataforma de indicadores',exact:true}).waitFor();
+   await page.getByRole('button',{name:'Consultar novamente',exact:true}).click();
+   await page.locator('[data-sp-total]').waitFor();
+   await page.locator('[data-hub-back]').click();
    await page.locator('[data-hub-back]').click();
    await page.getByRole('button',{name:/INDICADORES - SAHMT/}).waitFor();
 
    // A pending FD response must not repaint a panel after navigating back.
    await page.evaluate(()=>window.deferIndicators=true);
    await page.getByRole('button',{name:/INDICADORES - SAHMT/}).click();
+   await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).click();
    await page.waitForFunction(()=>typeof window.resolveIndicators==='function');
    await page.locator('[data-hub-back]').click();
    assert.equal(await page.evaluate(()=>window.apiSignal.aborted),true);
    await page.evaluate(()=>window.resolveIndicators());
-   await page.getByRole('button',{name:/INDICADORES - SAHMT/}).waitFor();
-   assert.equal(await page.getByRole('heading',{name:'Plataforma de indicadores',exact:true}).count(),0);
+   await page.getByRole('button',{name:'DESEMPENHO - SAHMT',exact:true}).waitFor();
+   assert.equal(await page.locator('[data-sp-total]').count(),0);
    await page.evaluate(()=>window.openHub(false));
    assert.equal(await page.getByRole('button',{name:/INDICADORES - SAHMT/}).isDisabled(),true);
    assert.deepEqual(errors,[]);assert.deepEqual(external,[]);

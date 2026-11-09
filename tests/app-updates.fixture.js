@@ -8,11 +8,11 @@ window.repairAccepted=true;window.updateChecks=0;window.repairs=[];window.indica
 let cleanup;
 window.openHub=(access=true)=>{
  cleanup?.();
- cleanup=mountManagementHub(document.querySelector('#root'),{access:{results:access},isSurveySessionCurrent:()=>true,onExit:()=>cleanup?.(),performIndicators:async(action,input,signal)=>{
+ cleanup=mountManagementHub(document.querySelector('#root'),{access:{results:access,sahmtPerformance:access},performanceUid:'member',isSurveySessionCurrent:()=>true,onExit:()=>cleanup?.(),performIndicators:async(action,input,signal)=>{
   window.apiSignal=signal;window.indicatorCalls.push({action,input});
   if(window.deferIndicators)await new Promise(resolve=>window.resolveIndicators=resolve);
   if(window.indicatorFailure)throw Object.assign(Error('NOT_AUTHORIZED'),{status:403});
-  return {schemaVersion:1,year:input.year,canManage:false,metrics:[{id:'example',platform:'management',title:'Indicador demonstrativo',unit:'%',months:[{month:1,status:'VALID',value:100}],quarters:[]}],connectionStatus:{management:'READY'},reviews:[],actions:[],asOf:'2026-10-29'};
+  return {status:'READY',uid:'member',batchId:'2026-12-01_02',cutoff:1796101200000,updatedAt:1796101201000,canManage:false,summary:{total:10,percentage:100,byCategory:{OPERATIONS:10,MANAGEMENT:0,RECORDS:0,SURVEYS:0,NOTIFICATIONS:0,CONTINUING_EDUCATION:0}}};
  }});
 };
 window.closeHub=()=>cleanup?.();

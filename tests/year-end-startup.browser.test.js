@@ -1,3 +1,4 @@
+import {APP_VERSION} from '../src/app-version.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
@@ -109,7 +110,7 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.equal(await page.locator('.startup-logo img').count(),1);assert.equal((await page.locator('.startup-logo').textContent()).trim(),'');
   assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   preview.releaseAuthentication();await page.locator('.app-shell--home [data-route="schedule"]').waitFor();
-  assert.equal(await page.locator('[data-app-version]').textContent(),'V2.2');
+  assert.equal(await page.locator('[data-app-version]').textContent(),APP_VERSION);
   const versionLayout=await page.evaluate(()=>{
     const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {top:r.top,bottom:r.bottom,right:r.right,left:r.left};};
     return {badge:rect('[data-app-version]'),header:rect('.identity-card'),name:rect('.identity-card__user-row')};

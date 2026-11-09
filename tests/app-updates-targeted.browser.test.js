@@ -1,3 +1,4 @@
+import {APP_VERSION} from '../src/app-version.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
@@ -24,7 +25,7 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
   const server=await createServer({configFile:false,appType:'custom',root:process.cwd(),base:'/',cacheDir:'.local-preview/vite-targeted-updates',optimizeDeps:{noDiscovery:true,entries:[]},plugins:[plugin],server:{host:'127.0.0.1',port:0,strictPort:false}});
   try {
     await server.listen();const origin='http://127.0.0.1:'+server.httpServer.address().port;
-    browser=await engine.launch({headless:true});
+    browser=await engine.launch({headless:true,...(process.env.CI||process.env.SAHMT_BROWSER_ENGINE==='webkit'?{}:{channel:'msedge'})});
     for(const target of ['FA','FB']) {
       const contexts=[];const errors=[];
       try {
@@ -37,7 +38,7 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
         };
         const admin=await open(200,'Android');await admin.locator('#open-command').click();await admin.getByText('Pessoa de teste',{exact:true}).waitFor();
         const early=await open(200,'Android');await early.evaluate(()=>window.openSession('member'));await early.waitForFunction(()=>window.savedDevice);
-        await admin.getByText('Atualizado',{exact:true}).waitFor();assert.match(await admin.locator('[data-panel-list]').innerText(),/Sem exigência ativa/);assert.match(await admin.locator('[data-panel-list]').innerText(),/Versão recebida: V2.2/);
+        await admin.getByText('Atualizado',{exact:true}).waitFor();assert.match(await admin.locator('[data-panel-list]').innerText(),/Sem exigência ativa/);assert.ok((await admin.locator('[data-panel-list]').innerText()).includes('Versão recebida: '+APP_VERSION));
         const earlyId=await early.evaluate(()=>window.savedDevice.deviceId);await early.close();devices.delete(target+':member:'+earlyId);await admin.getByText('Atualizado',{exact:true}).waitFor({state:'detached'});
         await admin.locator('[data-panel-all]').click();await admin.locator('[data-all-send]:enabled').waitFor();
         assert.match(await admin.locator('[data-all-preview]').innerText(),/2 usuário/);
