@@ -2,7 +2,7 @@ import {createServer} from 'vite';
 import {validateYearEndChoices} from '../../src/year-end-schedule.js';
 import {emptyYearEndTotals,changeYearEndTotals} from '../../src/year-end-schedule-totals.js';
 
-export async function createYearEndStartupPreview({holdAuthentication=false,statusFailures=0,requireSecondaryConnect=false}={}){
+export async function createYearEndStartupPreview({holdAuthentication=false,statusFailures=0,requireSecondaryConnect=false,homeModulesEnabled=false}={}){
  const base='/SAHMT-V2.0.github.io/',records=new Map(),held=[],requests=[];
  let hold=true,failSave=true,authHeld=holdAuthentication;const authWaiters=[];
  const stubs={
@@ -56,7 +56,7 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
   }catch(error){res.statusCode=400;res.end(JSON.stringify({code:error.code||error.message}));}
  });}};
  const server=await createServer({configFile:false,base,cacheDir:'.local-preview/vite-year-end-startup',optimizeDeps:{noDiscovery:true,entries:[]},
-  define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FA',externalManagementEnabled:false}),'import.meta.env.VITE_GOOGLE_PROJECT_AUTH_ENABLED':JSON.stringify('false')},plugins:[plugin],server:{host:'127.0.0.1',port:0,strictPort:false}});
+  define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FA',externalManagementEnabled:false}),'import.meta.env.VITE_GOOGLE_PROJECT_AUTH_ENABLED':JSON.stringify('false'),...(homeModulesEnabled?{'import.meta.env.VITE_FG_CHECKLIST_ENABLED':JSON.stringify('true'),'import.meta.env.VITE_FH_LABELS_ENABLED':JSON.stringify('true')}:{})},plugins:[plugin],server:{host:'127.0.0.1',port:0,strictPort:false}});
  const release=()=>{hold=false;for(const resolve of held.splice(0))resolve();};
  const releaseAuthentication=()=>{authHeld=false;for(const resolve of authWaiters.splice(0))resolve();};
  try{await server.listen();}catch(error){release();await server.close();throw error;}
