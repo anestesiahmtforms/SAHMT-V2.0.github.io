@@ -1,0 +1,15 @@
+{
+  "code": "FI_MIGRATION_IMPORTED_AND_VERIFIED",
+  "projectId": "sahmt-operacional-fi",
+  "counts": {
+    "profiles": 58,
+    "contacts": 31,
+    "categories": 57,
+    "plannedDocuments": 295
+  },
+  "documentsWritten": 296,
+  "sourceDeletes": 0,
+  "authChanges": 0,
+  "readbackVerified": true,
+  "at": "2026-11-09T11:28:29.556Z"
+}

@@ -15,7 +15,8 @@ export const app = firebaseConfigured
 const appCheckSiteKey = import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim();
 const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true';
 const useEmulators = import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
-export const appCheckReady = app && labelAiEnabled && appCheckSiteKey && !useEmulators
+const fiControlEnabled = import.meta.env.VITE_FI_ADMIN_ENABLED === 'true' || import.meta.env.VITE_FI_PILOT_ENABLED === 'true';
+export const appCheckReady = app && (labelAiEnabled || fiControlEnabled) && appCheckSiteKey && !useEmulators
   ? import('firebase/app-check').then(({initializeAppCheck, ReCaptchaEnterpriseProvider}) => {
     class NetworkAwareReCaptchaProvider extends ReCaptchaEnterpriseProvider {
       getToken() { return withAppCheckTokenDeadline(() => super.getToken()); }

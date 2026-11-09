@@ -125,6 +125,8 @@ const labelAiEnabled = import.meta.env.VITE_LABEL_AI_ENABLED === 'true' &&
   import.meta.env.VITE_LABEL_AI_ENDPOINT?.trim() === (import.meta.env.VITE_FH_LABELS_ENABLED === 'true' ? 'https://sahmt-fh-etiquetas.sahmt-fh-f7b8a88b.workers.dev/v1/labels/extract' : 'https://sahmt-label-ai.anestesiahmtforms.workers.dev/v1/labels/extract') &&
   Boolean(import.meta.env.VITE_APP_CHECK_SITE_KEY?.trim());
 const firstLoginCohortAdminUiEnabled = deployment.target === 'FA' && firstLoginCohortAdminEnabled();
+const fiAdminControlEnabled=import.meta.env.VITE_FI_ADMIN_ENABLED==='true';
+const fiPilotEnabled=import.meta.env.VITE_FI_PILOT_ENABLED==='true';
 const labels = {
   communications: ['CENTRAL DE COMUNICAÇÃO', 'Comunicação institucional'],
   events: ['Operacional', 'Eventos, escala e férias'],
@@ -1088,7 +1090,7 @@ function shellView() {
 
       </article>` : ''}
       ${route === 'home' ? `<section class="modules-section">
-        <div class="module-grid">${moduleCards()}<button type="button" class="module-card" data-ecosystem-search disabled aria-disabled="true" title="Busca preparada para configuração posterior"><img class="module-icon" src="${import.meta.env.BASE_URL}assets/modules/home-search.svg" alt="" width="40" height="40"><span><strong>BUSCAR NO ECOSISTEMA</strong><small>Busca em preparação</small></span><span class="arrow" aria-hidden="true">›</span></button></div>
+        <div class="module-grid">${moduleCards()}<button type="button" class="module-card" data-ecosystem-search ${typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'?'data-route="fi-control"':'disabled aria-disabled="true" title="Busca preparada para configuração posterior"'}><img class="module-icon" src="${import.meta.env.BASE_URL}assets/modules/home-search.svg" alt="" width="40" height="40"><span><strong>BUSCAR NO ECOSISTEMA</strong><small>${typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'?'Pesquisar materiais e registros':'Busca em preparação'}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>
       </section>` : ''}
     </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   const identityCard = `<div class="identity-card">${route === 'home' ? `<span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span>` : ''}${route === 'home' ? '' : `<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button>`}<div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div>`;
@@ -1514,7 +1516,7 @@ async function loadModule(route) {
       performIndicators:async(action,input,signal)=>{const {callSahmtPerformanceApi}=await import('./sahmt-performance-api.js');return callSahmtPerformanceApi({uid,isCurrent:()=>currentHub()&&isSahmtPerformanceAction(action),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),sahmtPerformance:googleProjectAuthEnabled&&canUseGovernanceHub(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team',vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),sahmtPerformance:googleProjectAuthEnabled&&canUseGovernanceHub(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
     return;
   }
@@ -1750,7 +1752,7 @@ async function loadModule(route) {
   }
   if (route === 'people') {
     try {
-      const {listContactCatalog} = await import('./data.js');
+      const {listContactCatalog} = await import('./fi-admin-data.js');
       const contacts = await listContactCatalog({uid: session.user.uid});
       content.innerHTML = `${contacts.length ? `<ul class="record-list">${contacts.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.sigla)} · ${escapeHtml(item.name)}</strong><button class="secondary-button" type="button" data-contact-edit="${escapeHtml(item.sigla)}">Editar</button></div><small>${escapeHtml(item.role || '')}${item.phone ? ` · ${escapeHtml(item.phone)}` : ''}</small><small class="record-meta">${item.active ? 'Ativo' : 'Inativo'}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum contato cadastrado. Use o formulário acima para criar o catálogo inicial.</p>'}<button class="secondary-button" type="button" id="sync-event-members">Atualizar siglas de Eventos</button><p id="event-members-sync-status" class="record-meta" role="status" aria-live="polite"></p>`;
       content.querySelector('#sync-event-members')?.addEventListener('click', async (event) => {
@@ -1759,7 +1761,7 @@ async function loadModule(route) {
         button.disabled = true;
         if (status) status.textContent = 'Sincronizando somente sigla, nome e estado ativo…';
         try {
-          const {syncEventMemberDirectory} = await import('./data.js');
+          const {syncEventMemberDirectory} = await import('./fi-admin-data.js');
           const count = await syncEventMemberDirectory(session.user.uid);
           if (status) status.textContent = `${count} contato(s) processado(s). O seletor de Eventos já pode usar as siglas ativas.`;
         } catch (error) {
@@ -1973,7 +1975,7 @@ async function loadAdminModule(content) {
   }
   content.innerHTML = '<p class="loading">Carregando perfis da V2…</p>';
   try {
-    const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments,listLabelModuleProfiles} = await import('./data.js');
+    const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments,listLabelModuleProfiles} = await import('./fi-admin-data.js');
     const [rawProfiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
     let labelProfiles=[],labelProfileLoadFailed=false;
     if (can('labelsManage')) {
@@ -1987,7 +1989,7 @@ async function loadAdminModule(content) {
     const categorySummary=`<section class="admin-user-list"><h3>Categorias dos membros</h3><p class="record-meta">Categorias de vínculo e responsabilidade podem se sobrepor. A classificação não concede permissões automaticamente.</p>${categoryLoadFailed?'<p role="status">Classificações ainda não disponíveis nesta instância.</p>':`<ul>${Object.entries(MEMBER_CATEGORIES).map(([id,label])=>`<li>${escapeHtml(label)}: <strong>${categoryCounts[id]}</strong></li>`).join('')}</ul><p class="record-meta">${assignments.filter(row=>row.identityStatus==='PENDING_ACCOUNT').length} classificação(ões) aguardando vínculo com uma conta.</p>`}</section>`;
     let configuredFeatures = appFeatures;
     if (can('admin')) {
-      try { configuredFeatures = normalizeAppFeatures(await (await import('./data-lite.js')).readAppFeatures(session.user.uid)); }
+      try { configuredFeatures = normalizeAppFeatures(await (await import('./fi-admin-data.js')).readAppFeatures(session.user.uid)); }
       catch { configuredFeatures = appFeatures; }
     }
     const permissions = userPermissions.map(([id, title]) => `<label class="permission-option"><input type="checkbox" name="permission" value="${id}" ${['trainingsRead', 'notificationsRead'].includes(id) ? 'checked' : ''} ${['admin', 'usersManage'].includes(id) && !can('admin') ? 'disabled' : ''}><span>${escapeHtml(title)}</span></label>`).join('');
@@ -2049,7 +2051,7 @@ async function loadAdminModule(content) {
       const nextFeatures = {...configuredFeatures};
       featureForm.querySelectorAll('input[name="feature"]:not(:disabled)').forEach((input) => { nextFeatures[input.value] = input.checked; });
       try {
-        const {saveAppFeatures} = await import('./data.js');
+        const {saveAppFeatures} = await import('./fi-admin-data.js');
         appFeatures = await saveAppFeatures(nextFeatures, session.user.uid);
         notice = 'Disponibilidade dos módulos atualizada.';
         await render();
@@ -2148,7 +2150,7 @@ async function loadAdminModule(content) {
       button.disabled = true;
       cohortStatus.textContent = 'Salvando classificação…';
       try {
-        const {setFirstLoginCohort} = await import('./data.js');
+        const {setFirstLoginCohort} = await import('./fi-admin-data.js');
         const result = await setFirstLoginCohort(targetUid, select.value);
         if (session.user?.uid !== reviewerUid) return;
         cohortStatus.textContent = result.changed ? `Classificação ${result.firstLoginCohort} salva. Nenhuma permissão foi alterada.` : 'A classificação já estava atualizada.';
@@ -2170,7 +2172,7 @@ async function loadAdminModule(content) {
       status.textContent = 'Salvando perfil no Firestore…';
       const permissions = Object.fromEntries([...form.querySelectorAll('input[name="permission"]')].map((input) => [input.value, input.checked]));
       try {
-        const {saveUserProfile} = await import('./data.js');
+        const {saveUserProfile} = await import('./fi-admin-data.js');
         await saveUserProfile({
           uid: form.elements.uid.value,
           email: form.elements.email.value,
@@ -4086,7 +4088,7 @@ async function bindModuleForm(route) {
     const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo'}).format(new Date());
     try {
       if (route === 'people') {
-        const {saveContact} = await import('./data.js');
+        const {saveContact} = await import('./fi-admin-data.js');
         await saveContact({...values, active: form.elements.active.checked}, session.user.uid);
         notice = 'Contato salvo no Firestore.';
         await render();
@@ -4367,7 +4369,7 @@ function bindContactImport() {
     status.textContent = 'Conferindo o arquivo e as siglas cadastradas no V2…';
     try {
       const {parseContactImportCsv, compareContactImportRows} = await import('./contact-import.js');
-      const {listContactCatalog} = await import('./data.js');
+      const {listContactCatalog} = await import('./fi-admin-data.js');
       const parsed = parseContactImportCsv(await file.text());
       const contacts = await listContactCatalog({uid: session.user.uid});
       if (generation !== previewGeneration || !sameFile(fileInput.files?.[0], file)) throw new Error('O arquivo mudou durante a conferência. Confira novamente antes de atualizar.');
@@ -4404,7 +4406,7 @@ function bindContactImport() {
     previewButton.disabled = true;
     status.textContent = `Atualizando ${pendingRecords.length} cadastros no Firestore…`;
     try {
-      const {updateContactRegistrationFields} = await import('./data.js');
+      const {updateContactRegistrationFields} = await import('./fi-admin-data.js');
       const result = await updateContactRegistrationFields(pendingRecords, session.user.uid);
       notice = `${result.updated} cadastros da equipe atualizados no Firestore. Os acessos V2 foram preservados.`;
       pendingRecords = null;
@@ -5154,6 +5156,22 @@ async function render() {
     return;
   }
   const requestedRoute = currentRoute();
+  if(!authLimited&&requestedRoute==='fi-control'){
+    const pilot=!fiAdminControlEnabled&&typeof fiPilotEnabled!=='undefined'&&fiPilotEnabled;
+    if((!fiAdminControlEnabled&&!pilot)||session.accountMode==='team'||session.profile?.active!==true||session.profile?.access!==true){navigate('home');return;}
+    if(deployment.target!=='FA'){navigate('fi-control');return;}
+    const uid=session.user.uid,isCurrent=()=>current()&&session.status==='signed-in'&&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
+    app.innerHTML='<main class="main-content"><div id="fi-control-content"><p role="status">Abrindo a Central de Controle Administrativo e IA…</p></div></main>';
+    try{
+      const [{mountFiControl},{fiControlRequest}]=await Promise.all([import('./fi-control-ui.js'),import('./fi-control-client.js'),import('./fi-control.css')]);
+      if(!isCurrent())return;
+      const request=(action,input)=>fiControlRequest(action,input,uid,{pilot});
+      if(pilot)await request('service.status',{});
+      if(!isCurrent())return;
+      cleanupCurrentModule=mountFiControl(document.querySelector('#fi-control-content'),{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot});
+    }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Central indisponível para esta sessão.</p><button type="button" class="secondary-button">Voltar à Home</button>';host.querySelector('button').addEventListener('click',()=>navigate('home'));}}
+    return;
+  }
   if(requestedRoute!=='year-end-schedule')yearEndStartup.setSession({...session,status:'signed-out'});
   if(!authLimited&&requestedRoute==='labels'&&!session.labelProfileLoaded)void loadOwnLabelModuleProfile(session.user?.uid);
   if(!authLimited&&requestedRoute==='checklist'&&!session.checklistProfileLoaded)void loadOwnChecklistModuleProfile(session.user?.uid);

@@ -2,10 +2,11 @@ import {test, before, after} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {initializeTestEnvironment, assertFails, assertSucceeds} from '@firebase/rules-unit-testing';
 import {doc, getDoc, setDoc, updateDoc} from 'firebase/firestore';
+import {fiEmulatorPort,assertFiEmulator} from './helpers/fi-emulator-address.js';
 let environment;
 before(async () => {
-  if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:18516') throw Error('SOURCE_FREEZE_LOCAL_EMULATOR_REQUIRED');
-  environment = await initializeTestEnvironment({projectId: 'sahmt-17a16', firestore: {host: '127.0.0.1', port: 18516,
+  assertFiEmulator();
+  environment = await initializeTestEnvironment({projectId: 'sahmt-17a16', firestore: {host: '127.0.0.1', port: fiEmulatorPort,
     rules: await readFile(new URL('../firestore.fa.fi-fj-retired.rules', import.meta.url), 'utf8')}});
   await environment.clearFirestore();
   await environment.withSecurityRulesDisabled(async context => {

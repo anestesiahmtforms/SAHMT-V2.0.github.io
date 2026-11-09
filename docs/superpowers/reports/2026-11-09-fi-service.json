@@ -1,0 +1,59 @@
+{
+  "code": "FI_CONTROL_SERVICE_PREPARED",
+  "projectId": "sahmt-operacional-fi",
+  "serviceEmail": "fi-control-worker@sahmt-operacional-fi.iam.gserviceaccount.com",
+  "billingEnabled": false,
+  "checked": [
+    {
+      "station": "FA",
+      "projectId": "sahmt-17a16",
+      "role": "projects/sahmt-17a16/roles/sahmtFiControlProjection",
+      "readOnly": false
+    },
+    {
+      "station": "FB",
+      "projectId": "sahmt-gestao-5ae66",
+      "role": "projects/sahmt-gestao-5ae66/roles/sahmtFiControlSourceReader",
+      "readOnly": true
+    },
+    {
+      "station": "FD",
+      "projectId": "rotinas-8a617",
+      "role": "projects/rotinas-8a617/roles/sahmtFiControlSourceReader",
+      "readOnly": true
+    },
+    {
+      "station": "FF",
+      "projectId": "sahmt-comunicacao-ff",
+      "role": "projects/sahmt-comunicacao-ff/roles/sahmtFiControlSourceReader",
+      "readOnly": true
+    },
+    {
+      "station": "FG",
+      "projectId": "sahmt-checklist-fg",
+      "role": "projects/sahmt-checklist-fg/roles/sahmtFiControlSourceReader",
+      "readOnly": true
+    },
+    {
+      "station": "FH",
+      "projectId": "sahmt-etiquetas-fh",
+      "role": "projects/sahmt-etiquetas-fh/roles/sahmtFiControlSourceReader",
+      "readOnly": true
+    },
+    {
+      "station": "FI",
+      "projectId": "sahmt-operacional-fi",
+      "role": "projects/sahmt-operacional-fi/roles/sahmtFiControlRuntime",
+      "readOnly": false
+    },
+    {
+      "station": "FJ",
+      "projectId": "sahmt-escala-fj",
+      "role": "projects/sahmt-escala-fj/roles/sahmtFiControlProjection",
+      "readOnly": false
+    }
+  ],
+  "credentialsEncryptedLocally": true,
+  "entityDeletesGranted": false,
+  "at": "2026-11-09T11:39:29.890Z"
+}

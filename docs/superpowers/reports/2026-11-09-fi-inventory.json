@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-09T10:48:44.947Z",
+  "project": "sahmt-operacional-fi",
+  "account": "948f85652861c7c25506625091d2120d",
+  "cloudMutations": 0,
+  "google": {
+    "metadataStatus": 200,
+    "projectId": "sahmt-operacional-fi",
+    "billingStatus": 200,
+    "billingEnabled": false,
+    "collectionsStatus": 200,
+    "collections": [],
+    "hasMoreCollections": false,
+    "counts": []
+  },
+  "cloudflare": {
+    "identityVerified": true,
+    "scriptsStatus": 200,
+    "scripts": [],
+    "subdomain": "sahmt-fi-948f8565",
+    "kv": {
+      "status": 200,
+      "names": []
+    },
+    "d1": {
+      "status": 401
+    },
+    "durableObjects": {
+      "status": 200,
+      "names": []
+    }
+  },
+  "healthFI": {
+    "error": "HEALTH_UNAVAILABLE"
+  },
+  "healthFJ": {
+    "error": "HEALTH_UNAVAILABLE"
+  }
+}

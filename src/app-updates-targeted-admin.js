@@ -12,7 +12,7 @@ export async function latestAppRelease(target, {fetchImpl = fetch, origin = loca
 }
 export async function openUserAppUpdates({actorUid, profile, target, isCurrent,
   root = document, services, readRelease = latestAppRelease}) {
-  const data = services || await import('./app-updates-targeted-firebase.js');
+  const data = services || await import('./fi-admin-data.js');
   if (!isCurrent()) return () => {};
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates';
   dialog.setAttribute('aria-labelledby', 'admin-app-updates-title');
@@ -62,7 +62,7 @@ export async function openUserAppUpdates({actorUid, profile, target, isCurrent,
 }
 
 export async function openAllAppUpdates({actorUid, target, isCurrent, root = document, services, readRelease = latestAppRelease}) {
-  const data = services || await import('./app-updates-targeted-firebase.js');
+  const data = services || await import('./fi-admin-data.js');
   if (!isCurrent()) return () => {};
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates';
   dialog.setAttribute('aria-labelledby', 'all-app-updates-title');
@@ -98,7 +98,7 @@ export async function openAllAppUpdates({actorUid, target, isCurrent, root = doc
 }
 
 export async function openAppUpdatePanel({actorUid, target, isCurrent, root = document, services, readRelease = latestAppRelease, onExit = () => {}}) {
-  const data = services || await import('./app-updates-targeted-firebase.js');
+  const data = services || await import('./fi-admin-data.js');
   if (!isCurrent()) return () => {};
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates app-updates-command';
   dialog.setAttribute('aria-labelledby', 'app-updates-command-title');

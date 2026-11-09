@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {initializeTestEnvironment, assertSucceeds, assertFails} from '@firebase/rules-unit-testing';
 import {doc, setDoc, getDoc, updateDoc, writeBatch, serverTimestamp} from 'firebase/firestore';
+import {fiEmulatorPort,assertFiEmulator} from './helpers/fi-emulator-address.js';
 
 const projects = {FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj'};
 const environments = {};
@@ -19,9 +20,9 @@ async function seed(station, path, data) {
   await environments[station].withSecurityRulesDisabled(context => setDoc(doc(context.firestore(), path), data));
 }
 before(async () => {
-  if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:18516') throw new Error('FI_FJ_LOCAL_EMULATOR_REQUIRED');
+  assertFiEmulator();
   for (const station of ['FI', 'FJ']) environments[station] = await initializeTestEnvironment({projectId: projects[station],
-    firestore: {host: '127.0.0.1', port: 18516, rules: await readFile(new URL('../firestore.' + station.toLowerCase() + '.rules', import.meta.url), 'utf8')}});
+    firestore: {host: '127.0.0.1', port: fiEmulatorPort, rules: await readFile(new URL('../firestore.' + station.toLowerCase() + '.rules', import.meta.url), 'utf8')}});
 });
 beforeEach(async () => {
   for (const station of ['FI', 'FJ']) {
