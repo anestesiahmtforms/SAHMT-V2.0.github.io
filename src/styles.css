@@ -2637,13 +2637,33 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   align-self:stretch;
 }
 @media(max-width:600px){
-  .app-shell--home>.home-top-stack>.home-identity-topbar,
-  .app-shell--home .home-identity-topbar>.identity-card{
+  .app-shell--home>.home-top-stack>.home-identity-topbar{
     width:var(--home-width)!important;
     max-width:var(--home-width)!important;
   }
   .app-shell--home .home-identity-topbar>.identity-card{
+    width:100%!important;
+    max-width:100%!important;
+  }
+  .app-shell--home .home-identity-topbar>.identity-card{
     grid-template-columns:minmax(0,1fr) auto;
   }
+}
+
+/* Increase orbital contrast so the animated mark reads clearly on mobile screens. */
+.app-shell--home .home-logo-stage .home-welcome__orbit{
+  border-width:2px;
+  opacity:1;
+  box-shadow:0 0 10px #54efffc7,inset 0 0 7px #54efff78;
+  filter:drop-shadow(0 0 7px #54efffc7);
+}
+.app-shell--home .home-logo-stage .home-welcome__orbit--outer{
+  border-color:#aafaff;
+  animation-duration:13s;
+}
+.app-shell--home .home-logo-stage .home-welcome__orbit--inner{
+  border-color:#c0e6ff;
+  box-shadow:0 0 9px #8ccaffbf,inset 0 0 6px #8ccaff78;
+  filter:drop-shadow(0 0 6px #8ccaffbf);
 }
 
