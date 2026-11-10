@@ -11,11 +11,11 @@ function fgExternalRequest_(collection,operation,body){
   const project=FG_EXTERNAL_COLLECTIONS[collection];
   if(!project||![':batchGet',':runQuery'].includes(operation))throw Error('FG_EXTERNAL_READ_SCOPE');
   if(collection==='userCategories'&&operation!==':batchGet')throw Error('FG_EXTERNAL_READ_SCOPE');
-  sahmtRequireFolders_(['operacao/checklist'].concat(sahmtCollectionFolders_(collection)));
   const prefix='projects/'+project+'/databases/(default)/documents/';
   if(operation===':batchGet'){
     if(!Array.isArray(body.documents)||body.documents.length!==1||!body.documents[0].startsWith(prefix+collection+'/')||body.documents[0].slice((prefix+collection+'/').length).includes('/'))throw Error('FG_EXTERNAL_READ_SCOPE');
   }else if(body.structuredQuery.from.length!==1||body.structuredQuery.from[0].collectionId!==collection||body.structuredQuery.from[0].allDescendants)throw Error('FG_EXTERNAL_READ_SCOPE');
+  sahmtRequireFolders_(['operacao/checklist'].concat(sahmtCollectionFolders_(collection)));
   const url='https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/documents'+operation;
   const response=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',payload:JSON.stringify(body),headers:{Authorization:'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true,followRedirects:false});
   const status=response.getResponseCode();if(status<200||status>=300){const error=Error('FG_EXTERNAL_READ_HTTP_'+status);error.status=status;throw error;}
