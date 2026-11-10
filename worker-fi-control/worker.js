@@ -2,7 +2,8 @@ import {boundedJson} from '../worker-operational-domain/identity.js';
 import {createFiStore,FI_PROJECTS,fiError} from './store.js';
 import {createFiActorVerifier,createFiServiceToken} from './identity.js';
 import {createFiAdminService} from './admin.js';
-import {createFiAiService} from './search.js';
+import {createFiSearch} from './search.js';
+import {createMonthlyService} from './monthly.js';
 import {createOpenAIProvider} from './ai-provider.js';
 import {createFiSourceProvider,SOURCE_COLLECTIONS} from './sources.js';
 import {createFiReadBudget,createFiRequestQuota} from './read-budget.js';
@@ -14,7 +15,7 @@ const pilotActions=new Set(['search','monthly.generate','monthly.list','service.
 const adminReadActions=new Set(['people.list','admin.users.list','admin.requests.list','admin.categories.list','admin.features.get','updates.users','updates.read']);
 export const pilotAccess=(actor,settings,action,now=Date.now())=>isAdmin(actor)&&pilotActions.has(action)&&
  settings?.schemaVersion===1&&settings.uid===actor.uid&&Number.isSafeInteger(settings.expiresAt)&&settings.expiresAt>now;
-const searchReadPlan=Object.fromEntries(Object.entries({FA:4,FB:1700,FJ:430,FH:210,FG:320,FF:105}).map(([alias,limit])=>[FI_PROJECTS[alias],limit]));
+const searchReadPlan=Object.fromEntries(Object.entries({FA:4,FB:2001,FJ:430,FH:210,FG:420,FF:105}).map(([alias,limit])=>[FI_PROJECTS[alias],limit]));
 function boundedFetch(fetchImpl){
  let calls=0;
  return (url,options)=>{
@@ -35,16 +36,6 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
   const settings=await rt.store.get('fiControlConfig','runtime');if(settings?.enabled!==true)throw fiError('FI_NOT_READY');
   const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'||pilot?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
   const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
-  const buildAi=(lease,provider=modelProvider,finishReads)=>{
-   const sourceProvider=createFiSourceProvider({stores:rt.sources(lease)});
-   if(finishReads){
-    const {searchRecords}=sourceProvider;
-    sourceProvider.searchRecords=async actor=>{
-     try{return await searchRecords(actor);}finally{await finishReads();}
-    };
-   }
-   return createFiAiService({store:rt.store,sourceProvider,modelProvider:provider,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}});
-  };
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
   const quota=createFiRequestQuota({store:rt.store});
   const readBudget=createFiReadBudget({store:rt.store});
@@ -56,16 +47,18 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
     const lease=await readBudget.open({[FI_PROJECTS.FJ]:question.status==='lookup'?7:3});
     try{
      const schedule=await createFiSourceProvider({stores:rt.sources(lease)}).personalSchedule(actor,question);
-     return {results:[],coverage:[],ai:{status:'local_only'},schedule};
+     return {results:[],coverage:[],schedule};
     }finally{await lease.finish().catch(()=>{});}
    }
    const lease=await readBudget.open(searchReadPlan);
-   const finishReads=()=>lease.finish().catch(()=>{});
-   try{return await buildAi(lease,pilot?{enabled:false}:modelProvider,finishReads).search(actor,input);}finally{await finishReads();}
+   try{
+    const sourceProvider=createFiSourceProvider({stores:rt.sources(lease)});
+    return await createFiSearch({sourceProvider})(actor,input);
+   }finally{await lease.finish().catch(()=>{});}
   }
   return {async dispatch(actor,action,input){
    if(action==='search')return boundedSearch(actor,input);
-   if(action==='monthly.generate')return buildAi().monthly(actor,input);
+   if(action==='monthly.generate')return createMonthlyService({store:rt.store,sourceProvider:createFiSourceProvider({stores:rt.sources()}),modelProvider,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}})(actor,input);
    if(action==='monthly.list'){
     if(!isAdmin(actor))throw fiError('FI_FORBIDDEN',403);
     const units=new Set(await createFiSourceProvider({stores:rt.sources()}).monthlyAccess(actor));

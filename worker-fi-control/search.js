@@ -1,26 +1,24 @@
-import {assertActor,canReadRecord,normalize,safeLink,validateEvidence} from './fi-ai-policy.js';
-import {createAiBudget} from './fi-ai-budget.js';
-import {createMonthlyService} from './monthly.js';
-const stopWords=new Set('A AO AOS AS COM DA DAS DE DO DOS E EM NA NAS NO NOS O OS OU PARA POR UM UMA UNS UMAS QUE QUAL QUAIS SOBRE ME MOSTRE BUSCAR PESQUISAR ENCONTRAR'.split(' '));
+import {assertActor,canReadRecord,normalize,safeLink} from './fi-ai-policy.js';
+const stopWords=new Set('A AO AOS AS COM DA DAS DE DO DOS E EM NA NAS NO NOS O OS OU PARA POR UM UMA UNS UMAS QUE QUAL QUAIS SOBRE ME MOSTRE BUSCAR PESQUISAR ENCONTRAR ONDE ACHO ENCONTRO POSSO VEJO CONSULTAR'.split(' '));
 const words=value=>normalize(value).match(/[A-Z0-9]+/g)||[];
 const wordKey=word=>word.length>4&&word.endsWith('S')?word.slice(0,-1):word;
 function scoreRecord(record,terms,phrase){
  const title=words(record.title),text=words(record.text);
  const titleKeys=new Set(title.map(wordKey)),textKeys=new Set(text.map(wordKey));
+ const keys=[...titleKeys,...textKeys];
  let hits=0,titleHits=0;
  for(const term of terms){
-  if(titleKeys.has(term)){hits++;titleHits++;}
-  else if(textKeys.has(term))hits++;
+  if(titleKeys.has(term)){hits+=2;titleHits++;}
+  else if(textKeys.has(term))hits+=2;
+  else if(term.length>=4&&keys.some(word=>word.startsWith(term)))hits++;
  }
- if(hits<Math.ceil(terms.length/2))return 0;
+ if(!hits)return 0;
  const heading=title.join(' ');
  const phraseRank=heading===phrase?2:` ${heading} `.includes(` ${phrase} `)?1:0;
  return hits*100+titleHits*2+phraseRank*10000;
 }
-export function createFiAiService({store,sourceProvider,modelProvider,now=Date.now,config={}}) {
- const budget=createAiBudget({store,now,config});
- const monthly=createMonthlyService({store,sourceProvider,modelProvider,now,config,budget});
- return {monthly,async search(actor,{query}={}){
+export function createFiSearch({sourceProvider}) {
+ return async function search(actor,{query}={}){
   assertActor(actor);
   if(typeof query!=='string'||!query.trim()||query.length>1000)throw Error('QUERY_INVALID');
   const queryWords=words(query);
@@ -34,22 +32,20 @@ export function createFiAiService({store,sourceProvider,modelProvider,now=Date.n
   const permitted=records.filter(r=>canReadRecord(actor,r));
   // Duplicate IDs are ambiguous citation targets and are excluded entirely.
   const counts=new Map();for(const r of permitted)counts.set(r.id,(counts.get(r.id)||0)+1);
-  const ranked=permitted.filter(r=>counts.get(r.id)===1).map(r=>({r,score:scoreRecord(r,terms,phrase)})).filter(r=>r.score>0).sort((a,b)=>b.score-a.score||a.r.id.localeCompare(b.r.id)).slice(0,10);
-  const results=ranked.map(({r})=>({id:r.id,source:r.source,kind:r.kind,title:r.title.slice(0,200),snippet:r.text.slice(0,1200),url:safeLink(r.url),version:r.version,readOnly:r.active===false||r.folderActive===false,actionsAllowed:false}));
-  const base={results,coverage:Array.isArray(sourceProvider.coverage)?structuredClone(sourceProvider.coverage):[],ai:{status:'no_results'}};
-  if(!results.length)return base;
-  if(modelProvider?.enabled!==true)return {...base,ai:{status:'disabled'}};
-  const modelResults=results.filter(r=>['document','general'].includes(r.kind));
-  if(!modelResults.length)return {...base,ai:{status:'local_only'}};
-  const reservation=await budget.reserve(actor.uid).catch(()=>undefined);
-  if(reservation===undefined)return {...base,ai:{status:'unavailable'}};
-  if(!reservation)return {...base,ai:{status:'budget_exhausted'}};
-  try {
-   const response=await modelProvider.generate({kind:'search',query:query.trim(),context:modelResults.map(r=>({id:r.id,title:r.title,text:r.snippet}))});
-   await budget.settle(reservation,response.usage).catch(()=>{});
-   const data=response.data;
-   if(typeof data?.answer!=='string'||data.answer.length>10000||!validateEvidence(data.citations,new Set(modelResults.map(r=>r.id))))throw Error('ANSWER_INVALID');
-   return {...base,ai:{status:'complete',answer:data.answer,citations:[...new Set(data.citations)]}};
-  }catch(error){await budget.settle(reservation,error.usage).catch(()=>{});return {...base,ai:{status:'unavailable'}};}
- }};
+  const ranked=permitted.filter(r=>counts.get(r.id)===1).map(r=>({r,score:scoreRecord(r,terms,phrase)})).filter(r=>r.score>0).sort((a,b)=>b.score-a.score||a.r.id.localeCompare(b.r.id));
+  const coverage=Array.isArray(sourceProvider.coverage)?structuredClone(sourceProvider.coverage):[];
+  const results=[],encoder=new TextEncoder();
+  let responseBytes=0;
+  for(const {r} of ranked){
+   const match=words(r.text).find(word=>terms.some(term=>wordKey(word)===term||term.length>=4&&word.startsWith(term)));
+   const offset=match?normalize(r.text).indexOf(match):0,start=Math.max(0,offset-80);
+   const end=start+650;
+   const item={id:r.id,source:r.source,kind:r.kind,title:r.title.slice(0,200),snippet:(start?'…':'')+r.text.slice(start,end)+(end<r.text.length?'…':''),url:safeLink(r.url),version:r.version,readOnly:r.active===false||r.folderActive===false,actionsAllowed:false};
+   responseBytes+=encoder.encode(JSON.stringify(item)).length+1;
+   if(responseBytes>2*1024*1024)break;
+   results.push(item);
+  }
+  if(results.length<ranked.length)coverage.push({source:'FI',status:'UNAVAILABLE',detail:'Há mais resultados. Acrescente um termo para consultar o restante.'});
+  return {results,totalMatches:ranked.length,coverage};
+ };
 }

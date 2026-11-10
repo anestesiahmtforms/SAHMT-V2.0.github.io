@@ -37,14 +37,17 @@ function renderScheduleAnswer(schedule){
  const link=day?`<a href="#/schedule/${day}">Abrir escala desta data</a>`:'';
  return `<section class="fi-answer" role="status"><h3>Escala</h3><p>${esc(message)}</p>${link}</section>`;
 }
-export function renderFiResults(data){
+const pageSize=20;
+const sourceNames={FB:'Gestão',FF:'Comunicados',FG:'Checklist',FH:'Etiquetas',FJ:'Escala e Eventos'};
+export function renderFiResults(data,limit=pageSize){
  if(data?.schedule)return renderScheduleAnswer(data.schedule);
  const results=Array.isArray(data?.results)?data.results:[];
- const ai=data?.ai?.status==='complete'?`<section class="fi-answer"><h3>Resposta com base nos materiais</h3><p>${esc(data.ai.answer)}</p></section>`:'';
  const notes=(data?.coverage||[]).filter(r=>r.status==='CONTENT_NOT_INDEXED'||r.status==='INVOLVEMENT_MAPPING_REQUIRED'||r.status==='UNAVAILABLE').map(r=>r.detail||'Parte dos conteúdos está temporariamente indisponível.');
  const unique=[...new Set(notes)];
- const summary=results.length?`${results.length} resultado(s) autorizado(s).`:isSearchPartial(data)?'Não houve resultados nas fontes consultadas.':'Nenhum resultado encontrado entre os materiais disponíveis para sua conta.';
- return `${ai}<p>${summary}</p>${results.map(r=>{const url=passiveLink(r.url);return `<article class="fi-result"><h3>${esc(r.title)}</h3>${r.readOnly?'<span class="fi-readonly">Inativo — somente consulta</span>':''}<p>${esc(r.snippet)}</p>${url?`<a href="${esc(url)}"${url.startsWith('https:')?' target="_blank" rel="noopener noreferrer"':''}>Abrir material para consulta</a>`:'<p class="fi-muted">Somente a descrição está disponível neste resultado.</p>'}</article>`;}).join('')}${unique.map(note=>`<p class="fi-muted">${esc(note)}</p>`).join('')}`;
+ const visible=results.slice(0,limit),total=Number.isSafeInteger(data?.totalMatches)?data.totalMatches:results.length;
+ const summary=results.length?`Exibindo ${visible.length} de ${total} resultado(s) autorizado(s).`:isSearchPartial(data)?'Não houve resultados nas fontes consultadas.':'Nenhum resultado encontrado entre os materiais disponíveis para sua conta.';
+ const more=visible.length<results.length?'<button type="button" data-fi-more>Ver mais resultados</button>':'';
+ return `<p role="status">${summary}</p>${visible.map(r=>{const url=passiveLink(r.url),source=Object.hasOwn(sourceNames,r.source)?sourceNames[r.source]:'';return `<article class="fi-result" tabindex="-1"><h3>${esc(r.title)}</h3>${source?`<p class="fi-muted">${source}</p>`:''}${r.readOnly?'<span class="fi-readonly">Inativo — somente consulta</span>':''}<p>${esc(r.snippet)}</p>${url?`<a href="${esc(url)}"${url.startsWith('https:')?' target="_blank" rel="noopener noreferrer"':''}>Abrir material para consulta</a>`:'<p class="fi-muted">Somente a descrição está disponível neste resultado.</p>'}</article>`;}).join('')}${more}${unique.map(note=>`<p class="fi-muted">${esc(note)}</p>`).join('')}`;
 }
 function renderMonthly(result){
  if(result.status!=='complete')return `<p role="status">${esc(({incomplete:'Ainda faltam dados consolidados desta competência. Não foram estimados valores ausentes.',disabled:'A síntese por IA aguarda configuração.',budget_exhausted:'O orçamento de IA disponível foi atingido.',running:'Esta análise já está em processamento.',lease_expired:'A janela desta execução terminou. Consulte as análises ou tente novamente.',failed:'Não foi possível gerar a análise. A última versão concluída foi preservada.'})[result.status]||'Nenhuma análise disponível.')}</p>`;
@@ -53,15 +56,25 @@ function renderMonthly(result){
 export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{},profile={},pilot=false,searchOnly=false}){
  host.innerHTML=renderFiControl({profile,pilot,searchOnly});let disposed=false,searchGeneration=0,monthlyGeneration=0;
  const current=()=>!disposed&&isCurrent(),search=host.querySelector('[data-fi-search]'),status=host.querySelector('[data-fi-status]');
+ const resultHost=host.querySelector('[data-fi-results]');
+ let found=null,visible=pageSize;
+ resultHost?.addEventListener('click',event=>{
+  if(!current()||!found||!event.target.closest('[data-fi-more]'))return;
+  const firstNew=visible;
+  visible+=pageSize;
+  resultHost.innerHTML=renderFiResults(found,visible);
+  resultHost.querySelectorAll('.fi-result')[firstNew]?.focus();
+ });
  host.querySelectorAll('[data-fi-nav]').forEach(button=>button.addEventListener('click',()=>{if(current())onNavigate(button.dataset.fiNav);}));
  search?.addEventListener('submit',async event=>{
   event.preventDefault();if(!current())return;const ticket=++searchGeneration,button=search.querySelector('button');button.disabled=true;status.textContent='Pesquisando conteúdos autorizados…';
-  try{const result=await request('search',{query:search.elements.query.value});if(!current()||ticket!==searchGeneration)return;host.querySelector('[data-fi-results]').innerHTML=renderFiResults(result);status.textContent=result.schedule?'':isSearchPartial(result)?'Pesquisa parcial. Algumas fontes não puderam ser consultadas.':result.ai?.status==='complete'?'Pesquisa concluída com síntese por IA.':'Pesquisa concluída.';}
+  found=null;visible=pageSize;resultHost.replaceChildren();
+  try{const result=await request('search',{query:search.elements.query.value});if(!current()||ticket!==searchGeneration)return;found=result;resultHost.innerHTML=renderFiResults(found,visible);status.textContent=result.schedule?'':isSearchPartial(result)?'Pesquisa parcial. Algumas fontes não puderam ser consultadas.':'Pesquisa concluída.';}
   catch(error){if(current()&&ticket===searchGeneration)status.textContent=['FI_DAILY_REQUEST_LIMIT','FI_SOURCE_READ_BUDGET'].includes(error.code||error.message)?'O limite diário de consultas foi atingido. Tente novamente amanhã.':'Não foi possível pesquisar. Confira sua conexão e tente novamente.';}
   finally{if(current()&&ticket===searchGeneration)button.disabled=false;}
  });
  const monthly=host.querySelector('[data-fi-monthly]'),target=host.querySelector('[data-fi-monthly-results]');
  monthly?.addEventListener('submit',async event=>{event.preventDefault();if(!current())return;const ticket=++monthlyGeneration,button=monthly.querySelector('[type="submit"]'),history=host.querySelector('[data-fi-history]');button.disabled=true;history.disabled=true;target.textContent='Preparando a análise mensal…';try{const result=await request('monthly.generate',{period:monthly.elements.period.value,requestId:crypto.randomUUID()});if(current()&&ticket===monthlyGeneration)target.innerHTML=renderMonthly(result);}catch{if(current()&&ticket===monthlyGeneration)target.textContent='Não foi possível consultar os indicadores desta competência.';}finally{if(current()&&ticket===monthlyGeneration){button.disabled=false;history.disabled=false;}}});
  host.querySelector('[data-fi-history]')?.addEventListener('click',async()=>{if(!current())return;const ticket=++monthlyGeneration,submit=monthly.querySelector('[type="submit"]'),history=host.querySelector('[data-fi-history]');submit.disabled=true;history.disabled=true;target.textContent='Consultando análises…';try{const rows=await request('monthly.list',{});if(current()&&ticket===monthlyGeneration)target.innerHTML=rows.length?rows.map(r=>renderMonthly(r.result)).join(''):'<p>Nenhuma análise mensal concluída.</p>';}catch{if(current()&&ticket===monthlyGeneration)target.textContent='Não foi possível consultar as análises.';}finally{if(current()&&ticket===monthlyGeneration){submit.disabled=false;history.disabled=false;}}});
- return ()=>{disposed=true;searchGeneration++;monthlyGeneration++;host.replaceChildren();};
+ return ()=>{disposed=true;found=null;searchGeneration++;monthlyGeneration++;host.replaceChildren();};
 }

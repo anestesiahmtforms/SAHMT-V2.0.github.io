@@ -67,6 +67,21 @@ test('general catalogue honors the active FB grant even without a legacy FA docu
  assert.deepEqual((await rows(['GENERAL','RESTRICTED'])).map(r=>[r.id,r.active]),[['FB.scopedDocuments.general',false]]);
  assert.deepEqual(await rows([]),[]);
 });
+test('management activities require current permission and formal involvement',async()=>{
+ const profile={...sourceProfile,permissions:{managementActivityWrite:true}};
+ const fa=store({users:[{...profile,id:actor.uid,uid:actor.uid}]});
+ const task={contextType:'MANAGEMENT_AREA',visibility:'AREA',title:'Revisão de material',description:'Conferir protocolos'};
+ const rows=[
+  {...task,id:'own',createdByUid:profile.uid},
+  {...task,id:'assigned',createdByUid:'other',responsibleUids:[profile.uid]},
+  {...task,id:'participant',createdByUid:'other',participantUids:[profile.uid]},
+  {...task,id:'mention',createdByUid:'other',description:profile.displayName},
+  {...task,id:'deleted',createdByUid:profile.uid,deleted:true}
+ ];
+ const fb=store({users:[profile],evaluationRuntime:fbRuntime,activities:rows});
+ const provider=createFiSourceProvider({stores:{FA:fa,FB:fb}});
+ assert.deepEqual((await provider.searchRecords(actor)).map(r=>r.id).sort(),['FB.activities.assigned','FB.activities.own','FB.activities.participant']);
+});
 test('an unavailable training collection does not discard authorized documents',async()=>{
  const profile={...sourceProfile,permissions:{...sourceProfile.permissions,trainingsRead:true}};
  const fa=store({users:[{...profile,id:actor.uid,uid:actor.uid}],documentAccessEmails:documentAccess(['GENERAL'])});

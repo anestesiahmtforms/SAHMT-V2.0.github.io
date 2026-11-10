@@ -32,3 +32,14 @@ test('personal schedule answers use a validated link to the selected date',()=>{
  assert.match(unlinked,/sigla ativa vinculada/);
  assert.doesNotMatch(unlinked,/href=/);
 });
+test('search shows the total and reveals later matches from the same response',()=>{
+ const results=Array.from({length:23},(_,i)=>({id:String(i),source:'FB',title:'Material '+(i+1),snippet:'Trecho'}));
+ const first=renderFiResults({results,totalMatches:23});
+ assert.match(first,/Exibindo 20 de 23/);
+ assert.match(first,/data-fi-more/);
+ assert.doesNotMatch(first,/Material 21</);
+ const more=renderFiResults({results,totalMatches:23},40);
+ assert.match(more,/Exibindo 23 de 23/);
+ assert.match(more,/Material 23</);
+ assert.doesNotMatch(more,/data-fi-more/);
+});

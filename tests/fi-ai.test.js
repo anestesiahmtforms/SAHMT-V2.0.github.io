@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-const mod = await import('../worker-fi-control/search.js').catch(() => ({}));
-const {createFiAiService} = mod;
+import {createFiSearch} from '../worker-fi-control/search.js';
+import {createMonthlyService} from '../worker-fi-control/monthly.js';
+import {createAiBudget} from '../worker-fi-control/fi-ai-budget.js';
 const actor = {uid:'u1',profile:{active:true,access:true},memberCategories:['EFETIVO']};
 const admin = {...actor,profile:{...actor.profile,permissions:{admin:true}}};
 const record = (id, extra={}) => ({id,schemaVersion:1,source:'FC',kind:'general',audience:'GENERAL',active:true,title:`Protocolo ${id}`,text:'Protocolo segurança anestesia',url:'/app.html#protocolo',version:'1',sourceAccess:'ACTIVE',...extra});
@@ -13,18 +14,19 @@ function memoryStore() {
 const snapshot={schemaVersion:1,source:'FC',units:['a'],period:'2026-10',signature:'fc-v1',complete:true,missingSources:[],updatedAt:1793577600000,indicators:[{id:'i1',label:'Adesão',value:82,unit:'%',target:90,previous:80}],technicalMetrics:[]};
 const plan={summary:'Adesão abaixo da meta.',actions:[{priority:'HIGH',ownerSuggested:'Coordenação',dueSuggested:'2026-11-30',evidence:['i1'],successMetric:'Adesão ≥90%',action:'Revisar treinamento.'}],technicalRecommendations:[]};
 function setup({records=[record('public')],config={},provider,clock=()=>1794225600000,snap=snapshot}={}){
- assert.equal(typeof createFiAiService,'function','AI service must exist');
  const store=memoryStore();let calls=[];
- const modelProvider=provider??{enabled:true,async generate(input){calls.push(input);return {data:input.kind==='monthly'?plan:{answer:'Protocolo disponível.',citations:['public']},usage:{inputTokens:100,outputTokens:100}};}};
+ const modelProvider=provider??{enabled:true,async generate(input){calls.push(input);return {data:plan,usage:{inputTokens:100,outputTokens:100}};}};
  const sourceProvider={searchRecords:async()=>records,monthlySnapshot:async()=>snap};
- return {store,calls,service:createFiAiService({store,sourceProvider,modelProvider,now:clock,config:{monthlyBudgetMicros:100000,...config}})};
+ const search=createFiSearch({sourceProvider});
+ const monthly=createMonthlyService({store,sourceProvider,modelProvider,now:clock,config:{monthlyBudgetMicros:100000,...config}});
+ return {store,calls,service:{search,monthly}};
 }
-test('filters administrative, third party, notification author, unknown and ambiguous records before search/AI',async()=>{
+test('filters administrative, third party, notification author, unknown and ambiguous records before search',async()=>{
  const records=[record('public'),record('restricted',{kind:'document',audience:'RESTRICTED',category:'Documentos administrativos',sourceAccess:'EXPLICIT',sourceAllowedUids:['u1']}),record('legacy',{kind:'document',category:'Organograma',sourceAccess:'EXPLICIT',sourceAllowedUids:['u1']}),record('own',{kind:'operational',audience:'INVOLVED',authorUid:'u1'}),record('other',{kind:'operational',audience:'INVOLVED',authorUid:'u2',text:'Protocolo u1'}),record('notice',{kind:'notification',audience:'INVOLVED',authorUid:'u1',recipientUids:['u2']}),record('ambiguous',{kind:'operational',audience:'INVOLVED',participantUids:['u1'],identityAmbiguous:true}),record('unknown',{kind:'unknown'})];
  const {service,calls}=setup({records});
  const result=await service.search({...admin,memberCategories:['ADMINISTRADOR']},{query:'protocolo',uid:'u2',memberCategories:['EFETIVO']});
  assert.deepEqual(result.results.map(r=>r.id).sort(),['own','public']);
- assert.deepEqual(calls[0].context.map(r=>r.id).sort(),['public']);
+ assert.equal(calls.length,0);
  const effective=await service.search(actor,{query:'protocolo'});
  assert.deepEqual(effective.results.map(r=>r.id).sort(),['legacy','own','public','restricted']);
 });
@@ -38,23 +40,33 @@ test('inactive documents and inactive folders remain discoverable read-only with
  const {service}=setup({records:[record('inactive',{kind:'document',category:'Protocolos',active:false}),record('folder',{kind:'document',category:'Protocolos',folderActive:false})],provider:{enabled:false}});
  const result=await service.search(actor,{query:'protocolo'});assert.equal(result.results.length,2);assert.ok(result.results.every(r=>r.readOnly===true&&r.actionsAllowed===false));
 });
-test('conventional search survives zero budget and provider disabled',async()=>{const {service,calls}=setup({config:{monthlyBudgetMicros:0}});const r=await service.search(actor,{query:'segurança'});assert.equal(r.results.length,1);assert.equal(r.ai.status,'budget_exhausted');assert.equal(calls.length,0);});
+test('search returns matches without an AI call or AI budget reservation',async()=>{
+ const {service,calls,store}=setup({config:{monthlyBudgetMicros:0}});
+ const result=await service.search(actor,{query:'segurança'});
+ assert.equal(result.results.length,1);assert.equal(calls.length,0);assert.equal(store.data.size,0);
+});
 test('search prioritizes Regimento in the title and ignores incidental Portuguese words',async()=>{
  const records=[record('a',{title:'Ata da reunião',text:'Discussão sobre o regimento'}),record('b',{title:'Treinamento da equipe',text:'Ações de melhoria'}),record('c',{title:'Regimento Interno',text:'Regimento interno'}),record('d',{title:'Regimento',text:'Regimento'})];
  const {service}=setup({records,provider:{enabled:false}});
  assert.deepEqual((await service.search(actor,{query:'Regimento'})).results.map(r=>r.id),['d','c','a']);
  assert.deepEqual((await service.search(actor,{query:'Me mostre os regimentos'})).results.map(r=>r.id),['c','d','a']);
 });
-test('a failed AI budget check keeps authorized search results',async()=>{
- const service=createFiAiService({store:{transaction:async()=>{throw Error('OFFLINE');}},sourceProvider:{searchRecords:async()=>[record('public')]},modelProvider:{enabled:true,generate:()=>assert.fail('Model called without a reservation')},config:{monthlyBudgetMicros:100000}});
- const result=await service.search(actor,{query:'protocolo'});
- assert.equal(result.ai.status,'unavailable');assert.equal(result.results.length,1);
+test('search includes every authorized match and ranks complete matches above partial words',async()=>{
+ const records=Array.from({length:25},(_,i)=>record('doc-'+i));
+ records.push(record('exact',{title:'Protocolo segurança anestesia',text:'Protocolo segurança anestesia'}));
+ records.push(record('other-topic',{title:'Ficha de segurança',text:'Ficha de segurança'}));
+ const {service}=setup({records});
+ const result=await service.search(actor,{query:'protocolo segurança anestesia'});
+ assert.equal(result.totalMatches,27);assert.equal(result.results.length,27);
+ assert.equal(result.results[0].id,'exact');assert.equal(result.results.at(-1).id,'other-topic');
+ assert.equal((await service.search(actor,{query:'anest'})).results.length,26);
 });
-test('unknown citations are rejected without publishing a generated answer',async()=>{const {service}=setup({provider:{enabled:true,generate:async()=>({data:{answer:'secret',citations:['hidden']},usage:{inputTokens:10,outputTokens:10}})}});const r=await service.search(actor,{query:'protocolo'});assert.equal(r.ai.status,'unavailable');assert.equal(JSON.stringify(r).includes('secret'),false);});
 test('parallel reservations cannot exceed budget and uncertain failures retain charged reservation',async()=>{
- let calls=0;const {service,store}=setup({config:{monthlyBudgetMicros:10000},provider:{enabled:true,generate:async()=>{calls++;throw Error('timeout');}}});
- await Promise.all(Array.from({length:10},()=>service.search(actor,{query:'protocolo'})));
- assert.ok(calls>0&&calls<10);const budget=await store.get('fiAiBudget','2026-11');assert.ok(budget.committedMicros<=10000&&budget.committedMicros>0);
+ const store=memoryStore(),budget=createAiBudget({store,now:()=>1794225600000,config:{monthlyBudgetMicros:10000}});
+ const reservations=await Promise.all(Array.from({length:10},()=>budget.reserve(actor.uid)));
+ assert.equal(reservations.filter(Boolean).length,1);
+ await budget.settle(reservations.find(Boolean),undefined);
+ const ledger=await store.get('fiAiBudget','2026-11');assert.ok(ledger.committedMicros<=10000&&ledger.committedMicros>0);
 });
 test('monthly requires admin and rejects incomplete data instead of treating missing as zero',async()=>{
  const {service,calls}=setup({snap:{...snapshot,complete:false,missingSources:['FH']}});

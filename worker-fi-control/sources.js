@@ -4,7 +4,7 @@ import {QMENTUM_INDICATORS} from '../src/qmentum-catalog.js';
 import {isCurrentMessage} from '../communication/domain.js';
 import {SAHMT_START_ISO} from '../worker-indicators/sahmt-performance-period.js';
 import {ownSchedulePositions,validScheduleSigla} from './personal-schedule.js';
-export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','evaluationRuntime'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
+export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','activities','evaluationRuntime'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
 const FB_CATALOG_QUERY_LIMIT=301;
 const admin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const permission=(p,...names)=>admin(p)||names.some(n=>p?.permissions?.[n]===true);
@@ -52,7 +52,7 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   catch(error){unavailable(`FB.${collection}`,error);return [];}
  }
  async function documents(actor){return scope('FB',async fb=>{
-  const p=await identity('FB',actor);if(!p||!permission(p,'managementRead','documentsManage','qualityManage','trainingsRead','trainingsManage'))return [];
+  const p=await identity('FB',actor);if(!p||!permission(p,'managementRead','documentsManage','qualityManage','trainingsRead','trainingsManage','managementActivityWrite'))return [];
   const runtime=await fb.get('evaluationRuntime','independentFbCutover');
   if(runtime?.status!=='ACTIVE'||runtime.release!=='fb-independent-20261022-v1')return [];
   const fa=stores.FA;if(!fa)return [];const gate=await fa.get('users',actor.uid);
@@ -119,12 +119,27 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
     rows.push(record('FB','learningActivities',d,{kind:'general',audience:'GENERAL',active:d.status==='ACTIVE',sourceAllowedUids:[actor.uid],text:compact(d.title,d.description,d.category),url:preview(d.resourceUrl)}));
    }
   }
+  if(permission(p,'managementRead','managementActivityWrite')&&permission(gate,'managementRead','managementActivityWrite')){
+   const activities=new Map();
+   const relations=[eq('createdByUid',p.uid),...['responsibleUids','participantUids'].map(field=>({field,op:'ARRAY_CONTAINS',value:p.uid}))];
+   for(const relation of relations){
+    try{for(const activity of await fb.list('activities',[relation],101))activities.set(activity.id,activity);}
+    catch(error){unavailable('FB.activities',error);}
+   }
+   for(const activity of activities.values()){
+    if(!own(activity)||activity.contextType!=='MANAGEMENT_AREA'||activity.visibility!=='AREA'||typeof activity.title!=='string')continue;
+    const authored=activity.createdByUid===p.uid,assigned=['responsibleUids','participantUids'].some(field=>Array.isArray(activity[field])&&activity[field].includes(p.uid));
+    if(!authored&&!assigned)continue;
+    rows.push(record('FB','activities',activity,{kind:'operational',audience:'INVOLVED',sourceAllowedUids:[actor.uid],authorUid:authored?actor.uid:'',participantUids:assigned?[actor.uid]:[],text:compact(activity.description,activity.status,activity.priority,activity.dueAt),url:'#/management'}));
+   }
+  }
   coverage.push({source:'FB.documents',status:'CONTENT_NOT_INDEXED',detail:'Pesquisa em títulos e descrições, incluindo materiais inativos; o corpo integral dos arquivos ainda não foi indexado.'});return rows;
  });}
  async function operational(source,collection,actor,required,fields,arrayFields,route){return scope(source,async store=>{
   const p=await identity(source,actor);if(!p||!permission(p,...required))return [];
   const rows=new Map(),add=items=>items.forEach(r=>rows.set(r.id,r));
   add(await store.list(collection,[eq('createdByUid',p.uid)],101));
+  if(source==='FG')add(await store.list(collection,[eq('responsibleUid',p.uid)],101));
   let sigla=typeof p.sigla==='string'?p.sigla.trim().toUpperCase():'';
   if(/^(?:[A-Z]{2}|L2)$/.test(sigla)){
    const members=await store.list('users',[eq('sigla',sigla)],3);
@@ -145,9 +160,11 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   const result=[];
   for(const r of rows.values()){
    if(!own(r)||r.anonymous===true)continue;
-   const authored=r.createdByUid===p.uid,participates=!!sigla&&(fields.some(f=>r[f]===sigla)||arrayFields.some(f=>Array.isArray(r[f])&&r[f].includes(sigla)))||!!formalName&&r.substitute===formalName;
+   const authored=r.createdByUid===p.uid,participates=source==='FG'&&r.responsibleUid===p.uid||!!sigla&&(fields.some(f=>r[f]===sigla)||arrayFields.some(f=>Array.isArray(r[f])&&r[f].includes(sigla)))||!!formalName&&r.substitute===formalName;
    if(!authored&&!participates)continue;
-   result.push(record(source,collection,r,{kind:'operational',audience:'INVOLVED',sourceAllowedUids:[actor.uid],authorUid:authored?actor.uid:'',participantUids:participates?[actor.uid]:[],title:compact(source==='FJ'?'Evento operacional':source==='FG'?'Checklist':'Etiqueta',r.eventType,r.date),text:compact(r.date,r.eventType,r.description,r.condition,r.stationName,r.status),url:route}));
+   const details=source==='FJ'?[r.eventType,r.description,r.memberSigla,r.scheduleSigla,r.substitute,r.shift,r.memberStatus]:
+    source==='FG'?[r.stationName,r.stationId,r.condition,r.occurrence]:[r.type,r.procedureCode,r.insurance];
+   result.push(record(source,collection,r,{kind:'operational',audience:'INVOLVED',sourceAllowedUids:[actor.uid],authorUid:authored?actor.uid:'',participantUids:participates?[actor.uid]:[],title:compact(source==='FJ'?'Evento operacional':source==='FG'?'Checklist':'Etiqueta',r.eventType||r.type,r.date),text:compact(r.date,...details,r.status),url:route}));
   }
   return result;
  });}
