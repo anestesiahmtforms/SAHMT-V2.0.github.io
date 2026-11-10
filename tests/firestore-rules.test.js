@@ -105,6 +105,14 @@ test('documentos novos exigem grupo confiável, módulo autorizado, perfil ativo
   await assertFails(getDocs(collection(general, 'scopedDocuments')));
   await assertSucceeds(getDocs(query(collection(both, 'scopedDocuments'), where('active', '==', true), where('audienceGroup', 'in', ['GENERAL', 'RESTRICTED']))));
   await assertSucceeds(getDocs(collection(admin, 'scopedDocuments')));
+  const setPolicy = disabled => testEnvironment.withSecurityRulesDisabled(context =>
+    setDoc(doc(context.firestore(), 'runtimePolicy/folders'), {schemaVersion: 1, revision: 1, disabled}));
+  await setPolicy([]);
+  await assertSucceeds(getDocs(list(['GENERAL'])));
+  await assertSucceeds(getDocs(collection(admin, 'scopedDocuments')));
+  await setPolicy(['gestao/area-documents']);
+  await assertFails(getDocs(list(['GENERAL'])));
+  await assertFails(getDoc(doc(admin, 'scopedDocuments', 'scoped-general-01')));
 });
 
 test('lista de e-mails é privada e identidade vem do token Google verificado, sem confiar no perfil', async () => {
