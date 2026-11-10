@@ -37,12 +37,11 @@ export function createFiActorVerifier({store,verifySession=verifyFaSession,fetch
   if(document.name!==path||gate.uid!==identity.uid||email(gate.email)!==identity.email||gate.active!==true||gate.access!==true)throw fiError('FI_FORBIDDEN',403);
   const link=await store.get('fiAdminIdentityLinks',identity.uid);
   if(link?.active!==true||link.faUid!==identity.uid||typeof link.fiUid!=='string'||email(link.email)!==identity.email)throw fiError('FI_FORBIDDEN',403);
-  const localProfile=await store.get('users',link.fiUid),managed=await store.get('fiAdminUsers',identity.uid);
+  const assignmentId=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity.email)))).toString('hex');
+  const [localProfile,managed,assignment]=await store.getMany([['users',link.fiUid],['fiAdminUsers',identity.uid],['memberCategoryAssignments',assignmentId]]);
   if(localProfile?.uid!==link.fiUid||email(localProfile.email)!==identity.email||managed&&(managed.uid!==identity.uid||email(managed.email)!==identity.email))throw fiError('FI_FORBIDDEN',403);
   const profile=managed?{...localProfile,...managed,uid:link.fiUid,faUid:identity.uid}:localProfile;
   if(profile.active!==true||profile.access!==true)throw fiError('FI_FORBIDDEN',403);
-  const assignmentId=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity.email)))).toString('hex');
-  const assignment=await store.get('memberCategoryAssignments',assignmentId);
   const categories=assignment?.schemaVersion===1&&assignment.identityStatus==='LINKED'&&assignment.uid===identity.uid&&email(assignment.email)===identity.email&&Array.isArray(assignment.memberCategories)?assignment.memberCategories:[];
   return {uid:identity.uid,fiUid:link.fiUid,email:identity.email,profile,identityLink:link,memberCategories:categories};
  };

@@ -8,6 +8,8 @@ A busca consulta diretamente as fontes do Firestore, sem chamar a OpenAI. Cobre 
 
 O índice privado da FI guarda apenas texto dos materiais HTML publicados, em blocos compactos. A busca valida a edição e a autorização em FB antes de devolver cada resultado. Após publicar novas edições, execute `node scripts/index-fi-html-materials.mjs` para verificar a extração e `node scripts/index-fi-html-materials.mjs --apply` para atualizar o índice. O indexador lê os blocos do material e não consulta gabaritos ou dados de participação.
 
+Os títulos e as descrições do catálogo de Gestão são renovados a cada seis horas. O catálogo seleciona os candidatos e o Worker verifica os registros e as permissões atuais na origem. Para atualizar o catálogo imediatamente, execute `node scripts/refresh-fi-catalogue.mjs`.
+
 A análise mensal consulta resultados revisados ou fechados do QMENTUM no FC, conforme o vínculo atual do administrador com cada unidade. Com dados ausentes, o serviço informa a cobertura incompleta. A avaliação técnica usa, quando disponíveis, os registros agregados da rotina de consolidação em FD e distingue dias confirmados, parciais e sem conclusão registrada. Isso cobre a rotina de consolidação. A medição de carregamento, latência de tela e falhas de sincronização de outros módulos exige fontes adicionais. Os planos são propostas para revisão.
 
 ## Ativação

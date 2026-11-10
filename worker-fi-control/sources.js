@@ -7,6 +7,7 @@ import {ownSchedulePositions,validScheduleSigla} from './personal-schedule.js';
 import {trainingAccessPath,trainingPathAllowed} from '../src/html-training-folders.js';
 import {gunzipSync} from 'node:zlib';
 import {Buffer} from 'node:buffer';
+import {catalogCollections,catalogIndexId} from './catalog-index.js';
 export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','activities','evaluationRuntime','htmlTrainings','htmlTrainingSettings'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
 const FB_CATALOG_QUERY_LIMIT=301;
 let cachedHtmlIndex;
@@ -55,16 +56,36 @@ export function createFiSourceProvider({stores,indexStore,resolveIdentity,now=Da
  }
  const record=(source,collection,row,details)=>({schemaVersion:1,id:`${source}.${collection}.${row.id}`,source,active:row.active!==false,title:row.title||'',text:'',url:'#/home',version:version(row),sourceAccess:'EXPLICIT',...details});
  function unavailable(source,error){
-  const detail=error.code==='FI_SOURCE_READ_BUDGET'?'Uma fonte atingiu o limite diário de consulta.':error.code==='FI_STORE_QUERY_LIMIT'?'Uma fonte excedeu a quantidade que a pesquisa pode verificar nesta versão.':undefined;
+  const labels={FB:'Gestão',FF:'Comunicados',FG:'Checklist',FH:'Etiquetas',FJ:'Escala e Eventos'};
+  const label=labels[source.split('.')[0]];
+  const detail=error.code==='FI_SOURCE_READ_BUDGET'?(label?`A fonte ${label} atingiu o limite diário de consulta.`:'Uma fonte atingiu o limite diário de consulta.'):error.code==='FI_STORE_QUERY_LIMIT'?'Uma fonte excedeu a quantidade que a pesquisa pode verificar nesta versão.':undefined;
   coverage.push({source,status:'UNAVAILABLE',...(detail?{detail}:{})});
  }
  async function scope(source,fn){
   if(!stores[source]){coverage.push({source,status:'NOT_CONFIGURED'});return [];}
   try{const value=await fn(stores[source]);coverage.push({source,status:'AVAILABLE'});return value;}catch(error){unavailable(source,error);return [];}
  }
- async function catalogList(fb,collection){
-  try{return await fb.list(collection,[],FB_CATALOG_QUERY_LIMIT);}
+ async function catalogList(fb,collection,catalogue,score){
+  try{
+   if(!catalogue)return await fb.list(collection,[],FB_CATALOG_QUERY_LIMIT);
+   const indexed=catalogue[collection];
+   const ids=new Set(indexed.filter(row=>score(row)>0).map(row=>row.id));
+   if(collection==='scopedDocuments'){
+    for(const row of indexed){
+     if(row.id.startsWith('pdf_evaluation_')&&ids.has(row.id.slice(4)))ids.add(row.id);
+    }
+   }
+   const keys=[...ids];
+   const rows=await fb.getMany(keys.map(id=>[collection,id]));
+   return rows.flatMap((row,i)=>row?[{...row,id:keys[i]}]:[]);
+  }
   catch(error){unavailable(`FB.${collection}`,error);return [];}
+ }
+ async function currentCatalogue(score){
+  if(!indexStore||typeof score!=='function')return null;
+  const snapshot=await indexStore.get('fiSearchRecords',catalogIndexId).catch(()=>null);
+  if(snapshot?.schemaVersion!==1||!Number.isSafeInteger(snapshot.updatedAt)||now()-snapshot.updatedAt>18*60*60*1000)return null;
+  return catalogCollections.every(collection=>Array.isArray(snapshot.sections?.[collection])&&snapshot.sections[collection].length<FB_CATALOG_QUERY_LIMIT)?snapshot.sections:null;
  }
  async function htmlMaterials(fb,actor,profile,gate,groups,faGroups,effective,score){
   if(!indexStore||typeof score!=='function')return [];
@@ -98,22 +119,28 @@ export function createFiSourceProvider({stores,indexStore,resolveIdentity,now=Da
   if(runtime?.status!=='ACTIVE'||runtime.release!=='fb-independent-20261022-v1')return [];
   const fa=stores.FA;if(!fa)return [];const gate=await fa.get('users',actor.uid);
   if(!gate||gate.active!==true||gate.access!==true||String(gate.email||'').toLowerCase()!==actor.email)return [];
-  const rows=[];
+  const rows=[],catalogue=await currentCatalogue(score);
   if(permission(p,'managementRead','documentsManage','qualityManage')&&permission(gate,'managementRead','documentsManage','qualityManage')){
    const assignmentId=actor.memberCategories?.includes('EFETIVO')?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(actor.email)))),v=>v.toString(16).padStart(2,'0')).join(''):'';
-   const [access,areas,restrictedGrants]=await Promise.all([
+   const [access,restrictedGrants]=await Promise.all([
     fb.get('documentAccessEmails',actor.email),
-    catalogList(fb,'managementAreas'),
     assignmentId?fa.getMany([['documentAccessEmails',actor.email],['userCategories',assignmentId]]).catch(error=>{
      unavailable('FB.restrictedDocuments',error);return [];
     }):[]
    ]);
    const [faAccess,assignment]=restrictedGrants;
    const effective=assignment?.schemaVersion===1&&assignment.identityStatus==='LINKED'&&assignment.uid===actor.uid&&assignment.email===actor.email&&assignment.memberCategories?.includes('EFETIVO');
-   const groups=documentGroupsFromAccess(access,actor.email),faGroups=documentGroupsFromAccess(faAccess,actor.email),areaById=new Map(areas.map(area=>[area.id,area]));
+   const groups=documentGroupsFromAccess(access,actor.email),faGroups=documentGroupsFromAccess(faAccess,actor.email);
    rows.push(...await htmlMaterials(fb,actor,p,gate,groups,faGroups,effective,score));
-   for(const collection of ['documents','scopedDocuments']){
-   const docs=await catalogList(fb,collection);
+   const documentCollections=['documents','scopedDocuments'];
+   const documents=await Promise.all(documentCollections.map(collection=>catalogList(fb,collection,catalogue,score)));
+   const areaIds=[...new Set(documents.flat().map(row=>row.managementAreaId).filter(id=>typeof id==='string'&&id))];
+   const areas=await fb.getMany(areaIds.map(id=>['managementAreas',id])).catch(error=>{
+    unavailable('FB.managementAreas',error);return [];
+   });
+   const areaById=new Map(areas.flatMap((area,i)=>area?[[areaIds[i],{...area,id:areaIds[i]}]]:[]));
+   for(const [index,collection] of documentCollections.entries()){
+   const docs=documents[index];
    const authorized=new Map();
    for(const d of docs){
     if(d.deleted===true||d.trashed===true)continue;
@@ -150,11 +177,11 @@ export function createFiSourceProvider({stores,indexStore,resolveIdentity,now=Da
    }
   }
   if(permission(p,'trainingsRead','trainingsManage')&&permission(gate,'trainingsRead','trainingsManage')){
-   for(const d of await catalogList(fb,'trainings')){
+   for(const d of await catalogList(fb,'trainings',catalogue,score)){
     if(d.deleted===true||d.trashed===true)continue;
     rows.push(record('FB','trainings',d,{kind:'general',audience:'GENERAL',sourceAllowedUids:[actor.uid],text:compact(d.title,d.description),url:''}));
    }
-   for(const d of await catalogList(fb,'learningActivities')){
+   for(const d of await catalogList(fb,'learningActivities',catalogue,score)){
     if(d.deleted===true||d.trashed===true||d.showInTraining!==true||!['ACTIVE','INACTIVE'].includes(d.status))continue;
     const audience=d.audienceType==='ALL'&&d.audienceValue===''||d.audienceType==='ROLE'&&d.audienceValue===p.role||d.audienceType==='USER'&&d.audienceValue===p.uid;
     if(!audience)continue;

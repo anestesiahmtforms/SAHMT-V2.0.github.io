@@ -99,6 +99,24 @@ test('HTML search validates the current version and audience and includes disabl
  assert.deepEqual(rows.map(row=>[row.id,row.folderActive,row.url]),[['FB.htmlTrainings.open',false,'']]);
  assert.ok(provider.coverage.some(r=>r.source==='FB.htmlTrainings'&&r.status==='UNAVAILABLE'));
 });
+test('indexed search checks matching documents and their current access without scanning the whole catalogue',async()=>{
+ const documents=[
+  {id:'keep',title:'Protocolo A',category:'Protocolos',audienceGroup:'GENERAL',managementAreaId:'open'},
+  {id:'now-restricted',title:'Protocolo B',category:'Protocolos',audienceGroup:'RESTRICTED'},
+  {id:'unrelated',title:'Outra pauta',category:'Protocolos',audienceGroup:'GENERAL'}
+ ];
+ const indexStore=store({fiSearchRecords:[{id:'fb-catalogue',schemaVersion:1,updatedAt:100,sections:{documents:[],scopedDocuments:documents.map(({id,title})=>({id,title,text:''})),trainings:[],learningActivities:[]}}]});
+ const fa=store({users:[{...sourceProfile,id:actor.uid,uid:actor.uid}]});
+ const db=store({users:[sourceProfile],evaluationRuntime:fbRuntime,documentAccessEmails:documentAccess(['GENERAL']),scopedDocuments:documents,managementAreas:[{id:'open',active:true}]});
+ const lists=[],pointReads=[];
+ const fb={...db,list:(collection,...args)=>{lists.push(collection);return db.list(collection,...args);},
+  getMany:keys=>{pointReads.push(...keys);return db.getMany(keys);}};
+ const provider=createFiSourceProvider({stores:{FA:fa,FB:fb},indexStore,now:()=>110});
+ const result=await provider.searchRecords(actor,row=>row.title.startsWith('Protocolo')?1:0);
+ assert.deepEqual(result.map(r=>r.id),['FB.scopedDocuments.keep']);
+ assert.deepEqual(lists,['users','activities','activities','activities']);
+ assert.deepEqual(pointReads,[['scopedDocuments','keep'],['scopedDocuments','now-restricted'],['managementAreas','open']]);
+});
 test('an unavailable training collection does not discard authorized documents',async()=>{
  const profile={...sourceProfile,permissions:{...sourceProfile.permissions,trainingsRead:true}};
  const fa=store({users:[{...profile,id:actor.uid,uid:actor.uid}],documentAccessEmails:documentAccess(['GENERAL'])});

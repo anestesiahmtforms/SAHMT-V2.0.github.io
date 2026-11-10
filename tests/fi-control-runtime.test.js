@@ -10,7 +10,7 @@ import {addFiCutoverRules} from '../scripts/lib/fi-cutover-rules.js';
 
 const origin='https://anestesiahmtforms.github.io';
 const actor={uid:'fa-user',fiUid:'fi-user',email:'person@example.test',profile:{uid:'fi-user',email:'person@example.test',active:true,access:true}};
-function budgetStore(){const rows=new Map();let pending=Promise.resolve();return {transaction(fn){const next=pending.then(async()=>{const writes=[];const result=await fn({get:async(c,id)=>structuredClone(rows.get(c+'/'+id)||null),set:(c,id,value)=>writes.push([c+'/'+id,structuredClone(value)])});for(const [k,v]of writes)rows.set(k,v);return result;});pending=next.catch(()=>{});return next;}};}
+function budgetStore(){const rows=new Map();const get=async(c,id)=>structuredClone(rows.get(c+'/'+id)||null);let pending=Promise.resolve();return {transaction(fn){const next=pending.then(async()=>{const writes=[];const result=await fn({get,getMany:keys=>Promise.all(keys.map(([c,id])=>get(c,id))),set:(c,id,value)=>writes.push([c+'/'+id,structuredClone(value)])});for(const [k,v]of writes)rows.set(k,v);return result;});pending=next.catch(()=>{});return next;}};}
 const request=(body={action:'search',input:{query:'protocolo'}},headers={})=>new Request('https://fi.test/v1/control',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer proof',...headers},body:JSON.stringify(body)});
 test('FI rejects origin, authentication and unknown input before service execution',async()=>{
  let executions=0;
@@ -61,7 +61,8 @@ test('FI health exposes readiness without credentials or personal details and sc
 });
 test('actor verification uses current FA gate and explicit distinct FI identity, never browser fields',async()=>{
  let link={faUid:'fa-user',fiUid:'fi-user',email:actor.email,active:true};
- let managed=null;const store={get:async(c,id)=>c==='fiAdminIdentityLinks'?link:c==='users'?actor.profile:c==='fiAdminUsers'?managed:null};
+ let managed=null;const get=async c=>c==='fiAdminIdentityLinks'?link:c==='users'?actor.profile:c==='fiAdminUsers'?managed:null;
+ const store={get,getMany:keys=>Promise.all(keys.map(([c])=>get(c)))};
  const verify=createFiActorVerifier({store,verifySession:async()=>({uid:'fa-user',email:actor.email,emailVerified:true}),fetchImpl:async()=>Response.json({name:'projects/sahmt-17a16/databases/(default)/documents/users/fa-user',fields:{uid:{stringValue:'fa-user'},email:{stringValue:actor.email},active:{booleanValue:true},access:{booleanValue:true}}})});
  const result=await verify(request(),{});assert.equal(result.uid,'fa-user');assert.equal(result.fiUid,'fi-user');assert.equal(result.profile.uid,'fi-user');
  managed={uid:'fa-user',email:actor.email,active:false,access:true};await assert.rejects(verify(request(),{}),/FI_FORBIDDEN/);managed=null;

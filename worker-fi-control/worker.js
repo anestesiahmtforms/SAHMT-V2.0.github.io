@@ -8,6 +8,7 @@ import {createOpenAIProvider} from './ai-provider.js';
 import {createFiSourceProvider,SOURCE_COLLECTIONS} from './sources.js';
 import {createFiReadBudget,createFiRequestQuota} from './read-budget.js';
 import {parseScheduleQuestion} from './personal-schedule.js';
+import {refreshFiCatalogue} from './catalog-index.js';
 const origin='https://anestesiahmtforms.github.io';
 const isAdmin=actor=>actor.profile?.role==='administrador_app'||actor.profile?.permissions?.admin===true;
 const publicControlActions=new Set(['search','service.status']);
@@ -15,7 +16,8 @@ const pilotActions=new Set(['search','monthly.generate','monthly.list','service.
 const adminReadActions=new Set(['people.list','admin.users.list','admin.requests.list','admin.categories.list','admin.features.get','updates.users','updates.read']);
 export const pilotAccess=(actor,settings,action,now=Date.now())=>isAdmin(actor)&&pilotActions.has(action)&&
  settings?.schemaVersion===1&&settings.uid===actor.uid&&Number.isSafeInteger(settings.expiresAt)&&settings.expiresAt>now;
-const searchReadPlan=Object.fromEntries(Object.entries({FA:4,FB:2001,FJ:430,FH:210,FG:420,FF:105}).map(([alias,limit])=>[FI_PROJECTS[alias],limit]));
+const searchReadPlan=Object.fromEntries(Object.entries({FA:4,FB:650,FJ:430,FH:210,FG:420,FF:105}).map(([alias,limit])=>[FI_PROJECTS[alias],limit]));
+const catalogueCron='23 */6 * * *';
 function boundedFetch(fetchImpl){
  let calls=0;
  return (url,options)=>{
@@ -38,7 +40,7 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
   const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
   const quota=createFiRequestQuota({store:rt.store});
-  const readBudget=createFiReadBudget({store:rt.store});
+  const readBudget=createFiReadBudget({store:rt.store,projectLimits:{[FI_PROJECTS.FB]:14000}});
   async function boundedSearch(actor,input){
    await quota.consume(actor.uid);
    const question=parseScheduleQuestion(input.query);
@@ -102,6 +104,14 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
    return json({code},status);
   }
  },async scheduled(controller,env,ctx){
+  if(controller.cron===catalogueCron){
+   if(env.FI_CONTROL_ENABLED!=='true')return;
+   ctx.waitUntil((async()=>{
+    const rt=runtime(env,boundedFetch(fetchImpl));
+    await refreshFiCatalogue({source:rt.sources().FB,target:rt.store});
+   })().catch(()=>console.error(JSON.stringify({code:'FI_CATALOGUE_REFRESH_FAILED'}))));
+   return;
+  }
   if(env.FI_CONTROL_ENABLED!=='true'||env.FI_MONTHLY_ENABLED!=='true'||env.FI_AI_ENABLED!=='true'||!env.OPENAI_API_KEY||!env.FI_MONTHLY_ADMIN_UID)return;
   ctx.waitUntil((async()=>{
    const requestFetch=boundedFetch(fetchImpl),rt=runtime(env,requestFetch),uid=env.FI_MONTHLY_ADMIN_UID,link=await rt.store.get('fiAdminIdentityLinks',uid),local=link?.active===true?await rt.store.get('users',link.fiUid):null,managed=await rt.store.get('fiAdminUsers',uid),gate=await rt.sources().FA.get('users',uid);
