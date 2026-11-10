@@ -4,11 +4,11 @@ import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const retired=new Set(['firebase-project-auth-browser','management-project-auth-auto-connect','management-firebase-app','indicators-firebase-app','management-session-browser','management-lease-access','management-pilot-auth-diagnostics']);
 // Explicit browser-safe shared files only; backend implementations remain excluded.
-const sharedIndicators=new Set(['communication/domain.js']);
+const sharedBrowserModules=new Set(['communication/domain.js','server/folder-read-policy.js']);
 const visited=new Set(),pending=['src/main.js'];
 while(pending.length){
  const path=pending.pop();if(visited.has(path))continue;
- if((!path.startsWith('src/')&&!sharedIndicators.has(path))||path.includes('..'))throw Error('FA_RUNTIME_PATH_INVALID');
+ if((!path.startsWith('src/')&&!sharedBrowserModules.has(path))||path.includes('..'))throw Error('FA_RUNTIME_PATH_INVALID:'+path);
  visited.add(path);if(!path.endsWith('.js'))continue;
  const text=await readFile(resolve(root,path),'utf8');
  const imports=[...text.matchAll(/\bfrom\s*['"](\.[^'"]+)['"]|\bimport\s*(?:\(\s*)?['"](\.[^'"]+)['"]/g)];
