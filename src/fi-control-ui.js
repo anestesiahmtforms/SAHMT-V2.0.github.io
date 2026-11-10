@@ -9,14 +9,24 @@ const passiveLink=value=>{
 };
 function previousMonth(){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).formatToParts(new Date()),year=Number(parts.find(p=>p.type==='year').value),month=Number(parts.find(p=>p.type==='month').value);return new Date(Date.UTC(year,month-2,1)).toISOString().slice(0,7);}
 export function renderFiControl({profile={},pilot=false,searchOnly=false,showFolderAdmin=false}={}){
- const home='<button type="button" data-fi-nav="home">Voltar à Home</button>';
- if(!searchOnly&&!admin(profile))return `<section class="fi-control"><p>Acesso reservado a administradores.</p>${home}</section>`;
+ const back=searchOnly?'<button type="button" data-fi-nav="home">Voltar à Home</button>':'<button type="button" data-fi-nav="management-hub">Voltar à Governança</button>';
+ if(!searchOnly&&!admin(profile))return `<section class="fi-control"><p>Acesso reservado a administradores.</p>${back}</section>`;
  const title=searchOnly?'Buscar no ecossistema':'Central Administrativa';
  const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>':'';
  const search=searchOnly||pilot?`<section class="fi-control-panel"><h2>Pesquisar no app</h2><p>Digite palavras-chave ou faça uma pergunta, como “Qual minha posição na escala amanhã?”. A pesquisa respeita a disponibilidade das pastas e suas permissões.</p><form data-fi-search><label>O que você procura?<input name="query" type="search" maxlength="1000" required autocomplete="off" placeholder="Ex.: protocolo de segurança"></label><button type="submit">Pesquisar</button></form><p data-fi-status role="status" aria-live="polite"></p><div data-fi-results></div></section>`:'';
  const month=previousMonth();
  const monthly=!searchOnly?`<section class="fi-control-panel"><h2>Análise mensal e plano de ação</h2><p>Resultados dos indicadores e propostas para revisão da administração.</p><form data-fi-monthly><label>Mês de referência<input name="period" type="month" value="${month}" max="${month}" required></label><button type="submit">Gerar análise</button><button type="button" data-fi-history>Consultar análises</button></form><div data-fi-monthly-results aria-live="polite"></div></section>`:'';
- return `<section class="fi-control"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':searchOnly?'PESQUISA':'CENTRAL'}</span><h1>${title}</h1></div></header><nav class="fi-control-navigation" aria-label="Navegação">${navigation}${home}</nav>${!searchOnly&&!pilot&&showFolderAdmin?'<section class="fi-control-panel" data-fi-folder-admin></section>':''}${search}${monthly}</section>`;
+ const folders=!searchOnly&&!pilot&&showFolderAdmin?`<button type="button" class="fi-folder-launch" data-fi-folder-open aria-haspopup="dialog">
+  <svg class="fi-folder-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+  <span><strong>Controle de pastas</strong><small>Gerencie a disponibilidade de pastas e subpastas.</small></span>
+  <span aria-hidden="true">→</span>
+ </button>
+ <dialog class="fi-folder-dialog" data-fi-folder-dialog aria-labelledby="fi-folder-title">
+  <header class="fi-folder-header"><p>Central Administrativa</p><h2 id="fi-folder-title" tabindex="-1" autofocus>Controle de pastas</h2></header>
+  <div class="fi-folder-scroll" data-fi-folder-admin></div>
+  <footer class="fi-folder-footer"><button type="button" data-fi-nav="management-hub"><span aria-hidden="true">←</span> <span>Voltar</span></button></footer>
+ </dialog>`:'';
+ return `<section class="fi-control"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':searchOnly?'PESQUISA':'CENTRAL'}</span><h1>${title}</h1></div></header><nav class="fi-control-navigation" aria-label="Navegação">${navigation}${back}</nav>${folders}${search}${monthly}</section>`;
 }
 const isSearchPartial=data=>data?.coverage?.some(r=>r.status==='UNAVAILABLE')===true;
 function renderScheduleAnswer(schedule){
@@ -67,6 +77,14 @@ export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{
  });
  const folderHost=host.querySelector('[data-fi-folder-admin]');
  const cleanupFolders=folderHost?folderAdmin(folderHost,{request,isCurrent:current}):null;
+ const folderDialog=host.querySelector('[data-fi-folder-dialog]');
+ host.querySelector('[data-fi-folder-open]')?.addEventListener('click',()=>{
+  if(current()&&!folderDialog.open)folderDialog.showModal();
+ });
+ folderDialog?.addEventListener('cancel',event=>{
+  event.preventDefault();
+  if(current())onNavigate('management-hub');
+ });
  host.querySelectorAll('[data-fi-nav]').forEach(button=>button.addEventListener('click',()=>{if(current())onNavigate(button.dataset.fiNav);}));
  search?.addEventListener('submit',async event=>{
   event.preventDefault();if(!current())return;const ticket=++searchGeneration,button=search.querySelector('button');button.disabled=true;status.textContent='Pesquisando conteúdos autorizados…';
@@ -78,5 +96,5 @@ export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{
  const monthly=host.querySelector('[data-fi-monthly]'),target=host.querySelector('[data-fi-monthly-results]');
  monthly?.addEventListener('submit',async event=>{event.preventDefault();if(!current())return;const ticket=++monthlyGeneration,button=monthly.querySelector('[type="submit"]'),history=host.querySelector('[data-fi-history]');button.disabled=true;history.disabled=true;target.textContent='Preparando a análise mensal…';try{const result=await request('monthly.generate',{period:monthly.elements.period.value,requestId:crypto.randomUUID()});if(current()&&ticket===monthlyGeneration)target.innerHTML=renderMonthly(result);}catch{if(current()&&ticket===monthlyGeneration)target.textContent='Não foi possível consultar os indicadores desta competência.';}finally{if(current()&&ticket===monthlyGeneration){button.disabled=false;history.disabled=false;}}});
  host.querySelector('[data-fi-history]')?.addEventListener('click',async()=>{if(!current())return;const ticket=++monthlyGeneration,submit=monthly.querySelector('[type="submit"]'),history=host.querySelector('[data-fi-history]');submit.disabled=true;history.disabled=true;target.textContent='Consultando análises…';try{const rows=await request('monthly.list',{});if(current()&&ticket===monthlyGeneration)target.innerHTML=rows.length?rows.map(r=>renderMonthly(r.result)).join(''):'<p>Nenhuma análise mensal concluída.</p>';}catch{if(current()&&ticket===monthlyGeneration)target.textContent='Não foi possível consultar as análises.';}finally{if(current()&&ticket===monthlyGeneration){submit.disabled=false;history.disabled=false;}}});
- return ()=>{disposed=true;found=null;searchGeneration++;monthlyGeneration++;cleanupFolders?.();host.replaceChildren();};
+ return ()=>{disposed=true;found=null;searchGeneration++;monthlyGeneration++;cleanupFolders?.();if(folderDialog?.open)folderDialog.close();host.replaceChildren();};
 }

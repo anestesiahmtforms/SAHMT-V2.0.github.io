@@ -7,7 +7,7 @@ import {createFiControlWorker} from '../worker-fi-control/worker.js';
 test('the FI panel publishes independent parent and child settings through the Worker', async () => {
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try {
-  const page=await browser.newPage();
+  const page=await browser.newPage({viewport:{width:390,height:680}});
   const origin='https://anestesiahmtforms.github.io';
   const host='https://fi-local.test';
   const records=new Map();
@@ -50,7 +50,8 @@ test('the FI panel publishes independent parent and child settings through the W
     const body=await readFile(new URL('..'+pathname,import.meta.url),'utf8');
     return route.fulfill({contentType:'text/javascript',body});
    }
-   return route.fulfill({contentType:'text/html',body:`<!doctype html><div id="fi"></div><script type="module">
+   if(pathname==='/src/fi-control.css')return route.fulfill({contentType:'text/css',body:await readFile(new URL('../src/fi-control.css',import.meta.url),'utf8')});
+   return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/fi-control.css"><style>*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif}</style><div id="fi"></div><script type="module">
     import {mountFiControl} from '/src/fi-control-ui.js';
     import {mountOperationalFolderAdmin} from '/src/operational-folder-admin.js';
     window.command=async(action,input)=>{
@@ -60,19 +61,37 @@ test('the FI panel publishes independent parent and child settings through the W
      if(action==='folders.publish')window.receivePolicy(await fetch('/runtime').then(r=>r.json()));
      return result;
     };
-    mountFiControl(document.querySelector('#fi'),{request:window.command,profile:{permissions:{admin:true}},folderAdmin:mountOperationalFolderAdmin});
+    const dispose=mountFiControl(document.querySelector('#fi'),{request:window.command,profile:{permissions:{admin:true}},folderAdmin:mountOperationalFolderAdmin,onNavigate:route=>{window.destination=route;dispose();}});
    </script>`});
   });
   await page.goto(host);
+  assert.equal(await page.getByRole('button',{name:'Voltar à Home'}).count(),0);
+  await page.locator('[data-fi-folder-open]').click();
+  const dialog=page.getByRole('dialog',{name:'Controle de pastas'});
+  await dialog.waitFor();
   const clickAndWait=async selector=>{
    await page.locator(selector).click();
    await page.getByText('Atualização confirmada pelos serviços.',{exact:true}).waitFor();
   };
   await clickAndWait('[data-operational-folder-initialize]');
+  const filter=dialog.getByRole('searchbox',{name:'Buscar pasta'});
+  await filter.fill('ferias');
+  assert.equal(await dialog.getByRole('button',{name:'Desativar Férias da escala diária',exact:true}).count(),1);
+  assert.equal(await dialog.getByRole('button',{name:'Desativar Etiquetas',exact:true}).count(),0);
+  await filter.clear();
+  await dialog.locator('[data-folder-group="operacao"] > summary').click();
+  const scroller=dialog.locator('.fi-folder-scroll');
+  const footer=dialog.getByRole('button',{name:'Voltar',exact:true});
+  const footerTop=(await footer.boundingBox()).y;
+  const scrollTop=await scroller.evaluate(element=>{element.scrollTop=element.scrollHeight;return element.scrollTop;});
+  assert.ok(scrollTop>0);
+  assert.equal((await footer.boundingBox()).y,footerTop);
   const child='operacao/escala/ferias',parent='operacao/escala',sibling='operacao/eventos';
   const toggle=id=>`[data-operational-folder="${id}"]`;
-  await clickAndWait(toggle(child));
   await clickAndWait(toggle(parent));
+  assert.equal(await dialog.getByText('Desativada pela pasta principal',{exact:true}).count(),1);
+  assert.equal(await page.locator(toggle(child)).textContent(),'Desativar');
+  await clickAndWait(toggle(child));
   assert.equal(await page.locator(toggle(child)).textContent(),'Ativar');
   await clickAndWait(toggle(parent));
   for(const record of records.values())assert.deepEqual(record.value.disabled,[child]);
@@ -82,6 +101,9 @@ test('the FI panel publishes independent parent and child settings through the W
   const status=await page.evaluate(()=>window.command('folders.publish',{id:'operacao/escala/ferias',enabled:true,revision:4}).catch(error=>error.status));
   assert.equal(status,403);
   assert.deepEqual(records.get('FA').value.disabled,[child]);
+  await footer.click();
+  assert.equal(await page.evaluate(()=>window.destination),'management-hub');
+  assert.equal(await page.locator('dialog[open]').count(),0);
  } finally {
   await browser.close();
  }

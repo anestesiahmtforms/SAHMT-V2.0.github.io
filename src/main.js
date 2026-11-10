@@ -5232,7 +5232,7 @@ async function render() {
         ? (await import('./operational-folder-admin.js')).mountOperationalFolderAdmin : null;
       if(!isCurrent())return;
       cleanupCurrentModule=mountFiControl(host,{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly,folderAdmin});
-    }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Não foi possível abrir esta tela.</p><button type="button" class="secondary-button">Voltar à Home</button>';host.querySelector('button').addEventListener('click',()=>navigate('home'));}}
+    }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Não foi possível abrir esta tela.</p><button type="button" class="secondary-button">'+(searchOnly?'Voltar à Home':'Voltar à Governança')+'</button>';host.querySelector('button').addEventListener('click',()=>navigate(searchOnly?'home':'management-hub'));}}
     return;
   }
   if(!authLimited&&typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(requestedRoute)){

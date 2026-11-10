@@ -6,3 +6,68 @@
   justify-content: space-between;
   gap: 12px;
 }
+
+.fi-control:has(.fi-folder-launch) .fi-control-heading h1{color:#fff}
+.fi-control:has(.fi-folder-launch) .fi-control-kicker{color:#c7e8e4}
+.fi-control .fi-folder-launch{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;width:100%;padding:16px 20px;margin-bottom:20px;border-radius:16px;border-color:#c4e3df;background:#f0fbf8;text-align:left}
+.fi-control .fi-folder-launch:hover{background:#e2f5ef}
+.fi-folder-launch strong,.fi-folder-launch small{display:block}
+.fi-folder-launch strong{font-size:1.08rem}
+.fi-folder-launch small{margin-top:4px;color:#42686b;line-height:1.4}
+.fi-folder-launch>span:last-child{font-size:1.3rem}
+.fi-folder-icon{width:42px;height:42px;padding:9px;border-radius:12px;background:#d5eee7;color:#16584e}
+html:has(.fi-folder-dialog[open]){overflow:hidden}
+.fi-folder-dialog{
+ position:fixed;inset:0;width:min(calc(100% - 32px),790px);height:min(calc(100dvh - 32px),800px);
+ max-width:none;max-height:none;margin:auto;padding:0;overflow:hidden;
+ border:1px solid #c5dbe0;border-radius:22px;background:#f1f6f7;color:#173447;
+ box-shadow:0 24px 90px #061e3a80
+}
+.fi-folder-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.fi-folder-dialog::backdrop{background:#061c32b8;backdrop-filter:blur(3px)}
+.fi-folder-header{padding:clamp(14px,3vw,24px);background:linear-gradient(125deg,#103b57,#16605e);color:white}
+.fi-folder-header p{margin:0 0 5px;font-size:.72rem;font-weight:700;letter-spacing:.09em;color:#d2eeea;text-transform:uppercase}
+.fi-folder-header h2{margin:0;font-size:clamp(1.25rem,4vw,1.7rem);line-height:1.2}
+.fi-folder-scroll{min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:clamp(12px,3vw,22px)}
+.fi-folder-footer{display:flex;justify-content:flex-end;padding:10px clamp(12px,3vw,22px) max(10px,env(safe-area-inset-bottom));border-top:1px solid #cedde0;background:#fff}
+.fi-control .fi-folder-footer button{min-width:128px;background:#164f60;color:white;border-color:#164f60;font-weight:750}
+.fi-folder-tools{padding:14px;border:1px solid #d4e3e4;border-radius:14px;background:#fff}
+.fi-folder-description{margin:0 0 10px;font-size:.88rem;line-height:1.45;color:#35555f}
+.fi-folder-actions{display:flex;flex-wrap:wrap;gap:8px}
+.fi-control .fi-folder-actions button{padding:7px 11px;font-size:.83rem;font-weight:700}
+.fi-folder-actions [hidden]{display:none}
+.fi-folder-notice{margin:10px 0 0;padding:8px 10px;border-radius:8px;background:#eaf4f6;font-size:.84rem;color:#234d5b}
+.fi-folder-notice:empty{display:none}
+.fi-folder-services h3{margin:12px 0 7px;font-size:.86rem}
+.fi-folder-services ul{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:6px;margin:0;padding:0;list-style:none}
+.fi-folder-services li{padding:7px 9px;border-radius:8px;background:#f1f6f7;font-size:.77rem}
+.fi-folder-services li strong{margin-inline-end:4px}
+.fi-folder-list-heading{margin:16px 0 10px}
+.fi-control .fi-folder-list-heading label{display:block;min-width:0;margin-bottom:5px;font-size:.85rem;font-weight:750}
+.fi-control .fi-folder-list-heading input{background:#fff;min-height:44px}
+.fi-folder-list-heading p{min-height:1em;margin:6px 0 0;color:#48656d;font-size:.78rem}
+.fi-folder-list{display:grid;gap:8px}
+.fi-folder-group,.fi-folder-standalone{border:1px solid #d0e0e2;border-radius:12px;background:#fff}
+.fi-folder-group summary{display:flex;align-items:center;min-height:48px;gap:9px;padding:8px 12px;cursor:pointer;list-style:none}
+.fi-folder-group summary::-webkit-details-marker{display:none}
+.fi-folder-group summary::before{content:'';flex:none;width:7px;height:7px;margin-inline-end:3px;border:solid #2b6370;border-width:0 2px 2px 0;transform:rotate(-45deg)}
+.fi-folder-group[open] summary::before{transform:rotate(45deg)}
+.fi-folder-group summary strong{flex:1;min-width:0;font-size:.9rem;overflow-wrap:anywhere}
+.fi-folder-group summary span{flex:none;color:#44636b;font-size:.75rem}
+.fi-folder-group ul,.fi-folder-standalone{margin:0;padding:0;list-style:none}
+.fi-folder-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,148px) auto;gap:8px;align-items:center;padding:8px 12px}
+.fi-folder-group .fi-folder-row{border-top:1px solid #e0eaeb}
+.fi-folder-name strong,.fi-folder-name small{display:block;overflow-wrap:anywhere}
+.fi-folder-name strong{font-size:.86rem}
+.fi-folder-name small{margin-top:3px;color:#4a6770;font-size:.72rem;line-height:1.35}
+.fi-folder-state{justify-self:start;padding:4px 8px;border-radius:8px;font-size:.72rem;font-weight:750;line-height:1.25;background:#edf1f2;color:#42535a}
+.fi-folder-state[data-state=active]{background:#e0f3ea;color:#175940}
+.fi-folder-state[data-state=inherited]{background:#fff0d7;color:#70470e}
+.fi-control .fi-folder-row button{min-width:86px;padding:6px 9px;font-size:.78rem;font-weight:750}
+.fi-control .fi-folder-row button[data-enable=true]{border-color:#8fc9ac;background:#e5f7ee;color:#175940}
+@media(max-width:520px){
+ .fi-folder-dialog{width:calc(100% - 14px);height:calc(100dvh - 14px);border-radius:15px}
+ .fi-folder-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 8px}
+ .fi-folder-row button{grid-column:2;grid-row:1 / span 2}
+ .fi-control .fi-folder-footer button{width:100%}
+}
