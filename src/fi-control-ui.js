@@ -1,3 +1,5 @@
+import {isValidDateKey} from './schedule-date.js';
+
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const admin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const passiveLink=value=>{
@@ -11,13 +13,32 @@ export function renderFiControl({profile={},pilot=false,searchOnly=false}={}){
  if(!searchOnly&&!admin(profile))return `<section class="fi-control"><p>Acesso reservado a administradores.</p>${home}</section>`;
  const title=searchOnly?'Buscar no ecossistema':'Central Administrativa';
  const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>':'';
- const search=searchOnly||pilot?`<section class="fi-control-panel"><h2>Pesquisar no app</h2><p>Inclui materiais inativos em modo de consulta, conforme suas permissões.</p><form data-fi-search><label>O que você procura?<input name="query" type="search" maxlength="1000" required autocomplete="off" placeholder="Ex.: protocolo de segurança"></label><button type="submit">Pesquisar</button></form><p data-fi-status role="status" aria-live="polite"></p><div data-fi-results></div></section>`:'';
+ const search=searchOnly||pilot?`<section class="fi-control-panel"><h2>Pesquisar no app</h2><p>Digite palavras-chave ou faça uma pergunta, como “Qual minha posição na escala amanhã?”. Materiais inativos aparecem em modo de consulta, conforme suas permissões.</p><form data-fi-search><label>O que você procura?<input name="query" type="search" maxlength="1000" required autocomplete="off" placeholder="Ex.: protocolo de segurança"></label><button type="submit">Pesquisar</button></form><p data-fi-status role="status" aria-live="polite"></p><div data-fi-results></div></section>`:'';
  const month=previousMonth();
  const monthly=!searchOnly?`<section class="fi-control-panel"><h2>Análise mensal e plano de ação</h2><p>Resultados dos indicadores e propostas para revisão da administração.</p><form data-fi-monthly><label>Mês de referência<input name="period" type="month" value="${month}" max="${month}" required></label><button type="submit">Gerar análise</button><button type="button" data-fi-history>Consultar análises</button></form><div data-fi-monthly-results aria-live="polite"></div></section>`:'';
  return `<section class="fi-control"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':searchOnly?'PESQUISA':'CENTRAL'}</span><h1>${title}</h1></div></header><nav class="fi-control-navigation" aria-label="Navegação">${navigation}${home}</nav>${search}${monthly}</section>`;
 }
 const isSearchPartial=data=>data?.coverage?.some(r=>r.status==='UNAVAILABLE')===true;
+function renderScheduleAnswer(schedule){
+ const day=isValidDateKey(schedule.day)?schedule.day:'';
+ const date=day.split('-').reverse().join('/');
+ const positions=Array.isArray(schedule.positions)?schedule.positions.filter(p=>Number.isSafeInteger(p)&&p>0):[];
+ const messages={
+  found:positions.length===1?`Sua posição na escala de ${date} é ${positions[0]}.`:`Suas posições na escala de ${date} são ${positions.join(', ')}.`,
+  not_assigned:`Sua sigla não aparece na escala de ${date}.`,
+  schedule_missing:`A escala de ${date} ainda não está disponível para consulta.`,
+  date_required:'Informe uma data para consultar sua posição na escala. Você também pode usar “hoje” ou “amanhã”.',
+  invalid_date:'Informe uma data válida por vez, no formato DD/MM/AAAA.',
+  identity_unlinked:'A Escala precisa ter uma sigla ativa vinculada ao e-mail da sua conta para identificar sua posição.',
+  forbidden:'Sua conta não tem permissão para consultar a Escala.',
+  unavailable:'A Escala está temporariamente indisponível. Tente novamente.'
+ };
+ const message=Object.hasOwn(messages,schedule.status)?messages[schedule.status]:messages.unavailable;
+ const link=day?`<a href="#/schedule/${day}">Abrir escala desta data</a>`:'';
+ return `<section class="fi-answer" role="status"><h3>Escala</h3><p>${esc(message)}</p>${link}</section>`;
+}
 export function renderFiResults(data){
+ if(data?.schedule)return renderScheduleAnswer(data.schedule);
  const results=Array.isArray(data?.results)?data.results:[];
  const ai=data?.ai?.status==='complete'?`<section class="fi-answer"><h3>Resposta com base nos materiais</h3><p>${esc(data.ai.answer)}</p></section>`:'';
  const notes=(data?.coverage||[]).filter(r=>r.status==='CONTENT_NOT_INDEXED'||r.status==='INVOLVEMENT_MAPPING_REQUIRED'||r.status==='UNAVAILABLE').map(r=>r.detail||'Parte dos conteúdos está temporariamente indisponível.');
@@ -35,7 +56,7 @@ export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{
  host.querySelectorAll('[data-fi-nav]').forEach(button=>button.addEventListener('click',()=>{if(current())onNavigate(button.dataset.fiNav);}));
  search?.addEventListener('submit',async event=>{
   event.preventDefault();if(!current())return;const ticket=++searchGeneration,button=search.querySelector('button');button.disabled=true;status.textContent='Pesquisando conteúdos autorizados…';
-  try{const result=await request('search',{query:search.elements.query.value});if(!current()||ticket!==searchGeneration)return;host.querySelector('[data-fi-results]').innerHTML=renderFiResults(result);status.textContent=isSearchPartial(result)?'Pesquisa parcial. Algumas fontes não puderam ser consultadas.':result.ai?.status==='complete'?'Pesquisa concluída com síntese por IA.':'Pesquisa concluída.';}
+  try{const result=await request('search',{query:search.elements.query.value});if(!current()||ticket!==searchGeneration)return;host.querySelector('[data-fi-results]').innerHTML=renderFiResults(result);status.textContent=result.schedule?'':isSearchPartial(result)?'Pesquisa parcial. Algumas fontes não puderam ser consultadas.':result.ai?.status==='complete'?'Pesquisa concluída com síntese por IA.':'Pesquisa concluída.';}
   catch(error){if(current()&&ticket===searchGeneration)status.textContent=['FI_DAILY_REQUEST_LIMIT','FI_SOURCE_READ_BUDGET'].includes(error.code||error.message)?'O limite diário de consultas foi atingido. Tente novamente amanhã.':'Não foi possível pesquisar. Confira sua conexão e tente novamente.';}
   finally{if(current()&&ticket===searchGeneration)button.disabled=false;}
  });

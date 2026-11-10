@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createFiSourceProvider} from '../worker-fi-control/sources.js';
+import {parseScheduleQuestion} from '../worker-fi-control/personal-schedule.js';
 const actor={uid:'fa-a',fiUid:'fi-a',email:'ana@example.test',profile:{active:true,access:true,permissions:{}},memberCategories:[]};
 const sourceProfile={id:'source-a',uid:'source-a',email:actor.email,displayName:'Ana',sigla:'AA',active:true,access:true,permissions:{eventsRead:true,managementRead:true}};
 function store(seed){
@@ -9,6 +10,33 @@ function store(seed){
 }
 const fbRuntime=[{id:'independentFbCutover',status:'ACTIVE',release:'fb-independent-20261022-v1'}];
 const documentAccess=(groups)=>[{id:actor.email,email:actor.email,active:true,groups}];
+test('personal schedule questions parse Brazilian dates and relative dates without hijacking keyword search',()=>{
+ const now=Date.parse('2026-12-12T01:30:00Z');
+ const parse=query=>parseScheduleQuestion(query,now);
+ assert.deepEqual(parse('Qual minha posição na escala no dia 12/12/2026?'),{status:'lookup',day:'2026-12-12'});
+ assert.deepEqual(parse('Escala 2026-12-12'),{status:'lookup',day:'2026-12-12'});
+ assert.deepEqual(parse('Em qual posição estou na escala amanhã?'),{status:'lookup',day:'2026-12-12'});
+ assert.deepEqual(parse('Minha escala hoje'),{status:'lookup',day:'2026-12-11'});
+ assert.deepEqual(parse('Minha escala'),{status:'date_required'});
+ assert.deepEqual(parse('Minha escala em 31/02/2026'),{status:'invalid_date'});
+ assert.deepEqual(parse('Minha escala em 11/12/2026 e 12/12/2026'),{status:'invalid_date'});
+ assert.equal(parse('escala'),null);
+ assert.equal(parse('escala de avaliação'),null);
+ assert.equal(parse('Qual a posição de BB na escala de 12/12/2026?'),null);
+});
+test('personal schedule uses only the authenticated contact and returns no third-party positions',async()=>{
+ const day='2026-12-11',question={status:'lookup',day};
+ const profile={...sourceProfile,permissions:{scheduleRead:true}};
+ const contact={id:'CR',sigla:'CR',email:actor.email,active:true};
+ const date={id:day,date:day,positions:[{sigla:'BB',position:1},{sigla:'CR/LH',position:2},{sigla:'DC',position:3}]};
+ const make=(overrides={})=>createFiSourceProvider({stores:{FJ:store({users:[profile],contacts:[contact],scheduleDays:[date],...overrides})}});
+ assert.deepEqual(await make().personalSchedule({...actor,sigla:'BB'},question),{status:'found',day,positions:[2,3]});
+ assert.deepEqual(await make({scheduleDays:[{...date,positions:[{sigla:'BB',position:1}]}]}).personalSchedule(actor,question),{status:'not_assigned',day});
+ assert.deepEqual(await make({scheduleDays:[]}).personalSchedule(actor,question),{status:'schedule_missing',day});
+ assert.deepEqual(await make({contacts:[{...contact,active:false}]}).personalSchedule(actor,question),{status:'identity_unlinked'});
+ assert.deepEqual(await make({contacts:[contact,{...contact,id:'BB',sigla:'BB'}]}).personalSchedule(actor,question),{status:'identity_unlinked'});
+ assert.deepEqual(await make({users:[{...profile,permissions:{}}]}).personalSchedule(actor,question),{status:'forbidden'});
+});
 test('source mapping supports distinct UIDs and excludes unrelated and textual-only event mentions',async()=>{
  const fj=store({users:[sourceProfile],contacts:[{id:'AA',sigla:'AA',name:'Ana',email:actor.email}],events:[{id:'own',createdByUid:'source-a',eventType:'Outros',description:'Segurança',active:true,version:1},{id:'sigla',createdByUid:'source-b',memberSigla:'AA',eventType:'Pessoal',active:true,version:1},{id:'named',createdByUid:'source-b',substitute:'Ana',eventType:'Suporte',active:true,version:1},{id:'other',createdByUid:'source-b',description:'Ana AA',eventType:'Outros',active:true,version:1}]});
  const sources=createFiSourceProvider({stores:{FJ:fj}}),rows=await sources.searchRecords(actor,'Segurança');

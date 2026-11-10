@@ -22,3 +22,13 @@ test('empty search distinguishes an unavailable source from no permitted matches
  assert.match(partial,/limite diário/);
  assert.doesNotMatch(partial,/materiais disponíveis para sua conta/);
 });
+test('personal schedule answers use a validated link to the selected date',()=>{
+ const result=renderFiResults({schedule:{status:'found',day:'2026-12-12',positions:[2]}});
+ assert.match(result,/Sua posição na escala de 12\/12\/2026 é 2/);
+ assert.match(result,/href="#\/schedule\/2026-12-12"/);
+ const missing=renderFiResults({schedule:{status:'not_assigned',day:'2026-12-12'}});
+ assert.match(missing,/Sua sigla não aparece/);
+ const unlinked=renderFiResults({schedule:{status:'identity_unlinked'}});
+ assert.match(unlinked,/sigla ativa vinculada/);
+ assert.doesNotMatch(unlinked,/href=/);
+});

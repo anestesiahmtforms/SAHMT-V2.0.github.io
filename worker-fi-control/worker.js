@@ -6,6 +6,7 @@ import {createFiAiService} from './search.js';
 import {createOpenAIProvider} from './ai-provider.js';
 import {createFiSourceProvider,SOURCE_COLLECTIONS} from './sources.js';
 import {createFiReadBudget,createFiRequestQuota} from './read-budget.js';
+import {parseScheduleQuestion} from './personal-schedule.js';
 const origin='https://anestesiahmtforms.github.io';
 const isAdmin=actor=>actor.profile?.role==='administrador_app'||actor.profile?.permissions?.admin===true;
 const publicControlActions=new Set(['search','service.status']);
@@ -49,6 +50,15 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
   const readBudget=createFiReadBudget({store:rt.store});
   async function boundedSearch(actor,input){
    await quota.consume(actor.uid);
+   const question=parseScheduleQuestion(input.query);
+   if(question){
+    // One FJ profile query, one contact query and one date-specific read.
+    const lease=await readBudget.open({[FI_PROJECTS.FJ]:question.status==='lookup'?7:3});
+    try{
+     const schedule=await createFiSourceProvider({stores:rt.sources(lease)}).personalSchedule(actor,question);
+     return {results:[],coverage:[],ai:{status:'local_only'},schedule};
+    }finally{await lease.finish().catch(()=>{});}
+   }
    const lease=await readBudget.open(searchReadPlan);
    const finishReads=()=>lease.finish().catch(()=>{});
    try{return await buildAi(lease,pilot?{enabled:false}:modelProvider,finishReads).search(actor,input);}finally{await finishReads();}

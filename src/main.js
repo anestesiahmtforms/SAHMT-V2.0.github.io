@@ -32,7 +32,7 @@ import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} fr
 import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
 import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, readFreshSafeCache, removeQueuedOperation, requiresSendConfirmation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
-import {localDateKey, shiftDateKey} from './schedule-date.js';
+import {isValidDateKey, localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
 import {releaseNoticeFeedback, releaseNoticeError} from './communication-operational-notices.js';
@@ -1140,7 +1140,8 @@ async function loadSchedule() {
   const dateInput = document.querySelector('#schedule-date');
   const content = document.querySelector('#schedule-content');
   if (!dateInput || !content) return;
-  dateInput.value = localDateKey();
+  const linkedDay = location.hash.split('/')[2];
+  dateInput.value = isValidDateKey(linkedDay) ? linkedDay : localDateKey();
   let requestSequence = 0;
   let suspended = false, disposed = false, needsServerResume = false;
   const homeUid = session.user.uid;

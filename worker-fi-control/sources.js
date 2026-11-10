@@ -3,7 +3,8 @@ import {canManageManagementDocuments,documentGroupsFromAccess} from '../src/docu
 import {QMENTUM_INDICATORS} from '../src/qmentum-catalog.js';
 import {isCurrentMessage} from '../communication/domain.js';
 import {SAHMT_START_ISO} from '../worker-indicators/sahmt-performance-period.js';
-export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','evaluationRuntime'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events']});
+import {ownSchedulePositions,validScheduleSigla} from './personal-schedule.js';
+export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','evaluationRuntime'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
 const FB_CATALOG_QUERY_LIMIT=301;
 const admin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const permission=(p,...names)=>admin(p)||names.some(n=>p?.permissions?.[n]===true);
@@ -159,6 +160,21 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   }
   coverage.push({source:'FC.occurrenceReports',status:'INVOLVEMENT_MAPPING_REQUIRED',detail:'Notificações sem vínculo formal de envolvidos não são liberadas pela pesquisa.'});return result;
  });}
+ async function personalSchedule(actor,question){
+  const fj=stores.FJ;
+  try{
+   const profile=await identity('FJ',actor);
+   if(!profile||!permission(profile,'scheduleRead','scheduleWrite','eventsRead','eventsWrite','checklistSign'))return {status:'forbidden'};
+   if(question.status!=='lookup')return question;
+   const {day}=question;
+   const contacts=await fj.list('contacts',[eq('email',actor.email)],3);
+   const contact=contacts[0],sigla=String(contact?.sigla||'').trim().toUpperCase();
+   if(contacts.length!==1||contact.active!==true||contact.email!==actor.email||contact.id!==sigla||!validScheduleSigla(sigla))return {status:'identity_unlinked'};
+   const positions=ownSchedulePositions(await fj.get('scheduleDays',day),day,sigla);
+   if(!positions)return {status:'schedule_missing',day};
+   return positions.length?{status:'found',day,positions}:{status:'not_assigned',day};
+  }catch{return {status:'unavailable'};}
+ }
  async function monthlyAccess(actor){
   if(!admin(actor.profile))throw Error('FORBIDDEN');
   const fc=stores.FC;if(!fc)throw Error('SOURCE_UNAVAILABLE');
@@ -169,7 +185,7 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   const units=await fc.getMany(grant.units.map(id=>['qmentumUnits',id]));
   return [...new Set(grant.units.filter((id,i)=>units[i]?.active===true&&units[i].unitId===id))].sort();
  }
- return {coverage,monthlyAccess,async searchRecords(actor){
+ return {coverage,monthlyAccess,personalSchedule,async searchRecords(actor){
   coverage.length=0;
   const rows=[...await documents(actor),...await operational('FJ','events',actor,['eventsRead','eventsWrite'],['memberSigla','scheduleSigla'],[],'#/schedule'),...await operational('FH','labels',actor,['labelsRead','labelsWrite'],[],['staffSiglas'],'#/labels'),...await operational('FG','checklists',actor,['checklistRead','checklistWrite'],['responsibleSigla','checkerSigla'],[],'#/checklist'),...await notifications(actor)];
   return rows.filter(r=>canReadRecord(actor,r));
