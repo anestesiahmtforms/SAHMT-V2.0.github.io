@@ -76,6 +76,7 @@ test('limite por minuto e renovação UTC permanecem independentes da cota de av
 test('agregação usa firstPublishedAt e participa da transação, sem baixar todos os avisos',async()=>{
  const calls=[];const store=createStore({getToken:async()=> 'synthetic',fetchImpl:async(url,options)=>{
   const body=options.body?JSON.parse(options.body):null;calls.push({url,body});
+  if(url.endsWith('/runtimePolicy/folders'))return Response.json({}, {status:404});
   if(url.endsWith(':beginTransaction'))return Response.json({transaction:'test-transaction'});
   if(url.endsWith(':rollback'))return Response.json({});
   assert.ok(url.endsWith(':runAggregationQuery'));return Response.json([{result:{aggregateFields:{published:{integerValue:'7'}}}}]);
@@ -86,7 +87,8 @@ test('agregação usa firstPublishedAt e participa da transação, sem baixar to
 });
 
 test('quota do provedor e orçamento interno têm códigos diferentes e não ativam faturamento',async()=>{
- const store=createStore({getToken:async()=> 'synthetic',fetchImpl:async()=>Response.json({error:{status:'RESOURCE_EXHAUSTED'}},{status:429})});
+ const store=createStore({getToken:async()=> 'synthetic',fetchImpl:async url=>url.endsWith('/runtimePolicy/folders')
+  ? Response.json({}, {status:404}) : Response.json({error:{status:'RESOURCE_EXHAUSTED'}},{status:429})});
  await assert.rejects(store.get('communicationSettings','main'),{code:'COMM_PROVIDER_QUOTA_EXHAUSTED'});
  await assert.rejects(assertFreeProject(async()=> 'synthetic',async()=>Response.json({billingEnabled:true})),{code:'COMM_FREE_PLAN_UNCONFIRMED'});
  assert.match(communicationLimitMessage({code:'COMM_DAILY_PUBLICATION_LIMIT',used:200,limit:200,resetsAt:communicationUsagePeriod(NOW).resetsAt}),/200\/200/);
