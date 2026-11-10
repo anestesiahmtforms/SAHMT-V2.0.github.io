@@ -79,7 +79,7 @@ test(station + ' event corrections by ' + editor + ' require a matching immutabl
   }
   const editorDb = db(station, editor);
   const editorName = editor === 'admin' ? 'Admin' : 'Member';
-  const amountToPay = station === 'FJ' ? 400 : 200;
+  const amountToPay = station === 'FJ' ? 73.5 : 200;
   await assertSucceeds(getDocs(collection(editorDb, 'events')));
   await assertFails(updateDoc(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay, version: 2,
     updatedByUid: editor, updatedByName: editorName, updatedAt: serverTimestamp()}));
@@ -108,14 +108,15 @@ test('FJ common users cannot launch events even with a legacy eventsWrite grant'
   delegated.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
   await assertFails(delegated.commit());
   await seed('FJ', 'users/member', {...member, email: 'marcio.henrique82@gmail.com', role: 'gestor'});
-  const launch = (database, delayMultiple) => {
+  const launch = (database, delayMultiple, amountToPay = null) => {
     const batch = writeBatch(database);
-    batch.set(doc(database, 'events/event'), {...eventRecord('FJ', 'member'), delayMultiple, amountToPay: delayMultiple * 200});
+    batch.set(doc(database, 'events/event'), {...eventRecord('FJ', 'member'), delayMultiple, amountToPay});
     batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
     return batch.commit();
   };
   await assertFails(launch(db('FJ', 'member', {faEmailVerified: false}), 1));
   await assertFails(launch(database, 0));
+  await assertFails(launch(database, 1, -5));
   await assertSucceeds(launch(database, 1));
 });
 

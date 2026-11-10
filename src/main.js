@@ -1045,7 +1045,7 @@ function actionForm(route) {
     <label data-event-field="delayMultiple"><span>Múltiplo do atraso</span><select name="delayMultiple"><option value="">Selecione</option>${[1, 2, 3, 4, 5, 6].map(multiple => `<option value="${multiple}">${multiple}</option>`).join('')}</select></label>
     <label data-event-field="substitute"><span>Substituto</span><select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift"><span>Turno</span><select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
     <label><span>Pagador</span><select name="payer" required><option value="">Selecione</option></select></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option></select></label>
-    <label><span>Valor a pagar</span><input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
+    <label><span data-event-amount-label>Valor a pagar</span><input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
     <p id="event-catalog-stale" class="record-meta" role="status" hidden></p>
     <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit" disabled>Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></footer></dialog>`;
@@ -3389,7 +3389,7 @@ async function shareReportPdf(kind) {
     : ['#', 'Data', 'Sigla da escala', 'Sigla do membro', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor (R$)'];
   const rows = isLabel
     ? pdfRecords.map((item, index) => [index + 1, item.date, item.patientName, ...optionalLabelColumns.map(([, getValue]) => getValue(item) || '')])
-    : pdfRecords.map((item, index) => [index + 1, item.date, item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, Number(item.amountToPay || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})]);
+    : pdfRecords.map((item, index) => [index + 1, item.date, item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, item.amountToPay == null ? '' : Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})]);
   const alertRowIndexes = isLabel ? pdfRecords.flatMap((item, index) => ['Particular', 'Complementação'].includes(item.type) ? [index] : []) : [];
   const alertCount = alertRowIndexes.length;
   button.disabled = true;
@@ -4133,9 +4133,10 @@ async function bindModuleForm(route) {
           values[name] = form.elements[name]?.value ?? '';
         }
         values.eventType = form.elements.eventType.value;
+        if (form.elements.amountToPay.validity.badInput) throw new Error('Informe um valor válido, igual ou maior que zero.');
         validateEventForm(values);
         const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
-        const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
+        const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: values.amountToPay.trim() === '' ? null : Number(values.amountToPay), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
           if (!canEditScheduleEvents()) throw Object.assign(new Error('Permissão de edição revogada.'), {code: 'permission-denied'});
           const {updateEventRecord} = await import('./data.js');
@@ -5073,9 +5074,13 @@ function updateEventEntryFields(form) {
   applyEventSelectAutofill(form.elements.payer, payerValue, editing);
   applyEventSelectAutofill(form.elements.creditor, creditorValue, editing);
 
-  const amount = eventAmountToPay(eventType, form.elements.delayMultiple.value, form.elements.shift.value);
-  applyEventAmountAutofill(form.elements.amountToPay, amount, editing, rules.amountMode !== 'manual');
-  const requiredByType = {eventDate: true, eventType: true, memberStatus: rules.memberStatus, description: rules.description, delayMultiple: rules.delayMultiple, substitute: rules.substitute, shift: rules.shift, payer: true, creditor: true, amountToPay: true};
+  const amount = eventAmountToPay(eventType, form.elements.shift.value);
+  const amountRequired = rules.amountMode !== 'optional';
+  form.elements.amountToPay.required = amountRequired;
+  if (!amountRequired && form.elements.amountToPay.dataset.eventAutofilled === 'true') form.elements.amountToPay.value = '';
+  form.querySelector('[data-event-amount-label]').textContent = amountRequired ? 'Valor a pagar' : 'Valor a pagar (opcional)';
+  applyEventAmountAutofill(form.elements.amountToPay, amount, editing, rules.amountMode === 'shift');
+  const requiredByType = {eventDate: true, eventType: true, memberStatus: rules.memberStatus, description: rules.description, delayMultiple: rules.delayMultiple, substitute: rules.substitute, shift: rules.shift, payer: true, creditor: true, amountToPay: amountRequired};
   for (const [name, required] of Object.entries(requiredByType)) {
     const control = form.elements[name];
     if (!control) continue;

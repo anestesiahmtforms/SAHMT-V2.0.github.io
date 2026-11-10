@@ -9,25 +9,26 @@ const blankEvent = {
 
 test('normaliza acentos para aplicar as condições de tipo da V1', () => {
   assert.equal(normalizeEventType('Férias'), 'ferias');
-  assert.deepEqual(eventFieldRules('ATRASO'), {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false, disableSubstitute: true, payerMode: 'member', creditorMode: 'team', amountMode: 'delay'});
+  assert.deepEqual(eventFieldRules('ATRASO'), {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false, disableSubstitute: true, payerMode: 'member', creditorMode: 'team', amountMode: 'optional'});
   assert.deepEqual(eventFieldRules('Suporte'), {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'});
   assert.deepEqual(eventFieldRules('Gestão'), {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'});
   assert.deepEqual(eventFieldRules('Outros'), {memberStatus: true, description: true, delayMultiple: true, substitute: true, shift: true, disableSubstitute: false, payerMode: 'manual', creditorMode: 'substitute', amountMode: 'manual'});
 });
 
-test('calcula atraso a R$ 200 por múltiplo e turnos pelo valor definido', () => {
-  for (let multiple = 1; multiple <= 6; multiple++) {
-    assert.equal(eventAmountToPay('ATRASO', String(multiple), ''), multiple * 200);
-  }
-  assert.equal(eventAmountToPay('ATRASO', '2', ''), 400);
-  assert.equal(eventAmountToPay('ATRASO', '', ''), null);
-  assert.equal(eventAmountToPay('ATRASO', '0', ''), null);
-  assert.equal(eventAmountToPay('ATRASO', '7', ''), null);
-  assert.equal(eventAmountToPay('Suporte', '', 'Manhã'), 1000);
-  assert.equal(eventAmountToPay('Congresso', '', 'Tarde'), 1000);
-  assert.equal(eventAmountToPay('Gestão', '', 'Integral'), 2000);
-  assert.equal(eventAmountToPay('Ausência', '', 'Integral'), null);
-  assert.equal(eventAmountToPay('Outros', '3', 'Integral'), null);
+test('só calcula automaticamente o valor por turno nos tipos previstos', () => {
+  assert.equal(eventAmountToPay('ATRASO', 'Integral'), null);
+  assert.equal(eventAmountToPay('Suporte', 'Manhã'), 1000);
+  assert.equal(eventAmountToPay('Congresso', 'Tarde'), 1000);
+  assert.equal(eventAmountToPay('Gestão', 'Integral'), 2000);
+  assert.equal(eventAmountToPay('Ausência', 'Integral'), null);
+  assert.equal(eventAmountToPay('Outros', 'Integral'), null);
+});
+
+test('ATRASO aceita valor em branco ou manual independente do múltiplo', () => {
+  const event = {...blankEvent, eventType: 'ATRASO', memberStatus: 'AB', delayMultiple: '3'};
+  assert.equal(validateEventForm({...event, amountToPay: ''}), true);
+  assert.equal(validateEventForm({...event, amountToPay: '73.50'}), true);
+  assert.throws(() => validateEventForm({...event, amountToPay: '-1'}), /valor/);
 });
 
 test('ATRASO exige membro e múltiplo e não aceita substituto ou turno', () => {
@@ -58,7 +59,7 @@ test('Outros exige membro, descrição, múltiplo, substituto e turno', () => {
   assert.throws(() => validateEventForm({...partial, description: ''}), /Descreva/);
 });
 
-test('todas as categorias exigem data, pagador, credor e valor não negativo', () => {
+test('Outros exige data, pagador, credor e valor não negativo', () => {
   const valid = {...blankEvent, eventType: 'Outros', memberStatus: 'AB — Ausente', description: 'Evento', delayMultiple: '3', substitute: 'Pessoa', shift: 'Integral'};
   assert.throws(() => validateEventForm({...valid, eventDate: ''}), /data/);
   assert.throws(() => validateEventForm({...valid, payer: ''}), /pagador/);

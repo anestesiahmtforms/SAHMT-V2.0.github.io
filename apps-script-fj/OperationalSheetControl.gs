@@ -269,7 +269,7 @@ function oscEditedFields_(table,cells,baseline,catalog) {
     let v=cells[i];
     if(c[2]==='date') v=oscParseDate_(v);
     else if(c[2]==='money'||c[2]==='number') {
-      if(v===''&&c[0]==='amount') v=null;
+      if(v===''&&['amount','amountToPay'].indexOf(c[0])>=0) v=null;
       else if(typeof v!=='number'||!Number.isFinite(v)||v<0) oscFail_('CONTROLE_VALOR_INVALIDO');
     } else if(c[2]==='station') {
       const matches=Object.keys(catalog).filter(function(id){return catalog[id]===String(v);});
@@ -303,7 +303,7 @@ function oscValidate_(table,fields) {
     if(type==='outros'&&!fields.description) oscFail_('CONTROLE_DESCRICAO_OBRIGATORIA');
     if(['atraso','outros'].indexOf(type)>=0 && (!Number.isInteger(fields.delayMultiple)||fields.delayMultiple<0||fields.delayMultiple>6)) oscFail_('CONTROLE_ATRASO_INVALIDO');
     if(type!=='atraso'&&(!fields.substitute||!fields.shift)) oscFail_('CONTROLE_SUBSTITUTO_TURNO_OBRIGATORIOS');
-    if(!Number.isFinite(fields.amountToPay)||fields.amountToPay<0) oscFail_('CONTROLE_VALOR_INVALIDO');
+    if(!(type==='atraso'&&fields.amountToPay===null)&&(!Number.isFinite(fields.amountToPay)||fields.amountToPay<0)) oscFail_('CONTROLE_VALOR_INVALIDO');
   }
   return fields;
 }

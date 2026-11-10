@@ -132,6 +132,9 @@ test('Escala keeps contact, member choice, entry and reports inside one accessib
     await page.locator('#open').click();
     await page.getByRole('button', {name: 'Relatório diário', exact: true}).click();
     await page.evaluate(() => fixture.edit());
+    const editedAmount = page.locator('[name="amountToPay"]');
+    assert.equal(await editedAmount.inputValue(), '200');
+    await editedAmount.fill('75.25');
     await page.getByRole('button', {name: 'Atualizar evento'}).click();
     await page.locator('#event-report-dialog').waitFor({state: 'visible'});
     await page.keyboard.press('Escape');
@@ -140,11 +143,18 @@ test('Escala keeps contact, member choice, entry and reports inside one accessib
     assert.equal(await page.locator('[name="editEventId"]').inputValue(), '');
     await page.locator('[name="eventType"]').selectOption('ATRASO');
     assert.equal(await page.locator('[name="delayMultiple"] option[value="0"]').count(), 0);
+    const amount = page.locator('[name="amountToPay"]');
+    await page.locator('[name="delayMultiple"]').selectOption('1');
+    assert.equal(await amount.inputValue(), '');
+    assert.equal(await amount.evaluate(input => input.required), false);
+    await amount.fill('73.50');
     await page.locator('[name="delayMultiple"]').selectOption('2');
+    assert.equal(await amount.inputValue(), '73.50');
+    await amount.fill('');
     await page.getByRole('button', {name: 'Salvar evento', exact: true}).click();
     await page.waitForFunction(() => fixture.saves().length === 2);
-    const saves = await page.evaluate(() => fixture.saves().map(([id, record]) => [id, record.delayMultiple]));
-    assert.deepEqual(saves, [['event-1', 1], ['new', 2]]);
+    const saves = await page.evaluate(() => fixture.saves().map(([id, record]) => [id, record.delayMultiple, record.amountToPay]));
+    assert.deepEqual(saves, [['event-1', 1, 75.25], ['new', 2, null]]);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

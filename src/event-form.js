@@ -8,7 +8,7 @@ export function normalizeEventType(value) {
 
 export function eventFieldRules(value) {
   const type = normalizeEventType(value);
-  if (type === 'atraso') return {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false, disableSubstitute: true, payerMode: 'member', creditorMode: 'team', amountMode: 'delay'};
+  if (type === 'atraso') return {memberStatus: true, description: false, delayMultiple: true, substitute: false, shift: false, disableSubstitute: true, payerMode: 'member', creditorMode: 'team', amountMode: 'optional'};
   if (type === 'suporte') return {memberStatus: false, description: false, delayMultiple: false, substitute: true, shift: true, disableSubstitute: false, payerMode: 'team', creditorMode: 'substitute', amountMode: 'shift'};
   if (['gestao', 'congresso', 'pessoal', 'ferias', 'saude', 'ausencia'].includes(type)) {
     const personal = ['pessoal', 'ferias', 'saude', 'ausencia'].includes(type);
@@ -22,12 +22,8 @@ export function eventFieldRules(value) {
   return {memberStatus: true, description: false, delayMultiple: false, substitute: true, shift: false, disableSubstitute: false, payerMode: 'manual', creditorMode: 'manual', amountMode: 'manual'};
 }
 
-export function eventAmountToPay(eventType, delayMultiple, shift) {
+export function eventAmountToPay(eventType, shift) {
   const {amountMode} = eventFieldRules(eventType);
-  if (amountMode === 'delay') {
-    const multiple = String(delayMultiple ?? '');
-    return /^[1-6]$/.test(multiple) ? Number(multiple) * 200 : null;
-  }
   if (amountMode === 'shift') {
     const normalizedShift = normalizeEventType(shift);
     if (normalizedShift === 'integral') return 2000;
@@ -50,6 +46,7 @@ export function validateEventForm(values) {
   if (!String(values.creditor || '').trim()) throw new Error('Informe o credor.');
   const amountInput = String(values.amountToPay ?? '').trim();
   const amount = Number(amountInput);
+  if (rules.amountMode === 'optional' && !amountInput) return true;
   if (!amountInput || !Number.isFinite(amount) || amount < 0) throw new Error('Informe um valor válido, igual ou maior que zero.');
   return true;
 }
