@@ -26,7 +26,7 @@ export function eventAmountToPay(eventType, delayMultiple, shift) {
   const {amountMode} = eventFieldRules(eventType);
   if (amountMode === 'delay') {
     const multiple = String(delayMultiple ?? '');
-    return /^[0-6]$/.test(multiple) ? Number(multiple) * 200 : null;
+    return /^[1-6]$/.test(multiple) ? Number(multiple) * 200 : null;
   }
   if (amountMode === 'shift') {
     const normalizedShift = normalizeEventType(shift);
@@ -43,7 +43,7 @@ export function validateEventForm(values) {
   const rules = eventFieldRules(type);
   if (rules.memberStatus && !String(values.memberStatus || '').trim()) throw new Error('Informe o membro e a situação para este tipo de evento.');
   if (rules.description && !String(values.description || '').trim()) throw new Error('Descreva o evento Outros.');
-  if (rules.delayMultiple && !/^[0-6]$/.test(String(values.delayMultiple ?? ''))) throw new Error('Selecione um múltiplo de atraso entre 0 e 6.');
+  if (rules.delayMultiple && !/^[1-6]$/.test(String(values.delayMultiple ?? ''))) throw new Error('Selecione um múltiplo de atraso entre 1 e 6.');
   if (rules.substitute && !String(values.substitute || '').trim()) throw new Error('Informe o substituto para este tipo de evento.');
   if (rules.shift && !String(values.shift || '').trim()) throw new Error('Informe o turno para este tipo de evento.');
   if (!String(values.payer || '').trim()) throw new Error('Informe o pagador.');

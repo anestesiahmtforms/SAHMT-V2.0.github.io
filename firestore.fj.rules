@@ -43,13 +43,9 @@ service cloud.firestore {
     }
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
-    function canLaunchEvent() { return can('eventsWrite') && (isAdmin() || profile().get('role', '') == 'gestor'); }
-    function canEditEvents() {
-      let p = profile();
-      let grants = p.get('permissions', {});
-      return p.active == true && p.access == true &&
-        (p.role == 'administrador_app' || grants.get('admin', false) == true ||
-          (p.role == 'gestor' && grants.get('eventsWrite', false) == true && grants.get('eventsManage', false) == true));
+    function canOperateSchedule() {
+      return signedIn() && request.auth.token.get('faEmailVerified', false) == true &&
+        (isAdmin() || (activeUser() && profile().get('email', '').lower() == 'marcio.henrique82@gmail.com'));
     }
     match /users/{uid} {
       allow read: if moduleSession() && (activeUser() && (request.auth.uid == uid || isAdmin()));
@@ -59,7 +55,7 @@ service cloud.firestore {
       function validScheduleHighlightUpdate(scheduleId) {
         let oldHighlights = resource.data.get('highlights', {});
         let newHighlights = request.resource.data.get('highlights', {});
-        return can('scheduleWrite') && updateActorIsSelf() &&
+        return canOperateSchedule() && updateActorIsSelf() &&
           scheduleId.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['highlights', 'updatedByUid', 'updatedAt', 'version']) &&
           request.resource.data.id == resource.data.id && request.resource.data.date == resource.data.date &&
@@ -73,7 +69,7 @@ service cloud.firestore {
           request.resource.data.updatedAt == request.time &&
           request.resource.data.version == resource.data.get('version', 0) + 1;
       }
-      allow read: if scheduleFolderReadAllowed_() && (moduleSession() && (can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign')));
+      allow read: if scheduleFolderReadAllowed_() && (moduleSession() && (canOperateSchedule() || can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign')));
       allow create: if false;
       allow update: if moduleSession() && (validScheduleHighlightUpdate(scheduleId));
       allow delete: if false;
@@ -90,7 +86,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
-      allow read: if folderReadAllowed_(['operacao', 'operacao/escala', 'operacao/escala/ferias']) && (moduleSession() && (((can('scheduleRead') || can('checklistSign')) && resource.data.active == true) || can('scheduleWrite')));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/escala', 'operacao/escala/ferias']) && (moduleSession() && (((canOperateSchedule() || can('scheduleRead') || can('checklistSign')) && resource.data.active == true) || can('scheduleWrite')));
       allow create: if moduleSession() && (can('scheduleWrite') && validVacation(request.resource.data, vacationId));
       allow update: if moduleSession() && (can('scheduleWrite') && resource.data.id == vacationId &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
@@ -128,7 +124,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
       }
 
-      allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage')));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (canOperateSchedule() || can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage')));
       allow create: if moduleSession() && (can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time &&
         request.resource.data.version == 1);
@@ -173,11 +169,11 @@ service cloud.firestore {
           data.payer is string && data.payer.size() > 0 && data.payer.size() <= 120 && eventCatalogContainsOrUnchanged('payers', data.payer, eventId, allowHistoricalCatalogValues) &&
           data.creditor is string && data.creditor.size() > 0 && data.creditor.size() <= 120 && eventCatalogContainsOrUnchanged('creditors', data.creditor, eventId, allowHistoricalCatalogValues) &&
           data.amountToPay is number && data.amountToPay >= 0 && data.status == 'OPEN' &&
-          ((data.eventType == 'ATRASO' && data.memberStatus.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && (data.amountToPay == data.delayMultiple * 100 || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues)) && data.description == '' && data.substitute == '' && data.shift == '') ||
+          ((data.eventType == 'ATRASO' && data.memberStatus.size() > 0 && ((data.delayMultiple in [1, 2, 3, 4, 5, 6] && data.amountToPay == data.delayMultiple * 200) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues)) && data.description == '' && data.substitute == '' && data.shift == '') ||
            (data.eventType == 'Suporte' && data.memberStatus == 'SUPORTE' && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral'] && (((data.shift == 'Integral' && data.amountToPay == 2000) || (data.shift in ['Manhã', 'Manha', 'Tarde'] && data.amountToPay == 1000)) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues))) ||
            (data.eventType in ['Pessoal', 'Férias', 'Ferias', 'Gestão', 'Gestao', 'Congresso', 'Saúde', 'Saude'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral'] && (((data.shift == 'Integral' && data.amountToPay == 2000) || (data.shift in ['Manhã', 'Manha', 'Tarde'] && data.amountToPay == 1000)) || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues))) ||
            (data.eventType in ['Ausência', 'Ausencia'] && data.memberStatus.size() > 0 && data.delayMultiple == null && data.description == '' && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']) ||
-           (data.eventType == 'Outros' && data.memberStatus.size() > 0 && data.description.size() > 0 && data.delayMultiple in [0, 1, 2, 3, 4, 5, 6] && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']));
+           (data.eventType == 'Outros' && data.memberStatus.size() > 0 && data.description.size() > 0 && (data.delayMultiple in [1, 2, 3, 4, 5, 6] || unchangedHistoricalEventAmount(data, allowHistoricalCatalogValues)) && data.substitute.size() > 0 && data.shift in ['Manhã', 'Manha', 'Tarde', 'Integral']));
       }
       function eventHistorySnapshot(data) {
         return {
@@ -229,7 +225,7 @@ service cloud.firestore {
         return existsAfter(historyPath);
       }
       function eventRecordReadAccess(data) {
-        return canEditEvents() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
+        return canOperateSchedule() || (activeUser() && (can('eventsRead') || can('eventsWrite')) &&
           (data.createdByUid == request.auth.uid ||
            (profile().sigla is string && profile().sigla != '' &&
             (data.get('memberSigla', '') == profile().sigla || data.get('scheduleSigla', '') == profile().sigla))));
@@ -239,9 +235,9 @@ service cloud.firestore {
         return existsAfter(/databases/$(database)/documents/eventProjectionOutbox/$(eventId + '-' + string(version)));
       }
       allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (eventRecordReadAccess(resource.data)));
-      allow create: if moduleSession() && (canLaunchEvent() && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
+      allow create: if moduleSession() && (canOperateSchedule() && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
         eventProjectionExistsAfter(eventId, request.resource.data.version) && validEventRecord(request.resource.data, eventId, false));
-      allow update: if moduleSession() && (canEditEvents() && updateActorIsSelf() &&
+      allow update: if moduleSession() && (canOperateSchedule() && updateActorIsSelf() &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         request.resource.data.version == resource.data.version + 1 &&
@@ -251,7 +247,7 @@ service cloud.firestore {
       allow delete: if false;
       match /history/{version} {
         allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data)));
-        allow create: if moduleSession() && (canEditEvents() && validEventHistoryEntry(request.resource.data, eventId, version));
+        allow create: if moduleSession() && (canOperateSchedule() && validEventHistoryEntry(request.resource.data, eventId, version));
         allow update, delete: if false;
       }
     }
@@ -271,7 +267,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
-      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (moduleSession() && (((can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign')) && resource.data.active == true) || can('peopleManage')));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (moduleSession() && (((canOperateSchedule() || can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign')) && resource.data.active == true) || can('peopleManage')));
       allow create: if moduleSession() && (can('peopleManage') && validContact(request.resource.data, sigla) &&
         request.resource.data.createdByUid == request.auth.uid);
       allow update: if moduleSession() && (can('peopleManage') && resource.data.sigla == sigla &&
@@ -289,7 +285,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
       }
 
-      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (moduleSession() && (can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign')));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (moduleSession() && (canOperateSchedule() || can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign')));
       allow create, update: if moduleSession() && (can('peopleManage') && validEventMember(request.resource.data, sigla));
       allow delete: if false;
     }
@@ -297,7 +293,7 @@ service cloud.firestore {
       function validProjectionRequest() {
         let data = request.resource.data;
         let event = getAfter(/databases/$(database)/documents/events/$(data.eventId)).data;
-        return canLaunchEvent() && data.keys().hasOnly(['eventId','version','status','updatedAt','actorUid']) &&
+        return canOperateSchedule() && data.keys().hasOnly(['eventId','version','status','updatedAt','actorUid']) &&
           data.eventId is string && data.version is int && data.version > 0 &&
           operationId == data.eventId + '-' + string(data.version) && data.status == 'PENDING' &&
           data.actorUid == request.auth.uid && data.updatedAt == request.time &&

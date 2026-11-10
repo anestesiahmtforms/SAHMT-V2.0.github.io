@@ -36,6 +36,10 @@ test('keeps access local to the selected module and refuses inactive or mismatch
   assert.equal(canEnterModule(profile, actor, 'FI'), false);
   assert.equal(canEnterModule({...profile, active: false}, actor, 'FJ'), false);
   assert.equal(canEnterModule({...profile, uid: 'other-user'}, actor, 'FJ'), false);
+  const operator = {...actor, email: 'marcio.henrique82@gmail.com'};
+  const operatorProfile = {...profile, email: operator.email, permissions: {}};
+  assert.equal(canEnterModule(operatorProfile, operator, 'FJ'), true);
+  assert.equal(canEnterModule(operatorProfile, {...operator, emailVerified: false}, 'FJ'), false);
 });
 
 test('signs a destination-specific custom token with the preserved FA UID', () => {
@@ -49,6 +53,7 @@ test('signs a destination-specific custom token with the preserved FA UID', () =
   assert.equal(claims.uid, actor.uid);
   assert.equal(claims.claims.moduleStation, 'FJ');
   assert.equal(claims.claims.sourceProjectId, 'sahmt-17a16');
+  assert.equal(claims.claims.faEmailVerified, true);
   assert.equal(claims.claims.moduleLeaseExpiresAt, now / 1000 + 300);
   assert.equal(claims.exp - claims.iat, 300);
   assert.throws(() => serviceIdentity(credentials, 'FI'), /DOMAIN_CONFIG_REQUIRED/);

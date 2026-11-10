@@ -1,9 +1,11 @@
 const memberPattern = /^(?:[A-Z]{2}|L2)$/;
 const tokenPattern = /^(?:DC|[A-Z]{2}|L2)(?:[/-](?:DC|[A-Z]{2}|L2))*$/;
 
-export function visibleScheduleReleaseSiglas(currentSiglas, viewerSigla) {
+export function visibleScheduleReleaseSiglas(currentSiglas, viewerSigla, canSeeAll = false) {
+  if (!Array.isArray(currentSiglas)) return [];
+  if (canSeeAll) return currentSiglas.filter(sigla => typeof sigla === 'string' && tokenPattern.test(sigla));
   const own = String(viewerSigla || '').trim().toUpperCase();
-  return memberPattern.test(own) && Array.isArray(currentSiglas) && currentSiglas.includes(own) ? [own] : [];
+  return memberPattern.test(own) && currentSiglas.includes(own) ? [own] : [];
 }
 
 export function updateScheduleReleaseState(currentSiglas, {sigla, marked, groupSiglas = [], tokenSigla = sigla} = {}) {

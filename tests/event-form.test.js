@@ -16,11 +16,12 @@ test('normaliza acentos para aplicar as condições de tipo da V1', () => {
 });
 
 test('calcula atraso a R$ 200 por múltiplo e turnos pelo valor definido', () => {
-  for (let multiple = 0; multiple <= 6; multiple++) {
+  for (let multiple = 1; multiple <= 6; multiple++) {
     assert.equal(eventAmountToPay('ATRASO', String(multiple), ''), multiple * 200);
   }
   assert.equal(eventAmountToPay('ATRASO', '2', ''), 400);
   assert.equal(eventAmountToPay('ATRASO', '', ''), null);
+  assert.equal(eventAmountToPay('ATRASO', '0', ''), null);
   assert.equal(eventAmountToPay('ATRASO', '7', ''), null);
   assert.equal(eventAmountToPay('Suporte', '', 'Manhã'), 1000);
   assert.equal(eventAmountToPay('Congresso', '', 'Tarde'), 1000);
@@ -32,7 +33,7 @@ test('calcula atraso a R$ 200 por múltiplo e turnos pelo valor definido', () =>
 test('ATRASO exige membro e múltiplo e não aceita substituto ou turno', () => {
   assert.throws(() => validateEventForm({...blankEvent, eventType: 'ATRASO', delayMultiple: '2'}), /membro/);
   assert.throws(() => validateEventForm({...blankEvent, eventType: 'ATRASO', memberStatus: 'AB — Atrasado'}), /múltiplo/);
-  assert.equal(validateEventForm({...blankEvent, eventType: 'ATRASO', memberStatus: 'AB — Atrasado', delayMultiple: '0'}), true);
+  assert.throws(() => validateEventForm({...blankEvent, eventType: 'ATRASO', memberStatus: 'AB — Atrasado', delayMultiple: '0'}), /múltiplo/);
 });
 
 test('Suporte fixa a identificação SUPORTE e exige substituto e turno', () => {

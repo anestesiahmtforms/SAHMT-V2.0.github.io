@@ -8,6 +8,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {let resolve,reject; const promise = new Promise((a,b) => {resolve = a;reject=b;}); return {promise,resolve,reject};};
 async function harness({kind='events',pendingRead}={}) {
   const {createReportRuntime}=await import('../src/report-runtime.js');
+  const {scheduleReleaseIdentity}=await import('../src/communication-operational-notices.js');
   const {mergeReportPendingRecords}=await import('../src/report-pending.js');
   const nodes=new Map(), subscriptions=[], paints=[], stops=[], pendingReads=[], timers=new Map();
   let route=kind, renders=0, timerId=0;
@@ -20,7 +21,7 @@ async function harness({kind='events',pendingRead}={}) {
     nodes.set('#'+prefix+'-report-sync',element());
   }
   nodes.set('#module-content',element()); nodes.set('#checklist-month',element({value:'2026-09'}));
-  const ctx=vm.createContext({updateOutboxStatus:async()=>{},createConnectionLifecycle:()=>({sessionChanged(){},recover(){}}),googleProjectAuthEnabled:false,googleAccessPanel:null,pendingSyncBanner:{reset(){}},
+  const ctx=vm.createContext({scheduleReleaseIdentity,updateOutboxStatus:async()=>{},createConnectionLifecycle:()=>({sessionChanged(){},recover(){}}),googleProjectAuthEnabled:false,googleAccessPanel:null,pendingSyncBanner:{reset(){}},
     session:{status:'signed-in',user:{uid:'user-a'},profile:{displayName:'Pessoa fictícia A',sigla:'AA',role:'administrador_app',active:true,access:true,permissions:{admin:true,eventsRead:true,eventsWrite:true,eventsManage:true,labelsRead:true,labelsWrite:true,labelsManage:true,checklistRead:true,checklistWrite:true,checklistSign:true,checklistManage:true}}},
     scheduleGridObserver:null, cleanupCurrentModule:null,evaluationModuleGeneration:0,operationalDrafts:{flush:async()=>{}},
     appFeatures:{events:true,labels:true,checklist:true}, appFeaturesUid:'user-a', appFeaturesLoadSequence:0,

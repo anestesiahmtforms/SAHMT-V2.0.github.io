@@ -76,9 +76,11 @@ export async function drainEventProjections({station, store, secret, fetchImpl =
           if (!archiveRoots.some(project => snapshot.name === 'projects/' + project + '/databases/(default)/documents/events/' + item.data.eventId)) throw fail('DOMAIN_PROJECTION_ARCHIVE_INVALID');
           before = decodeFields(snapshot.fields || {});
         }
+        const delay = source.data.eventType === 'ATRASO' && Number.isInteger(source.data.delayMultiple) &&
+          source.data.delayMultiple >= 1 && source.data.delayMultiple <= 6 ? {delayMultiple: source.data.delayMultiple} : {};
         const event = normalizeProjectionEvent({eventId: item.data.eventId, version: source.data.version, date: source.data.date || before.date,
           active: source.data.active, scheduleSigla: source.data.scheduleSigla || '', memberSigla: source.data.memberSigla || '',
-          actorUid: source.data.updatedByUid || source.data.createdByUid || (source.data.sheetDeleted === true ? 'native:' + station.toLowerCase() + '-sheet' : '')});
+          actorUid: source.data.updatedByUid || source.data.createdByUid || (source.data.sheetDeleted === true ? 'native:' + station.toLowerCase() + '-sheet' : ''), ...delay});
         let reply;
         if (station === 'FJ') reply = await applyEventProjection(event, store);
         else {

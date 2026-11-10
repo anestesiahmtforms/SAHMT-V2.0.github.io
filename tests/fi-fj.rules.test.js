@@ -12,7 +12,7 @@ const member = {uid: 'member', email: 'member@example.test', displayName: 'Membe
 const catalog = {payers: ['Pagador'], creditors: ['Credor']};
 function db(station, uid = 'member', claims = {}) {
   return environments[station].authenticatedContext(uid, {email: uid + '@example.test', email_verified: true,
-    sourceProjectId: 'sahmt-17a16', moduleStation: station, aud: projects[station],
+    sourceProjectId: 'sahmt-17a16', moduleStation: station, aud: projects[station], faEmailVerified: true,
     moduleLeaseExpiresAt: Math.floor(Date.now() / 1000) + 300,
     firebase: {sign_in_provider: 'custom'}, ...claims}).firestore();
 }
@@ -37,10 +37,10 @@ beforeEach(async () => {
 });
 after(async () => { for (const environment of Object.values(environments)) await environment.cleanup(); });
 
-function eventRecord() {
+function eventRecord(station = 'FI', uid = station === 'FJ' ? 'admin' : 'member', name = uid === 'admin' ? 'Admin' : 'Member') {
   return {id: 'event', clientMutationId: 'event', date: '2026-11-06', memberSigla: 'AA', scheduleSigla: 'AA', memberStatus: 'Member',
-    eventType: 'ATRASO', description: '', delayMultiple: 1, substitute: '', shift: '', payer: 'Pagador', creditor: 'Credor', amountToPay: 100,
-    status: 'OPEN', active: true, createdByUid: 'member', updatedByUid: 'member', createdByName: 'Member', updatedByName: 'Member',
+    eventType: 'ATRASO', description: '', delayMultiple: 1, substitute: '', shift: '', payer: 'Pagador', creditor: 'Credor', amountToPay: station === 'FJ' ? 200 : 100,
+    status: 'OPEN', active: true, createdByUid: uid, updatedByUid: uid, createdByName: name, updatedByName: name,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(), version: 1};
 }
 test('only destination custom sessions derived from FA may access each module', async () => {
@@ -54,38 +54,41 @@ test('only destination custom sessions derived from FA may access each module', 
 });
 for (const station of ['FI', 'FJ']) {
 test(station + ' creates events with an atomic projection request and refuses forged projection versions', async () => {
-  const database = db(station), batch = writeBatch(database);
-  batch.set(doc(database, 'events/event'), eventRecord());
-  batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()});
+  const uid = station === 'FJ' ? 'admin' : 'member';
+  const database = db(station, uid), batch = writeBatch(database);
+  batch.set(doc(database, 'events/event'), eventRecord(station));
+  batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: uid, status: 'PENDING', updatedAt: serverTimestamp()});
   await assertSucceeds(batch.commit());
   await assertSucceeds(getDoc(doc(database, 'events/event')));
-  await assertFails(setDoc(doc(database, 'events/missing'), {...eventRecord(), id: 'missing', clientMutationId: 'missing'}));
+  await assertFails(setDoc(doc(database, 'events/missing'), {...eventRecord(station), id: 'missing', clientMutationId: 'missing'}));
   await assertFails(setDoc(doc(database, 'eventProjectionOutbox/event-2'), {eventId: 'event', version: 2, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()}));
   await assertFails(getDoc(doc(database, 'labels/other-module')));
 });
 }
 for (const [station, editor] of [['FI', 'admin'], ['FJ', 'admin'], ['FJ', 'operator']]) {
 test(station + ' event corrections by ' + editor + ' require a matching immutable history entry', async () => {
-  const database = db(station);
+  const uid = station === 'FJ' ? 'admin' : 'member';
+  const database = db(station, uid);
   const creation = writeBatch(database);
-  creation.set(doc(database, 'events/event'), eventRecord());
-  creation.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: 'member', status: 'PENDING', updatedAt: serverTimestamp()});
+  creation.set(doc(database, 'events/event'), eventRecord(station));
+  creation.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId: 'event', version: 1, actorUid: uid, status: 'PENDING', updatedAt: serverTimestamp()});
   await assertSucceeds(creation.commit());
   if (editor === 'operator') {
-    await seed('FJ', 'users/operator', {...member, uid: editor, sigla: 'ZZ', role: 'gestor',
-      permissions: {eventsWrite: true, eventsManage: true}});
+    await seed('FJ', 'users/operator', {...member, uid: editor, email: 'marcio.henrique82@gmail.com', sigla: 'ZZ', role: 'gestor',
+      permissions: {}});
   }
   const editorDb = db(station, editor);
   const editorName = editor === 'admin' ? 'Admin' : 'Member';
+  const amountToPay = station === 'FJ' ? 400 : 200;
   await assertSucceeds(getDocs(collection(editorDb, 'events')));
-  await assertFails(updateDoc(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2,
+  await assertFails(updateDoc(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay, version: 2,
     updatedByUid: editor, updatedByName: editorName, updatedAt: serverTimestamp()}));
   const current = (await getDoc(doc(database, 'events/event'))).data();
   const fields = ['date','memberSigla','scheduleSigla','memberStatus','eventType','description','delayMultiple','substitute','shift','payer','creditor','amountToPay','status'];
   const previous = Object.fromEntries(fields.map(field => [field, current[field] ?? null]));
-  const next = {...previous, delayMultiple: 2, amountToPay: 200};
+  const next = {...previous, delayMultiple: 2, amountToPay};
   const batch = writeBatch(editorDb);
-  batch.update(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay: 200, version: 2, updatedByUid: editor, updatedByName: editorName, updatedAt: serverTimestamp()});
+  batch.update(doc(editorDb, 'events/event'), {delayMultiple: 2, amountToPay, version: 2, updatedByUid: editor, updatedByName: editorName, updatedAt: serverTimestamp()});
   batch.set(doc(editorDb, 'events/event/history/2'), {id: '2', eventId: 'event', version: 2, requestId: 'correction',
     actorUid: editor, actorName: editorName, changedFields: ['delayMultiple','amountToPay'], before: previous, after: next, createdAt: serverTimestamp()});
   batch.set(doc(editorDb, 'eventProjectionOutbox/event-2'), {eventId: 'event', version: 2, actorUid: editor, status: 'PENDING', updatedAt: serverTimestamp()});
@@ -101,17 +104,29 @@ test('FJ common users cannot launch events even with a legacy eventsWrite grant'
   await assertFails(batch.commit());
   await seed('FJ', 'users/member', {...member, role: 'gestor', permissions: {...member.permissions, eventsManage: true}});
   const delegated = writeBatch(database);
-  delegated.set(doc(database, 'events/event'), eventRecord());
+  delegated.set(doc(database, 'events/event'), eventRecord('FJ', 'member'));
   delegated.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
-  await assertSucceeds(delegated.commit());
+  await assertFails(delegated.commit());
+  await seed('FJ', 'users/member', {...member, email: 'marcio.henrique82@gmail.com', role: 'gestor'});
+  const launch = (database, delayMultiple) => {
+    const batch = writeBatch(database);
+    batch.set(doc(database, 'events/event'), {...eventRecord('FJ', 'member'), delayMultiple, amountToPay: delayMultiple * 200});
+    batch.set(doc(database, 'eventProjectionOutbox/event-1'), {eventId:'event', version:1, actorUid:'member', status:'PENDING', updatedAt:serverTimestamp()});
+    return batch.commit();
+  };
+  await assertFails(launch(db('FJ', 'member', {faEmailVerified: false}), 1));
+  await assertFails(launch(database, 0));
+  await assertSucceeds(launch(database, 1));
 });
 
 test('FJ preserves release highlights and blocks direct event-marker injection', async () => {
-  const reference = doc(db('FJ'), 'scheduleDays/2026-11-06');
-  await assertSucceeds(updateDoc(reference, {'highlights.siglas': ['AA'], 'highlights.releaseTimes': {AA: 1800000000000},
-    updatedByUid: 'member', updatedAt: serverTimestamp(), version: 2}));
+  const reference = doc(db('FJ', 'admin'), 'scheduleDays/2026-11-06');
+  const release = uid => ({'highlights.siglas': ['AA'], 'highlights.releaseTimes': {AA: 1800000000000},
+    updatedByUid: uid, updatedAt: serverTimestamp(), version: 2});
+  await assertFails(updateDoc(doc(db('FJ'), reference.path), release('member')));
+  await assertSucceeds(updateDoc(reference, release('admin')));
   await assertFails(updateDoc(reference, {'highlights.events': ['EVENTO:AA:AA:forged'],
-    updatedByUid: 'member', updatedAt: serverTimestamp(), version: 3}));
+    updatedByUid: 'admin', updatedAt: serverTimestamp(), version: 3}));
   await assertFails(setDoc(doc(db('FJ'), 'events/forged'), eventRecord()));
   const value = (await assertSucceeds(getDoc(reference))).data();
   assert.deepEqual(value.highlights.siglas, ['AA']);

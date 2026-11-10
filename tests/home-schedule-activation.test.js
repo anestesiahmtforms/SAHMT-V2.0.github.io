@@ -1,14 +1,16 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
+import {isValidDateKey} from '../src/schedule-date.js';
 const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('async function loadSchedule()'),source.indexOf('function showScheduleContacts(')).replace("import('./data-lite.js')",'Promise.resolve(data)');
 const tick=()=>new Promise(r=>setImmediate(r));
-function fixture(){let route='schedule',reads=0;const saved=[],content={innerHTML:'',isConnected:true,querySelectorAll:()=>[]},date={value:'',isConnected:true,addEventListener(){}},buttons={addEventListener(){}};
+function fixture(hash='#/schedule'){let route='schedule',reads=0;const saved=[],content={innerHTML:'',isConnected:true,querySelectorAll:()=>[]},date={value:'',isConnected:true,addEventListener(){}},buttons={addEventListener(){}};
  const ctx=vm.createContext({session:{status:'signed-in',user:{uid:'one'}},cleanupCurrentModule:null,Date,Map,Promise,globalThis:{},currentRoute:()=>route,
   homeScheduleCache:{write:(...args)=>saved.push(args),clear:()=>saved.push('clear')},document:{querySelector:id=>id==='#schedule-content'?content:id==='#schedule-date'?date:buttons},localDateKey:()=> '2026-11-08',
-  readCachedSchedule:async()=>null,can:()=>false,buildScheduleView:()=>({positions:[]}),fitSchedulePositionGrid(){},bindEventSupportButton(){},canManageScheduleEvents:()=>false,
+  location:{hash},isValidDateKey,readCachedSchedule:async()=>null,can:()=>false,buildScheduleView:()=>({positions:[]}),fitSchedulePositionGrid(){},bindEventSupportButton(){},canManageScheduleEvents:()=>false,
   data:{readSchedule:async()=>{reads++;return {positions:['AB']};},listActiveContacts:async()=>[],listVacationsForDate:async()=>[]}});
  vm.runInContext(code,ctx);return {ctx,content,saved,setRoute:v=>route=v,reads:()=>reads};}
 test('explicit schedule opens remote module and stores only its complete successful result',async()=>{const h=fixture();await h.ctx.loadSchedule();await tick();await tick();assert.equal(h.reads(),1);assert.equal(h.saved.length,1);assert.equal(h.saved[0][0],'one');assert.equal(h.saved[0][1],'2026-11-08');assert.equal(h.saved[0][2].schedule.positions[0],'AB');});
+test('an Escala link loads the date in the URL',async()=>{const h=fixture('#/schedule/2026-11-07');await h.ctx.loadSchedule();await tick();assert.equal(h.saved[0][1],'2026-11-07');});
 test('schedule cannot start a read when Home is the consumer',async()=>{const h=fixture();h.setRoute('home');await h.ctx.loadSchedule();assert.equal(h.reads(),0);assert.equal(h.saved.length,0);});
 test('denied schedule clears the preview and cannot replace it',async()=>{const h=fixture();h.ctx.data.readSchedule=async()=>{throw {code:'permission-denied'};};await h.ctx.loadSchedule();await tick();assert.deepEqual(h.saved,['clear']);});
 test('late response after leaving the module cannot save or paint a preview',async()=>{const h=fixture();let resolve;h.ctx.data.readSchedule=()=>new Promise(r=>resolve=r);await h.ctx.loadSchedule();await tick();h.ctx.cleanupCurrentModule();h.setRoute('home');h.content.innerHTML='entry';resolve({positions:['AB']});await tick();assert.equal(h.content.innerHTML,'entry');assert.equal(h.saved.length,0);});

@@ -15,6 +15,15 @@ test('projection preserves release marks, times and positions while adding exact
   assert.equal(original.positions[0].sigla, 'AA/BB');
 });
 
+test('delay projections add only the multiplier and update previously projected markers', () => {
+  const schedules = {[event.date]: schedule(event.date, ['EVENTO:AA/BB:CC:event'])};
+  const first = planEventProjection({event: {...event, delayMultiple: 1}, previous: {...event, status: 'APPLIED'}, schedules});
+  assert.deepEqual(first.scheduleUpdates[0].events, ['EVENTO:AA/BB:CC:ATRASO:1:event']);
+  schedules[event.date] = schedule(event.date, first.scheduleUpdates[0].events);
+  const edited = planEventProjection({event: {...event, version: 3, delayMultiple: 2}, previous: first.receipt, schedules});
+  assert.deepEqual(edited.scheduleUpdates[0].events, ['EVENTO:AA/BB:CC:ATRASO:2:event']);
+});
+
 test('moving an event removes its old marker and preserves unrelated events on both days', () => {
   const previous = {...event, version: 1, date: '2026-11-05', status: 'APPLIED'};
   const plan = planEventProjection({event, previous, schedules: {

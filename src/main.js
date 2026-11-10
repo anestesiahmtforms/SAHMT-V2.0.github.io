@@ -36,7 +36,8 @@ import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form
 import {isValidDateKey, localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
-import {releaseNoticeFeedback, releaseNoticeError} from './communication-operational-notices.js';
+import {releaseNoticeFeedback, releaseNoticeError, scheduleReleaseIdentity} from './communication-operational-notices.js';
+import {scheduleDelayFromMarker} from './schedule-event-marker.js';
 import {openChecklistCamera} from './checklist-camera.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
 import {resolveChecklistQrStation} from './checklist-static.js';
@@ -275,7 +276,8 @@ const reportPermissions = {
 };
 function reportAllowed(kind) {
   return (typeof operationalFolderRouteAllowed!=='function'||operationalFolderRouteAllowed(kind)) &&
-    session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) && reportPermissions[kind].some(can);
+    session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) &&
+    (reportPermissions[kind].some(can) || (kind === 'events' && canManageScheduleEvents()));
 }
 function reportPermissionKey(kind) {
   if (kind === 'labels' && typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled) return JSON.stringify([session.labelProfile?.active, session.labelProfile?.access,
@@ -909,29 +911,33 @@ function fitSchedulePositionGrid(container) {
 
 function canManageScheduleEvents() {
   if(typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed('events'))return false;
-  return featureEnabledForRoute('events', appFeatures) && can('eventsWrite') && (can('admin') || session.profile?.role === 'gestor');
+  return featureEnabledForRoute('events', appFeatures) && scheduleReleaseIdentity(session.profile, session.user);
 }
 
 function canEditScheduleEvents() {
-  return canManageScheduleEvents() && can('eventsManage');
+  return canManageScheduleEvents();
 }
 
 function canReadScheduleEvents() {
   if(typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed('events'))return false;
-  return featureEnabledForRoute('events', appFeatures) && (can('eventsRead') || can('eventsWrite'));
+  return featureEnabledForRoute('events', appFeatures) && (can('eventsRead') || can('eventsWrite') || scheduleReleaseIdentity(session.profile, session.user));
 }
 
 function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {}, eventsWritable = false} = {}) {
-  const highlightedSiglas = new Set(mode === 'home' ? visibleScheduleReleaseSiglas(schedule.highlights?.siglas, session.profile?.sigla) : []);
+  const seesAllReleases = scheduleReleaseIdentity(session.profile, session.user);
+  const highlightedSiglas = new Set(mode === 'home' ? visibleScheduleReleaseSiglas(schedule.highlights?.siglas, session.profile?.sigla, seesAllReleases) : []);
   const releaseTimes = mode === 'home' ? schedule.highlights?.releaseTimes || {} : {};
   const isAdmin = can('admin');
   const ownSigla = String(session.profile?.sigla || '').trim().toUpperCase();
   const eventSiglas = new Set();
+  const delays = [];
   for (const marker of Array.isArray(schedule.highlights?.events) ? schedule.highlights.events : []) {
+    const delay = scheduleDelayFromMarker(marker);
+    if (delay) delays.push(delay);
     const parts = String(marker || '').trim().toUpperCase().replace(/^EVENTO:/, '').split(':');
     const scheduled = parts[0] || '';
     if (parts.length >= 3) {
-      const memberSigla = parts.length >= 4 ? parts[2] : (scheduled.includes('/') || scheduled.includes('-') ? '' : scheduled);
+      const memberSigla = delay?.memberSigla || (parts.length >= 4 ? parts[2] : (scheduled.includes('/') || scheduled.includes('-') ? '' : scheduled));
       if (memberSigla && memberSigla !== '-' && (isAdmin || memberSigla === ownSigla)) eventSiglas.add(memberSigla);
       else if (isAdmin && !memberSigla) scheduled.split(/[/-]/).filter(Boolean).forEach((sigla) => eventSiglas.add(sigla));
     }
@@ -942,13 +948,18 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
     const canLaunchEvent = eventsWritable && featureEnabledForRoute('events', appFeatures);
     const singleSiglaOnVacation = position.siglas.length === 1 && position.vacationParts.length === 1;
     const hasEvent = eventMode && (eventSiglas.has(String(position.sigla || '').toUpperCase()) || position.siglas.some((sigla) => eventSiglas.has(String(sigla || '').toUpperCase())));
+    const positionDelays = delays.filter(delay => delay.scheduleSigla === position.sigla &&
+      (delay.memberSigla === '-' || position.siglas.includes(delay.memberSigla)));
+    const delayNumbers = [...new Set(positionDelays.map(delay => delay.multiple))].sort((a, b) => a - b);
+    const delayBadges = delayNumbers.map(multiple => `<small class="sigla-token__delay" aria-hidden="true">-${multiple}</small>`).join('');
+    const delayDescription = delayNumbers.map(multiple => `; atraso, múltiplo ${multiple}`).join('');
     const aliases = position.sigla === 'DC' && position.siglas.length
       ? `<small class="sigla-token__aliases">${renderScheduleAliases(position.siglas, position.vacationParts, [...highlightedSiglas], scheduleView.vacationPositions, true, releaseTimes)}</small>`
       : '';
     const tokenLabel = position.sigla === 'DC' ? '<strong>DC</strong>'
       : `<strong>${renderScheduleSigla(position.sigla, position.vacationParts, position.siglas.filter((sigla) => highlightedSiglas.has(sigla)), scheduleView.vacationPositions, true, releaseTimes)}</strong>`;
     const marked = !eventMode && highlightedSiglas.has(position.sigla);
-    const provisionalRelease = !eventMode && position.siglas.some(sigla=>sigla===ownSigla&&(schedule.provisionalReleaseSiglas||[]).includes(sigla));
+    const provisionalRelease = !eventMode && position.siglas.some(sigla=>(seesAllReleases||sigla===ownSigla)&&(schedule.provisionalReleaseSiglas||[]).includes(sigla));
     const showConfirmedDot = eventMode ? hasEvent : marked && !provisionalRelease && !schedule.stale && schedule.pendingFirestore !== true;
     const confirmationLabel = eventMode ? 'Registro de evento confirmado no Firestore' : 'Liberação confirmada no Firestore';
     const vacationDescription = position.vacationParts.length
@@ -961,7 +972,7 @@ function renderSchedulePositionGrid(scheduleView, {mode = 'home', schedule = {},
       ? (eventsWritable ? 'Lançar evento' : 'Somente consulta')
       : (hasContact ? 'Abrir contato' : canLaunchEvent ? 'Lançar evento' : 'Contato não cadastrado');
     const disabled = eventMode ? !eventsWritable : !hasContact && !canLaunchEvent && !(currentRoute() === 'schedule' && canReadScheduleEvents());
-    return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${provisionalRelease ? ' sigla-token--provisional' : ''}${hasEvent ? ' sigla-token--event' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}" title="${escapeHtml(provisionalRelease ? title + ' · Liberação provisória; confirmação pendente' : title)}">${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
+    return `<div class="sigla-item"><button class="sigla-token sigla-button${position.sigla === 'DC' ? ' sigla-token--dc' : ''}${singleSiglaOnVacation ? ' sigla-token--vacation' : ''}${marked ? ' sigla-token--checked' : ''}${provisionalRelease ? ' sigla-token--provisional' : ''}${hasEvent ? ' sigla-token--event' : ''}${delayBadges ? ' sigla-token--delay' : ''}" type="button" data-schedule-position-index="${index}" ${disabled ? 'disabled' : ''} aria-label="${escapeHtml(actionLabel)}${escapeHtml(vacationDescription)}${delayDescription}" title="${escapeHtml(provisionalRelease ? title + ' · Liberação provisória; confirmação pendente' : title)}">${delayBadges ? `<span class="sigla-token__delays">${delayBadges}</span>` : ''}${tokenLabel}${aliases}${showConfirmedDot ? `<span class="sigla-confirmation-check" role="img" aria-label="${confirmationLabel}" title="${confirmationLabel}">✓</span>` : ''}</button><div class="sigla-index">${escapeHtml(position.function || position.position || String(index + 1))}</div></div>`;
   }).join('')}${eventsWritable && (eventMode || currentRoute() === 'schedule') ? renderEventSupportTile(true) : ''}</div>`;
 }
 
@@ -1031,13 +1042,13 @@ function actionForm(route) {
     <input name="scheduleSigla" type="hidden">
     <label class="event-type-field"><span>Tipo de Evento</span><select name="eventType" required><option value="">Selecione</option>${['Pessoal','Férias','ATRASO','Suporte','Gestão','Congresso','Saúde','Ausência','Outros'].map((value) => `<option>${value}</option>`).join('')}</select></label>
     <label data-event-field="description"><span>Descrição do evento</span><textarea name="description" rows="2" maxlength="1000" placeholder="Descreva o evento"></textarea></label>
-    <label data-event-field="delayMultiple"><span>Múltiplo do atraso</span><select name="delayMultiple"><option value="">Selecione</option>${Array.from({length: 7}, (_, index) => `<option value="${index}">${index}</option>`).join('')}</select></label>
+    <label data-event-field="delayMultiple"><span>Múltiplo do atraso</span><select name="delayMultiple"><option value="">Selecione</option>${[1, 2, 3, 4, 5, 6].map(multiple => `<option value="${multiple}">${multiple}</option>`).join('')}</select></label>
     <label data-event-field="substitute"><span>Substituto</span><select name="substitute"><option value="">Selecione</option></select></label><label data-event-field="shift"><span>Turno</span><select name="shift"><option value="">Selecione</option><option>Manhã</option><option>Tarde</option><option>Integral</option></select></label>
     <label><span>Pagador</span><select name="payer" required><option value="">Selecione</option></select></label><label><span>Credor</span><select name="creditor" required><option value="">Selecione</option></select></label>
     <label><span>Valor a pagar</span><input name="amountToPay" type="number" required min="0" step="0.01" inputmode="decimal" placeholder="R$ 0,00"></label></div>
     <p id="event-members-missing" class="empty-state" hidden>O catálogo de siglas está vazio. Cadastre siglas em Etiquetas ou sincronize contatos ativos em Pessoas.</p>
     <p id="event-catalog-stale" class="record-meta" role="status" hidden></p>
-    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit">Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></footer></dialog>`;
+    <input name="editEventId" type="hidden"><input name="editEventVersion" type="hidden"><div class="admin-user-actions"><button class="primary-button" type="submit" disabled>Salvar evento</button><button class="secondary-button" id="event-edit-cancel" type="button" hidden>Cancelar edição</button></div><p id="event-form-status" class="record-meta" role="status" aria-live="polite"></p><button class="secondary-button" id="event-conflict-refresh" type="button" hidden>Atualizar relatório para comparar</button></form><footer class="event-launch-footer"><form method="dialog"><button class="secondary-button" id="event-launch-back" type="submit" aria-label="Voltar ao app">Voltar</button></form></footer></dialog>`;
   }
   if (route === 'admin' && can('eventsCatalogManage')) return `<details class="quick-form"><summary>Configurar opções de Eventos</summary><form id="event-catalog-form">
     <p class="record-meta">Pagadores e credores disponíveis no lançamento de Eventos.</p>
@@ -1173,9 +1184,9 @@ async function loadSchedule() {
         sigla: position.sigla,
         position,
         date: selectedDate,
-        groupSiglas: position.contacts.map((contact) => String(contact.sigla || '').toUpperCase()),
+        groupSiglas: position.siglas,
         highlightedSiglas: Array.isArray(schedule.highlights?.siglas) ? schedule.highlights.siglas : [],
-        canRelease: can('scheduleWrite'),
+        canRelease: scheduleReleaseIdentity(session.profile, session.user),
         onRelease: () => void render()
       });
     }));
@@ -1343,12 +1354,12 @@ function showSchedulePanel(id) {
   heading?.focus({preventScroll: true});
 }
 
-async function finishScheduleEventSave(message) {
+function finishScheduleEventSave(message) {
   resetEventEditor();
   const status = document.querySelector('[data-release-status]');
   if (status) status.textContent = message;
   scheduleEventContext.onRelease?.();
-  if (eventReportOpen) await loadEventReport({force: true});
+  if (eventReportOpen) void loadEventReport({force: true});
 }
 
 async function openScheduleEventReport(mode) {
@@ -1424,22 +1435,26 @@ function showScheduleContacts(contacts, context = {}) {
   content.innerHTML = `<h3 id="schedule-contact-heading">${records.length > 1 ? 'Contatos vinculados' : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
   content.querySelectorAll('[data-release-sigla]').forEach((button) => button.addEventListener('click', async () => {
     const status = content.querySelector('[data-release-status]');
+    if (!scheduleReleaseIdentity(session.profile, session.user)) return;
+    const actorUid = session.user.uid;
     const marked = button.getAttribute('aria-pressed') !== 'true';
     button.disabled = true;
     if (status) status.textContent = 'Salvando…';
     try {
       const {setScheduleSiglaRelease} = await import('./data.js');
+      if (session.user?.uid !== actorUid || !scheduleReleaseIdentity(session.profile, session.user)) return;
       const updated = await setScheduleSiglaRelease(context.date, button.dataset.releaseSigla, marked, {
         groupSiglas: context.groupSiglas,
         tokenSigla: context.sigla,
-        uid: session.user.uid,
+        uid: actorUid,
         currentSiglas: context.highlightedSiglas
       });
+      if (session.user?.uid !== actorUid) return;
       context.highlightedSiglas = updated.highlights?.siglas || [];
-      let releaseNoticeStatus = '';
+      let releaseNoticeStatus = 'Liberação salva. A Central de Comunicação está desativada.';
       if (marked && !updated.pendingFirestore && communicationFeatureEnabled) {
         const {createCommunicationClient} = await import('./communication-client.js');
-        const commClient = createCommunicationClient();
+        const commClient = createCommunicationClient({isCurrent: () => session.user?.uid === actorUid && scheduleReleaseIdentity(session.profile, session.user)});
         try {
           const result = await commClient.request('SCHEDULE_RELEASE_NOTICE', {day: context.date, sigla: button.dataset.releaseSigla});
           releaseNoticeStatus = releaseNoticeFeedback(result, button.dataset.releaseSigla);
@@ -1449,6 +1464,7 @@ function showScheduleContacts(contacts, context = {}) {
           commClient.dispose();
         }
       }
+      if (session.user?.uid !== actorUid || !content.isConnected) return;
       content.querySelectorAll('[data-release-sigla]').forEach((item) => {
         const itemMarked = context.highlightedSiglas.includes(String(item.dataset.releaseSigla || '').toUpperCase());
         item.setAttribute('aria-pressed', String(itemMarked));
@@ -1462,8 +1478,9 @@ function showScheduleContacts(contacts, context = {}) {
         : marked ? releaseNoticeStatus : 'Liberação removida para esta data.';
       context.onRelease?.();
     } catch {
+      if (status && session.user?.uid === actorUid) status.textContent = 'Não foi possível salvar a liberação. Confira a conexão e sua permissão para editar a escala.';
+    } finally {
       button.disabled = false;
-      if (status) status.textContent = 'Não foi possível salvar a liberação. Confira a conexão e sua permissão para editar a escala.';
     }
   }));
   if (currentRoute() === 'schedule') {
@@ -4080,6 +4097,10 @@ async function bindModuleForm(route) {
     event.preventDefault();
     const form = event.currentTarget;
     const submit = form.querySelector('[type="submit"]');
+    if (route === 'events') {
+      if (submit.disabled) return;
+      form.dataset.eventSaving = 'true';
+    }
     // Release editable focus before saving; Safari must not restore input zoom.
     const focusedControl = document.activeElement;
     if (route === 'labels' && focusedControl?.matches?.('input, select, textarea') && form.contains(focusedControl)) focusedControl.blur();
@@ -4116,7 +4137,7 @@ async function bindModuleForm(route) {
         const actorName = String(session.profile?.displayName || '').trim().slice(0, 120);
         const eventRecord = {date: values.eventDate || today, memberSigla: values.memberSigla?.trim().toUpperCase() || '', scheduleSigla: values.scheduleSigla?.trim().toUpperCase() || '', memberStatus: values.memberStatus?.trim() || 'SUPORTE', eventType: values.eventType, description: values.description.trim(), delayMultiple: values.delayMultiple === '' ? null : Number(values.delayMultiple), substitute: values.substitute.trim(), shift: values.shift, payer: values.payer.trim(), creditor: values.creditor.trim(), amountToPay: Number(values.amountToPay || 0), createdByName: actorName, updatedByName: actorName, status: 'OPEN'};
         if (values.editEventId) {
-          if (!can('eventsManage')) throw Object.assign(new Error('Permissão de edição revogada.'), {code: 'permission-denied'});
+          if (!canEditScheduleEvents()) throw Object.assign(new Error('Permissão de edição revogada.'), {code: 'permission-denied'});
           const {updateEventRecord} = await import('./data.js');
           if (session.user?.uid !== actorUid) return;
           const result = await updateEventRecord(values.editEventId, eventRecord, actorUid, Number(values.editEventVersion));
@@ -4125,7 +4146,7 @@ async function bindModuleForm(route) {
           notice = result.pendingFirestore
             ? 'Edição salva neste aparelho com a versão base. Será enviada quando a conexão voltar; se o registro mudar, o rascunho ficará para comparação.'
             : 'Evento atualizado no Firestore.';
-          if (currentRoute() === 'schedule') { await finishScheduleEventSave(notice); notice = ''; return; }
+          if (currentRoute() === 'schedule') { finishScheduleEventSave(notice); notice = ''; return; }
           await render();
           return;
         }
@@ -4219,7 +4240,7 @@ async function bindModuleForm(route) {
         ? 'Registro salvo neste aparelho. Confirme o envio na área Sincronização quando o serviço voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
       if (route === 'events' && currentRoute() === 'schedule') {
-        await finishScheduleEventSave(result.pendingFirestore ? notice : 'Evento confirmado no Firestore.');
+        finishScheduleEventSave(result.pendingFirestore ? notice : 'Evento confirmado no Firestore.');
         notice = ''; return;
       }
       if (manualLabelEntry || cameraLabelEntry) {
@@ -4243,7 +4264,6 @@ async function bindModuleForm(route) {
           if (refresh) refresh.hidden = false;
         } else if (status) status.textContent = notice;
         notice = '';
-        submit.disabled = false;
         return;
       }
       if (route === 'labels') {
@@ -4259,6 +4279,11 @@ async function bindModuleForm(route) {
       }
       submit.disabled = false;
       await render();
+    } finally {
+      if (route === 'events') {
+        delete form.dataset.eventSaving;
+        if (form.isConnected && session.user?.uid === actorUid) updateEventSubmitState(form);
+      }
     }
   });
   if (route === 'events') {
@@ -4459,6 +4484,11 @@ function bindEventCatalogForm() {
   });
 }
 
+function updateEventSubmitState(form) {
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = form.dataset.eventSaving === 'true' || form.dataset.eventCatalogReady !== 'true';
+}
+
 async function loadEventEntryCatalog() {
   const form = document.querySelector('[data-module-form="events"]');
   const configForm = document.querySelector('#event-catalog-form');
@@ -4499,15 +4529,19 @@ async function loadEventEntryCatalog() {
           : catalog.stale === true ? 'Opções carregadas do cache deste usuário. O Firestore validará cada lançamento ao sincronizar.' : '';
         staleNote.hidden = !staleNote.textContent;
       }
-      const submit = form?.querySelector('[type="submit"]');
-      if (submit) submit.disabled = !loadedEventCatalog.payers.length || !loadedEventCatalog.creditors.length;
-      if (form) updateEventEntryFields(form);
+      if (form) {
+        form.dataset.eventCatalogReady = String(Boolean(loadedEventCatalog.payers.length && loadedEventCatalog.creditors.length));
+        updateEventSubmitState(form);
+        updateEventEntryFields(form);
+      }
       return {ok: true, catalog};
     } catch (error) {
       if (!currentView()) return;
       loadedEventCatalog = {payers: [], creditors: []};
-      const submit = form?.querySelector('[type="submit"]');
-      if (submit) submit.disabled = true;
+      if (form) {
+        delete form.dataset.eventCatalogReady;
+        updateEventSubmitState(form);
+      }
       const status = configForm?.querySelector('#event-catalog-status');
       if (status) status.textContent = `Não foi possível carregar as opções. ${error.message || ''}`;
       const staleNote = form?.querySelector('#event-catalog-stale');
@@ -4833,7 +4867,7 @@ function bindEventSchedule() {
   const dateInput = document.querySelector('#event-schedule-date');
   const content = document.querySelector('#event-schedule-content');
   if (!dateInput || !content) return;
-  const canLaunchSupport = can('eventsWrite') && featureEnabledForRoute('events', appFeatures);
+  const canLaunchSupport = canManageScheduleEvents();
   dateInput.value = localDateKey();
   let requestSequence = 0, redrawSharedSchedule = null;
   dateInput.addEventListener('sahmt-shared-refresh',()=>redrawSharedSchedule?.());

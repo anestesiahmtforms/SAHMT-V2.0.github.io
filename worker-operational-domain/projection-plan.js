@@ -1,4 +1,5 @@
 import {isValidDateKey} from '../src/schedule-date.js';
+import {scheduleEventMarker} from '../src/schedule-event-marker.js';
 import {fail} from './identity.js';
 
 const keys = ['eventId', 'version', 'date', 'active', 'scheduleSigla', 'memberSigla', 'actorUid'];
@@ -8,7 +9,12 @@ export function normalizeProjectionEvent(value) {
       value.scheduleSigla.length > 30 || !/^(?:|SUPORTE|(?:[A-Z]{2}|L2)(?:[/-](?:[A-Z]{2}|L2))*)$/.test(value.scheduleSigla) ||
       !/^(?:[A-Z]{2}|L2|)$/.test(value.memberSigla) || typeof value.actorUid !== 'string' ||
       !/^[^/\s\x00-\x1f]{1,128}$/.test(value.actorUid)) throw fail('DOMAIN_PROJECTION_INVALID', 400);
-  return Object.fromEntries(keys.map(key => [key, value[key]]));
+  const event = Object.fromEntries(keys.map(key => [key, value[key]]));
+  if (value.delayMultiple !== undefined) {
+    if (!Number.isInteger(value.delayMultiple) || value.delayMultiple < 1 || value.delayMultiple > 6) throw fail('DOMAIN_PROJECTION_INVALID', 400);
+    event.delayMultiple = value.delayMultiple;
+  }
+  return event;
 }
 
 /** Only event markers and the schedule version change. Release state and
@@ -20,11 +26,19 @@ export function planEventProjection({event: input, previous, schedules}) {
     if (prior.eventId !== event.eventId || !['APPLIED', 'WAITING_SCHEDULE'].includes(previous.status)) throw fail('DOMAIN_PROJECTION_INVALID', 400);
     if (prior.version > event.version) return {status: 'ALREADY_APPLIED', receipt: previous, scheduleUpdates: []};
     if (prior.version === event.version) {
-      if (JSON.stringify(prior) !== JSON.stringify(event)) throw fail('DOMAIN_PROJECTION_CONFLICT', 409);
-      if (previous.status === 'APPLIED') return {status: 'ALREADY_APPLIED', receipt: previous, scheduleUpdates: []};
+      const {delayMultiple: previousMultiple, ...previousFields} = prior;
+      const {delayMultiple: nextMultiple, ...nextFields} = event;
+      if (JSON.stringify(previousFields) !== JSON.stringify(nextFields) ||
+          (previousMultiple !== undefined && nextMultiple !== undefined && previousMultiple !== nextMultiple)) {
+        throw fail('DOMAIN_PROJECTION_CONFLICT', 409);
+      }
+      if (previousMultiple !== undefined) event.delayMultiple = previousMultiple;
+      if (previous.status === 'APPLIED' && event.delayMultiple === previousMultiple) {
+        return {status: 'ALREADY_APPLIED', receipt: previous, scheduleUpdates: []};
+      }
     }
   }
-  const marker = event.active && event.scheduleSigla ? `EVENTO:${event.scheduleSigla}:${event.memberSigla || '-'}:${event.eventId}` : '';
+  const marker = event.active && event.scheduleSigla ? scheduleEventMarker(event) : '';
   const dates = [...new Set([previous?.date, event.date].filter(Boolean))], scheduleUpdates = [];
   for (const date of dates) {
     const schedule = schedules?.[date]; if (!schedule) continue;

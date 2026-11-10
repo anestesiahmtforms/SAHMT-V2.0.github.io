@@ -4,7 +4,7 @@ import {communicationLimitMessage} from './communication-usage.js';
 export const operationalNoticeIdentity=user=>adminIdentity(user)&&String(user.email).trim().toLowerCase()==='marcio.henrique82@gmail.com';
 export const RELEASE_NOTICE=Object.freeze({title:'LIBERAÇÃO',message:'Você está Liberado! O SAHMT agradece por sua dedicação. BOM DESCANSO! 🤜🤛.'});
 
-export const scheduleReleaseIdentity=(profile,user)=>activeProfile(profile)&&user?.emailVerified===true&&(profile.role==='administrador_app'||profile.permissions?.admin===true||profile.permissions?.scheduleWrite===true||operationalNoticeIdentity(user));
+export const scheduleReleaseIdentity=(profile,user)=>activeProfile(profile)&&user?.emailVerified===true&&(profile.role==='administrador_app'||profile.permissions?.admin===true||operationalNoticeIdentity(user));
 
 export function releaseNoticeFeedback(result,sigla=''){
  const label=sigla?` para ${sigla}`:'',published=result.alreadySent?`O aviso desta liberação${label} já está publicado.`:`Aviso de liberação${label} publicado.`;

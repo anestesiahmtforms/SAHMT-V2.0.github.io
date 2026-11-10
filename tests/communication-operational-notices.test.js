@@ -176,7 +176,12 @@ test('administradores por função ou permissão e Márcio podem publicar a libe
   const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},actor);
   assert.equal(result.message.audienceValue,person.sourceUid);
  }
- const f=fixture();f.fa.data.get('users/'+operator.sourceUid).access=false;
+ const f=fixture(), delegated={...operator,email:'gestor@example.test'};
+ Object.assign(f.fa.data.get('users/'+operator.sourceUid),{role:'gestor',permissions:{scheduleWrite:true,eventsWrite:true,eventsManage:true},email:delegated.email});
+ Object.assign(f.store.data.get('users/'+operator.sourceUid),{email:delegated.email});
+ await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},delegated),{code:'COMM_FORBIDDEN'});
+ Object.assign(f.fa.data.get('users/'+operator.sourceUid),{email:operator.email,access:false});
+ Object.assign(f.store.data.get('users/'+operator.sourceUid),{email:operator.email});
  await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_FORBIDDEN'});
 });
 
